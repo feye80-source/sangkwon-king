@@ -18613,13 +18613,8 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
       ].join('\n');
 
       try {
-        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(k)}`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0, maxOutputTokens: 4096 } })
-        });
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        const d = await res.json();
-        let txt = (d.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('').trim();
+        const gRes = await callG([{ text: prompt }]);
+        let txt = typeof gRes.result === 'string' ? gRes.result : (gRes.result?.text || JSON.stringify(gRes.result));
         txt = txt.replace(/```json|```/g, '').trim();
         const parsed = JSON.parse(txt);
         _a1Data = { ...parsed, _pid: pid, _hasCookie: hasCookie };
@@ -18882,13 +18877,8 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
       ].join('\n');
 
       try {
-        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(k)}`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0, maxOutputTokens: 4096 } })
-        });
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        const d = await res.json();
-        let txt = (d.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('').trim();
+        const gRes = await callG([{ text: prompt }]);
+        let txt = typeof gRes.result === 'string' ? gRes.result : (gRes.result?.text || JSON.stringify(gRes.result));
         txt = txt.replace(/```json|```/g, '').trim();
         const parsed = JSON.parse(txt);
         _a1DataMap[payloadId] = { ...parsed, _pid: pid, _hasCookie: hasCookie };
@@ -18937,22 +18927,17 @@ ${inputDesc.substring(0, 3000)}
 {
   "AI기본분석": "위 형식을 정확히 따라 작성한 전체 분석 내용"
 }`;
-          const aiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(k)}`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ contents: [{ parts: [{ text: aiPrompt }] }], generationConfig: { temperature: 0.3, maxOutputTokens: 2048 } })
-          });
-          if (aiRes.ok) {
-            const aiD = await aiRes.json();
-            let aiTxt = (aiD.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('').trim();
+          try {
+            const aiGRes = await callG([{ text: aiPrompt }]);
+            let aiTxt = typeof aiGRes.result === 'string' ? aiGRes.result : (aiGRes.result?.text || JSON.stringify(aiGRes.result));
             aiTxt = aiTxt.replace(/```json|```/g, '').trim();
             try {
               const aiParsed = JSON.parse(aiTxt);
               if (aiParsed.AI기본분석) _a1DataMap[payloadId].AI기본분석 = aiParsed.AI기본분석;
             } catch (e) {
-              // JSON 파싱 실패 시 텍스트 그대로 저장
               _a1DataMap[payloadId].AI기본분석 = aiTxt;
             }
-          }
+          } catch (_aiE) { /* AI 분석 실패는 무시 */ }
           if (statusEl) statusEl.textContent = '✅ 파싱 + AI 분석 완료! 아래 항목을 원본과 대조해 확인하세요.';
         } catch (aiErr) {
           console.warn('AI 분석 실패:', aiErr);
@@ -30185,20 +30170,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         _aimpLoading = true;
         try {
           const k = gk();
-          const models = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
-          let lastErr = null;
-          for (const model of models) {
-            try {
-              const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(k)}`, {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ contents: [{ parts }], generationConfig: { temperature: .2, maxOutputTokens: 4000 } })
-              });
-              if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e?.error?.message || `HTTP ${r.status}`); }
-              const d = await r.json();
-              return d.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('')?.trim() || '(응답 없음)';
-            } catch (e) { lastErr = e; }
-          }
-          throw lastErr || new Error('모든 모델 호출 실패');
+          const gR = await callG(parts);
+          return typeof gR.result === 'string' ? gR.result : (gR.result?.text || JSON.stringify(gR.result)) || '(응답 없음)';
         } finally { _aimpLoading = false; }
       }
 
@@ -30207,20 +30180,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         _aimpLoading = true;
         try {
           const k = gk();
-          const models = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
-          let lastErr = null;
-          for (const model of models) {
-            try {
-              const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(k)}`, {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ contents, generationConfig: { temperature: .2, maxOutputTokens: 4000 } })
-              });
-              if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e?.error?.message || `HTTP ${r.status}`); }
-              const d = await r.json();
-              return d.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('')?.trim() || '(응답 없음)';
-            } catch (e) { lastErr = e; }
-          }
-          throw lastErr || new Error('모든 모델 호출 실패');
+          const gRM = await callG(contents[contents.length-1].parts);
+          return typeof gRM.result === 'string' ? gRM.result : (gRM.result?.text || JSON.stringify(gRM.result)) || '(응답 없음)';
         } finally { _aimpLoading = false; }
       }
 
