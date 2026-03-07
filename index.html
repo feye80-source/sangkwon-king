@@ -34363,7 +34363,7 @@ ${newsContext}
     // ===================================================
     // 🏢 네이버 부동산 자동 수집 v3 (Python 프록시 방식)
     // ===================================================
-    const PROXY = 'http://localhost:8080';   // proxy_server.py 포트
+    const PROXY = window.PROXY_URL;   // Edge Function or 로컬 자동감지
     let naverCollectedItems = [];
     let naverFetchRunning = false;
     let naverSelectedComplex = null;
@@ -38595,7 +38595,7 @@ ${newsContext}
           + '</div>';
 
         function _doFetch(code) {
-          fetch('http://localhost:8080/api/sbiz/' + tab, {
+          fetch(window.PROXY_URL + '/api/sbiz/' + tab, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ adongCd: code, pageIndex: '1', pageSize: '100' })
@@ -40305,7 +40305,7 @@ ${newsContext}
           const keywords  = savedKws.length > 0 ? savedKws : defaultKws;
 
           // ── 1단계: 프록시 통해 진짜 뉴스 수집 ──
-          const PROXY = 'http://localhost:8080';
+          const PROXY = window.PROXY_URL;
           const allNews = [];
           const seenLinks = new Set();
           let fetchOk = 0, fetchFail = 0;
