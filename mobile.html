@@ -5,9 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <title>상권King 모바일</title>
+  <title>상권King 현장</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%231a1f2e'/><path d='M4 22 L8 10 L13 17 L16 8 L19 17 L24 10 L28 22 Z' fill='%23f59e0b' stroke='%23fbbf24' stroke-width='0.5'/><rect x='4' y='22' width='24' height='3' rx='1.5' fill='%23f59e0b'/></svg>" type="image/svg+xml">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=JetBrains+Mono:wght@400;600&display=swap">
   <style>
     :root {
@@ -52,16 +51,19 @@
       --transaction-border: rgba(234, 179, 8, .30);
     }
 
-    /* ════════════════════════════════════════════
-       📱 상권King 모바일 전용 CSS v1.0
-       레이아웃 공식:
-         전체: 100dvh
-         topbar: 44px (fixed top)
+    /* ═══════════════════════════════════════════
+       📱 상권King 모바일 v2.0
+       레이아웃 공식 (모든 페이지 동일):
+         topbar:  44px  fixed top
          content: calc(100dvh - 44px - 60px)
-         tabbar: 60px (fixed bottom)
-    ════════════════════════════════════════════ */
+         tabbar:  60px  fixed bottom
+    ═══════════════════════════════════════════ */
 
-    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    *, *::before, *::after {
+      margin: 0; padding: 0;
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
 
     html, body {
       font-family: 'Noto Sans KR', sans-serif;
@@ -70,9 +72,10 @@
       height: 100dvh;
       overflow: hidden;
       overscroll-behavior: none;
+      -webkit-text-size-adjust: 100%;
     }
 
-    /* ── 상단바 (44px 고정) ── */
+    /* ── 상단바 ── */
     #mb-topbar {
       position: fixed;
       top: 0; left: 0; right: 0;
@@ -81,34 +84,36 @@
       border-bottom: 1px solid var(--b1);
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      padding: 0 14px;
-      z-index: 1000;
-      flex-shrink: 0;
+      padding: 0 12px;
+      gap: 8px;
+      z-index: 2000;
     }
 
-    #mb-topbar .logo {
-      display: flex;
-      align-items: center;
-      gap: 7px;
+    .mb-logo {
+      display: flex; align-items: center; gap: 7px;
+      flex: 1; min-width: 0;
     }
 
-    #mb-topbar .logo h1 {
-      font-size: 15px;
-      font-weight: 800;
-      letter-spacing: -0.3px;
-    }
-
-    #mb-topbar .logo-ic {
-      width: 24px; height: 24px;
-      background: linear-gradient(135deg, #1a1f2e, #2a3045);
+    .mb-logo-ic {
+      width: 26px; height: 26px; flex-shrink: 0;
+      background: linear-gradient(135deg,#1a1f2e,#2a3045);
       border: 1px solid rgba(251,191,36,.3);
-      border-radius: 6px;
+      border-radius: 7px;
       display: flex; align-items: center; justify-content: center;
-      font-size: 12px;
+    }
+
+    .mb-logo h1 {
+      font-size: 15px; font-weight: 800; letter-spacing: -.3px;
+      white-space: nowrap;
+    }
+
+    .mb-logo .mb-mode-badge {
+      font-size: 9px; color: var(--mu); font-weight: 400;
+      margin-left: 2px;
     }
 
     #mb-api-btn {
+      flex-shrink: 0;
       padding: 5px 11px;
       background: var(--s2);
       border: 1px solid var(--b1);
@@ -117,59 +122,57 @@
       font-size: 11px;
       font-family: 'Noto Sans KR', sans-serif;
       cursor: pointer;
+      white-space: nowrap;
     }
 
-    /* ── API 패널 (슬라이드다운) ── */
+    /* 로그아웃 버튼: topbar 안에 배치 */
+    #_sbLogoutBtn {
+      position: static !important;
+      flex-shrink: 0;
+      padding: 5px 10px !important;
+      font-size: 11px !important;
+      border-radius: 7px !important;
+      top: auto !important; right: auto !important;
+    }
+
+    /* ── API 패널 ── */
     #mb-api-panel {
       position: fixed;
       top: 44px; left: 0; right: 0;
       background: var(--s1);
       border-bottom: 1px solid var(--b1);
-      padding: 12px 14px;
-      z-index: 999;
+      padding: 12px;
+      z-index: 1999;
       display: none;
       flex-direction: column;
-      gap: 8px;
+      gap: 9px;
+      box-shadow: 0 8px 24px rgba(0,0,0,.4);
     }
-
     #mb-api-panel.open { display: flex; }
 
     .mb-api-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
+      display: flex; align-items: center; gap: 8px;
     }
-
     .mb-api-lbl {
-      font-size: 10px;
-      color: var(--mu);
-      width: 62px;
-      flex-shrink: 0;
+      font-size: 10px; color: var(--mu);
+      width: 68px; flex-shrink: 0;
     }
-
     .mb-api-dot {
-      width: 6px; height: 6px;
-      border-radius: 50%;
-      background: var(--di);
-      flex-shrink: 0;
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--di); flex-shrink: 0;
       transition: background .2s;
     }
     .mb-api-dot.on { background: var(--g); }
-
     .mb-api-in {
-      flex: 1;
-      padding: 6px 10px;
-      background: var(--s2);
-      border: 1px solid var(--b1);
-      border-radius: 6px;
-      color: var(--tx);
-      font-size: 12px;
-      font-family: 'Noto Sans KR', sans-serif;
+      flex: 1; min-width: 0;
+      padding: 7px 10px;
+      background: var(--s2); border: 1px solid var(--b1);
+      border-radius: 7px; color: var(--tx);
+      font-size: 12px; font-family: 'Noto Sans KR', sans-serif;
       outline: none;
-      min-width: 0;
     }
 
-    /* ── 메인 콘텐츠 영역 ── */
+    /* ── 메인 콘텐츠 ── */
     #mb-content {
       position: fixed;
       top: 44px; left: 0; right: 0;
@@ -177,26 +180,18 @@
       overflow: hidden;
     }
 
-    /* ── 각 페이지 공통: 전체 높이, 스크롤 ── */
+    /* ── 페이지 공통 ── */
     .mb-page {
       display: none;
-      width: 100%;
-      height: 100%;
-      overflow-y: auto;
-      overflow-x: hidden;
-      -webkit-overflow-scrolling: touch;
-      overscroll-behavior-y: contain;
+      width: 100%; height: 100%;
     }
-
     .mb-page.active { display: flex; flex-direction: column; }
 
-    /* 지도 페이지는 overflow: hidden (지도가 직접 차지) */
-    #mb-page-map.active {
-      display: block;
-      overflow: hidden;
-    }
+    /* 지도: overflow hidden */
+    #mb-page-map { display: none; overflow: hidden; }
+    #mb-page-map.active { display: block; }
 
-    /* ── 하단 탭바 (60px 고정) ── */
+    /* ── 하단 탭바 ── */
     #mb-tabbar {
       position: fixed;
       bottom: 0; left: 0; right: 0;
@@ -205,422 +200,281 @@
       border-top: 1px solid #2a3050;
       display: flex;
       align-items: stretch;
-      justify-content: space-around;
-      z-index: 1000;
+      z-index: 2000;
       box-shadow: 0 -4px 20px rgba(0,0,0,.5);
     }
-
     .mb-tab {
-      flex: 1;
-      background: none;
-      border: none;
-      color: #64748b;
-      font-size: 9px;
+      flex: 1; background: none; border: none;
+      color: #64748b; font-size: 9px;
       font-family: 'Noto Sans KR', sans-serif;
       cursor: pointer;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 3px;
-      padding: 4px 2px;
-      transition: color 0.15s;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 3px; padding: 4px 2px;
+      transition: color .15s;
     }
-
-    .mb-tab .mb-icon { font-size: 20px; line-height: 1; }
+    .mb-tab .mb-icon { font-size: 22px; line-height: 1; }
     .mb-tab.active { color: #f59e0b; }
-    .mb-tab:active { background: rgba(245,158,11,0.08); }
+    .mb-tab:active { background: rgba(245,158,11,.08); }
 
-    /* ══════════════════════════════════════════
-       페이지별 CSS
-    ══════════════════════════════════════════ */
-
-    /* ── 저장목록 페이지 ── */
+    /* ══ 저장목록 ══ */
     #mb-page-saved {
+      overflow-y: auto;
+      overflow-x: hidden;
+      -webkit-overflow-scrolling: touch;
       padding: 14px 12px 20px;
     }
 
-    /* saved-page 기존 스타일 재정의 */
-    #mb-page-saved .saved-top {
-      margin-bottom: 12px;
-    }
-
-    #mb-page-saved .saved-top h2 {
-      font-size: 15px;
-      font-weight: 700;
-    }
+    #mb-page-saved .saved-top h2 { font-size: 15px; font-weight: 700; }
 
     #mb-page-saved .saved-top-row {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      margin-top: 10px;
+      display: flex; flex-direction: column; gap: 8px; margin-top: 10px;
     }
 
     #mb-page-saved .search-in,
-    #mb-page-saved select {
-      width: 100%;
-      padding: 9px 12px;
-      background: var(--s2);
-      border: 1px solid var(--b1);
-      border-radius: 8px;
-      color: var(--tx);
-      font-size: 13px;
-      font-family: 'Noto Sans KR', sans-serif;
-      outline: none;
+    #mb-page-saved .saved-top select {
+      width: 100% !important;
+      padding: 9px 12px !important;
+      background: var(--s2) !important;
+      border: 1px solid var(--b1) !important;
+      border-radius: 8px !important;
+      color: var(--tx) !important;
+      font-size: 13px !important;
+      font-family: 'Noto Sans KR', sans-serif !important;
+      outline: none !important;
     }
 
     #mb-page-saved .sc {
-      flex-direction: column;
-      min-height: auto;
-      margin-bottom: 12px;
-      border-radius: 10px;
+      flex-direction: column !important; min-height: auto !important;
     }
-
     #mb-page-saved .sc-head {
-      min-width: 100% !important;
-      max-width: 100% !important;
-      border-right: none !important;
-      border-bottom: 1px solid var(--b1) !important;
-      flex-direction: row !important;
-      align-items: center !important;
-      gap: 8px !important;
+      min-width: 100% !important; max-width: 100% !important;
+      border-right: none !important; border-bottom: 1px solid var(--b1) !important;
+      flex-direction: row !important; align-items: center !important;
       padding: 10px 12px !important;
     }
+    #mb-page-saved .sc-body { padding: 10px 12px !important; }
 
-    #mb-page-saved .sc-body {
-      padding: 10px 12px !important;
-    }
+    /* 저장목록 맨위로 버튼 위치 */
+    #savedScrollTopBtn { bottom: 72px !important; }
 
-    /* ── 지도 페이지 ── */
-    #mb-map-container {
-      width: 100%;
-      height: 100%;
-      position: relative;
-    }
+    /* ══ 지도 ══ */
+    #map { width: 100%; height: 100%; }
 
-    #map {
-      width: 100%;
-      height: 100%;
-    }
-
-    /* 지도 위 패널: 작게, 접이식 */
     .map-panel {
-      position: absolute;
-      top: 8px;
-      left: 8px;
-      width: calc(100vw - 60px);
-      max-width: 280px;
-      max-height: 55vh;
-      overflow-y: auto;
-      -webkit-overflow-scrolling: touch;
-      background: rgba(17,19,24,.96);
-      border: 1px solid var(--b1);
-      border-radius: 12px;
-      z-index: 100;
-      padding: 10px;
-      font-size: 12px;
-      backdrop-filter: blur(8px);
+      top: 8px !important; left: 8px !important;
+      width: calc(100vw - 60px) !important;
+      max-width: 290px !important;
+      max-height: 60vh !important;
+      overflow-y: auto !important;
+      -webkit-overflow-scrolling: touch !important;
+      font-size: 11px !important;
     }
 
-    #mapRightDock {
-      right: 6px !important;
-      top: 8px !important;
-    }
-
-    /* 지도 검색창 */
     .map-search-wrap {
-      left: 8px !important;
-      top: 54px !important;
+      left: 8px !important; top: 56px !important;
       max-width: calc(100vw - 70px) !important;
-      flex-direction: column !important;
-      gap: 5px !important;
+      flex-direction: column !important; gap: 5px !important;
     }
 
-    /* ── 인사이트 페이지 ── */
-    #mb-page-insight {
-      flex-direction: column;
-      overflow: hidden;
+    #mapRightDock { right: 6px !important; top: 8px !important; }
+
+    #mapNotePanel {
+      left: 0 !important; right: 0 !important;
+      border-radius: 16px 16px 0 0 !important;
     }
 
-    /* 서브탭 바: 가로 스크롤, 한 줄 유지 */
+    /* ══ 인사이트 ══ */
+    #mb-page-insight { overflow: hidden; }
+
+    /* 서브탭: 한 줄 가로 스크롤 */
     #mb-insight-tabs {
-      display: flex;
-      flex-direction: row;
-      flex-wrap: nowrap;
-      overflow-x: auto;
-      overflow-y: hidden;
+      flex-shrink: 0;
+      display: flex; flex-wrap: nowrap;
+      overflow-x: auto; overflow-y: hidden;
       -webkit-overflow-scrolling: touch;
-      gap: 4px;
-      padding: 8px 10px;
+      gap: 4px; padding: 8px 10px;
       border-bottom: 1px solid var(--b1);
       background: var(--s1);
-      flex-shrink: 0;
       scrollbar-width: none;
     }
     #mb-insight-tabs::-webkit-scrollbar { display: none; }
 
     .mb-ins-tab {
       flex-shrink: 0;
-      padding: 6px 12px;
-      border-radius: 7px;
-      border: 1px solid transparent;
-      background: transparent;
-      color: var(--mu);
-      font-size: 12px;
-      font-weight: 500;
+      padding: 6px 13px;
+      border-radius: 7px; border: 1px solid transparent;
+      background: transparent; color: var(--mu);
+      font-size: 12px; font-weight: 500;
       white-space: nowrap;
       font-family: 'Noto Sans KR', sans-serif;
-      cursor: pointer;
-      transition: all .15s;
+      cursor: pointer; transition: all .15s;
     }
-
     .mb-ins-tab.active {
       color: #cfe9ff;
       border-color: rgba(120,180,255,.5);
       background: rgba(120,180,255,.12);
     }
 
-    /* 인사이트 패널 공통: 남은 높이 전부, 스크롤 */
+    /* 패널 영역: 남은 높이 전부 */
     #mb-insight-body {
-      flex: 1;
-      min-height: 0;
-      position: relative;
-      overflow: hidden;
+      flex: 1; min-height: 0;
+      position: relative; overflow: hidden;
     }
 
+    /* 각 패널: 전체 높이, 스크롤 */
     .mb-ins-panel {
       display: none;
-      width: 100%;
-      height: 100%;
-      overflow-y: auto;
-      overflow-x: hidden;
+      position: absolute; inset: 0;
+      overflow-y: auto; overflow-x: hidden;
       -webkit-overflow-scrolling: touch;
       overscroll-behavior-y: contain;
     }
-
     .mb-ins-panel.active { display: block; }
 
-    /* 인사이트 패널 내부 패딩 */
-    .mb-ins-panel > .ins-wrap,
-    .mb-ins-panel > .ins-panel-inner {
-      padding: 12px;
-      max-width: 100%;
+    /* 패널 내부 폭 제한 해제 */
+    .mb-ins-panel .ins-wrap,
+    .mb-ins-panel .ins-panel-inner {
+      max-width: 100% !important;
+      padding: 12px !important;
     }
 
-    /* ── 노트 패널 ── */
+    /* ── 작업룸: 좌우→상하 분할 ── */
+    #mb-ipage8 .wr2-wrap {
+      display: flex; flex-direction: column;
+      height: 100%; overflow: hidden;
+      position: absolute; inset: 0;
+    }
+    #mb-ipage8 .wr2-toolbar {
+      flex-shrink: 0; padding: 8px 12px;
+      border-bottom: 1px solid var(--b1); background: var(--s1);
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    }
+    #mb-ipage8 .wr2-body {
+      flex: 1; min-height: 0;
+      display: flex; flex-direction: column;
+    }
+    #mb-ipage8 .wr2-list-panel {
+      width: 100% !important; max-width: 100% !important;
+      min-width: 0 !important; border-right: none !important;
+      border-bottom: 1px solid var(--b1);
+      max-height: 40vh; flex-shrink: 0;
+      overflow-y: auto; -webkit-overflow-scrolling: touch;
+    }
+    #mb-ipage8 .wr2-resize-handle { display: none !important; }
+    #mb-ipage8 .wr2-detail-panel {
+      flex: 1; min-height: 0;
+      overflow-y: auto; -webkit-overflow-scrolling: touch;
+    }
+
+    /* ── 노트: 사이드바 위, 에디터 아래 ── */
     #mb-ipage0 .nt-wrap {
-      display: flex;
-      flex-direction: column;
-      height: 100%;
-      min-height: 0;
+      display: flex; flex-direction: column;
+      position: absolute; inset: 0; overflow: hidden;
     }
-
     #mb-ipage0 .nt-sidebar {
-      flex-shrink: 0;
-      max-height: 38vh;
-      overflow-y: auto;
-      -webkit-overflow-scrolling: touch;
+      flex-shrink: 0; max-height: 40vh;
+      overflow-y: auto; -webkit-overflow-scrolling: touch;
+      border-right: none !important;
       border-bottom: 1px solid var(--b1);
     }
-
     #mb-ipage0 .nt-editor {
-      flex: 1;
-      min-height: 0;
-      overflow-y: auto;
-      -webkit-overflow-scrolling: touch;
+      flex: 1; min-height: 0;
+      overflow-y: auto; -webkit-overflow-scrolling: touch;
     }
 
-    /* ── 계산기 패널 ── */
+    /* ── 계산기: 탭 가로 스크롤, 컬럼 1개 ── */
+    #mb-ipage1 {
+      display: none;
+      flex-direction: column;
+      position: absolute; inset: 0;
+    }
+    #mb-ipage1.active { display: flex; }
+
     #mb-ipage1 .ins-calc-tabs {
-      display: flex;
-      overflow-x: auto;
-      -webkit-overflow-scrolling: touch;
-      gap: 4px;
-      padding: 10px 12px 0;
       flex-shrink: 0;
+      display: flex; flex-wrap: nowrap;
+      overflow-x: auto; -webkit-overflow-scrolling: touch;
+      gap: 4px; padding: 10px 12px 0;
       scrollbar-width: none;
     }
     #mb-ipage1 .ins-calc-tabs::-webkit-scrollbar { display: none; }
-
-    #mb-ipage1 .calc-two {
-      grid-template-columns: 1fr !important;
-    }
-
     #mb-ipage1 .ins-wrap {
-      padding: 10px 12px 40px;
-      max-width: 100%;
+      flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch;
+      padding: 10px 12px 40px !important; max-width: 100% !important;
     }
+    #mb-ipage1 .calc-two { grid-template-columns: 1fr !important; }
 
-    /* ── 작업룸 패널 ── */
-    #mb-ipage8 .wr2-wrap {
-      display: flex;
-      flex-direction: column;
-      height: 100%;
-      overflow: hidden;
-    }
+    /* ── 알짜정보 ── */
+    #mb-ipage4 .ins-wrap { padding: 12px !important; max-width: 100% !important; }
+    #mb-ipage4 #kcardGrid { grid-template-columns: 1fr !important; }
 
-    #mb-ipage8 .wr2-toolbar {
-      flex-shrink: 0;
-      padding: 8px 12px;
-      border-bottom: 1px solid var(--b1);
-      background: var(--s1);
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-
-    /* 작업룸: 좌우 분할 → 상하 분할 */
-    #mb-ipage8 .wr2-body {
-      flex: 1;
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
-    }
-
-    #mb-ipage8 .wr2-list-panel {
-      width: 100% !important;
-      max-width: 100% !important;
-      min-width: 0 !important;
-      border-right: none !important;
-      border-bottom: 1px solid var(--b1);
-      max-height: 38vh;
-      overflow-y: auto;
-      -webkit-overflow-scrolling: touch;
-      flex-shrink: 0;
-    }
-
-    #mb-ipage8 .wr2-resize-handle { display: none !important; }
-
-    #mb-ipage8 .wr2-detail-panel {
-      flex: 1;
-      min-height: 0;
-      overflow-y: auto;
-      -webkit-overflow-scrolling: touch;
-    }
-
-    /* ── 알짜정보 패널 ── */
-    #mb-ipage4 .ins-wrap {
-      padding: 12px;
-      max-width: 100%;
-    }
-
-    #mb-ipage4 #kcardGrid {
-      grid-template-columns: 1fr !important;
-    }
-
-    /* ── 파이프라인 패널 ── */
+    /* ── 파이프라인: 칸반 가로 스크롤 ── */
     #mb-ipage5 .ins-wrap {
-      padding: 10px 12px;
-      max-width: 100%;
-      overflow-x: auto;
+      padding: 10px 12px !important; max-width: 100% !important;
     }
-
-    /* 칸반 보드: 가로 스크롤 */
-    #mb-ipage5 .watch-board {
-      display: flex;
-      flex-direction: row;
-      gap: 10px;
-      overflow-x: auto;
+    .watch-board {
+      display: flex; flex-direction: row !important;
+      gap: 10px; overflow-x: auto !important;
       -webkit-overflow-scrolling: touch;
       padding-bottom: 10px;
     }
+    .watch-col { min-width: 260px; flex-shrink: 0; }
 
-    /* ── 공통 유틸 ── */
-    .mb-section-title {
-      font-size: 13px;
-      font-weight: 700;
-      color: var(--tx);
-      padding: 12px 12px 6px;
-      flex-shrink: 0;
-    }
-
-    /* 토스트 알림 위치 (하단 탭바 위) */
-    #toastBox {
-      bottom: 72px !important;
-    }
-
-    /* 모달/팝업: 전체화면 */
-    .popup {
-      width: 100vw !important;
-      right: -100vw;
-      top: 0;
-      border-left: none;
-    }
+    /* ── 모달/팝업 ── */
+    .popup { width: 100vw !important; right: -100vw; top: 0; border-left: none; }
     .popup.on { right: 0; }
+    #kcardModal > div { width: 95vw !important; max-width: 95vw !important; }
 
-    /* 카드 모달 (알짜정보 에디터) */
-    #kcardModal > div {
-      width: 96vw !important;
-      max-width: 96vw !important;
-    }
+    /* ── 토스트 위치 ── */
+    #toastBox { bottom: 72px !important; }
 
-    /* 스크롤 탑 버튼 위치 */
-    .scroll-top-btn {
-      bottom: 72px !important;
-    }
-
-    /* insw (인사이트 컨테이너) 폭 강제 */
+    /* ── insw 폭 강제 ── */
     #insw, .insw {
-      width: 100% !important;
-      max-width: 100% !important;
-      margin: 0 !important;
+      width: 100% !important; max-width: 100% !important; margin: 0 !important;
     }
-
-    /* ins-wrap 패딩 */
-    .ins-wrap {
-      padding: 10px 12px !important;
-      max-width: 100% !important;
-    }
-
-    /* 지도 노트 패널 */
-    #mapNotePanel {
-      left: 0 !important;
-      right: 0 !important;
-      border-radius: 16px 16px 0 0 !important;
-    }
+    .ins-wrap { max-width: 100% !important; }
 
   </style>
 </head>
 <body>
 
-  <!-- ── 상단바 ── -->
+  <!-- ══ 상단바 ══ -->
   <div id="mb-topbar">
-    <div class="logo">
-      <div class="logo-ic">
-        <svg width="14" height="14" viewBox="0 0 32 32" fill="none">
+    <div class="mb-logo">
+      <div class="mb-logo-ic">
+        <svg width="15" height="15" viewBox="0 0 32 32" fill="none">
           <path d="M4 22 L8 10 L13 17 L16 8 L19 17 L24 10 L28 22 Z" fill="#f59e0b" stroke="#fbbf24" stroke-width="0.8"/>
           <rect x="4" y="22" width="24" height="4" rx="2" fill="#f59e0b"/>
         </svg>
       </div>
-      <h1>상권<span style="color:#f59e0b;">King</span> <span style="font-size:9px;color:var(--mu);font-weight:400;">현장모드</span></h1>
+      <h1>상권<span style="color:#f59e0b;">King</span><span class="mb-mode-badge"> 현장</span></h1>
     </div>
-    <button id="mb-api-btn" onclick="document.getElementById('mb-api-panel').classList.toggle('open');this.textContent=document.getElementById('mb-api-panel').classList.contains('open')?'✕ 닫기':'🔑 API'">🔑 API</button>
+    <button id="mb-api-btn" onclick="mbToggleApi()">🔑 API</button>
   </div>
 
-  <!-- ── API 설정 패널 ── -->
+  <!-- ══ API 패널 ══ -->
   <div id="mb-api-panel">
     <div class="mb-api-row">
       <span class="mb-api-lbl">Gemini</span>
       <div class="mb-api-dot" id="apiDot"></div>
-      <input type="text" class="mb-api-in api-in-gemini" id="apiKey" placeholder="AIza..." autocomplete="off">
+      <input type="text" class="mb-api-in" id="apiKey" placeholder="AIza..." autocomplete="off">
     </div>
     <div class="mb-api-row">
       <span class="mb-api-lbl">Kakao JS</span>
       <div class="mb-api-dot" id="kakaoApiDot"></div>
-      <input type="text" class="mb-api-in api-in-kakao" id="kakaoApiKey" placeholder="Kakao JS Key" autocomplete="off">
+      <input type="text" class="mb-api-in" id="kakaoApiKey" placeholder="Kakao JS Key" autocomplete="off">
     </div>
     <div class="mb-api-row">
       <span class="mb-api-lbl">Kakao REST</span>
       <div class="mb-api-dot" id="kakaoRestDot"></div>
-      <input type="password" class="mb-api-in api-in-rest" id="kakaoRestKey" placeholder="Kakao REST" autocomplete="off">
+      <input type="password" class="mb-api-in" id="kakaoRestKey" placeholder="Kakao REST" autocomplete="off">
     </div>
     <div class="mb-api-row">
       <span class="mb-api-lbl">Naver</span>
       <div class="mb-api-dot" id="naverDot"></div>
-      <input type="text" class="mb-api-in" id="naverClientId" placeholder="Naver ID" autocomplete="off" style="flex:1;">
-      <input type="password" class="mb-api-in" id="naverClientSecret" placeholder="Secret" autocomplete="off" style="flex:1;">
+      <input type="text" class="mb-api-in" id="naverClientId" placeholder="Naver ID" style="flex:1" autocomplete="off">
+      <input type="password" class="mb-api-in" id="naverClientSecret" placeholder="Secret" style="flex:1" autocomplete="off">
     </div>
     <div class="mb-api-row">
       <span class="mb-api-lbl">온비드</span>
@@ -629,17 +483,11 @@
     </div>
   </div>
 
-  <!-- ── 메인 콘텐츠 ── -->
+  <!-- ══ 메인 콘텐츠 ══ -->
   <div id="mb-content">
 
-    <!-- ══ 저장목록 페이지 ══ -->
+    <!-- 저장목록 -->
     <div id="mb-page-saved" class="mb-page active">
-      <div id="page1" style="display:none" class="saved-page">
-        <div class="saved-top">
-          <h2>💾 저장된 목록 <span id="svCountBadge" style="font-size:12px;color:var(--mu);font-weight:400;"></span></h2>
-          <button class="clearbtn" onclick="clearAll()">전체 삭제</button>
-        </div>
-        <!-- ★ sticky 필터 헤더 (v152 통합 디자인) -->
         <div class="sv-sticky-header">
           <!-- 행A: 출처 필터 탭 -->
           <div style="display:flex;align-items:center;gap:3px;flex-wrap:wrap;margin-bottom:5px;">
@@ -824,17 +672,16 @@
       <button class="scroll-top-btn" id="savedScrollTopBtn"
         onclick="document.getElementById('page1').scrollTo({top:0,behavior:'smooth'})" title="맨 위로">↑</button>
 
-    </div>
-
-    <!-- ══ 지도 페이지 ══ -->
-    <div id="mb-page-map" class="mb-page">
-      <div id="mb-map-container">
+      <!-- 지도 -->
       <div id="page2" style="display:none" class="map-page">
 
         <!-- 카카오 JS 키 입력 (기기간 공유용) -->
         <div id="kakaoKeyBanner" style="background:#1a1a2e;border-bottom:1px solid #333;padding:6px 12px;display:none;align-items:center;gap:8px;font-size:13px;">
           <span style="color:#aaa;white-space:nowrap">🗝 Kakao JS Key</span>
-          <input type="password" id="mapKakaoKeyInput" placeholder="카카오 JS 키 입력 후 엔터"
+    </div>
+
+    <!-- 지도 -->
+    <div id="mb-page-map" class="mb-page">
             style="flex:1;background:#111;border:1px solid #444;border-radius:6px;padding:4px 8px;color:#fff;font-size:13px;max-width:320px"
             onkeypress="if(event.keyCode==13) _applyMapKakaoKey()" />
           <button onclick="_applyMapKakaoKey()"
@@ -1724,13 +1571,18 @@
         </div>
       </div>
     </div>
-      </div>
+
+    <!-- PAGE 3: 인사이트탭 -->
+    <div id="page3" style="display:none;" class="saved-page">
+      <!-- 인사이트 서브탭 네비 -->
+      <!-- 인사이트 새 뼈대 (v68 스타일) -->
+      <div class="insw" id="insw">
     </div>
 
-    <!-- ══ 인사이트 페이지 ══ -->
+    <!-- 인사이트 -->
     <div id="mb-page-insight" class="mb-page">
 
-      <!-- 서브탭 바: 가로 스크롤 -->
+      <!-- 서브탭 바 -->
       <div id="mb-insight-tabs">
         <button class="mb-ins-tab active" id="mb-itab8" onclick="mbShowInsTab(8)">🗂 작업룸</button>
         <button class="mb-ins-tab" id="mb-itab5" onclick="mbShowInsTab(5)">🎯 파이프라인</button>
@@ -1742,15 +1594,8 @@
       <!-- 패널 본체 -->
       <div id="mb-insight-body">
 
-        <!-- ① 작업룸 -->
+        <!-- 작업룸 -->
         <div id="mb-ipage8" class="mb-ins-panel active">
-          <div id="ipage8" class="ins-panel">
-            <div id="workroomTab" class="wr2-wrap">
-
-              <!-- ── 상단 툴바 (v259: 필터칩 제거, 심플) ── -->
-              <div class="wr2-toolbar">
-                <div class="wr2-title">🗂 작업룸 <span id="wr2RoomCount" class="wr2-count"></span></div>
-                <div style="display:flex;align-items:center;gap:6px;margin-left:auto;flex-shrink:0;">
                   <select id="wr2Sort"
                     style="padding:5px 7px;border-radius:6px;border:1px solid var(--b1);background:var(--s2);color:var(--tx);font-size:11px;outline:none;">
                     <option value="updated">수정순</option>
@@ -3563,17 +3408,16 @@
               }
             </style>
 
-        </div><!-- /mb-ipage8 -->
+            <script>
+              (function () {
+                const LS_KEY_ROOMS = 'wr2_rooms';
+                const LS_KEY_SECTIONS = 'wr2_sections';
 
-        <!-- ② 파이프라인 -->
+                let wr2State = {
+        </div>
+
+        <!-- 파이프라인 -->
         <div id="mb-ipage5" class="mb-ins-panel">
-          <div id="ipage5" class="ins-panel">
-            <div class="ins-wrap"
-              style="padding:0 20px;flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;">
-              <!-- 헤더 -->
-              <div
-                style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px;">
-                <div>
                   <div style="font-size:15px;font-weight:700;color:var(--tx);">🎯 파이프라인</div>
                   <div style="font-size:11px;color:var(--mu);margin-top:2px;">관심·검토중·입찰예정으로 분류된 물건을 칸반으로 — 단계 이동 ↻, 작업룸
                     연결 🗂</div>
@@ -3658,16 +3502,17 @@
           </div>
 
           <!-- ⑦ 사이트 모음 -->
-        </div><!-- /mb-ipage5 -->
+          <div id="ipage6" class="ins-panel" style="display:none;">
+            <div class="ins-wrap"
+              style="padding:0 20px;flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;">
+              <div
+                style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
+                <div>
+                  <div style="font-size:15px;font-weight:700;color:var(--tx);">🔗 사이트 모음</div>
+        </div>
 
-        <!-- ③ 노트 -->
+        <!-- 노트 -->
         <div id="mb-ipage0" class="mb-ins-panel">
-          <div id="ipage0" class="ins-panel">
-            <style>
-              .nt-wrap {
-                display: grid;
-                grid-template-columns: 260px 1fr;
-                height: 100%;
                 overflow: hidden;
               }
 
@@ -3675,7 +3520,7 @@
                 .nt-wrap {
                   grid-template-columns: 1fr;
                   grid-template-rows: auto 1fr;
-                  height: calc(100dvh - 130px - 60px); /* 60px = 하단 탭바 */
+                  height: calc(100dvh - 130px);
                   overflow-y: auto;
                 }
                 .nt-sidebar {
@@ -3683,7 +3528,6 @@
                   border-bottom: 1px solid var(--b1);
                   max-height: 35vh;
                   overflow-y: auto;
-                  -webkit-overflow-scrolling: touch;
                 }
               }
 
@@ -4082,17 +3926,17 @@
             </div>
           </div>
 
-        </div><!-- /mb-ipage0 -->
+          <!-- ② 계산기 -->
+          <div id="ipage1" class="ins-panel" style="display:none;">
+            <div class="ins-wrap" style="overflow-y:auto;flex:1;min-height:0;padding-bottom:40px;">
+              <div class="ins-calc-tabs">
+                <button class="ict on" id="ctab0" onclick="showCalcTab(0)">🎯 입찰가</button>
+                <button class="ict" id="ctab1" onclick="showCalcTab(1)">📈 수익률</button>
+                <button class="ict" id="ctab3" onclick="showCalcTab(3)">🏠 경매계산기</button>
+        </div>
 
-        <!-- ④ 알짜정보 -->
+        <!-- 알짜정보 -->
         <div id="mb-ipage4" class="mb-ins-panel">
-          <div id="ipage4" class="ins-panel">
-            <div class="ins-wrap">
-
-              <!-- 상단: 카테고리 필터 + 새 카드 버튼 -->
-              <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
-                <div id="kcatTabs" style="display:flex;gap:5px;flex-wrap:wrap;flex:1;"></div>
-                <button onclick="openKcardEditor(null)"
                   style="padding:7px 18px;background:var(--ac);color:#111;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">⭐
                   새 카드</button>
               </div>
@@ -4223,17 +4067,17 @@
 
             </div>
           </div>
-        </div><!-- /mb-ipage4 -->
 
-        <!-- ⑤ 계산기 -->
+          <!-- ⑥ 검토 물건함 / 파이프라인 -->
+          <div id="ipage5" class="ins-panel" style="display:none;">
+            <div class="ins-wrap"
+              style="padding:0 20px;flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;">
+              <!-- 헤더 -->
+              <div
+        </div>
+
+        <!-- 계산기 -->
         <div id="mb-ipage1" class="mb-ins-panel">
-          <div id="ipage1" class="ins-panel">
-            <div class="ins-wrap" style="overflow-y:auto;flex:1;min-height:0;padding-bottom:40px;">
-              <div class="ins-calc-tabs">
-                <button class="ict on" id="ctab0" onclick="showCalcTab(0)">🎯 입찰가</button>
-                <button class="ict" id="ctab1" onclick="showCalcTab(1)">📈 수익률</button>
-                <button class="ict" id="ctab3" onclick="showCalcTab(3)">🏠 경매계산기</button>
-                <button class="ict" id="ctab4" onclick="showCalcTab(4)">⚖️ NPL</button>
               </div>
               <!-- cpage0: 입찰가 계산기 (첫 번째) -->
               <div id="cpage0" class="calc-pane">
@@ -4821,92 +4665,46 @@
             </div><!-- /ins-wrap -->
           </div>
 
-        </div><!-- /mb-ipage1 -->
+
+          <div id="ipage3" class="ins-panel" style="display:none;">
+            <div class="clip-wrap">
+
+              <!-- ── 상단 헤더 바 ── -->
+              <div class="clip-header">
+                <div style="display:flex;align-items:center;gap:10px;">
+        </div>
 
       </div><!-- /mb-insight-body -->
     </div><!-- /mb-page-insight -->
 
   </div><!-- /mb-content -->
 
-  <!-- ── 하단 탭바 ── -->
+  <!-- ══ 하단 탭바 ══ -->
   <div id="mb-tabbar">
-    <button class="mb-tab active" id="mb-nav-saved" onclick="mbShowPage('saved', this)">
+    <button class="mb-tab active" id="mb-nav-saved" onclick="mbShowPage('saved',this)">
       <span class="mb-icon">💾</span>저장목록
     </button>
-    <button class="mb-tab" id="mb-nav-map" onclick="mbShowPage('map', this)">
+    <button class="mb-tab" id="mb-nav-map" onclick="mbShowPage('map',this)">
       <span class="mb-icon">🗺️</span>지도
     </button>
-    <button class="mb-tab" id="mb-nav-insight" onclick="mbShowPage('insight', this)">
+    <button class="mb-tab" id="mb-nav-insight" onclick="mbShowPage('insight',this)">
       <span class="mb-icon">💡</span>인사이트
     </button>
   </div>
 
-  <!-- 토스트 알림 -->
+  <!-- 토스트 -->
   <div id="toastBox" style="position:fixed;bottom:72px;left:50%;transform:translateX(-50%);z-index:9999;display:flex;flex-direction:column;gap:6px;pointer-events:none;width:90vw;max-width:340px;"></div>
 
-  <!-- ── PROXY URL 설정 ── -->
   <script>
     window.PROXY_FILENAME = 'proxy_server_floor_v4.py';
     window.PROXY_LOCAL  = 'http://localhost:8080';
     window.PROXY_EDGE   = 'https://qgfkhbcpidmraxxjtetl.supabase.co/functions/v1/proxy';
-    window.PROXY_URL    = window.PROXY_EDGE; // 모바일: 항상 Edge Function 사용
-
-    window._proxyFetch = async function(url, opts) {
-      if (url && url.startsWith('https://qgfkhbcpidmraxxjtetl.supabase.co/functions')) {
-        const r = await fetch(url, opts); return r;
-      }
-      return fetch(url, opts);
-    };
+    window.PROXY_URL    = window.PROXY_EDGE;
+    window._proxyFetch  = async function(url, opts) { return fetch(url, opts); };
   </script>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
-  <script>
-    /* ★ 프록시 서버 파일명 — 여기서 한 번만 수정하면 전체 적용 */
-    window.PROXY_FILENAME = 'proxy_server_floor_v4.py';
-    /* ★ 프록시 서버 주소 (포트 변경 시 여기만 수정) */
-    window.PROXY_URL = 'http://localhost:8080'; // 로컬 서버 (집 내부)
-    window.EDGE_URL = 'https://qgfkhbcpidmraxxjtetl.supabase.co/functions/v1/proxy';  // Supabase Edge Function (외부 접속용)
-    // 자동 감지: localhost 먼저 시도, 안 되면 Edge Function으로 fallback
-    window.PROXY_URL = 'https://qgfkhbcpidmraxxjtetl.supabase.co/functions/v1/proxy'; // 기본값
-    window.PROXY_LOCAL = 'http://localhost:8080';
-    window.PROXY_EDGE  = 'https://qgfkhbcpidmraxxjtetl.supabase.co/functions/v1/proxy';
-
-    // 시작 시 localhost:8080 살아있는지 체크 → 살아있으면 로컬 우선 사용
-    (function detectProxy() {
-      fetch('http://localhost:8080', { method: 'GET', signal: AbortSignal.timeout(1500) })
-        .then(r => r.json())
-        .then(d => {
-          if (d && d.status === 'ok') {
-            window.PROXY_URL = window.PROXY_LOCAL;
-            console.log('✅ 로컬 py 서버 감지 → localhost:8080 사용');
-          }
-        })
-        .catch(() => {
-          window.PROXY_URL = window.PROXY_EDGE;
-          console.log('ℹ️ 로컬 서버 없음 → Supabase Edge Function 사용');
-        });
-    })();
-
-    // Edge Function 호출 시 anon key 자동 추가
-    window._proxyFetch = function(url, options = {}) {
-      if (url && url.startsWith('https://qgfkhbcpidmraxxjtetl.supabase.co/functions')) {
-        options.headers = options.headers || {};
-        options.headers['Authorization'] = 'Bearer ' + (typeof SUPABASE_KEY !== 'undefined' ? SUPABASE_KEY : '');
-      }
-      return fetch(url, options);
-    };
-  </script>
-
-  <!-- ★ Supabase 연동 (v289) -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script>
-  (function() {
-    const SUPABASE_URL = 'https://qgfkhbcpidmraxxjtetl.supabase.co';
-    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFnZmtoYmNwaWRtcmF4eGp0ZXRsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4NjEzNDcsImV4cCI6MjA4ODQzNzM0N30.kL8p6kNSxEI3_oxNrYguxhkU7wHNLRUTdvaIw5st5bo';
-
-    // Supabase 클라이언트 초기화
-    window._sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
       auth: {
         persistSession: true,
         autoRefreshToken: true,
@@ -5232,19 +5030,8 @@
     }
 
   })();
-  </script>
-</head>
 
-  </script>
-  <script>
-  <script>
-    // ===================================================
-    // 상수
-    // ===================================================
-    /* replaced in v79 */
-    const AP = `한국 부동산 경매 공고. JSON만 응답(코드블록없이):
-{"경매번호":"","소재지":"","경매구분":"","용도":"","토지면적_m2":null,"건물면적_m2":null,"전용면적_m2":null,"해당층":null,"총층":null,"감정가":null,"최저가":null,"청구액":null,"입찰보증금":null,"채무자겸소유자":"","매각일":"","개시결정일":"","배당종기":"","유찰횟수":null,"채권합계":null,"말소기준등기일":"","임차인":null,"임차인_보증금":null,"임차인_월세":null,"사업자등록일":null,"확정일자":null,"배당요구종기":"","대항력":"","분석메모":"","평당가_만원":null}
-★금액(감정가/최저가/청구액/입찰보증금/채권합계/임차인_보증금)은 반드시 원(₩)단위 정수(예:4억5800만→458000000). 임차인_월세만 만원단위 정수.
+
 ★평당가_만원=감정가÷10000÷(건물면적_m2÷3.3058), 소수1자리. 전용면적있으면 전용기준. 계산불가시null.
 ★날짜=YYYY-MM-DD, 대항력=있음/없음/불명확, 분석메모=권리관계핵심2~3줄
 ★해당층=물건이 위치한 층 숫자만(예:"2층208호"→해당층:2), 총층=건물전체층수(호수나동번호와혼동금지), 모를경우null`;
@@ -19745,17 +19532,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       return true;
     }
   </script>
-
-  </script>
   <script>
-  <script>
-    // ===================================================
-    // 지도 캡처 기능 (v177 - 수동 업로드 방식)
-    // ===================================================
-    window._captureDataUrl = null;
-
-    window.captureMapScreen = function () {
-      // ★ [v249] 모달을 먼저 열고 드롭존에서 드래그앤드롭 또는 선택 업로드
       window._captureDataUrl = null;
       _openCaptureModal();
     };
@@ -19998,16 +19775,14 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
                 }, 100);
                 showToast('📸 "' + _roomTitle + '"에 저장됨 ✅', 'ok');
                 _closeModal();
+              },
+              function(err) {
+                // quota 초과 - 공간 부족 안내
+                showToast('💾 저장 공간이 부족합니다. 오래된 캡처 이미지를 삭제해 주세요.', 'warn');
+                console.error('[saveCapturedImage quota]', err);
+                setTimeout(_closeModal, 2000);
   </script>
   <script>
-  <script>
-    // ══════════════════════════════════════════════════════
-    // 💡 인사이트탭 - 전체 로직
-    // ══════════════════════════════════════════════════════
-
-    // showPage: page3 지원은 원본 함수에 통합됨
-
-    // ── 인사이트 탭 열릴 때 초기화 ─────────────────────
     function onInsightOpen() {
       try { ntInit(); } catch (e) { }
       try { populateItemSelects(); } catch (e) { }
@@ -25186,16 +24961,7 @@ ${newsContext}
 
 
   </script>
-  </script>
   <script>
-  <script>
-    /* INFRA_V1: 카드 하단 인프라 칩 + 칩 클릭 POI 표시 */
-    (function () {
-      const CFG = {
-        radius: 700,
-        maxMarkers: 45,
-        cats: [
-          { code: 'SW8', emoji: '🚇', label: '지하철', w: 22 },
           { code: 'CS2', emoji: '🏪', label: '편의점', w: 4 },
           { code: 'CE7', emoji: '☕', label: '카페', w: 2 },
         ]
@@ -25473,16 +25239,14 @@ ${newsContext}
       });
 
     })();
-  </script>
+
+  <!-- ============================================================
+  ✅ 소상공인시장진흥공단 상권(상가업소)정보 API 연동
+  - 공공데이터포털 API: apis.data.go.kr/B553077/API/...
+  - 카드 내 infra-wrap에 주변 상가업소 업종 분포 표시
+  - API 키: 상단 "소상공인 상권 API" 입력란 (localStorage sbiz_api)
   </script>
   <script>
-            <script>
-              (function () {
-                const LS_KEY_ROOMS = 'wr2_rooms';
-                const LS_KEY_SECTIONS = 'wr2_sections';
-
-                let wr2State = {
-                  rooms: [],
                   sections: [],
                   activeRoomId: null,
                   activePhase: 'interest',
@@ -27279,7 +27043,6 @@ ${newsContext}
   <button class="scroll-top-btn" id="popupScrollTopBtn"
     onclick="document.getElementById('popBody').scrollTo({top:0,behavior:'smooth'})" title="맨 위로">↑</button>
 
-  <script>
     // ===== 토스트 알림 함수 =====
     // ── 스크롤 맨위로 버튼 로직 ──────────────────────────────────
     (function () {
@@ -27382,8 +27145,6 @@ ${newsContext}
       if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', loadKakaoMap);
       else loadKakaoMap();
     })();
-  </script>
-  <script>
     // ===================================================
     // 상수
     // ===================================================
@@ -29368,209 +29129,225 @@ ${newsContext}
     window.deleteWorkScene = name => swDeleteSnap(name, null);
     window.wrPromoteScene = name => swSnapToRoom(name);
     window.wrRefreshRoomSelect = window.swRefreshRoomSelect;
+    window.swShowTab = function () { };
+    window.swCreateRoomFromSnap = window.swNewRoomFromMap;
+
+    // ══ END 스냅샷+작업룸 통합 ══════════════════════════════════
+
+
   </script>
   <script>
-    // ════════════════════════════════════════════
-    // 📱 모바일 전용 라우팅 로직
-    // ════════════════════════════════════════════
+    // ════════════════════════════════════════
+    // 📱 모바일 전용 라우팅 & 초기화 v2.0
+    // ════════════════════════════════════════
 
-    // 현재 활성 페이지/탭 상태
-    var _mbCurrentPage = 'saved';
-    var _mbCurrentInsTab = 8;
+    var _mbCurrentPage    = 'saved';
+    var _mbCurrentInsTab  = 8;
 
-    // 페이지 전환
+    // ── API 패널 토글 ──
+    function mbToggleApi() {
+      var panel = document.getElementById('mb-api-panel');
+      var btn   = document.getElementById('mb-api-btn');
+      var open  = panel.classList.toggle('open');
+      btn.textContent = open ? '✕ 닫기' : '🔑 API';
+    }
+
+    // ── 페이지 전환 ──
     function mbShowPage(name, btnEl) {
-      // 모든 페이지 숨김
-      document.querySelectorAll('.mb-page').forEach(function(p) {
-        p.classList.remove('active');
-      });
-      // 모든 탭 비활성
-      document.querySelectorAll('.mb-tab').forEach(function(b) {
-        b.classList.remove('active');
-      });
+      document.querySelectorAll('.mb-page').forEach(function(p) { p.classList.remove('active'); });
+      document.querySelectorAll('.mb-tab').forEach(function(b)  { b.classList.remove('active'); });
 
-      // 해당 페이지 활성
       var page = document.getElementById('mb-page-' + name);
       if (page) page.classList.add('active');
       if (btnEl) btnEl.classList.add('active');
-
       _mbCurrentPage = name;
 
       // 페이지별 초기화
-      if (name === 'saved') {
-        try { renderSaved(); } catch(e) {}
-      }
-      if (name === 'map') {
+      if (name === 'saved')   { try { renderSaved(); } catch(e) {} }
+      if (name === 'map')     {
         try { initMap(); } catch(e) {}
-        // showPage(2) 호출로 스냅샷 트리 갱신
-        try { if (window.swRenderSnapTree) setTimeout(window.swRenderSnapTree, 150); } catch(e) {}
+        try { if (window.swRenderSnapTree) setTimeout(window.swRenderSnapTree, 200); } catch(e) {}
       }
-      if (name === 'insight') {
-        mbShowInsTab(_mbCurrentInsTab);
-      }
+      if (name === 'insight') { mbShowInsTab(_mbCurrentInsTab); }
 
       // API 패널 닫기
       document.getElementById('mb-api-panel').classList.remove('open');
-      var apiBtn = document.getElementById('mb-api-btn');
-      if (apiBtn) apiBtn.textContent = '🔑 API';
+      document.getElementById('mb-api-btn').textContent = '🔑 API';
     }
 
-    // 인사이트 서브탭 전환
+    // ── 인사이트 서브탭 전환 ──
     function mbShowInsTab(n) {
       _mbCurrentInsTab = n;
 
-      // 모든 서브탭 버튼 비활성
-      document.querySelectorAll('.mb-ins-tab').forEach(function(b) {
-        b.classList.remove('active');
-      });
-      // 모든 인사이트 패널 숨김
-      document.querySelectorAll('.mb-ins-panel').forEach(function(p) {
-        p.classList.remove('active');
-      });
+      document.querySelectorAll('.mb-ins-tab').forEach(function(b)  { b.classList.remove('active'); });
+      document.querySelectorAll('.mb-ins-panel').forEach(function(p) { p.classList.remove('active'); });
 
-      // 해당 탭 활성
-      var tabBtn = document.getElementById('mb-itab' + n);
-      if (tabBtn) tabBtn.classList.add('active');
-
+      var btn   = document.getElementById('mb-itab' + n);
       var panel = document.getElementById('mb-ipage' + n);
+      if (btn)   btn.classList.add('active');
       if (panel) panel.classList.add('active');
 
-      // 기존 showInsTab 로직 재활용 (데이터 로드 트리거)
-      try { showInsTab(n); } catch(e) {}
+      // 데이터 로드 트리거 (showInsTab 오버라이드 아래에서 처리)
+      mbTriggerInsData(n);
     }
 
-    // showPage 오버라이드: 기존 JS가 showPage(n)을 호출할 때 모바일 라우팅으로 연결
-    var _origShowPage = window.showPage;
-    window.showPage = function(n) {
-      // 내부 로직은 그대로 실행 (map 초기화, renderSaved 등)
-      if (typeof _origShowPage === 'function') {
-        try { _origShowPage(n); } catch(e) {}
+    // ── 인사이트 데이터 로드 (showInsTab 대체) ──
+    function mbTriggerInsData(n) {
+      if (n === 0) { try { ntInit(); } catch(e) {} }
+      if (n === 1) { try { populateItemSelects(); } catch(e) {} }
+      if (n === 4) { try { renderKcatTabs(); renderKcards(); } catch(e) {} }
+      if (n === 5) { try { renderWatchBoard(); } catch(e) {} }
+      if (n === 8) {
+        try {
+          if (!window.__wr2Inited) {
+            window.__wr2Inited = true;
+            if (window.wr2Init) window.wr2Init();
+          } else {
+            if (window.wr2Render) window.wr2Render();
+          }
+        } catch(e) {}
       }
-      // 모바일 페이지 전환
-      var nameMap = { 0: null, 1: 'saved', 2: 'map', 3: 'insight' };
-      var mbName = nameMap[n];
-      if (mbName) {
-        var btn = document.getElementById('mb-nav-' + mbName);
-        mbShowPage(mbName, btn);
-      }
-    };
+    }
 
-    // API 키 초기화 (기존 로직 재활용)
-    (function initApiKeys() {
-      var apiKey = localStorage.getItem('g_api') || '';
-      if (apiKey) {
-        document.getElementById('apiKey').value = apiKey;
-        document.getElementById('apiDot').classList.add('on');
-      }
-      var kakaoKey = localStorage.getItem('kakao_api') || '';
-      if (kakaoKey) {
-        document.getElementById('kakaoApiKey').value = kakaoKey;
-        document.getElementById('kakaoApiDot').classList.add('on');
-      }
-      var kakaoRest = localStorage.getItem('kakao_rest_key') || '';
-      if (kakaoRest) {
-        document.getElementById('kakaoRestKey').value = kakaoRest;
-        document.getElementById('kakaoRestDot').classList.add('on');
-      }
-      var naverId = localStorage.getItem('naver_id') || '';
-      if (naverId) document.getElementById('naverClientId').value = naverId;
-      var naverSec = localStorage.getItem('naver_sec') || '';
-      if (naverSec) document.getElementById('naverClientSecret').value = naverSec;
-      var onbid = localStorage.getItem('onbid_api') || '';
-      if (onbid) {
-        document.getElementById('onbidApiKey').value = onbid;
-        document.getElementById('onbidDot').classList.add('on');
-      }
+    // ── showInsTab 오버라이드: display 조작 차단 ──
+    (function() {
+      var _orig = window.showInsTab;
+      window.showInsTab = function(n) {
+        // 기존 함수는 ipage div display 조작 → mb-ins-panel과 충돌
+        // 데이터 로드만 실행
+        mbTriggerInsData(n);
+      };
     })();
 
-    // API 키 입력 이벤트
-    ['input','change','keyup','paste'].forEach(function(ev) {
-      var el = document.getElementById('apiKey');
-      if (el) el.addEventListener(ev, function() {
-        var v = el.value.trim();
-        var ok = v.length > 10;
-        document.getElementById('apiDot').classList.toggle('on', ok);
-        if (ok) { localStorage.setItem('g_api', v); if(window._sbSaveApiKeys) window._sbSaveApiKeys(); }
-      });
-    });
-
-    ['input','change','keyup','paste'].forEach(function(ev) {
-      var el = document.getElementById('kakaoApiKey');
-      if (el) el.addEventListener(ev, function() {
-        var v = el.value.trim();
-        var ok = v.length > 10;
-        document.getElementById('kakaoApiDot').classList.toggle('on', ok);
-        if (ok) {
-          localStorage.setItem('kakao_api', v);
-          // 카카오맵 SDK 동적 로드
-          var s = document.createElement('script');
-          s.src = 'https://dapi.kakao.com/v2/maps/sdk.js?appkey=' + v + '&libraries=services,drawing&autoload=false';
-          s.onload = function() { kakao.maps.load(function() { window.geocoder = new kakao.maps.services.Places(); }); };
-          document.head.appendChild(s);
-        }
-      });
-    });
-
-    ['input','change','keyup','paste'].forEach(function(ev) {
-      var el = document.getElementById('kakaoRestKey');
-      if (el) el.addEventListener(ev, function() {
-        var v = el.value.trim();
-        var ok = v.length > 10;
-        document.getElementById('kakaoRestDot').classList.toggle('on', ok);
-        if (ok) localStorage.setItem('kakao_rest_key', v);
-      });
-    });
-
-    // ── showInsTab 오버라이드: ipage display 조작 차단, 데이터 로드만 실행 ──
-    // 기존 showInsTab이 getElementById('ipage0').style.display 조작
-    // → mb-ins-panel active/inactive CSS와 충돌하므로 오버라이드
+    // ── showPage 오버라이드 ──
     (function() {
-      var _origSIT = window.showInsTab;
-      window.showInsTab = function(n) {
-        // 기존 함수의 데이터 로드 부분만 선택적으로 실행
-        var labels = { 0:'노트',1:'계산기',3:'클리핑',4:'알짜정보',5:'파이프라인',6:'사이트',8:'작업룸',99:'설정' };
-        var lbl = document.getElementById('insTabLabel');
-        if (lbl) lbl.textContent = labels[n] || '';
-        if (n === 0) { try { ntInit(); } catch(e) {} }
-        if (n === 1) { try { populateItemSelects(); } catch(e) {} }
-        if (n === 4) { try { renderKcatTabs(); renderKcards(); } catch(e) {} }
-        if (n === 5) { try { renderWatchBoard(); } catch(e) {} }
-        if (n === 8) {
-          try {
-            if (!window.__wr2Inited) { window.__wr2Inited = true; if(window.wr2Init) window.wr2Init(); }
-            else { if(window.wr2Render) window.wr2Render(); }
-          } catch(e) {}
+      var _orig = window.showPage;
+      window.showPage = function(n) {
+        if (typeof _orig === 'function') { try { _orig(n); } catch(e) {} }
+        var map = {1:'saved', 2:'map', 3:'insight'};
+        if (map[n]) {
+          var btn = document.getElementById('mb-nav-' + map[n]);
+          mbShowPage(map[n], btn);
         }
       };
     })();
 
-    // ── 페이지 로드 시 초기화 ──
-    document.addEventListener('DOMContentLoaded', function() {
-      // ipage div들 display 강제 초기화 (mb-ins-panel CSS가 제어)
+    // ── 로그아웃 버튼: topbar 안으로 이동 ──
+    (function() {
+      var _origAdd = window._sbAddLogoutBtn;
+      window._sbAddLogoutBtn = function() {
+        if (document.getElementById('_sbLogoutBtn')) return;
+        var btn = document.createElement('button');
+        btn.id = '_sbLogoutBtn';
+        btn.textContent = '☁️';
+        btn.title = '로그아웃';
+        btn.onclick = window._sbLogout;
+        btn.style.cssText = 'flex-shrink:0;padding:5px 9px;background:rgba(30,35,55,.85);color:#94a3b8;border:1px solid #334;border-radius:7px;font-size:13px;cursor:pointer;';
+        // topbar 안 API 버튼 앞에 삽입
+        var apiBtn = document.getElementById('mb-api-btn');
+        var topbar = document.getElementById('mb-topbar');
+        if (apiBtn && topbar) topbar.insertBefore(btn, apiBtn);
+        else document.body.appendChild(btn);
+      };
+    })();
+
+    // ── API 키 초기화 ──
+    (function() {
+      function loadKey(elId, lsKey, dotId) {
+        var v = localStorage.getItem(lsKey) || '';
+        var el = document.getElementById(elId);
+        var dot = document.getElementById(dotId);
+        if (el && v) el.value = v;
+        if (dot && v.length > 5) dot.classList.add('on');
+      }
+      loadKey('apiKey',           'g_api',           'apiDot');
+      loadKey('kakaoApiKey',      'kakao_api',        'kakaoApiDot');
+      loadKey('kakaoRestKey',     'kakao_rest_key',   'kakaoRestDot');
+      loadKey('naverClientId',    'naver_id',         'naverDot');
+      loadKey('naverClientSecret','naver_sec',        'naverDot');
+      loadKey('onbidApiKey',      'onbid_api',        'onbidDot');
+    })();
+
+    // ── API 키 입력 이벤트 ──
+    function mbBindApiInput(elId, lsKey, dotId, onSave) {
+      var el = document.getElementById(elId);
+      if (!el) return;
+      ['input','change','keyup','paste'].forEach(function(ev) {
+        el.addEventListener(ev, function() {
+          var v = el.value.trim();
+          var ok = v.length > 10;
+          var dot = document.getElementById(dotId);
+          if (dot) dot.classList.toggle('on', ok);
+          if (ok) {
+            localStorage.setItem(lsKey, v);
+            if (onSave) onSave(v);
+            if (window._sbSaveApiKeys) window._sbSaveApiKeys();
+          }
+        });
+      });
+    }
+
+    mbBindApiInput('apiKey',       'g_api',         'apiDot');
+    mbBindApiInput('kakaoRestKey', 'kakao_rest_key','kakaoRestDot');
+    mbBindApiInput('naverClientId','naver_id',      'naverDot');
+    mbBindApiInput('naverClientSecret','naver_sec', 'naverDot');
+    mbBindApiInput('onbidApiKey',  'onbid_api',     'onbidDot');
+    mbBindApiInput('kakaoApiKey',  'kakao_api',     'kakaoApiDot', function(v) {
+      // 카카오맵 SDK 동적 로드
+      if (!window.kakao) {
+        var s = document.createElement('script');
+        s.src = 'https://dapi.kakao.com/v2/maps/sdk.js?appkey=' + v + '&libraries=services,drawing&autoload=false';
+        s.onload = function() {
+          kakao.maps.load(function() {
+            window.geocoder = new kakao.maps.services.Places();
+          });
+        };
+        document.head.appendChild(s);
+      }
+    });
+
+    // ── ipage div display 강제 초기화 ──
+    // (mb-ins-panel CSS가 display를 제어하므로 인라인 display:none 제거)
+    function mbFixIpageDisplay() {
       ['ipage0','ipage1','ipage4','ipage5','ipage8'].forEach(function(id) {
         var el = document.getElementById(id);
         if (el) el.style.display = '';
       });
+    }
 
-      // Supabase 동기화 + 저장목록
-      if (window._sbInitLoad) {
-        window._sbInitLoad().then(function() {
-          try { renderSaved(); } catch(e) {}
-        }).catch(function() {
-          try { renderSaved(); } catch(e) {}
-        });
-      } else {
+    // ── DOMContentLoaded 초기화 ──
+    document.addEventListener('DOMContentLoaded', function() {
+      mbFixIpageDisplay();
+
+      // Supabase 동기화 후 저장목록 렌더
+      var doInit = function() {
         try { renderSaved(); } catch(e) {}
+        // 작업룸 초기화
+        if (window.wr2Init && !window.__wr2Inited) {
+          window.__wr2Inited = true;
+          try { window.wr2Init(); } catch(e) {}
+        }
+        try { if (window.swRenderSnapTree) window.swRenderSnapTree(); } catch(e) {}
+      };
+
+      if (window._sbInitLoad) {
+        window._sbInitLoad().then(doInit).catch(doInit);
+      } else {
+        doInit();
       }
 
-      // 작업룸 초기화
-      if (window.wr2Init && !window.__wr2Inited) {
-        window.__wr2Inited = true;
-        try { window.wr2Init(); } catch(e) {}
+      // 카카오 키 이미 있으면 SDK 로드
+      var kk = localStorage.getItem('kakao_api');
+      if (kk && kk.length > 10 && !window.kakao) {
+        var s = document.createElement('script');
+        s.src = 'https://dapi.kakao.com/v2/maps/sdk.js?appkey=' + kk + '&libraries=services,drawing&autoload=false';
+        s.onload = function() {
+          kakao.maps.load(function() {
+            window.geocoder = new kakao.maps.services.Places();
+          });
+        };
+        document.head.appendChild(s);
       }
-
-      // 스냅샷 트리
-      try { if (window.swRenderSnapTree) window.swRenderSnapTree(); } catch(e) {}
     });
 
   </script>
