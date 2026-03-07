@@ -6540,7 +6540,8 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
       .nt-wrap {
         grid-template-columns: 1fr;
         grid-template-rows: auto 1fr;
-        height: calc(100dvh - 140px);
+        height: calc(100dvh - 140px - 60px); /* 60px = 하단 탭바 */
+        overflow: hidden;
       }
 
       .nt-sidebar {
@@ -6548,11 +6549,13 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
         border-bottom: 1px solid var(--b1);
         max-height: 40vh;
         overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
       }
 
       .nt-editor {
         min-height: 0;
         overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
       }
     }
 
@@ -6886,7 +6889,8 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
       .nt-wrap {
         grid-template-columns: 1fr;
         grid-template-rows: auto 1fr;
-        height: calc(100dvh - 130px);
+        height: calc(100dvh - 130px - 60px); /* 60px = 하단 탭바 */
+        overflow: hidden;
       }
 
       .nt-sidebar {
@@ -6894,11 +6898,13 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
         border-bottom: 1px solid var(--b1);
         max-height: 35vh;
         overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
       }
 
       .nt-editor {
         min-height: 0;
         overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
       }
 
       .nt-sidebar-top {
@@ -9288,7 +9294,7 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
                 .nt-wrap {
                   grid-template-columns: 1fr;
                   grid-template-rows: auto 1fr;
-                  height: calc(100dvh - 130px);
+                  height: calc(100dvh - 130px - 60px); /* 60px = 하단 탭바 */
                   overflow-y: auto;
                 }
                 .nt-sidebar {
@@ -9296,6 +9302,7 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
                   border-bottom: 1px solid var(--b1);
                   max-height: 35vh;
                   overflow-y: auto;
+                  -webkit-overflow-scrolling: touch;
                 }
               }
 
