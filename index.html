@@ -14644,7 +14644,7 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
     // 카카오맵 동적 로드
     (function () {
       const loadKakaoMap = () => {
-        const k = localStorage.getItem('kakao_api');
+        const k = localStorage.getItem('kakao_api') || '4b907530560ea1d6425c25e09517efbf';
         if (!k || k.length < 10) return;
         if (window.kakao && window.kakao.maps) return;
         const s = document.createElement('script');
@@ -14910,7 +14910,7 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
     // ===================================================
     function gk() { return document.getElementById('apiKey').value.trim(); }
     (() => {
-      const s = localStorage.getItem('g_api');
+      const s = localStorage.getItem('g_api') || 'AIzaSyAuRNnEVnbP-1W14BofIN9br0JYhDG7xPY';
       if (s) {
         document.getElementById('apiKey').value = s;
         document.getElementById('apiDot').classList.add('on');
@@ -14959,7 +14959,7 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
       }
     })();
     ['input', 'change', 'keyup', 'paste'].forEach(ev => document.getElementById('sbizApiKey').addEventListener(ev, () => { const v = document.getElementById('sbizApiKey').value.trim(), ok = v.length > 10; document.getElementById('sbizDot').classList.toggle('on', ok); if (ok) { localStorage.setItem('sbiz_api', v); if(window._sbSaveApiKeys) window._sbSaveApiKeys(); } }));
-    function getSbizKey() { return document.getElementById('sbizApiKey').value.trim() || localStorage.getItem('sbiz_api') || ''; }
+    function getSbizKey() { return document.getElementById('sbizApiKey').value.trim() || localStorage.getItem('sbiz_api') || '3TPJC0Q7lPb72GcvHBdm'; }
 
     // ===================================================
     // 파일
@@ -18096,7 +18096,7 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
             lat: String(bounds.lat), lng: String(bounds.lng),
             nelat: String(bounds.nelat || ''), swlat: String(bounds.swlat || ''),
             nelng: String(bounds.nelng || ''), swlng: String(bounds.swlng || ''),
-            kakao_rest_key: localStorage.getItem('kakao_rest_key') || ''
+            kakao_rest_key: localStorage.getItem('kakao_rest_key') || '58c8f459e2c2de75d3bf136a9978388a'
           })
         });
         data = await resp.json();
@@ -18158,7 +18158,7 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
             lat: String(bounds.lat), lng: String(bounds.lng),
             nelat: String(bounds.nelat), swlat: String(bounds.swlat),
             nelng: String(bounds.nelng), swlng: String(bounds.swlng),
-            kakao_rest_key: localStorage.getItem('kakao_rest_key') || ''
+            kakao_rest_key: localStorage.getItem('kakao_rest_key') || '58c8f459e2c2de75d3bf136a9978388a'
           })
         });
         data = await resp.json();
@@ -35003,7 +35003,7 @@ ${newsContext}
             ...bounds,
             rletTpCd: rletParts.join(':'),
             tradTpCd: tradeParts.join(':'),
-            kakao_rest_key: localStorage.getItem('kakao_rest_key') || '',
+            kakao_rest_key: localStorage.getItem('kakao_rest_key') || '58c8f459e2c2de75d3bf136a9978388a',
             kakao_level: bounds.kakao_level || 4,
             skip_detail: skipDetail,
             cookie: localStorage.getItem('naver_cookie') || '',
@@ -35176,7 +35176,7 @@ ${newsContext}
       const resp = await fetch(proxyBase + '/api/naver', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ target_val: url, token, cookie, kakao_rest_key: localStorage.getItem('kakao_rest_key') || '' })
+        body: JSON.stringify({ target_val: url, token, cookie, kakao_rest_key: localStorage.getItem('kakao_rest_key') || '58c8f459e2c2de75d3bf136a9978388a' })
       });
       const data = await resp.json();
       if (data.status === 'success') {
@@ -35350,7 +35350,7 @@ ${newsContext}
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            kakao_rest_key: localStorage.getItem('kakao_rest_key') || '',
+            kakao_rest_key: localStorage.getItem('kakao_rest_key') || '58c8f459e2c2de75d3bf136a9978388a',
             lat: String(bounds.lat),
             lng: String(bounds.lng),
             nelat: String(bounds.nelat),
@@ -35810,7 +35810,7 @@ ${newsContext}
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             cisession,
-            kakao_rest_key: localStorage.getItem('kakao_rest_key') || '',
+            kakao_rest_key: localStorage.getItem('kakao_rest_key') || '58c8f459e2c2de75d3bf136a9978388a',
             lat: String(bounds.lat),
             lng: String(bounds.lng),
             nelat: String(bounds.nelat),
