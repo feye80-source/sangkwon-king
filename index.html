@@ -6944,6 +6944,15 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
     window.PROXY_URL = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
       ? 'http://localhost:8080'
       : 'https://qgfkhbcpidmraxxjtetl.supabase.co/functions/v1/proxy';
+
+    // Edge Function 호출 시 anon key 자동 추가
+    window._proxyFetch = function(url, options = {}) {
+      if (url && url.startsWith('https://qgfkhbcpidmraxxjtetl.supabase.co/functions')) {
+        options.headers = options.headers || {};
+        options.headers['Authorization'] = 'Bearer ' + (typeof SUPABASE_KEY !== 'undefined' ? SUPABASE_KEY : '');
+      }
+      return fetch(url, options);
+    };
   </script>
 
   <!-- ★ Supabase 연동 (v289) -->
@@ -18333,7 +18342,7 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
         }
 
         try {
-          const fetchResp = await fetch(window.PROXY_URL + '/fetch', {
+          const fetchResp = await window._proxyFetch(window.PROXY_URL + '/fetch', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ url: fetchUrl, ...(a1Cookie ? { cookie: a1Cookie } : {}) }),
@@ -18611,7 +18620,7 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
           : payload;
         if (statusEl) statusEl.textContent = '⏳ 페이지 HTML 가져오는 중...';
         try {
-          const fetchResp = await fetch(window.PROXY_URL + '/fetch', {
+          const fetchResp = await window._proxyFetch(window.PROXY_URL + '/fetch', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ url: fetchUrl, ...(a1Cookie ? { cookie: a1Cookie } : {}) }),
@@ -24174,7 +24183,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           return;
         }
 
-        const res = await fetch(window.PROXY_URL + '/api/floor_detail', {
+        const res = await window._proxyFetch(window.PROXY_URL + '/api/floor_detail', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
@@ -33862,7 +33871,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
         // 1차: 프록시 서버 시도
         try {
-          const resp = await fetch(window.PROXY_URL + '/api/onbid', {
+          const resp = await window._proxyFetch(window.PROXY_URL + '/api/onbid', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ serviceKey: key, ctgrId: ctgrId, numOfRows: limit, pageNo: '1', region: region }),
@@ -36271,7 +36280,7 @@ ${newsContext}
 
         try {
           // 프록시 서버 경유 (CORS 우회)
-          const resp = await fetch(window.PROXY_URL + '/api/sbiz', {
+          const resp = await window._proxyFetch(window.PROXY_URL + '/api/sbiz', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -37455,7 +37464,7 @@ ${newsContext}
       function _sbizFetchOnePoint(key, pLat, pLng, radius) {
         // 각 격자점에서 500건 1페이지 호출
         var subRadius = Math.min(radius, radius <= 150 ? radius : Math.ceil(radius * 0.65));
-        return fetch(window.PROXY_URL + '/api/sbiz', {
+        return window._proxyFetch(window.PROXY_URL + '/api/sbiz', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             serviceKey: key, lat: pLat.toFixed(6), lng: pLng.toFixed(6),
@@ -38595,7 +38604,7 @@ ${newsContext}
           + '</div>';
 
         function _doFetch(code) {
-          fetch(window.PROXY_URL + '/api/sbiz/' + tab, {
+          window._proxyFetch(window.PROXY_URL + '/api/sbiz/' + tab, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ adongCd: code, pageIndex: '1', pageSize: '100' })
