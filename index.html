@@ -6949,7 +6949,23 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
     const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFnZmtoYmNwaWRtcmF4eGp0ZXRsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4NjEzNDcsImV4cCI6MjA4ODQzNzM0N30.kL8p6kNSxEI3_oxNrYguxhkU7wHNLRUTdvaIw5st5bo';
 
     // Supabase 클라이언트 초기화
-    window._sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    window._sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        storageKey: 'sb_sangkwon_session'
+      }
+    });
+
+    // 인증 상태 변화 감지 (자동 로그인 유지)
+    window._sb.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN' && session) {
+        window._sbHideLogin && window._sbHideLogin();
+        window._sbAddLogoutBtn && window._sbAddLogoutBtn();
+      } else if (event === 'SIGNED_OUT') {
+        window._sbShowLogin && window._sbShowLogin();
+      }
+    });
 
     // ─── 범용 헬퍼 ───────────────────────────────────────────
     // 테이블에서 key로 단일 JSON 행 가져오기
@@ -38348,6 +38364,42 @@ ${newsContext}
     .sbiz-tbl tr:hover td {
       background: rgba(255, 255, 255, .02);
     }
+  
+    /* ══ 📱 모바일 하단 탭바 v290 ══ */
+    @media (max-width: 768px) {
+      #_mbTabBar { display: flex !important; }
+      .main-nav { display: none !important; }
+      .main-content { padding-bottom: 64px !important; }
+      .topbar { padding: 6px 10px !important; min-height: 44px !important; }
+      .api-row { display: none !important; }
+      .sc-head { min-width: 100px !important; max-width: 120px !important; }
+      .popup { width: 100vw !important; max-width: 100vw !important; }
+      #_sbLogoutBtn { top: 6px !important; right: 6px !important; font-size: 10px !important; padding: 3px 8px !important; }
+    }
+    #_mbTabBar {
+      display: none;
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      z-index: 9999;
+      background: #13161f;
+      border-top: 1px solid #2a3050;
+      height: 60px;
+      align-items: stretch;
+      justify-content: space-around;
+      box-shadow: 0 -4px 20px rgba(0,0,0,0.5);
+    }
+    #_mbTabBar button {
+      flex: 1; background: none; border: none;
+      color: #64748b; font-size: 10px;
+      font-family: "Noto Sans KR", sans-serif;
+      cursor: pointer; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 3px; padding: 6px 2px; transition: color 0.15s; min-height: 0;
+    }
+    #_mbTabBar button .mb-icon { font-size: 20px; line-height: 1; }
+    #_mbTabBar button.active { color: #f59e0b; }
+    #_mbTabBar button:active { background: rgba(245,158,11,0.1); }
+
   </style>
   <script>
     (function () {
@@ -40387,6 +40439,32 @@ ${newsText}
         };
   
       })();
+  </script>
+
+  <!-- 📱 모바일 하단 탭바 -->
+  <div id="_mbTabBar">
+    <button onclick="showPage(2); _mbSetActive(this)">
+      <span class="mb-icon">🗺️</span>지도
+    </button>
+    <button onclick="showPage(1); _mbSetActive(this)">
+      <span class="mb-icon">💾</span>저장목록
+    </button>
+    <button onclick="showPage(3); _mbSetActive(this)">
+      <span class="mb-icon">💡</span>인사이트
+    </button>
+    <button onclick="showPage(0); _mbSetActive(this)">
+      <span class="mb-icon">🔍</span>추출
+    </button>
+  </div>
+  <script>
+  function _mbSetActive(el) {
+    document.querySelectorAll('#_mbTabBar button').forEach(b => b.classList.remove('active'));
+    el.classList.add('active');
+  }
+  document.addEventListener('DOMContentLoaded', function() {
+    var btns = document.querySelectorAll('#_mbTabBar button');
+    if (btns.length) btns[0].classList.add('active');
+  });
   </script>
 
 </body>
