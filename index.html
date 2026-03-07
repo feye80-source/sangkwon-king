@@ -8377,11 +8377,11 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
             <input type="text" id="mapKeyword" placeholder="🔍 지역명 (예: 강남)"
               onkeypress="if(event.keyCode==13) searchMap()">
             <button onclick="searchMap()">이동</button>
-            <label style="display:flex;align-items:center;gap:3px;font-size:12px;color:rgba(232,237,245,.9);cursor:pointer;white-space:nowrap;background:rgba(255,255,255,.08);padding:4px 8px;border-radius:6px;border:1px solid rgba(255,255,255,.15);">
-              <input type="radio" name="areaModeMini" value="bounds" checked style="margin:0;accent-color:#4a9eff;"> 전체화면
+            <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:rgba(232,237,245,.85);cursor:pointer;white-space:nowrap;">
+              <input type="radio" name="areaModeMini" value="bounds" checked style="margin:0;"> 전체화면
             </label>
-            <label style="display:flex;align-items:center;gap:3px;font-size:12px;color:rgba(232,237,245,.9);cursor:pointer;white-space:nowrap;background:rgba(255,255,255,.08);padding:4px 8px;border-radius:6px;border:1px solid rgba(255,255,255,.15);">
-              <input type="radio" name="areaModeMini" value="radius" style="margin:0;accent-color:#4a9eff;"> 반경지정
+            <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:rgba(232,237,245,.85);cursor:pointer;white-space:nowrap;">
+              <input type="radio" name="areaModeMini" value="radius" style="margin:0;"> 반경지정
             </label>
           </div>
 
@@ -11020,6 +11020,55 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
           </div>
 
           <!-- ⑨ 작업룸 v255 — 대시보드 + 단계탭 통합 -->
+          <!-- ⚙️ 설정 탭 패널 -->
+          <div id="ipage_settings" class="ins-panel" style="display:none;padding:20px;overflow-y:auto;">
+            <div style="max-width:600px;margin:0 auto;">
+              <div style="font-size:16px;font-weight:700;color:var(--tx);margin-bottom:20px;">⚙️ API 키 설정</div>
+              <div style="font-size:12px;color:var(--mu);margin-bottom:20px;line-height:1.6;background:rgba(255,255,255,.04);padding:12px;border-radius:8px;">
+                기본값이 하드코딩돼 있어서 보통은 수정 불필요해요.<br>
+                변경하면 이 기기의 localStorage에 저장되고, 기본값보다 우선 적용돼요.<br>
+                <span style="color:#f87171;">⚠ 아이맥/맥북 각각 따로 저장돼요. Supabase 동기화는 미구현 상태예요.</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:14px;">
+
+                <div style="background:var(--s2);border-radius:8px;padding:14px;">
+                  <div style="font-size:12px;font-weight:600;color:#f9a825;margin-bottom:6px;">🗺 카카오 JS API 키</div>
+                  <div style="font-size:11px;color:var(--mu);margin-bottom:6px;">지도 표시에 사용. kakao developers → 앱 → 플랫폼 → 키</div>
+                  <input id="setting_kakao_api" type="text" style="width:100%;box-sizing:border-box;background:var(--s1);border:1px solid var(--b1);border-radius:6px;padding:8px;color:var(--tx);font-size:12px;" placeholder="현재 키: 4b907530560ea1d6425c25e09517efbf" oninput="_saveApiKey('kakao_api', this.value)">
+                </div>
+
+                <div style="background:var(--s2);border-radius:8px;padding:14px;">
+                  <div style="font-size:12px;font-weight:600;color:#f9a825;margin-bottom:6px;">🗝 카카오 REST API 키</div>
+                  <div style="font-size:11px;color:var(--mu);margin-bottom:6px;">장소 검색, 주소 변환에 사용</div>
+                  <input id="setting_kakao_rest" type="text" style="width:100%;box-sizing:border-box;background:var(--s1);border:1px solid var(--b1);border-radius:6px;padding:8px;color:var(--tx);font-size:12px;" placeholder="현재 키: 58c8f459e2c2de75d3bf136a9978388a" oninput="_saveApiKey('kakao_rest_key', this.value)">
+                </div>
+
+                <div style="background:var(--s2);border-radius:8px;padding:14px;">
+                  <div style="font-size:12px;font-weight:600;color:#4285f4;margin-bottom:6px;">🤖 Google Gemini API 키</div>
+                  <div style="font-size:11px;color:var(--mu);margin-bottom:6px;">AI 분석(옥션원 파싱, AI 브리핑 등)에 사용. aistudio.google.com에서 발급</div>
+                  <input id="setting_g_api" type="text" style="width:100%;box-sizing:border-box;background:var(--s1);border:1px solid var(--b1);border-radius:6px;padding:8px;color:var(--tx);font-size:12px;" placeholder="현재 키: AIzaSyAuRNnEVnbP-..." oninput="_saveApiKey('g_api', this.value)">
+                </div>
+
+                <div style="background:var(--s2);border-radius:8px;padding:14px;">
+                  <div style="font-size:12px;font-weight:600;color:#00c73c;margin-bottom:6px;">🟢 네이버 클라이언트 ID / Secret</div>
+                  <div style="font-size:11px;color:var(--mu);margin-bottom:6px;">뉴스 검색 API에 사용. developers.naver.com에서 발급</div>
+                  <div style="display:flex;gap:8px;">
+                    <input id="setting_naver_id" type="text" style="flex:1;background:var(--s1);border:1px solid var(--b1);border-radius:6px;padding:8px;color:var(--tx);font-size:12px;" placeholder="ID: 3TPJC0Q7lPb72GcvHBdm" oninput="_saveApiKey('naver_id', this.value)">
+                    <input id="setting_naver_sec" type="text" style="flex:1;background:var(--s1);border:1px solid var(--b1);border-radius:6px;padding:8px;color:var(--tx);font-size:12px;" placeholder="Secret: wwWTV5kuAe" oninput="_saveApiKey('naver_sec', this.value)">
+                  </div>
+                </div>
+
+                <div style="background:var(--s2);border-radius:8px;padding:14px;">
+                  <div style="font-size:12px;font-weight:600;color:#a78bfa;margin-bottom:6px;">🏪 소상공인 상권 API 키 (sbiz)</div>
+                  <div style="font-size:11px;color:var(--mu);margin-bottom:6px;">상권분석, 온비드 공공데이터에 사용. data.go.kr에서 발급</div>
+                  <input id="setting_sbiz" type="text" style="width:100%;box-sizing:border-box;background:var(--s1);border:1px solid var(--b1);border-radius:6px;padding:8px;color:var(--tx);font-size:12px;" placeholder="현재 키: 2d1c9dec086ae..." oninput="_saveApiKey('sbiz_api', this.value)">
+                </div>
+
+                <button onclick="_clearAllApiKeys()" style="background:#ff4d4d;color:#fff;border:none;border-radius:8px;padding:10px;cursor:pointer;font-size:13px;font-weight:600;">🗑 전체 초기화 (기본값으로 복원)</button>
+              </div>
+            </div>
+          </div>
+
           <div id="ipage8" class="ins-panel" style="display:none;">
             <div id="workroomTab" class="wr2-wrap">
 
@@ -30940,9 +30989,27 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     }
 
     // ── 서브탭 전환 ─────────────────────────────────────
+    // ── API 키 설정 헬퍼 함수 ──
+    function _saveApiKey(lsKey, val) {
+      if (val.trim()) {
+        localStorage.setItem(lsKey, val.trim());
+      } else {
+        localStorage.removeItem(lsKey);
+      }
+    }
+    function _clearAllApiKeys() {
+      if (!confirm('모든 API 키를 초기화하고 기본값으로 복원할까요?')) return;
+      ['g_api','kakao_api','kakao_rest_key','naver_id','naver_sec','sbiz_api'].forEach(k => localStorage.removeItem(k));
+      ['setting_g_api','setting_kakao_api','setting_kakao_rest','setting_naver_id','setting_naver_sec','setting_sbiz'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+      });
+      alert('초기화 완료! 페이지 새로고침 후 기본값이 적용돼요.');
+    }
+
     function showInsTab(n) {
       [0, 1, 3, 4, 5, 6, 8, 9, 10, 99].forEach(i => {
-        const p = document.getElementById('ipage' + i);
+        const p = i === 99 ? document.getElementById('ipage_settings') : document.getElementById('ipage' + i);
         const t = document.getElementById('itab' + i);
         if (p) p.style.display = (i === n) ? '' : 'none';
         if (t) t.classList.toggle('on', i === n);
@@ -30960,15 +31027,12 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       if (n === 6) { try { renderSiteBookmarks(); } catch (e) { console.error('[renderSiteBookmarks]', e); } }
 
       if (n === 99) {
-        // API 설정 패널
-        const sp = document.getElementById('ipage_settings');
-        if (sp) sp.style.display = '';
-        // 현재 저장된 값 표시
+        // 현재 저장된 값 placeholder에 표시
         const keyMap = {setting_g_api:'g_api', setting_kakao_api:'kakao_api', setting_kakao_rest:'kakao_rest_key', setting_naver_id:'naver_id', setting_naver_sec:'naver_sec', setting_sbiz:'sbiz_api'};
         Object.entries(keyMap).forEach(([elId, lsKey]) => {
           const el = document.getElementById(elId);
           const saved = localStorage.getItem(lsKey);
-          if (el && saved) el.placeholder = '저장된 키 있음 (' + saved.substring(0,8) + '...)';
+          if (el && saved) el.value = saved;
         });
       }
       if (n === 8) {
