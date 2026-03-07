@@ -30951,6 +30951,11 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     function _saveApiKey(lsKey, val) {
       if (val.trim()) {
         localStorage.setItem(lsKey, val.trim());
+        if (lsKey === 'g_api') { const el = document.getElementById('apiKey'); if (el) { el.value = val.trim(); try { chk(); } catch(e){} } }
+        if (lsKey === 'kakao_api') { const el = document.getElementById('kakaoApiKey'); if (el) el.value = val.trim(); }
+        if (lsKey === 'kakao_rest_key') { const el = document.getElementById('kakaoRestKey'); if (el) el.value = val.trim(); }
+        if (lsKey === 'sbiz_api') { const el = document.getElementById('sbizApiKey'); if (el) el.value = val.trim(); }
+        _MODEL_CACHE = null;
       } else {
         localStorage.removeItem(lsKey);
       }
