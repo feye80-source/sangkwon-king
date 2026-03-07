@@ -7167,7 +7167,7 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
             const payload = { __key: '__api_keys__' };
             let hasAny = false;
             apiKeys.forEach(k => { const v = localStorage.getItem(k); if (v) { payload[k] = v; hasAny = true; } });
-            if (hasAny) await window._sbUpsert('snapshots', payload);
+            if (hasAny) await sbSet('snapshots', '__api_keys__', payload);
           }
         } catch(e) { console.warn('[SB] API key sync error', e); }
 
@@ -7183,7 +7183,7 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
       try {
         const payload = { __key: '__api_keys__' };
         ['g_api','kakao_api','kakao_rest_key','sbiz_api'].forEach(k => { const v = localStorage.getItem(k); if (v) payload[k] = v; });
-        await window._sbUpsert('snapshots', payload);
+        await sbSet('snapshots', '__api_keys__', payload);
       } catch(e) {}
     };
 
@@ -18098,7 +18098,7 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
       try {
         await fetch(proxyBase + '/', { signal: AbortSignal.timeout(2000), mode: 'no-cors' });
       } catch (_) {
-        shopStatus('disco', '❌ py 서버 미실행 — python3 proxy_server.py 실행하세요.', '#ff4d4d'); return;
+        /* Edge Function으로 대체됨 */
       }
 
       let bounds = window._discoBounds || null;
@@ -18160,7 +18160,7 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
       try {
         await fetch(proxyBase + '/', { signal: AbortSignal.timeout(2000), mode: 'no-cors' });
       } catch (_) {
-        shopStatus('bds', '❌ py 서버 미실행 — python3 proxy_server.py 실행하세요.', '#ff4d4d'); return;
+        /* Edge Function으로 대체됨 */
       }
 
       let bounds = window._bdsBounds || null;
@@ -34984,7 +34984,7 @@ ${newsContext}
       try {
         await fetch(proxyBase + '/', { signal: AbortSignal.timeout(2000), mode: 'no-cors' });
       } catch (_) {
-        shopStatus('naver', '❌ py 서버 미실행 — python3 proxy_server.py 실행하세요.', '#ff4d4d'); return;
+        /* Edge Function으로 대체됨 */
       }
 
       let bounds = window._naverBounds || null;
@@ -35211,7 +35211,7 @@ ${newsContext}
       } catch (_) { }
 
       if (!useProxy) {
-        shopStatus('naver', '❌ 프록시 서버 미실행 — 터미널에서 python3 proxy_server.py 를 실행하세요.', '#ff4d4d');
+        /* Edge Function으로 대체됨 */
         return;
       }
 
@@ -35349,7 +35349,7 @@ ${newsContext}
       try {
         await fetch(proxyBase + '/', { signal: AbortSignal.timeout(2000), mode: 'no-cors' });
       } catch (_) {
-        shopStatus('jumpo', '❌ py 서버 미실행 — python3 proxy_server.py 실행하세요.', '#ff4d4d'); return;
+        /* Edge Function으로 대체됨 */
       }
 
       let bounds = window._jumpoBounds || null;
@@ -35800,7 +35800,7 @@ ${newsContext}
       try {
         await fetch(proxyBase + '/', { signal: AbortSignal.timeout(2000), mode: 'no-cors' });
       } catch (_) {
-        shopStatus('assa', '❌ py 서버 미실행 — 터미널에서 python3 proxy_server.py 실행하세요.', '#ff4d4d');
+        /* Edge Function으로 대체됨 */
         return;
       }
 
