@@ -1837,6 +1837,10 @@ body {
     if (name === 'saved' && typeof mbRenderSaved === 'function') {
       setTimeout(mbRenderSaved, 50);
     }
+    // insight 탭: 마지막 서브탭 복원 ★
+    if (name === 'insight') {
+      setTimeout(function(){ if (typeof mbInsTab === 'function') mbInsTab(_mbLastInsTab || 'note'); }, 80);
+    }
   };
 
   /* ── 지도 패널 토글 ── */
@@ -1877,10 +1881,6 @@ body {
       } else if (typeof window.ntRender === 'function') {
         try { window.ntRender(); } catch(e) {}
       }
-    }
-    // 인사이트탭 진입 시 마지막 탭 복원
-    if (name === 'insight') {
-      setTimeout(function(){ mbInsTab(_mbLastInsTab || 'note'); }, 80);
     }
     // 작업룸 탭: 룸 목록 새로고침
     if (name === 'room') {
@@ -2102,7 +2102,7 @@ body {
         (priceStr ? '<div class="mb-sv-card-prices">' + priceStr + '</div>' : '') +
         '<div class="mb-sv-card-actions">' +
           '<button class="mb-sv-action-btn memo" onclick="mbToggleMemo(' + idx + ',this)">📝 메모' + (memo ? ' ●' : '') + '</button>' +
-          '<button class="mb-sv-action-btn map" onclick="mbGoToMap(\'' + (d.address||d.location||'') + '\')">🗺️ 지도</button>' +
+          '<button class="mb-sv-action-btn map" onclick="mbGoToMap(\'' + (d['소재지']||d.address||d.location||'') + '\',' + (item.lat||item.data&&item.data.lat||'') + ',' + (item.lng||item.data&&item.data.lng||'') + ')">🗺️ 지도</button>' +
         '</div>' +
         '<div class="mb-sv-memo" id="mb-memo-' + idx + '">' +
           '<textarea placeholder="메모 입력..." onchange="mbSaveMemo(' + idx + ',this.value)">' + (memo||'') + '</textarea>' +
@@ -2213,13 +2213,23 @@ body {
     } catch(e) {}
   };
 
-  window.mbGoToMap = function(addr) {
-    if (!addr) return;
+  window.mbGoToMap = function(addr, lat, lng) {
+    if (!addr && !lat) return;
     mbGoPage('map', document.getElementById('mb-tab-map'));
     setTimeout(function() {
-      var inp = document.getElementById('mapKeyword');
-      if (inp) { inp.value = addr; searchMap(); }
-    }, 300);
+      // lat/lng가 있으면 바로 지도 이동
+      if (lat && lng && window.map && window.kakao) {
+        var pos = new kakao.maps.LatLng(parseFloat(lat), parseFloat(lng));
+        window.map.setCenter(pos);
+        window.map.setLevel(3);
+        return;
+      }
+      // 없으면 주소 검색
+      if (addr) {
+        var inp = document.getElementById('mapKeyword');
+        if (inp) { inp.value = addr; if (typeof searchMap === 'function') searchMap(); }
+      }
+    }, 350);
   };
 
   /* ── 노트 필터 ── */
@@ -2684,28 +2694,9 @@ body {
     window.__mbNtOpenHooked = true;
     _origNtOpen = window.ntOpen;
     window.ntOpen = function(id) {
-      // 원래 ntOpen 실행 (데이터/렌더링)
+      // common.js의 ntOpen이 ntEditorScroll에 직접 렌더하고 ntEditorMain을 flex로 표시함
+      // _mbNtOpenId도 common.js에서 동기화되므로 여기서는 원본만 호출
       _origNtOpen(id);
-      window._mbNtOpenId = id; // 💾 저장버튼용
-      // 오버레이 표시
-      var el = document.getElementById('ntEditorMain');
-      var scroll = document.getElementById('ntEditorScroll');
-      var main = document.getElementById('ntEditorMain'); // ntOpen이 내용 채움
-      if (el) el.style.display = 'flex';
-      // ntEditorMain 안의 내용을 scroll로 이동
-      setTimeout(function() {
-        var src = document.getElementById('ntEditorMain');
-        var dst = document.getElementById('ntEditorScroll');
-        if (src && dst) {
-          // ntOpen이 채운 내용 가져오기 (첫 번째 child 이후)
-          var children = Array.from(src.children);
-          children.forEach(function(c) {
-            if (c.id !== 'ntEditorScroll' && !c.style.borderBottom) {
-              dst.appendChild(c);
-            }
-          });
-        }
-      }, 50);
     };
   }
   setTimeout(hookNtOpen, 1500);

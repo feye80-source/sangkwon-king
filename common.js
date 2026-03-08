@@ -3886,6 +3886,10 @@
       const scenes = getWorkScenes();
       const scene = scenes.find(s => s.name === name && s.parentName === (parentName || null));
       if (!scene) { showToast('⚠️ 스냅샷을 찾을 수 없음', 'warn'); return; }
+      // ★ 모바일: mbGoPage로 지도 탭 전환
+      if (typeof window.mbGoPage === 'function') {
+        window.mbGoPage('map', document.getElementById('mb-tab-map'));
+      }
       clearMapMarkers();
       if (scene.mapCenter && map) {
         map.setCenter(new kakao.maps.LatLng(scene.mapCenter.lat, scene.mapCenter.lng));
@@ -4375,7 +4379,12 @@
       var room = window.wrGetRoom(id);
       if (!room || !room.mapScene) { showToast('저장된 지도가 없습니다', 'warn'); return; }
       var scene = room.mapScene;
-      showPage(2);
+      // ★ 모바일: mbGoPage로 탭 전환, PC: showPage(2)
+      if (typeof window.mbGoPage === 'function') {
+        window.mbGoPage('map', document.getElementById('mb-tab-map'));
+      } else {
+        showPage(2);
+      }
       function doRestore() {
         if (!window.map || !window.kakao || !window.kakao.maps) { setTimeout(doRestore, 100); return; }
         if (typeof clearMapMarkers === 'function') clearMapMarkers();
@@ -18642,7 +18651,10 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       </div>`;
       }
 
-      main.innerHTML = `
+      // ★ 모바일: ntEditorScroll이 있으면 거기에만 렌더, 모바일 헤더(저장버튼) 보호
+      const _mbScroll = document.getElementById('ntEditorScroll');
+      const _renderTarget = _mbScroll || main;
+      _renderTarget.innerHTML = `
     <!-- 연결 물건 -->
     ${_linkedHtml}
     <!-- 헤더 -->
@@ -18687,6 +18699,13 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         <button id="ntSaveBtn" onclick="ntManualSave('${id}')" style="padding:5px 14px;background:rgba(79,142,255,.15);border:1px solid rgba(79,142,255,.4);border-radius:7px;color:#4f8eff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">💾 저장</button>
       </div>
     </div>`;
+      // ★ 모바일: ntEditorScroll에 렌더했으면 ntEditorMain flex표시 + 타이틀·ID 동기화
+      if (_mbScroll) {
+        main.style.display = 'flex';
+        const _mbTitleEl = document.getElementById('ntEditorTitle');
+        if (_mbTitleEl) _mbTitleEl.textContent = note.title || '노트 편집';
+        window._mbNtOpenId = id;
+      }
     };
 
     function ntShowEmpty() {
