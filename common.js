@@ -3571,7 +3571,7 @@
         }
       }
 
-      const infraBlock = isPopup ? '' : `<div class="infra-wrap" id="infra_${idx}"><div class="infra-loading">📍 주변 인프라 분석 준비중…</div></div>`;
+      const infraBlock = ''; // 카드 하단 상권분석 섹션 비활성화
       const memoBlock = buildMemo(memo, idx, isPopup);
       return hdr + act + body + infraBlock + firstAiSection + docsSection + additionalAiSection + memoBlock;
     }
@@ -3886,9 +3886,6 @@
       const scenes = getWorkScenes();
       const scene = scenes.find(s => s.name === name && s.parentName === (parentName || null));
       if (!scene) { showToast('⚠️ 스냅샷을 찾을 수 없음', 'warn'); return; }
-      if (typeof window.mbGoPage === 'function') {
-        window.mbGoPage('map', document.getElementById('mb-tab-map'));
-      }
       clearMapMarkers();
       if (scene.mapCenter && map) {
         map.setCenter(new kakao.maps.LatLng(scene.mapCenter.lat, scene.mapCenter.lng));
@@ -4378,9 +4375,7 @@
       var room = window.wrGetRoom(id);
       if (!room || !room.mapScene) { showToast('저장된 지도가 없습니다', 'warn'); return; }
       var scene = room.mapScene;
-      if (typeof window.mbGoPage === 'function') {
-        window.mbGoPage('map', document.getElementById('mb-tab-map'));
-      } else { showPage(2); }
+      showPage(2);
       function doRestore() {
         if (!window.map || !window.kakao || !window.kakao.maps) { setTimeout(doRestore, 100); return; }
         if (typeof clearMapMarkers === 'function') clearMapMarkers();
@@ -18647,61 +18642,51 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       </div>`;
       }
 
-      // ★ 모바일/PC 분리 렌더링
-      const _mbScroll = document.getElementById('ntEditorScroll');
-      if (_mbScroll) {
-        _mbScroll.innerHTML = editorBody;
-        main.style.display = 'flex';
-        const _mbTitleEl = document.getElementById('ntEditorTitle');
-        if (_mbTitleEl) _mbTitleEl.textContent = note.title || '노트 편집';
-        window._mbNtOpenId = id;
-      } else {
-        main.innerHTML = `
-      <!-- 연결 물건 -->
-      ${_linkedHtml}
-      <!-- 헤더 -->
-      <div style="padding:10px 14px;border-bottom:1px solid var(--b1);flex-shrink:0;">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:7px;">
-          <span style="font-size:16px;">${t.icon}</span>
-          <input id="ntTitle" value="${esc(note.title || '')}" oninput="ntAutoSave('${id}','title',this.value)"
-            style="flex:1;background:transparent;border:none;color:var(--tx);font-size:15px;font-weight:700;outline:none;">
-          <span class="nt-badge ${badgeCls}">${t.label}</span>
-          <button onclick="ntDelete('${id}')" style="padding:3px 8px;background:rgba(255,99,112,.1);border:1px solid rgba(255,99,112,.3);border-radius:5px;color:#ff6370;font-size:11px;cursor:pointer;">🗑</button>
-        </div>
-        <!-- 태그 + domain/phase -->
-        <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-bottom:5px;">
-          ${tagHtml}
-          <input id="ntTagInput" placeholder="+ 태그" onkeydown="if(event.key==='Enter'&&this.value.trim()){ntAddTag('${id}',this.value.trim());this.value='';}"
-            style="padding:2px 7px;background:var(--s2);border:1px dashed var(--b1);border-radius:8px;color:var(--mu);font-size:11px;width:70px;outline:none;">
-        </div>
-        <!-- domain/phase 선택 -->
-        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-          ${note.linkedItemId ? `
-            <span style="font-size:10px;color:var(--mu);">단계:</span>
-            ${['legal', 'field', 'profit', 'bid', 'review'].map(p => `<span onclick="ntSetNotePhase('${id}','${p}')"
-              style="padding:2px 8px;border-radius:8px;font-size:10px;cursor:pointer;border:1px solid ${note.phase === p ? '#a78bfa' : 'var(--b1)'};background:${note.phase === p ? 'rgba(167,139,250,.15)' : 'var(--s2)'};color:${note.phase === p ? '#a78bfa' : 'var(--mu)'};">
-              ${NT_PHASE_LABELS[p]}</span>`).join('')}
-          ` : `
-            <span style="font-size:10px;color:var(--mu);">주제:</span>
-            ${['auction', 'tax', 'legal', 'market', 'operation', 'etc'].map(d => `<span onclick="ntSetNoteDomain('${id}','${d}')"
-              style="padding:2px 8px;border-radius:8px;font-size:10px;cursor:pointer;border:1px solid ${(note.domain || 'auction') === d ? '#4f8eff' : 'var(--b1)'};background:${(note.domain || 'auction') === d ? 'rgba(79,142,255,.15)' : 'var(--s2)'};color:${(note.domain || 'auction') === d ? '#4f8eff' : 'var(--mu)'};">
-              ${NT_DOMAIN_LABELS[d]}</span>`).join('')}
-          `}
-        </div>
+      main.innerHTML = `
+    <!-- 연결 물건 -->
+    ${_linkedHtml}
+    <!-- 헤더 -->
+    <div style="padding:10px 14px;border-bottom:1px solid var(--b1);flex-shrink:0;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:7px;">
+        <span style="font-size:16px;">${t.icon}</span>
+        <input id="ntTitle" value="${esc(note.title || '')}" oninput="ntAutoSave('${id}','title',this.value)"
+          style="flex:1;background:transparent;border:none;color:var(--tx);font-size:15px;font-weight:700;outline:none;">
+        <span class="nt-badge ${badgeCls}">${t.label}</span>
+        <button onclick="ntDelete('${id}')" style="padding:3px 8px;background:rgba(255,99,112,.1);border:1px solid rgba(255,99,112,.3);border-radius:5px;color:#ff6370;font-size:11px;cursor:pointer;">🗑</button>
       </div>
-      <!-- 에디터 본문 -->
-      <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
-        ${editorBody}
+      <!-- 태그 + domain/phase -->
+      <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-bottom:5px;">
+        ${tagHtml}
+        <input id="ntTagInput" placeholder="+ 태그" onkeydown="if(event.key==='Enter'&&this.value.trim()){ntAddTag('${id}',this.value.trim());this.value='';}"
+          style="padding:2px 7px;background:var(--s2);border:1px dashed var(--b1);border-radius:8px;color:var(--mu);font-size:11px;width:70px;outline:none;">
       </div>
-      <!-- 하단 상태 -->
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 14px;border-top:1px solid var(--b1);flex-shrink:0;gap:8px;">
-        <span id="ntSaveStatus" style="font-size:10px;color:var(--di);">저장됨</span>
-        <div style="display:flex;align-items:center;gap:8px;">
-          <span style="font-size:10px;color:var(--di);">${new Date(note.updatedAt).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
-          <button id="ntSaveBtn" onclick="ntManualSave('${id}')" style="padding:5px 14px;background:rgba(79,142,255,.15);border:1px solid rgba(79,142,255,.4);border-radius:7px;color:#4f8eff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">💾 저장</button>
-        </div>
-      </div>`;
-      }
+      <!-- domain/phase 선택 -->
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+        ${note.linkedItemId ? `
+          <span style="font-size:10px;color:var(--mu);">단계:</span>
+          ${['legal', 'field', 'profit', 'bid', 'review'].map(p => `<span onclick="ntSetNotePhase('${id}','${p}')"
+            style="padding:2px 8px;border-radius:8px;font-size:10px;cursor:pointer;border:1px solid ${note.phase === p ? '#a78bfa' : 'var(--b1)'};background:${note.phase === p ? 'rgba(167,139,250,.15)' : 'var(--s2)'};color:${note.phase === p ? '#a78bfa' : 'var(--mu)'};">
+            ${NT_PHASE_LABELS[p]}</span>`).join('')}
+        ` : `
+          <span style="font-size:10px;color:var(--mu);">주제:</span>
+          ${['auction', 'tax', 'legal', 'market', 'operation', 'etc'].map(d => `<span onclick="ntSetNoteDomain('${id}','${d}')"
+            style="padding:2px 8px;border-radius:8px;font-size:10px;cursor:pointer;border:1px solid ${(note.domain || 'auction') === d ? '#4f8eff' : 'var(--b1)'};background:${(note.domain || 'auction') === d ? 'rgba(79,142,255,.15)' : 'var(--s2)'};color:${(note.domain || 'auction') === d ? '#4f8eff' : 'var(--mu)'};">
+            ${NT_DOMAIN_LABELS[d]}</span>`).join('')}
+        `}
+      </div>
+    </div>
+    <!-- 에디터 본문 -->
+    <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
+      ${editorBody}
+    </div>
+    <!-- 하단 상태 -->
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 14px;border-top:1px solid var(--b1);flex-shrink:0;gap:8px;">
+      <span id="ntSaveStatus" style="font-size:10px;color:var(--di);">저장됨</span>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span style="font-size:10px;color:var(--di);">${new Date(note.updatedAt).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+        <button id="ntSaveBtn" onclick="ntManualSave('${id}')" style="padding:5px 14px;background:rgba(79,142,255,.15);border:1px solid rgba(79,142,255,.4);border-radius:7px;color:#4f8eff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">💾 저장</button>
+      </div>
+    </div>`;
     };
 
     function ntShowEmpty() {
