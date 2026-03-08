@@ -270,7 +270,7 @@ body {
   padding: 12px;
   padding-bottom: 20px;
 }
-.mb-ins-panel.active { display: block; }
+.mb-ins-panel.active { display: flex; flex-direction: column; }
 
 /* ── 노트 (인사이트 서브) ── */
 .mb-note-toolbar {
@@ -1833,6 +1833,10 @@ body {
     // common.js의 showPage 호출 (page0~3 번호 매핑)
     var pageNum = { insight:3, map:2, saved:1, extract:0 };
     if (typeof showPage === 'function') showPage(pageNum[name]);
+    // saved 탭: 모바일 카드 목록 렌더
+    if (name === 'saved' && typeof mbRenderSaved === 'function') {
+      setTimeout(mbRenderSaved, 50);
+    }
   };
 
   /* ── 지도 패널 토글 ── */
