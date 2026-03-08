@@ -1800,7 +1800,7 @@ body {
 
   window.mbGoPage = function(name, btn) {
     _curPage = name;
-    // 탭 전환 시 모든 오버레이 닫기 + 포인터 이벤트 복구
+    // 탭 전환 시 모든 오버레이 닫기 + 포인터이벤트 복구
     var _ntEl = document.getElementById('ntEditorMain');
     if (_ntEl) _ntEl.style.display = 'none';
     var _bs = document.getElementById('mb-map-bs');
@@ -2317,7 +2317,7 @@ body {
       html += '<div style="font-size:10px;font-weight:700;color:var(--mu);letter-spacing:.6px;text-transform:uppercase;margin-bottom:8px;display:flex;align-items:center;gap:6px;">🗺️ 저장된 스냅샷 <span style="font-weight:400;color:var(--di);">(' + mapScenes.length + ')</span></div>';
       mapScenes.forEach(function(ms) {
         var kids = ms.children || [];
-        html += '<div style="padding:10px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;margin-bottom:6px;cursor:pointer;" onclick="if(window.swLoadScene)window.swLoadScene(\'' + (ms.id||ms.sceneName||'') + '\');mbGoPage(\'map\',document.getElementById(\'mb-tab-map\'))">';
+        html += '<div style="padding:10px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;margin-bottom:6px;cursor:pointer;" onclick="(function(){var sid=\'' + (ms.id||'') + '\',sn=\'' + (ms.sceneName||ms.name||'') + '\';if(sid&&window.wrOpenMapScene){window.wrOpenMapScene(sid);}else if(sn&&window.swLoadSnap){window.swLoadSnap(sn,null);}mbGoPage(\'map\',document.getElementById(\'mb-tab-map\'));})()">';
         html += '<div style="display:flex;align-items:center;gap:8px;">';
         html += '<span style="font-size:11px;color:#4f8eff;">📷</span>';
         html += '<span style="flex:1;font-size:13px;font-weight:600;color:var(--tx);">' + (ms.sceneName||ms.name||'스냅샷') + '</span>';
@@ -2431,11 +2431,14 @@ body {
             : JSON.parse(localStorage.getItem('wr2_sections') || '[]'));
         _mbRoomRender(roomId, room, allSecs);
       };
-      // 로컬 섹션 먼저 준비 (폴백용)
       var _localSecs = [];
       try { _localSecs = JSON.parse(localStorage.getItem('wr2_sections') || '[]'); } catch(e2) {}
       if (!_localSecs.length && room.sections && room.sections.length) {
         _localSecs = room.sections.map(function(s) { return Object.assign({}, s, { roomId: roomId, room_id: roomId }); });
+      }
+      // wr2State.sections도 확인
+      if (!_localSecs.length && window.wr2State && window.wr2State.sections && window.wr2State.sections.length) {
+        _localSecs = window.wr2State.sections.filter(function(s) { return s.roomId === roomId || s.room_id === roomId; });
       }
       if (window._sbLoadSections) {
         window._sbLoadSections().then(function(cloudSecs) {

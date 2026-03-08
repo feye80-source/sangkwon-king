@@ -3805,7 +3805,11 @@
       const scene = scenes.find(s => s.name === name && s.parentName === (parentName || null));
       if (!scene) { showToast('⚠️ 스냅샷을 찾을 수 없음', 'warn'); return; }
       clearMapMarkers();
-      if (scene.mapCenter && map) { map.setCenter(new kakao.maps.LatLng(scene.mapCenter.lat, scene.mapCenter.lng)); map.setLevel(scene.mapLevel || 4); }
+      if (scene.mapCenter && map) {
+        map.setCenter(new kakao.maps.LatLng(scene.mapCenter.lat, scene.mapCenter.lng));
+        map.setLevel(scene.mapLevel || 4);
+        try { localStorage.setItem('map_view_state_v1', JSON.stringify({ lat: scene.mapCenter.lat, lng: scene.mapCenter.lng, level: scene.mapLevel || 4, t: Date.now() })); } catch(e) {}
+      }
       const cardsWithItem = (scene.cards || []).filter(c => c.item && c.lat && c.lng);
       cardsWithItem.forEach((c, idx) => {
         setTimeout(() => {
@@ -4296,6 +4300,8 @@
         if (scene.mapCenter && map) {
           map.setCenter(new kakao.maps.LatLng(scene.mapCenter.lat, scene.mapCenter.lng));
           map.setLevel(scene.mapLevel || 4);
+          // 씬 뷰 상태를 저장 -> 이후 resize/restore가 덮어쓰지 않도록
+          try { localStorage.setItem('map_view_state_v1', JSON.stringify({ lat: scene.mapCenter.lat, lng: scene.mapCenter.lng, level: scene.mapLevel || 4, t: Date.now() })); } catch(e) {}
         }
         var withItem = (scene.cards || []).filter(function (c) { return c.item && c.lat && c.lng; });
         var legacy = (scene.cards || []).filter(function (c) { return !c.item; });
@@ -10512,7 +10518,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         item,
         propertyType: propertyType
       });
-      window.mapOverlays = mapOverlays; // 📱 모바일 바텀시트 동기화
+      window.mapOverlays = mapOverlays; // 📱 모바일 동기화
 
       // 필터에 따라 표시
       const src = item.source || '';
@@ -15024,7 +15030,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         stackKey: getStackKeyFromPos(position)
       };
       mapOverlays.push(overlayObj);
-      window.mapOverlays = mapOverlays; // 📱 모바일 바텀시트 동기화
+      window.mapOverlays = mapOverlays; // 📱 모바일 동기화
 
       // 마커 클릭 이벤트 - mapOverlays 배열 기반으로 상태 관리
       kakao.maps.event.addListener(marker, 'click', function () {
@@ -16423,7 +16429,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         transactionDupKey: dupKey  // ★ 중복 방지용 키
       };
       mapOverlays.push(overlayObj);
-      window.mapOverlays = mapOverlays; // 📱 모바일 바텀시트 동기화
+      window.mapOverlays = mapOverlays; // 📱 모바일 동기화
 
       // 마커 클릭 이벤트 - mapOverlays 배열 기반으로 상태 관리 (직접 제어, refreshMapView 호출 불필요)
       kakao.maps.event.addListener(marker, 'click', function () {
