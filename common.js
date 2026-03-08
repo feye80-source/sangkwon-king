@@ -5692,13 +5692,9 @@
     // ── 디스코 자동수집 ──
     async function collectDiscoAuto() {
       const proxyBase = window.PROXY_URL;
-      // py 서버(로컬) 연결 확인 — 실패 시 중단
-      let pyOk = false;
-      try {
-        await fetch(proxyBase + '/', { signal: AbortSignal.timeout(2000), mode: 'no-cors' });
-        pyOk = true;
-      } catch (_) { }
-      if (!pyOk) {
+      // py 서버(로컬) URL인지 직접 확인 — Edge Function URL이면 즉시 중단
+      const _isLocal_disco = proxyBase.includes('localhost') || proxyBase.includes('127.0.0.1');
+      if (!_isLocal_disco) {
         shopStatus('disco', '❌ py 서버가 실행 중이 아닙니다. 로컬에서 py 서버를 먼저 실행해주세요.', '#ff4d4d');
         return;
       }
@@ -5759,13 +5755,9 @@
     // ── 부동산플래닛 자동수집 ──
     async function collectBdsAuto() {
       const proxyBase = window.PROXY_URL;
-      // py 서버(로컬) 연결 확인 — 실패 시 중단
-      let pyOk = false;
-      try {
-        await fetch(proxyBase + '/', { signal: AbortSignal.timeout(2000), mode: 'no-cors' });
-        pyOk = true;
-      } catch (_) { }
-      if (!pyOk) {
+      // py 서버(로컬) URL인지 직접 확인 — Edge Function URL이면 즉시 중단
+      const _isLocal_bds = proxyBase.includes('localhost') || proxyBase.includes('127.0.0.1');
+      if (!_isLocal_bds) {
         shopStatus('bds', '❌ py 서버가 실행 중이 아닙니다. 로컬에서 py 서버를 먼저 실행해주세요.', '#ff4d4d');
         return;
       }
@@ -22650,13 +22642,9 @@ ${newsContext}
     // 자동 수집 (py 서버 경유)
     async function collectJumpoAuto() {
       const proxyBase = window.PROXY_URL;
-      // py 서버(로컬) 연결 확인 — 실패 시 중단
-      let pyOk = false;
-      try {
-        await fetch(proxyBase + '/', { signal: AbortSignal.timeout(2000), mode: 'no-cors' });
-        pyOk = true;
-      } catch (_) { }
-      if (!pyOk) {
+      // py 서버(로컬) URL인지 직접 확인 — Edge Function URL이면 즉시 중단
+      const _isLocal_jumpo = proxyBase.includes('localhost') || proxyBase.includes('127.0.0.1');
+      if (!_isLocal_jumpo) {
         shopStatus('jumpo', '❌ py 서버가 실행 중이 아닙니다. 로컬에서 py 서버를 먼저 실행해주세요.', '#ff4d4d');
         return;
       }
@@ -23105,13 +23093,9 @@ ${newsContext}
       }
 
       const proxyBase = window.PROXY_URL;
-      // 프록시 서버 확인
-      let pyOk = false;
-      try {
-        await fetch(proxyBase + '/', { signal: AbortSignal.timeout(2000), mode: 'no-cors' });
-        pyOk = true;
-      } catch (_) { }
-      if (!pyOk) {
+      // py 서버(로컬) URL인지 직접 확인 — Edge Function URL이면 즉시 중단
+      const _isLocal_assa = proxyBase.includes('localhost') || proxyBase.includes('127.0.0.1');
+      if (!_isLocal_assa) {
         shopStatus('assa', '❌ py 서버가 실행 중이 아닙니다. 로컬에서 py 서버를 먼저 실행해주세요.', '#ff4d4d');
         return;
       }
