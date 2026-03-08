@@ -3908,85 +3908,108 @@
       setWorkScenes(scenes); swRenderSnapTree(); showToast('✏️ 이름 변경됨', 'ok');
     };
 
-    // ── 스냅샷 → 작업룸 바로 저장 ──────────────────────────────
+    // ── 스냅샷 → 작업룸 바로 저장 (v3: 기존룸 추가 + 자식 스냅샷 구조) ──
     window.swSnapToRoom = function (snapName, parentName) {
       const pn = parentName || null;
       const scene = getWorkScenes().find(s => s.name === snapName && s.parentName === pn);
       if (!scene) { showToast('스냅샷을 찾을 수 없습니다', 'warn'); return; }
-      const rooms = typeof wrGetRooms === 'function' ? wrGetRooms() : [];
-      if (!rooms.length) {
-        const rName = prompt('저장할 작업룸 이름:', snapName);
-        if (!rName || !rName.trim()) return;
-        _swMakeRoom(rName.trim(), scene); return;
-      }
-      const opts = rooms.map(r => `<option value="${r.id}">${r.title || r.name || '(이름없음)'}</option>`).join('');
+      const rooms = (window.wr2State && window.wr2State.rooms) || [];
+
       const pop = document.createElement('div');
-      pop.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#1a1f2e;border:1px solid #2a3045;border-radius:12px;padding:18px;z-index:99999;min-width:290px;box-shadow:0 8px 32px rgba(0,0,0,.7);font-family:inherit;';
-      pop.innerHTML = `<div style="font-size:12px;font-weight:700;color:#e8ecf4;margin-bottom:4px;">🗂 작업룸에 저장</div>
-        <div style="font-size:10px;color:#4f8eff;margin-bottom:10px;">📷 ${snapName}</div>
-        <div style="font-size:10px;color:var(--mu);margin-bottom:4px;">기존 작업룸에 저장</div>
-        <select id="_srsel" style="width:100%;padding:7px;background:#151924;border:1px solid #2a3045;border-radius:6px;color:#e8ecf4;font-size:12px;outline:none;margin-bottom:8px;"><option value="">— 선택 —</option>${opts}</select>
-        <div style="font-size:10px;color:var(--mu);margin-bottom:4px;">또는 새 작업룸 만들기</div>
-        <input id="_srnew" type="text" placeholder="새 작업룸 이름..." style="width:100%;padding:6px 8px;background:#151924;border:1px solid #2a3045;border-radius:6px;color:#e8ecf4;font-size:11px;outline:none;box-sizing:border-box;margin-bottom:12px;"/>
-        <div style="display:flex;gap:6px;justify-content:flex-end;">
-          <button id="_srcancel" style="padding:6px 14px;background:#2a3045;border:none;border-radius:6px;color:#e8ecf4;font-size:11px;cursor:pointer;font-family:inherit;">취소</button>
-          <button id="_srok" style="padding:6px 14px;background:rgba(79,142,255,.2);border:1px solid rgba(79,142,255,.4);border-radius:6px;color:#4f8eff;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">저장</button>
+      pop.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#1a1f2e;border:1px solid #2a3045;border-radius:14px;padding:20px;z-index:99999;min-width:320px;max-width:92vw;box-shadow:0 8px 40px rgba(0,0,0,.8);font-family:inherit;';
+
+      // 기존 룸의 스냅샷 목록 (자식으로 붙일 수 있는 부모)
+      let existingSnapOpts = '<option value="">— 선택 안 함 (독립 스냅샷으로 추가) —</option>';
+      rooms.forEach(r => {
+        const ms = (r.mapScenes || (r.mapScene ? [r.mapScene] : []));
+        ms.forEach(msEntry => {
+          existingSnapOpts += `<option value="${r.id}::${msEntry.sceneName}">[${r.title||r.name||'룸'}] ${msEntry.sceneName}</option>`;
+        });
+      });
+
+      pop.innerHTML = `
+        <div style="font-size:13px;font-weight:700;color:#e8ecf4;margin-bottom:4px;">🗂 스냅샷 작업룸 저장</div>
+        <div style="font-size:11px;color:#4f8eff;margin-bottom:14px;padding:4px 8px;background:rgba(79,142,255,.08);border-radius:6px;">
+          📷 <b>${snapName}</b>${pn ? ' <span style="color:var(--mu);">(하위: '+pn+')</span>' : ''}
+        </div>
+
+        <div style="font-size:10px;font-weight:700;color:#9ca3af;letter-spacing:.6px;text-transform:uppercase;margin-bottom:6px;">① 기존 작업룸에 추가</div>
+        <select id="_sr_room" style="width:100%;padding:8px;background:#0f1219;border:1px solid #2a3045;border-radius:7px;color:#e8ecf4;font-size:12px;outline:none;margin-bottom:6px;box-sizing:border-box;">
+          <option value="">— 작업룸 선택 —</option>
+          ${rooms.map(r => `<option value="${r.id}">${r.title||r.name||'(이름없음)'}</option>`).join('')}
+        </select>
+        <select id="_sr_child_of" style="width:100%;padding:8px;background:#0f1219;border:1px solid #2a3045;border-radius:7px;color:#e8ecf4;font-size:11px;outline:none;margin-bottom:4px;box-sizing:border-box;">
+          ${existingSnapOpts}
+        </select>
+        <div style="font-size:10px;color:#6b7590;margin-bottom:14px;">↑ 기존 스냅샷의 하위(자식)로 넣으려면 선택</div>
+
+        <div style="font-size:10px;font-weight:700;color:#9ca3af;letter-spacing:.6px;text-transform:uppercase;margin-bottom:6px;">② 새 작업룸 만들기</div>
+        <input id="_sr_new" type="text" placeholder="새 작업룸 이름..." style="width:100%;padding:8px 10px;background:#0f1219;border:1px solid #2a3045;border-radius:7px;color:#e8ecf4;font-size:12px;outline:none;box-sizing:border-box;margin-bottom:16px;"/>
+
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+          <button id="_sr_cancel" style="padding:7px 18px;background:#2a3045;border:none;border-radius:7px;color:#e8ecf4;font-size:12px;cursor:pointer;font-family:inherit;">취소</button>
+          <button id="_sr_ok" style="padding:7px 18px;background:rgba(79,142,255,.2);border:1px solid rgba(79,142,255,.4);border-radius:7px;color:#4f8eff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">💾 저장</button>
         </div>`;
       document.body.appendChild(pop);
-      const _srClose = () => { pop.remove(); document.removeEventListener('keydown', _srEsc); };
-      const _srEsc = (e) => { if (e.key === 'Escape') _srClose(); };
-      document.addEventListener('keydown', _srEsc);
-      pop.querySelector('#_srcancel').onclick = _srClose;
-      pop.querySelector('#_srok').onclick = () => {
-        const newName = pop.querySelector('#_srnew').value.trim();
-        const selId = pop.querySelector('#_srsel').value;
-        _srClose();
-        if (newName) { _swMakeRoom(newName, scene); }
-        else if (selId) {
-          const room = typeof wrGetRoom === 'function' ? wrGetRoom(selId) : null;
-          if (room) {
-            const now = Date.now();
-            if (!room.captureImages) room.captureImages = [];
-            // mapScenes 배열 마이그레이션 (mapScene 단일→배열)
-            if (!room.mapScenes) {
-              room.mapScenes = room.mapScene ? [room.mapScene] : [];
-            }
-            if (scene.parentName) {
-              // 자식 스냅샷: captureImages에 추가 + 부모 mapScenes entry의 children에도 추가
-              if (scene.thumbnailSrc) {
-                room.captureImages.push({ src: scene.thumbnailSrc, savedAt: now, snapName: scene.name, parentSnapName: scene.parentName });
-              }
-              const parentEntry = room.mapScenes.find(function(ms){ return ms.sceneName === scene.parentName; });
-              if (parentEntry) {
-                if (!parentEntry.children) parentEntry.children = [];
-                const already = parentEntry.children.find(function(c){ return c.name === scene.name; });
-                if (!already) parentEntry.children.push({ name: scene.name, cards: scene.cards, mapCenter: scene.mapCenter, mapLevel: scene.mapLevel });
-              }
-            } else {
-              // 부모(독립) 스냅샷: mapScenes 배열에 추가/갱신
-              const _children2 = getWorkScenes().filter(function(s){ return s.parentName === scene.name; });
-              const newEntry = { sceneName: scene.name, cards: scene.cards, mapCenter: scene.mapCenter, mapLevel: scene.mapLevel, savedAt: now, children: _children2.map(function(c){ return { name: c.name, cards: c.cards, mapCenter: c.mapCenter, mapLevel: c.mapLevel }; }) };
-              const existIdx = room.mapScenes.findIndex(function(ms){ return ms.sceneName === scene.name; });
-              if (existIdx >= 0) room.mapScenes[existIdx] = newEntry; else room.mapScenes.push(newEntry);
-              // mapScene도 최신으로 유지 (기존 복원 기능 호환)
-              room.mapScene = newEntry;
-              if (scene.thumbnailSrc) {
+
+      const _close = () => { pop.remove(); document.removeEventListener('keydown', _esc); };
+      const _esc = e => { if (e.key === 'Escape') _close(); };
+      document.addEventListener('keydown', _esc);
+      pop.querySelector('#_sr_cancel').onclick = _close;
+      pop.querySelector('#_sr_ok').onclick = () => {
+        const selRoomId = pop.querySelector('#_sr_room').value;
+        const selChildOf = pop.querySelector('#_sr_child_of').value; // "roomId::snapName"
+        const newName = pop.querySelector('#_sr_new').value.trim();
+        _close();
+        const now = Date.now();
+
+        if (newName) {
+          // ② 새 작업룸 생성
+          _swMakeRoom(newName, scene);
+        } else if (selRoomId) {
+          // ① 기존 작업룸에 추가
+          const allRooms = (window.wr2State && window.wr2State.rooms) || [];
+          const room = allRooms.find(r => r.id === selRoomId);
+          if (!room) { showToast('작업룸을 찾을 수 없어요', 'warn'); return; }
+          if (!room.mapScenes) room.mapScenes = room.mapScene ? [room.mapScene] : [];
+          if (!room.captureImages) room.captureImages = [];
+
+          if (selChildOf) {
+            // 기존 스냅샷의 자식으로 추가
+            const parentSnapName = selChildOf.split('::').slice(1).join('::');
+            const parentEntry = room.mapScenes.find(ms => ms.sceneName === parentSnapName);
+            if (!parentEntry) { showToast('부모 스냅샷을 찾을 수 없어요', 'warn'); return; }
+            if (!parentEntry.children) parentEntry.children = [];
+            const already = parentEntry.children.find(ch => ch.name === scene.name);
+            if (already) { showToast('이미 같은 이름의 자식 스냅샷이 있어요', 'warn'); return; }
+            parentEntry.children.push({ name: scene.name, cards: scene.cards, mapCenter: scene.mapCenter, mapLevel: scene.mapLevel, savedAt: now });
+            if (scene.thumbnailSrc) room.captureImages.push({ src: scene.thumbnailSrc, savedAt: now, snapName: scene.name, parentSnapName });
+          } else {
+            // 독립 스냅샷으로 추가
+            const allScenes2 = getWorkScenes();
+            const children2 = allScenes2.filter(s => s.parentName === scene.name);
+            const newEntry = { sceneName: scene.name, cards: scene.cards, mapCenter: scene.mapCenter, mapLevel: scene.mapLevel, savedAt: now, children: children2.map(ch => ({ name: ch.name, cards: ch.cards, mapCenter: ch.mapCenter, mapLevel: ch.mapLevel })) };
+            const existIdx = room.mapScenes.findIndex(ms => ms.sceneName === scene.name);
+            if (existIdx >= 0) room.mapScenes[existIdx] = newEntry; else room.mapScenes.push(newEntry);
+            if (scene.thumbnailSrc) {
+              if (!room.captureImages.find(i => i.snapName === scene.name && !i.parentSnapName))
                 room.captureImages.push({ src: scene.thumbnailSrc, savedAt: now, snapName: scene.name });
-              }
-              _children2.forEach(function(child) {
-                if (child.thumbnailSrc) {
-                  room.captureImages.push({ src: child.thumbnailSrc, savedAt: now, snapName: child.name, parentSnapName: scene.name });
-                }
-              });
             }
-            room.updatedAt = now;
-            if (window.wr2State) localStorage.setItem('wr2_rooms', JSON.stringify(window.wr2State.rooms));
-            swRefreshRoomSelect();
-            const sel = document.getElementById('swRoomSelect');
-            if (sel) { sel.value = selId; swOnRoomSelect(selId); }
-            showToast('🗂 "' + (room.title || room.name) + '" 에 저장됨', 'ok');
+            children2.forEach(ch => {
+              if (ch.thumbnailSrc && !room.captureImages.find(i => i.snapName === ch.name))
+                room.captureImages.push({ src: ch.thumbnailSrc, savedAt: now, snapName: ch.name, parentSnapName: scene.name });
+            });
           }
-        } else { _srClose(); showToast('작업룸을 선택하거나 이름을 입력해주세요', 'warn'); }
+          room.updatedAt = now;
+          if (window.wr2State) localStorage.setItem('wr2_rooms', JSON.stringify(window.wr2State.rooms));
+          swRefreshRoomSelect();
+          const roomSel = document.getElementById('swRoomSelect');
+          if (roomSel) { roomSel.value = selRoomId; swOnRoomSelect(selRoomId); }
+          showToast('🗂 "' + (room.title||room.name||'작업룸') + '" 에 저장됨', 'ok');
+          if (typeof window.wr2Render === 'function') window.wr2Render();
+        } else {
+          showToast('작업룸을 선택하거나 새 이름을 입력해주세요', 'warn');
+        }
       };
     };
 
@@ -10403,7 +10426,10 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         }
 
         // ── 카드 상태 처리 ─────────────────────────────────
-        if (newGroupMembers.length > 0) {
+        // 📱 모바일: 드래그 후에도 카드 오버레이 표시 안 함
+        if (window.innerWidth <= 768) {
+          // 모바일은 바텀시트로만 표시 - 오버레이 카드 숨김
+        } else if (newGroupMembers.length > 0) {
           // 같은 위치 마커와 합류 → openAllCardsAtSamePos로 그룹 전체를 스택으로 표시
           try { thisObj && thisObj.overlay && thisObj.overlay.setMap(map); } catch (e) { }
           if (thisObj) thisObj.isOpen = true;
