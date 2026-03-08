@@ -9290,7 +9290,7 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
       <div class="insw" id="insw">
         <div class="insw-seg" role="tablist" aria-label="인사이트탭 섹션">
           <button class="ins-stab on" id="itab8" onclick="showInsTab(8)">🗂 작업룸</button>
-          <button class="ins-stab" id="itab5" onclick="showInsTab(5)">🎯 파이프라인<span id="watchCnt"
+          <button class="ins-stab" id="itab5" onclick="showInsTab(5)">🎯 파이프<span id="watchCnt"
               style="display:none;background:var(--or);color:#111;font-size:9px;padding:1px 5px;border-radius:8px;margin-left:4px;font-family:'JetBrains Mono',monospace;">0</span></button>
           <button class="ins-stab" id="itab0" onclick="showInsTab(0)">📓 노트</button>
           <button class="ins-stab" id="itab3" onclick="showInsTab(3)">📰 클리핑</button>
@@ -38649,45 +38649,47 @@ ${newsContext}
 
 
   /* ═══════════════════════════════════════════════════════════
-     📱 상권King 모바일 v4.0
-     - 레이아웃: flex column, topbar 44px + content flex:1 + tabbar 60px
-     - 지도: #map 에 명시적 height 지정 → 카카오 SDK 정상 초기화
-     - 작업룸/노트: 목록 최소화, 콘텐츠 최대화
-     - 서브탭: 아이콘만 표시로 공간 절약
+     📱 상권King 모바일 v5.0 (완전 검수판)
+     레이아웃:
+       .app { flex-column, height:100dvh }
+       .topbar { flex-shrink:0, height:44px, flex-wrap:NOWRAP }
+       .main-content { flex:1, min-height:0, padding-bottom:60px }
+       각 page { position:absolute, inset:0 }
+       #map { 100%x100% } → 카카오 SDK OK
   ═══════════════════════════════════════════════════════════ */
 
   @media (max-width: 768px) {
 
-    /* ── 기본 ── */
+    /* 기본 리셋 */
     *, *::before, *::after { -webkit-tap-highlight-color: transparent; }
     html { -webkit-text-size-adjust: 100% !important; }
-
-    /* ── 앱 전체: flex column으로 꽉 채움 ── */
     html, body {
       height: 100dvh !important;
       overflow: hidden !important;
       overscroll-behavior: none !important;
     }
 
+    /* ── 앱 ── */
     .app {
       height: 100dvh !important;
-      overflow: hidden !important;
       display: flex !important;
       flex-direction: column !important;
+      overflow: hidden !important;
     }
 
-    /* ── 상단바 44px ── */
+    /* ── topbar: 44px 고정, 절대 늘어나지 않음 ── */
     .topbar {
       height: 44px !important;
       min-height: 44px !important;
       max-height: 44px !important;
       flex-shrink: 0 !important;
+      flex-wrap: nowrap !important;      /* 핵심: 480px 규칙 덮어쓰기 */
+      overflow: hidden !important;
       padding: 0 10px !important;
       gap: 8px !important;
-      overflow: hidden !important;
     }
 
-    /* API 입력행 숨김 → 슬라이드 패널로 대체 */
+    /* topbar 안: API 입력행 숨김 */
     .api-group, .api-row { display: none !important; }
     .main-nav { display: none !important; }
 
@@ -38698,30 +38700,36 @@ ${newsContext}
       flex-shrink: 0 !important; order: 10 !important;
     }
 
-    /* ── 메인 콘텐츠: 남은 공간 전부 ── */
+    /* ── main-content: topbar 아래 나머지 전부 ── */
     .main-content {
       flex: 1 !important;
       min-height: 0 !important;
       overflow: hidden !important;
-      padding-bottom: 0 !important;
       position: relative !important;
+      /* tabbar(60px)가 fixed라서 아래를 가림 → 패딩으로 확보 */
+      padding-bottom: 60px !important;
     }
 
-    /* ── 각 페이지 ── */
+    /* ── 각 페이지: main-content 안에서 전체 ── */
     #page0, #page1, #page2, #page3 {
       position: absolute !important;
-      inset: 0 !important;
+      top: 0 !important; left: 0 !important;
+      right: 0 !important; bottom: 0 !important;
       overflow: hidden !important;
     }
 
-    /* ── 저장목록 ── */
+    /* ── 추출(page0): 현장 모드 불필요 → 숨김 ── */
+    #page0 { display: none !important; }
+
+    /* ════ 저장목록(page1) ════ */
     #page1.saved-page {
       overflow-y: auto !important;
+      overflow-x: hidden !important;
       -webkit-overflow-scrolling: touch !important;
       padding: 12px 10px 16px !important;
       max-width: 100% !important;
     }
-    #page1 .saved-top { flex-wrap: wrap !important; gap: 6px !important; }
+    #page1 .saved-top { flex-wrap: wrap !important; gap: 6px !important; margin-bottom: 10px !important; }
     #page1 .saved-top h2 { font-size: 14px !important; }
     #page1 .sc { flex-direction: column !important; min-height: auto !important; }
     #page1 .sc-head {
@@ -38732,21 +38740,21 @@ ${newsContext}
     #page1 .sc-body { padding: 8px 10px !important; }
     #savedScrollTopBtn { bottom: 72px !important; }
 
-    /* ── 지도 ── */
-    /* position:relative 유지 + 명시적 height → 카카오 initMap() 정상 작동 */
+    /* ════ 지도(page2) ════ */
+    /* page2는 position:absolute + inset:0 → 명시적 height 불필요 */
+    /* #map은 page2 안에서 100%x100%로 채워야 카카오 SDK 정상 작동 */
     #page2 {
-      display: flex !important;
-      flex-direction: column !important;
+      overflow: hidden !important;
     }
     #map {
-      flex: 1 !important;
+      position: absolute !important;
+      top: 0 !important; left: 0 !important;
+      right: 0 !important; bottom: 0 !important;
       width: 100% !important;
-      min-height: 0 !important;
-      /* 카카오 SDK는 height:0이면 초기화 실패 → 명시적 지정 */
-      height: calc(100dvh - 44px - 60px) !important;
+      height: 100% !important;
     }
 
-    /* 지도 위 패널 */
+    /* 지도 위 떠있는 패널들 */
     .map-panel {
       top: 8px !important;
       max-height: 50vh !important;
@@ -38754,7 +38762,11 @@ ${newsContext}
       -webkit-overflow-scrolling: touch !important;
       font-size: 11px !important;
     }
-    #mapLeftPanel { left: 6px !important; width: calc(100vw - 56px) !important; max-width: 270px !important; }
+    #mapLeftPanel {
+      left: 6px !important;
+      width: calc(100vw - 56px) !important;
+      max-width: 270px !important;
+    }
     #mapRightDock { right: 6px !important; top: 8px !important; width: 40px !important; }
     .map-search-wrap {
       left: 6px !important; top: 50px !important;
@@ -38774,169 +38786,191 @@ ${newsContext}
     }
     .popup.on { right: 0 !important; }
 
-    /* ── 인사이트탭 전체 ── */
+    /* ════ 인사이트탭(page3) ════ */
     #page3.saved-page {
-      display: flex !important; flex-direction: column !important;
-      overflow: hidden !important; padding: 0 !important; max-width: 100% !important;
+      display: flex !important;
+      flex-direction: column !important;
+      overflow: hidden !important;
+      padding: 0 !important;
+      max-width: 100% !important;
     }
+
     #page3 .insw {
       width: 100% !important; max-width: 100% !important; margin: 0 !important;
       flex: 1 !important; min-height: 0 !important;
       display: flex !important; flex-direction: column !important;
     }
 
-    /* 서브탭: 가로 스크롤 + 텍스트 압축 */
+    /* 서브탭: 한 줄 가로 스크롤 */
     #page3 .insw-seg {
+      display: flex !important;
       flex-wrap: nowrap !important;
-      overflow-x: auto !important; overflow-y: hidden !important;
+      overflow-x: auto !important;
+      overflow-y: hidden !important;
       -webkit-overflow-scrolling: touch !important;
       scrollbar-width: none !important;
-      gap: 2px !important; padding: 5px 6px !important;
+      gap: 3px !important;
+      padding: 6px 8px !important;
       flex-shrink: 0 !important;
+      border-bottom: 1px solid var(--b1) !important;
     }
     #page3 .insw-seg::-webkit-scrollbar { display: none !important; }
     .ins-seg-div { display: none !important; }
 
-    /* 탭 버튼: 아이콘+짧은 텍스트 */
     #page3 .insw-seg .ins-stab {
       flex-shrink: 0 !important;
-      padding: 5px 8px !important;
-      font-size: 11px !important;
+      padding: 5px 10px !important;
+      font-size: 12px !important;
       white-space: nowrap !important;
       border-radius: 6px !important;
     }
-    /* 탭 텍스트 단축 (CSS content로 교체) */
-    #itab0::after  { content: '📓 노트'; }
-    #itab1::after  { content: '🧮 계산'; }
-    #itab4::after  { content: '⭐ 알짜'; }
-    #itab5::after  { content: '🎯 파이프'; }
-    #itab8::after  { content: '🗂 작업룸'; }
-    #itab99::after { content: '⚙️'; }
-    #itab0, #itab1, #itab4, #itab5, #itab8, #itab99 { font-size: 0 !important; }
-    #itab0::after, #itab1::after, #itab4::after,
-    #itab5::after, #itab8::after, #itab99::after { font-size: 11px !important; }
 
     /* insw-body */
     #page3 .insw-body {
-      flex: 1 !important; min-height: 0 !important;
-      overflow: hidden !important; position: relative !important;
+      flex: 1 !important;
+      min-height: 0 !important;
+      overflow: hidden !important;
+      position: relative !important;
     }
+
     #page3 .insw-body > .ins-panel {
-      height: 100% !important;
-      overflow-y: auto !important; overflow-x: hidden !important;
+      position: absolute !important;
+      inset: 0 !important;
+      overflow-y: auto !important;
+      overflow-x: hidden !important;
       -webkit-overflow-scrolling: touch !important;
       overscroll-behavior-y: contain !important;
     }
 
-    /* ════ 작업룸 (ipage8): 목록 슬림 + 상세 최대화 ════ */
-    #ipage8 .wr2-wrap { height: 100% !important; overflow: hidden !important; }
+    /* ════ 작업룸(ipage8) ════ */
+    #ipage8 .wr2-wrap {
+      display: flex !important;
+      flex-direction: column !important;
+      height: 100% !important;
+      overflow: hidden !important;
+    }
 
     /* 툴바 압축 */
-    #ipage8 .wr2-toolbar { padding: 6px 10px !important; gap: 6px !important; flex-wrap: wrap !important; }
+    #ipage8 .wr2-toolbar {
+      padding: 6px 10px !important;
+      gap: 5px !important;
+      flex-wrap: wrap !important;
+      flex-shrink: 0 !important;
+    }
     #ipage8 .wr2-title { font-size: 12px !important; }
-    #ipage8 .wr2-chip { padding: 2px 8px !important; font-size: 10px !important; }
+    #ipage8 .wr2-chip { padding: 2px 7px !important; font-size: 10px !important; }
     #ipage8 .wr2-new-btn { padding: 4px 10px !important; font-size: 11px !important; }
 
     /* 본문: 상하 분할 */
-    #ipage8 .wr2-body { flex-direction: column !important; }
+    #ipage8 .wr2-body {
+      flex: 1 !important;
+      flex-direction: column !important;
+      min-height: 0 !important;
+      overflow: hidden !important;
+    }
 
-    /* 목록: 최대 28% → 항목 2~3개만 보이는 슬림 리스트 */
+    /* 목록: 30vh로 슬림하게 */
     #ipage8 .wr2-list-panel {
-      width: 100% !important; min-width: 0 !important; max-width: 100% !important;
-      border-right: none !important; border-bottom: 1px solid var(--b1) !important;
-      max-height: 28vh !important;
-      overflow-y: auto !important; -webkit-overflow-scrolling: touch !important;
+      width: 100% !important;
+      min-width: 0 !important; max-width: 100% !important;
+      border-right: none !important;
+      border-bottom: 1px solid var(--b1) !important;
+      height: 30vh !important;
+      max-height: 30vh !important;
+      overflow-y: auto !important;
+      -webkit-overflow-scrolling: touch !important;
       flex-shrink: 0 !important;
     }
-    /* 목록 항목 높이 줄임 */
-    #ipage8 .wr2-room-item { padding: 7px 10px !important; min-height: 0 !important; }
+
+    /* 목록 항목 압축 */
+    #ipage8 .wr2-room-item { padding: 7px 10px !important; }
     #ipage8 .wr2-room-name { font-size: 13px !important; }
     #ipage8 .wr2-room-meta { font-size: 10px !important; }
-
-    /* 목록 안 검색창 */
     #ipage8 .wr2-search { padding: 6px 10px !important; }
-
     #ipage8 .wr2-resize-handle { display: none !important; }
 
     /* 상세: 나머지 전부 */
     #ipage8 .wr2-detail-panel {
-      flex: 1 !important; min-height: 0 !important;
-      overflow-y: auto !important; -webkit-overflow-scrolling: touch !important;
+      flex: 1 !important;
+      min-height: 0 !important;
+      overflow-y: auto !important;
+      -webkit-overflow-scrolling: touch !important;
       width: 100% !important;
     }
 
-    /* 상세 헤더 압축 */
-    #ipage8 .wr2-detail-header { padding: 8px 10px !important; gap: 6px !important; }
+    /* 상세 헤더/탭 압축 */
+    #ipage8 .wr2-detail-header { padding: 7px 10px !important; gap: 5px !important; flex-wrap: wrap !important; }
     #ipage8 .wr2-detail-title { font-size: 14px !important; }
+    #ipage8 .wr2-phase-tabs { gap: 2px !important; padding: 0 8px !important; overflow-x: auto !important; flex-wrap: nowrap !important; }
+    #ipage8 .wr2-phase-tab { padding: 5px 8px !important; font-size: 11px !important; flex-shrink: 0 !important; }
 
-    /* 상세 내부 탭바 압축 */
-    #ipage8 .wr2-phase-tabs { gap: 2px !important; padding: 0 8px !important; }
-    #ipage8 .wr2-phase-tab { padding: 6px 8px !important; font-size: 11px !important; }
-
-    /* ════ 노트 (ipage0): 목록 슬림 + 에디터 최대화 ════ */
+    /* ════ 노트(ipage0) ════ */
     #ipage0 .nt-wrap {
+      display: grid !important;
       grid-template-columns: 1fr !important;
-      grid-template-rows: auto 1fr !important;
-      height: 100% !important; overflow: hidden !important;
+      grid-template-rows: 30vh 1fr !important;
+      height: 100% !important;
+      overflow: hidden !important;
     }
 
-    /* 사이드바: 최대 30vh로 제한 + 불필요한 요소 숨김 */
+    /* 사이드바: 30vh */
     #ipage0 .nt-sidebar {
+      height: 30vh !important;
       max-height: 30vh !important;
-      overflow-y: auto !important; -webkit-overflow-scrolling: touch !important;
-      border-right: none !important; border-bottom: 1px solid var(--b1) !important;
+      overflow-y: auto !important;
+      -webkit-overflow-scrolling: touch !important;
+      border-right: none !important;
+      border-bottom: 1px solid var(--b1) !important;
     }
 
-    /* 사이드바 상단 (새 노트 버튼 + 카테고리) 압축 */
-    #ipage0 .nt-sidebar-top { padding: 6px 10px !important; gap: 6px !important; }
-    #ipage0 .nt-new-btn-main { padding: 7px !important; font-size: 12px !important; }
+    /* 사이드바 내부 압축 */
+    #ipage0 .nt-sidebar-top { padding: 6px 10px !important; gap: 5px !important; }
+    #ipage0 .nt-new-btn-main { padding: 7px 10px !important; font-size: 12px !important; }
 
-    /* 카테고리 탭: 가로 스크롤 1줄로 */
+    /* 카테고리 탭: 가로스크롤 1줄 */
     #ipage0 .nt-cat-tabs {
       flex-wrap: nowrap !important;
-      overflow-x: auto !important; -webkit-overflow-scrolling: touch !important;
-      scrollbar-width: none !important; gap: 4px !important; padding: 4px 0 !important;
+      overflow-x: auto !important;
+      -webkit-overflow-scrolling: touch !important;
+      scrollbar-width: none !important;
+      gap: 3px !important;
     }
     #ipage0 .nt-cat-tabs::-webkit-scrollbar { display: none !important; }
     #ipage0 .nt-cat-btn { padding: 4px 8px !important; font-size: 11px !important; flex-shrink: 0 !important; }
 
-    /* 노트 목록 항목 높이 줄임 */
+    /* 노트 목록 항목 압축 */
     #ipage0 .nt-item { padding: 7px 10px !important; }
     #ipage0 .nt-item-title { font-size: 13px !important; }
     #ipage0 .nt-item-meta, #ipage0 .nt-item-preview { font-size: 10px !important; }
 
-    /* 검색창 숨김 (공간 절약, 목록이 짧으니 필요 없음) */
+    /* 검색·태그 필터 숨김 (공간 절약) */
     #ipage0 .nt-search-wrap { display: none !important; }
-
-    /* 태그 필터 숨김 */
     #ipage0 .nt-tag-filter { display: none !important; }
 
     /* 에디터: 나머지 전부 */
     #ipage0 .nt-editor {
-      overflow-y: auto !important; -webkit-overflow-scrolling: touch !important;
+      overflow-y: auto !important;
+      -webkit-overflow-scrolling: touch !important;
       min-height: 0 !important;
     }
+    #ipage0 .nt-editor-header { padding: 7px 10px !important; gap: 5px !important; }
 
-    /* 에디터 헤더 압축 */
-    #ipage0 .nt-editor-header { padding: 7px 10px !important; gap: 6px !important; }
-    #ipage0 .nt-editor-title-row { gap: 6px !important; }
-
-    /* 주제 태그 한 줄 가로스크롤 */
+    /* 주제 태그 가로스크롤 */
     #ipage0 .nt-topic-row {
       flex-wrap: nowrap !important;
-      overflow-x: auto !important; -webkit-overflow-scrolling: touch !important;
+      overflow-x: auto !important;
+      -webkit-overflow-scrolling: touch !important;
       scrollbar-width: none !important;
     }
     #ipage0 .nt-topic-row::-webkit-scrollbar { display: none !important; }
     #ipage0 .nt-topic-chip { flex-shrink: 0 !important; }
 
-    /* textarea 키보드 올라올 때 높이 조정 */
-    #ipage0 .nt-textarea { min-height: 120px !important; }
-
     /* ── 계산기 ── */
     .ins-calc-tabs {
-      flex-wrap: nowrap !important; overflow-x: auto !important;
-      -webkit-overflow-scrolling: touch !important; scrollbar-width: none !important;
+      flex-wrap: nowrap !important;
+      overflow-x: auto !important;
+      -webkit-overflow-scrolling: touch !important;
+      scrollbar-width: none !important;
     }
     .ins-calc-tabs::-webkit-scrollbar { display: none !important; }
     .calc-two { grid-template-columns: 1fr !important; }
@@ -38945,13 +38979,13 @@ ${newsContext}
     #kcardGrid { grid-template-columns: 1fr !important; }
     #kcardModal > div { width: 95vw !important; max-width: 95vw !important; max-height: 90vh !important; }
 
-    /* ── 파이프라인: 칸반 가로스크롤 ── */
+    /* ── 파이프라인 ── */
     .watch-board {
-      flex-direction: row !important;
-      overflow-x: auto !important; -webkit-overflow-scrolling: touch !important;
+      overflow-x: auto !important;
+      -webkit-overflow-scrolling: touch !important;
       padding-bottom: 10px !important;
     }
-    .watch-col { min-width: 250px !important; flex-shrink: 0 !important; }
+    .watch-col { min-width: 260px !important; flex-shrink: 0 !important; }
 
     /* ── 기타 ── */
     .ins-wrap { max-width: 100% !important; padding: 10px !important; }
@@ -38960,10 +38994,8 @@ ${newsContext}
     #_mbTabBar button { font-size: 10px !important; }
     #_mbTabBar button .mb-icon { font-size: 21px !important; }
 
-    /* 추출 페이지 숨김 */
-    #page0 { display: none !important; }
-
   } /* end @media 768px */
+
 
   </style>
   <script>
