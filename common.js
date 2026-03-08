@@ -10512,7 +10512,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         item,
         propertyType: propertyType
       });
-      window.mapOverlays = mapOverlays; // 📱 모바일 바텀시트에서 참조할 수 있도록 동기화
+      window.mapOverlays = mapOverlays; // 📱 모바일 바텀시트 동기화
 
       // 필터에 따라 표시
       const src = item.source || '';
