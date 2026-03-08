@@ -2101,7 +2101,7 @@ body {
         (priceStr ? '<div class="mb-sv-card-prices">' + priceStr + '</div>' : '') +
         '<div class="mb-sv-card-actions">' +
           '<button class="mb-sv-action-btn memo" onclick="mbToggleMemo(' + idx + ',this)">📝 메모' + (memo ? ' ●' : '') + '</button>' +
-          '<button class="mb-sv-action-btn map" onclick="mbGoToMap(\'' + (d['소재지']||d.address||d.location||'') + '\',' + (it.lat||'') + ',' + (it.lng||'') + ')">🗺️ 지도</button>' +
+          '<button class="mb-sv-action-btn map" onclick="mbGoToMap(\'' + (d['소재지']||d.address||d.location||'') + '\',\'' + (it.id||'') + '\')">🗺️ 지도</button>' +
         '</div>' +
         '<div class="mb-sv-memo" id="mb-memo-' + idx + '">' +
           '<textarea placeholder="메모 입력..." onchange="mbSaveMemo(' + idx + ',this.value)">' + (memo||'') + '</textarea>' +
@@ -2212,20 +2212,20 @@ body {
     } catch(e) {}
   };
 
-  window.mbGoToMap = function(addr, lat, lng) {
-    if (!addr && !lat) return;
+  window.mbGoToMap = function(addr, itemId) {
+    if (itemId && typeof window.goToMapFromCard === 'function') {
+      // goToMapFromCard가 탭전환+마커표시까지 모두 처리
+      window.goToMapFromCard(itemId);
+      return;
+    }
+    // fallback: 주소로 검색
     mbGoPage('map', document.getElementById('mb-tab-map'));
     setTimeout(function() {
-      if (lat && lng && window.map && window.kakao) {
-        window.map.setCenter(new window.kakao.maps.LatLng(parseFloat(lat), parseFloat(lng)));
-        window.map.setLevel(3);
-        return;
-      }
       if (addr) {
         var inp = document.getElementById('mapKeyword');
         if (inp) { inp.value = addr; if (typeof searchMap === 'function') searchMap(); }
       }
-    }, 350);
+    }, 400);
   };
 
   /* ── 노트 필터 ── */
@@ -2344,70 +2344,22 @@ body {
     });
     if (!sections.length && room.sections && room.sections.length) sections = room.sections;
 
-    var STATUS_LABELS = { interest:'관심', review:'검토', field:'현장', bid:'입찰', won:'낙찰', sell:'매도', closed:'종료' };
-    var statusLabel = STATUS_LABELS[room.status] || room.status || '관심';
-    var statusColor = room.status === 'won' ? '#4ade80' : room.status === 'bid' ? '#f59e0b' : room.status === 'closed' ? '#6b7280' : '#4f8eff';
-
     var html = '';
-
-    // 1. 기본 정보 (항상 표시)
-    html += '<div style="margin-bottom:14px;padding:12px 14px;background:var(--s2);border:1px solid var(--b1);border-radius:10px;">';
-    html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">';
-    html += '<span style="padding:2px 10px;border-radius:10px;font-size:11px;font-weight:700;color:' + statusColor + ';border:1px solid ' + statusColor + ';background:' + statusColor + '22;">' + statusLabel + '</span>';
-    if (room.address) html += '<span style="font-size:12px;color:var(--mu);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">📍 ' + room.address + '</span>';
-    html += '</div>';
-    if (room.linkedSavedId || room.auctionId || room.listingId) {
-      var linkedId = room.linkedSavedId || room.auctionId || room.listingId;
-      var savedArr = [];
-      try { savedArr = JSON.parse(localStorage.getItem('re_sv') || '[]'); } catch(e2) {}
-      var li = savedArr.find(function(x) { return x.id === linkedId || x.id === String(linkedId); });
-      if (li) {
-        var ld = li.data || {};
-        html += '<div onclick="mbOpenSavedDetail(\'' + li.id + '\')" style="padding:8px 10px;background:rgba(0,212,170,.06);border:1px solid rgba(0,212,170,.2);border-radius:8px;cursor:pointer;margin-bottom:8px;">';
-        html += '<div style="font-size:10px;font-weight:700;color:#00d4aa;margin-bottom:2px;">🔗 연결 매물</div>';
-        html += '<div style="font-size:12px;font-weight:600;color:var(--tx);">' + (li.title || ld['소재지'] || '매물') + '</div>';
-        var lp = ld['감정가'] || ld['매매가'] || ld['전세가'] || '';
-        if (lp) html += '<div style="font-size:11px;color:var(--ac);margin-top:2px;">' + lp + '</div>';
-        html += '</div>';
-      }
-    }
-    if (room.tags && room.tags.length) {
-      html += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px;">';
-      room.tags.forEach(function(tag) {
-        html += '<span style="padding:2px 8px;background:rgba(167,139,250,.1);border:1px solid rgba(167,139,250,.3);border-radius:8px;font-size:11px;color:#a78bfa;">#' + tag + '</span>';
-      });
-      html += '</div>';
-    }
-    if (room.memo) {
-      html += '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--b1);">';
-      html += '<div style="font-size:10px;font-weight:700;color:var(--mu);margin-bottom:4px;">📝 메모</div>';
-      html += '<div style="font-size:12px;color:var(--tx);line-height:1.6;white-space:pre-wrap;">' + room.memo + '</div>';
-      html += '</div>';
-    }
-    html += '</div>';
-
-    // 2. 스냅샷
     var mapScenes = room.mapScenes || (room.mapScene ? [room.mapScene] : []);
     if (mapScenes.length) {
       html += '<div style="margin-bottom:14px;">';
-      html += '<div style="font-size:10px;font-weight:700;color:var(--mu);letter-spacing:.5px;margin-bottom:8px;">🗺️ 저장된 스냅샷 (' + mapScenes.length + ')</div>';
+      html += '<div style="font-size:10px;font-weight:700;color:var(--mu);letter-spacing:.6px;text-transform:uppercase;margin-bottom:8px;display:flex;align-items:center;gap:6px;">🗺️ 저장된 스냅샷 <span style="font-weight:400;color:var(--di);">(' + mapScenes.length + ')</span></div>';
       mapScenes.forEach(function(ms) {
-        var snapId = ms.id || '';
-        var snapName = ms.sceneName || ms.name || '';
-        html += '<div style="padding:10px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;margin-bottom:6px;cursor:pointer;"';
-        html += ' onclick="(function(){mbGoPage(\'map\',document.getElementById(\'mb-tab-map\'));setTimeout(function(){';
-        html += 'if(\'' + snapId + '\'&&window.wrOpenMapScene){window.wrOpenMapScene(\'' + snapId + '\');}';
-        html += 'else if(\'' + snapName + '\'&&window.swLoadSnap){window.swLoadSnap(\'' + snapName + '\',null);}';
-        html += '},400);})()">';
+        var kids = ms.children || [];
+        html += '<div style="padding:10px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;margin-bottom:6px;cursor:pointer;" onclick="(function(){var rid=\'' + (ms.id||'') + '\',sn=\'' + (ms.sceneName||ms.name||'') + '\';if(rid&&window.wrOpenMapScene){window.wrOpenMapScene(rid);}else if(sn&&window.swLoadSnap){window.swLoadSnap(sn,null);}})()">';
         html += '<div style="display:flex;align-items:center;gap:8px;">';
-        html += '<span>📷</span>';
-        html += '<span style="flex:1;font-size:13px;font-weight:600;color:var(--tx);">' + (snapName || '스냅샷') + '</span>';
+        html += '<span style="font-size:11px;color:#4f8eff;">📷</span>';
+        html += '<span style="flex:1;font-size:13px;font-weight:600;color:var(--tx);">' + (ms.sceneName||ms.name||'스냅샷') + '</span>';
         if (ms.savedAt) html += '<span style="font-size:10px;color:var(--di);">' + new Date(ms.savedAt).toLocaleDateString('ko') + '</span>';
         html += '</div>';
-        var kids = ms.children || [];
         if (kids.length) {
           html += '<div style="margin-top:6px;padding-left:16px;">';
-          kids.forEach(function(k) { html += '<div style="font-size:11px;color:var(--mu);padding:2px 0;">ㄴ 📷 ' + (k.name||k.sceneName||'하위') + '</div>'; });
+          kids.forEach(function(k) { html += '<div style="font-size:11px;color:var(--mu);padding:3px 0;">ㄴ 📷 ' + (k.name||k.sceneName||'하위') + '</div>'; });
           html += '</div>';
         }
         html += '</div>';
@@ -2415,26 +2367,34 @@ body {
       html += '</div>';
     }
 
-    // 3. 섹션
     if (sections.length) {
-      var TYPE_ICONS = { memo:'📝', checklist:'✅', metrics:'📊', log:'📋', capture:'📷', note:'📝' };
-      var PHASE_LABELS = { interest:'관심', review:'검토', field:'현장', bid:'입찰', won:'낙찰', sell:'매도', closed:'종료' };
+      var TYPE_ICONS = { memo:'📝', checklist:'✅', metrics:'📊', log:'📋', capture:'📷', note:'📓' };
+      var PHASE_LABELS = { interest:'관심', review:'검토', field:'현장', bid:'입찰', won:'낙찰', sell:'매도', closed:'종료', etc:'기타' };
+      // phase별 그룹핑
       var byPhase = {};
-      sections.forEach(function(s) { var p = s.phase||'etc'; if(!byPhase[p])byPhase[p]=[]; byPhase[p].push(s); });
-      Object.keys(byPhase).forEach(function(ph) {
-        if (PHASE_LABELS[ph]) html += '<div style="font-size:10px;font-weight:700;color:#f59e0b;letter-spacing:.5px;margin:8px 0 6px;">── ' + PHASE_LABELS[ph] + ' 단계</div>';
+      var phaseOrder = ['interest','review','field','bid','won','sell','closed','etc'];
+      sections.forEach(function(sec) {
+        var ph = sec.phase || 'etc';
+        if (!byPhase[ph]) byPhase[ph] = [];
+        byPhase[ph].push(sec);
+      });
+      phaseOrder.forEach(function(ph) {
+        if (!byPhase[ph] || !byPhase[ph].length) return;
+        html += '<div style="font-size:10px;font-weight:700;color:#f59e0b;letter-spacing:.5px;margin:12px 0 8px;display:flex;align-items:center;gap:6px;">── ' + (PHASE_LABELS[ph]||ph) + ' 단계</div>';
         byPhase[ph].forEach(function(sec) {
           var sType = sec.type || '';
           var icon = TYPE_ICONS[sType] || '📌';
           html += '<div style="margin-bottom:10px;">';
-          html += '<div style="font-size:10px;font-weight:700;color:var(--mu);margin-bottom:5px;">' + icon + ' ' + (sec.title||'섹션') + '</div>';
+          html += '<div style="font-size:10px;font-weight:700;color:var(--mu);letter-spacing:.4px;margin-bottom:5px;display:flex;align-items:center;gap:4px;">' + icon + ' ' + (sec.title||'섹션') + '</div>';
           if (sType === 'memo' && sec.data && sec.data.content) {
             html += '<div style="padding:10px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;font-size:12px;color:var(--tx);line-height:1.7;white-space:pre-wrap;">' + (sec.data.content||'') + '</div>';
           } else if (sType === 'checklist' && sec.data && sec.data.items) {
-            sec.data.items.forEach(function(it) {
+            var doneCount = sec.data.items.filter(function(x){return x.done;}).length;
+            html += '<div style="font-size:10px;color:var(--di);margin-bottom:4px;">' + doneCount + ' / ' + sec.data.items.length + ' 완료</div>';
+            sec.data.items.forEach(function(ci) {
               html += '<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:7px;margin-bottom:4px;">';
-              html += '<span>' + (it.done?'✅':'⬜') + '</span>';
-              html += '<span style="font-size:12px;color:var(--tx);' + (it.done?'text-decoration:line-through;color:var(--mu);':'') + '">' + (it.text||it.label||'') + '</span>';
+              html += '<span style="font-size:14px;">' + (ci.done ? '✅' : '⬜') + '</span>';
+              html += '<span style="font-size:12px;color:var(--tx);' + (ci.done?'text-decoration:line-through;opacity:.5;':'') + '">' + (ci.text||ci.label||'') + '</span>';
               html += '</div>';
             });
           } else if (sType === 'metrics' && sec.data && sec.data.rows) {
@@ -2446,22 +2406,94 @@ body {
             });
           } else if (sType === 'log' && sec.data && sec.data.entries && sec.data.entries.length) {
             sec.data.entries.slice(0,5).forEach(function(en) {
-              html += '<div style="padding:6px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:7px;margin-bottom:4px;">';
+              html += '<div style="padding:7px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:7px;margin-bottom:4px;">';
               if (en.at) html += '<div style="font-size:10px;color:var(--di);">' + new Date(en.at).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) + '</div>';
               html += '<div style="font-size:12px;color:var(--tx);margin-top:2px;">' + (en.text||'') + '</div>';
               html += '</div>';
             });
+          } else if (sType === 'note') {
+            // note 타입 섹션 (제목+내용)
+            if (sec.data && sec.data.content) {
+              html += '<div style="padding:10px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;font-size:12px;color:var(--tx);line-height:1.7;white-space:pre-wrap;">' + (sec.data.content||'') + '</div>';
+            } else {
+              html += '<div style="font-size:11px;color:var(--di);padding:4px 8px;">내용 없음</div>';
+            }
           } else {
-            html += '<div style="font-size:11px;color:var(--di);padding:4px 8px;">내용 없음</div>';
+            var items2 = sec.items || [];
+            if (items2.length) {
+              items2.forEach(function(it2) {
+                html += '<div style="padding:10px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;margin-bottom:6px;">';
+                html += '<div style="font-size:13px;font-weight:600;color:var(--tx);">' + (it2.title||it2.label||it2.name||'항목') + '</div>';
+                if (it2.price||it2.value) html += '<div style="font-size:12px;color:var(--ac);margin-top:3px;">' + (it2.price||it2.value) + '</div>';
+                if (it2.memo||it2.note) html += '<div style="font-size:11px;color:var(--mu);margin-top:4px;">' + (it2.memo||it2.note) + '</div>';
+                html += '</div>';
+              });
+            } else {
+              html += '<div style="font-size:11px;color:var(--di);padding:4px 8px;">내용 없음</div>';
+            }
           }
           html += '</div>';
         });
       });
+
+      // 연결된 노트 표시
+      var ntArr = [];
+      try { ntArr = JSON.parse(localStorage.getItem('nt_notes') || '[]'); } catch(e2) {}
+      var roomNotes = ntArr.filter(function(n) { return n.roomId === roomId || n.room_id === roomId; });
+      if (roomNotes.length) {
+        html += '<div style="font-size:10px;font-weight:700;color:#a78bfa;letter-spacing:.5px;margin:12px 0 8px;display:flex;align-items:center;gap:6px;">── 연결된 노트 (' + roomNotes.length + ')</div>';
+        roomNotes.forEach(function(n) {
+          html += '<div style="padding:10px 12px;background:rgba(167,139,250,.06);border:1px solid rgba(167,139,250,.2);border-radius:8px;margin-bottom:6px;cursor:pointer;" onclick="mbInsTab(\'note\');setTimeout(function(){if(typeof ntOpen===\'function\')ntOpen(\'' + n.id + '\');},100);">';
+          html += '<div style="display:flex;align-items:center;gap:6px;">';
+          html += '<span>📓</span><span style="flex:1;font-size:13px;font-weight:600;color:var(--tx);">' + (n.title||'제목 없음') + '</span>';
+          if (n.updatedAt) html += '<span style="font-size:10px;color:var(--di);">' + new Date(n.updatedAt).toLocaleDateString('ko') + '</span>';
+          html += '</div>';
+          if (n.content || n.body) html += '<div style="font-size:11px;color:var(--mu);margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (n.content || n.body).replace(/<[^>]*>/g,'').slice(0,60) + '</div>';
+          html += '</div>';
+        });
+      }
+    } else if (!mapScenes.length) {
+      html += '<div class="mb-empty" style="padding:24px 0;"><div class="mb-empty-icon">📭</div><div>아직 내용이 없어요</div><div style="font-size:11px;color:var(--di);margin-top:6px;">PC에서 작업룸에 섹션을 추가하면 여기서 볼 수 있어요</div></div>';
+    }
+
+    if (room.memo) {
+      html += '<div style="margin-top:10px;"><div style="font-size:10px;font-weight:700;color:var(--mu);letter-spacing:.5px;margin-bottom:6px;">📝 메모</div>';
+      html += '<div style="padding:10px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;font-size:12px;color:var(--tx);line-height:1.7;white-space:pre-wrap;">' + room.memo + '</div></div>';
+    }
+
+    if (room.linkedSavedId || (room.linkedItems && room.linkedItems.length)) {
+      var linkedId = room.linkedSavedId;
+      var savedItems = [];
+      try { savedItems = JSON.parse(localStorage.getItem('re_sv')||'[]'); } catch(e2) {}
+      var linkedItem = linkedId ? savedItems.find(function(x){ return x.id===linkedId; }) : null;
+      if (linkedItem || (room.linkedItems && room.linkedItems.length)) {
+        html += '<div style="margin-top:10px;"><div style="font-size:10px;font-weight:700;color:var(--mu);letter-spacing:.5px;margin-bottom:6px;">🔗 연결 매물</div>';
+        var dispItem = linkedItem || (room.linkedItems && room.linkedItems[0]);
+        if (dispItem) {
+          var d2 = dispItem.data || {};
+          var addr2 = d2['소재지']||d2['address']||dispItem.title||'';
+          html += '<div style="padding:10px 12px;background:rgba(0,212,170,.06);border:1px solid rgba(0,212,170,.2);border-radius:8px;cursor:pointer;" onclick="mbOpenSavedDetail(\'' + (dispItem.id||'') + '\')">';
+          html += '<div style="font-size:12px;font-weight:600;color:var(--ac);">' + (dispItem.title||addr2||'매물') + '</div>';
+          if (addr2 && addr2 !== dispItem.title) html += '<div style="font-size:11px;color:var(--mu);margin-top:2px;">📍 ' + addr2 + '</div>';
+          html += '</div></div>';
+        }
+      }
     }
 
     listEl.innerHTML = html;
   }
+
   window.mbRoomLoad = function(roomId) {
+    // wr2Init 안전 호출 (wr2State 초기화)
+    if (window.wr2Init && !window.__wr2Inited) {
+      try { window.__wr2Inited = true; window.wr2Init(); } catch(e0) {}
+    }
+    if (window.wr2State) {
+      if (!window.wr2State.rooms || !window.wr2State.rooms.length)
+        try { window.wr2State.rooms = JSON.parse(localStorage.getItem('wr2_rooms') || '[]'); } catch(e3) {}
+      if (!window.wr2State.sections || !window.wr2State.sections.length)
+        try { window.wr2State.sections = JSON.parse(localStorage.getItem('wr2_sections') || '[]'); } catch(e4) {}
+    }
     var header = document.getElementById('mb-room-header');
     var listEl = document.getElementById('mb-room-list');
     if (!roomId) {
@@ -2472,17 +2504,6 @@ body {
       return;
     }
     try {
-      // wr2Init 안전 호출 (loadRooms+loadSections 실행, wr2Render는 PC DOM 없으면 skip)
-      if (window.wr2Init && !window.__wr2Inited) {
-        try { window.__wr2Inited = true; window.wr2Init(); } catch(e0) {}
-      }
-      // wr2State 여전히 비어있으면 localStorage에서 직접 채움
-      if (window.wr2State) {
-        if (!window.wr2State.rooms || !window.wr2State.rooms.length)
-          try { window.wr2State.rooms = JSON.parse(localStorage.getItem('wr2_rooms') || '[]'); } catch(e3) {}
-        if (!window.wr2State.sections || !window.wr2State.sections.length)
-          try { window.wr2State.sections = JSON.parse(localStorage.getItem('wr2_sections') || '[]'); } catch(e4) {}
-      }
       var rooms = (window.wr2State && window.wr2State.rooms && window.wr2State.rooms.length)
         ? window.wr2State.rooms
         : JSON.parse(localStorage.getItem('wr2_rooms') || '[]');
@@ -2547,6 +2568,19 @@ body {
         window.wr2State.sections = (window.wr2State.sections||[]).filter(function(s) { return s.roomId !== roomId; });
       }
     } catch(e) {}
+    // Supabase에도 삭제 반영
+    if (window._sbSaveRooms) {
+      try {
+        var _rs2 = JSON.parse(localStorage.getItem('wr2_rooms') || '[]');
+        window._sbSaveRooms(_rs2).catch(function(){});
+      } catch(e) {}
+    }
+    if (window._sbSaveSections) {
+      try {
+        var _ss2 = JSON.parse(localStorage.getItem('wr2_sections') || '[]');
+        window._sbSaveSections(_ss2).catch(function(){});
+      } catch(e) {}
+    }
     mbToast('삭제됐어요', 'ok');
     mbRoomRefreshSel();
     mbRoomLoad('');
@@ -2725,8 +2759,7 @@ body {
     window.__mbNtOpenHooked = true;
     _origNtOpen = window.ntOpen;
     window.ntOpen = function(id) {
-      // common.js ntOpen이 ntEditorScroll에 직접 렌더 + _mbNtOpenId 설정
-      _origNtOpen(id);
+      _origNtOpen(id); // common.js가 ntEditorScroll에 직접 렌더 + _mbNtOpenId 설정
     };
   }
   setTimeout(hookNtOpen, 1500);

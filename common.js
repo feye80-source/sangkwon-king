@@ -3571,7 +3571,7 @@
         }
       }
 
-      const infraBlock = ''; // 카드 하단 상권분석 비활성화
+      const infraBlock = '';
       const memoBlock = buildMemo(memo, idx, isPopup);
       return hdr + act + body + infraBlock + firstAiSection + docsSection + additionalAiSection + memoBlock;
     }
@@ -3888,8 +3888,8 @@
       if (!scene) { showToast('⚠️ 스냅샷을 찾을 수 없음', 'warn'); return; }
       if (typeof window.mbGoPage === 'function') {
         window.mbGoPage('map', document.getElementById('mb-tab-map'));
-      }
-      clearMapMarkers();
+        setTimeout(function() { clearMapMarkers(); }, 500);
+      } else { clearMapMarkers(); }
       if (scene.mapCenter && map) {
         map.setCenter(new kakao.maps.LatLng(scene.mapCenter.lat, scene.mapCenter.lng));
         map.setLevel(scene.mapLevel || 4);
@@ -4431,7 +4431,7 @@
           showToast('저장된 마커가 없습니다. 지도에서 마커를 띄운 후 저장해주세요.', 'warn');
         }
       }
-      setTimeout(doRestore, 150);
+      setTimeout(doRestore, typeof window.mbGoPage === 'function' ? 700 : 150);
     };
 
     window.wrMoveMapToRoom = function () {
@@ -5692,10 +5692,15 @@
     // ── 디스코 자동수집 ──
     async function collectDiscoAuto() {
       const proxyBase = window.PROXY_URL;
+      // py 서버(로컬) 연결 확인 — 실패 시 중단
+      let pyOk = false;
       try {
         await fetch(proxyBase + '/', { signal: AbortSignal.timeout(2000), mode: 'no-cors' });
-      } catch (_) {
-        /* Edge Function으로 대체됨 */
+        pyOk = true;
+      } catch (_) { }
+      if (!pyOk) {
+        shopStatus('disco', '❌ py 서버가 실행 중이 아닙니다. 로컬에서 py 서버를 먼저 실행해주세요.', '#ff4d4d');
+        return;
       }
 
       let bounds = window._discoBounds || null;
@@ -5754,10 +5759,15 @@
     // ── 부동산플래닛 자동수집 ──
     async function collectBdsAuto() {
       const proxyBase = window.PROXY_URL;
+      // py 서버(로컬) 연결 확인 — 실패 시 중단
+      let pyOk = false;
       try {
         await fetch(proxyBase + '/', { signal: AbortSignal.timeout(2000), mode: 'no-cors' });
-      } catch (_) {
-        /* Edge Function으로 대체됨 */
+        pyOk = true;
+      } catch (_) { }
+      if (!pyOk) {
+        shopStatus('bds', '❌ py 서버가 실행 중이 아닙니다. 로컬에서 py 서버를 먼저 실행해주세요.', '#ff4d4d');
+        return;
       }
 
       let bounds = window._bdsBounds || null;
@@ -6701,7 +6711,9 @@ ${inputDesc.substring(0, 3000)}
       if (!item) return;
 
       closePopup();
-      showPage(2);
+      if (typeof window.mbGoPage === 'function') {
+        window.mbGoPage('map', document.getElementById('mb-tab-map'));
+      } else { showPage(2); }
 
       // 해당 카드만 열고 나머지 모두 닫기
       const openOnlyThisCard = () => {
@@ -6716,7 +6728,11 @@ ${inputDesc.substring(0, 3000)}
         if (oObj) {
           oObj.isOpen = true;
           // ★ [v142 FIX] overlay 직접 표시 (refreshMapView bounds 체크 타이밍 문제 우회)
-          if (window.innerWidth > 768) { try { oObj.overlay.setMap(map); } catch (e) { } }  // 📱 모바일 차단
+          try { oObj.overlay.setMap(map); } catch (e) { }
+          // 모바일: 바텀시트로 카드 내용 표시
+          if (window.innerWidth <= 768 && typeof window.mbShowCardBottomSheet === 'function') {
+            try { window.mbShowCardBottomSheet(oObj.item || item); } catch(e) {}
+          }
           try { oObj.marker.setMap(map); } catch (e) { }
         }
         setTimeout(() => { refreshMapView(); renderCardListPanel(); updateMapLine && updateMapLine(markerId); }, 200);
@@ -18647,13 +18663,11 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       </div>`;
       }
 
-      // ★ 모바일/PC 분기: ntEditorScroll 있으면 모바일
       const _mbScroll = document.getElementById('ntEditorScroll');
       if (_mbScroll) {
-        // 모바일: editorBody만 스크롤 영역에 렌더, 고정 헤더(저장버튼) 유지
         _mbScroll.innerHTML = editorBody;
-        const _mbTitleEl = document.getElementById('ntEditorTitle');
-        if (_mbTitleEl) _mbTitleEl.textContent = note.title || '노트 편집';
+        const _t = document.getElementById('ntEditorTitle');
+        if (_t) _t.textContent = note.title || '노트 편집';
         window._mbNtOpenId = id;
         return;
       }
@@ -22636,10 +22650,15 @@ ${newsContext}
     // 자동 수집 (py 서버 경유)
     async function collectJumpoAuto() {
       const proxyBase = window.PROXY_URL;
+      // py 서버(로컬) 연결 확인 — 실패 시 중단
+      let pyOk = false;
       try {
         await fetch(proxyBase + '/', { signal: AbortSignal.timeout(2000), mode: 'no-cors' });
-      } catch (_) {
-        /* Edge Function으로 대체됨 */
+        pyOk = true;
+      } catch (_) { }
+      if (!pyOk) {
+        shopStatus('jumpo', '❌ py 서버가 실행 중이 아닙니다. 로컬에서 py 서버를 먼저 실행해주세요.', '#ff4d4d');
+        return;
       }
 
       let bounds = window._jumpoBounds || null;
@@ -23087,10 +23106,13 @@ ${newsContext}
 
       const proxyBase = window.PROXY_URL;
       // 프록시 서버 확인
+      let pyOk = false;
       try {
         await fetch(proxyBase + '/', { signal: AbortSignal.timeout(2000), mode: 'no-cors' });
-      } catch (_) {
-        /* Edge Function으로 대체됨 */
+        pyOk = true;
+      } catch (_) { }
+      if (!pyOk) {
+        shopStatus('assa', '❌ py 서버가 실행 중이 아닙니다. 로컬에서 py 서버를 먼저 실행해주세요.', '#ff4d4d');
         return;
       }
 
@@ -23314,281 +23336,6 @@ ${newsContext}
       showToast(`${items.length}건 결과탭에 추가`, 'ok');
     }
 
-
-
-/* ════════════════════════════════════════════════════════
-   블록8: 인프라 칩
-════════════════════════════════════════════════════════ */
-    /* INFRA_V1: 카드 하단 인프라 칩 + 칩 클릭 POI 표시 */
-    (function () {
-      const CFG = {
-        radius: 700,
-        maxMarkers: 45,
-        cats: [
-          { code: 'SW8', emoji: '🚇', label: '지하철', w: 22 },
-          { code: 'CS2', emoji: '🏪', label: '편의점', w: 4 },
-          { code: 'CE7', emoji: '☕', label: '카페', w: 2 },
-        ]
-      };
-
-      // in-memory cache
-      const mem = new Map(); // key => result
-      // marker store
-      const markerStore = new Map(); // key(cardId:code) => markers[]
-
-      function getPlaces() {
-        try {
-          if (window.ps && window.ps.categorySearch) return window.ps;
-          if (window.kakao && kakao.maps && kakao.maps.services) {
-            window.ps = new kakao.maps.services.Places();
-            return window.ps;
-          }
-        } catch (e) { }
-        return null;
-      }
-
-      function posKey(lat, lng) { return `${lat.toFixed(6)}_${lng.toFixed(6)}_${CFG.radius}`; }
-
-      function computeScore(counts) {
-        const s = Math.min(100,
-          (counts.SW8 || 0) * CFG.cats.find(c => c.code === 'SW8').w +
-          (counts.CS2 || 0) * CFG.cats.find(c => c.code === 'CS2').w +
-          (counts.CE7 || 0) * CFG.cats.find(c => c.code === 'CE7').w
-        );
-        let grade = '위험', gcls = 'risk';
-        if (s >= 70) { grade = '좋음'; gcls = 'good'; }
-        else if (s >= 40) { grade = '보통'; gcls = 'mid'; }
-        return { score: Math.round(s), grade, gcls };
-      }
-
-      function ensureInfraSkeleton(cardEl) {
-        if (!cardEl) return null;
-        let wrap = cardEl.querySelector('.infra-wrap');
-        if (wrap) return wrap;
-        const body = cardEl.querySelector('.map-card-body');
-        if (!body) return null;
-
-        wrap = document.createElement('div');
-        wrap.className = 'infra-wrap';
-        wrap.innerHTML = `
-      <div class="infra-top">
-        <div class="infra-title">📍 반경 <span class="infra-radius">${CFG.radius}</span>m 인프라</div>
-        <div class="infra-chips"></div>
-        <div class="infra-badge"></div>
-      </div>
-      <div class="infra-bar"><div class="infra-bar-fill"></div></div>
-      <div class="infra-hint" style="margin-top:6px;font-size:11px;color:var(--mu);">칩을 클릭하면 지도에 해당 업종이 표시됩니다.</div>
-    `;
-        body.appendChild(wrap);
-        return wrap;
-      }
-
-      function renderInfra(cardId, result) {
-        const cardEl = document.getElementById(cardId);
-        if (!cardEl) return;
-        const wrap = ensureInfraSkeleton(cardEl);
-        if (!wrap) return;
-
-        const chips = wrap.querySelector('.infra-chips');
-        const badge = wrap.querySelector('.infra-badge');
-        const fill = wrap.querySelector('.infra-bar-fill');
-        chips.innerHTML = '';
-
-        CFG.cats.forEach(c => {
-          const cnt = result.counts[c.code] ?? 0;
-          const nearest = result.nearest[c.code] || null;
-          const t = nearest ? `${nearest.place_name} · ${nearest.distance || ''}m` : '근처 없음';
-          const el = document.createElement('div');
-          el.className = 'infra-chip';
-          el.dataset.cardId = cardId;
-          el.dataset.cat = c.code;
-          el.title = t;
-          el.innerHTML = `${c.emoji} <b>${cnt}</b> <small>${c.label}</small>`;
-          chips.appendChild(el);
-        });
-
-        const sc = computeScore(result.counts);
-        badge.textContent = `상권 ${sc.grade} · ${sc.score}점`;
-        badge.style.borderColor = sc.gcls === 'good' ? 'rgba(167,139,250,.55)' : sc.gcls === 'mid' ? 'rgba(255,180,0,.55)' : 'rgba(255,80,80,.55)';
-        badge.style.color = sc.gcls === 'good' ? '#a78bfa' : sc.gcls === 'mid' ? '#ffb400' : '#ff5050';
-        fill.style.width = `${sc.score}%`;
-        fill.style.background = sc.gcls === 'good' ? 'rgba(167,139,250,.55)' : sc.gcls === 'mid' ? 'rgba(255,180,0,.55)' : 'rgba(255,80,80,.55)';
-      }
-
-      async function fetchInfraFor(lat, lng) {
-        const key = posKey(lat, lng);
-        if (mem.has(key)) return mem.get(key);
-
-        const ps = getPlaces();
-        if (!ps) {
-          const empty = { counts: {}, nearest: {}, docs: {} };
-          mem.set(key, empty);
-          return empty;
-        }
-
-        const result = { counts: {}, nearest: {}, docs: {} };
-
-        await Promise.all(CFG.cats.map(cat => {
-          return new Promise(resolve => {
-            try {
-              const loc = new kakao.maps.LatLng(lat, lng);
-              ps.categorySearch(cat.code, function (data, status, pagination) {
-                try {
-                  if (status === kakao.maps.services.Status.OK && Array.isArray(data)) {
-                    const total = (pagination && typeof pagination.totalCount === 'number') ? pagination.totalCount : data.length;
-                    result.counts[cat.code] = total;
-                    result.nearest[cat.code] = data[0] || null;
-                    result.docs[cat.code] = data.slice(0, CFG.maxMarkers);
-                  } else {
-                    result.counts[cat.code] = 0;
-                    result.nearest[cat.code] = null;
-                    result.docs[cat.code] = [];
-                  }
-                } catch (e) { }
-                resolve();
-              }, {
-                location: loc,
-                radius: CFG.radius,
-                sort: kakao.maps.services.SortBy.DISTANCE,
-                size: 15
-              });
-            } catch (e) { resolve(); }
-          });
-        }));
-
-        mem.set(key, result);
-        return result;
-      }
-
-      // public: ensureInfraForCard
-      window.ensureInfraForCard = async function (cardId) { return; // 비활성화
-        /*
-        try {
-          const obj = window.mapOverlays && mapOverlays.find(o => o.id === cardId);
-          if (!obj) return;
-          const p = obj.marker && obj.marker.getPosition ? obj.marker.getPosition() : (obj.overlay && obj.overlay.getPosition ? obj.overlay.getPosition() : null);
-          if (!p) return;
-
-          const lat = p.getLat();
-          const lng = p.getLng();
-
-          const cardEl = document.getElementById(cardId);
-          if (!cardEl) return;
-          // 스켈레톤 먼저
-          ensureInfraSkeleton(cardEl);
-
-          const res = await fetchInfraFor(lat, lng);
-          renderInfra(cardId, res);
-        } catch (e) { }
-      };
-
-      // ✅ (v98) 페이지 로드/복원 시 이미 열려있는 지도 카드에도 인프라+소상공인 자동 주입
-      // - 기존에는 카드가 먼저 생성되고 ensureInfraForCard가 나중에 정의되면 초기 주입이 한 번도 안 돌 수 있었음
-      // - 그래서 "어떤 카드에도 안 나타남" 현상이 발생
-      */ }; // 인프라 자동주입 setTimeout 비활성화
-
-
-
-      function makePoiMarkerImage(code) {
-        // 간단 SVG (카테고리별 색 살짝 다르게)
-        const color = code === 'SW8' ? '#3aa0ff' : code === 'CS2' ? '#a78bfa' : '#ffb400';
-        const svg = encodeURIComponent(`
-      <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22">
-        <circle cx="11" cy="11" r="9" fill="${color}" fill-opacity="0.85"/>
-        <circle cx="11" cy="11" r="4" fill="#111" fill-opacity="0.35"/>
-      </svg>
-    `);
-        const url = 'data:image/svg+xml;charset=utf-8,' + svg;
-        try {
-          return new kakao.maps.MarkerImage(url, new kakao.maps.Size(22, 22));
-        } catch (e) { return null; }
-      }
-
-      function showPoi(cardId, code) {
-        const obj = mapOverlays && mapOverlays.find(o => o.id === cardId);
-        if (!obj || !obj.marker) return;
-        const p = obj.marker.getPosition();
-        if (!p) return;
-        const key = posKey(p.getLat(), p.getLng());
-        const res = mem.get(key);
-        if (!res || !res.docs || !res.docs[code]) return;
-
-        const docs = res.docs[code].slice(0, CFG.maxMarkers);
-        const img = makePoiMarkerImage(code);
-
-        const markers = [];
-        docs.forEach(d => {
-          try {
-            const mp = new kakao.maps.LatLng(parseFloat(d.y), parseFloat(d.x));
-            const mk = new kakao.maps.Marker({
-              map: window.map || null,
-              position: mp,
-              image: img,
-              clickable: true
-            });
-            const iw = new kakao.maps.InfoWindow({
-              content: `<div style="padding:6px 8px;font-size:12px;line-height:1.3;">
-            <b>${d.place_name || ''}</b><br/>
-            <span style="color:#666;">${d.road_address_name || d.address_name || ''}</span><br/>
-            <span style="color:#999;">${d.distance ? (d.distance + 'm') : ''}</span>
-          </div>`
-            });
-            kakao.maps.event.addListener(mk, 'click', () => { try { iw.open(window.map, mk); } catch (e) { } });
-            markers.push(mk);
-          } catch (e) { }
-        });
-
-        markerStore.set(`${cardId}:${code}`, markers);
-      }
-
-      window.clearInfraMarkersForCard = function (cardId) {
-        try {
-          for (const c of CFG.cats) {
-            const k = `${cardId}:${c.code}`;
-            const arr = markerStore.get(k);
-            if (arr && arr.length) {
-              arr.forEach(m => { try { m.setMap(null); } catch (e) { } });
-            }
-            markerStore.delete(k);
-          }
-          // 칩 on 해제
-          const el = document.getElementById(cardId);
-          if (el) {
-            el.querySelectorAll('.infra-chip.on').forEach(ch => ch.classList.remove('on'));
-          }
-        } catch (e) { }
-      };
-
-      function togglePoi(cardId, code, chipEl) {
-        const k = `${cardId}:${code}`;
-        const exists = markerStore.has(k);
-        if (exists) {
-          const arr = markerStore.get(k) || [];
-          arr.forEach(m => { try { m.setMap(null); } catch (e) { } });
-          markerStore.delete(k);
-          chipEl && chipEl.classList.remove('on');
-          return;
-        }
-        showPoi(cardId, code);
-        chipEl && chipEl.classList.add('on');
-      }
-
-      // chip click handler (event delegation)
-      document.addEventListener('click', function (ev) {
-        const chip = ev.target.closest && ev.target.closest('.infra-chip');
-        if (!chip) return;
-        const cardId = chip.dataset.cardId;
-        const code = chip.dataset.cat;
-        if (!cardId || !code) return;
-        // 먼저 해당 카드 인프라 계산이 되어있도록 보장
-        if (window.ensureInfraForCard) {
-          ensureInfraForCard(cardId).then(() => togglePoi(cardId, code, chip));
-        } else {
-          togglePoi(cardId, code, chip);
-        }
-      });
-
-    })();
 
 /* ════════════════════════════════════════════════════════
    블록9: 소상공인 API
