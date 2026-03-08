@@ -3571,7 +3571,7 @@
         }
       }
 
-      const infraBlock = ''; // 카드 하단 상권분석 섹션 비활성화
+      const infraBlock = isPopup ? '' : `<div class="infra-wrap" id="infra_${idx}"><div class="infra-loading">📍 주변 인프라 분석 준비중…</div></div>`;
       const memoBlock = buildMemo(memo, idx, isPopup);
       return hdr + act + body + infraBlock + firstAiSection + docsSection + additionalAiSection + memoBlock;
     }
@@ -3758,92 +3758,10 @@
       const scenes = getWorkScenes();
       const nums = scenes.filter(s => !s.parentName).map(s => { const m = s.name.match(/스냅샷\s*(\d+)/); return m ? parseInt(m[1]) : 0; });
       const next = nums.length ? Math.max(...nums) + 1 : 1;
-      const rooms = (window.wr2State && window.wr2State.rooms) || [];
-
-      // ── 저장 다이얼로그 ──────────────────────────────────
-      const pop = document.createElement('div');
-      pop.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#1a1f2e;border:1px solid #2a3045;border-radius:14px;padding:20px;z-index:99999;min-width:310px;max-width:92vw;box-shadow:0 8px 40px rgba(0,0,0,.8);font-family:inherit;';
-      // 자식으로 붙일 수 있는 기존 스냅샷 옵션
-      let parentOpts = '<option value="">— 독립 스냅샷 (기본) —</option>';
-      scenes.filter(s => !s.parentName).forEach(s => {
-        parentOpts += `<option value="${s.name}">${s.name}</option>`;
-      });
-      // 룸 옵션
-      let roomOpts = '<option value="">— 저장 안 함 —</option>';
-      rooms.forEach(r => { roomOpts += `<option value="${r.id}">${r.title||r.name||'(이름없음)'}</option>`; });
-
-      pop.innerHTML = `
-        <div style="font-size:13px;font-weight:700;color:#e8ecf4;margin-bottom:12px;">💾 스냅샷 저장</div>
-        <div style="font-size:10px;font-weight:700;color:#9ca3af;margin-bottom:5px;letter-spacing:.5px;">① 스냅샷 이름</div>
-        <input id="_ss_name" type="text" value="스냅샷${next}" style="width:100%;padding:8px 10px;background:#0f1219;border:1px solid #2a3045;border-radius:7px;color:#e8ecf4;font-size:12px;outline:none;box-sizing:border-box;margin-bottom:10px;"/>
-        <div style="font-size:10px;font-weight:700;color:#9ca3af;margin-bottom:5px;letter-spacing:.5px;">② 기존 스냅샷의 하위로 저장 (선택)</div>
-        <select id="_ss_parent" style="width:100%;padding:8px;background:#0f1219;border:1px solid #2a3045;border-radius:7px;color:#e8ecf4;font-size:12px;outline:none;margin-bottom:10px;box-sizing:border-box;">${parentOpts}</select>
-        <div style="font-size:10px;font-weight:700;color:#9ca3af;margin-bottom:5px;letter-spacing:.5px;">③ 작업룸에도 저장 (선택)</div>
-        <select id="_ss_room" style="width:100%;padding:8px;background:#0f1219;border:1px solid #2a3045;border-radius:7px;color:#e8ecf4;font-size:12px;outline:none;margin-bottom:16px;box-sizing:border-box;">${roomOpts}</select>
-        <div style="display:flex;gap:8px;justify-content:flex-end;">
-          <button id="_ss_cancel" style="padding:7px 18px;background:#2a3045;border:none;border-radius:7px;color:#e8ecf4;font-size:12px;cursor:pointer;font-family:inherit;">취소</button>
-          <button id="_ss_ok" style="padding:7px 18px;background:rgba(79,142,255,.2);border:1px solid rgba(79,142,255,.4);border-radius:7px;color:#4f8eff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">💾 저장</button>
-        </div>`;
-      document.body.appendChild(pop);
-      const nameInput = pop.querySelector('#_ss_name');
-      nameInput.focus(); nameInput.select();
-      const _close = () => { pop.remove(); document.removeEventListener('keydown', _esc); };
-      const _esc = e => { if (e.key === 'Escape') _close(); };
-      document.addEventListener('keydown', _esc);
-      pop.querySelector('#_ss_cancel').onclick = _close;
-      pop.querySelector('#_ss_ok').onclick = () => {
-        const name = nameInput.value.trim();
-        if (!name) { showToast('이름을 입력해주세요', 'warn'); return; }
-        const parentName = pop.querySelector('#_ss_parent').value || null;
-        const roomId     = pop.querySelector('#_ss_room').value || null;
-        _close();
-        // 스냅샷 저장
-        _swDoSave(name, parentName);
-        // 작업룸에도 저장
-        if (roomId) {
-          const scene = getWorkScenes().find(s => s.name === name && s.parentName === (parentName||null));
-          if (scene) {
-            const allRooms = (window.wr2State && window.wr2State.rooms) || [];
-            const room = allRooms.find(r => r.id === roomId);
-            if (room) {
-              if (!room.mapScenes) room.mapScenes = room.mapScene ? [room.mapScene] : [];
-              const newEntry = { sceneName: name, cards: scene.cards, mapCenter: scene.mapCenter, mapLevel: scene.mapLevel, savedAt: Date.now(), children: [] };
-              const idx2 = room.mapScenes.findIndex(ms => ms.sceneName === name);
-              if (idx2 >= 0) room.mapScenes[idx2] = newEntry; else room.mapScenes.push(newEntry);
-              if (!room.mapScene) room.mapScene = newEntry;
-              try {
-                const allRoomsArr = JSON.parse(localStorage.getItem('wr2_rooms') || '[]');
-                const ri = allRoomsArr.findIndex(r => r.id === roomId);
-                if (ri >= 0) allRoomsArr[ri] = room; else allRoomsArr.push(room);
-                localStorage.setItem('wr2_rooms', JSON.stringify(allRoomsArr));
-                if (window.wr2State) window.wr2State.rooms = allRoomsArr;
-              } catch(e) {}
-              showToast('✅ 스냅샷 저장 + 작업룸 [' + (room.title||room.name||'룸') + '] 추가', 'ok');
-            }
-          } else {
-            // scene이 아직 없으면 짧은 딜레이 후 재시도
-            setTimeout(() => {
-              const s2 = getWorkScenes().find(s => s.name === name && s.parentName === (parentName||null));
-              if (!s2) return;
-              const allRooms2 = (window.wr2State && window.wr2State.rooms) || [];
-              const rm2 = allRooms2.find(r => r.id === roomId);
-              if (!rm2) return;
-              if (!rm2.mapScenes) rm2.mapScenes = [];
-              const ne2 = { sceneName: name, cards: s2.cards, mapCenter: s2.mapCenter, mapLevel: s2.mapLevel, savedAt: Date.now(), children: [] };
-              const ri2 = rm2.mapScenes.findIndex(ms => ms.sceneName === name);
-              if (ri2 >= 0) rm2.mapScenes[ri2] = ne2; else rm2.mapScenes.push(ne2);
-              try {
-                const arr2 = JSON.parse(localStorage.getItem('wr2_rooms') || '[]');
-                const i2 = arr2.findIndex(r => r.id === roomId);
-                if (i2 >= 0) arr2[i2] = rm2; else arr2.push(rm2);
-                localStorage.setItem('wr2_rooms', JSON.stringify(arr2));
-                if (window.wr2State) window.wr2State.rooms = arr2;
-              } catch(e) {}
-              showToast('✅ 스냅샷 저장 + 작업룸 추가', 'ok');
-            }, 300);
-          }
-        }
-      };
+      const name = prompt('스냅샷 이름을 입력하세요:', '스냅샷' + next);
+      if (name === null) return;
+      if (!name.trim()) { showToast('이름을 입력해주세요', 'warn'); return; }
+      _swDoSave(name.trim(), null);
     };
 
     window.swSaveAsChild = function (parentName) {
@@ -3890,7 +3808,7 @@
       if (scene.mapCenter && map) {
         map.setCenter(new kakao.maps.LatLng(scene.mapCenter.lat, scene.mapCenter.lng));
         map.setLevel(scene.mapLevel || 4);
-        try { localStorage.setItem('map_view_state_v1', JSON.stringify({lat:scene.mapCenter.lat,lng:scene.mapCenter.lng,level:scene.mapLevel||4,t:Date.now()})); } catch(e) {}
+        try { localStorage.setItem('map_view_state_v1', JSON.stringify({ lat: scene.mapCenter.lat, lng: scene.mapCenter.lng, level: scene.mapLevel || 4, t: Date.now() })); } catch(e) {}
       }
       const cardsWithItem = (scene.cards || []).filter(c => c.item && c.lat && c.lng);
       cardsWithItem.forEach((c, idx) => {
@@ -4382,8 +4300,8 @@
         if (scene.mapCenter && map) {
           map.setCenter(new kakao.maps.LatLng(scene.mapCenter.lat, scene.mapCenter.lng));
           map.setLevel(scene.mapLevel || 4);
-          // resize 이후 덮어쓰기 방지: 씬 위치를 state에도 저장
-          try { localStorage.setItem('map_view_state_v1', JSON.stringify({lat:scene.mapCenter.lat,lng:scene.mapCenter.lng,level:scene.mapLevel||4,t:Date.now()})); } catch(e) {}
+          // 씬 뷰 상태를 저장 -> 이후 resize/restore가 덮어쓰지 않도록
+          try { localStorage.setItem('map_view_state_v1', JSON.stringify({ lat: scene.mapCenter.lat, lng: scene.mapCenter.lng, level: scene.mapLevel || 4, t: Date.now() })); } catch(e) {}
         }
         var withItem = (scene.cards || []).filter(function (c) { return c.item && c.lat && c.lng; });
         var legacy = (scene.cards || []).filter(function (c) { return !c.item; });
