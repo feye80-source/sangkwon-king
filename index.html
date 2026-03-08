@@ -344,7 +344,18 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
         <h1 style="font-size:14px;font-weight:800;letter-spacing:-0.3px;">상권<span style="color:#f59e0b;">King</span></h1>
       </div>
       <button class="api-toggle-btn"
-        onclick="this.closest('.topbar').querySelector('.api-row').classList.toggle('api-row-open');this.textContent=this.closest('.topbar').querySelector('.api-row').classList.contains('api-row-open')?' 접기':' API'">🔑
+        onclick="(function(btn){
+          var row = btn.closest('.topbar').querySelector('.api-row');
+          row.classList.toggle('api-row-open');
+          var open = row.classList.contains('api-row-open');
+          btn.textContent = open ? '✕ 접기' : '🔑 API';
+          /* 지도 검색창 겹침 방지: API 패널 열리면 map-search-wrap top 보정 */
+          var msw = document.querySelector('.map-search-wrap');
+          if (msw) {
+            var topbarH = btn.closest('.topbar').getBoundingClientRect().height;
+            msw.style.top = open ? (topbarH + 8) + 'px' : '';
+          }
+        })(this)">🔑
         API</button>
       <div class="api-row">
         <div class="api-group">

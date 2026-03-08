@@ -417,7 +417,8 @@ body {
   -webkit-backdrop-filter: blur(8px);
 }
 #mb-map-search-bar button {
-  height: 40px; padding: 0 14px;
+  flex-shrink: 0;
+  height: 40px; padding: 0 16px;
   background: #f59e0b; border: none;
   border-radius: 10px;
   color: #000; font-size: 13px; font-weight: 700;
@@ -869,11 +870,12 @@ body {
   <div id="mb-page-insight" class="mb-page mb-active">
     <!-- 서브탭 네비 -->
     <nav class="mb-ins-nav" role="tablist">
-      <button class="mb-ins-tab active" id="mb-itab-note"    onclick="mbInsTab('note')"    role="tab">📓 노트</button>
-      <button class="mb-ins-tab"        id="mb-itab-calc"    onclick="mbInsTab('calc')"    role="tab">🧮 계산기</button>
-      <button class="mb-ins-tab"        id="mb-itab-pipe"    onclick="mbInsTab('pipe')"    role="tab">🎯 파이프라인</button>
-      <button class="mb-ins-tab"        id="mb-itab-clip"    onclick="mbInsTab('clip')"    role="tab">📰 클리핑</button>
-      <button class="mb-ins-tab"        id="mb-itab-site"    onclick="mbInsTab('site')"    role="tab">🔗 사이트</button>
+      <button class="mb-ins-tab active" id="mb-itab-note" onclick="mbInsTab('note')" role="tab">📓 노트</button>
+      <button class="mb-ins-tab" id="mb-itab-calc"        onclick="mbInsTab('calc')" role="tab">🧮 계산기</button>
+      <button class="mb-ins-tab" id="mb-itab-room"        onclick="mbInsTab('room')" role="tab">🗂️ 작업룸</button>
+      <button class="mb-ins-tab" id="mb-itab-pipe"        onclick="mbInsTab('pipe')" role="tab">🎯 파이프라인</button>
+      <button class="mb-ins-tab" id="mb-itab-clip"        onclick="mbInsTab('clip')" role="tab">📰 클리핑</button>
+      <button class="mb-ins-tab" id="mb-itab-site"        onclick="mbInsTab('site')" role="tab">🔗 사이트</button>
     </nav>
 
     <!-- 노트 패널 -->
@@ -1013,6 +1015,35 @@ body {
       </div>
     </div>
 
+    <!-- 작업룸 패널 -->
+    <div id="mb-ins-room" class="mb-ins-panel">
+      <!-- 룸 선택 셀렉트 -->
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
+        <select id="mb-room-sel"
+          style="flex:1;min-width:0;height:38px;padding:0 10px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;color:var(--tx);font-size:13px;font-family:'Noto Sans KR',sans-serif;-webkit-appearance:none;outline:none;"
+          onchange="mbRoomLoad(this.value)">
+          <option value="">-- 작업룸 선택 --</option>
+        </select>
+        <button class="mb-btn mb-btn-gold" onclick="mbRoomNew()">＋ 새 룸</button>
+      </div>
+      <!-- 현재 룸 제목 + 삭제 -->
+      <div id="mb-room-header" style="display:none;margin-bottom:10px;padding:10px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:10px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+          <span id="mb-room-name" style="font-size:14px;font-weight:700;color:var(--tx);"></span>
+          <button class="mb-btn" style="height:28px;padding:0 10px;font-size:11px;color:var(--red);border-color:rgba(255,77,77,.3);" onclick="mbRoomDelete()">🗑 삭제</button>
+        </div>
+        <div id="mb-room-desc" style="font-size:11px;color:var(--mu);margin-top:4px;"></div>
+      </div>
+      <!-- 물건 목록 (섹션별) -->
+      <div id="mb-room-list">
+        <div class="mb-empty" id="mb-room-empty">
+          <div class="mb-empty-icon">🗂️</div>
+          <div>작업룸을 선택해주세요</div>
+          <div style="font-size:11px;color:var(--di);margin-top:4px;">PC에서 만든 작업룸이 여기 표시돼요</div>
+        </div>
+      </div>
+    </div>
+
     <!-- 파이프라인 패널 -->
     <div id="mb-ins-pipe" class="mb-ins-panel">
       <div class="mb-empty">
@@ -1084,61 +1115,192 @@ body {
       </div>
       <div id="mb-map-panel-body">
 
-        <!-- 필터 섹션 -->
-        <div class="mb-panel-section">
-          <div class="mb-panel-section-title">표시 타입</div>
-          <div class="mb-filter-row">
-            <label class="mb-filter-chip" id="chip-auction">
-              <input type="checkbox" id="filterAuction" checked style="display:none;" onchange="mbSyncFilter()">
-              ⚖️ 경매
-            </label>
-            <label class="mb-filter-chip" id="chip-general">
-              <input type="checkbox" id="filterGeneral" style="display:none;" onchange="mbSyncFilter()">
-              🏪 일반매물
-            </label>
-            <label class="mb-filter-chip" id="chip-transaction">
-              <input type="checkbox" id="filterTransaction" style="display:none;" onchange="mbSyncFilter()">
-              📊 실거래
-            </label>
-          </div>
+        <!-- 위치 정보 -->
+        <div style="padding-bottom:10px;border-bottom:1px solid var(--b1);margin-bottom:10px;">
+          <div id="mapAddr" style="font-size:11px;color:var(--mu);line-height:1.5;">위치 확인 중...</div>
+          <div id="mapStatus" style="font-size:11px;color:#39ff14;margin-top:2px;font-weight:700;">화면 내: 0건</div>
         </div>
 
-        <!-- 수집 사이트 섹션 -->
+        <!-- 불러오기 · 카드 제어 (핵심) -->
         <div class="mb-panel-section">
-          <div class="mb-panel-section-title">매물 수집</div>
-          <div class="mb-filter-row">
-            <button class="mb-filter-chip" onclick="showCollectSite('naver')">🟢 네이버</button>
-            <button class="mb-filter-chip" onclick="showCollectSite('jumpo')">🔵 점포라인</button>
-            <button class="mb-filter-chip" onclick="showCollectSite('assa')">🔷 아싸</button>
-            <button class="mb-filter-chip" onclick="showCollectSite('disco')">🔴 디스코</button>
-            <button class="mb-filter-chip" onclick="showCollectSite('bds')">🟣 플래닛</button>
-          </div>
-        </div>
+          <div class="mb-panel-section-title">불러오기 · 카드 제어</div>
 
-        <!-- 마커 관리 섹션 -->
-        <div class="mb-panel-section">
-          <div class="mb-panel-section-title">마커 관리</div>
-          <div class="mb-filter-row">
-            <button class="mb-filter-chip" onclick="clearMarkersByType('auction')" style="color:var(--auction-c);border-color:var(--auction-border);">🗑️ 경매 삭제</button>
-            <button class="mb-filter-chip" onclick="clearMarkersByType('general')" style="color:var(--listing-c);border-color:var(--listing-border);">🗑️ 매물 삭제</button>
-            <button class="mb-filter-chip" onclick="clearMarkersByType('transaction')" style="color:var(--transaction-c);border-color:var(--transaction-border);">🗑️ 실거래 삭제</button>
+          <!-- 타입별 행: [불러오기] [표시] [카드] [삭제] -->
+          <div style="display:grid;grid-template-columns:1fr 32px 32px 32px;gap:4px;align-items:center;margin-bottom:6px;">
+            <span style="font-size:9px;color:var(--di);">소스</span>
+            <span style="font-size:9px;color:var(--di);text-align:center;">표시</span>
+            <span style="font-size:9px;color:var(--di);text-align:center;">카드</span>
+            <span style="font-size:9px;color:var(--di);text-align:center;">삭제</span>
           </div>
-        </div>
 
-        <!-- 상권분석 섹션 -->
-        <div class="mb-panel-section">
-          <div class="mb-panel-section-title">상권 분석</div>
-          <div style="display:flex;gap:8px;">
-            <button class="mb-btn mb-btn-primary" style="flex:1;" onclick="mbRunSbizAnalysis()">
-              🏪 지금 이 위치 상권 분석
+          <!-- 경매 -->
+          <div style="display:grid;grid-template-columns:1fr 32px 32px 32px;gap:4px;align-items:center;margin-bottom:4px;">
+            <button onclick="loadCurrentAreaByType('auction')" style="height:32px;font-size:11px;font-weight:700;border:none;border-radius:7px;background:var(--auction-c);color:#fff;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:4px;padding:0 8px;overflow:hidden;">
+              ⚖️<span>경매</span><b id="auctionCount" style="margin-left:auto;background:rgba(0,0,0,.25);padding:1px 5px;border-radius:4px;font-size:10px;">0</b>
+            </button>
+            <label style="display:flex;align-items:center;justify-content:center;cursor:pointer;">
+              <input type="checkbox" id="filterAuction" checked onchange="toggleMapFilter('auction')" style="accent-color:var(--auction-c);width:16px;height:16px;">
+            </label>
+            <button id="typeToggleBtn_auction" onclick="uiToggleCardType('auction')" title="카드 열기/닫기"
+              style="height:32px;font-size:13px;background:rgba(255,140,66,.1);border:1px solid rgba(255,140,66,.3);border-radius:7px;color:var(--auction-c);cursor:pointer;">📂</button>
+            <button onclick="clearMarkersByType('auction')" title="삭제"
+              style="height:32px;font-size:13px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:7px;color:var(--di);cursor:pointer;">🗑</button>
+          </div>
+
+          <!-- 네이버 -->
+          <div style="display:grid;grid-template-columns:1fr 32px 32px 32px;gap:4px;align-items:center;margin-bottom:4px;">
+            <button onclick="loadCurrentAreaByType('listing')" style="height:32px;font-size:11px;font-weight:700;border:none;border-radius:7px;background:var(--naver-c);color:#fff;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:4px;padding:0 8px;overflow:hidden;">
+              🏠<span>네이버</span><b id="naverCount" style="margin-left:auto;background:rgba(0,0,0,.25);padding:1px 5px;border-radius:4px;font-size:10px;">0</b>
+            </button>
+            <label style="display:flex;align-items:center;justify-content:center;cursor:pointer;">
+              <input type="checkbox" id="filterNaver" checked onchange="toggleMapFilter('naver')" style="accent-color:var(--naver-c);width:16px;height:16px;">
+            </label>
+            <button id="typeToggleBtn_naver" onclick="uiToggleCardType('naver')"
+              style="height:32px;font-size:13px;background:rgba(3,199,90,.1);border:1px solid rgba(3,199,90,.3);border-radius:7px;color:var(--naver-c);cursor:pointer;">📂</button>
+            <button onclick="clearMarkersByType('naver')"
+              style="height:32px;font-size:13px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:7px;color:var(--di);cursor:pointer;">🗑</button>
+          </div>
+
+          <!-- 점포라인 -->
+          <div style="display:grid;grid-template-columns:1fr 32px 32px 32px;gap:4px;align-items:center;margin-bottom:4px;">
+            <button onclick="loadCurrentAreaByType('jumpo')" style="height:32px;font-size:11px;font-weight:700;border:none;border-radius:7px;background:var(--jumpo-c);color:#111;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:4px;padding:0 8px;overflow:hidden;">
+              🏪<span>점포라인</span><b id="jumpoCount" style="margin-left:auto;background:rgba(0,0,0,.2);padding:1px 5px;border-radius:4px;font-size:10px;">0</b>
+            </button>
+            <label style="display:flex;align-items:center;justify-content:center;cursor:pointer;">
+              <input type="checkbox" id="filterJumpo" checked onchange="toggleMapFilter('jumpo')" style="accent-color:var(--jumpo-c);width:16px;height:16px;">
+            </label>
+            <button id="typeToggleBtn_jumpo" onclick="uiToggleCardType('jumpo')"
+              style="height:32px;font-size:13px;background:rgba(103,198,232,.1);border:1px solid rgba(103,198,232,.3);border-radius:7px;color:var(--jumpo-c);cursor:pointer;">📂</button>
+            <button onclick="clearMarkersByType('jumpo')"
+              style="height:32px;font-size:13px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:7px;color:var(--di);cursor:pointer;">🗑</button>
+          </div>
+
+          <!-- 아싸점포 -->
+          <div style="display:grid;grid-template-columns:1fr 32px 32px 32px;gap:4px;align-items:center;margin-bottom:4px;">
+            <button onclick="loadCurrentAreaByType('assa')" style="height:32px;font-size:11px;font-weight:700;border:none;border-radius:7px;background:var(--assa-c);color:#fff;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:4px;padding:0 8px;overflow:hidden;">
+              🏬<span>아싸점포</span><b id="assaCount" style="margin-left:auto;background:rgba(0,0,0,.25);padding:1px 5px;border-radius:4px;font-size:10px;">0</b>
+            </button>
+            <label style="display:flex;align-items:center;justify-content:center;cursor:pointer;">
+              <input type="checkbox" id="filterAssa" checked onchange="toggleMapFilter('assa')" style="accent-color:var(--assa-c);width:16px;height:16px;">
+            </label>
+            <button id="typeToggleBtn_assa" onclick="uiToggleCardType('assa')"
+              style="height:32px;font-size:13px;background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.3);border-radius:7px;color:var(--assa-c);cursor:pointer;">📂</button>
+            <button onclick="clearMarkersByType('assa')"
+              style="height:32px;font-size:13px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:7px;color:var(--di);cursor:pointer;">🗑</button>
+          </div>
+
+          <!-- 디스코 -->
+          <div style="display:grid;grid-template-columns:1fr 32px 32px 32px;gap:4px;align-items:center;margin-bottom:4px;">
+            <button onclick="loadCurrentAreaByType('disco')" style="height:32px;font-size:11px;font-weight:700;border:none;border-radius:7px;background:var(--disco-c);color:#fff;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:4px;padding:0 8px;overflow:hidden;">
+              🔴<span>디스코</span><b id="discoCount" style="margin-left:auto;background:rgba(0,0,0,.25);padding:1px 5px;border-radius:4px;font-size:10px;">0</b>
+            </button>
+            <label style="display:flex;align-items:center;justify-content:center;cursor:pointer;">
+              <input type="checkbox" id="filterDisco" checked onchange="toggleMapFilter('disco')" style="accent-color:var(--disco-c);width:16px;height:16px;">
+            </label>
+            <button id="typeToggleBtn_disco" onclick="uiToggleCardType('disco')"
+              style="height:32px;font-size:13px;background:rgba(232,54,93,.1);border:1px solid rgba(232,54,93,.3);border-radius:7px;color:var(--disco-c);cursor:pointer;">📂</button>
+            <button onclick="clearMarkersByType('disco')"
+              style="height:32px;font-size:13px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:7px;color:var(--di);cursor:pointer;">🗑</button>
+          </div>
+
+          <!-- 플래닛 -->
+          <div style="display:grid;grid-template-columns:1fr 32px 32px 32px;gap:4px;align-items:center;margin-bottom:4px;">
+            <button onclick="loadCurrentAreaByType('bds')" style="height:32px;font-size:11px;font-weight:700;border:none;border-radius:7px;background:var(--bds-c);color:#fff;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:4px;padding:0 8px;overflow:hidden;">
+              🌍<span>플래닛</span><b id="bdsCount" style="margin-left:auto;background:rgba(0,0,0,.25);padding:1px 5px;border-radius:4px;font-size:10px;">0</b>
+            </button>
+            <label style="display:flex;align-items:center;justify-content:center;cursor:pointer;">
+              <input type="checkbox" id="filterBds" checked onchange="toggleMapFilter('bds')" style="accent-color:var(--bds-c);width:16px;height:16px;">
+            </label>
+            <button id="typeToggleBtn_bds" onclick="uiToggleCardType('bds')"
+              style="height:32px;font-size:13px;background:rgba(147,51,234,.1);border:1px solid rgba(147,51,234,.3);border-radius:7px;color:var(--bds-c);cursor:pointer;">📂</button>
+            <button onclick="clearMarkersByType('bds')"
+              style="height:32px;font-size:13px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:7px;color:var(--di);cursor:pointer;">🗑</button>
+          </div>
+
+          <!-- 실거래 -->
+          <div style="display:grid;grid-template-columns:1fr 32px 32px 32px;gap:4px;align-items:center;margin-bottom:4px;">
+            <button id="showTransactionBtn" onclick="loadCurrentAreaTransactions()" style="height:32px;font-size:11px;font-weight:700;border:none;border-radius:7px;background:var(--transaction-c);color:#111;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:4px;padding:0 8px;overflow:hidden;">
+              📍<span>실거래</span><b id="transactionCount" style="margin-left:auto;background:rgba(0,0,0,.2);padding:1px 5px;border-radius:4px;font-size:10px;">0</b>
+            </button>
+            <label style="display:flex;align-items:center;justify-content:center;cursor:pointer;">
+              <input type="checkbox" id="filterTransaction" onchange="toggleMapFilter('transaction')" style="accent-color:var(--transaction-c);width:16px;height:16px;">
+            </label>
+            <button id="typeToggleBtn_transaction" onclick="uiToggleCardType('transaction')"
+              style="height:32px;font-size:13px;background:rgba(234,179,8,.1);border:1px solid rgba(234,179,8,.3);border-radius:7px;color:var(--transaction-c);cursor:pointer;">📂</button>
+            <button onclick="clearMarkersByType('transaction')"
+              style="height:32px;font-size:13px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:7px;color:var(--di);cursor:pointer;">🗑</button>
+          </div>
+
+          <!-- 실거래 추가 버튼 -->
+          <div id="trade-status" style="font-size:10px;color:var(--mu);margin-top:2px;"></div>
+          <button id="arrangeTransactionBtn" onclick="arrangeTransactionCards()"
+            style="display:none;width:100%;margin-top:6px;height:32px;background:#1e2a40;border:1px solid #3d5080;border-radius:8px;color:#80aaff;font-size:11px;cursor:pointer;font-family:inherit;">
+            🗂️ 실거래 카드 정렬
+          </button>
+
+          <!-- 전체 열기/접기/일괄삭제 -->
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:10px;padding-top:10px;border-top:1px solid var(--b1);">
+            <button id="toggleAllCardsBtn" onclick="toggleAllCards()"
+              style="height:36px;background:rgba(0,212,170,.12);border:1px solid rgba(0,212,170,.3);border-radius:8px;color:var(--g);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">
+              📂 모두열기
+            </button>
+            <button id="closeAllCardsBtn" onclick="closeAllCards()"
+              style="height:36px;background:rgba(79,142,255,.1);border:1px solid rgba(79,142,255,.3);border-radius:8px;color:var(--ac);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">
+              📁 모두접기
+            </button>
+            <button onclick="clearAllMarkersAndCards()"
+              style="height:36px;background:rgba(255,80,80,.08);border:1px solid rgba(255,80,80,.3);border-radius:8px;color:var(--red);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">
+              🗑 일괄삭제
             </button>
           </div>
-          <div id="mb-sbiz-status" style="font-size:11px;color:var(--mu);margin-top:6px;"></div>
+
+          <!-- 카드 크기 슬라이더 -->
+          <div style="margin-top:10px;padding:10px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+              <span style="font-size:11px;color:var(--mu);flex:1;">🔧 카드 크기</span>
+              <input type="range" min="30" max="120" value="75" step="1" style="flex:1;"
+                oninput="changeCardSizeContinuous(this.value);document.getElementById('mb-size-label').textContent=this.value+'%'">
+              <span id="mb-size-label" style="font-size:11px;font-weight:700;color:var(--tx);min-width:32px;text-align:right;">75%</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span style="font-size:11px;color:var(--mu);flex:1;">줌 레벨 자동 크기조절</span>
+              <div class="toggle-switch on" id="zoomAutoToggle" onclick="toggleZoomAutoResize()"></div>
+            </div>
+          </div>
         </div>
 
-        <!-- 카카오 키 입력 -->
+        <!-- 빠른 액션 -->
         <div class="mb-panel-section">
-          <div class="mb-panel-section-title">카카오 지도 키</div>
+          <div class="mb-panel-section-title">빠른 액션</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+            <button class="mb-btn" onclick="loadCurrentAreaProperties()" style="justify-content:center;height:38px;">
+              📍 이 화면 전체 불러오기
+            </button>
+            <button class="mb-btn" onclick="spreadAllCards()" style="justify-content:center;height:38px;color:var(--g);border-color:rgba(0,212,170,.3);">
+              💠 카드 펼치기
+            </button>
+            <button class="mb-btn" onclick="createMemoMarker()" style="justify-content:center;height:38px;color:var(--ac);border-color:rgba(79,142,255,.3);">
+              ✏️ 메모 마커
+            </button>
+            <button class="mb-btn" onclick="openMapNotePanel()" style="justify-content:center;height:38px;color:#a78bfa;border-color:rgba(167,139,250,.3);">
+              📝 지도 노트
+            </button>
+          </div>
+        </div>
+
+        <!-- 상권분석 -->
+        <div class="mb-panel-section">
+          <div class="mb-panel-section-title">상권 분석</div>
+          <button class="mb-btn mb-btn-primary" style="width:100%;justify-content:center;height:40px;" onclick="mbRunSbizAnalysis()">
+            🏪 지금 이 위치 상권 분석
+          </button>
+          <div id="mb-sbiz-status" style="font-size:11px;color:var(--mu);margin-top:6px;"></div>
+          <div id="sbizPanelStatus" style="font-size:11px;color:var(--mu);margin-top:4px;"></div>
+        </div>
+
+        <!-- 카카오 JS 키 -->
+        <div class="mb-panel-section">
+          <div class="mb-panel-section-title">카카오 JS 키</div>
           <div style="display:flex;gap:6px;">
             <input type="password" id="mapKakaoKeyInput" placeholder="Kakao JS Key 입력 후 적용"
               style="flex:1;height:36px;padding:0 10px;background:var(--s3);border:1px solid var(--b1);border-radius:8px;color:var(--tx);font-size:12px;outline:none;">
@@ -1324,13 +1486,32 @@ body {
   <select id="sbizUpjongSmcls"></select>
   <input id="sbizUpjongRadius" type="number" value="500">
   <button id="sbizUpjongBtn"></button>
-  <div id="sbizPanelStatus"></div>
   <div id="sbizPanelResult"></div>
   <div id="clipSentimentBanner"></div>
   <div id="clipEmpty"></div>
   <div id="clipContent"></div>
   <div id="clipLastLoaded"></div>
   <div id="insEmpty"></div>
+  <!-- 지도 추가 ID (common.js가 참조) -->
+  <div id="mapAddr-pc"></div>
+  <div id="mapStatus-pc"></div>
+  <div id="trade-status-pc"></div>
+  <div id="transYearFilterWrap"></div>
+  <div id="transYearBtnGroup"></div>
+  <button id="hideTransactionBtn"></button>
+  <div id="spreadCardsBtn-pc"></div>
+  <div id="mapZoomSlider"></div>
+  <input id="zoomRange" type="range" min="1" max="14" step="1" value="4">
+  <button id="mzPlus"></button>
+  <button id="mzMinus"></button>
+  <div id="mapRightDock"></div>
+  <input id="lBar-pc" type="range" min="30" max="120" value="75">
+  <span id="sizeLabel"></span>
+  <!-- 작업룸 PC용 ID (common.js가 참조) -->
+  <div id="wr2-room-list"></div>
+  <div id="wr2-section-list"></div>
+  <button id="wr2-new-room-btn"></button>
+  <select id="wr2-room-sel"></select>
 </div>
 
 <!-- ════════════════════════════════════════════════════════
@@ -1466,7 +1647,7 @@ body {
   };
 
   /* ── 인사이트 서브탭 ── */
-  var INS_PANELS = ['note','calc','pipe','clip','site'];
+  var INS_PANELS = ['note','calc','room','pipe','clip','site'];
   window.mbInsTab = function(name) {
     INS_PANELS.forEach(function(n) {
       var tab   = document.getElementById('mb-itab-' + n);
@@ -1677,8 +1858,80 @@ body {
     };
   }
 
+  /* ── 작업룸 로직 ── */
+  window.mbRoomNew = function() {
+    var name = prompt('새 작업룸 이름:');
+    if (!name || !name.trim()) return;
+    if (typeof wr2CreateRoom === 'function') {
+      wr2CreateRoom(name.trim());
+      setTimeout(mbRoomRefreshSel, 600);
+    } else {
+      mbToast('common.js 로드 후 사용 가능해요', 'warn');
+    }
+  };
+
+  window.mbRoomLoad = function(roomId) {
+    var header  = document.getElementById('mb-room-header');
+    var nameEl  = document.getElementById('mb-room-name');
+    var descEl  = document.getElementById('mb-room-desc');
+    var listEl  = document.getElementById('mb-room-list');
+    if (!roomId) {
+      if (header) header.style.display = 'none';
+      if (listEl) listEl.innerHTML = '<div class="mb-empty"><div class="mb-empty-icon">🗂️</div><div>작업룸을 선택해주세요</div></div>';
+      return;
+    }
+    try {
+      var rooms = JSON.parse(localStorage.getItem('wr2_rooms') || '[]');
+      var room  = rooms.find(function(r) { return r.id === roomId; });
+      if (!room) { mbToast('룸을 찾을 수 없어요', 'err'); return; }
+      if (header) header.style.display = 'block';
+      if (nameEl) nameEl.textContent = room.name || '이름 없음';
+      if (descEl) descEl.textContent = room.desc || '';
+      var sections = JSON.parse(localStorage.getItem('wr2_sections') || '[]')
+        .filter(function(s) { return s.room_id === roomId; });
+      if (!sections.length) {
+        listEl.innerHTML = '<div class="mb-empty" style="padding:20px 0;"><div class="mb-empty-icon">📭</div><div>항목이 없어요</div></div>';
+        return;
+      }
+      listEl.innerHTML = sections.map(function(sec) {
+        var items = sec.items || [];
+        return '<div style="margin-bottom:14px;">' +
+          '<div style="font-size:11px;font-weight:700;color:var(--mu);letter-spacing:.5px;margin-bottom:6px;">' + (sec.title || '섹션') + '</div>' +
+          (items.length ? items.map(function(it) {
+            return '<div style="padding:10px;background:var(--s3);border:1px solid var(--b1);border-radius:8px;margin-bottom:6px;">' +
+              '<div style="font-size:13px;font-weight:700;color:var(--tx);">' + (it.title || '항목') + '</div>' +
+              (it.price ? '<div style="font-size:12px;color:var(--ac);font-family:\'JetBrains Mono\',monospace;margin-top:3px;">' + it.price + '</div>' : '') +
+              (it.memo ? '<div style="font-size:11px;color:var(--mu);margin-top:4px;">' + it.memo + '</div>' : '') +
+            '</div>';
+          }).join('') : '<div style="font-size:11px;color:var(--di);padding:4px 0;">항목 없음</div>') +
+        '</div>';
+      }).join('');
+    } catch(e) { mbToast('작업룸 로드 오류', 'err'); }
+  };
+
+  window.mbRoomDelete = function() {
+    var sel = document.getElementById('mb-room-sel');
+    if (!sel || !sel.value) return;
+    if (!confirm('이 작업룸을 삭제할까요?')) return;
+    if (typeof wr2DeleteRoom === 'function') {
+      wr2DeleteRoom(sel.value);
+      setTimeout(function() { mbRoomRefreshSel(); mbRoomLoad(''); }, 600);
+    }
+  };
+
+  function mbRoomRefreshSel() {
+    var sel = document.getElementById('mb-room-sel');
+    if (!sel) return;
+    try {
+      var rooms = JSON.parse(localStorage.getItem('wr2_rooms') || '[]');
+      sel.innerHTML = '<option value="">-- 작업룸 선택 --</option>' +
+        rooms.map(function(r) {
+          return '<option value="' + r.id + '">' + (r.name || '이름 없음') + '</option>';
+        }).join('');
+    } catch(e) {}
+  }
+
   /* ── 저장목록 필터 버튼 활성화 ── */
-  // setFilter(common.js) 호출 후 모바일 버튼도 업데이트
   var _origSetFilter = null;
   function hookSetFilter() {
     var orig = window.setFilter;
@@ -1731,7 +1984,8 @@ body {
     setTimeout(function() {
       hookSetFilter();
       mbRenderSaved();
-    }, 500);
+      mbRoomRefreshSel();
+    }, 800);
 
     // 기본 시작 탭: 인사이트
     mbGoPage('insight', document.getElementById('mb-tab-insight'));
