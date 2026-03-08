@@ -11,12 +11,8 @@
     /* ★ 프록시 서버 파일명 — 여기서 한 번만 수정하면 전체 적용 */
     window.PROXY_FILENAME = 'proxy_server_floor_v4.py';
     /* ★ 프록시 서버 주소 (포트 변경 시 여기만 수정) */
-    window.PROXY_URL = 'http://localhost:8080'; // 로컬 서버 (집 내부)
-    window.EDGE_URL = 'https://qgfkhbcpidmraxxjtetl.supabase.co/functions/v1/proxy';  // Supabase Edge Function (외부 접속용)
-    // 자동 감지: localhost 접속 시 로컬 서버, 외부 접속 시 Edge Function
-    window.PROXY_URL = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
-      ? 'http://localhost:8080'
-      : 'https://qgfkhbcpidmraxxjtetl.supabase.co/functions/v1/proxy';
+    window.PROXY_URL = 'http://127.0.0.1:8080'; // 로컬 py 서버 (항상 고정)
+    window.EDGE_URL = 'https://qgfkhbcpidmraxxjtetl.supabase.co/functions/v1/proxy';
 
     // Edge Function 호출 시 anon key 자동 추가
     window._proxyFetch = function(url, options = {}) {
@@ -5692,12 +5688,6 @@
     // ── 디스코 자동수집 ──
     async function collectDiscoAuto() {
       const proxyBase = window.PROXY_URL;
-      // py 서버(로컬) URL인지 직접 확인 — Edge Function URL이면 즉시 중단
-      const _isLocal_disco = proxyBase.includes('localhost') || proxyBase.includes('127.0.0.1');
-      if (!_isLocal_disco) {
-        shopStatus('disco', '❌ py 서버가 실행 중이 아닙니다. 로컬에서 py 서버를 먼저 실행해주세요.', '#ff4d4d');
-        return;
-      }
 
       let bounds = window._discoBounds || null;
       const regionInput = (document.getElementById('discoRegionInput')?.value || '').trim();
@@ -5755,12 +5745,6 @@
     // ── 부동산플래닛 자동수집 ──
     async function collectBdsAuto() {
       const proxyBase = window.PROXY_URL;
-      // py 서버(로컬) URL인지 직접 확인 — Edge Function URL이면 즉시 중단
-      const _isLocal_bds = proxyBase.includes('localhost') || proxyBase.includes('127.0.0.1');
-      if (!_isLocal_bds) {
-        shopStatus('bds', '❌ py 서버가 실행 중이 아닙니다. 로컬에서 py 서버를 먼저 실행해주세요.', '#ff4d4d');
-        return;
-      }
 
       let bounds = window._bdsBounds || null;
       const regionInput = (document.getElementById('bdsRegionInput')?.value || '').trim();
@@ -22642,12 +22626,6 @@ ${newsContext}
     // 자동 수집 (py 서버 경유)
     async function collectJumpoAuto() {
       const proxyBase = window.PROXY_URL;
-      // py 서버(로컬) URL인지 직접 확인 — Edge Function URL이면 즉시 중단
-      const _isLocal_jumpo = proxyBase.includes('localhost') || proxyBase.includes('127.0.0.1');
-      if (!_isLocal_jumpo) {
-        shopStatus('jumpo', '❌ py 서버가 실행 중이 아닙니다. 로컬에서 py 서버를 먼저 실행해주세요.', '#ff4d4d');
-        return;
-      }
 
       let bounds = window._jumpoBounds || null;
       const regionInput = (document.getElementById('jumpoRegionInput')?.value || '').trim();
@@ -23093,12 +23071,6 @@ ${newsContext}
       }
 
       const proxyBase = window.PROXY_URL;
-      // py 서버(로컬) URL인지 직접 확인 — Edge Function URL이면 즉시 중단
-      const _isLocal_assa = proxyBase.includes('localhost') || proxyBase.includes('127.0.0.1');
-      if (!_isLocal_assa) {
-        shopStatus('assa', '❌ py 서버가 실행 중이 아닙니다. 로컬에서 py 서버를 먼저 실행해주세요.', '#ff4d4d');
-        return;
-      }
 
       // 좌표 결정: 지도 중심 > 카카오 지오코더로 주소 변환 > 기본값
       let bounds = window._assaBounds || null;
