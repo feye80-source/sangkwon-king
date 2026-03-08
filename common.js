@@ -10550,42 +10550,56 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     function resetAutoCardIdx() { _autoCardPlaceIdx = 0; }
 
     function getAutoCardPosition(markerPos) {
+      const isMobile = window.innerWidth <= 768;
+      // 모바일은 카드 너비가 작고 뷰포트도 좁으므로 거리/오프셋 축소
+      const cardW = isMobile ? 160 : 200;
+
       // ★ 반경 모드: 마커에서 반경 중심 반대 방향으로 카드 배치 (반경 바깥)
-      // + 인덱스 기반 오프셋으로 겹침 방지
       if (getAreaSearchMode && getAreaSearchMode() === 'radius' && radiusCenterLatLng && markerPos) {
         try {
           const cx = map.getProjection().containerPointFromCoords(radiusCenterLatLng);
           const mx = map.getProjection().containerPointFromCoords(markerPos);
-          // 마커 → 반경 중심 방향 벡터
           const dx = mx.x - cx.x;
           const dy = mx.y - cx.y;
           const dist = Math.sqrt(dx * dx + dy * dy) || 1;
 
-          // 바깥 방향 기본 거리
-          const baseDist = 130;
-          // 인덱스 기반 추가 오프셋: 같은 방향에 카드가 쌓이지 않도록 지그재그
+          // 모바일은 baseDist를 절반으로
+          const baseDist = isMobile ? 65 : 130;
           const idx = _autoCardPlaceIdx++;
-          const spread = (idx % 3) * 50 - 50; // -50, 0, +50 순환
-          const layerOffset = Math.floor(idx / 3) * 60; // 3개마다 한 층씩 더 밀어냄
+          const spread = isMobile ? (idx % 3) * 25 - 25 : (idx % 3) * 50 - 50;
+          const layerOffset = isMobile ? Math.floor(idx / 3) * 30 : Math.floor(idx / 3) * 60;
 
-          // 수직 방향(법선) 벡터로 좌우 분산
           const perpX = -dy / dist;
           const perpY = dx / dist;
 
           const outX = (dx / dist) * (baseDist + layerOffset) + perpX * spread;
           const outY = (dy / dist) * (baseDist + layerOffset) + perpY * spread;
 
-          return {
-            left: Math.round(outX),
-            top: Math.round(outY - 80)
-          };
+          const rawLeft = Math.round(outX);
+          const rawTop  = Math.round(outY - (isMobile ? 40 : 80));
+
+          // 모바일: 뷰포트 안에 클램핑
+          if (isMobile && map) {
+            try {
+              const mapEl = map.getNode ? map.getNode() : document.getElementById('map');
+              const mapW = mapEl ? mapEl.offsetWidth : window.innerWidth;
+              const mapH = mapEl ? mapEl.offsetHeight : window.innerHeight;
+              // 마커 화면 좌표
+              const clampLeft = Math.min(Math.max(rawLeft, -mx.x + 4), mapW - mx.x - cardW - 4);
+              const clampTop  = Math.min(Math.max(rawTop, -mx.y + 4), mapH - mx.y - 120);
+              return { left: clampLeft, top: clampTop };
+            } catch(e) { /* fallthrough */ }
+          }
+
+          return { left: rawLeft, top: rawTop };
         } catch (e) { /* fallthrough */ }
       }
-      // 기본: 마커 오른쪽 위에 고정 배치
-      return {
-        left: 30,
-        top: -140
-      };
+
+      // 기본: 마커 오른쪽 위에 고정 배치 (모바일은 더 가깝게)
+      if (isMobile) {
+        return { left: 10, top: -80 };
+      }
+      return { left: 30, top: -140 };
     }
 
 
@@ -18000,13 +18014,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         if (p) p.style.display = (i === n) ? '' : 'none';
         if (t) t.classList.toggle('on', i === n);
       });
-      // 설정탭
-      const cfgPanel = document.getElementById('ipage_cfg');
-      const cfgTab   = document.getElementById('itab7');
-      if (cfgPanel) cfgPanel.style.display = (n === 7) ? '' : 'none';
-      if (cfgTab)   cfgTab.classList.toggle('on', n === 7);
-
-      const labels = { 0: '노트', 1: '계산기', 3: '뉴스 클리핑', 4: '알짜정보', 5: '파이프라인', 6: '사이트', 7: '설정', 8: '작업룸', 9: '소상공인 상권', 10: '경매 AtoZ' };
+      const labels = { 0: '노트', 1: '계산기', 3: '뉴스 클리핑', 4: '알짜정보', 5: '파이프라인', 6: '사이트', 8: '작업룸', 9: '소상공인 상권', 10: '경매 AtoZ' };
       const lbl = document.getElementById('insTabLabel');
       if (lbl) lbl.textContent = labels[n] || '';
 
