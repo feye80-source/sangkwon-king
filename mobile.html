@@ -2395,13 +2395,10 @@ body {
         var snapId = ms.id || '';
         var snapName = ms.sceneName || ms.name || '';
         html += '<div style="padding:10px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;margin-bottom:6px;cursor:pointer;"';
-        html += ' onclick="(function(){';
-        html += 'mbGoPage(\'map\',document.getElementById(\'mb-tab-map\'));';
-        html += 'setTimeout(function(){';
+        html += ' onclick="(function(){mbGoPage(\'map\',document.getElementById(\'mb-tab-map\'));setTimeout(function(){';
         html += 'if(\'' + snapId + '\'&&window.wrOpenMapScene){window.wrOpenMapScene(\'' + snapId + '\');}';
         html += 'else if(\'' + snapName + '\'&&window.swLoadSnap){window.swLoadSnap(\'' + snapName + '\',null);}';
-        html += '},300);';
-        html += '})()">';
+        html += '},400);})()">';
         html += '<div style="display:flex;align-items:center;gap:8px;">';
         html += '<span>📷</span>';
         html += '<span style="flex:1;font-size:13px;font-weight:600;color:var(--tx);">' + (snapName || '스냅샷') + '</span>';
@@ -2477,14 +2474,16 @@ body {
       return;
     }
     try {
-      // wr2State가 비어있으면 localStorage에서 직접 채움 (wr2Render 호출 금지)
+      // wr2Init 안전 호출 (loadRooms+loadSections만 하고 wr2Render는 PC DOM 없으면 자동 skip)
+      if (window.wr2Init && !window.__wr2Inited) {
+        try { window.__wr2Inited = true; window.wr2Init(); } catch(e0) {}
+      }
+      // wr2State가 여전히 비어있으면 localStorage에서 직접 채움
       if (window.wr2State) {
-        if (!window.wr2State.rooms || !window.wr2State.rooms.length) {
+        if (!window.wr2State.rooms || !window.wr2State.rooms.length)
           try { window.wr2State.rooms = JSON.parse(localStorage.getItem('wr2_rooms') || '[]'); } catch(e3) {}
-        }
-        if (!window.wr2State.sections || !window.wr2State.sections.length) {
+        if (!window.wr2State.sections || !window.wr2State.sections.length)
           try { window.wr2State.sections = JSON.parse(localStorage.getItem('wr2_sections') || '[]'); } catch(e4) {}
-        }
       }
       var rooms = (window.wr2State && window.wr2State.rooms && window.wr2State.rooms.length)
         ? window.wr2State.rooms
