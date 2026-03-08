@@ -2076,8 +2076,8 @@ body {
         (priceStr ? '<div class="mb-sv-card-prices">' + priceStr + '</div>' : '') +
         '<div class="mb-sv-card-actions" onclick="event.stopPropagation()">' +
           '<button class="mb-sv-action-btn memo" onclick="event.stopPropagation();mbToggleMemo(' + idx + ',this)">📝 메모' + (memo ? ' ●' : '') + '</button>' +
-          '<button class="mb-sv-action-btn map" onclick="event.stopPropagation();mbGoToMap(\\'' + (d.address||d.location||'') + '\')">🗺️ 지도</button>' +
-          '<button class="mb-sv-action-btn" onclick="event.stopPropagation();mbOpenSavedDetail(\\'' + (it.id||idx) + '\\')" style="color:var(--ac);">📋 상세</button>' +
+          '<button class="mb-sv-action-btn map" onclick="event.stopPropagation();mbGoToMap(\'' + (d.address||d.location||'') + '\')">🗺️ 지도</button>' +
+          '<button class="mb-sv-action-btn" onclick="event.stopPropagation();mbOpenSavedDetail(\'' + (it.id||idx) + '\')" style="color:var(--ac);">📋 상세</button>' +
         '</div>' +
         '<div class="mb-sv-memo" id="mb-memo-' + idx + '" onclick="event.stopPropagation()">' +
           '<textarea placeholder="메모 입력..." onchange="mbSaveMemo(' + idx + ',this.value)">' + (memo||'') + '</textarea>' +
@@ -2159,10 +2159,7 @@ body {
       body.innerHTML = html;
 
       if (actions) {
-        actions.innerHTML =
-          '<button class="mb-btn" style="flex:1;" onclick="mbCloseBottomSheet();' +
-          // 탭 버튼 다시 보이기
-          '['card','list','auction'].forEach(function(t){var b=document.getElementById('mb-bs-tab-'+t);if(b)b.style.display='';})" >닫기</button>';
+        actions.innerHTML = '<button class="mb-btn" style="flex:1;" onclick="mbCloseBottomSheet()">닫기</button>';
       }
     } catch(e) {
       console.error('mbOpenSavedDetail error:', e);
@@ -2320,7 +2317,7 @@ body {
       html += '<div style="font-size:10px;font-weight:700;color:var(--mu);letter-spacing:.6px;text-transform:uppercase;margin-bottom:8px;display:flex;align-items:center;gap:6px;">🗺️ 저장된 스냅샷 <span style="font-weight:400;color:var(--di);">(' + mapScenes.length + ')</span></div>';
       mapScenes.forEach(function(ms) {
         var kids = ms.children || [];
-        html += '<div style="padding:10px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;margin-bottom:6px;cursor:pointer;" onclick="if(window.swLoadScene)window.swLoadScene('' + (ms.id||ms.sceneName||'') + '');mbGoPage('map',document.getElementById('mb-tab-map'))">';
+        html += '<div style="padding:10px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;margin-bottom:6px;cursor:pointer;" onclick="if(window.swLoadScene)window.swLoadScene(\'' + (ms.id||ms.sceneName||'') + '\');mbGoPage(\'map\',document.getElementById(\'mb-tab-map\'))">';
         html += '<div style="display:flex;align-items:center;gap:8px;">';
         html += '<span style="font-size:11px;color:#4f8eff;">📷</span>';
         html += '<span style="flex:1;font-size:13px;font-weight:600;color:var(--tx);">' + (ms.sceneName||ms.name||'스냅샷') + '</span>';
@@ -2395,7 +2392,7 @@ body {
         if (dispItem) {
           var d2 = dispItem.data || {};
           var addr2 = d2['소재지']||d2['address']||dispItem.title||'';
-          html += '<div style="padding:10px 12px;background:rgba(0,212,170,.06);border:1px solid rgba(0,212,170,.2);border-radius:8px;cursor:pointer;" onclick="mbOpenSavedDetail('' + (dispItem.id||'') + '')">';
+          html += '<div style="padding:10px 12px;background:rgba(0,212,170,.06);border:1px solid rgba(0,212,170,.2);border-radius:8px;cursor:pointer;" onclick="mbOpenSavedDetail(\'' + (dispItem.id||'') + '\')">';
           html += '<div style="font-size:12px;font-weight:600;color:var(--ac);">' + (dispItem.title||addr2||'매물') + '</div>';
           if (addr2 && addr2 !== dispItem.title) html += '<div style="font-size:11px;color:var(--mu);margin-top:2px;">📍 ' + addr2 + '</div>';
           html += '</div></div>';
