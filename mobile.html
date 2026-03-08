@@ -1470,8 +1470,8 @@ body {
   <div id="mb-page-saved" class="mb-page">
     <div id="mb-saved-header">
       <div class="mb-saved-search-row">
-        <input type="text" id="regionSearch" placeholder="🔍 지역·이름 검색" oninput="renderSaved()">
-        <select id="sortKey" class="mb-saved-sort" onchange="renderSaved()">
+        <input type="text" id="regionSearch" placeholder="🔍 지역·이름 검색" oninput="if(typeof mbRenderSaved==='function')mbRenderSaved();else renderSaved();">
+        <select id="sortKey" class="mb-saved-sort" onchange="if(typeof mbRenderSaved==='function')mbRenderSaved();else renderSaved();">
           <option value="timestamp">저장일</option>
           <option value="price">가격</option>
           <option value="yield">수익률</option>
@@ -1800,13 +1800,13 @@ body {
 
   window.mbGoPage = function(name, btn) {
     _curPage = name;
-    // 탭 전환 시 모든 오버레이 닫기 + 포인터이벤트 복구
+    // 탭 전환시 모든 오버레이 강제 닫기 + pointerEvents 복구
     var _ntEl = document.getElementById('ntEditorMain');
     if (_ntEl) _ntEl.style.display = 'none';
-    var _bs = document.getElementById('mb-map-bs');
-    var _bd = document.getElementById('mb-map-bs-backdrop');
-    if (_bs) _bs.style.display = 'none';
-    if (_bd) _bd.style.display = 'none';
+    var _bs  = document.getElementById('mb-map-bs');
+    var _bd  = document.getElementById('mb-map-bs-backdrop');
+    if (_bs)  _bs.style.display  = 'none';
+    if (_bd)  _bd.style.display  = 'none';
     document.body.style.pointerEvents = '';
     document.body.style.overflow = '';
     // 페이지 전환
@@ -1855,7 +1855,11 @@ body {
 
   /* ── 인사이트 서브탭 ── */
   var INS_PANELS = ['note','calc','room','pipe','clip','site'];
+  var _mbLastInsTab = 'note';
+  try { _mbLastInsTab = localStorage.getItem('mb_ins_tab') || 'note'; } catch(e) {}
   window.mbInsTab = function(name) {
+    _mbLastInsTab = name;
+    try { localStorage.setItem('mb_ins_tab', name); } catch(e) {}
     INS_PANELS.forEach(function(n) {
       var tab   = document.getElementById('mb-itab-' + n);
       var panel = document.getElementById('mb-ins-' + n);
@@ -1869,6 +1873,10 @@ body {
       } else if (typeof window.ntRender === 'function') {
         try { window.ntRender(); } catch(e) {}
       }
+    }
+    // 인사이트탭 진입 시 마지막 탭 복원
+    if (name === 'insight') {
+      setTimeout(function(){ mbInsTab(_mbLastInsTab || 'note'); }, 80);
     }
     // 작업룸 탭: 룸 목록 새로고침
     if (name === 'room') {
@@ -2043,27 +2051,43 @@ body {
     var TYPE_LABELS = {
       auction:'⚖️ 경매', listing:'🏪 네이버', jumpo:'🔵 점포라인',
       assa:'🔷 아싸', disco:'🔴 디스코', bds:'🟣 플래닛',
-      transaction:'📊 실거래', onbid:'🛡️ 온비드'
+      transaction:'📊 실거래', onbid:'🛡️ 온비드',
+      general:'🏠 일반', naver:'🏪 네이버', csv:'📋 CSV'
     };
     var TYPE_COLORS = {
       auction:'var(--auction-c)', listing:'var(--naver-c)', jumpo:'var(--jumpo-c)',
       assa:'var(--assa-c)', disco:'var(--disco-c)', bds:'var(--bds-c)',
-      transaction:'var(--transaction-c)', onbid:'var(--or)'
+      transaction:'var(--transaction-c)', onbid:'var(--or)',
+      general:'var(--mu)', naver:'var(--naver-c)', csv:'var(--mu)'
     };
 
     list.innerHTML = items.map(function(it, idx) {
       var d    = it.data || {};
-      var type = it.mode || 'auction';
+      var type = it.mode || it.source || 'general';
       var col  = TYPE_COLORS[type] || 'var(--mu)';
-      var lbl  = TYPE_LABELS[type] || type;
+      var lbl  = TYPE_LABELS[type] || it.source || type;
       var priceStr = '';
-      if (d.price)   priceStr += '<div class="mb-sv-price-item"><div class="mb-sv-price-label">매매가</div><div class="mb-sv-price-value" style="color:var(--ac);">' + fW(d.price) + '</div></div>';
-      if (d.monthly) priceStr += '<div class="mb-sv-price-item"><div class="mb-sv-price-label">월세</div><div class="mb-sv-price-value" style="color:var(--g);">' + fW(d.monthly) + '</div></div>';
-      if (d.yield)   priceStr += '<div class="mb-sv-price-item"><div class="mb-sv-price-label">수익률</div><div class="mb-sv-price-value" style="color:var(--or);">' + (parseFloat(d.yield)||0).toFixed(1) + '%</div></div>';
+      // ─ 경매 필드
+      var appPrice = d['감정가'] || null;
+      var minPrice = d['최저가'] || d['최저입찰가'] || null;
+      // ─ 매물 필드
+      var salePrice = d['매매가'] || null;
+      var deposit   = d['보증금'] || (d['기보증금_만원'] ? d['기보증금_만원']+'만원' : null);
+      var monthly   = d['월세'] || (d['월세_만원'] ? d['월세_만원']+'만원/월' : null) || (d['임차인_월세'] ? d['임차인_월세']+'만원/월' : null);
+      var yieldVal  = d['수익률'] || d['수익률_퍼센트'] || null;
+      if (appPrice) priceStr += '<div class="mb-sv-price-item"><div class="mb-sv-price-label">감정가</div><div class="mb-sv-price-value" style="color:var(--or);">' + appPrice + '</div></div>';
+      if (minPrice) priceStr += '<div class="mb-sv-price-item"><div class="mb-sv-price-label">최저가</div><div class="mb-sv-price-value" style="color:#f59e0b;">' + minPrice + '</div></div>';
+      if (salePrice) priceStr += '<div class="mb-sv-price-item"><div class="mb-sv-price-label">매매가</div><div class="mb-sv-price-value" style="color:var(--ac);">' + salePrice + '</div></div>';
+      if (deposit)  priceStr += '<div class="mb-sv-price-item"><div class="mb-sv-price-label">보증금</div><div class="mb-sv-price-value" style="color:#4f8eff;">' + deposit + '</div></div>';
+      if (monthly)  priceStr += '<div class="mb-sv-price-item"><div class="mb-sv-price-label">월세</div><div class="mb-sv-price-value" style="color:var(--g);">' + monthly + '</div></div>';
+      if (yieldVal) priceStr += '<div class="mb-sv-price-item"><div class="mb-sv-price-label">수익률</div><div class="mb-sv-price-value" style="color:var(--or);">' + yieldVal + (String(yieldVal).includes('%')?'':'%') + '</div></div>';
       var metaArr = [];
-      if (d.address || d.location) metaArr.push('📍 ' + (d.address || d.location || ''));
-      if (d.area)   metaArr.push('📐 ' + d.area + '㎡');
-      if (d.floor)  metaArr.push('🏢 ' + d.floor + '층');
+      var addr  = d['소재지'] || d['address'] || d['location'] || '';
+      var area  = d['전용면적_m2'] || d['건물면적_m2'] || d['계약면적_m2'] || d['면적'] || '';
+      var floor = d['해당층'] || d['층수'] || d['층'] || '';
+      if (addr)  metaArr.push('📍 ' + addr);
+      if (area)  metaArr.push('📐 ' + area + (String(area).includes('㎡')?'':'㎡'));
+      if (floor) metaArr.push('🏢 ' + floor + (String(floor).includes('층')?'':'층'));
       var memo = it.memo || '';
       return '<div class="mb-sv-card" data-type="' + type + '" data-idx="' + idx + '" onclick="mbOpenSavedDetail(\'' + (it.id||idx) + '\')" style="cursor:pointer;">' +
         '<div class="mb-sv-card-header">' +
@@ -2072,10 +2096,10 @@ body {
         '</div>' +
         (metaArr.length ? '<div class="mb-sv-card-meta">' + metaArr.join(' · ') + '</div>' : '') +
         (priceStr ? '<div class="mb-sv-card-prices">' + priceStr + '</div>' : '') +
-        '<div class="mb-sv-card-actions" onclick="event.stopPropagation()">' +
-          '<button class="mb-sv-action-btn memo" onclick="event.stopPropagation();mbToggleMemo(' + idx + ',this)">📝 메모' + (memo ? ' ●' : '') + '</button>' +
-          '<button class="mb-sv-action-btn map" onclick="event.stopPropagation();mbGoToMap(\'' + (d.address||d.location||'') + '\')">🗺️ 지도</button>' +
-          '<button class="mb-sv-action-btn" style="color:var(--ac);" onclick="event.stopPropagation();mbOpenSavedDetail(\'' + (it.id||idx) + '\')">📋 상세</button>' +
+        '<div class="mb-sv-card-actions">' +
+          '<button class="mb-sv-action-btn memo" onclick="mbToggleMemo(' + idx + ',this)">📝 메모' + (memo ? ' ●' : '') + '</button>' +
+          '<button class="mb-sv-action-btn map" onclick="mbGoToMap(\'' + (d.address||d.location||'') + '\')">🗺️ 지도</button>' +
+        '</div>' +
         '<div class="mb-sv-memo" id="mb-memo-' + idx + '">' +
           '<textarea placeholder="메모 입력..." onchange="mbSaveMemo(' + idx + ',this.value)">' + (memo||'') + '</textarea>' +
           '<div class="mb-sv-memo-btns">' +
@@ -2317,7 +2341,7 @@ body {
       html += '<div style="font-size:10px;font-weight:700;color:var(--mu);letter-spacing:.6px;text-transform:uppercase;margin-bottom:8px;display:flex;align-items:center;gap:6px;">🗺️ 저장된 스냅샷 <span style="font-weight:400;color:var(--di);">(' + mapScenes.length + ')</span></div>';
       mapScenes.forEach(function(ms) {
         var kids = ms.children || [];
-        html += '<div style="padding:10px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;margin-bottom:6px;cursor:pointer;" onclick="(function(){var sid=\'' + (ms.id||'') + '\',sn=\'' + (ms.sceneName||ms.name||'') + '\';if(sid&&window.wrOpenMapScene){window.wrOpenMapScene(sid);}else if(sn&&window.swLoadSnap){window.swLoadSnap(sn,null);}mbGoPage(\'map\',document.getElementById(\'mb-tab-map\'));})()">';
+        html += '<div style="padding:10px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;margin-bottom:6px;cursor:pointer;" onclick="(function(){var rid=\'' + (ms.id||'') + '\',sn=\'' + (ms.sceneName||ms.name||'') + '\';if(rid&&window.wrOpenMapScene){window.wrOpenMapScene(rid);}else if(sn&&window.swLoadSnap){window.swLoadSnap(sn,null);}mbGoPage(\'map\',document.getElementById(\'mb-tab-map\'));})()">';
         html += '<div style="display:flex;align-items:center;gap:8px;">';
         html += '<span style="font-size:11px;color:#4f8eff;">📷</span>';
         html += '<span style="flex:1;font-size:13px;font-weight:600;color:var(--tx);">' + (ms.sceneName||ms.name||'스냅샷') + '</span>';
@@ -2431,28 +2455,28 @@ body {
             : JSON.parse(localStorage.getItem('wr2_sections') || '[]'));
         _mbRoomRender(roomId, room, allSecs);
       };
-      var _localSecs = [];
-      try { _localSecs = JSON.parse(localStorage.getItem('wr2_sections') || '[]'); } catch(e2) {}
-      if (!_localSecs.length && room.sections && room.sections.length) {
-        _localSecs = room.sections.map(function(s) { return Object.assign({}, s, { roomId: roomId, room_id: roomId }); });
-      }
-      // wr2State.sections도 확인
-      if (!_localSecs.length && window.wr2State && window.wr2State.sections && window.wr2State.sections.length) {
-        _localSecs = window.wr2State.sections.filter(function(s) { return s.roomId === roomId || s.room_id === roomId; });
-      }
+      // 1순위: wr2State 메모리 (가장 최신)
+      var _memSecs = (window.wr2State && window.wr2State.sections && window.wr2State.sections.length)
+        ? window.wr2State.sections : [];
+      // 2순위: localStorage
+      var _lsSecs = [];
+      try { _lsSecs = JSON.parse(localStorage.getItem('wr2_sections') || '[]'); } catch(e2) {}
+      // 3순위: room.sections (레거시)
+      var _fallbackSecs = (!_memSecs.length && !_lsSecs.length && room.sections && room.sections.length)
+        ? room.sections.map(function(s){ return Object.assign({},s,{roomId:roomId,room_id:roomId}); })
+        : [];
+      var _bestLocal = _memSecs.length ? _memSecs : (_lsSecs.length ? _lsSecs : _fallbackSecs);
       if (window._sbLoadSections) {
         window._sbLoadSections().then(function(cloudSecs) {
           if (cloudSecs && cloudSecs.length) {
             localStorage.setItem('wr2_sections', JSON.stringify(cloudSecs));
             _doRender(cloudSecs);
           } else {
-            _doRender(_localSecs);
+            _doRender(_bestLocal);
           }
-        }).catch(function() {
-          _doRender(_localSecs);
-        });
+        }).catch(function() { _doRender(_bestLocal); });
       } else {
-        _doRender(_localSecs);
+        _doRender(_bestLocal);
       }
     } catch(e) {
       console.error('mbRoomLoad error:', e);
@@ -2658,7 +2682,7 @@ body {
     window.ntOpen = function(id) {
       // 원래 ntOpen 실행 (데이터/렌더링)
       _origNtOpen(id);
-      window._mbNtOpenId = id; // 저장 버튼용
+      window._mbNtOpenId = id; // 💾 저장버튼용
       // 오버레이 표시
       var el = document.getElementById('ntEditorMain');
       var scroll = document.getElementById('ntEditorScroll');
@@ -2855,11 +2879,11 @@ body {
 
 <!-- ════ 노트 에디터 전체화면 오버레이 ════ -->
 <div id="ntEditorMain" style="display:none;position:fixed;top:calc(var(--safe-top) + var(--topbar-h));left:0;right:0;bottom:calc(var(--safe-bottom) + var(--tabbar-h));background:var(--bg);z-index:3000;flex-direction:column;overflow:hidden;">
-  <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--b1);flex-shrink:0;">
-    <button onclick="mbCloseNtEditor()" style="background:none;border:none;color:var(--mu);font-size:22px;cursor:pointer;padding:0;line-height:1;">‹</button>
-    <span style="font-size:14px;font-weight:700;color:var(--tx);flex:1;" id="ntEditorTitle">노트 편집</span>
-    <span id="ntSaveStatus" style="font-size:11px;color:var(--mu);"></span>
-    <button id="ntSaveBtn" onclick="(function(){var id=window._mbNtOpenId;if(id&&typeof window.ntManualSave==='function'){window.ntManualSave(id);}else if(typeof window.ntSave==='function'){window.ntSave();}})()" style="padding:5px 12px;background:rgba(79,142,255,.15);border:1px solid rgba(79,142,255,.4);border-radius:7px;color:#4f8eff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">💾 저장</button>
+  <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--b1);flex-shrink:0;">
+    <button onclick="mbCloseNtEditor()" style="background:none;border:none;color:var(--mu);font-size:22px;cursor:pointer;padding:0;line-height:1;flex-shrink:0;">‹</button>
+    <span style="font-size:14px;font-weight:700;color:var(--tx);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="ntEditorTitle">노트 편집</span>
+    <span id="ntSaveStatus" style="font-size:10px;color:var(--di);flex-shrink:0;"></span>
+    <button onclick="(function(){var id=window._mbNtOpenId;if(id&&typeof window.ntManualSave==='function'){window.ntManualSave(id);document.getElementById('ntSaveStatus').textContent='저장됨 ✓';}else if(typeof window.ntSave==='function'){window.ntSave();}else{var areas=document.getElementById('ntEditorScroll').querySelectorAll('textarea');if(areas.length){var ev=new Event('change',{bubbles:true});areas.forEach(function(a){a.dispatchEvent(ev);});document.getElementById('ntSaveStatus').textContent='저장됨 ✓';}}})()" style="padding:5px 14px;background:rgba(79,142,255,.18);border:1px solid rgba(79,142,255,.45);border-radius:8px;color:#4f8eff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0;white-space:nowrap;">💾 저장</button>
   </div>
   <div id="ntEditorScroll" style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;"></div>
 </div>
