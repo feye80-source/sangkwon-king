@@ -1837,6 +1837,9 @@ body {
     if (name === 'saved' && typeof mbRenderSaved === 'function') {
       setTimeout(mbRenderSaved, 50);
     }
+    if (name === 'insight') {
+      setTimeout(function(){ if (typeof mbInsTab === 'function') mbInsTab(_mbLastInsTab || 'note'); }, 80);
+    }
   };
 
   /* ── 지도 패널 토글 ── */
@@ -1877,10 +1880,6 @@ body {
       } else if (typeof window.ntRender === 'function') {
         try { window.ntRender(); } catch(e) {}
       }
-    }
-    // 인사이트탭 진입 시 마지막 탭 복원
-    if (name === 'insight') {
-      setTimeout(function(){ mbInsTab(_mbLastInsTab || 'note'); }, 80);
     }
     // 작업룸 탭: 룸 목록 새로고침
     if (name === 'room') {
@@ -2102,7 +2101,7 @@ body {
         (priceStr ? '<div class="mb-sv-card-prices">' + priceStr + '</div>' : '') +
         '<div class="mb-sv-card-actions">' +
           '<button class="mb-sv-action-btn memo" onclick="mbToggleMemo(' + idx + ',this)">📝 메모' + (memo ? ' ●' : '') + '</button>' +
-          '<button class="mb-sv-action-btn map" onclick="mbGoToMap(\'' + (d.address||d.location||'') + '\')">🗺️ 지도</button>' +
+          '<button class="mb-sv-action-btn map" onclick="mbGoToMap(\'' + (d['소재지']||d.address||d.location||'') + '\',' + (it.lat||'') + ',' + (it.lng||'') + ')">🗺️ 지도</button>' +
         '</div>' +
         '<div class="mb-sv-memo" id="mb-memo-' + idx + '">' +
           '<textarea placeholder="메모 입력..." onchange="mbSaveMemo(' + idx + ',this.value)">' + (memo||'') + '</textarea>' +
@@ -2213,13 +2212,20 @@ body {
     } catch(e) {}
   };
 
-  window.mbGoToMap = function(addr) {
-    if (!addr) return;
+  window.mbGoToMap = function(addr, lat, lng) {
+    if (!addr && !lat) return;
     mbGoPage('map', document.getElementById('mb-tab-map'));
     setTimeout(function() {
-      var inp = document.getElementById('mapKeyword');
-      if (inp) { inp.value = addr; searchMap(); }
-    }, 300);
+      if (lat && lng && window.map && window.kakao) {
+        window.map.setCenter(new window.kakao.maps.LatLng(parseFloat(lat), parseFloat(lng)));
+        window.map.setLevel(3);
+        return;
+      }
+      if (addr) {
+        var inp = document.getElementById('mapKeyword');
+        if (inp) { inp.value = addr; if (typeof searchMap === 'function') searchMap(); }
+      }
+    }, 350);
   };
 
   /* ── 노트 필터 ── */
@@ -2344,14 +2350,12 @@ body {
 
     var html = '';
 
-    // ── 1. 룸 기본 정보 (항상 표시) ──
+    // 1. 기본 정보 (항상 표시)
     html += '<div style="margin-bottom:14px;padding:12px 14px;background:var(--s2);border:1px solid var(--b1);border-radius:10px;">';
     html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">';
     html += '<span style="padding:2px 10px;border-radius:10px;font-size:11px;font-weight:700;color:' + statusColor + ';border:1px solid ' + statusColor + ';background:' + statusColor + '22;">' + statusLabel + '</span>';
     if (room.address) html += '<span style="font-size:12px;color:var(--mu);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">📍 ' + room.address + '</span>';
     html += '</div>';
-
-    // 연결 매물
     if (room.linkedSavedId || room.auctionId || room.listingId) {
       var linkedId = room.linkedSavedId || room.auctionId || room.listingId;
       var savedArr = [];
@@ -2367,8 +2371,6 @@ body {
         html += '</div>';
       }
     }
-
-    // 태그
     if (room.tags && room.tags.length) {
       html += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px;">';
       room.tags.forEach(function(tag) {
@@ -2376,8 +2378,6 @@ body {
       });
       html += '</div>';
     }
-
-    // 메모
     if (room.memo) {
       html += '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--b1);">';
       html += '<div style="font-size:10px;font-weight:700;color:var(--mu);margin-bottom:4px;">📝 메모</div>';
@@ -2386,7 +2386,7 @@ body {
     }
     html += '</div>';
 
-    // ── 2. 스냅샷 ──
+    // 2. 스냅샷
     var mapScenes = room.mapScenes || (room.mapScene ? [room.mapScene] : []);
     if (mapScenes.length) {
       html += '<div style="margin-bottom:14px;">';
@@ -2415,16 +2415,14 @@ body {
       html += '</div>';
     }
 
-    // ── 3. 섹션 ──
+    // 3. 섹션
     if (sections.length) {
       var TYPE_ICONS = { memo:'📝', checklist:'✅', metrics:'📊', log:'📋', capture:'📷', note:'📝' };
       var PHASE_LABELS = { interest:'관심', review:'검토', field:'현장', bid:'입찰', won:'낙찰', sell:'매도', closed:'종료' };
       var byPhase = {};
       sections.forEach(function(s) { var p = s.phase||'etc'; if(!byPhase[p])byPhase[p]=[]; byPhase[p].push(s); });
       Object.keys(byPhase).forEach(function(ph) {
-        if (PHASE_LABELS[ph]) {
-          html += '<div style="font-size:10px;font-weight:700;color:#f59e0b;letter-spacing:.5px;margin:8px 0 6px;">── ' + PHASE_LABELS[ph] + ' 단계</div>';
-        }
+        if (PHASE_LABELS[ph]) html += '<div style="font-size:10px;font-weight:700;color:#f59e0b;letter-spacing:.5px;margin:8px 0 6px;">── ' + PHASE_LABELS[ph] + ' 단계</div>';
         byPhase[ph].forEach(function(sec) {
           var sType = sec.type || '';
           var icon = TYPE_ICONS[sType] || '📌';
@@ -2474,11 +2472,11 @@ body {
       return;
     }
     try {
-      // wr2Init 안전 호출 (loadRooms+loadSections만 하고 wr2Render는 PC DOM 없으면 자동 skip)
+      // wr2Init 안전 호출 (loadRooms+loadSections 실행, wr2Render는 PC DOM 없으면 skip)
       if (window.wr2Init && !window.__wr2Inited) {
         try { window.__wr2Inited = true; window.wr2Init(); } catch(e0) {}
       }
-      // wr2State가 여전히 비어있으면 localStorage에서 직접 채움
+      // wr2State 여전히 비어있으면 localStorage에서 직접 채움
       if (window.wr2State) {
         if (!window.wr2State.rooms || !window.wr2State.rooms.length)
           try { window.wr2State.rooms = JSON.parse(localStorage.getItem('wr2_rooms') || '[]'); } catch(e3) {}
@@ -2727,28 +2725,8 @@ body {
     window.__mbNtOpenHooked = true;
     _origNtOpen = window.ntOpen;
     window.ntOpen = function(id) {
-      // 원래 ntOpen 실행 (데이터/렌더링)
+      // common.js ntOpen이 ntEditorScroll에 직접 렌더 + _mbNtOpenId 설정
       _origNtOpen(id);
-      window._mbNtOpenId = id; // 💾 저장버튼용
-      // 오버레이 표시
-      var el = document.getElementById('ntEditorMain');
-      var scroll = document.getElementById('ntEditorScroll');
-      var main = document.getElementById('ntEditorMain'); // ntOpen이 내용 채움
-      if (el) el.style.display = 'flex';
-      // ntEditorMain 안의 내용을 scroll로 이동
-      setTimeout(function() {
-        var src = document.getElementById('ntEditorMain');
-        var dst = document.getElementById('ntEditorScroll');
-        if (src && dst) {
-          // ntOpen이 채운 내용 가져오기 (첫 번째 child 이후)
-          var children = Array.from(src.children);
-          children.forEach(function(c) {
-            if (c.id !== 'ntEditorScroll' && !c.style.borderBottom) {
-              dst.appendChild(c);
-            }
-          });
-        }
-      }, 50);
     };
   }
   setTimeout(hookNtOpen, 1500);
