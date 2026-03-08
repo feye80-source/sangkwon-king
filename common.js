@@ -18000,7 +18000,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         if (p) p.style.display = (i === n) ? '' : 'none';
         if (t) t.classList.toggle('on', i === n);
       });
-      // 설정탭 (ipage_cfg / itab7)
+      // 설정탭
       const cfgPanel = document.getElementById('ipage_cfg');
       const cfgTab   = document.getElementById('itab7');
       if (cfgPanel) cfgPanel.style.display = (n === 7) ? '' : 'none';
