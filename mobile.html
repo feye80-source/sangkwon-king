@@ -2414,19 +2414,26 @@ body {
     var list = document.getElementById('mb-room-sel-list');
     if (!list) return;
     var isOpen = list.style.display !== 'none';
-    list.style.display = isOpen ? 'none' : 'block';
-    // 다른 곳 클릭 시 닫기
-    if (!isOpen) {
-      setTimeout(function() {
-        document.addEventListener('click', function _close(e) {
-          var wrap = document.getElementById('mb-room-sel-wrap');
-          if (wrap && !wrap.contains(e.target)) {
-            list.style.display = 'none';
-            document.removeEventListener('click', _close);
-          }
-        });
-      }, 10);
+    if (isOpen) {
+      list.style.display = 'none';
+      return;
     }
+    // 열기 전에 항상 목록 최신화
+    mbRoomRefreshSel();
+    list.style.display = 'block';
+    // 다른 곳 터치/클릭 시 닫기
+    setTimeout(function() {
+      function _close(e) {
+        var wrap = document.getElementById('mb-room-sel-wrap');
+        if (wrap && !wrap.contains(e.target)) {
+          list.style.display = 'none';
+          document.removeEventListener('click', _close);
+          document.removeEventListener('touchstart', _close);
+        }
+      }
+      document.addEventListener('click', _close);
+      document.addEventListener('touchstart', _close);
+    }, 50);
   };
 
   // 커스텀 드롭다운 항목 선택
@@ -2516,6 +2523,15 @@ body {
       _wrPollCount++;
       if ((window.wr2State && window.wr2State.rooms && window.wr2State.rooms.length) || _wrPollCount > 10) {
         clearInterval(_wrPoller);
+        // sections도 Supabase에서 명시적으로 로드
+        if (window._sbLoadSections) {
+          window._sbLoadSections().then(function(cloudSecs) {
+            if (cloudSecs && cloudSecs.length) {
+              localStorage.setItem('wr2_sections', JSON.stringify(cloudSecs));
+              if (window.wr2State) window.wr2State.sections = cloudSecs;
+            }
+          }).catch(function(){});
+        }
         mbRoomRefreshSel();
         // 현재 선택된 룸이 있으면 다시 로드
         var sel = document.getElementById('mb-room-sel');

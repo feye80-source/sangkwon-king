@@ -291,7 +291,6 @@
               const localStr = JSON.stringify(localRooms.map(r => r.updatedAt).sort());
               const cloudStr = JSON.stringify(cloudRooms.map(r => r.updatedAt).sort());
               if (localStr !== cloudStr) {
-                // 클라우드 우선 병합
                 const merged = [...cloudRooms];
                 localRooms.forEach(lr => {
                   if (!merged.find(cr => cr.id === lr.id)) merged.push(lr);
@@ -299,8 +298,25 @@
                 localStorage.setItem('wr2_rooms', JSON.stringify(merged));
                 if (window.wr2State) window.wr2State.rooms = merged;
                 if (typeof window.wr2Render === 'function') window.wr2Render();
-                // 모바일 작업룸 셀렉트 갱신
                 if (typeof window.mbRoomRefreshSel === 'function') window.mbRoomRefreshSel();
+              }
+            }
+          }
+
+          // 섹션 폴링
+          if (window._sbLoadSections) {
+            const cloudSecs = await window._sbLoadSections();
+            if (cloudSecs && cloudSecs.length) {
+              const localSecs = JSON.parse(localStorage.getItem('wr2_sections') || '[]');
+              const localStr2 = JSON.stringify(localSecs.map(s => s.id + (s.updatedAt||'')).sort());
+              const cloudStr2 = JSON.stringify(cloudSecs.map(s => s.id + (s.updatedAt||'')).sort());
+              if (localStr2 !== cloudStr2) {
+                const mergedSecs = [...cloudSecs];
+                localSecs.forEach(ls => {
+                  if (!mergedSecs.find(cs => cs.id === ls.id)) mergedSecs.push(ls);
+                });
+                localStorage.setItem('wr2_sections', JSON.stringify(mergedSecs));
+                if (window.wr2State) window.wr2State.sections = mergedSecs;
               }
             }
           }
@@ -18661,7 +18677,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           <button id="ntSaveBtn" onclick="ntManualSave('${id}')" style="padding:6px 16px;background:rgba(79,142,255,.15);border:1px solid rgba(79,142,255,.4);border-radius:7px;color:#4f8eff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">💾 저장</button>
         </div>
       </div>
-    </div>\`;
+    </div>`;
     };
 
     function ntShowEmpty() {
