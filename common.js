@@ -10512,6 +10512,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         item,
         propertyType: propertyType
       });
+      window.mapOverlays = mapOverlays; // 📱 모바일 바텀시트에서 참조할 수 있도록 동기화
 
       // 필터에 따라 표시
       const src = item.source || '';
@@ -15023,6 +15024,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         stackKey: getStackKeyFromPos(position)
       };
       mapOverlays.push(overlayObj);
+      window.mapOverlays = mapOverlays; // 📱 모바일 바텀시트 동기화
 
       // 마커 클릭 이벤트 - mapOverlays 배열 기반으로 상태 관리
       kakao.maps.event.addListener(marker, 'click', function () {
@@ -16421,6 +16423,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         transactionDupKey: dupKey  // ★ 중복 방지용 키
       };
       mapOverlays.push(overlayObj);
+      window.mapOverlays = mapOverlays; // 📱 모바일 바텀시트 동기화
 
       // 마커 클릭 이벤트 - mapOverlays 배열 기반으로 상태 관리 (직접 제어, refreshMapView 호출 불필요)
       kakao.maps.event.addListener(marker, 'click', function () {
