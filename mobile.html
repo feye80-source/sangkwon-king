@@ -798,16 +798,31 @@ body {
 .mb-sv-card[data-type="disco"] { border-left: 3px solid var(--disco-c); }
 .mb-sv-card[data-type="bds"] { border-left: 3px solid var(--bds-c); }
 
-  /* ── 지도 카드 모바일 최적화 ── */
-  :root { --c-w: 160px; --c-fs: 11px; }
-  .map-card { max-width: 160px; font-size: 11px; }
-  .map-card .map-card-header { padding: 5px 7px; }
-  .map-card .card-row { padding: 2px 7px; font-size: 10px; }
-  .map-card .card-actions { padding: 4px 7px; gap: 4px; }
-  .map-card .card-actions button { font-size: 10px; padding: 2px 5px; }
-  /* 연결선 SVG */
-  .overlay-wrap { position: absolute; overflow: visible; }
-  .conn-svg { position: absolute; overflow: visible; pointer-events: none; }
+  /* ── 바텀시트 ── */
+  .mb-bs-tab { flex:1; padding:10px 4px; background:none; border:none; border-bottom:2px solid transparent; color:var(--mu); font-size:12px; font-family:'Noto Sans KR',sans-serif; cursor:pointer; }
+  .mb-bs-tab.active { color:var(--ac); border-bottom-color:var(--ac); font-weight:700; }
+  .mb-bs-card-body .card-row { display:flex; justify-content:space-between; padding:7px 0; border-bottom:1px solid var(--b1); font-size:13px; }
+  .mb-bs-card-body .card-label { color:var(--mu); font-size:12px; }
+  .mb-bs-card-body .card-val { color:var(--tx); font-weight:600; }
+  .mb-bs-card-body .card-val.red { color:var(--red); }
+  .mb-bs-card-body .card-val.green { color:var(--g); }
+  /* ── 노트 모드 버튼 ── */
+  .nt-mode-btn { padding:5px 12px; font-size:12px; }
+  .nt-mode-btn.on { background:var(--ac); color:#fff; border-color:var(--ac); }
+  /* ── nt-card (노트 목록 카드) ── */
+  .nt-card { padding:10px 12px; background:var(--s2); border:1px solid var(--b1); border-radius:10px; margin-bottom:8px; cursor:pointer; }
+  .nt-card:active { opacity:.8; }
+  .nt-card-title { font-size:13px; font-weight:700; color:var(--tx); margin-bottom:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .nt-card-preview { font-size:11px; color:var(--mu); line-height:1.5; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+  .nt-card-tag { display:inline-block; padding:1px 6px; background:rgba(167,139,250,.12); border:1px solid rgba(167,139,250,.25); border-radius:8px; font-size:10px; color:#a78bfa; margin-right:3px; }
+  .nt-card-actions { display:flex; gap:6px; margin-top:8px; }
+  .nt-act-btn { padding:4px 10px; background:none; border:1px solid var(--b1); border-radius:6px; color:var(--mu); font-size:11px; cursor:pointer; }
+  .nt-badge { display:inline-block; padding:1px 7px; border-radius:8px; font-size:10px; font-weight:700; margin-right:5px; }
+  .nt-badge-note { background:rgba(79,142,255,.15); color:#4f8eff; }
+  .nt-badge-youtube { background:rgba(255,68,68,.12); color:#ff4444; }
+  .nt-badge-article { background:rgba(0,212,170,.12); color:#00d4aa; }
+  .nt-badge-report { background:rgba(255,140,0,.12); color:#ff8c00; }
+
   </style>
 </head>
 <body>
@@ -891,25 +906,38 @@ body {
     <!-- 노트 패널 -->
     <div id="mb-ins-note" class="mb-ins-panel active">
       <div class="mb-note-toolbar">
-        <input type="text" id="mb-nt-search" placeholder="🔍 노트 검색" oninput="mbNtFilter()">
+        <input type="text" id="ntSearchInput" placeholder="🔍 노트 검색" oninput="if(typeof ntRender==='function')ntRender()">
         <button class="mb-btn mb-btn-gold" onclick="ntCreate('unified')">＋ 새 노트</button>
       </div>
-      <!-- 도메인 칩 -->
-      <div class="mb-filter-scroll" style="margin-bottom:10px;">
+      <!-- 모드 버튼 -->
+      <div class="mb-filter-scroll" style="margin-bottom:6px;">
+        <button class="mb-ftab nt-mode-btn on" id="ntModeAll" onclick="window._ntSetMode&&window._ntSetMode('all',this)">전체</button>
+        <button class="mb-ftab nt-mode-btn" id="ntModeStudy" onclick="window._ntSetMode&&window._ntSetMode('study',this)">📚 학습</button>
+        <button class="mb-ftab nt-mode-btn" id="ntModeDeal" onclick="window._ntSetMode&&window._ntSetMode('deal',this)">🏠 물건</button>
+      </div>
+      <!-- 도메인 칩 (학습 모드) -->
+      <div id="ntDomainFilter" class="mb-filter-scroll" style="margin-bottom:6px;display:none;">
         <button class="mb-ftab active" onclick="mbNtDomain('all',this)">전체</button>
         <button class="mb-ftab" onclick="mbNtDomain('auction',this)">⚖️ 경매</button>
         <button class="mb-ftab" onclick="mbNtDomain('tax',this)">💰 세금</button>
         <button class="mb-ftab" onclick="mbNtDomain('legal',this)">📋 권리</button>
         <button class="mb-ftab" onclick="mbNtDomain('market',this)">🏘️ 상권</button>
         <button class="mb-ftab" onclick="mbNtDomain('memo',this)">📌 메모</button>
-        <button class="mb-ftab" onclick="mbNtDomain('deal',this)">⚖️ 물건</button>
       </div>
-      <!-- 노트 목록 (common.js의 ntRender가 여기에 렌더링) -->
-      <div id="mb-nt-list"></div>
-      <div class="mb-empty" id="mb-nt-empty" style="display:none;">
-        <div class="mb-empty-icon">📓</div>
-        <div>노트가 없어요</div>
-        <button class="mb-btn mb-btn-gold" onclick="ntCreate('unified')" style="margin-top:8px;">첫 노트 작성</button>
+      <!-- 단계 칩 (물건 모드) -->
+      <div id="ntPhaseFilter" class="mb-filter-scroll" style="margin-bottom:6px;display:none;">
+        <button class="mb-ftab active" onclick="mbNtPhase('all',this)">전체</button>
+        <button class="mb-ftab" onclick="mbNtPhase('interest',this)">관심</button>
+        <button class="mb-ftab" onclick="mbNtPhase('analysis',this)">분석</button>
+        <button class="mb-ftab" onclick="mbNtPhase('bid',this)">입찰</button>
+        <button class="mb-ftab" onclick="mbNtPhase('done',this)">완료</button>
+      </div>
+      <!-- 노트 목록 (ntRender가 여기에 렌더링) -->
+      <div id="ntList"></div>
+      <div id="ntEmpty" style="display:none;text-align:center;color:var(--di);padding:30px 10px;">
+        <div style="font-size:32px;margin-bottom:8px;">📓</div>
+        <div style="font-size:13px;">노트가 없어요</div>
+        <button class="mb-btn mb-btn-gold" onclick="ntCreate('unified')" style="margin-top:12px;">첫 노트 작성</button>
       </div>
     </div>
 
@@ -1103,6 +1131,11 @@ body {
       <input type="text" id="mapKeyword" placeholder="🔍 지역명 검색 (예: 강남)">
       <button onclick="searchMap()">이동</button>
     </div>
+
+    <!-- 매물 목록 플로팅 버튼 -->
+    <button id="mb-map-list-btn" onclick="mbOpenMapList()" style="position:absolute;bottom:130px;right:14px;z-index:500;width:48px;height:48px;border-radius:50%;background:var(--s1);border:1px solid var(--b1);box-shadow:0 3px 12px rgba(0,0,0,.4);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;font-size:10px;color:var(--mu);gap:2px;">
+      <span style="font-size:18px;">📋</span>목록
+    </button>
 
     <!-- 하단 액션바 -->
     <div id="mb-map-actions">
@@ -1456,13 +1489,13 @@ body {
   <button id="itab8"></button>
 
   <!-- 노트 PC용 요소들 -->
-  <div id="ntList"></div>
+  <div id="ntList" style="display:none"></div>
   <div id="ntEditor"></div>
-  <div id="ntDomainFilter"></div>
   <div id="ntNewBtnWrap"></div>
   <button id="ntModeAll"></button>
   <button id="ntModeStudy"></button>
   <button id="ntModeDeal"></button>
+  <span id="ntSaveStatus"></span>
   <span id="watchCnt"></span>
 
   <!-- 페이지 네비 PC용 -->
@@ -1522,6 +1555,50 @@ body {
   <div id="wr2-section-list"></div>
   <button id="wr2-new-room-btn"></button>
   <select id="wr2-room-sel"></select>
+  <!-- wr2Render/wr2Init 필수 DOM (hidden dummy) -->
+  <div id="wr2RoomList"></div>
+  <div id="wr2ListEmpty"></div>
+  <span id="wr2RoomCount"></span>
+  <div id="wr2Detail"></div>
+  <div id="wr2DetailEmpty"></div>
+  <div id="wr2ListPanel"></div>
+  <div id="wr2NewModal" style="display:none"></div>
+  <button id="wr2NewRoomBtn"></button>
+  <select id="wr2Sort"></select>
+  <div id="wr2PhaseTabs"></div>
+  <input id="wr2Title" type="text">
+  <input id="wr2Address" type="text">
+  <select id="wr2Status"></select>
+  <div id="wr2Sections"></div>
+  <input id="wr2NewTitle" type="text">
+  <input id="wr2NewAddress" type="text">
+  <input id="wr2NewAuctionId" type="text">
+  <input id="wr2NewListingId" type="text">
+  <input id="wr2NewTags" type="text">
+  <div id="wr2OverviewTabBtn"></div>
+  <div id="wr2TabOverview"></div>
+  <div id="wr2TabPhase"></div>
+  <div id="wr2ItemSummary"></div>
+  <div id="wr2Attachments"></div>
+  <div id="wr2LmList"></div>
+  <input id="wr2LmSearch" type="text">
+  <div id="wr2NoteDropZone"></div>
+  <textarea id="wr2NoteText"></textarea>
+  <div id="wr2SnapList"></div>
+  <div id="wr2TimelineBody"></div>
+  <div id="wr2ChecklistBody"></div>
+  <div id="wr2CaptureBody"></div>
+  <div id="wr2CaptureDrop"></div>
+  <input id="wr2NewSeedDefaults" type="checkbox">
+  <input id="wr2NewSectionType" type="text">
+  <button id="wr2AddSectionBtn"></button>
+  <button id="wr2DeleteRoomBtn"></button>
+  <button id="wr2OpenSavedBtn"></button>
+  <button id="wr2LinkSavedBtn"></button>
+  <div id="wr2LinkModal" style="display:none"></div>
+  <div id="wr2ResizeHandle"></div>
+  <button id="wr2RestoreMapBtn"></button>
+  <div id="wr2PhaseHint"></div>
 </div>
 
 <!-- ════════════════════════════════════════════════════════
@@ -1665,8 +1742,20 @@ body {
       if (tab)   tab.classList.toggle('active', n === name);
       if (panel) panel.classList.toggle('active', n === name);
     });
-    // 노트 탭 열리면 렌더링
-    if (name === 'note' && typeof mbRenderNotes === 'function') mbRenderNotes();
+    // 노트 탭: ntInit 또는 ntRender 호출
+    if (name === 'note') {
+      if (typeof window.ntInit === 'function') {
+        try { window.ntInit(); } catch(e) {}
+      } else if (typeof window.ntRender === 'function') {
+        try { window.ntRender(); } catch(e) {}
+      }
+    }
+    // 작업룸 탭: 룸 목록 새로고침
+    if (name === 'room') {
+      mbRoomRefreshSel();
+      var sel = document.getElementById('mb-room-sel');
+      if (sel && sel.value) mbRoomLoad(sel.value);
+    }
   };
 
   /* ── 계산기 서브탭 ── */
@@ -1999,10 +2088,260 @@ body {
 
     // 기본 시작 탭: 인사이트
     mbGoPage('insight', document.getElementById('mb-tab-insight'));
+
+    // ── 노트 초기화 (common.js 로드 후) ──
+    setTimeout(function() {
+      if (typeof window.ntInit === 'function') {
+        try { window.ntInit(); } catch(e) {}
+      } else if (typeof window.ntRender === 'function') {
+        try { window.ntRender(); } catch(e) {}
+      }
+    }, 1200);
   });
+
+  /* ════ 노트 에디터 오버레이 ════ */
+  window.mbCloseNtEditor = function() {
+    var el = document.getElementById('ntEditorMain');
+    if (el) el.style.display = 'none';
+  };
+
+  // ntOpen 후킹 — 모바일에서는 오버레이로 표시
+  var _origNtOpen = null;
+  function hookNtOpen() {
+    if (typeof window.ntOpen !== 'function') return;
+    if (window.__mbNtOpenHooked) return;
+    window.__mbNtOpenHooked = true;
+    _origNtOpen = window.ntOpen;
+    window.ntOpen = function(id) {
+      // 원래 ntOpen 실행 (데이터/렌더링)
+      _origNtOpen(id);
+      // 오버레이 표시
+      var el = document.getElementById('ntEditorMain');
+      var scroll = document.getElementById('ntEditorScroll');
+      var main = document.getElementById('ntEditorMain'); // ntOpen이 내용 채움
+      if (el) el.style.display = 'flex';
+      // ntEditorMain 안의 내용을 scroll로 이동
+      setTimeout(function() {
+        var src = document.getElementById('ntEditorMain');
+        var dst = document.getElementById('ntEditorScroll');
+        if (src && dst) {
+          // ntOpen이 채운 내용 가져오기 (첫 번째 child 이후)
+          var children = Array.from(src.children);
+          children.forEach(function(c) {
+            if (c.id !== 'ntEditorScroll' && !c.style.borderBottom) {
+              dst.appendChild(c);
+            }
+          });
+        }
+      }, 50);
+    };
+  }
+  setTimeout(hookNtOpen, 1500);
+
+  /* ── 노트 모드 전환 ── */
+  window._ntSetMode = function(mode, btn) {
+    document.querySelectorAll('.nt-mode-btn').forEach(function(b) { b.classList.remove('on'); });
+    if (btn) btn.classList.add('on');
+    var df = document.getElementById('ntDomainFilter');
+    var pf = document.getElementById('ntPhaseFilter');
+    if (df) df.style.display = mode === 'study' ? '' : 'none';
+    if (pf) pf.style.display = mode === 'deal' ? '' : 'none';
+    if (typeof window.ntRender === 'function') {
+      // ntMode 변경 후 렌더
+      window._ntMode_mb = mode;
+      window.ntRender();
+    }
+  };
+
+  window.mbNtDomain = function(domain, btn) {
+    document.querySelectorAll('#ntDomainFilter .mb-ftab').forEach(function(b){ b.classList.remove('active'); });
+    if (btn) btn.classList.add('active');
+    if (typeof window.ntRender === 'function') window.ntRender();
+  };
+
+  window.mbNtPhase = function(phase, btn) {
+    document.querySelectorAll('#ntPhaseFilter .mb-ftab').forEach(function(b){ b.classList.remove('active'); });
+    if (btn) btn.classList.add('active');
+    if (typeof window.ntRender === 'function') window.ntRender();
+  };
+
+  /* ════ 지도 바텀시트 ════ */
+  var _mbBsCurrentId = null;
+  var _mbBsCurTab = 'card';
+
+  window.mbShowCardBottomSheet = function(markerId) {
+    _mbBsCurrentId = markerId;
+    _mbBsCurTab = 'card';
+    var bs = document.getElementById('mb-map-bs');
+    var bd = document.getElementById('mb-map-bs-backdrop');
+    if (!bs) return;
+    bs.style.display = 'flex';
+    if (bd) bd.style.display = 'block';
+    mbBsTab('card');
+  };
+
+  window.mbBsTab = function(tab) {
+    _mbBsCurTab = tab;
+    ['card','list','auction'].forEach(function(t) {
+      var btn = document.getElementById('mb-bs-tab-' + t);
+      if (btn) btn.classList.toggle('active', t === tab);
+    });
+    var body = document.getElementById('mb-map-bs-body');
+    var actions = document.getElementById('mb-map-bs-actions');
+    var title = document.getElementById('mb-map-bs-title');
+    if (!body) return;
+
+    if (tab === 'card') {
+      // 단일 매물 상세
+      var overlays = window.mapOverlays || [];
+      var obj = overlays.find(function(o) { return o && o.id === _mbBsCurrentId; });
+      if (!obj || !obj.item) {
+        body.innerHTML = '<div style="text-align:center;color:var(--di);padding:30px;">매물 정보를 찾을 수 없어요</div>';
+        if (title) title.textContent = '매물 정보';
+        return;
+      }
+      var item = obj.item;
+      if (title) title.textContent = item.title || item.address || '매물 정보';
+      // 카드 바디 HTML 재사용
+      var html = '';
+      if (typeof window.buildMapCardBodyHTML === 'function') {
+        html = window.buildMapCardBodyHTML(item);
+      } else {
+        // 폴백: 기본 정보만
+        var d = item.data || {};
+        html = '<div style="padding:4px 0;">';
+        if (d['보증금']) html += '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--b1);"><span style="color:var(--mu);font-size:12px;">보증금</span><b style="color:#4f8eff;font-size:13px;">' + d['보증금'] + '</b></div>';
+        if (d['월세']) html += '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--b1);"><span style="color:var(--mu);font-size:12px;">월세</span><b style="color:#4f8eff;font-size:13px;">' + d['월세'] + '</b></div>';
+        if (d['매매가']) html += '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--b1);"><span style="color:var(--mu);font-size:12px;">매매가</span><b style="color:#ff8c42;font-size:13px;">' + d['매매가'] + '</b></div>';
+        if (d['전용면적']||d['면적']) html += '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--b1);"><span style="color:var(--mu);font-size:12px;">면적</span><b style="color:var(--tx);font-size:13px;">' + (d['전용면적']||d['면적']) + '</b></div>';
+        if (d['층수']||d['층']) html += '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--b1);"><span style="color:var(--mu);font-size:12px;">층수</span><b style="color:var(--tx);font-size:13px;">' + (d['층수']||d['층']) + '</b></div>';
+        html += '</div>';
+      }
+      body.innerHTML = '<div class="mb-bs-card-body">' + html + '</div>';
+      // 액션 버튼
+      if (actions) {
+        var iid = (item.id || '').replace(/^marker_/, '');
+        actions.innerHTML =
+          '<button class="mb-btn mb-btn-primary" style="flex:1;" onclick="mbCloseBottomSheet();if(typeof openPopup===\'function\')openPopup(\'' + iid + '\')">📋 상세보기</button>' +
+          '<button class="mb-btn" style="flex:1;" onclick="mbCloseBottomSheet();if(typeof mbOpenSavedDetail===\'function\')mbOpenSavedDetail(\'' + iid + '\')">💾 저장목록</button>' +
+          '<button class="mb-btn mb-btn-gold" style="flex:1;" onclick="mbCloseBottomSheet();if(typeof ntCreate===\'function\')ntCreate(\'unified\')">📓 노트</button>';
+      }
+
+    } else if (tab === 'list') {
+      // 현재 지도 위 전체 매물 목록
+      var overlays2 = window.mapOverlays || [];
+      if (title) title.textContent = '지도 내 매물 (' + overlays2.length + ')';
+      if (!overlays2.length) {
+        body.innerHTML = '<div style="text-align:center;color:var(--di);padding:30px;">지도에 마커가 없어요</div>';
+        if (actions) actions.innerHTML = '';
+        return;
+      }
+      body.innerHTML = overlays2.map(function(obj) {
+        if (!obj || !obj.item) return '';
+        var it = obj.item;
+        var d = it.data || {};
+        var price = d['보증금'] ? (d['보증금'] + (d['월세'] ? '/' + d['월세'] : '')) : (d['매매가'] || d['감정가'] || '');
+        var src = it.source || it.mode || '';
+        var srcColor = src === '부동산플래닛' ? '#9333ea' : src.includes('네이버') ? '#03c75a' : src === '디스코' ? '#e8365d' : src === '점포라인' ? '#67c6e8' : '#4f8eff';
+        return '<div onclick="mbBsSelectItem(\'' + obj.id + '\')" style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--b1);cursor:pointer;">' +
+          '<div style="width:8px;height:8px;border-radius:50%;background:' + srcColor + ';flex-shrink:0;"></div>' +
+          '<div style="flex:1;min-width:0;">' +
+            '<div style="font-size:13px;font-weight:600;color:var(--tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + (it.title || it.address || '매물') + '</div>' +
+            '<div style="font-size:11px;color:var(--mu);margin-top:2px;">' + src + (price ? ' · ' + price : '') + '</div>' +
+          '</div>' +
+          '<div style="font-size:18px;">›</div>' +
+        '</div>';
+      }).join('');
+      if (actions) actions.innerHTML = '<button class="mb-btn" style="flex:1;" onclick="mbCloseBottomSheet()">닫기</button>';
+
+    } else if (tab === 'auction') {
+      // 경매 물건 목록 (저장목록 중 mode===auction)
+      var saved = [];
+      try { saved = JSON.parse(localStorage.getItem('re_sv') || '[]'); } catch(e) {}
+      var auctions = saved.filter(function(it) { return it.mode === 'auction'; });
+      if (title) title.textContent = '경매 물건 (' + auctions.length + ')';
+      if (!auctions.length) {
+        body.innerHTML = '<div style="text-align:center;color:var(--di);padding:30px;">저장된 경매 물건이 없어요<br><span style="font-size:11px;margin-top:6px;display:block;">지도에서 경매 마커를 탭해 저장하세요</span></div>';
+        if (actions) actions.innerHTML = '';
+        return;
+      }
+      body.innerHTML = auctions.map(function(it) {
+        var d = it.data || {};
+        var price = d['감정가'] || d['매매가'] || '';
+        var addr = d['소재지'] || it.address || it.title || '';
+        return '<div onclick="if(typeof openPopup===\'function\')openPopup(\'' + it.id + '\')" style="padding:10px;background:var(--s2);border:1px solid rgba(255,140,0,.2);border-radius:8px;margin-bottom:8px;cursor:pointer;">' +
+          '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">' +
+            '<span style="font-size:10px;padding:1px 6px;background:rgba(255,140,0,.15);color:#ff8c00;border-radius:4px;">경매</span>' +
+            '<span style="font-size:12px;font-weight:700;color:var(--tx);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (it.title || addr || '경매 물건') + '</span>' +
+          '</div>' +
+          (price ? '<div style="font-size:13px;color:#ff8c42;font-weight:700;">감정가 ' + price + '</div>' : '') +
+          (addr ? '<div style="font-size:11px;color:var(--mu);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + addr + '</div>' : '') +
+        '</div>';
+      }).join('');
+      if (actions) actions.innerHTML =
+        '<button class="mb-btn" style="flex:1;" onclick="mbCloseBottomSheet()">닫기</button>' +
+        '<button class="mb-btn mb-btn-primary" style="flex:1;" onclick="mbBsTab(\'card\')">← 매물로</button>';
+    }
+  };
+
+  window.mbBsSelectItem = function(markerId) {
+    _mbBsCurrentId = markerId;
+    mbBsTab('card');
+  };
+
+  window.mbCloseBottomSheet = function() {
+    var bs = document.getElementById('mb-map-bs');
+    var bd = document.getElementById('mb-map-bs-backdrop');
+    if (bs) bs.style.display = 'none';
+    if (bd) bd.style.display = 'none';
+  };
+
+  // 지도 탭 하단 "목록 보기" 버튼 - 전체 매물 바텀시트 열기
+  window.mbOpenMapList = function() {
+    _mbBsCurrentId = null;
+    var bs = document.getElementById('mb-map-bs');
+    var bd = document.getElementById('mb-map-bs-backdrop');
+    if (bs) bs.style.display = 'flex';
+    if (bd) bd.style.display = 'block';
+    mbBsTab('list');
+  };
 
 })();
 </script>
+
+<!-- ════ 노트 에디터 전체화면 오버레이 ════ -->
+<div id="ntEditorMain" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:3000;flex-direction:column;overflow:hidden;">
+  <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--b1);flex-shrink:0;">
+    <button onclick="mbCloseNtEditor()" style="background:none;border:none;color:var(--mu);font-size:22px;cursor:pointer;padding:0;line-height:1;">‹</button>
+    <span style="font-size:14px;font-weight:700;color:var(--tx);flex:1;" id="ntEditorTitle">노트 편집</span>
+    <span id="ntSaveStatus" style="font-size:11px;color:var(--mu);"></span>
+  </div>
+  <div id="ntEditorScroll" style="flex:1;overflow-y:auto;"></div>
+</div>
+
+<!-- ════ 지도 바텀시트 ════ -->
+<div id="mb-map-bs-backdrop" onclick="mbCloseBottomSheet()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1900;"></div>
+<div id="mb-map-bs" style="display:none;position:fixed;left:0;right:0;bottom:0;z-index:2000;background:var(--s1);border-radius:18px 18px 0 0;max-height:80vh;overflow:hidden;flex-direction:column;box-shadow:0 -4px 30px rgba(0,0,0,.5);">
+  <!-- 드래그 핸들 -->
+  <div style="display:flex;justify-content:center;padding:10px 0 6px;">
+    <div style="width:36px;height:4px;background:var(--b2);border-radius:2px;"></div>
+  </div>
+  <!-- 헤더 -->
+  <div id="mb-map-bs-header" style="display:flex;align-items:center;gap:10px;padding:4px 16px 12px;flex-shrink:0;">
+    <span id="mb-map-bs-title" style="font-size:15px;font-weight:700;color:var(--tx);flex:1;"></span>
+    <button onclick="mbCloseBottomSheet()" style="background:none;border:none;color:var(--mu);font-size:20px;cursor:pointer;">×</button>
+  </div>
+  <!-- 탭: 단일 매물 / 목록 / 경매 -->
+  <div style="display:flex;border-bottom:1px solid var(--b1);flex-shrink:0;">
+    <button id="mb-bs-tab-card" class="mb-bs-tab active" onclick="mbBsTab('card')">📋 매물 정보</button>
+    <button id="mb-bs-tab-list" class="mb-bs-tab" onclick="mbBsTab('list')">📍 목록</button>
+    <button id="mb-bs-tab-auction" class="mb-bs-tab" onclick="mbBsTab('auction')">⚖️ 경매</button>
+  </div>
+  <!-- 컨텐츠 -->
+  <div id="mb-map-bs-body" style="flex:1;overflow-y:auto;padding:12px 14px;"></div>
+  <!-- 액션 버튼 -->
+  <div id="mb-map-bs-actions" style="display:flex;gap:8px;padding:10px 14px;border-top:1px solid var(--b1);flex-shrink:0;"></div>
+</div>
 
 </body>
 </html>
