@@ -244,10 +244,75 @@
         } catch(e) { console.warn('[SB] API key sync error', e); }
 
         window._sbSyncStatus('✅ 클라우드 로드 완료', true);
+
+        // ☁️ 10초 폴링 자동 동기화 시작
+        window._sbStartPolling();
       } catch(e) {
         console.warn('[SB] initLoad error', e);
         window._sbSyncStatus('⚠️ 오프라인 모드', false);
       }
+    };
+
+    // ☁️ 10초 폴링: 노트 + 작업룸 자동 갱신 (새로고침 불필요)
+    window._sbPollingTimer = null;
+    window._sbStartPolling = function() {
+      if (window._sbPollingTimer) clearInterval(window._sbPollingTimer);
+      window._sbPollingTimer = setInterval(async function() {
+        try {
+          if (!window._sb) return;
+          const { data: { session } } = await window._sb.auth.getSession();
+          if (!session) return;
+
+          // 노트 폴링
+          if (window._sbLoadNtNotes) {
+            const cloudNotes = await window._sbLoadNtNotes();
+            if (cloudNotes && cloudNotes.length) {
+              const localNotes = JSON.parse(localStorage.getItem('nt_notes') || '[]');
+              // 클라우드가 더 최신인 항목만 병합
+              const merged = [...cloudNotes];
+              localNotes.forEach(ln => {
+                if (!merged.find(cn => cn.id === ln.id)) merged.push(ln);
+              });
+              const localStr = JSON.stringify(localNotes.map(n => n.updatedAt).sort());
+              const cloudStr = JSON.stringify(cloudNotes.map(n => n.updatedAt).sort());
+              if (localStr !== cloudStr) {
+                localStorage.setItem('nt_notes', JSON.stringify(merged));
+                // 노트 UI 갱신 (열려있으면)
+                if (typeof window.ntRender === 'function') window.ntRender();
+              }
+            }
+          }
+
+          // 작업룸 폴링
+          if (window._sbLoadRooms) {
+            const cloudRooms = await window._sbLoadRooms();
+            if (cloudRooms && cloudRooms.length) {
+              const localRooms = JSON.parse(localStorage.getItem('wr2_rooms') || '[]');
+              const localStr = JSON.stringify(localRooms.map(r => r.updatedAt).sort());
+              const cloudStr = JSON.stringify(cloudRooms.map(r => r.updatedAt).sort());
+              if (localStr !== cloudStr) {
+                // 클라우드 우선 병합
+                const merged = [...cloudRooms];
+                localRooms.forEach(lr => {
+                  if (!merged.find(cr => cr.id === lr.id)) merged.push(lr);
+                });
+                localStorage.setItem('wr2_rooms', JSON.stringify(merged));
+                if (window.wr2State) window.wr2State.rooms = merged;
+                if (typeof window.wr2Render === 'function') window.wr2Render();
+                // 모바일 작업룸 셀렉트 갱신
+                if (typeof window.mbRoomRefreshSel === 'function') window.mbRoomRefreshSel();
+              }
+            }
+          }
+        } catch(e) {
+          // 폴링 오류는 조용히 무시 (UX 방해 안 함)
+          console.warn('[SB] polling error', e);
+        }
+      }, 10000); // 10초
+    };
+
+    window._sbStopPolling = function() {
+      if (window._sbPollingTimer) { clearInterval(window._sbPollingTimer); window._sbPollingTimer = null; }
     };
 
     // API 키 변경 시 Supabase 자동 저장
@@ -6623,7 +6688,7 @@ ${inputDesc.substring(0, 3000)}
         if (oObj) {
           oObj.isOpen = true;
           // ★ [v142 FIX] overlay 직접 표시 (refreshMapView bounds 체크 타이밍 문제 우회)
-          try { oObj.overlay.setMap(map); } catch (e) { }
+          if (window.innerWidth > 768) { try { oObj.overlay.setMap(map); } catch (e) { } }  // 📱 모바일 차단
           try { oObj.marker.setMap(map); } catch (e) { }
         }
         setTimeout(() => { refreshMapView(); renderCardListPanel(); updateMapLine && updateMapLine(markerId); }, 200);
@@ -10508,7 +10573,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         id,
         overlay,
         marker,
-        isOpen: window._mapOpenOnlyItemId ? (item.id === window._mapOpenOnlyItemId) : true,  // ★ 내 지도 이동 시 해당 카드만 열기
+        isOpen: (window.innerWidth > 768) && (window._mapOpenOnlyItemId ? (item.id === window._mapOpenOnlyItemId) : true),  // 📱 모바일: 항상 false (바텀시트 전용)
         item,
         propertyType: propertyType
       });
@@ -10526,7 +10591,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
       // 카드도 즉시 표시 (해당 카드만 또는 전체)
       const thisIsOpen = window._mapOpenOnlyItemId ? (item.id === window._mapOpenOnlyItemId) : true;
-      if (mapFilters[filterKey] && thisIsOpen) {
+      if (mapFilters[filterKey] && thisIsOpen && window.innerWidth > 768) {  // 📱 모바일: 카드 표시 안 함
         overlay.setMap(map);
 
         // 카드 크기 및 연결선 즉시 적용
@@ -12129,7 +12194,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           : true;
         if (bounds.contain(pos) && typeOk && yearOk) {
           obj.marker.setMap(map);
-          if (obj.isOpen) {
+          if (obj.isOpen && window.innerWidth > 768) {  // 📱 모바일: overlay 표시 안 함
             obj.overlay.setMap(map);
           } else {
             obj.overlay.setMap(null);
@@ -12488,10 +12553,10 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const key = obj.stackKey || getStackKeyFromPos(obj.marker?.getPosition?.());
       if (!key) return;
       obj.stackKey = key;
-      obj.isOpen = true;
+      obj.isOpen = window.innerWidth > 768;  // 📱 모바일 차단
       const sameOpen = mapOverlays.filter(o => o && o.id !== obj.id && o.isOpen && o.stackKey === key);
       if (sameOpen.length > 0) {
-        try { obj.overlay.setMap(map); } catch (e) { }
+        if (window.innerWidth > 768) { try { obj.overlay.setMap(map); } catch (e) { } }
         setTimeout(() => { openAllCardsAtSamePos(sameOpen[0].id); }, 30);
         return;
       }
@@ -13497,8 +13562,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           else if (_src === '네이버부동산' || _src === '네이버' || _pt === 'listing') _tl = 'naver';
           else _tl = 'general';
           ov.stackKey = `${_tl}_${newLat.toFixed(6)}_${newLng.toFixed(6)}`;
-          ov.isOpen = true;
-          try { if (ov.overlay) ov.overlay.setMap(map); } catch (e) { }
+          ov.isOpen = window.innerWidth > 768;  // 📱 모바일: 복원 시도 차단
+          if (window.innerWidth > 768) { try { if (ov.overlay) ov.overlay.setMap(map); } catch (e) { } }
 
           const el = document.getElementById(eid);
           if (el) {
@@ -13568,8 +13633,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           ov.marker.setPosition(targetPos);
           if (ov.overlay) ov.overlay.setPosition(targetPos);
           ov.stackKey = newKey;
-          ov.isOpen = true;
-          try { if (ov.overlay) ov.overlay.setMap(map); } catch (e) { }
+          ov.isOpen = window.innerWidth > 768;  // 📱 모바일 차단
+          if (window.innerWidth > 768) { try { if (ov.overlay) ov.overlay.setMap(map); } catch (e) { } }
 
           // 모이기 flash 애니메이션
           const el = document.getElementById(eid);
@@ -15938,7 +16003,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         const show = selectedYears.size === 0 || selectedYears.has(year);
         if (show) {
           o.marker.setMap(map);
-          if (o.isOpen) o.overlay.setMap(map);
+          if (o.isOpen && window.innerWidth > 768) o.overlay.setMap(map);  // 📱 모바일 차단
         } else {
           o.marker.setMap(null);
           o.overlay.setMap(null);
@@ -18588,10 +18653,15 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       ${editorBody}
     </div>
     <!-- 하단 상태 -->
-    <div style="padding:5px 14px;border-top:1px solid var(--b1);font-size:10px;color:var(--di);flex-shrink:0;display:flex;justify-content:space-between;">
-      <span id="ntSaveStatus">저장됨</span>
-      <span>${new Date(note.updatedAt).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
-    </div>`;
+    <div style="padding:5px 14px;border-top:1px solid var(--b1);font-size:10px;color:var(--b1);flex-shrink:0;">
+      <div style="padding:8px 14px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
+        <span id="ntSaveStatus" style="font-size:10px;color:var(--di);">저장됨</span>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span style="font-size:10px;color:var(--di);">${new Date(note.updatedAt).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+          <button id="ntSaveBtn" onclick="ntManualSave('${id}')" style="padding:6px 16px;background:rgba(79,142,255,.15);border:1px solid rgba(79,142,255,.4);border-radius:7px;color:#4f8eff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">💾 저장</button>
+        </div>
+      </div>
+    </div>\`;
     };
 
     function ntShowEmpty() {
@@ -18624,13 +18694,49 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       note.updatedAt = new Date().toISOString();
       if (field === 'title') { ntRender(); }
       const status = document.getElementById('ntSaveStatus');
-      if (status) status.textContent = '저장 중...';
+      const saveBtn = document.getElementById('ntSaveBtn');
+      if (status) status.textContent = '미저장...';
+      // 저장 버튼 강조 (변경사항 있음 표시)
+      if (saveBtn) {
+        saveBtn.style.background = 'rgba(255,180,0,.2)';
+        saveBtn.style.borderColor = 'rgba(255,180,0,.6)';
+        saveBtn.style.color = '#ffb400';
+        saveBtn.textContent = '💾 저장 필요';
+      }
       clearTimeout(ntAutoSaveTimer);
       ntAutoSaveTimer = setTimeout(() => {
         ntSave();
-        ntRender();
-        if (status) status.textContent = '저장됨';
-      }, 600);
+        if (field === 'title') ntRender();
+        if (status) status.textContent = '자동저장됨';
+        if (saveBtn) {
+          saveBtn.style.background = 'rgba(79,142,255,.15)';
+          saveBtn.style.borderColor = 'rgba(79,142,255,.4)';
+          saveBtn.style.color = '#4f8eff';
+          saveBtn.textContent = '💾 저장';
+        }
+      }, 2000); // 2초 딜레이 자동저장 (수동 저장 유도)
+    };
+
+    // 💾 수동 저장 버튼
+    window.ntManualSave = function(id) {
+      clearTimeout(ntAutoSaveTimer);
+      ntSave();
+      ntRender();
+      const status = document.getElementById('ntSaveStatus');
+      const saveBtn = document.getElementById('ntSaveBtn');
+      if (status) status.textContent = '✅ 저장됨';
+      if (saveBtn) {
+        saveBtn.style.background = 'rgba(0,212,130,.15)';
+        saveBtn.style.borderColor = 'rgba(0,212,130,.4)';
+        saveBtn.style.color = '#00d482';
+        saveBtn.textContent = '✅ 저장됨';
+        setTimeout(() => {
+          saveBtn.style.background = 'rgba(79,142,255,.15)';
+          saveBtn.style.borderColor = 'rgba(79,142,255,.4)';
+          saveBtn.style.color = '#4f8eff';
+          saveBtn.textContent = '💾 저장';
+        }, 1500);
+      }
     };
 
     // ── 태그 추가/삭제 ─────────────────────────────────

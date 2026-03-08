@@ -823,6 +823,10 @@ body {
   .nt-badge-article { background:rgba(0,212,170,.12); color:#00d4aa; }
   .nt-badge-report { background:rgba(255,140,0,.12); color:#ff8c00; }
 
+  /* 커스텀 드롭다운 */
+  #mb-room-sel-list div:active { background: var(--s3) !important; }
+  #mb-room-sel-btn:active { border-color: rgba(79,142,255,.5); }
+
   </style>
 </head>
 <body>
@@ -1151,11 +1155,21 @@ body {
 
     <!-- 작업룸 패널 -->
     <div id="mb-ins-room" class="mb-ins-panel">
-      <!-- 룸 선택 셀렉트 -->
+      <!-- 룸 선택 커스텀 드롭다운 -->
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
-        <select id="mb-room-sel"
-          style="flex:1;min-width:0;height:38px;padding:0 10px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;color:var(--tx);font-size:13px;font-family:'Noto Sans KR',sans-serif;-webkit-appearance:none;outline:none;"
-          onchange="mbRoomLoad(this.value)">
+        <div id="mb-room-sel-wrap" style="flex:1;min-width:0;position:relative;">
+          <div id="mb-room-sel-btn"
+            onclick="mbRoomDropToggle()"
+            style="height:38px;padding:0 36px 0 10px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;color:var(--tx);font-size:13px;font-family:'Noto Sans KR',sans-serif;display:flex;align-items:center;cursor:pointer;user-select:none;box-sizing:border-box;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">
+            <span id="mb-room-sel-label" style="flex:1;overflow:hidden;text-overflow:ellipsis;">-- 작업룸 선택 --</span>
+            <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:10px;color:var(--mu);">▼</span>
+          </div>
+          <div id="mb-room-sel-list"
+            style="display:none;position:absolute;top:42px;left:0;right:0;background:var(--s2);border:1px solid var(--b1);border-radius:8px;z-index:9999;max-height:220px;overflow-y:auto;box-shadow:0 4px 20px rgba(0,0,0,.5);">
+          </div>
+        </div>
+        <!-- hidden select for compatibility -->
+        <select id="mb-room-sel" style="display:none;" onchange="mbRoomLoad(this.value)">
           <option value="">-- 작업룸 선택 --</option>
         </select>
         <button class="mb-btn mb-btn-gold" onclick="mbRoomNew()">＋ 새 룸</button>
@@ -2197,6 +2211,9 @@ body {
     if (!roomId) {
       if (header) header.style.display = 'none';
       if (listEl) listEl.innerHTML = '<div class="mb-empty"><div class="mb-empty-icon">🗂️</div><div>작업룸을 선택해주세요</div></div>';
+      // 커스텀 드롭다운 라벨 초기화
+      var lbl = document.getElementById('mb-room-sel-label');
+      if (lbl) lbl.textContent = '-- 작업룸 선택 --';
       return;
     }
     try {
@@ -2209,6 +2226,9 @@ body {
       if (header) header.style.display = 'block';
       if (nameEl) nameEl.textContent = room.title || room.name || '이름 없음';
       if (descEl) descEl.textContent = room.address || room.desc || '';
+      // 커스텀 드롭다운 라벨 동기화
+      var _dropLbl = document.getElementById('mb-room-sel-label');
+      if (_dropLbl) _dropLbl.textContent = room.title || room.name || '이름 없음';
 
       // ── 섹션 렌더 ──────────────────────────────────────────
       // wr2State.sections 우선, 없으면 wr2_sections localStorage
@@ -2362,21 +2382,63 @@ body {
   };
 
   function mbRoomRefreshSel() {
-    var sel = document.getElementById('mb-room-sel');
-    if (!sel) return;
     try {
-      // wr2State 메모리 우선
       var rooms = (window.wr2State && window.wr2State.rooms && window.wr2State.rooms.length)
         ? window.wr2State.rooms
         : JSON.parse(localStorage.getItem('wr2_rooms') || '[]');
-      // 최신순 정렬
       var sorted = rooms.slice().sort(function(a,b){ return (b.updatedAt||b.createdAt||0)-(a.updatedAt||a.createdAt||0); });
-      sel.innerHTML = '<option value="">-- 작업룸 선택 (' + rooms.length + '개) --</option>' +
-        sorted.map(function(r) {
-          return '<option value="' + r.id + '">' + (r.title||r.name||'이름 없음') + '</option>';
+
+      // hidden select 동기화 (호환성)
+      var sel = document.getElementById('mb-room-sel');
+      if (sel) {
+        sel.innerHTML = '<option value="">-- 작업룸 선택 (' + rooms.length + '개) --</option>' +
+          sorted.map(function(r) {
+            return '<option value="' + r.id + '">' + (r.title||r.name||'이름 없음') + '</option>';
+          }).join('');
+      }
+
+      // 커스텀 드롭다운 목록 갱신
+      var list = document.getElementById('mb-room-sel-list');
+      if (list) {
+        var placeholder = '<div onclick="mbRoomDropSelect(\'\',\'-- 작업룸 선택 (' + rooms.length + '개) --\')" style="padding:10px 14px;font-size:13px;color:var(--mu);cursor:pointer;border-bottom:1px solid var(--b1);">-- 작업룸 선택 (' + rooms.length + '개) --</div>';
+        list.innerHTML = placeholder + sorted.map(function(r) {
+          var title = (r.title||r.name||'이름 없음').replace(/'/g, "&#39;");
+          return '<div onclick="mbRoomDropSelect(\'' + r.id + '\',\'' + title + '\')" style="padding:10px 14px;font-size:13px;color:var(--tx);cursor:pointer;border-bottom:1px solid rgba(255,255,255,.04);active:background:var(--s3);">' + (r.title||r.name||'이름 없음') + '</div>';
         }).join('');
+      }
     } catch(e) {}
   }
+
+  // 커스텀 드롭다운 토글
+  window.mbRoomDropToggle = function() {
+    var list = document.getElementById('mb-room-sel-list');
+    if (!list) return;
+    var isOpen = list.style.display !== 'none';
+    list.style.display = isOpen ? 'none' : 'block';
+    // 다른 곳 클릭 시 닫기
+    if (!isOpen) {
+      setTimeout(function() {
+        document.addEventListener('click', function _close(e) {
+          var wrap = document.getElementById('mb-room-sel-wrap');
+          if (wrap && !wrap.contains(e.target)) {
+            list.style.display = 'none';
+            document.removeEventListener('click', _close);
+          }
+        });
+      }, 10);
+    }
+  };
+
+  // 커스텀 드롭다운 항목 선택
+  window.mbRoomDropSelect = function(roomId, label) {
+    var list = document.getElementById('mb-room-sel-list');
+    var labelEl = document.getElementById('mb-room-sel-label');
+    var sel = document.getElementById('mb-room-sel');
+    if (list) list.style.display = 'none';
+    if (labelEl) labelEl.textContent = label;
+    if (sel) sel.value = roomId;
+    mbRoomLoad(roomId);
+  };
 
   /* ── 저장목록 필터 버튼 활성화 ── */
   var _origSetFilter = null;
