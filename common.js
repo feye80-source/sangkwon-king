@@ -10628,9 +10628,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         : mapCardSrc === '점포라인' ? '#67c6e8'
           : mapCardSrc === '점포거래소' ? '#3b82f6'
             : mapCardSrc === '디스코' ? '#e8365d'
-              : mapCardSrc === '부동산플래닛' ? '#9333ea'
-                : mapCardSrc === '네이버' || mapCardSrc === '네이버부동산' || mapCardSrc === '네이버 부동산' ? '#03c75a'
-                  : '#4f8eff';
+              : mapCardSrc === '부동산플래닛' ? '#2dd4bf'
+                : '#4f8eff';
 
       return `<div class="overlay-wrap">
     <svg class="conn-svg"><line class="conn-line" x1="0" y1="0" x2="0" y2="0" style="stroke:${lineColor};"/></svg>
@@ -18001,11 +18000,12 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         if (p) p.style.display = (i === n) ? '' : 'none';
         if (t) t.classList.toggle('on', i === n);
       });
-      // 설정탭 (ipage_cfg, itab7)
+      // 설정탭 (ipage_cfg / itab7)
       const cfgPanel = document.getElementById('ipage_cfg');
-      const cfgTab = document.getElementById('itab7');
+      const cfgTab   = document.getElementById('itab7');
       if (cfgPanel) cfgPanel.style.display = (n === 7) ? '' : 'none';
-      if (cfgTab) cfgTab.classList.toggle('on', n === 7);
+      if (cfgTab)   cfgTab.classList.toggle('on', n === 7);
+
       const labels = { 0: '노트', 1: '계산기', 3: '뉴스 클리핑', 4: '알짜정보', 5: '파이프라인', 6: '사이트', 7: '설정', 8: '작업룸', 9: '소상공인 상권', 10: '경매 AtoZ' };
       const lbl = document.getElementById('insTabLabel');
       if (lbl) lbl.textContent = labels[n] || '';
