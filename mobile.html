@@ -2345,32 +2345,21 @@ body {
     if (!sections.length && room.sections && room.sections.length) sections = room.sections;
 
     var html = '';
+
+    // ── 스냅샷 (접기/펼치기) ──
     var mapScenes = room.mapScenes || (room.mapScene ? [room.mapScene] : []);
     if (mapScenes.length) {
-      html += '<div style="margin-bottom:14px;">';
-      html += '<div style="font-size:10px;font-weight:700;color:var(--mu);letter-spacing:.6px;text-transform:uppercase;margin-bottom:8px;display:flex;align-items:center;gap:6px;">🗺️ 저장된 스냅샷 <span style="font-weight:400;color:var(--di);">(' + mapScenes.length + ')</span></div>';
+      html += '<details style="margin-bottom:10px;" open><summary style="font-size:10px;font-weight:700;color:var(--mu);letter-spacing:.6px;cursor:pointer;padding:4px 0;list-style:none;display:flex;align-items:center;gap:6px;">🗺️ 저장된 스냅샷 <span style="font-weight:400;color:var(--di);">(' + mapScenes.length + ')</span></summary>';
       mapScenes.forEach(function(ms) {
-        var kids = ms.children || [];
-        html += '<div style="padding:10px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;margin-bottom:6px;cursor:pointer;" onclick="(function(){var rid=\'' + (ms.id||'') + '\',sn=\'' + (ms.sceneName||ms.name||'') + '\';if(rid&&window.wrOpenMapScene){window.wrOpenMapScene(rid);}else if(sn&&window.swLoadSnap){window.swLoadSnap(sn,null);}})()">';
-        html += '<div style="display:flex;align-items:center;gap:8px;">';
-        html += '<span style="font-size:11px;color:#4f8eff;">📷</span>';
-        html += '<span style="flex:1;font-size:13px;font-weight:600;color:var(--tx);">' + (ms.sceneName||ms.name||'스냅샷') + '</span>';
-        if (ms.savedAt) html += '<span style="font-size:10px;color:var(--di);">' + new Date(ms.savedAt).toLocaleDateString('ko') + '</span>';
-        html += '</div>';
-        if (kids.length) {
-          html += '<div style="margin-top:6px;padding-left:16px;">';
-          kids.forEach(function(k) { html += '<div style="font-size:11px;color:var(--mu);padding:3px 0;">ㄴ 📷 ' + (k.name||k.sceneName||'하위') + '</div>'; });
-          html += '</div>';
-        }
-        html += '</div>';
+        html += '<div style="padding:10px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;margin-top:6px;cursor:pointer;" onclick="(function(){var rid=\'' + (ms.id||'') + '\',sn=\'' + (ms.sceneName||ms.name||'') + '\';if(rid&&window.wrOpenMapScene){window.wrOpenMapScene(rid);}else if(sn&&window.swLoadSnap){window.swLoadSnap(sn,null);}})()"><span style="font-size:11px;color:#4f8eff;">📷</span> <span style="font-size:13px;font-weight:600;color:var(--tx);">' + (ms.sceneName||ms.name||'스냅샷') + '</span></div>';
       });
-      html += '</div>';
+      html += '</details>';
     }
 
+    // ── 섹션 (phase별, 접기/펼치기) ──
     if (sections.length) {
       var TYPE_ICONS = { memo:'📝', checklist:'✅', metrics:'📊', log:'📋', capture:'📷', note:'📓' };
       var PHASE_LABELS = { interest:'관심', review:'검토', field:'현장', bid:'입찰', won:'낙찰', sell:'매도', closed:'종료', etc:'기타' };
-      // phase별 그룹핑
       var byPhase = {};
       var phaseOrder = ['interest','review','field','bid','won','sell','closed','etc'];
       sections.forEach(function(sec) {
@@ -2380,102 +2369,130 @@ body {
       });
       phaseOrder.forEach(function(ph) {
         if (!byPhase[ph] || !byPhase[ph].length) return;
-        html += '<div style="font-size:10px;font-weight:700;color:#f59e0b;letter-spacing:.5px;margin:12px 0 8px;display:flex;align-items:center;gap:6px;">── ' + (PHASE_LABELS[ph]||ph) + ' 단계</div>';
+        html += '<details style="margin-bottom:8px;" open><summary style="font-size:10px;font-weight:700;color:#f59e0b;letter-spacing:.5px;cursor:pointer;padding:4px 0;list-style:none;">── ' + (PHASE_LABELS[ph]||ph) + ' 단계 (' + byPhase[ph].length + ')</summary>';
         byPhase[ph].forEach(function(sec) {
           var sType = sec.type || '';
           var icon = TYPE_ICONS[sType] || '📌';
-          html += '<div style="margin-bottom:10px;">';
-          html += '<div style="font-size:10px;font-weight:700;color:var(--mu);letter-spacing:.4px;margin-bottom:5px;display:flex;align-items:center;gap:4px;">' + icon + ' ' + (sec.title||'섹션') + '</div>';
-          if (sType === 'memo' && sec.data && sec.data.content) {
-            html += '<div style="padding:10px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;font-size:12px;color:var(--tx);line-height:1.7;white-space:pre-wrap;">' + (sec.data.content||'') + '</div>';
+          // 섹션 내용 미리보기 (한 줄 요약)
+          var preview = '';
+          if (sType === 'memo' && sec.data && (sec.data.content || sec.data.body)) {
+            preview = (sec.data.content || sec.data.body).replace(/<[^>]*>/g,'').slice(0,40);
+          } else if (sType === 'note' && sec.data && (sec.data.content || sec.data.body)) {
+            preview = (sec.data.content || sec.data.body).replace(/<[^>]*>/g,'').slice(0,40);
           } else if (sType === 'checklist' && sec.data && sec.data.items) {
-            var doneCount = sec.data.items.filter(function(x){return x.done;}).length;
-            html += '<div style="font-size:10px;color:var(--di);margin-bottom:4px;">' + doneCount + ' / ' + sec.data.items.length + ' 완료</div>';
+            var done = sec.data.items.filter(function(x){return x.done;}).length;
+            preview = done + '/' + sec.data.items.length + ' 완료';
+          } else if (sType === 'metrics' && sec.data && sec.data.rows) {
+            preview = sec.data.rows.length + '개 항목';
+          } else if (sType === 'log' && sec.data && sec.data.entries) {
+            preview = sec.data.entries.length + '개 기록';
+          }
+          // 섹션 헤더 (클릭하면 토글)
+          html += '<details style="margin-top:6px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;overflow:hidden;">';
+          html += '<summary style="padding:10px 12px;cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;">';
+          html += '<span>' + icon + '</span>';
+          html += '<span style="flex:1;font-size:12px;font-weight:600;color:var(--tx);">' + (sec.title||'섹션') + '</span>';
+          if (preview) html += '<span style="font-size:11px;color:var(--mu);max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + preview + '</span>';
+          html += '</summary>';
+          // 섹션 내용 (펼쳤을 때)
+          html += '<div style="padding:0 12px 10px;">';
+          if (sType === 'memo' && sec.data && (sec.data.content || sec.data.body)) {
+            html += '<div style="font-size:12px;color:var(--tx);line-height:1.7;white-space:pre-wrap;padding-top:8px;border-top:1px solid var(--b1);">' + (sec.data.content || sec.data.body) + '</div>';
+          } else if (sType === 'note' && sec.data && (sec.data.content || sec.data.body)) {
+            html += '<div style="font-size:12px;color:var(--tx);line-height:1.7;white-space:pre-wrap;padding-top:8px;border-top:1px solid var(--b1);">' + (sec.data.content || sec.data.body) + '</div>';
+          } else if (sType === 'checklist' && sec.data && sec.data.items) {
+            html += '<div style="padding-top:8px;border-top:1px solid var(--b1);">';
             sec.data.items.forEach(function(ci) {
-              html += '<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:7px;margin-bottom:4px;">';
-              html += '<span style="font-size:14px;">' + (ci.done ? '✅' : '⬜') + '</span>';
+              html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04);">';
+              html += '<span>' + (ci.done ? '✅' : '⬜') + '</span>';
               html += '<span style="font-size:12px;color:var(--tx);' + (ci.done?'text-decoration:line-through;opacity:.5;':'') + '">' + (ci.text||ci.label||'') + '</span>';
               html += '</div>';
             });
+            html += '</div>';
           } else if (sType === 'metrics' && sec.data && sec.data.rows) {
+            html += '<div style="padding-top:8px;border-top:1px solid var(--b1);">';
             sec.data.rows.forEach(function(row) {
-              html += '<div style="display:flex;justify-content:space-between;padding:7px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:7px;margin-bottom:4px;">';
+              html += '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04);">';
               html += '<span style="font-size:12px;color:var(--mu);">' + (row.label||row.key||'') + '</span>';
               html += '<span style="font-size:12px;font-weight:700;color:var(--ac);">' + (row.value||row.val||'-') + '</span>';
               html += '</div>';
             });
+            html += '</div>';
           } else if (sType === 'log' && sec.data && sec.data.entries && sec.data.entries.length) {
-            sec.data.entries.slice(0,5).forEach(function(en) {
-              html += '<div style="padding:7px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:7px;margin-bottom:4px;">';
+            html += '<div style="padding-top:8px;border-top:1px solid var(--b1);">';
+            sec.data.entries.slice(0,10).forEach(function(en) {
+              html += '<div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04);">';
               if (en.at) html += '<div style="font-size:10px;color:var(--di);">' + new Date(en.at).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) + '</div>';
               html += '<div style="font-size:12px;color:var(--tx);margin-top:2px;">' + (en.text||'') + '</div>';
               html += '</div>';
             });
-          } else if (sType === 'note') {
-            // note 타입 섹션 (제목+내용)
-            if (sec.data && sec.data.content) {
-              html += '<div style="padding:10px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;font-size:12px;color:var(--tx);line-height:1.7;white-space:pre-wrap;">' + (sec.data.content||'') + '</div>';
-            } else {
-              html += '<div style="font-size:11px;color:var(--di);padding:4px 8px;">내용 없음</div>';
-            }
+            html += '</div>';
           } else {
-            var items2 = sec.items || [];
-            if (items2.length) {
-              items2.forEach(function(it2) {
-                html += '<div style="padding:10px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;margin-bottom:6px;">';
-                html += '<div style="font-size:13px;font-weight:600;color:var(--tx);">' + (it2.title||it2.label||it2.name||'항목') + '</div>';
-                if (it2.price||it2.value) html += '<div style="font-size:12px;color:var(--ac);margin-top:3px;">' + (it2.price||it2.value) + '</div>';
-                if (it2.memo||it2.note) html += '<div style="font-size:11px;color:var(--mu);margin-top:4px;">' + (it2.memo||it2.note) + '</div>';
-                html += '</div>';
-              });
-            } else {
-              html += '<div style="font-size:11px;color:var(--di);padding:4px 8px;">내용 없음</div>';
-            }
+            html += '<div style="font-size:11px;color:var(--di);padding-top:8px;">내용 없음</div>';
           }
-          html += '</div>';
+          html += '</div></details>';
         });
+        html += '</details>';
       });
 
-      // 연결된 노트 표시
+      // ── 연결된 노트 (접기/펼치기) ──
       var ntArr = [];
       try { ntArr = JSON.parse(localStorage.getItem('nt_notes') || '[]'); } catch(e2) {}
       var roomNotes = ntArr.filter(function(n) { return n.roomId === roomId || n.room_id === roomId; });
       if (roomNotes.length) {
-        html += '<div style="font-size:10px;font-weight:700;color:#a78bfa;letter-spacing:.5px;margin:12px 0 8px;display:flex;align-items:center;gap:6px;">── 연결된 노트 (' + roomNotes.length + ')</div>';
+        html += '<details style="margin-top:8px;" open><summary style="font-size:10px;font-weight:700;color:#a78bfa;letter-spacing:.5px;cursor:pointer;padding:4px 0;list-style:none;">── 연결된 노트 (' + roomNotes.length + ')</summary>';
         roomNotes.forEach(function(n) {
-          html += '<div style="padding:10px 12px;background:rgba(167,139,250,.06);border:1px solid rgba(167,139,250,.2);border-radius:8px;margin-bottom:6px;cursor:pointer;" onclick="mbInsTab(\'note\');setTimeout(function(){if(typeof ntOpen===\'function\')ntOpen(\'' + n.id + '\');},100);">';
+          var noteBody = n.content || n.body || '';
+          html += '<div style="margin-top:6px;padding:10px 12px;background:rgba(167,139,250,.06);border:1px solid rgba(167,139,250,.2);border-radius:8px;cursor:pointer;" onclick="mbInsTab(\'note\');setTimeout(function(){if(typeof ntOpen===\'function\')ntOpen(\'' + n.id + '\');},100);">';
           html += '<div style="display:flex;align-items:center;gap:6px;">';
           html += '<span>📓</span><span style="flex:1;font-size:13px;font-weight:600;color:var(--tx);">' + (n.title||'제목 없음') + '</span>';
           if (n.updatedAt) html += '<span style="font-size:10px;color:var(--di);">' + new Date(n.updatedAt).toLocaleDateString('ko') + '</span>';
           html += '</div>';
-          if (n.content || n.body) html += '<div style="font-size:11px;color:var(--mu);margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (n.content || n.body).replace(/<[^>]*>/g,'').slice(0,60) + '</div>';
+          if (noteBody) html += '<div style="font-size:11px;color:var(--mu);margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + noteBody.replace(/<[^>]*>/g,'').slice(0,60) + '</div>';
           html += '</div>';
         });
+        html += '</details>';
       }
     } else if (!mapScenes.length) {
       html += '<div class="mb-empty" style="padding:24px 0;"><div class="mb-empty-icon">📭</div><div>아직 내용이 없어요</div><div style="font-size:11px;color:var(--di);margin-top:6px;">PC에서 작업룸에 섹션을 추가하면 여기서 볼 수 있어요</div></div>';
     }
 
-    if (room.memo) {
-      html += '<div style="margin-top:10px;"><div style="font-size:10px;font-weight:700;color:var(--mu);letter-spacing:.5px;margin-bottom:6px;">📝 메모</div>';
-      html += '<div style="padding:10px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;font-size:12px;color:var(--tx);line-height:1.7;white-space:pre-wrap;">' + room.memo + '</div></div>';
+    // ── 메모 ──
+    // 노트: room.notes 배열 우선, 없으면 room.note/room.memo 레거시 처리
+    var _roomNotes = [];
+    if (room.notes && room.notes.length) {
+      _roomNotes = room.notes;
+    } else if (room.note || room.memo) {
+      _roomNotes = [{ id: 'legacy', title: '노트', body: room.note || room.memo }];
+    }
+    if (_roomNotes.length) {
+      html += '<details style="margin-top:8px;" open><summary style="font-size:10px;font-weight:700;color:#60a5fa;letter-spacing:.5px;cursor:pointer;padding:4px 0;list-style:none;">── 📝 노트 (' + _roomNotes.length + ')</summary>';
+      _roomNotes.forEach(function(rn) {
+        var body = (rn.body || '').replace(/<[^>]*>/g, '');
+        html += '<details style="margin-top:6px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;overflow:hidden;" open>';
+        html += '<summary style="padding:10px 12px;cursor:pointer;list-style:none;font-size:12px;font-weight:600;color:var(--tx);">' + (rn.title || '노트') + '</summary>';
+        html += '<div style="padding:8px 12px 12px;font-size:12px;color:var(--tx);line-height:1.7;white-space:pre-wrap;border-top:1px solid var(--b1);">' + body + '</div>';
+        html += '</details>';
+      });
+      html += '</details>';
     }
 
+    // ── 연결 매물 ──
     if (room.linkedSavedId || (room.linkedItems && room.linkedItems.length)) {
       var linkedId = room.linkedSavedId;
       var savedItems = [];
       try { savedItems = JSON.parse(localStorage.getItem('re_sv')||'[]'); } catch(e2) {}
       var linkedItem = linkedId ? savedItems.find(function(x){ return x.id===linkedId; }) : null;
       if (linkedItem || (room.linkedItems && room.linkedItems.length)) {
-        html += '<div style="margin-top:10px;"><div style="font-size:10px;font-weight:700;color:var(--mu);letter-spacing:.5px;margin-bottom:6px;">🔗 연결 매물</div>';
         var dispItem = linkedItem || (room.linkedItems && room.linkedItems[0]);
         if (dispItem) {
           var d2 = dispItem.data || {};
           var addr2 = d2['소재지']||d2['address']||dispItem.title||'';
-          html += '<div style="padding:10px 12px;background:rgba(0,212,170,.06);border:1px solid rgba(0,212,170,.2);border-radius:8px;cursor:pointer;" onclick="mbOpenSavedDetail(\'' + (dispItem.id||'') + '\')">';
+          html += '<div style="margin-top:8px;padding:10px 12px;background:rgba(0,212,170,.06);border:1px solid rgba(0,212,170,.2);border-radius:8px;cursor:pointer;" onclick="mbOpenSavedDetail(\'' + (dispItem.id||'') + '\')">';
+          html += '<div style="font-size:10px;font-weight:700;color:var(--mu);margin-bottom:4px;">🔗 연결 매물</div>';
           html += '<div style="font-size:12px;font-weight:600;color:var(--ac);">' + (dispItem.title||addr2||'매물') + '</div>';
           if (addr2 && addr2 !== dispItem.title) html += '<div style="font-size:11px;color:var(--mu);margin-top:2px;">📍 ' + addr2 + '</div>';
-          html += '</div></div>';
+          html += '</div>';
         }
       }
     }

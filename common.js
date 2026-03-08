@@ -1411,20 +1411,92 @@
 
                 // 노트 위젯: textarea 값 바인딩 (저장은 debounce)
                 let _noteTimer = null;
+                let _activeNoteId = null;
+
+                // 기존 room.note → room.notes 마이그레이션
+                function migrateRoomNote(room) {
+                  if (room.note && (!room.notes || !room.notes.length)) {
+                    room.notes = [{ id: 'note_' + Date.now(), title: '노트 1', body: room.note, createdAt: Date.now() }];
+                    delete room.note;
+                    saveRooms();
+                  }
+                  if (!room.notes) room.notes = [];
+                }
+
                 function renderNoteWidget(room) {
+                  migrateRoomNote(room);
+                  _renderNoteList(room);
+                  // 첫 노트 또는 현재 활성 노트 선택
+                  const notes = room.notes || [];
+                  const target = (_activeNoteId && notes.find(n => n.id === _activeNoteId)) || notes[0] || null;
+                  _renderNoteEditor(room, target ? target.id : null);
+                  renderAttachments(room);
+                }
+
+                function _renderNoteList(room) {
+                  const listEl = document.getElementById('wr2NoteList');
+                  if (!listEl) return;
+                  const notes = room.notes || [];
+                  listEl.innerHTML = notes.map(n => {
+                    const isActive = n.id === _activeNoteId;
+                    return \`<div onclick="wr2NoteSelect('\${n.id}')" style="display:flex;align-items:center;gap:4px;padding:4px 8px;border-radius:6px;font-size:11px;cursor:pointer;border:1px solid \${isActive ? 'rgba(79,142,255,.6)' : 'var(--b1)'};background:\${isActive ? 'rgba(79,142,255,.12)' : 'var(--s2)'};color:\${isActive ? '#4f8eff' : 'var(--tx)'};white-space:nowrap;">
+                      <span>\${n.title || '노트'}</span>
+                      <span onclick="event.stopPropagation();wr2NoteDel('\${n.id}')" style="color:var(--mu);font-size:10px;margin-left:2px;padding:0 2px;">✕</span>
+                    </div>\`;
+                  }).join('');
+                }
+
+                function _renderNoteEditor(room, noteId) {
                   const ta = document.getElementById('wr2NoteText');
                   if (!ta) return;
-                  ta.value = room.note || '';
+                  const notes = room.notes || [];
+                  const note = noteId ? notes.find(n => n.id === noteId) : null;
+                  _activeNoteId = note ? note.id : null;
+                  ta.value = note ? (note.body || '') : '';
+                  ta.placeholder = note ? '내용을 입력하세요...' : '＋ 노트 버튼으로 새 노트를 추가하세요';
+                  ta.disabled = !note;
                   ta.oninput = () => {
                     clearTimeout(_noteTimer);
                     _noteTimer = setTimeout(() => {
                       const r = getActiveRoom();
-                      if (r) { r.note = ta.value; r.updatedAt = Date.now(); saveRooms(); }
+                      if (!r || !_activeNoteId) return;
+                      const n = (r.notes || []).find(x => x.id === _activeNoteId);
+                      if (n) { n.body = ta.value; n.updatedAt = Date.now(); r.updatedAt = Date.now(); saveRooms(); }
                     }, 500);
                   };
-                  // 첨부파일
-                  renderAttachments(room);
+                  // 제목 더블클릭으로 변경
+                  ta.ondblclick = null;
+                  _renderNoteList(room);
                 }
+
+                window.wr2NoteAdd = function() {
+                  const room = getActiveRoom(); if (!room) return;
+                  migrateRoomNote(room);
+                  const idx = (room.notes.length || 0) + 1;
+                  const note = { id: 'note_' + Date.now().toString(36), title: '노트 ' + idx, body: '', createdAt: Date.now() };
+                  room.notes.push(note);
+                  room.updatedAt = Date.now();
+                  saveRooms();
+                  _activeNoteId = note.id;
+                  renderNoteWidget(room);
+                  document.getElementById('wr2NoteText') && document.getElementById('wr2NoteText').focus();
+                };
+
+                window.wr2NoteSelect = function(noteId) {
+                  const room = getActiveRoom(); if (!room) return;
+                  _activeNoteId = noteId;
+                  _renderNoteEditor(room, noteId);
+                };
+
+                window.wr2NoteDel = function(noteId) {
+                  const room = getActiveRoom(); if (!room) return;
+                  if (room.notes.length <= 1 && !confirm('마지막 노트를 삭제할까요?')) return;
+                  room.notes = room.notes.filter(n => n.id !== noteId);
+                  if (_activeNoteId === noteId) _activeNoteId = room.notes[0]?.id || null;
+                  room.updatedAt = Date.now();
+                  saveRooms();
+                  renderNoteWidget(room);
+                };
 
                 function renderAttachments(room) {
                   const el = document.getElementById('wr2Attachments');
@@ -19675,8 +19747,13 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           // ② 개요탭 노트 위젯(room.note)에도 추가 → 어느 탭에서든 바로 확인 가능
           const _room = window.wr2State.rooms.find(r => r.id === roomId);
           if (_room) {
-            const sep = _room.note ? '\n\n---\n\n' : '';
-            _room.note = (_room.note || '') + sep + content;
+            // AI 분석 결과를 노트에 추가
+            if (!_room.notes) _room.notes = [];
+            if (_room.notes.length === 0) { _room.notes.push({ id: 'note_' + Date.now().toString(36), title: '노트 1', body: '', createdAt: Date.now() }); }
+            const _tgtNote = _room.notes[_room.notes.length - 1];
+            const sep = _tgtNote.body ? '\n\n---\n\n' : '';
+            _tgtNote.body = (_tgtNote.body || '') + sep + content;
+            _tgtNote.updatedAt = Date.now();
             _room.updatedAt = Date.now();
             localStorage.setItem('wr2_rooms', JSON.stringify(window.wr2State.rooms));
           }
