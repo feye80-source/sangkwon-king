@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#0a0c10">
@@ -282,7 +282,7 @@ body {
   height: 36px; padding: 0 10px;
   background: var(--s2); border: 1px solid var(--b1);
   border-radius: 8px; color: var(--tx);
-  font-size: 13px; font-family: 'Noto Sans KR', sans-serif;
+  font-size: 16px; font-family: 'Noto Sans KR', sans-serif;
   outline: none;
 }
 .mb-btn {
@@ -362,7 +362,7 @@ body {
   height: 40px; padding: 0 12px;
   background: var(--s3); border: 1px solid var(--b1);
   border-radius: 8px; color: var(--tx);
-  font-size: 14px; font-family: 'JetBrains Mono', monospace;
+  font-size: 16px; font-family: 'JetBrains Mono', monospace;
   outline: none;
   -webkit-appearance: none;
 }
@@ -411,7 +411,7 @@ body {
   background: rgba(17,19,24,.92);
   border: 1px solid var(--b1);
   border-radius: 10px; color: var(--tx);
-  font-size: 14px; font-family: 'Noto Sans KR', sans-serif;
+  font-size: 16px; font-family: 'Noto Sans KR', sans-serif;
   outline: none;
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
@@ -544,7 +544,7 @@ body {
   height: 36px; padding: 0 12px;
   background: var(--s2); border: 1px solid var(--b1);
   border-radius: 8px; color: var(--tx);
-  font-size: 13px; font-family: 'Noto Sans KR', sans-serif;
+  font-size: 16px; font-family: 'Noto Sans KR', sans-serif;
   outline: none;
 }
 .mb-saved-sort {
@@ -2172,6 +2172,14 @@ body {
     if (window.wr2State && window.wr2State.rooms) {
       window.wr2State.rooms.unshift(newRoom);
     }
+    // ☁️ Supabase 동기화
+    if (typeof window._sbSaveRooms === 'function') {
+      window._sbSaveRooms(rooms).catch(function(e){ console.warn('[mb] room sync fail', e); });
+    }
+    // PC wr2Render 갱신 (DOM이 있으면)
+    if (typeof window.wr2Render === 'function') {
+      try { window.wr2Render(); } catch(e) {}
+    }
     mbToast('작업룸 "' + newRoom.title + '" 생성됨 ✅', 'ok');
     mbRoomRefreshSel();
     // 새로 만든 룸 자동 선택
@@ -2439,6 +2447,19 @@ body {
       // wr2State가 이미 초기화된 경우 작업룸 목록 갱신
       mbRoomRefreshSel();
     }, 1500);
+
+    // wr2State 초기화 완료 대기 (최대 5초 폴링)
+    var _wrPollCount = 0;
+    var _wrPoller = setInterval(function() {
+      _wrPollCount++;
+      if ((window.wr2State && window.wr2State.rooms && window.wr2State.rooms.length) || _wrPollCount > 10) {
+        clearInterval(_wrPoller);
+        mbRoomRefreshSel();
+        // 현재 선택된 룸이 있으면 다시 로드
+        var sel = document.getElementById('mb-room-sel');
+        if (sel && sel.value) mbRoomLoad(sel.value);
+      }
+    }, 500);
   });
 
   /* ════ 노트 에디터 오버레이 ════ */
@@ -2652,13 +2673,13 @@ body {
 </script>
 
 <!-- ════ 노트 에디터 전체화면 오버레이 ════ -->
-<div id="ntEditorMain" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:3000;flex-direction:column;overflow:hidden;">
+<div id="ntEditorMain" style="display:none;position:fixed;top:calc(var(--safe-top) + var(--topbar-h));left:0;right:0;bottom:calc(var(--safe-bottom) + var(--tabbar-h));background:var(--bg);z-index:3000;flex-direction:column;overflow:hidden;">
   <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--b1);flex-shrink:0;">
     <button onclick="mbCloseNtEditor()" style="background:none;border:none;color:var(--mu);font-size:22px;cursor:pointer;padding:0;line-height:1;">‹</button>
     <span style="font-size:14px;font-weight:700;color:var(--tx);flex:1;" id="ntEditorTitle">노트 편집</span>
     <span id="ntSaveStatus" style="font-size:11px;color:var(--mu);"></span>
   </div>
-  <div id="ntEditorScroll" style="flex:1;overflow-y:auto;"></div>
+  <div id="ntEditorScroll" style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;"></div>
 </div>
 
 <!-- ════ 지도 바텀시트 ════ -->

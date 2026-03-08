@@ -4001,7 +4001,10 @@
             });
           }
           room.updatedAt = now;
-          if (window.wr2State) localStorage.setItem('wr2_rooms', JSON.stringify(window.wr2State.rooms));
+          if (window.wr2State) {
+            localStorage.setItem('wr2_rooms', JSON.stringify(window.wr2State.rooms));
+            if (typeof window._sbSaveRooms === 'function') window._sbSaveRooms(window.wr2State.rooms).catch(e => console.warn('[sw] room sync fail', e));
+          }
           swRefreshRoomSelect();
           const roomSel = document.getElementById('swRoomSelect');
           if (roomSel) { roomSel.value = selRoomId; swOnRoomSelect(selRoomId); }
@@ -4051,7 +4054,12 @@
           room.captureImages.push({ src: child.thumbnailSrc, savedAt: now, snapName: child.name, parentSnapName: scene ? scene.name : null });
         }
       });
-      if (window.wr2State) { window.wr2State.rooms.unshift(room); localStorage.setItem('wr2_rooms', JSON.stringify(window.wr2State.rooms)); if (typeof window.wr2Render === 'function') window.wr2Render(); }
+      if (window.wr2State) {
+        window.wr2State.rooms.unshift(room);
+        localStorage.setItem('wr2_rooms', JSON.stringify(window.wr2State.rooms));
+        if (typeof window._sbSaveRooms === 'function') window._sbSaveRooms(window.wr2State.rooms).catch(e => console.warn('[sw] makeRoom sync fail', e));
+        if (typeof window.wr2Render === 'function') window.wr2Render();
+      }
       swRefreshRoomSelect();
       const sel = document.getElementById('swRoomSelect');
       if (sel) { sel.value = room.id; swOnRoomSelect(room.id); }
@@ -11371,6 +11379,9 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     // 지도 선 업데이트
     // ===================================================
     function updateMapLine(id) {
+      // 📱 모바일에서는 연결선 업데이트 안 함
+      if (window.innerWidth <= 768) return;
+
       const card = document.getElementById(id);
       if (!card) return;
 
@@ -11467,6 +11478,9 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     // (정렬은 하지 않음 - 📋 버튼이 정렬 담당)
     // ===================================================
     function openAllCardsAtSamePos(id) {
+      // 📱 모바일에서는 카드 오버레이/연결선 표시 안 함 (바텀시트 전용)
+      if (window.innerWidth <= 768) return;
+
       const obj = mapOverlays.find(o => o.id === id);
       if (!obj) return;
 
@@ -15011,6 +15025,11 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
       // 마커 클릭 이벤트 - mapOverlays 배열 기반으로 상태 관리
       kakao.maps.event.addListener(marker, 'click', function () {
+        // 📱 모바일: 바텀시트로 표시
+        if (window.innerWidth <= 768 && typeof window.mbShowCardBottomSheet === 'function') {
+          window.mbShowCardBottomSheet(id);
+          return;
+        }
         const obj = mapOverlays.find(o => o.id === id);
         if (obj) {
           if (!obj.isOpen) {
@@ -16406,6 +16425,11 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       kakao.maps.event.addListener(marker, 'click', function () {
         // 🧲 결합 픽 모드면 결합 처리 후 종료
         if (typeof handleMergePickClick === 'function' && handleMergePickClick(id)) return;
+        // 📱 모바일: 바텀시트로 표시
+        if (window.innerWidth <= 768 && typeof window.mbShowCardBottomSheet === 'function') {
+          window.mbShowCardBottomSheet(id);
+          return;
+        }
         // ★ 클릭한 카드+마커 최상위로
         bringCardToFront(id);
         const obj = mapOverlays.find(o => o.id === id);
@@ -16461,8 +16485,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
       marker.setMap(mapFilters.transaction ? map : null);
 
-      // 카드도 즉시 표시
-      if (mapFilters.transaction) {
+      // 카드도 즉시 표시 (📱 모바일 제외)
+      if (mapFilters.transaction && window.innerWidth > 768) {
         overlay.setMap(map);
 
         // ✅ 동일 좌표 실거래는 대표 1장만 열리도록 등록(+N 배지/순환)
@@ -16472,6 +16496,9 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         adjustCardSizeByZoom();
         setTimeout(() => { refreshMapView(); adjustCardSizeByZoom(); if (overlayObj.isOpen) updateMapLine(overlayObj.id); updateStackedCards(); }, 0);
         setTimeout(() => { refreshMapView(); if (overlayObj.isOpen) updateMapLine(overlayObj.id); }, 200);
+      } else if (mapFilters.transaction && window.innerWidth <= 768) {
+        // 모바일: isOpen은 false로 유지, overlay 표시 안 함
+        overlayObj.isOpen = false;
       }
     }
 
