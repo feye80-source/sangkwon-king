@@ -125,10 +125,11 @@
         if (cloudArr && cloudArr.length) {
           const merged = _sbMergeById(cloudArr, arr);
           await sbSetArr('workrooms', merged);
-          // 로컬도 merge 결과로 업데이트
+          // 로컬에는 deletedAt 없는 것만 저장 (소프트삭제 항목 로컬 제외)
           const _orig = localStorage.setItem.bind(localStorage);
-          _orig('wr2_rooms', JSON.stringify(merged));
-          if (window.wr2State) window.wr2State.rooms = merged;
+          const mergedActive = merged.filter(item => !item.deletedAt);
+          _orig('wr2_rooms', JSON.stringify(mergedActive));
+          if (window.wr2State) window.wr2State.rooms = mergedActive;
         } else {
           await sbSetArr('workrooms', arr);
         }
@@ -160,13 +161,18 @@
       (cloud || []).forEach(item => {
         if (!item || !item.id) return;
         const existing = map.get(item.id);
-        if (!existing) { map.set(item.id, item); return; }
+        if (!existing) {
+          // cloud에만 있고 deletedAt 없으면 추가
+          if (!item.deletedAt) map.set(item.id, item);
+          return;
+        }
         // updatedAt 또는 timestamp 비교
         const cTime = new Date(item.updatedAt || item.timestamp || 0).getTime();
         const lTime = new Date(existing.updatedAt || existing.timestamp || 0).getTime();
         if (cTime >= lTime) map.set(item.id, item);
       });
-      return Array.from(map.values());
+      // deletedAt 있는 항목 최종 제거
+      return Array.from(map.values()).filter(item => !item.deletedAt);
     }
 
     window._sbInitLoad = async function() {
@@ -203,13 +209,17 @@
           }
         }
 
-        // 작업룸 — id merge
+        // 작업룸 — id merge (소프트삭제 deletedAt 지원)
         const roomsCloud = await window._sbLoadRooms();
         if (roomsCloud !== null) {
           const roomsLocal = JSON.parse(localStorage.getItem('wr2_rooms') || '[]');
           const merged = _sbMergeById(roomsCloud, roomsLocal);
-          localStorage.setItem('wr2_rooms', JSON.stringify(merged));
-          if (merged.length > (roomsCloud.length || 0)) {
+          // 로컬에는 deletedAt 없는 활성 룸만 저장
+          const mergedActive = merged.filter(r => !r.deletedAt);
+          localStorage.setItem('wr2_rooms', JSON.stringify(mergedActive));
+          if (window.wr2State) window.wr2State.rooms = mergedActive;
+          // 로컬에만 있던 활성 룸이 있으면 클라우드에도 업로드
+          if (mergedActive.length > roomsCloud.filter(r=>!r.deletedAt).length) {
             window._sbSaveRooms(merged).catch(()=>{});
           }
         }
@@ -385,7 +395,13 @@
                 }
 
                 function loadRooms() { wr2State.rooms = safeJSONParse(localStorage.getItem(LS_KEY_ROOMS), []); }
-                function saveRooms() { localStorage.setItem(LS_KEY_ROOMS, JSON.stringify(wr2State.rooms)); }
+                function saveRooms() {
+                  // 렌더링용 rooms는 deletedAt 포함 유지, 로컬 저장·Supabase는 deletedAt 없는 것만
+                  const toSave = wr2State.rooms.filter(r => !r.deletedAt);
+                  localStorage.setItem(LS_KEY_ROOMS, JSON.stringify(toSave));
+                  // 소프트삭제 정보는 Supabase에만 전달 (deletedAt 포함 전달해야 다기기 삭제 동기화)
+                  if (window._sbSaveRooms) window._sbSaveRooms(wr2State.rooms).catch(e => {});
+                }
                 function loadSections() { wr2State.sections = safeJSONParse(localStorage.getItem(LS_KEY_SECTIONS), []); }
                 function saveSections() { localStorage.setItem(LS_KEY_SECTIONS, JSON.stringify(wr2State.sections)); }
 
@@ -541,8 +557,14 @@
                 }
 
                 function deleteRoom(id) {
-                  if (!confirm('이 작업룸을 삭제할까요? 되돌릴 수 없습니다.')) return;
-                  wr2State.rooms = wr2State.rooms.filter(r => r.id !== id);
+                  if (!confirm('이 작업룸을 삭제할까요? 삭제 후 모든 기기에서 제거됩니다.')) return;
+                  // 소프트 삭제: deletedAt 표시 후 클라우드 동기화
+                  const roomIdx = wr2State.rooms.findIndex(r => r.id === id);
+                  if (roomIdx !== -1) {
+                    wr2State.rooms[roomIdx].deletedAt = Date.now();
+                    wr2State.rooms[roomIdx].updatedAt = Date.now();
+                  }
+                  // 렌더링에선 deletedAt 있는 룸 제외
                   wr2State.sections = wr2State.sections.filter(s => s.roomId !== id);
                   saveRooms(); saveSections();
                   if (wr2State.activeRoomId === id) wr2State.activeRoomId = null;
@@ -718,7 +740,7 @@
                   const countEl = document.getElementById('wr2RoomCount');
                   if (!listEl || !emptyEl) return;
 
-                  let rooms = wr2State.rooms.slice();
+                  let rooms = wr2State.rooms.filter(r => !r.deletedAt);
                   const q = (wr2State.search || '').trim().toLowerCase();
                   if (q) rooms = rooms.filter(r =>
                     (r.title || '').toLowerCase().includes(q) ||
@@ -4429,11 +4451,17 @@
     };
     window.wrDeleteRoom = function (id) {
       if (!window.wr2State) return;
-      if (!confirm('이 작업룸을 삭제할까요?')) return;
-      window.wr2State.rooms = window.wr2State.rooms.filter(function (r) { return r.id !== id; });
+      if (!confirm('이 작업룸을 삭제할까요? 삭제 후 모든 기기에서 제거됩니다.')) return;
+      // 소프트 삭제: deletedAt 표시
+      var roomIdx = window.wr2State.rooms.findIndex(function(r){ return r.id === id; });
+      if (roomIdx !== -1) {
+        window.wr2State.rooms[roomIdx].deletedAt = Date.now();
+        window.wr2State.rooms[roomIdx].updatedAt = Date.now();
+      }
       window.wr2State.sections = window.wr2State.sections.filter(function (s) { return s.roomId !== id; });
       localStorage.setItem('wr2_rooms', JSON.stringify(window.wr2State.rooms));
       localStorage.setItem('wr2_sections', JSON.stringify(window.wr2State.sections));
+      if (window._sbSaveRooms) window._sbSaveRooms(window.wr2State.rooms).catch(function(){});
       if (window.wr2State.activeRoomId === id) window.wr2State.activeRoomId = null;
       if (typeof window.wr2Render === 'function') window.wr2Render();
     };
