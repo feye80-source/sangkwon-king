@@ -5119,9 +5119,15 @@ body {
 window.mbRoomPhaseToggle = function() {
   var picker = document.getElementById('mb-room-phase-picker');
   if (!picker) return;
-  var isOpen = picker.style.display !== 'none';
-  picker.style.display = isOpen ? 'none' : 'flex';
-  picker.style.flexDirection = 'column';
+  var isOpen = picker.dataset.open === '1';
+  if (isOpen) {
+    picker.dataset.open = '0';
+    picker.style.display = 'none';
+  } else {
+    picker.dataset.open = '1';
+    picker.style.display = 'flex';
+    picker.style.flexDirection = 'column';
+  }
 };
 window.mbRoomSetPhase = function(phase) {
   if (!_mbActiveRoomId) return;

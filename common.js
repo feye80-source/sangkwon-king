@@ -20590,7 +20590,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         // 이미지 썸네일 (images 배열 첫 번째)
         const imgs = card.images || [];
         const imgThumb = imgs.length > 0
-          ? `<div style="width:100%;height:120px;overflow:hidden;background:#111;"><img src="${imgs[0]}" style="width:100%;height:100%;object-fit:cover;display:block;" alt="썸네일"></div>`
+          ? `<div style="width:100%;background:#111;display:flex;align-items:center;justify-content:center;max-height:200px;overflow:hidden;"><img src="${imgs[0]}" style="width:100%;max-height:200px;object-fit:contain;display:block;" alt="썸네일"></div>`
           : '';
         // 유튜브 썸네일
         const ytMatch = (card.youtube || '').match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([^&?#\s]{8,12})/);
@@ -27759,11 +27759,21 @@ document.addEventListener('DOMContentLoaded', function(){
   if(typeof _origSave==='function'){
     window.saveKcard=function(){
       var ytUrl=(document.getElementById('kcardYtInput')||{}).value||'';
+      var imgs=_pcKcardImgs.slice();
+      // editId를 _origSave 호출 전에 캡처 (호출 후엔 closeKcardEditor()로 null 초기화됨)
       var editId=window.kcardEditId||null;
       _origSave();
       var cards=[]; try{cards=JSON.parse(localStorage.getItem('ins_kcards')||'[]');}catch(e){}
-      var target=editId?cards.find(function(k){return k.id===editId;}):cards[0];
-      if(target){ target.youtube=ytUrl; target.images=_pcKcardImgs.slice(); localStorage.setItem('ins_kcards',JSON.stringify(cards)); _pcKcardImgs=[]; if(typeof renderKcards==='function') renderKcards(); }
+      var target=editId
+        ? cards.find(function(k){return k.id===editId;})
+        : cards[0]; // 새 카드는 unshift로 맨 앞에 추가됨
+      if(target){
+        target.youtube=ytUrl;
+        target.images=imgs;
+        localStorage.setItem('ins_kcards',JSON.stringify(cards));
+        _pcKcardImgs=[];
+        if(typeof renderKcards==='function') renderKcards();
+      }
     };
   }
 });
