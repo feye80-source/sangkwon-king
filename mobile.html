@@ -1011,7 +1011,9 @@ body {
     position:relative; z-index:1;
     background:var(--s1);
     border-radius:20px 20px 0 0;
-    max-height:88vh;
+    height:72vh;
+    max-height:72vh;
+    min-height:300px;
     display:flex; flex-direction:column;
     padding-bottom:env(safe-area-inset-bottom,0px);
     box-shadow:0 -8px 40px rgba(0,0,0,.6);
@@ -1102,6 +1104,278 @@ body {
   .mb-src-chip:active { transform: scale(0.94); }
   .mb-src-chip.loaded { opacity: 1; box-shadow: 0 0 0 2px rgba(255,255,255,.35); }
   .mb-src-chip b { background: rgba(0,0,0,.22); padding: 1px 4px; border-radius: 6px; font-size: 10px; }
+
+  /* ════ 작업룸 전체화면 레이어 ════ */
+  #mb-room-layer {
+    position: fixed;
+    inset: 0;
+    z-index: 1200;
+    background: var(--bg);
+    display: none;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  #mb-room-layer.open { display: flex; }
+
+  /* 레이어 헤더 */
+  #mb-room-layer-hd {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px 10px;
+    background: var(--s1);
+    border-bottom: 1px solid var(--b1);
+  }
+  #mb-room-layer-title {
+    flex: 1;
+    min-width: 0;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--tx);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  #mb-room-layer-phase {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    cursor: pointer;
+    flex-shrink: 0;
+    background: rgba(79,142,255,.15);
+    color: #4f8eff;
+    border: 1px solid rgba(79,142,255,.3);
+  }
+  #mb-room-layer-back {
+    flex-shrink: 0;
+    width: 32px; height: 32px;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--s2);
+    border: 1px solid var(--b1);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 16px;
+    color: var(--tx);
+    font-family: inherit;
+  }
+  #mb-room-layer-del {
+    flex-shrink: 0;
+    width: 32px; height: 32px;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(255,77,77,.08);
+    border: 1px solid rgba(255,77,77,.25);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-family: inherit;
+  }
+
+  /* 단계 선택 바 */
+  #mb-room-layer-phase-picker {
+    display: none;
+    flex-wrap: wrap;
+    gap: 5px;
+    padding: 10px 14px;
+    background: var(--s2);
+    border-bottom: 1px solid var(--b1);
+    flex-shrink: 0;
+  }
+  #mb-room-layer-phase-picker.open { display: flex; }
+
+  /* 탭바 */
+  #mb-room-layer-tabs {
+    flex-shrink: 0;
+    display: flex;
+    border-bottom: 1px solid var(--b1);
+    background: var(--s1);
+  }
+  .mb-rl-tab {
+    flex: 1;
+    padding: 10px 4px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--mu);
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    font-family: inherit;
+    transition: color .12s;
+  }
+  .mb-rl-tab.active {
+    color: var(--ac);
+    border-bottom-color: var(--ac);
+  }
+
+  /* 탭 콘텐츠 영역 */
+  #mb-room-layer-body {
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 12px 14px 80px;
+  }
+
+  /* 섹션 카드 (전체화면용) */
+  .mb-rl-sec-card {
+    background: var(--s2);
+    border: 1px solid var(--b1);
+    border-radius: 12px;
+    margin-bottom: 10px;
+    overflow: hidden;
+  }
+  .mb-rl-sec-hd {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 14px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .mb-rl-sec-hd-icon { font-size: 16px; flex-shrink: 0; }
+  .mb-rl-sec-hd-title { flex: 1; font-size: 13px; font-weight: 700; color: var(--tx); }
+  .mb-rl-sec-hd-prev { font-size: 11px; color: var(--mu); max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mb-rl-sec-hd-arrow { font-size: 10px; color: var(--di); transition: transform .2s; flex-shrink: 0; }
+  .mb-rl-sec-card.open .mb-rl-sec-hd-arrow { transform: rotate(180deg); }
+  .mb-rl-sec-body { display: none; padding: 0 14px 14px; }
+  .mb-rl-sec-card.open .mb-rl-sec-body { display: block; }
+  .mb-rl-sec-memo-ta {
+    width: 100%; min-height: 120px;
+    background: var(--s3);
+    border: 1px solid var(--b2);
+    border-radius: 8px;
+    padding: 10px;
+    color: var(--tx);
+    font-size: 13px;
+    font-family: inherit;
+    resize: vertical;
+    box-sizing: border-box;
+    line-height: 1.6;
+  }
+  .mb-rl-checklist-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--b2);
+    cursor: pointer;
+  }
+  .mb-rl-checklist-item:last-child { border-bottom: none; }
+  .mb-rl-checklist-item.done span:last-child { text-decoration: line-through; color: var(--di); }
+  .mb-rl-metrics-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--b2);
+  }
+  .mb-rl-metrics-row:last-child { border-bottom: none; }
+  .mb-rl-log-entry { padding: 6px 0; border-bottom: 1px solid var(--b2); }
+  .mb-rl-log-entry:last-child { border-bottom: none; }
+  .mb-rl-log-time { font-size: 10px; color: var(--di); margin-bottom: 2px; }
+  .mb-rl-log-text { font-size: 12px; color: var(--tx); }
+  .mb-rl-log-input-row { display: flex; gap: 6px; margin-top: 10px; }
+  .mb-rl-log-input-row input {
+    flex: 1; padding: 8px 10px; background: var(--s3);
+    border: 1px solid var(--b2); border-radius: 8px;
+    color: var(--tx); font-size: 12px; font-family: inherit;
+  }
+  .mb-rl-log-input-row button {
+    padding: 8px 12px; background: rgba(79,142,255,.15);
+    border: 1px solid rgba(79,142,255,.3); border-radius: 8px;
+    color: var(--ac); font-size: 12px; font-weight: 700;
+    cursor: pointer; font-family: inherit; flex-shrink: 0;
+  }
+  .mb-rl-sec-actions {
+    display: flex; gap: 5px; margin-bottom: 10px;
+    padding-bottom: 10px; border-bottom: 1px solid var(--b2);
+  }
+  .mb-rl-sec-actions button {
+    font-size: 10px; padding: 4px 8px; height: 26px;
+    background: var(--s3); border: 1px solid var(--b1);
+    border-radius: 6px; color: var(--mu); cursor: pointer;
+    font-family: inherit;
+  }
+  /* 섹션 추가 버튼들 */
+  .mb-rl-add-sec-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin-top: 10px;
+  }
+  .mb-rl-add-sec-btn {
+    padding: 12px 8px;
+    background: var(--s2);
+    border: 1px dashed var(--b2);
+    border-radius: 10px;
+    color: var(--mu);
+    font-size: 12px;
+    cursor: pointer;
+    font-family: inherit;
+    text-align: center;
+  }
+  .mb-rl-add-sec-btn:active { opacity: 0.7; }
+
+  /* 노트 카드 (전체화면용) */
+  .mb-rl-note-card {
+    background: var(--s2);
+    border: 1px solid var(--b1);
+    border-radius: 12px;
+    margin-bottom: 8px;
+    overflow: hidden;
+  }
+  .mb-rl-note-hd {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 14px;
+    cursor: pointer;
+  }
+  .mb-rl-note-title { flex: 1; font-size: 13px; font-weight: 700; color: #4f8eff; }
+  .mb-rl-note-prev { font-size: 11px; color: var(--mu); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mb-rl-note-del { font-size: 12px; color: var(--red); background: none; border: none; cursor: pointer; padding: 4px 8px; }
+  .mb-rl-note-body { display: none; padding: 0 14px 14px; }
+  .mb-rl-note-card.open .mb-rl-note-body { display: block; }
+  .mb-rl-note-ta {
+    width: 100%; min-height: 160px;
+    background: var(--s3); border: 1px solid var(--b2);
+    border-radius: 8px; padding: 10px; color: var(--tx);
+    font-size: 13px; font-family: inherit; resize: vertical;
+    box-sizing: border-box; line-height: 1.6;
+  }
+  /* 매물 카드 */
+  .mb-rl-item-card {
+    background: var(--s2);
+    border: 1px solid var(--b1);
+    border-radius: 12px;
+    padding: 14px;
+    margin-bottom: 8px;
+  }
+  .mb-rl-item-title { font-size: 13px; font-weight: 700; color: var(--ac); margin-bottom: 4px; }
+  .mb-rl-item-addr { font-size: 11px; color: var(--mu); margin-bottom: 6px; }
+  .mb-rl-item-price { font-size: 15px; font-weight: 700; color: #ff6b6b; margin-bottom: 8px; }
+  .mb-rl-item-actions { display: flex; gap: 6px; }
+  .mb-rl-item-actions a {
+    flex: 1; padding: 7px; text-align: center;
+    background: rgba(79,142,255,.1); border: 1px solid rgba(79,142,255,.3);
+    border-radius: 8px; color: var(--ac); font-size: 11px;
+    text-decoration: none; font-weight: 600;
+  }
+
+  /* phase 칩바 (레이어용) */
+  #mb-room-layer-phase-bar {
+    flex-shrink: 0;
+    display: none;
+    gap: 6px;
+    padding: 8px 14px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    background: var(--s1);
+    border-bottom: 1px solid var(--b1);
+  }
+  #mb-room-layer-phase-bar::-webkit-scrollbar { display: none; }
+  #mb-room-layer-phase-bar.visible { display: flex; }
   </style>
 </head>
 <body>
@@ -1441,7 +1715,7 @@ body {
           <div id="mb-room-sel-list" style="display:none;position:absolute;top:42px;left:0;right:0;background:var(--s2);border:1px solid var(--b1);border-radius:8px;z-index:9999;max-height:220px;overflow-y:auto;box-shadow:0 4px 20px rgba(0,0,0,.5);"></div>
         </div>
         <select id="mb-room-sel" style="display:none;" onchange="mbRoomLoad(this.value)"><option value="">-- 작업룸 선택 --</option></select>
-        <button class="mb-btn mb-btn-gold" onclick="mbRoomNew()">＋ 새 룸</button>
+        <button class="mb-btn mb-btn-gold" onclick="mbRoomNewAndOpen()">＋ 새 룸</button>
       </div>
 
       <!-- 룸 헤더: 이름 + 단계뱃지 + 단계변경 + 삭제 -->
@@ -2669,7 +2943,24 @@ body {
         b2.className = 'mb-btn';
         b2.style.cssText = 'flex:1;font-size:12px;color:#00c9a0;border-color:rgba(0,212,170,.3);';
         b2.textContent = '🗺️ 지도';
-        b2.onclick = (function(id){ return function(){ mbCloseBottomSheet(); setTimeout(function(){ if(typeof goToMapFromCard==='function') goToMapFromCard(id); },150); }; })(iid);
+        b2.onclick = (function(id, addr){ return function(){
+          mbCloseBottomSheet();
+          setTimeout(function(){
+            // 탭 먼저 이동
+            var mapTabBtn = document.getElementById('mb-tab-map');
+            mbGoPage('map', mapTabBtn);
+            setTimeout(function(){
+              // goToMapFromCard 있으면 우선 사용 (마커 포커스)
+              if (typeof window.goToMapFromCard === 'function') {
+                window.goToMapFromCard(id);
+              } else if (addr) {
+                // 주소로 지도 이동 fallback
+                var inp = document.getElementById('mapKeyword');
+                if (inp) { inp.value = addr; if (typeof searchMap === 'function') searchMap(); }
+              }
+            }, 350);
+          }, 100);
+        }; })(iid, (function(){ try { var sv=JSON.parse(localStorage.getItem('re_sv')||'[]'); var it=sv.find(function(x){return x.id===iid;}); return (it&&it.data&&it.data['소재지'])||it&&it.address||''; } catch(e){return '';} })());
         actions.appendChild(b2);
 
         // 닫기
@@ -3473,6 +3764,33 @@ body {
     mbRoomLoad('');
   };
 
+  window.mbRoomNewAndOpen = function() {
+    var name = prompt('새 작업룸 이름:');
+    if (!name || !name.trim()) return;
+    var rooms = [];
+    try { rooms = JSON.parse(localStorage.getItem('wr2_rooms') || '[]'); } catch(e) {}
+    var now = Date.now();
+    var newRoom = {
+      id: 'room_' + now,
+      title: name.trim(),
+      phase: 'interest',
+      status: 'interest',
+      notes: [],
+      createdAt: now,
+      updatedAt: now
+    };
+    rooms.unshift(newRoom);
+    localStorage.setItem('wr2_rooms', JSON.stringify(rooms));
+    if (window.wr2State) window.wr2State.rooms = rooms;
+    if (window._sbSaveRooms) window._sbSaveRooms(rooms).catch(function(){});
+    mbRoomRefreshSel();
+    // 레이어 열기
+    if (typeof window.mbRoomLayerOpen === 'function') {
+      window.mbRoomLayerOpen(newRoom.id);
+    }
+    mbToast('새 작업룸 생성됨 ✅', 'ok');
+  };
+
   function mbRoomRefreshSel() {
     try {
       var rooms = (window.wr2State && window.wr2State.rooms && window.wr2State.rooms.length)
@@ -3550,7 +3868,18 @@ body {
     if (list) list.style.display = 'none';
     if (labelEl) labelEl.textContent = label;
     if (sel) sel.value = roomId;
-    mbRoomLoad(roomId);
+    // 룸 선택 시 전체화면 레이어 열기
+    if (roomId && typeof window.mbRoomLayerOpen === 'function') {
+      // wr2State 로드 대기 후 레이어 열기
+      if (window.wr2State && (window.wr2State.rooms||[]).length) {
+        window.mbRoomLayerOpen(roomId);
+      } else {
+        mbRoomLoad(roomId);
+        setTimeout(function(){ window.mbRoomLayerOpen(roomId); }, 400);
+      }
+    } else {
+      mbRoomLoad(roomId);
+    }
   };
 
   /* ── 저장목록 필터 버튼 활성화 ── */
@@ -4283,6 +4612,627 @@ setInterval(function() {
     if (el && chip) chip.classList.toggle('loaded', parseInt(el.textContent) > 0);
   });
 }, 1500);
+</script>
+
+<!-- ════ 작업룸 전체화면 레이어 ════ -->
+<div id="mb-room-layer">
+  <!-- 헤더 -->
+  <div id="mb-room-layer-hd">
+    <button id="mb-room-layer-back" onclick="mbRoomLayerClose()">←</button>
+    <div style="flex:1;min-width:0;">
+      <div style="display:flex;align-items:center;gap:6px;">
+        <span id="mb-room-layer-title">작업룸</span>
+        <button id="mb-room-layer-phase" onclick="mbRoomLayerPhaseToggle()">관심 ▾</button>
+      </div>
+      <div id="mb-room-layer-addr" style="font-size:10px;color:var(--mu);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></div>
+    </div>
+    <button id="mb-room-layer-del" onclick="mbRoomDelete()">🗑</button>
+  </div>
+
+  <!-- 단계 선택 피커 -->
+  <div id="mb-room-layer-phase-picker">
+    <button onclick="mbRoomLayerSetPhase('interest')"  class="mb-phase-btn" style="--pc:#4f8eff;">👀 관심</button>
+    <button onclick="mbRoomLayerSetPhase('site_check')" class="mb-phase-btn" style="--pc:#f59e0b;">🏃 현장</button>
+    <button onclick="mbRoomLayerSetPhase('review')"    class="mb-phase-btn" style="--pc:#a78bfa;">🔍 검토</button>
+    <button onclick="mbRoomLayerSetPhase('contract')"  class="mb-phase-btn" style="--pc:#00d482;">📝 계약</button>
+    <button onclick="mbRoomLayerSetPhase('done')"      class="mb-phase-btn" style="--pc:#64748b;">✅ 완료</button>
+    <button onclick="mbRoomLayerSetPhase('dropped')"   class="mb-phase-btn" style="--pc:#ff5050;">⛔ 보류</button>
+  </div>
+
+  <!-- 탭바 -->
+  <div id="mb-room-layer-tabs">
+    <button class="mb-rl-tab active" id="mb-rlt-note"    onclick="mbRoomLayerTab('note')">📝 노트</button>
+    <button class="mb-rl-tab"        id="mb-rlt-section" onclick="mbRoomLayerTab('section')">📋 섹션</button>
+    <button class="mb-rl-tab"        id="mb-rlt-item"    onclick="mbRoomLayerTab('item')">🔗 매물</button>
+  </div>
+
+  <!-- phase 칩바 (섹션탭 시 표시) -->
+  <div id="mb-room-layer-phase-bar"></div>
+
+  <!-- 본문 -->
+  <div id="mb-room-layer-body"></div>
+</div>
+<script>
+/* ════════════════════════════════════════════
+   작업룸 전체화면 레이어 JS
+   ════════════════════════════════════════════ */
+var _mbRlRoomId = null;
+var _mbRlTab = 'note';
+var _mbRlPhase = 'interest';
+
+var _MB_PHASE_LABELS = { interest:'👀 관심', site_check:'🏃 현장', review:'🔍 검토', contract:'📝 계약', done:'✅ 완료', dropped:'⛔ 보류', field:'📍 현장', bid:'🎯 입찰', won:'✅ 낙찰', sell:'💰 매도', etc:'📌 기타' };
+var _MB_PHASE_COLORS = { interest:'#4f8eff', site_check:'#f59e0b', review:'#a78bfa', contract:'#00d482', done:'#64748b', dropped:'#ff5050' };
+var _MB_SEC_PHASE_ORDER = ['interest','site_check','review','contract','field','bid','won','sell','done','dropped','closed','etc'];
+
+/* 레이어 열기 */
+window.mbRoomLayerOpen = function(roomId) {
+  _mbRlRoomId = roomId;
+  var layer = document.getElementById('mb-room-layer');
+  if (!layer) return;
+  layer.classList.add('open');
+  document.body.style.overflow = 'hidden';
+  _mbRlRefreshHeader();
+  mbRoomLayerTab(_mbRlTab);
+};
+
+/* 레이어 닫기 */
+window.mbRoomLayerClose = function() {
+  var layer = document.getElementById('mb-room-layer');
+  if (layer) layer.classList.remove('open');
+  document.body.style.overflow = '';
+  // 원래 작업룸 드롭다운 새로고침
+  if (typeof mbRoomRefreshSel === 'function') mbRoomRefreshSel();
+};
+
+/* 헤더 갱신 */
+function _mbRlRefreshHeader() {
+  var room = _mbRlGetRoom();
+  if (!room) return;
+  var title = document.getElementById('mb-room-layer-title');
+  var addr  = document.getElementById('mb-room-layer-addr');
+  var phase = document.getElementById('mb-room-layer-phase');
+  if (title) title.textContent = room.title || room.name || '작업룸';
+  if (addr)  addr.textContent  = room.address || room.desc || '';
+  var ph = room.phase || room.status || 'interest';
+  var phColor = _MB_PHASE_COLORS[ph] || '#4f8eff';
+  if (phase) {
+    phase.textContent = (_MB_PHASE_LABELS[ph] || ph) + ' ▾';
+    phase.style.background = phColor + '22';
+    phase.style.color = phColor;
+    phase.style.border = '1px solid ' + phColor + '44';
+  }
+}
+
+/* 룸 데이터 가져오기 */
+function _mbRlGetRoom() {
+  var rooms = [];
+  try {
+    rooms = (window.wr2State && window.wr2State.rooms && window.wr2State.rooms.length)
+      ? window.wr2State.rooms
+      : JSON.parse(localStorage.getItem('wr2_rooms') || '[]');
+  } catch(e) {}
+  return rooms.find(function(r){ return r.id === _mbRlRoomId; }) || null;
+}
+
+/* 섹션 데이터 가져오기 */
+function _mbRlGetSections() {
+  var secs = [];
+  try {
+    secs = (window.wr2State && window.wr2State.sections && window.wr2State.sections.length)
+      ? window.wr2State.sections
+      : JSON.parse(localStorage.getItem('wr2_sections') || '[]');
+  } catch(e) {}
+  return secs.filter(function(s){ return s.roomId === _mbRlRoomId || s.room_id === _mbRlRoomId; });
+}
+
+/* 섹션 저장 */
+function _mbRlSaveSections(allSecs) {
+  localStorage.setItem('wr2_sections', JSON.stringify(allSecs));
+  if (window.wr2State) window.wr2State.sections = allSecs;
+  if (window._sbSaveSections) window._sbSaveSections(allSecs).catch(function(){});
+}
+
+/* 룸 저장 */
+function _mbRlSaveRooms(rooms) {
+  localStorage.setItem('wr2_rooms', JSON.stringify(rooms));
+  if (window.wr2State) window.wr2State.rooms = rooms;
+  if (window._sbSaveRooms) window._sbSaveRooms(rooms).catch(function(){});
+}
+
+/* 탭 전환 */
+window.mbRoomLayerTab = function(tab) {
+  _mbRlTab = tab;
+  ['note','section','item'].forEach(function(t) {
+    var btn = document.getElementById('mb-rlt-' + t);
+    if (btn) btn.classList.toggle('active', t === tab);
+  });
+  var phBar = document.getElementById('mb-room-layer-phase-bar');
+  if (phBar) phBar.classList.toggle('visible', tab === 'section');
+  _mbRlRender();
+};
+
+/* 메인 렌더 */
+function _mbRlRender() {
+  var body = document.getElementById('mb-room-layer-body');
+  if (!body) return;
+  body.innerHTML = '';
+  if (_mbRlTab === 'note')    _mbRlRenderNote(body);
+  if (_mbRlTab === 'section') _mbRlRenderSection(body);
+  if (_mbRlTab === 'item')    _mbRlRenderItem(body);
+}
+
+/* ──────── 노트 탭 ──────── */
+function _mbRlRenderNote(body) {
+  var room = _mbRlGetRoom();
+  if (!room) return;
+  var notes = room.notes || [];
+
+  // + 노트 추가 버튼
+  var addWrap = document.createElement('div');
+  addWrap.style.cssText = 'margin-bottom:12px;';
+
+  var addBtn = document.createElement('button');
+  addBtn.textContent = '＋ 노트 추가';
+  addBtn.style.cssText = 'padding:8px 14px;background:rgba(79,142,255,.12);border:1px solid rgba(79,142,255,.3);border-radius:8px;color:var(--ac);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;';
+  addBtn.onclick = function() {
+    var titleInput = document.createElement('input');
+    titleInput.type = 'text';
+    titleInput.placeholder = '노트 제목 입력 후 Enter';
+    titleInput.style.cssText = 'width:100%;padding:10px;background:var(--s3);border:1px solid var(--ac);border-radius:8px;color:var(--tx);font-size:13px;font-family:inherit;box-sizing:border-box;margin-top:8px;';
+    addWrap.appendChild(titleInput);
+    titleInput.focus();
+    titleInput.onkeydown = function(e) {
+      if (e.key === 'Enter') {
+        var title = titleInput.value.trim() || ('노트 ' + (notes.length + 1));
+        _mbRlAddNote(title);
+        titleInput.remove();
+      }
+      if (e.key === 'Escape') titleInput.remove();
+    };
+  };
+  addWrap.appendChild(addBtn);
+  body.appendChild(addWrap);
+
+  if (!notes.length) {
+    var emp = document.createElement('div');
+    emp.style.cssText = 'text-align:center;padding:40px 0;color:var(--di);';
+    emp.innerHTML = '<div style="font-size:32px;margin-bottom:10px;">📝</div><div style="font-size:13px;">노트가 없어요</div>';
+    body.appendChild(emp);
+    return;
+  }
+
+  notes.forEach(function(note, idx) {
+    var card = document.createElement('div');
+    card.className = 'mb-rl-note-card';
+
+    // 헤더
+    var hd = document.createElement('div');
+    hd.className = 'mb-rl-note-hd';
+    hd.innerHTML = '<span class="mb-rl-note-title">📝 ' + (note.title || '노트 ' + (idx+1)) + '</span>' +
+      '<span class="mb-rl-note-prev">' + ((note.content||'').slice(0,20)||'내용 없음') + '</span>' +
+      '<button class="mb-rl-note-del" onclick="event.stopPropagation();mbRoomLayerNoteDelete(' + idx + ')">✕</button>';
+    hd.onclick = function() { card.classList.toggle('open'); if(card.classList.contains('open')) card.querySelector('textarea').focus(); };
+    card.appendChild(hd);
+
+    // 본문
+    var bd = document.createElement('div');
+    bd.className = 'mb-rl-note-body';
+    var ta = document.createElement('textarea');
+    ta.className = 'mb-rl-note-ta';
+    ta.value = note.content || '';
+    ta.placeholder = '내용을 자유롭게 작성하세요...';
+    var _t = null;
+    ta.oninput = (function(i){ return function() {
+      clearTimeout(_t);
+      _t = setTimeout(function(){
+        var rooms2 = [];
+        try { rooms2 = JSON.parse(localStorage.getItem('wr2_rooms')||'[]'); } catch(e) {}
+        var rm = rooms2.find(function(r){ return r.id === _mbRlRoomId; });
+        if (rm) {
+          if (!rm.notes) rm.notes = [];
+          if (rm.notes[i]) rm.notes[i].content = ta.value;
+          rm.updatedAt = Date.now();
+          _mbRlSaveRooms(rooms2);
+        }
+      }, 600);
+    }; })(idx);
+    bd.appendChild(ta);
+    card.appendChild(bd);
+    body.appendChild(card);
+  });
+}
+
+function _mbRlAddNote(title) {
+  var rooms2 = [];
+  try { rooms2 = JSON.parse(localStorage.getItem('wr2_rooms')||'[]'); } catch(e) {}
+  var rm = rooms2.find(function(r){ return r.id === _mbRlRoomId; });
+  if (!rm) return;
+  if (!rm.notes) rm.notes = [];
+  rm.notes.push({ id: 'n_' + Date.now(), title: title, content: '' });
+  rm.updatedAt = Date.now();
+  _mbRlSaveRooms(rooms2);
+  _mbRlRender();
+  mbToast('노트 추가됨', 'ok');
+}
+
+window.mbRoomLayerNoteDelete = function(idx) {
+  if (!confirm('이 노트를 삭제할까요?')) return;
+  var rooms2 = [];
+  try { rooms2 = JSON.parse(localStorage.getItem('wr2_rooms')||'[]'); } catch(e) {}
+  var rm = rooms2.find(function(r){ return r.id === _mbRlRoomId; });
+  if (rm && rm.notes) {
+    rm.notes.splice(idx, 1);
+    rm.updatedAt = Date.now();
+    _mbRlSaveRooms(rooms2);
+    _mbRlRender();
+    mbToast('노트 삭제됨', 'ok');
+  }
+};
+
+/* ──────── 섹션 탭 ──────── */
+function _mbRlRenderSection(body) {
+  var allSecs = [];
+  try {
+    allSecs = (window.wr2State && window.wr2State.sections && window.wr2State.sections.length)
+      ? window.wr2State.sections
+      : JSON.parse(localStorage.getItem('wr2_sections') || '[]');
+  } catch(e) {}
+  var mySecs = allSecs.filter(function(s){ return s.roomId === _mbRlRoomId || s.room_id === _mbRlRoomId; });
+
+  // phase 분류
+  var phaseSet = {};
+  mySecs.forEach(function(s){ phaseSet[s.phase || 'etc'] = true; });
+  var availPhases = _MB_SEC_PHASE_ORDER.filter(function(p){ return phaseSet[p]; });
+  if (!availPhases.length) availPhases = ['etc'];
+
+  // phase bar 렌더
+  var phBar = document.getElementById('mb-room-layer-phase-bar');
+  if (phBar) {
+    phBar.innerHTML = '';
+    if (!_mbRlPhase || !phaseSet[_mbRlPhase]) _mbRlPhase = availPhases[0];
+    availPhases.forEach(function(ph) {
+      var chip = document.createElement('button');
+      chip.style.cssText = 'flex-shrink:0;padding:5px 12px;border-radius:14px;border:1px solid var(--b1);background:' + (ph === _mbRlPhase ? 'var(--ac)' : 'var(--s2)') + ';color:' + (ph === _mbRlPhase ? '#fff' : 'var(--mu)') + ';font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;';
+      var cnt = mySecs.filter(function(s){ return (s.phase||'etc') === ph; }).length;
+      chip.textContent = (_MB_PHASE_LABELS[ph] || ph) + ' ' + cnt;
+      chip.onclick = (function(p){ return function(){
+        _mbRlPhase = p;
+        _mbRlRenderSection(body);
+        // phBar 활성 재렌더
+        var chips = phBar.querySelectorAll('button');
+        chips.forEach(function(c){ c.style.background = 'var(--s2)'; c.style.color = 'var(--mu)'; });
+        chip.style.background = 'var(--ac)'; chip.style.color = '#fff';
+      }; })(ph);
+      phBar.appendChild(chip);
+    });
+  }
+
+  // 해당 phase 섹션
+  var filtered = mySecs.filter(function(s){ return (s.phase||'etc') === _mbRlPhase; });
+  filtered.sort(function(a,b){ return (a.order||0)-(b.order||0); });
+
+  body.innerHTML = '';
+
+  // 섹션 추가 버튼 영역
+  var addGrid = document.createElement('div');
+  addGrid.className = 'mb-rl-add-sec-grid';
+  addGrid.style.marginBottom = '14px';
+  var secTypes = [
+    { type:'memo', icon:'📝', label:'메모' },
+    { type:'checklist', icon:'✅', label:'체크리스트' },
+    { type:'metrics', icon:'📊', label:'수치표' },
+    { type:'log', icon:'📋', label:'활동 로그' }
+  ];
+  secTypes.forEach(function(st) {
+    var btn = document.createElement('button');
+    btn.className = 'mb-rl-add-sec-btn';
+    btn.innerHTML = '<div style="font-size:18px;margin-bottom:4px;">' + st.icon + '</div><div>' + st.label + ' 추가</div>';
+    btn.onclick = (function(type){ return function(){ _mbRlAddSection(type, allSecs); }; })(st.type);
+    addGrid.appendChild(btn);
+  });
+  body.appendChild(addGrid);
+
+  if (!filtered.length) {
+    var emp = document.createElement('div');
+    emp.style.cssText = 'text-align:center;padding:30px 0;color:var(--di);font-size:12px;';
+    emp.innerHTML = '<div style="font-size:28px;margin-bottom:8px;">📭</div><div>이 단계에 섹션이 없어요</div><div style="margin-top:6px;font-size:11px;">위에서 추가해보세요</div>';
+    body.appendChild(emp);
+    return;
+  }
+
+  // 섹션 카드들
+  filtered.forEach(function(sec) {
+    body.appendChild(_mbRlBuildSecCard(sec, allSecs));
+  });
+}
+
+function _mbRlBuildSecCard(sec, allSecs) {
+  var TYPE_ICONS = { memo:'📝', checklist:'✅', metrics:'📊', log:'📋', note:'📓' };
+  var icon = TYPE_ICONS[sec.type] || '📌';
+
+  var preview = '';
+  if ((sec.type==='memo'||sec.type==='note') && sec.data) preview = (sec.data.content||sec.data.body||'').replace(/<[^>]*>/g,'').slice(0,25);
+  else if (sec.type==='checklist' && sec.data && sec.data.items) {
+    var d2 = sec.data.items.filter(function(x){return x.done;}).length;
+    preview = d2 + '/' + sec.data.items.length;
+  }
+  else if (sec.type==='metrics' && sec.data && sec.data.rows) preview = sec.data.rows.length + '행';
+  else if (sec.type==='log' && sec.data && sec.data.entries) preview = sec.data.entries.length + '개 기록';
+
+  var card = document.createElement('div');
+  card.className = 'mb-rl-sec-card';
+
+  // 헤더
+  var hd = document.createElement('div');
+  hd.className = 'mb-rl-sec-hd';
+  hd.innerHTML = '<span class="mb-rl-sec-hd-icon">' + icon + '</span>' +
+    '<span class="mb-rl-sec-hd-title">' + (sec.title || sec.type || '섹션') + '</span>' +
+    (preview ? '<span class="mb-rl-sec-hd-prev">' + preview + '</span>' : '') +
+    '<span class="mb-rl-sec-hd-arrow">▼</span>';
+  hd.onclick = function(){ card.classList.toggle('open'); };
+  card.appendChild(hd);
+
+  // 바디
+  var bd = document.createElement('div');
+  bd.className = 'mb-rl-sec-body';
+
+  // 액션 버튼 (이름변경/삭제)
+  var acts = document.createElement('div');
+  acts.className = 'mb-rl-sec-actions';
+  var renBtn = document.createElement('button');
+  renBtn.textContent = '✏️ 이름';
+  renBtn.onclick = function() {
+    var nv = prompt('섹션 이름', sec.title || '');
+    if (nv !== null && nv.trim()) {
+      var allS = JSON.parse(localStorage.getItem('wr2_sections')||'[]');
+      var f = allS.find(function(x){ return x.id === sec.id; });
+      if (f) { f.title = nv.trim(); _mbRlSaveSections(allS); _mbRlRender(); }
+    }
+  };
+  var delBtn2 = document.createElement('button');
+  delBtn2.textContent = '🗑 삭제';
+  delBtn2.style.color = 'var(--red)';
+  delBtn2.onclick = function() {
+    if (!confirm('섹션 "' + (sec.title||'') + '"을 삭제할까요?')) return;
+    var allS = JSON.parse(localStorage.getItem('wr2_sections')||'[]');
+    allS = allS.filter(function(x){ return x.id !== sec.id; });
+    _mbRlSaveSections(allS);
+    _mbRlRender();
+    mbToast('섹션 삭제됨', 'ok');
+  };
+  acts.appendChild(renBtn);
+  acts.appendChild(delBtn2);
+  bd.appendChild(acts);
+
+  // 타입별 콘텐츠
+  if (sec.type === 'memo' || sec.type === 'note') {
+    var ta = document.createElement('textarea');
+    ta.className = 'mb-rl-sec-memo-ta';
+    ta.value = (sec.data && (sec.data.content || sec.data.body)) || '';
+    ta.placeholder = '내용을 입력하세요...';
+    var _sv = null;
+    ta.oninput = (function(s){ return function() {
+      s.data = s.data || {};
+      s.data.content = ta.value;
+      clearTimeout(_sv);
+      _sv = setTimeout(function(){
+        var allS = JSON.parse(localStorage.getItem('wr2_sections')||'[]');
+        var f = allS.find(function(x){ return x.id === s.id; });
+        if (f) { f.data = f.data || {}; f.data.content = s.data.content; }
+        else { allS.push(s); }
+        _mbRlSaveSections(allS);
+      }, 600);
+    }; })(sec);
+    bd.appendChild(ta);
+
+  } else if (sec.type === 'checklist') {
+    var items = (sec.data && sec.data.items) || [];
+    items.forEach(function(ci, ciIdx) {
+      var row = document.createElement('div');
+      row.className = 'mb-rl-checklist-item' + (ci.done ? ' done' : '');
+      row.innerHTML = '<span style="font-size:18px;">' + (ci.done ? '✅' : '⬜') + '</span>' +
+        '<span style="flex:1;font-size:13px;color:var(--tx);">' + (ci.text || ci.label || '') + '</span>';
+      row.onclick = function() {
+        var allS = JSON.parse(localStorage.getItem('wr2_sections')||'[]');
+        var f = allS.find(function(x){ return x.id === sec.id; });
+        if (f && f.data && f.data.items && f.data.items[ciIdx]) {
+          f.data.items[ciIdx].done = !f.data.items[ciIdx].done;
+          _mbRlSaveSections(allS);
+          _mbRlRender();
+        }
+      };
+      bd.appendChild(row);
+    });
+    // 진행률
+    if (items.length) {
+      var dn = items.filter(function(x){return x.done;}).length;
+      var pct = Math.round(dn/items.length*100);
+      var prog = document.createElement('div');
+      prog.style.cssText = 'margin-top:12px;';
+      prog.innerHTML = '<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--mu);margin-bottom:4px;"><span>진행률</span><span>' + dn + '/' + items.length + ' (' + pct + '%)</span></div>' +
+        '<div style="height:5px;background:var(--b2);border-radius:3px;overflow:hidden;"><div style="height:100%;width:' + pct + '%;background:' + (pct===100?'var(--g)':'var(--ac)') + ';border-radius:3px;"></div></div>';
+      bd.appendChild(prog);
+    }
+    // 항목 추가
+    var addItemRow = document.createElement('div');
+    addItemRow.className = 'mb-rl-log-input-row';
+    var addInput = document.createElement('input');
+    addInput.type = 'text';
+    addInput.placeholder = '항목 입력 후 추가';
+    var addItemBtn = document.createElement('button');
+    addItemBtn.textContent = '+ 추가';
+    addItemBtn.onclick = function() {
+      var v = addInput.value.trim();
+      if (!v) return;
+      var allS = JSON.parse(localStorage.getItem('wr2_sections')||'[]');
+      var f = allS.find(function(x){ return x.id === sec.id; });
+      if (f) {
+        f.data = f.data || {}; f.data.items = f.data.items || [];
+        f.data.items.push({ id: 'ci_' + Date.now(), text: v, done: false });
+        _mbRlSaveSections(allS);
+        _mbRlRender();
+      }
+    };
+    addInput.onkeydown = function(e){ if(e.key==='Enter') addItemBtn.click(); };
+    addItemRow.appendChild(addInput);
+    addItemRow.appendChild(addItemBtn);
+    bd.appendChild(addItemRow);
+
+  } else if (sec.type === 'metrics') {
+    var rows3 = (sec.data && sec.data.rows) || [];
+    if (!rows3.length) {
+      var nr = document.createElement('div');
+      nr.style.cssText = 'font-size:11px;color:var(--di);padding:8px 0;';
+      nr.textContent = '수치 데이터 없음';
+      bd.appendChild(nr);
+    }
+    rows3.forEach(function(rw) {
+      var row4 = document.createElement('div');
+      row4.className = 'mb-rl-metrics-row';
+      row4.innerHTML = '<span style="font-size:12px;color:var(--mu);">' + (rw.label||rw.key||'') + '</span>' +
+        '<span style="font-size:14px;font-weight:700;color:var(--ac);">' + (rw.value||rw.val||'-') + '</span>';
+      bd.appendChild(row4);
+    });
+
+  } else if (sec.type === 'log') {
+    var entries = ((sec.data && sec.data.entries) || []).slice().reverse();
+    if (!entries.length) {
+      var ne2 = document.createElement('div');
+      ne2.style.cssText = 'font-size:11px;color:var(--di);padding:8px 0;';
+      ne2.textContent = '기록 없음';
+      bd.appendChild(ne2);
+    }
+    entries.slice(0, 20).forEach(function(en) {
+      var entry = document.createElement('div');
+      entry.className = 'mb-rl-log-entry';
+      var dt = en.at ? new Date(en.at).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
+      entry.innerHTML = (dt ? '<div class="mb-rl-log-time">' + dt + '</div>' : '') +
+        '<div class="mb-rl-log-text">' + (en.text||'') + '</div>';
+      bd.appendChild(entry);
+    });
+    // 로그 입력
+    var logRow = document.createElement('div');
+    logRow.className = 'mb-rl-log-input-row';
+    var logIn = document.createElement('input');
+    logIn.type = 'text';
+    logIn.placeholder = '활동 기록 입력';
+    var logBtn = document.createElement('button');
+    logBtn.textContent = '+ 추가';
+    logBtn.onclick = function() {
+      var v = logIn.value.trim();
+      if (!v) return;
+      var allS = JSON.parse(localStorage.getItem('wr2_sections')||'[]');
+      var f = allS.find(function(x){ return x.id === sec.id; });
+      if (f) {
+        f.data = f.data || {}; f.data.entries = f.data.entries || [];
+        f.data.entries.push({ id: 'le_' + Date.now(), at: Date.now(), text: v });
+        _mbRlSaveSections(allS);
+        logIn.value = '';
+        _mbRlRender();
+        mbToast('로그 추가됨', 'ok');
+      }
+    };
+    logIn.onkeydown = function(e){ if(e.key==='Enter') logBtn.click(); };
+    logRow.appendChild(logIn);
+    logRow.appendChild(logBtn);
+    bd.appendChild(logRow);
+  }
+
+  card.appendChild(bd);
+  return card;
+}
+
+function _mbRlAddSection(type, allSecs) {
+  var allS = [];
+  try { allS = JSON.parse(localStorage.getItem('wr2_sections')||'[]'); } catch(e) {}
+  var TYPE_DEFAULTS = {
+    memo:      { content: '' },
+    checklist: { items: [] },
+    metrics:   { rows: [] },
+    log:       { entries: [] }
+  };
+  var TYPE_TITLES = { memo:'메모', checklist:'체크리스트', metrics:'수치표', log:'활동 로그' };
+  var newSec = {
+    id: 'sec_mb_' + Date.now(),
+    roomId: _mbRlRoomId,
+    type: type,
+    title: TYPE_TITLES[type] || '섹션',
+    phase: _mbRlPhase || 'interest',
+    order: allS.filter(function(s){ return s.roomId === _mbRlRoomId; }).length + 1,
+    data: TYPE_DEFAULTS[type] || {},
+    createdAt: Date.now()
+  };
+  allS.push(newSec);
+  _mbRlSaveSections(allS);
+  _mbRlRender();
+  mbToast(TYPE_TITLES[type] + ' 추가됨', 'ok');
+}
+
+/* ──────── 매물 탭 ──────── */
+function _mbRlRenderItem(body) {
+  var room = _mbRlGetRoom();
+  if (!room) return;
+  var items = room.items || room.linkedItems || [];
+
+  body.innerHTML = '';
+
+  if (!items.length) {
+    // 저장목록에서 연결 안내
+    var emp = document.createElement('div');
+    emp.style.cssText = 'text-align:center;padding:40px 14px;color:var(--di);';
+    emp.innerHTML = '<div style="font-size:32px;margin-bottom:10px;">🔗</div>' +
+      '<div style="font-size:13px;margin-bottom:8px;">연결된 매물이 없어요</div>' +
+      '<div style="font-size:11px;color:var(--di);line-height:1.6;">저장목록에서 매물 상세를 열고<br>작업룸에 연결하면 여기에 표시돼요</div>';
+    body.appendChild(emp);
+    return;
+  }
+
+  items.forEach(function(it) {
+    var d = it.data || {};
+    var title = d['물건종류'] || d['종류'] || it.type || '매물';
+    var addr = d['소재지'] || it.address || '';
+    var price = d['최저매각가격'] || d['매매가'] || d['보증금'] || it.price || '';
+    var priceStr = price ? (typeof price === 'number' ? (price/10000).toFixed(0)+'만원' : price) : '';
+
+    var card = document.createElement('div');
+    card.className = 'mb-rl-item-card';
+    card.innerHTML = '<div class="mb-rl-item-title">' + title + '</div>' +
+      '<div class="mb-rl-item-addr">📍 ' + addr + '</div>' +
+      (priceStr ? '<div class="mb-rl-item-price">' + priceStr + '</div>' : '') +
+      '<div class="mb-rl-item-actions">' +
+        '<a href="#" onclick="event.preventDefault();mbGoToMap('' + addr + '','' + it.id + '')">🗺️ 지도</a>' +
+        '<a href="#" onclick="event.preventDefault();mbRoomLayerClose();mbOpenSavedDetail('' + it.id + '')">📋 상세</a>' +
+      '</div>';
+    body.appendChild(card);
+  });
+}
+
+/* 단계 토글/설정 */
+window.mbRoomLayerPhaseToggle = function() {
+  var picker = document.getElementById('mb-room-layer-phase-picker');
+  if (!picker) return;
+  picker.classList.toggle('open');
+};
+
+window.mbRoomLayerSetPhase = function(phase) {
+  var rooms2 = [];
+  try { rooms2 = JSON.parse(localStorage.getItem('wr2_rooms')||'[]'); } catch(e) {}
+  var rm = rooms2.find(function(r){ return r.id === _mbRlRoomId; });
+  if (!rm) return;
+  rm.phase = phase; rm.status = phase; rm.updatedAt = Date.now();
+  _mbRlSaveRooms(rooms2);
+  _mbRlRefreshHeader();
+  document.getElementById('mb-room-layer-phase-picker').classList.remove('open');
+  mbToast('단계 변경: ' + (_MB_PHASE_LABELS[phase]||phase), 'ok');
+};
+
+/* 뒤로가기 키 지원 */
+document.addEventListener('keydown', function(e){
+  if (e.key === 'Escape') {
+    var layer = document.getElementById('mb-room-layer');
+    if (layer && layer.classList.contains('open')) mbRoomLayerClose();
+  }
+});
 </script>
 </body>
 </html>
