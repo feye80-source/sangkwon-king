@@ -2512,9 +2512,9 @@ body {
       } else {
         listEl.innerHTML = notes.map(function(n) {
           var isActive = n.id === _mbActiveNoteId;
-          return '<div onclick="mbRoomNoteSelect('' + n.id + '')" style="display:flex;align-items:center;gap:4px;padding:4px 8px;border-radius:6px;font-size:11px;cursor:pointer;border:1px solid ' + (isActive ? 'rgba(79,142,255,.6)' : 'var(--b1)') + ';background:' + (isActive ? 'rgba(79,142,255,.12)' : 'var(--s2)') + ';color:' + (isActive ? '#4f8eff' : 'var(--tx)') + ';white-space:nowrap;">'
+          return '<div onclick="mbRoomNoteSelect(\'' + n.id + '\')" style="display:flex;align-items:center;gap:4px;padding:4px 8px;border-radius:6px;font-size:11px;cursor:pointer;border:1px solid ' + (isActive ? 'rgba(79,142,255,.6)' : 'var(--b1)') + ';background:' + (isActive ? 'rgba(79,142,255,.12)' : 'var(--s2)') + ';color:' + (isActive ? '#4f8eff' : 'var(--tx)') + ';white-space:nowrap;">'
             + '<span>' + (n.title || '노트') + '</span>'
-            + '<span onclick="event.stopPropagation();mbRoomNoteDel('' + n.id + '')" style="color:var(--mu);font-size:10px;padding:0 2px;">✕</span>'
+            + '<span onclick="event.stopPropagation();mbRoomNoteDel(\'' + n.id + '\')" style="color:var(--mu);font-size:10px;padding:0 2px;">✕</span>'
             + '</div>';
         }).join('');
       }
@@ -2551,7 +2551,7 @@ body {
       if (mapScenes.length) {
         html += '<div style="font-size:10px;font-weight:700;color:var(--mu);margin-bottom:6px;">🗺️ 저장된 스냅샷</div>';
         mapScenes.forEach(function(ms) {
-          html += '<div style="padding:10px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;margin-bottom:6px;cursor:pointer;" onclick="(function(){if(window.wrOpenMapScene)window.wrOpenMapScene('' + (ms.id||'') + '');})()"><span style="font-size:11px;color:#4f8eff;">📷</span> <span style="font-size:13px;font-weight:600;color:var(--tx);">' + (ms.sceneName||ms.name||'스냅샷') + '</span></div>';
+          html += '<div style="padding:10px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;margin-bottom:6px;cursor:pointer;" onclick="(function(){if(window.wrOpenMapScene)window.wrOpenMapScene(\'' + (ms.id||'') + '\');})()" ><span style="font-size:11px;color:#4f8eff;">📷</span> <span style="font-size:13px;font-weight:600;color:var(--tx);">' + (ms.sceneName||ms.name||'스냅샷') + '</span></div>';
         });
       } else {
         html = '<div class="mb-empty" style="padding:24px 0;"><div class="mb-empty-icon">📭</div><div>섹션이 없어요</div><div style="font-size:11px;color:var(--di);margin-top:6px;">PC에서 작업룸에 섹션을 추가하세요</div></div>';
@@ -2594,7 +2594,7 @@ body {
           html += '<div style="padding-top:8px;border-top:1px solid var(--b1);">';
           sec.data.items.forEach(function(ci, ci_idx) {
             var secId = sec.id;
-            html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04);" onclick="mbChecklistToggle('' + secId + '',' + ci_idx + ')">';
+            html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04);" onclick="mbChecklistToggle(\'' + secId + '\',' + ci_idx + ')">';
             html += '<span style="font-size:16px;">' + (ci.done ? '✅' : '⬜') + '</span>';
             html += '<span style="font-size:12px;color:var(--tx);' + (ci.done?'text-decoration:line-through;opacity:.5;':'') + '">' + (ci.text||ci.label||'') + '</span>';
             html += '</div>';
