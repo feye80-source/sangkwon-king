@@ -3605,25 +3605,25 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
 
               <div style="background:var(--s2);border:1px solid var(--b1);border-radius:10px;padding:14px 16px;margin-bottom:10px;">
                 <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-                  <div class="api-dot" id="apiDot"></div>
+                  <div class="api-dot" id="apiDot_cfg"></div>
                   <span style="font-size:12px;font-weight:700;color:var(--tx);">Gemini API</span>
                   <span style="font-size:10px;color:var(--mu);margin-left:auto;">AI 분석 · 요약</span>
                 </div>
-                <input type="text" class="api-in api-in-gemini" id="apiKey" placeholder="AIza..." autocomplete="off" style="width:100%;box-sizing:border-box;" />
+                <input type="text" class="api-in api-in-gemini" id="apiKey_cfg" placeholder="AIza..." autocomplete="off" style="width:100%;box-sizing:border-box;" />
                 <div style="font-size:10px;color:var(--di);margin-top:6px;"><a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--ac);">Google AI Studio</a>에서 발급</div>
               </div>
 
               <div style="background:var(--s2);border:1px solid var(--b1);border-radius:10px;padding:14px 16px;margin-bottom:10px;">
                 <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-                  <div class="api-dot" id="kakaoApiDot"></div>
+                  <div class="api-dot" id="kakaoApiDot_cfg"></div>
                   <span style="font-size:12px;font-weight:700;color:var(--tx);">Kakao JS 키</span>
                   <span style="font-size:10px;color:var(--mu);margin-left:auto;">지도 표시</span>
                   <span id="mapKakaoKeyDot2" style="font-size:14px;">⚪</span>
                 </div>
                 <div style="display:flex;gap:8px;">
-                  <input type="text" class="api-in api-in-kakao" id="kakaoApiKey" placeholder="Kakao JS Key" autocomplete="off" style="flex:1;box-sizing:border-box;"
+                  <input type="text" class="api-in api-in-kakao" id="kakaoApiKey_cfg" placeholder="Kakao JS Key" autocomplete="off" style="flex:1;box-sizing:border-box;"
                     onkeypress="if(event.keyCode==13){document.getElementById('mapKakaoKeyInput').value=this.value;_applyMapKakaoKey();}" />
-                  <button onclick="document.getElementById('mapKakaoKeyInput').value=document.getElementById('kakaoApiKey').value;_applyMapKakaoKey();"
+                  <button onclick="document.getElementById('mapKakaoKeyInput').value=document.getElementById('kakaoApiKey_cfg').value;_applyMapKakaoKey();"
                     style="padding:6px 14px;background:var(--ac);color:#111;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">지도 적용</button>
                 </div>
                 <div style="font-size:10px;color:var(--di);margin-top:6px;"><a href="https://developers.kakao.com" target="_blank" style="color:var(--ac);">Kakao Developers</a>에서 발급</div>
@@ -3631,42 +3631,42 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
 
               <div style="background:var(--s2);border:1px solid var(--b1);border-radius:10px;padding:14px 16px;margin-bottom:10px;">
                 <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-                  <div class="api-dot" id="kakaoRestDot"></div>
+                  <div class="api-dot" id="kakaoRestDot_cfg"></div>
                   <span style="font-size:12px;font-weight:700;color:var(--tx);">Kakao REST 키</span>
                   <span style="font-size:10px;color:var(--mu);margin-left:auto;">주소 검색 · 역지오코딩</span>
                 </div>
-                <input type="password" class="api-in api-in-rest" id="kakaoRestKey" placeholder="Kakao REST" autocomplete="off" style="width:100%;box-sizing:border-box;" />
+                <input type="password" class="api-in api-in-rest" id="kakaoRestKey_cfg" placeholder="Kakao REST" autocomplete="off" style="width:100%;box-sizing:border-box;" />
               </div>
 
               <div style="background:var(--s2);border:1px solid var(--b1);border-radius:10px;padding:14px 16px;margin-bottom:10px;">
                 <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-                  <div class="api-dot" id="naverDot"></div>
+                  <div class="api-dot" id="naverDot_cfg"></div>
                   <span style="font-size:12px;font-weight:700;color:var(--tx);">Naver 클라이언트</span>
                   <span style="font-size:10px;color:var(--mu);margin-left:auto;">네이버 부동산 수집</span>
                 </div>
                 <div style="display:flex;gap:8px;">
-                  <input type="text" class="api-in api-in-naver-id" id="naverClientId" placeholder="Client ID" autocomplete="off" style="flex:1;box-sizing:border-box;" />
-                  <input type="password" class="api-in api-in-naver-sec" id="naverClientSecret" placeholder="Secret" autocomplete="off" style="flex:1;box-sizing:border-box;" />
+                  <input type="text" class="api-in api-in-naver-id" id="naverClientId_cfg" placeholder="Client ID" autocomplete="off" style="flex:1;box-sizing:border-box;" />
+                  <input type="password" class="api-in api-in-naver-sec" id="naverClientSecret_cfg" placeholder="Secret" autocomplete="off" style="flex:1;box-sizing:border-box;" />
                 </div>
               </div>
 
               <div style="background:var(--s2);border:1px solid var(--b1);border-radius:10px;padding:14px 16px;margin-bottom:10px;">
                 <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-                  <div class="api-dot" id="onbidDot"></div>
+                  <div class="api-dot" id="onbidDot_cfg"></div>
                   <span style="font-size:12px;font-weight:700;color:var(--tx);">온비드 인증키</span>
                   <span style="font-size:10px;color:var(--mu);margin-left:auto;">공매 물건 수집</span>
                 </div>
-                <input type="password" class="api-in api-in-onbid" id="onbidApiKey" placeholder="온비드 Decoding 인증키" autocomplete="off" style="width:100%;box-sizing:border-box;" />
+                <input type="password" class="api-in api-in-onbid" id="onbidApiKey_cfg" placeholder="온비드 Decoding 인증키" autocomplete="off" style="width:100%;box-sizing:border-box;" />
                 <div style="font-size:10px;color:var(--di);margin-top:6px;"><a href="https://www.data.go.kr" target="_blank" style="color:var(--ac);">data.go.kr</a>에서 "온비드 물건 정보" 검색 후 발급</div>
               </div>
 
               <div style="background:var(--s2);border:1px solid var(--b1);border-radius:10px;padding:14px 16px;margin-bottom:10px;">
                 <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-                  <div class="api-dot" id="sbizDot"></div>
+                  <div class="api-dot" id="sbizDot_cfg"></div>
                   <span style="font-size:12px;font-weight:700;color:var(--tx);">소상공인 인증키</span>
                   <span style="font-size:10px;color:var(--mu);margin-left:auto;">상권 분석</span>
                 </div>
-                <input type="password" class="api-in api-in-sbiz" id="sbizApiKey" placeholder="소상공인 상권 API Decoding 인증키" autocomplete="off" style="width:100%;box-sizing:border-box;" />
+                <input type="password" class="api-in api-in-sbiz" id="sbizApiKey_cfg" placeholder="소상공인 상권 API Decoding 인증키" autocomplete="off" style="width:100%;box-sizing:border-box;" />
                 <div style="font-size:10px;color:var(--di);margin-top:6px;"><a href="https://www.data.go.kr" target="_blank" style="color:var(--ac);">data.go.kr</a>에서 "소상공인 상권정보" 검색 후 발급</div>
               </div>
             </div>

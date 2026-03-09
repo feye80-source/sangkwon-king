@@ -27617,3 +27617,80 @@ document.addEventListener('DOMContentLoaded', function(){
     };
   }
 });
+
+/* ════════════════════════════════════════════════════════
+   PC 설정 패널 (_cfg) ↔ Topbar API 입력 양방향 동기화 패치
+   중복 ID 문제: index.html에 apiKey, kakaoApiKey 등이 두 번 선언됨
+   → 설정 탭의 _cfg 입력과 topbar 입력을 실시간 동기화
+════════════════════════════════════════════════════════ */
+document.addEventListener('DOMContentLoaded', function () {
+  var cfgPairs = [
+    ['apiKey',            'apiKey_cfg'],
+    ['kakaoApiKey',       'kakaoApiKey_cfg'],
+    ['kakaoRestKey',      'kakaoRestKey_cfg'],
+    ['naverClientId',     'naverClientId_cfg'],
+    ['naverClientSecret', 'naverClientSecret_cfg'],
+    ['onbidApiKey',       'onbidApiKey_cfg'],
+    ['sbizApiKey',        'sbizApiKey_cfg'],
+  ];
+  var dotPairs = [
+    ['apiDot',       'apiDot_cfg'],
+    ['kakaoApiDot',  'kakaoApiDot_cfg'],
+    ['kakaoRestDot', 'kakaoRestDot_cfg'],
+    ['naverDot',     'naverDot_cfg'],
+    ['onbidDot',     'onbidDot_cfg'],
+    ['sbizDot',      'sbizDot_cfg'],
+  ];
+
+  function syncDots() {
+    dotPairs.forEach(function(pair) {
+      var src = document.getElementById(pair[0]);
+      var dst = document.getElementById(pair[1]);
+      if (!src || !dst) return;
+      dst.className = src.className;
+    });
+  }
+
+  function makeSyncHandler(srcId, dstId) {
+    return function () {
+      var src = document.getElementById(srcId);
+      var dst = document.getElementById(dstId);
+      if (src && dst && document.activeElement !== dst) {
+        dst.value = src.value;
+      }
+      setTimeout(syncDots, 50);
+    };
+  }
+
+  cfgPairs.forEach(function(pair) {
+    var topbar = document.getElementById(pair[0]);
+    var cfg    = document.getElementById(pair[1]);
+    if (!topbar || !cfg) return;
+
+    // 초기값: topbar → cfg 복사 (topbar가 localStorage에서 먼저 채워짐)
+    cfg.value = topbar.value;
+
+    // topbar 변경 → cfg 동기화
+    ['input', 'change', 'keyup', 'paste'].forEach(function(ev) {
+      topbar.addEventListener(ev, makeSyncHandler(pair[0], pair[1]));
+    });
+
+    // cfg 변경 → topbar 동기화 + 이벤트 트리거 (기존 리스너 실행)
+    ['input', 'change', 'keyup', 'paste'].forEach(function(ev) {
+      cfg.addEventListener(ev, function() {
+        var topbarEl = document.getElementById(pair[0]);
+        if (topbarEl && document.activeElement !== topbarEl) {
+          topbarEl.value = cfg.value;
+          // 기존 이벤트 리스너 트리거 (저장·dot 갱신 등)
+          topbarEl.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        setTimeout(syncDots, 50);
+      });
+    });
+  });
+
+  // 설정탭 kakaoApiKey_cfg의 "지도 적용" 버튼 동작 처리
+  // (index.html의 버튼이 kakaoApiKey_cfg 사용하도록 이미 변경됨)
+  // 초기 dot 동기화
+  setTimeout(syncDots, 300);
+});
