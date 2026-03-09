@@ -1376,6 +1376,233 @@ body {
   }
   #mb-room-layer-phase-bar::-webkit-scrollbar { display: none; }
   #mb-room-layer-phase-bar.visible { display: flex; }
+
+  /* ════ 알짜정보 카드 ════ */
+  .mb-kcard {
+    background: var(--s2);
+    border: 1px solid var(--b1);
+    border-radius: 12px;
+    overflow: hidden;
+    transition: transform .12s;
+  }
+  .mb-kcard:active { transform: scale(0.98); }
+  .mb-kcard-thumb {
+    width: 100%;
+    height: 160px;
+    object-fit: cover;
+    display: block;
+    background: var(--s3);
+  }
+  .mb-kcard-yt-thumb {
+    position: relative;
+    width: 100%;
+    height: 160px;
+    overflow: hidden;
+    background: #000;
+  }
+  .mb-kcard-yt-thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .mb-kcard-yt-play {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0,0,0,.35);
+  }
+  .mb-kcard-yt-play span {
+    width: 48px; height: 48px;
+    background: rgba(255,0,0,.85);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px;
+    color: #fff;
+  }
+  .mb-kcard-body { padding: 12px 14px; }
+  .mb-kcard-cat {
+    display: inline-block;
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-weight: 700;
+    margin-bottom: 7px;
+  }
+  .mb-kcard-title {
+    font-size: 14px;
+    font-weight: 800;
+    color: var(--tx);
+    margin-bottom: 7px;
+    line-height: 1.35;
+  }
+  .mb-kcard-text {
+    font-size: 12px;
+    color: var(--mu);
+    line-height: 1.65;
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .mb-kcard-footer {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border-top: 1px solid var(--b1);
+    flex-wrap: wrap;
+  }
+  .mb-kcard-tag {
+    font-size: 10px;
+    padding: 2px 6px;
+    background: rgba(255,209,102,0.1);
+    color: #ffd166;
+    border-radius: 8px;
+    border: 1px solid rgba(255,209,102,0.25);
+  }
+  .mb-kcard-date { margin-left: auto; font-size: 10px; color: var(--di); }
+  .mb-kcard-actions { display: flex; gap: 4px; flex-shrink: 0; }
+  .mb-kcard-actions button {
+    background: none; border: none; color: var(--mu);
+    cursor: pointer; font-size: 14px; padding: 2px 5px;
+    border-radius: 4px;
+  }
+  .mb-kcard-actions button:active { opacity: 0.6; }
+
+  /* 카테고리 탭 */
+  #mb-kcat-bar::-webkit-scrollbar { display: none; }
+  .mb-kcat-chip {
+    flex-shrink: 0;
+    padding: 5px 12px;
+    border-radius: 14px;
+    border: 1px solid var(--b1);
+    background: var(--s2);
+    color: var(--mu);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    white-space: nowrap;
+    transition: all .12s;
+  }
+  .mb-kcat-chip.active {
+    background: var(--ac);
+    color: #111;
+    border-color: var(--ac);
+  }
+  /* 새 카드 추가 버튼 */
+  #mb-kcard-fab {
+    position: fixed;
+    bottom: 72px;
+    right: 14px;
+    z-index: 900;
+    width: 52px; height: 52px;
+    border-radius: 50%;
+    background: var(--ac);
+    color: #111;
+    font-size: 26px;
+    border: none;
+    cursor: pointer;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 16px rgba(79,142,255,.5);
+    font-family: inherit;
+  }
+  #mb-kcard-fab.visible { display: flex; }
+
+  /* 알짜 편집 모달 */
+  #mb-kcard-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1500;
+    background: rgba(0,0,0,.6);
+    display: none;
+    align-items: flex-end;
+  }
+  #mb-kcard-modal.open { display: flex; }
+  #mb-kcard-modal-sheet {
+    width: 100%;
+    background: var(--s1);
+    border-radius: 20px 20px 0 0;
+    max-height: 92vh;
+    display: flex;
+    flex-direction: column;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  #mb-kcard-modal-hd {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 16px 12px;
+    border-bottom: 1px solid var(--b1);
+  }
+  #mb-kcard-modal-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px 16px 20px;
+    -webkit-overflow-scrolling: touch;
+  }
+  .mb-kcard-field { margin-bottom: 14px; }
+  .mb-kcard-field label { font-size: 11px; color: var(--mu); display: block; margin-bottom: 5px; }
+  .mb-kcard-field input,
+  .mb-kcard-field textarea {
+    width: 100%;
+    padding: 10px 12px;
+    background: var(--s2);
+    border: 1px solid var(--b1);
+    border-radius: 8px;
+    color: var(--tx);
+    font-size: 13px;
+    font-family: inherit;
+    outline: none;
+    box-sizing: border-box;
+  }
+  .mb-kcard-field textarea { min-height: 100px; resize: vertical; line-height: 1.6; }
+
+  /* 이미지 드롭존 */
+  .mb-kcard-dropzone {
+    border: 2px dashed var(--b2);
+    border-radius: 10px;
+    padding: 20px;
+    text-align: center;
+    cursor: pointer;
+    background: var(--s2);
+    transition: border-color .15s;
+  }
+  .mb-kcard-dropzone.drag-over { border-color: var(--ac); background: rgba(79,142,255,.05); }
+  .mb-kcard-img-preview {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .mb-kcard-img-preview div {
+    position: relative;
+    width: 72px; height: 72px;
+    border-radius: 8px;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  .mb-kcard-img-preview img { width: 100%; height: 100%; object-fit: cover; }
+  .mb-kcard-img-preview button {
+    position: absolute;
+    top: 2px; right: 2px;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: rgba(0,0,0,.6);
+    color: #fff;
+    border: none;
+    font-size: 10px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-family: inherit;
+  }
+  /* 카테고리 관리 */
+  .mb-kcat-manage-row {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 0; border-bottom: 1px solid var(--b2);
+  }
+  .mb-kcat-manage-row:last-child { border-bottom: none; }
   </style>
 </head>
 <body>
@@ -1452,7 +1679,7 @@ body {
       <button class="mb-ins-tab" id="mb-itab-calc"        onclick="mbInsTab('calc')" role="tab">🧮 계산기</button>
       <button class="mb-ins-tab" id="mb-itab-room"        onclick="mbInsTab('room')" role="tab">🗂️ 작업룸</button>
       <button class="mb-ins-tab" id="mb-itab-pipe"        onclick="mbInsTab('pipe')" role="tab">🎯 파이프라인</button>
-      <button class="mb-ins-tab" id="mb-itab-clip"        onclick="mbInsTab('clip')" role="tab">📰 클리핑</button>
+      <button class="mb-ins-tab" id="mb-itab-clip"        onclick="mbInsTab('clip')" role="tab">⭐ 알짜</button>
       <button class="mb-ins-tab" id="mb-itab-site"        onclick="mbInsTab('site')" role="tab">🔗 사이트</button>
     </nav>
 
@@ -1815,15 +2042,14 @@ body {
       <div id="mb-pipe-list"></div>
     </div>
 
-    <!-- 클리핑 패널 -->
+    <!-- 알짜정보 패널 -->
     <div id="mb-ins-clip" class="mb-ins-panel">
-      <div id="mb-clip-content">
-        <div class="mb-empty" id="mb-clip-empty">
-          <div class="mb-empty-icon">📰</div>
-          <div>뉴스 브리핑</div>
-          <div style="font-size:11px;color:var(--di);margin-top:4px;">PC에서 불러온 브리핑이 여기 표시됩니다</div>
-        </div>
+      <!-- 카테고리 바 -->
+      <div id="mb-kcat-bar" style="display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;margin-bottom:8px;scrollbar-width:none;-webkit-overflow-scrolling:touch;">
+        <!-- JS로 렌더 -->
       </div>
+      <!-- 카드 그리드 -->
+      <div id="mb-kcard-grid" style="display:flex;flex-direction:column;gap:8px;"></div>
     </div>
 
     <!-- 사이트 패널 -->
@@ -2050,6 +2276,8 @@ body {
           <option value="area">면적</option>
         </select>
         <button class="mb-btn" id="sortDir" onclick="toggleDir()" style="padding:0 10px;height:36px;">↓</button>
+        <button onclick="mbExportCSV()" title="CSV 다운로드"
+          style="padding:0 10px;height:36px;background:rgba(0,212,130,.1);border:1px solid rgba(0,212,130,.3);border-radius:8px;color:#00d482;font-size:13px;cursor:pointer;flex-shrink:0;font-family:inherit;">📊</button>
       </div>
       <div class="mb-filter-scroll">
         <button class="mb-ftab active" id="ft_all"         onclick="setFilter('all')">전체</button>
@@ -5233,6 +5461,549 @@ document.addEventListener('keydown', function(e){
     if (layer && layer.classList.contains('open')) mbRoomLayerClose();
   }
 });
+</script>
+
+<!-- ════ 알짜정보 편집 모달 ════ -->
+<div id="mb-kcard-modal">
+  <div id="mb-kcard-modal-sheet">
+    <div id="mb-kcard-modal-hd">
+      <span style="font-size:15px;font-weight:700;color:var(--tx);">⭐ 알짜정보</span>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <button id="mb-kcard-cat-manage-btn" onclick="mbKcardCatManage()"
+          style="font-size:11px;padding:4px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:6px;color:var(--mu);cursor:pointer;font-family:inherit;">카테고리 ⚙️</button>
+        <button onclick="mbKcardModalClose()"
+          style="background:none;border:none;color:var(--mu);font-size:22px;cursor:pointer;line-height:1;">×</button>
+      </div>
+    </div>
+    <div id="mb-kcard-modal-body">
+      <!-- 카테고리 선택 -->
+      <div class="mb-kcard-field">
+        <label>카테고리</label>
+        <div id="mb-kcard-cat-picker" style="display:flex;flex-wrap:wrap;gap:5px;"></div>
+        <div style="display:flex;gap:6px;margin-top:8px;">
+          <input id="mb-kcard-new-cat" placeholder="새 카테고리 입력..."
+            style="flex:1;padding:8px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:7px;color:var(--tx);font-size:12px;font-family:inherit;outline:none;">
+          <button onclick="mbKcardAddCat()"
+            style="padding:8px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:7px;color:var(--tx);font-size:12px;cursor:pointer;font-family:inherit;flex-shrink:0;">추가</button>
+        </div>
+      </div>
+
+      <!-- 제목 -->
+      <div class="mb-kcard-field">
+        <label>제목</label>
+        <input id="mb-kcard-title" placeholder="예: 1층 임대료 30만원 이상 조건" type="text">
+      </div>
+
+      <!-- 내용 -->
+      <div class="mb-kcard-field">
+        <label>핵심 내용</label>
+        <textarea id="mb-kcard-body" placeholder="핵심 내용을 입력하세요..."></textarea>
+      </div>
+
+      <!-- 유튜브 링크 -->
+      <div class="mb-kcard-field">
+        <label>📺 유튜브 링크 (썸네일 자동 표시)</label>
+        <input id="mb-kcard-yt" placeholder="https://youtu.be/xxxxx" type="url">
+      </div>
+
+      <!-- 이미지 업로드 -->
+      <div class="mb-kcard-field">
+        <label>🖼️ 이미지 첨부 (여러 장 가능)</label>
+        <div class="mb-kcard-dropzone" id="mb-kcard-dropzone"
+          onclick="document.getElementById('mb-kcard-img-input').click()"
+          ondragover="event.preventDefault();this.classList.add('drag-over')"
+          ondragleave="this.classList.remove('drag-over')"
+          ondrop="mbKcardImgDrop(event)">
+          <div style="font-size:28px;margin-bottom:6px;">📷</div>
+          <div style="font-size:12px;color:var(--tx);font-weight:600;">이미지 드래그 or 탭</div>
+          <div style="font-size:11px;color:var(--mu);margin-top:3px;">JPG · PNG · WEBP</div>
+        </div>
+        <input type="file" id="mb-kcard-img-input" accept="image/*" multiple style="display:none;"
+          onchange="mbKcardImgSelect(this)">
+        <div id="mb-kcard-img-preview" class="mb-kcard-img-preview"></div>
+      </div>
+
+      <!-- 태그 -->
+      <div class="mb-kcard-field">
+        <label>태그 (쉼표로 구분)</label>
+        <input id="mb-kcard-tags" placeholder="예: 임대료, 상가, 투자조건" type="text">
+      </div>
+
+      <div style="display:flex;gap:8px;margin-top:6px;">
+        <button onclick="mbKcardSave()"
+          style="flex:1;padding:12px;background:var(--ac);color:#111;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;">💾 저장</button>
+        <button onclick="mbKcardModalClose()"
+          style="padding:12px 20px;background:var(--s2);border:1px solid var(--b1);border-radius:10px;color:var(--tx);font-size:14px;cursor:pointer;font-family:inherit;">취소</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 카테고리 관리 모달 -->
+<div id="mb-kcat-modal" style="display:none;position:fixed;inset:0;z-index:1600;background:rgba(0,0,0,.6);align-items:center;justify-content:center;">
+  <div style="background:var(--s1);border-radius:14px;padding:20px;width:300px;max-width:90vw;max-height:70vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.5);">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+      <span style="font-size:15px;font-weight:700;color:var(--tx);">⚙️ 카테고리 관리</span>
+      <button onclick="document.getElementById('mb-kcat-modal').style.display='none'"
+        style="background:none;border:none;color:var(--mu);font-size:22px;cursor:pointer;">×</button>
+    </div>
+    <div id="mb-kcat-manage-list"></div>
+    <div style="display:flex;gap:6px;margin-top:12px;">
+      <input id="mb-kcat-new-input" placeholder="새 카테고리"
+        style="flex:1;padding:8px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:7px;color:var(--tx);font-size:12px;font-family:inherit;outline:none;">
+      <button onclick="mbKcatAdd()"
+        style="padding:8px 12px;background:var(--ac);border:none;border-radius:7px;color:#111;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">추가</button>
+    </div>
+  </div>
+</div>
+
+<!-- FAB 버튼 -->
+<button id="mb-kcard-fab" onclick="mbKcardModalOpen(null)">＋</button>
+<script>
+/* ════════════════════════════════════════════
+   알짜정보 카드 시스템
+   localStorage: ins_kcards, ins_kcat
+   ════════════════════════════════════════════ */
+
+var _mbKcards = [];
+var _mbKcardCats = [];
+var _mbKcardActiveCat = '전체';
+var _mbKcardEditId = null;
+var _mbKcardSelectedCat = '';
+var _mbKcardImgs = []; // base64 배열
+
+var _MB_KCAT_COLORS = ['#4f8eff','#ff6370','#f9a825','#a78bfa','#00d4aa','#ff8c42','#64748b','#ec4899'];
+
+function _mbKcardColor(cat) {
+  var idx = _mbKcardCats.indexOf(cat) % _MB_KCAT_COLORS.length;
+  return _MB_KCAT_COLORS[Math.max(0, idx)];
+}
+
+/* ── 데이터 로드 ── */
+function _mbKcardLoad() {
+  try { _mbKcards = JSON.parse(localStorage.getItem('ins_kcards') || '[]'); } catch(e) { _mbKcards = []; }
+  try { _mbKcardCats = JSON.parse(localStorage.getItem('ins_kcat') || '["📐 면적/건축","⚖️ 권리분석","📋 경매 절차","💰 세금/비용","🏘️ 상권/지역"]'); } catch(e) { _mbKcardCats = []; }
+}
+
+/* ── 저장 ── */
+function _mbKcardSaveAll() {
+  localStorage.setItem('ins_kcards', JSON.stringify(_mbKcards));
+}
+function _mbKcatSaveAll() {
+  localStorage.setItem('ins_kcat', JSON.stringify(_mbKcardCats));
+}
+
+/* ── 유튜브 ID 추출 ── */
+function _mbYtId(url) {
+  if (!url) return null;
+  var m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([^&?#\s]{8,12})/);
+  return m ? m[1] : null;
+}
+
+/* ── 전체 렌더 (카테고리 탭 + 카드) ── */
+function mbKcardRender() {
+  _mbKcardLoad();
+  _mbKcardRenderCatBar();
+  _mbKcardRenderGrid();
+}
+
+function _mbKcardRenderCatBar() {
+  var bar = document.getElementById('mb-kcat-bar');
+  if (!bar) return;
+  bar.innerHTML = '';
+  var cats = ['전체'].concat(_mbKcardCats);
+  cats.forEach(function(cat) {
+    var btn = document.createElement('button');
+    btn.className = 'mb-kcat-chip' + (cat === _mbKcardActiveCat ? ' active' : '');
+    var cnt = cat === '전체' ? _mbKcards.length : _mbKcards.filter(function(k){ return k.cat === cat; }).length;
+    btn.textContent = cat + ' ' + cnt;
+    btn.onclick = (function(c){ return function(){ _mbKcardActiveCat = c; _mbKcardRenderCatBar(); _mbKcardRenderGrid(); }; })(cat);
+    bar.appendChild(btn);
+  });
+  // 카테고리 관리 버튼
+  var manageBtn = document.createElement('button');
+  manageBtn.className = 'mb-kcat-chip';
+  manageBtn.style.cssText = 'flex-shrink:0;border-style:dashed;';
+  manageBtn.textContent = '⚙️ 관리';
+  manageBtn.onclick = function() { mbKcardCatManage(); };
+  bar.appendChild(manageBtn);
+}
+
+function _mbKcardRenderGrid() {
+  var grid = document.getElementById('mb-kcard-grid');
+  if (!grid) return;
+  var filtered = _mbKcardActiveCat === '전체' ? _mbKcards : _mbKcards.filter(function(k){ return k.cat === _mbKcardActiveCat; });
+
+  if (!filtered.length) {
+    grid.innerHTML = '<div style="text-align:center;padding:50px 0;color:var(--di);"><div style="font-size:36px;margin-bottom:10px;">⭐</div><div style="font-size:13px;">첫 알짜정보를 추가해보세요</div></div>';
+    return;
+  }
+
+  grid.innerHTML = '';
+  filtered.forEach(function(card) {
+    grid.appendChild(_mbKcardBuildCard(card));
+  });
+}
+
+function _mbKcardBuildCard(card) {
+  var color = _mbKcardColor(card.cat || '');
+  var d = card.createdAt ? new Date(card.createdAt).toLocaleDateString('ko-KR',{month:'numeric',day:'numeric'}) : '';
+  var ytId = _mbYtId(card.youtube || '');
+  var tags = (card.tags || []).map(function(t){ return '<span class="mb-kcard-tag">#' + t + '</span>'; }).join('');
+
+  var el = document.createElement('div');
+  el.className = 'mb-kcard';
+
+  var thumbHtml = '';
+  if (ytId) {
+    thumbHtml = '<div class="mb-kcard-yt-thumb" onclick="window.open('https://www.youtube.com/watch?v=' + ytId + '','_blank')">' +
+      '<img src="https://img.youtube.com/vi/' + ytId + '/mqdefault.jpg" alt="">' +
+      '<div class="mb-kcard-yt-play"><span>▶</span></div></div>';
+  } else if (card.images && card.images.length) {
+    thumbHtml = '<img class="mb-kcard-thumb" src="' + card.images[0] + '" alt="" onclick="mbKcardImgView('' + card.id + '')">';
+  }
+
+  el.innerHTML = thumbHtml +
+    '<div class="mb-kcard-body">' +
+      '<span class="mb-kcard-cat" style="background:' + color + '1a;color:' + color + ';border:1px solid ' + color + '33;">' + (card.cat || '기타') + '</span>' +
+      '<div class="mb-kcard-title">' + (card.title || '제목 없음') + '</div>' +
+      (card.body ? '<div class="mb-kcard-text">' + card.body.replace(/
+/g,'<br>') + '</div>' : '') +
+    '</div>' +
+    '<div class="mb-kcard-footer">' +
+      (tags || '') +
+      '<span class="mb-kcard-date">' + d + '</span>' +
+      '<div class="mb-kcard-actions">' +
+        '<button onclick="mbKcardModalOpen('' + card.id + '')">✏️</button>' +
+        '<button onclick="mbKcardDelete('' + card.id + '')">🗑</button>' +
+      '</div>' +
+    '</div>';
+  return el;
+}
+
+/* ── 모달 열기/닫기 ── */
+window.mbKcardModalOpen = function(id) {
+  _mbKcardLoad();
+  _mbKcardEditId = id || null;
+  _mbKcardImgs = [];
+
+  var card = id ? _mbKcards.find(function(k){ return k.id === id; }) : null;
+
+  // 카테고리 피커
+  _mbKcardRenderCatPicker(card ? (card.cat || _mbKcardCats[0]) : _mbKcardCats[0]);
+
+  // 필드 채우기
+  document.getElementById('mb-kcard-title').value = card ? (card.title || '') : '';
+  document.getElementById('mb-kcard-body').value = card ? (card.body || '') : '';
+  document.getElementById('mb-kcard-yt').value = card ? (card.youtube || '') : '';
+  document.getElementById('mb-kcard-tags').value = card ? ((card.tags||[]).join(', ')) : '';
+
+  // 이미지 프리뷰
+  _mbKcardImgs = card ? (card.images || []).slice() : [];
+  _mbKcardRenderImgPreview();
+
+  var modal = document.getElementById('mb-kcard-modal');
+  if (modal) modal.classList.add('open');
+};
+
+window.mbKcardModalClose = function() {
+  var modal = document.getElementById('mb-kcard-modal');
+  if (modal) modal.classList.remove('open');
+  _mbKcardEditId = null;
+  _mbKcardImgs = [];
+};
+
+function _mbKcardRenderCatPicker(selected) {
+  _mbKcardSelectedCat = selected || _mbKcardCats[0] || '';
+  var el = document.getElementById('mb-kcard-cat-picker');
+  if (!el) return;
+  el.innerHTML = '';
+  _mbKcardCats.forEach(function(cat) {
+    var btn = document.createElement('button');
+    var isActive = cat === _mbKcardSelectedCat;
+    btn.style.cssText = 'padding:4px 10px;font-size:11px;border-radius:10px;cursor:pointer;font-family:inherit;' +
+      'background:' + (isActive ? 'var(--ac)' : 'var(--s2)') + ';' +
+      'color:' + (isActive ? '#111' : 'var(--tx)') + ';' +
+      'border:1px solid ' + (isActive ? 'var(--ac)' : 'var(--b1)') + ';';
+    btn.textContent = cat;
+    btn.onclick = function() { _mbKcardSelectedCat = cat; _mbKcardRenderCatPicker(cat); };
+    el.appendChild(btn);
+  });
+}
+
+/* ── 카테고리 추가 (모달 내) ── */
+window.mbKcardAddCat = function() {
+  var inp = document.getElementById('mb-kcard-new-cat');
+  if (!inp) return;
+  var v = inp.value.trim();
+  if (!v) return;
+  _mbKcardLoad();
+  if (_mbKcardCats.includes(v)) { if(typeof mbToast==='function') mbToast('이미 있는 카테고리예요', 'warn'); return; }
+  _mbKcardCats.push(v);
+  _mbKcatSaveAll();
+  inp.value = '';
+  _mbKcardRenderCatPicker(v);
+  if(typeof mbToast==='function') mbToast("'" + v + "' 추가됨", 'ok');
+};
+
+/* ── 이미지 처리 ── */
+window.mbKcardImgDrop = function(e) {
+  e.preventDefault();
+  var dz = document.getElementById('mb-kcard-dropzone');
+  if (dz) dz.classList.remove('drag-over');
+  _mbKcardProcessFiles(Array.from(e.dataTransfer.files).filter(function(f){ return f.type.startsWith('image/'); }));
+};
+window.mbKcardImgSelect = function(inp) {
+  _mbKcardProcessFiles(Array.from(inp.files));
+  inp.value = '';
+};
+function _mbKcardProcessFiles(files) {
+  files.forEach(function(f) {
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      _mbKcardImgs.push(e.target.result);
+      _mbKcardRenderImgPreview();
+    };
+    reader.readAsDataURL(f);
+  });
+}
+function _mbKcardRenderImgPreview() {
+  var el = document.getElementById('mb-kcard-img-preview');
+  if (!el) return;
+  el.innerHTML = '';
+  _mbKcardImgs.forEach(function(src, i) {
+    var wrap = document.createElement('div');
+    var img = document.createElement('img');
+    img.src = src;
+    var del = document.createElement('button');
+    del.textContent = '×';
+    del.onclick = function(e) { e.stopPropagation(); _mbKcardImgs.splice(i, 1); _mbKcardRenderImgPreview(); };
+    wrap.appendChild(img);
+    wrap.appendChild(del);
+    el.appendChild(wrap);
+  });
+}
+
+/* ── 이미지 전체보기 ── */
+window.mbKcardImgView = function(cardId) {
+  var card = _mbKcards.find(function(k){ return k.id === cardId; });
+  if (!card || !card.images || !card.images.length) return;
+  // 간단한 전체화면 오버레이
+  var ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;';
+  ov.onclick = function() { ov.remove(); };
+  var img = document.createElement('img');
+  img.src = card.images[0];
+  img.style.cssText = 'max-width:95vw;max-height:90vh;border-radius:10px;object-fit:contain;';
+  ov.appendChild(img);
+  document.body.appendChild(ov);
+};
+
+/* ── 저장 ── */
+window.mbKcardSave = function() {
+  var title = document.getElementById('mb-kcard-title').value.trim();
+  var body  = document.getElementById('mb-kcard-body').value.trim();
+  var yt    = document.getElementById('mb-kcard-yt').value.trim();
+  var tagsRaw = document.getElementById('mb-kcard-tags').value.trim();
+  if (!title) { if(typeof mbToast==='function') mbToast('제목을 입력해주세요', 'warn'); return; }
+
+  _mbKcardLoad();
+  var tags = tagsRaw ? tagsRaw.split(/[,，]+/).map(function(t){ return t.trim(); }).filter(Boolean) : [];
+  var now = Date.now();
+
+  if (_mbKcardEditId) {
+    var idx = _mbKcards.findIndex(function(k){ return k.id === _mbKcardEditId; });
+    if (idx !== -1) {
+      _mbKcards[idx] = Object.assign(_mbKcards[idx], { title:title, body:body, youtube:yt, tags:tags, images:_mbKcardImgs, cat:_mbKcardSelectedCat, updatedAt:now });
+    }
+  } else {
+    _mbKcards.unshift({ id:'kc_' + now, title:title, body:body, youtube:yt, tags:tags, images:_mbKcardImgs, cat:_mbKcardSelectedCat, createdAt:now });
+  }
+  _mbKcardSaveAll();
+  mbKcardModalClose();
+  mbKcardRender();
+  if(typeof mbToast==='function') mbToast('저장됐어요 ✅', 'ok');
+};
+
+/* ── 삭제 ── */
+window.mbKcardDelete = function(id) {
+  if (!confirm('이 카드를 삭제할까요?')) return;
+  _mbKcardLoad();
+  _mbKcards = _mbKcards.filter(function(k){ return k.id !== id; });
+  _mbKcardSaveAll();
+  mbKcardRender();
+  if(typeof mbToast==='function') mbToast('삭제됐어요', 'ok');
+};
+
+/* ── 카테고리 관리 모달 ── */
+window.mbKcardCatManage = function() {
+  var modal = document.getElementById('mb-kcat-modal');
+  if (!modal) return;
+  _mbKcardLoad();
+  var list = document.getElementById('mb-kcat-manage-list');
+  list.innerHTML = '';
+  _mbKcardCats.forEach(function(cat, i) {
+    var row = document.createElement('div');
+    row.className = 'mb-kcat-manage-row';
+    row.innerHTML = '<span style="flex:1;font-size:13px;color:var(--tx);">' + cat + '</span>';
+    var del = document.createElement('button');
+    del.textContent = '삭제';
+    del.style.cssText = 'font-size:11px;padding:3px 8px;background:rgba(255,77,77,.1);border:1px solid rgba(255,77,77,.3);border-radius:5px;color:var(--red);cursor:pointer;font-family:inherit;';
+    del.onclick = (function(c){ return function() {
+      if (!confirm("'" + c + "' 카테고리를 삭제할까요?\n해당 카테고리 카드는 '기타'로 이동됩니다.")) return;
+      _mbKcardLoad();
+      _mbKcardCats = _mbKcardCats.filter(function(x){ return x !== c; });
+      _mbKcards.forEach(function(k){ if (k.cat === c) k.cat = '기타'; });
+      _mbKcatSaveAll(); _mbKcardSaveAll();
+      modal.style.display = 'none';
+      mbKcardRender();
+      if(typeof mbToast==='function') mbToast("'" + c + "' 삭제됨", 'ok');
+    }; })(cat);
+    row.appendChild(del);
+    list.appendChild(row);
+  });
+  modal.style.display = 'flex';
+};
+
+window.mbKcatAdd = function() {
+  var inp = document.getElementById('mb-kcat-new-input');
+  if (!inp) return;
+  var v = inp.value.trim();
+  if (!v) return;
+  _mbKcardLoad();
+  if (_mbKcardCats.includes(v)) { if(typeof mbToast==='function') mbToast('이미 있어요', 'warn'); return; }
+  _mbKcardCats.push(v);
+  _mbKcatSaveAll();
+  inp.value = '';
+  mbKcardCatManage(); // 재렌더
+  if(typeof mbToast==='function') mbToast("'" + v + "' 추가됨", 'ok');
+};
+
+/* ── 탭 전환 시 FAB 표시/숨김 연동 ── */
+var _origMbInsTab = window.mbInsTab;
+window.mbInsTab = function(tab) {
+  if (typeof _origMbInsTab === 'function') _origMbInsTab(tab);
+  var fab = document.getElementById('mb-kcard-fab');
+  if (fab) fab.classList.toggle('visible', tab === 'clip');
+  if (tab === 'clip') mbKcardRender();
+};
+
+/* 초기 알짜 탭 활성 시 FAB도 표시 */
+(function() {
+  var activeTab = document.querySelector('.mb-ins-tab.active');
+  if (activeTab && activeTab.id === 'mb-itab-clip') {
+    var fab = document.getElementById('mb-kcard-fab');
+    if (fab) fab.classList.add('visible');
+    mbKcardRender();
+  }
+})();
+</script>
+<script>
+/* ════════════════════════════════════════════
+   저장목록 CSV/Excel 다운로드
+   ════════════════════════════════════════════ */
+window.mbExportCSV = function() {
+  var items = [];
+  try { items = JSON.parse(localStorage.getItem('re_sv') || '[]'); } catch(e) {}
+
+  if (!items.length) {
+    if (typeof mbToast === 'function') mbToast('저장된 데이터가 없어요', 'warn');
+    return;
+  }
+
+  // 현재 필터 적용 (검색어 + 소스 필터)
+  var searchVal = (document.getElementById('regionSearch') || {}).value || '';
+  var activeFilter = '';
+  var activeFt = document.querySelector('.mb-ftab.active');
+  if (activeFt) activeFilter = activeFt.id.replace('ft_', '');
+
+  var filtered = items.filter(function(item) {
+    var d = item.data || {};
+    var addr = (d['소재지'] || item.address || '').toLowerCase();
+    var name = (d['물건종류'] || d['종류'] || item.type || '').toLowerCase();
+    var memo = (item.memo || '').toLowerCase();
+    var src  = (item.mode || item.source || '');
+    var kw   = searchVal.toLowerCase();
+
+    var matchSearch = !kw || addr.includes(kw) || name.includes(kw) || memo.includes(kw);
+    var matchFilter = !activeFilter || activeFilter === 'all' ||
+      src === activeFilter ||
+      (activeFilter === 'auction' && (src === 'auction' || item.mode === 'auction')) ||
+      (activeFilter === 'listing' && (src === 'listing' || src === 'naver')) ||
+      (activeFilter === 'jumpo'   && src === 'jumpo') ||
+      (activeFilter === 'assa'    && src === 'assa') ||
+      (activeFilter === 'disco'   && src === 'disco') ||
+      (activeFilter === 'bds'     && src === 'bds') ||
+      (activeFilter === 'transaction' && src === 'transaction');
+
+    return matchSearch && matchFilter;
+  });
+
+  if (!filtered.length) {
+    if (typeof mbToast === 'function') mbToast('표시된 데이터가 없어요', 'warn');
+    return;
+  }
+
+  // 컬럼 정의
+  var COLS = [
+    { key: '_source',     label: '소스' },
+    { key: '소재지',      label: '소재지' },
+    { key: '물건종류',    label: '물건종류' },
+    { key: '층',          label: '층' },
+    { key: '전용면적',    label: '전용면적(㎡)' },
+    { key: '면적평',      label: '전용면적(평)' },
+    { key: '감정가',      label: '감정가' },
+    { key: '최저매각가격',label: '최저가' },
+    { key: '평당가',      label: '평당가' },
+    { key: '매매가',      label: '매매가' },
+    { key: '보증금',      label: '보증금' },
+    { key: '월세',        label: '월세' },
+    { key: '관리비',      label: '관리비' },
+    { key: '사건번호',    label: '사건번호' },
+    { key: '유찰횟수',    label: '유찰횟수' },
+    { key: '매각기일',    label: '매각기일' },
+    { key: '상태',        label: '상태' },
+    { key: '_memo',       label: '메모' },
+    { key: '_savedAt',    label: '저장일' },
+  ];
+
+  // 소스명 변환
+  var SRC_NAMES = { auction:'경매', listing:'네이버', naver:'네이버', jumpo:'점포라인', assa:'아싸', disco:'디스코', bds:'플래닛', transaction:'실거래' };
+
+  // CSV 생성
+  var rows = [COLS.map(function(col){ return '"' + col.label + '"'; }).join(',')];
+  filtered.forEach(function(item) {
+    var d = item.data || {};
+    var row = COLS.map(function(col) {
+      var val = '';
+      if (col.key === '_source')  val = SRC_NAMES[item.mode || item.source || ''] || (item.mode || item.source || '');
+      else if (col.key === '_memo')    val = item.memo || '';
+      else if (col.key === '_savedAt') val = item.timestamp ? new Date(item.timestamp).toLocaleDateString('ko-KR') : '';
+      else if (col.key === '면적평') {
+        var m2 = parseFloat(d['전용면적'] || '');
+        val = !isNaN(m2) ? (m2 / 3.3058).toFixed(1) : '';
+      }
+      else val = d[col.key] !== undefined ? d[col.key] : (item[col.key] || '');
+      // 숫자 그대로, 문자열은 따옴표 처리
+      var str = String(val).replace(/"/g, '""');
+      return '"' + str + '"';
+    });
+    rows.push(row.join(','));
+  });
+
+  var csvContent = '﻿' + rows.join('
+'); // BOM for Excel Korean
+  var blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  var url  = URL.createObjectURL(blob);
+  var a    = document.createElement('a');
+  var date = new Date().toLocaleDateString('ko-KR',{year:'2-digit',month:'2-digit',day:'2-digit'}).replace(/\. /g,'-').replace('.','');
+  a.href     = url;
+  a.download = '상권King_저장목록_' + date + '.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+
+  if (typeof mbToast === 'function') mbToast(filtered.length + '건 CSV 저장됨 📊', 'ok');
+};
 </script>
 </body>
 </html>
