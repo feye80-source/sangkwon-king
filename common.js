@@ -15640,7 +15640,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         const cnt = dataset.data.length;
         const row = document.createElement('div');
         row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:5px 7px;background:#151924;border-radius:5px;border:1px solid #2a3045;margin-bottom:2px;';
-        row.innerHTML = '<div class="toggle-switch ' + (dataset.visible ? 'on' : '') + '" style="flex-shrink:0;width:28px;height:16px;" onclick="toggleCSVDataset('' + dataset.id + '')"></div>'
+        row.innerHTML = '<div class="toggle-switch ' + (dataset.visible ? 'on' : '') + '" style="flex-shrink:0;width:28px;height:16px;" onclick="toggleCSVDataset(\' + dataset.id + \')"></div>'
           + '<span style="font-size:10px;color:#c8cede;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(dataset.name) + '</span>'
           + '<span style="font-size:9px;color:' + (dataset.visible ? '#4f8eff' : '#3d4560') + ';flex-shrink:0;">' + (dataset.visible ? '지도표시 ' + cnt.toLocaleString() + '건' : '숨김') + '</span>';
         list.appendChild(row);
