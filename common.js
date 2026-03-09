@@ -12,11 +12,11 @@
     window.PROXY_FILENAME = 'proxy_server_floor_v4.py';
     /* ★ 프록시 서버 주소 (포트 변경 시 여기만 수정) */
     window.PROXY_URL = 'http://127.0.0.1:8080'; // 로컬 py 서버 (항상 고정)
-    window.EDGE_URL = 'https://pjwxjnsvvgbicuqnphkr.supabase.co/functions/v1/proxy';  /* ★ NEW_PROJECT_URL */
+    window.EDGE_URL = 'https://qgfkhbcpidmraxxjtetl.supabase.co/functions/v1/proxy';
 
     // Edge Function 호출 시 anon key 자동 추가
     window._proxyFetch = function(url, options = {}) {
-      if (url && url.startsWith('https://pjwxjnsvvgbicuqnphkr.supabase.co/functions')) {  /* ★ NEW_PROJECT_URL */
+      if (url && url.startsWith('https://qgfkhbcpidmraxxjtetl.supabase.co/functions')) {
         options.headers = options.headers || {};
         options.headers['Authorization'] = 'Bearer ' + (typeof SUPABASE_KEY !== 'undefined' ? SUPABASE_KEY : '');
       }
@@ -27,31 +27,15 @@
    블록2: Supabase
 ════════════════════════════════════════════════════════ */
   (function() {
-    /* ★★★ 새 프로젝트 생성 후 아래 두 줄만 교체하세요 ★★★ */
-    const SUPABASE_URL = 'https://pjwxjnsvvgbicuqnphkr.supabase.co';   /* ← NEW_PROJECT_URL */
-    const SUPABASE_KEY = 'sb_publishable_WyWdFsQNlyrfEDY5qRWYGw_3Vs_9C6n';  /* ← NEW_ANON_KEY */
+    const SUPABASE_URL = 'https://qgfkhbcpidmraxxjtetl.supabase.co';
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFnZmtoYmNwaWRtcmF4eGp0ZXRsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4NjEzNDcsImV4cCI6MjA4ODQzNzM0N30.kL8p6kNSxEI3_oxNrYguxhkU7wHNLRUTdvaIw5st5bo';
 
-    // Supabase 클라이언트 초기화 (모바일 Safari 세션 유지 강화)
+    // Supabase 클라이언트 초기화
     window._sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
       auth: {
         persistSession: true,
         autoRefreshToken: true,
-        detectSessionInUrl: true,
-        storageKey: 'sb_sangkwon_session',
-        storage: {
-          // Safari 모바일: localStorage + sessionStorage 이중 저장
-          getItem: function(key) {
-            try { return localStorage.getItem(key) || sessionStorage.getItem(key); } catch(e) { return null; }
-          },
-          setItem: function(key, value) {
-            try { localStorage.setItem(key, value); } catch(e) {}
-            try { sessionStorage.setItem(key, value); } catch(e) {}
-          },
-          removeItem: function(key) {
-            try { localStorage.removeItem(key); } catch(e) {}
-            try { sessionStorage.removeItem(key); } catch(e) {}
-          }
-        }
+        storageKey: 'sb_sangkwon_session'
       }
     });
 
@@ -65,133 +49,39 @@
       }
     });
 
-    // ─── 범용 헬퍼 (1건 = 1행 구조) ─────────────────────────
-    // 테이블에서 사용자 데이터 전체 로드
-    async function sbGetAll(table) {
+    // ─── 범용 헬퍼 ───────────────────────────────────────────
+    // 테이블에서 key로 단일 JSON 행 가져오기
+    async function sbGet(table, key) {
       try {
-        const uid = (await window._sb.auth.getUser()).data.user?.id;
-        if (!uid) return null;
-        const { data, error } = await window._sb.from(table).select('*').eq('user_id', uid);
+        const { data, error } = await window._sb.from(table).select('*').eq('data->>__key', key).maybeSingle();
         if (error) throw error;
-        return (data || []).map(row => row.data);
-      } catch(e) { console.warn('[SB] getAll error', table, e); return null; }
-    }
-
-    // 단일 항목 upsert (id 기준)
-    async function sbUpsertOne(table, item) {
-      try {
-        const uid = (await window._sb.auth.getUser()).data.user?.id;
-        if (!uid || !item || !item.id) return;
-        await window._sb.from(table).upsert({
-          id: uid + '_' + item.id,
-          user_id: uid,
-          item_id: item.id,
-          data: item,
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'id' });
-      } catch(e) { console.warn('[SB] upsertOne error', table, e); }
-    }
-
-    // 여러 항목 한번에 upsert
-    async function sbUpsertMany(table, items) {
-      try {
-        const uid = (await window._sb.auth.getUser()).data.user?.id;
-        if (!uid || !items || !items.length) return;
-        const rows = items.map(item => ({
-          id: uid + '_' + item.id,
-          user_id: uid,
-          item_id: item.id,
-          data: item,
-          updated_at: new Date().toISOString()
-        }));
-        // 50개씩 배치 처리
-        for (let i = 0; i < rows.length; i += 50) {
-          await window._sb.from(table).upsert(rows.slice(i, i + 50), { onConflict: 'id' });
-        }
-      } catch(e) { console.warn('[SB] upsertMany error', table, e); }
-    }
-
-    // 단일 항목 삭제
-    async function sbDeleteOne(table, itemId) {
-      try {
-        const uid = (await window._sb.auth.getUser()).data.user?.id;
-        if (!uid) return;
-        await window._sb.from(table).delete().eq('id', uid + '_' + itemId);
-      } catch(e) { console.warn('[SB] deleteOne error', table, e); }
-    }
-
-    // ─── 키-값 저장 (설정/API키 등 단순 데이터용) ────────────
-    async function sbKvGet(key) {
-      try {
-        const uid = (await window._sb.auth.getUser()).data.user?.id;
-        if (!uid) return null;
-        const { data } = await window._sb.from('kv_store').select('value').eq('user_id', uid).eq('key', key).maybeSingle();
-        return data ? data.value : null;
-      } catch(e) { return null; }
-    }
-    async function sbKvSet(key, value) {
-      try {
-        const uid = (await window._sb.auth.getUser()).data.user?.id;
-        if (!uid) return;
-        await window._sb.from('kv_store').upsert({ id: uid + '_' + key, user_id: uid, key, value, updated_at: new Date().toISOString() }, { onConflict: 'id' });
-      } catch(e) { console.warn('[SB] kvSet error', key, e); }
-    }
-
-    // ─── 하위호환: 구형 단일JSON 구조 읽기 (마이그레이션용) ──
-    async function sbGetLegacy(table, key) {
-      try {
-        const { data } = await window._sb.from(table).select('*').eq('data->>__key', key).maybeSingle();
         return data ? data.data : null;
-      } catch(e) { return null; }
+      } catch(e) { console.warn('[SB] get error', table, key, e); return null; }
     }
 
-    // ─── Storage: 이미지 업로드/삭제 ──────────────────────────
-    // 버킷: attachments (Supabase 대시보드에서 public 버킷으로 생성 필요)
-    const SB_BUCKET = 'attachments';
-
-    window._sbUploadImage = async function(dataUrl, path) {
-      // dataUrl: "data:image/jpeg;base64,..." 또는 base64 string
+    // 테이블에 key로 단일 JSON 행 저장 (upsert)
+    async function sbSet(table, key, value) {
       try {
-        let base64, mimeType;
-        if (dataUrl.startsWith('data:')) {
-          const [meta, data] = dataUrl.split(',');
-          base64 = data;
-          mimeType = meta.match(/:(.*?);/)[1];
+        // 기존 행 찾기
+        const { data: existing } = await window._sb.from(table).select('id').eq('data->>__key', key).maybeSingle();
+        const payload = { ...value, __key: key };
+        if (existing) {
+          await window._sb.from(table).update({ data: payload, updated_at: new Date().toISOString() }).eq('id', existing.id);
         } else {
-          base64 = dataUrl;
-          mimeType = 'image/jpeg';
+          await window._sb.from(table).insert({ data: payload });
         }
-        // base64 → Uint8Array
-        const binary = atob(base64);
-        const bytes = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-        const blob = new Blob([bytes], { type: mimeType });
-        const ext = mimeType.split('/')[1] || 'jpg';
-        const fullPath = path || ('img_' + Date.now() + '_' + Math.random().toString(36).slice(2) + '.' + ext);
+      } catch(e) { console.warn('[SB] set error', table, key, e); }
+    }
 
-        const { data, error } = await window._sb.storage.from(SB_BUCKET).upload(fullPath, blob, {
-          contentType: mimeType, upsert: true
-        });
-        if (error) throw error;
+    // 테이블에서 배열 전체 가져오기 (key='main')
+    async function sbGetArr(table) {
+      const d = await sbGet(table, 'main');
+      return Array.isArray(d?.value) ? d.value : null;
+    }
 
-        const { data: urlData } = window._sb.storage.from(SB_BUCKET).getPublicUrl(fullPath);
-        return urlData.publicUrl;
-      } catch(e) {
-        console.warn('[SB Storage] upload error', e);
-        return null;
-      }
-    };
-
-    window._sbDeleteImage = async function(url) {
-      try {
-        // URL에서 path 추출
-        const marker = '/object/public/' + SB_BUCKET + '/';
-        const idx = url.indexOf(marker);
-        if (idx < 0) return;
-        const path = url.slice(idx + marker.length);
-        await window._sb.storage.from(SB_BUCKET).remove([path]);
-      } catch(e) { console.warn('[SB Storage] delete error', e); }
-    };
+    async function sbSetArr(table, arr) {
+      await sbSet(table, 'main', { value: arr });
+    }
 
     // ─── 동기화 상태 표시 ─────────────────────────────────────
     window._sbSyncStatus = function(msg, ok) {
@@ -210,66 +100,59 @@
       window._sbStatusTimer = setTimeout(() => { el.style.opacity = '0'; }, 2500);
     };
 
-    // ─── re_sv (저장목록) 동기화 — 1건 = 1행 ─────────────────
+    // ─── re_sv (저장목록) 동기화 ─────────────────────────────
     window._sbSaveSv = async function(arr) {
-      await sbUpsertMany('items', arr);
+      await sbSetArr('items', arr);
       window._sbSyncStatus('☁️ 저장목록 동기화 완료', true);
     };
-    window._sbSaveOneSv = async function(item) {
-      await sbUpsertOne('items', item);
-    };
-    window._sbDeleteSv = async function(itemId) {
-      await sbDeleteOne('items', itemId);
-    };
+
     window._sbLoadSv = async function() {
-      return await sbGetAll('items');
+      return await sbGetArr('items');
     };
 
-    // ─── 노트 동기화 — 1건 = 1행 ─────────────────────────────
-    window._sbSaveNtNotes = async function(arr) {
-      await sbUpsertMany('notes', arr);
-      window._sbSyncStatus('☁️ 노트 동기화 완료', true);
+    // ─── 노트 동기화 ─────────────────────────────────────────
+    window._sbSaveNotes = async function(key, arr) {
+      await sbSetArr('notes_' + key, arr);
     };
-    window._sbSaveOneNote = async function(note) {
-      await sbUpsertOne('notes', note);
-    };
-    window._sbLoadNtNotes = async function() {
-      return await sbGetAll('notes');
-    };
+    window._sbSaveNtNotes = async function(arr) { await sbSetArr('notes', arr); window._sbSyncStatus('☁️ 노트 동기화 완료', true); };
+    window._sbLoadNtNotes = async function() { return await sbGetArr('notes'); };
 
-    // ─── 작업룸 동기화 — 1건 = 1행 ──────────────────────────
+    // ─── 작업룸 동기화 ────────────────────────────────────────
     window._sbSaveRooms = async function(arr) {
-      await sbUpsertMany('workrooms', arr);
+      // 저장 전 클라우드 최신과 merge → 다기기 충돌 방지
+      try {
+        const cloudArr = await sbGetArr('workrooms');
+        if (cloudArr && cloudArr.length) {
+          const merged = _sbMergeById(cloudArr, arr);
+          await sbSetArr('workrooms', merged);
+          // 로컬에는 deletedAt 없는 것만 저장 (소프트삭제 항목 로컬 제외)
+          const _orig = localStorage.setItem.bind(localStorage);
+          const mergedActive = merged.filter(item => !item.deletedAt);
+          _orig('wr2_rooms', JSON.stringify(mergedActive));
+          if (window.wr2State) window.wr2State.rooms = mergedActive;
+        } else {
+          await sbSetArr('workrooms', arr);
+        }
+      } catch(e) {
+        await sbSetArr('workrooms', arr);
+      }
       window._sbSyncStatus('☁️ 작업룸 동기화 완료', true);
     };
-    window._sbSaveOneRoom = async function(room) {
-      await sbUpsertOne('workrooms', room);
-    };
-    window._sbDeleteRoom = async function(roomId) {
-      await sbDeleteOne('workrooms', roomId);
-    };
-    window._sbLoadRooms = async function() {
-      return await sbGetAll('workrooms');
-    };
-
-    // ─── 섹션 동기화 — kv_store 사용 ────────────────────────
+    window._sbLoadRooms = async function() { return await sbGetArr('workrooms'); };
     window._sbSaveSections = async function(arr) {
-      await sbKvSet('wr2_sections', arr);
+      await sbSet('workrooms', 'sections', { value: arr });
     };
     window._sbLoadSections = async function() {
-      return await sbKvGet('wr2_sections');
+      const d = await sbGet('workrooms', 'sections');
+      return Array.isArray(d?.value) ? d.value : null;
     };
 
-    // ─── 작업씬 동기화 — 1건 = 1행 ──────────────────────────
-    window._sbSaveWorkScenes = async function(arr) {
-      await sbUpsertMany('snapshots', arr);
-      window._sbSyncStatus('☁️ 작업씬 동기화 완료', true);
-    };
-    window._sbLoadWorkScenes = async function() {
-      return await sbGetAll('snapshots');
-    };
+    // ─── 작업씬(WorkScene) 동기화 ────────────────────────────
+    window._sbSaveWorkScenes = async function(arr) { await sbSetArr('snapshots', arr); window._sbSyncStatus('☁️ 작업씬 동기화 완료', true); };
+    window._sbLoadWorkScenes = async function() { return await sbGetArr('snapshots'); };
 
-    // ─── ID 기반 merge ────────────────────────────────────────
+    // ─── 앱 시작 시 Supabase → localStorage 자동 로드 ────────
+    // ─── ID 기반 merge: 두 배열을 id로 합치고 최신 updatedAt 우선 ───
     function _sbMergeById(cloud, local) {
       const map = new Map();
       // local 먼저 (기준)
@@ -294,120 +177,98 @@
 
     window._sbInitLoad = async function() {
       try {
-        // 세션 확인
-        let { data: { session } } = await window._sb.auth.getSession();
+        // 세션 확인 - 로그인 안 되어있으면 로그인 화면 표시
+        const { data: { session } } = await window._sb.auth.getSession();
         if (!session) {
-          const { data: refreshed } = await window._sb.auth.refreshSession();
-          session = refreshed && refreshed.session;
+          window._sbShowLogin();
+          return;
         }
-        if (!session) { window._sbShowLogin(); return; }
         window._sbAddLogoutBtn();
         window._sbSyncStatus('☁️ 클라우드에서 불러오는 중...', true);
 
-        // ── 구형 데이터 마이그레이션 (최초 1회만 실행) ──────────
-        // 기존 Supabase에 {__key:'main', value:[...]} 구조로 저장된 데이터를
-        // 1건 = 1행으로 자동 변환
-        const migDone = await sbKvGet('_migration_v2');
-        if (!migDone) {
-          window._sbSyncStatus('🔄 데이터 구조 업그레이드 중...', true);
-          try {
-            const tables = ['items', 'notes', 'workrooms', 'snapshots'];
-            for (const tbl of tables) {
-              const legacyData = await sbGetLegacy(tbl, 'main');
-              if (legacyData && Array.isArray(legacyData.value) && legacyData.value.length > 0) {
-                await sbUpsertMany(tbl, legacyData.value);
-              }
-            }
-            // sections 마이그레이션 (workrooms 테이블에 key='sections'로 저장돼 있었음)
-            try {
-              const { data: secRow } = await window._sb.from('workrooms').select('data').eq('data->>__key', 'sections').maybeSingle();
-              if (secRow && secRow.data && Array.isArray(secRow.data.value)) {
-                await sbKvSet('wr2_sections', secRow.data.value);
-              }
-            } catch(e) {}
-            // API 키 마이그레이션
-            try {
-              const { data: keysRow } = await window._sb.from('snapshots').select('data').eq('data->>__key', '__api_keys__').maybeSingle();
-              if (keysRow && keysRow.data) {
-                await sbKvSet('__api_keys__', keysRow.data);
-              }
-            } catch(e) {}
-            await sbKvSet('_migration_v2', { done: true, at: new Date().toISOString() });
-          } catch(e) { console.warn('[SB] migration error', e); }
+        // 저장목록 — id merge
+        const svCloud = await window._sbLoadSv();
+        if (svCloud !== null) {
+          const svLocal = JSON.parse(localStorage.getItem('re_sv') || '[]');
+          const merged = _sbMergeById(svCloud, svLocal);
+          localStorage.setItem('re_sv', JSON.stringify(merged));
+          // 병합 결과를 클라우드에도 반영
+          if (merged.length > (svCloud.length || 0)) {
+            window._sbSaveSv(merged).catch(()=>{});
+          }
         }
 
-        // ── 저장목록 로드 & merge ────────────────────────────
-        try {
-          const svCloud = await window._sbLoadSv();
-          if (svCloud !== null) {
-            const svLocal = JSON.parse(localStorage.getItem('re_sv') || '[]');
-            const merged = _sbMergeById(svCloud, svLocal);
-            localStorage.setItem('re_sv', JSON.stringify(merged));
-            if (merged.length > (svCloud.length || 0)) window._sbSaveSv(merged).catch(()=>{});
+        // 노트 — id merge
+        const ntCloud = await window._sbLoadNtNotes();
+        if (ntCloud !== null) {
+          const ntLocal = JSON.parse(localStorage.getItem('nt_notes') || '[]');
+          const merged = _sbMergeById(ntCloud, ntLocal);
+          localStorage.setItem('nt_notes', JSON.stringify(merged));
+          if (merged.length > (ntCloud.length || 0)) {
+            window._sbSaveNtNotes(merged).catch(()=>{});
           }
-        } catch(e) { console.warn('[SB] sv load error', e); }
+        }
 
-        // ── 노트 로드 & merge ────────────────────────────────
-        try {
-          const ntCloud = await window._sbLoadNtNotes();
-          if (ntCloud !== null) {
-            const ntLocal = JSON.parse(localStorage.getItem('nt_notes') || '[]');
-            const merged = _sbMergeById(ntCloud, ntLocal);
-            localStorage.setItem('nt_notes', JSON.stringify(merged));
-            if (merged.length > (ntCloud.length || 0)) window._sbSaveNtNotes(merged).catch(()=>{});
+        // 작업룸 — id merge (소프트삭제 deletedAt 지원)
+        const roomsCloud = await window._sbLoadRooms();
+        if (roomsCloud !== null) {
+          const roomsLocal = JSON.parse(localStorage.getItem('wr2_rooms') || '[]');
+          const merged = _sbMergeById(roomsCloud, roomsLocal);
+          // 로컬에는 deletedAt 없는 활성 룸만 저장
+          const mergedActive = merged.filter(r => !r.deletedAt);
+          localStorage.setItem('wr2_rooms', JSON.stringify(mergedActive));
+          if (window.wr2State) window.wr2State.rooms = mergedActive;
+          // 로컬에만 있던 활성 룸이 있으면 클라우드에도 업로드
+          if (mergedActive.length > roomsCloud.filter(r=>!r.deletedAt).length) {
+            window._sbSaveRooms(merged).catch(()=>{});
           }
-        } catch(e) { console.warn('[SB] nt load error', e); }
+        }
 
-        // ── 작업룸 로드 & merge ──────────────────────────────
-        try {
-          const roomsCloud = await window._sbLoadRooms();
-          if (roomsCloud !== null) {
-            const roomsLocal = JSON.parse(localStorage.getItem('wr2_rooms') || '[]');
-            const merged = _sbMergeById(roomsCloud, roomsLocal);
-            const mergedActive = merged.filter(r => !r.deletedAt);
-            localStorage.setItem('wr2_rooms', JSON.stringify(mergedActive));
-            if (window.wr2State) window.wr2State.rooms = mergedActive;
-            if (mergedActive.length > roomsCloud.filter(r=>!r.deletedAt).length) window._sbSaveRooms(merged).catch(()=>{});
+        // 섹션 — 클라우드 우선 (섹션은 id 구조 다를 수 있음)
+        const secCloud = await window._sbLoadSections();
+        if (secCloud && secCloud.length > 0) {
+          localStorage.setItem('wr2_sections', JSON.stringify(secCloud));
+          // ★ wr2State에도 즉시 반영
+          if (window.wr2State) window.wr2State.sections = secCloud;
+        } else {
+          // 로컬에 있으면 클라우드로 올림
+          const secLocal = JSON.parse(localStorage.getItem('wr2_sections') || '[]');
+          if (secLocal.length > 0) {
+            if (window.wr2State) window.wr2State.sections = secLocal;
+            window._sbSaveSections(secLocal).catch(()=>{});
           }
-        } catch(e) { console.warn('[SB] rooms load error', e); }
+        }
 
-        // ── 섹션 로드 ────────────────────────────────────────
-        try {
-          const secCloud = await window._sbLoadSections();
-          if (Array.isArray(secCloud) && secCloud.length > 0) {
-            localStorage.setItem('wr2_sections', JSON.stringify(secCloud));
-          } else {
-            const secLocal = JSON.parse(localStorage.getItem('wr2_sections') || '[]');
-            if (secLocal.length > 0) window._sbSaveSections(secLocal).catch(()=>{});
+        // 작업씬 — id merge
+        const wsCloud = await window._sbLoadWorkScenes();
+        if (wsCloud !== null) {
+          const wsLocal = JSON.parse(localStorage.getItem('re_ws') || '[]');
+          const merged = _sbMergeById(wsCloud, wsLocal);
+          localStorage.setItem('re_ws', JSON.stringify(merged));
+          if (merged.length > (wsCloud.length || 0)) {
+            window._sbSaveWorkScenes(merged).catch(()=>{});
           }
-        } catch(e) { console.warn('[SB] sections load error', e); }
+        }
 
-        // ── 작업씬 로드 & merge ──────────────────────────────
-        try {
-          const wsCloud = await window._sbLoadWorkScenes();
-          if (wsCloud !== null) {
-            const wsLocal = JSON.parse(localStorage.getItem('re_ws') || '[]');
-            const merged = _sbMergeById(wsCloud, wsLocal);
-            localStorage.setItem('re_ws', JSON.stringify(merged));
-            if (merged.length > (wsCloud.length || 0)) window._sbSaveWorkScenes(merged).catch(()=>{});
-          }
-        } catch(e) { console.warn('[SB] ws load error', e); }
-
-        // ── API 키 동기화 ────────────────────────────────────
+        // API 키 동기화 (기기간 공유)
         try {
           const apiKeys = ['g_api', 'kakao_api', 'kakao_rest_key', 'sbiz_api'];
-          const keysData = await sbKvGet('__api_keys__');
-          if (keysData) {
-            apiKeys.forEach(k => { if (keysData[k]) localStorage.setItem(k, keysData[k]); });
+          const { data: keysRow } = await window._sb.from('snapshots').select('data').eq('data->>__key', '__api_keys__').maybeSingle();
+          if (keysRow && keysRow.data) {
+            apiKeys.forEach(k => {
+              if (keysRow.data[k]) localStorage.setItem(k, keysRow.data[k]);
+            });
             const mapping = { g_api: 'apiKey', kakao_api: 'kakaoKey', kakao_rest_key: 'kakaoRestKey', sbiz_api: 'sbizApiKey' };
             Object.entries(mapping).forEach(([lsKey, elId]) => {
               const el = document.getElementById(elId);
-              if (el && keysData[lsKey]) { el.value = keysData[lsKey]; el.dispatchEvent(new Event('input')); }
+              const val = keysRow.data[lsKey];
+              if (el && val) { el.value = val; el.dispatchEvent(new Event('input')); }
             });
           } else {
-            const payload = {};
-            apiKeys.forEach(k => { const v = localStorage.getItem(k); if (v) payload[k] = v; });
-            if (Object.keys(payload).length) await sbKvSet('__api_keys__', payload);
+            const payload = { __key: '__api_keys__' };
+            let hasAny = false;
+            apiKeys.forEach(k => { const v = localStorage.getItem(k); if (v) { payload[k] = v; hasAny = true; } });
+            if (hasAny) await sbSet('snapshots', '__api_keys__', payload);
           }
         } catch(e) { console.warn('[SB] API key sync error', e); }
 
@@ -421,66 +282,42 @@
     // API 키 변경 시 Supabase 자동 저장
     window._sbSaveApiKeys = async function() {
       try {
-        const payload = {};
+        const payload = { __key: '__api_keys__' };
         ['g_api','kakao_api','kakao_rest_key','sbiz_api'].forEach(k => { const v = localStorage.getItem(k); if (v) payload[k] = v; });
-        await sbKvSet('__api_keys__', payload);
+        await sbSet('snapshots', '__api_keys__', payload);
       } catch(e) {}
     };
 
     // ─── localStorage.setItem 패치: wr2_rooms/wr2_sections/re_sv 변경 시 자동 동기화 ──
     (function() {
       const _origSet = localStorage.setItem.bind(localStorage);
-      // 각 키별 debounce 타이머
-      const _timers = {};
+      let _debounceRooms, _debounceSec, _debounceSv;
       localStorage.setItem = function(key, value) {
         _origSet(key, value);
-        // wr2_rooms: 작업룸 전체 upsert (배치)
         if (key === 'wr2_rooms') {
-          clearTimeout(_timers.rooms);
-          _timers.rooms = setTimeout(() => {
+          clearTimeout(_debounceRooms);
+          _debounceRooms = setTimeout(() => {
             try {
               const arr = JSON.parse(value);
-              if (window._sbSaveRooms) window._sbSaveRooms(arr).catch(()=>{});
+              if (window._sbSaveRooms) window._sbSaveRooms(arr).catch(e=>{});
             } catch(e) {}
           }, 1500);
         }
-        // wr2_sections: 섹션 kv 저장
         if (key === 'wr2_sections') {
-          clearTimeout(_timers.sec);
-          _timers.sec = setTimeout(() => {
+          clearTimeout(_debounceSec);
+          _debounceSec = setTimeout(() => {
             try {
               const arr = JSON.parse(value);
-              if (window._sbSaveSections) window._sbSaveSections(arr).catch(()=>{});
+              if (window._sbSaveSections) window._sbSaveSections(arr).catch(e=>{});
             } catch(e) {}
           }, 1500);
         }
-        // re_sv: 저장목록 전체 upsert (배치)
         if (key === 're_sv') {
-          clearTimeout(_timers.sv);
-          _timers.sv = setTimeout(() => {
+          clearTimeout(_debounceSv);
+          _debounceSv = setTimeout(() => {
             try {
               const arr = JSON.parse(value);
-              if (window._sbSaveSv) window._sbSaveSv(arr).catch(()=>{});
-            } catch(e) {}
-          }, 2000);
-        }
-        // nt_notes: 노트 전체 upsert (배치)
-        if (key === 'nt_notes') {
-          clearTimeout(_timers.nt);
-          _timers.nt = setTimeout(() => {
-            try {
-              const arr = JSON.parse(value);
-              if (window._sbSaveNtNotes) window._sbSaveNtNotes(arr).catch(()=>{});
-            } catch(e) {}
-          }, 1500);
-        }
-        // re_ws: 작업씬 upsert
-        if (key === 're_ws') {
-          clearTimeout(_timers.ws);
-          _timers.ws = setTimeout(() => {
-            try {
-              const arr = JSON.parse(value);
-              if (window._sbSaveWorkScenes) window._sbSaveWorkScenes(arr).catch(()=>{});
+              if (window._sbSaveSv) window._sbSaveSv(arr).catch(e=>{});
             } catch(e) {}
           }, 2000);
         }
@@ -1724,8 +1561,7 @@
                   const files = room.attachments || [];
                   el.innerHTML = files.map((f, i) => {
                     if (f.type === 'image') {
-                      const src = f.url || f.data || '';
-                      return `<div class="wr2-attach-item"><img class="wr2-attach-img" src="${src}" title="${f.name}" onclick="window.open('${src}','_blank')"><button class="wr2-attach-del" onclick="wr2DelAttach(${i})">✕</button></div>`;
+                      return `<div class="wr2-attach-item"><img class="wr2-attach-img" src="${f.data}" title="${f.name}"><button class="wr2-attach-del" onclick="wr2DelAttach(${i})">✕</button></div>`;
                     }
                     return `<div class="wr2-attach-item"><div class="wr2-attach-file">📎 ${f.name}</div><button class="wr2-attach-del" onclick="wr2DelAttach(${i})">✕</button></div>`;
                   }).join('');
@@ -2204,27 +2040,14 @@
                   if (!room.attachments) room.attachments = [];
                   let done = 0;
                   files.forEach(file => {
-                    const isImg = file.type.startsWith('image/');
-                    if (isImg && window._sbUploadImage) {
-                      // 이미지 → Supabase Storage 업로드
-                      const reader = new FileReader();
-                      reader.onload = async e => {
-                        const url = await window._sbUploadImage(e.target.result, 'rooms/' + (room.id||'r') + '/' + Date.now() + '_' + file.name);
-                        room.attachments.push({ name: file.name, type: 'image', url: url || e.target.result });
-                        room.updatedAt = Date.now(); done++;
-                        if (done === files.length) { saveRooms(); renderAttachments(room); }
-                      };
-                      reader.readAsDataURL(file);
-                    } else {
-                      // 일반 파일 → base64 유지 (이미지 아닌 파일은 용량 작음)
-                      const reader = new FileReader();
-                      reader.onload = e => {
-                        room.attachments.push({ name: file.name, type: 'file', data: e.target.result });
-                        room.updatedAt = Date.now(); done++;
-                        if (done === files.length) { saveRooms(); renderAttachments(room); }
-                      };
-                      reader.readAsDataURL(file);
-                    }
+                    const reader = new FileReader();
+                    reader.onload = e => {
+                      const isImg = file.type.startsWith('image/');
+                      room.attachments.push({ name: file.name, type: isImg ? 'image' : 'file', data: e.target.result });
+                      room.updatedAt = Date.now(); done++;
+                      if (done === files.length) { saveRooms(); renderAttachments(room); }
+                    };
+                    reader.readAsDataURL(file);
                   });
                 }
 
@@ -2722,7 +2545,8 @@
       document.getElementById('mL').className = 'mtab' + (m === 'listing' ? ' gr' : '');
       document.getElementById('fInput').accept = m === 'auction' ? '.pdf,.csv,image/*' : '.pdf,.csv,image/*';
       document.getElementById('mHint').textContent = m === 'auction' ? '경매 공고 PDF 또는 CSV. 감정가·권리분석 등 자동 추출.' : '매물 이미지/PDF 또는 CSV. 매매가·평수·수익률 등 추출.';
-      document.getElementById('upTitle').textContent = 'PDF/CSV 드래그 or 클릭';
+      var _upTitle = document.getElementById('upTitle');
+      if (_upTitle) _upTitle.textContent = 'PDF/CSV 드래그 or 클릭';
       // 경매 탭일 때만 옥션원/온비드 수집 섹션 표시
       const acSec = document.getElementById('auctionCollectSection');
       if (acSec) acSec.style.display = m === 'auction' ? '' : 'none';
@@ -7024,7 +6848,7 @@ ${inputDesc.substring(0, 3000)}
           try { oObj.overlay.setMap(map); } catch (e) { }
           // 모바일: 바텀시트로 카드 내용 표시
           if (window.innerWidth <= 768 && typeof window.mbShowCardBottomSheet === 'function') {
-            try { window.mbShowCardBottomSheet(oObj.item || item); } catch(e) {}
+            try { window.mbShowCardBottomSheet(oObj.id); } catch(e) {}
           }
           try { oObj.marker.setMap(map); } catch (e) { }
         }
@@ -18169,7 +17993,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     }
 
     function closeCalcPanel() {
-      document.getElementById('calcPanel').classList.remove('open');
+      var _calcPanel = document.getElementById('calcPanel');
+      if (_calcPanel) _calcPanel.classList.remove('open');
     }
     function switchCalcTab(tab, btn) {
       document.querySelectorAll('.calc-tab').forEach(b => b.classList.remove('on'));
@@ -19257,16 +19082,10 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const files = Array.from(input.files);
       let loaded = 0;
       files.forEach(file => {
-        const isImg = file.type.startsWith('image/');
         const reader = new FileReader();
-        reader.onload = async e => {
+        reader.onload = e => {
           if (!note.attachments) note.attachments = [];
-          if (isImg && window._sbUploadImage) {
-            const url = await window._sbUploadImage(e.target.result, 'notes/' + id + '/' + Date.now() + '_' + file.name);
-            note.attachments.push({ name: file.name, type: file.type, url: url || e.target.result });
-          } else {
-            note.attachments.push({ name: file.name, type: file.type, data: e.target.result });
-          }
+          note.attachments.push({ name: file.name, type: file.type, data: e.target.result });
           note.updatedAt = new Date().toISOString();
           loaded++;
           if (loaded === files.length) { ntSave(); ntOpen(id); showToast('📎 파일 첨부 완료', 'ok'); }
@@ -19282,10 +19101,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     window.ntUtPreviewAtt = function (id, atti) {
       const note = ntNotes.find(n => n.id === id); if (!note || !note.attachments[atti]) return;
       const att = note.attachments[atti];
-      const src = att.url || att.data || '';
-      if (!src) return;
       const w = window.open('', '_blank');
-      w.document.write(`<html><body style="margin:0;background:#000;display:flex;align-items:center;justify-content:center;min-height:100vh;"><img src="${src}" style="max-width:100%;max-height:100vh;object-fit:contain;"><\/body><\/html>`);
+      w.document.write(`<html><body style="margin:0;background:#000;display:flex;align-items:center;justify-content:center;min-height:100vh;"><img src="${att.data}" style="max-width:100%;max-height:100vh;object-fit:contain;"><\/body><\/html>`);
     };
 
     // ── 뉴스 clip JSON 자동 로드 (news_clipper.py 연동) ──
@@ -20777,22 +20594,9 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
         const hasMore = bodyLines.length > 5;
 
-        // 이미지 썸네일 (images 배열 첫 번째)
-        const imgs = card.images || [];
-        const imgThumb = imgs.length > 0
-          ? `<div style="width:100%;height:160px;background:#0d0f14;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;"><img src="${imgs[0]}" style="max-width:100%;max-height:160px;object-fit:contain;display:block;" alt="썸네일"></div>`
-          : '';
-        // 유튜브 썸네일
-        const ytMatch = (card.youtube || '').match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([^&?#\s]{8,12})/);
-        const ytThumb = (!imgs.length && ytMatch)
-          ? `<div style="width:100%;height:160px;overflow:hidden;background:#111;position:relative;cursor:pointer;flex-shrink:0;" onclick="event.stopPropagation();window.open('https://www.youtube.com/watch?v=${ytMatch[1]}','_blank')"><img src="https://img.youtube.com/vi/${ytMatch[1]}/mqdefault.jpg" style="width:100%;height:100%;object-fit:cover;display:block;"><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;"><div style="width:44px;height:30px;background:rgba(255,0,0,.88);border-radius:6px;display:flex;align-items:center;justify-content:center;"><span style="color:#fff;font-size:15px;margin-left:3px;">&#9654;</span></div></div></div>`
-          : '';
-
         return `<div style="background:var(--s1);border:1px solid var(--b1);border-top:3px solid ${color};border-radius:0 0 12px 12px;overflow:hidden;display:flex;flex-direction:column;transition:transform .15s,box-shadow .15s;cursor:pointer;" 
-      onclick="openKcardDetail('${card.id}')"
       onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='0 8px 24px rgba(0,0,0,.35)'" 
       onmouseout="this.style.transform='';this.style.boxShadow=''">
-      ${imgThumb}${ytThumb}
       <!-- 카드 헤더 -->
       <div style="padding:12px 14px 10px;">
         <div style="display:flex;align-items:flex-start;gap:7px;margin-bottom:8px;">
@@ -20809,7 +20613,6 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           ${summaryHtml}
           ${keyHtml}
           ${hasMore ? `<div style="font-size:10px;color:var(--di);margin-top:2px;">+${bodyLines.length - 5}줄 더...</div>` : ''}
-          ${imgs.length > 1 ? `<div style="font-size:10px;color:var(--di);">🖼️ 이미지 ${imgs.length}장</div>` : ''}
         </div>
       </div>
       <!-- 카드 푸터 -->
@@ -20918,48 +20721,6 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       kcards = kcards.filter(k => k.id !== id);
       saveKcards(); renderKcatTabs(); renderKcards();
       showToast('카드 삭제됨', 'ok');
-    }
-
-    // ── 카드 상세 보기 모달 ────────────────────────────
-    function openKcardDetail(id) {
-      const card = kcards.find(k => k.id === id);
-      if (!card) return;
-      // 기존 상세 모달 재활용 또는 새로 생성
-      let modal = document.getElementById('kcardDetailModal');
-      if (!modal) {
-        modal = document.createElement('div');
-        modal.id = 'kcardDetailModal';
-        modal.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:600;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;';
-        modal.onclick = function(e){ if(e.target===modal) modal.style.display='none'; };
-        document.body.appendChild(modal);
-      }
-      const catColorMap = {'📐 면적/건축':'#4f8eff','⚖️ 권리분석':'#ff6370','📋 경매 절차':'#f9a825','💰 세금/비용':'#a78bfa','🏘️ 상권/지역':'#b47cff'};
-      const color = catColorMap[card.cat] || '#ffd166';
-      const imgs = card.images || [];
-      const imgsHtml = imgs.map(src => `<img src="${src}" style="max-width:100%;border-radius:8px;margin-bottom:6px;display:block;" onclick="window.open(this.src,'_blank')">`).join('');
-      const ytMatch = (card.youtube||'').match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([^&?#\s]{8,12})/);
-      const ytHtml = ytMatch ? `<div style="margin-bottom:12px;cursor:pointer;" onclick="window.open('https://www.youtube.com/watch?v=${ytMatch[1]}','_blank')"><img src="https://img.youtube.com/vi/${ytMatch[1]}/mqdefault.jpg" style="width:100%;border-radius:8px;"></div>` : '';
-      const bodyHtml = (card.body||'').split('\n').map(l => `<div style="font-size:13px;color:var(--tx);line-height:1.7;min-height:1.3em;">${l ? esc(l) : '&nbsp;'}</div>`).join('');
-      const tags = (card.tags||[]).map(t => `<span style="font-size:11px;padding:2px 8px;background:rgba(255,209,102,.1);color:#ffd166;border-radius:8px;border:1px solid rgba(255,209,102,.25);">#${esc(t)}</span>`).join(' ');
-      modal.innerHTML = `<div style="background:var(--s1);border:1px solid var(--b1);border-top:4px solid ${color};border-radius:12px;max-width:600px;width:100%;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.6);">
-        <div style="padding:16px 18px 12px;border-bottom:1px solid var(--b1);display:flex;align-items:flex-start;gap:10px;">
-          <div style="flex:1;">
-            <span style="font-size:11px;padding:2px 10px;border-radius:10px;font-weight:700;background:${color}1a;color:${color};border:1px solid ${color}33;">${esc(card.cat||'기타')}</span>
-            <div style="font-size:16px;font-weight:800;color:var(--tx);margin-top:8px;line-height:1.35;">${esc(card.title||'제목 없음')}</div>
-          </div>
-          <div style="display:flex;gap:5px;flex-shrink:0;">
-            <button onclick="openKcardEditor('${id}')" style="padding:5px 10px;background:rgba(79,142,255,.1);border:1px solid rgba(79,142,255,.3);border-radius:6px;color:#4f8eff;cursor:pointer;font-size:12px;">✏️ 수정</button>
-            <button onclick="document.getElementById('kcardDetailModal').style.display='none'" style="padding:5px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:6px;color:var(--mu);cursor:pointer;font-size:14px;">✕</button>
-          </div>
-        </div>
-        <div style="padding:16px 18px;">
-          ${ytHtml}${imgsHtml}
-          <div style="margin-bottom:12px;">${bodyHtml}</div>
-          ${tags ? `<div style="display:flex;flex-wrap:wrap;gap:5px;padding-top:10px;border-top:1px solid var(--b1);">${tags}</div>` : ''}
-          ${card.sourceUrl ? `<a href="${esc(card.sourceUrl)}" target="_blank" style="display:inline-block;margin-top:10px;font-size:11px;color:#4f8eff;">🔗 출처 바로가기</a>` : ''}
-        </div>
-      </div>`;
-      modal.style.display = 'flex';
     }
 
     // ── AI 카드 자동 생성 ─────────────────────────────
@@ -22123,6 +21884,12 @@ ${newsContext}
 
     // ── 시작 시 프록시 연결 확인 ───────────────────────
     (async function checkProxy() {
+      // 모바일 HTTPS 배포 환경에서는 localhost 프록시 체크 자체를 건너뜀
+      const _isMobileWeb = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent || '');
+      if (location.protocol === 'https:' && _isMobileWeb && String(window.PROXY_URL || '').includes('127.0.0.1')) {
+        window.proxyOk = false;
+        return;
+      }
       // ★ FIX: naverProxyBadge/Banner element가 없을 때 null 참조 TypeError 방지
       const badge = document.getElementById('naverProxyBadge');
       const banner = document.getElementById('naverProxyBanner');
@@ -27729,331 +27496,3 @@ ${newsText}
     var btns = document.querySelectorAll('#_mbTabBar button');
     if (btns.length) btns[0].classList.add('active');
   });
-
-/* ════════════════════════════════════════════════════════
-   누락 함수 보완
-════════════════════════════════════════════════════════ */
-function onbidCollectKeyInput(val) {
-  if (val && val.length > 5) {
-    localStorage.setItem('onbid_key', val.trim());
-    var dot = document.getElementById('onbidApiDot') || document.getElementById('onbidDot');
-    if (dot) dot.classList.add('on');
-  }
-}
-/* ── 통일 컬럼 정의 (저장목록/지도 공통) ─────────────────── */
-var _UNIFIED_CSV_COLS = [
-  ['_source','소스'],['소재지','소재지'],['물건종류','물건종류'],['거래유형','거래유형'],
-  ['층','층'],['전용면적_m2','전용면적(㎡)'],['매매가','매매가(만)'],['보증금','보증금(만)'],
-  ['월세','월세(만)'],['수익률_퍼센트','수익률(%)'],['감정가','감정가'],['최저매각가격','최저가'],
-  ['사건번호','사건번호'],['매각기일','매각기일'],['권리분석','권리분석'],['상태','상태'],
-  ['lat','위도'],['lng','경도']
-];
-var _UNIFIED_SRC_MAP = {auction:'경매',listing:'네이버',naver:'네이버',jumpo:'점포라인',assa:'아싸점포',onbid:'온비드',transaction:'실거래',disco:'디스코',bds:'부동산플래닛'};
-
-function _buildUnifiedCSV(items, filename) {
-  var cols = _UNIFIED_CSV_COLS;
-  var header = cols.map(function(c){ return '"'+c[1]+'"'; }).join(',');
-  var rows = items.map(function(item) {
-    var d = item.data || {};
-    return cols.map(function(col) {
-      var k=col[0], v='';
-      if (k==='_source') v=_UNIFIED_SRC_MAP[item.mode||item.source||'']||item.source||item.mode||'';
-      else if (k==='전용면적_m2') v=d['전용면적_m2']!==undefined?d['전용면적_m2']:(d['전용면적']!==undefined?d['전용면적']:(d['면적']!==undefined?d['면적']:''));
-      else if (k==='매매가') v=d['매매가']!==undefined?d['매매가']:(d['price']!==undefined?d['price']:'');
-      else if (k==='보증금') v=d['보증금']!==undefined?d['보증금']:(d['보증금_만원']!==undefined?d['보증금_만원']:'');
-      else if (k==='월세') v=d['월세']!==undefined?d['월세']:(d['월세_만원']!==undefined?d['월세_만원']:'');
-      else if (k==='수익률_퍼센트') v=d['수익률_퍼센트']!==undefined?d['수익률_퍼센트']:(d['수익률']!==undefined?d['수익률']:'');
-      else if (k==='층') v=d['층']!==undefined?d['층']:(d['해당층']!==undefined?d['해당층']:'');
-      else if (k==='거래유형') v=d['거래유형']!==undefined?d['거래유형']:(item.mode==='auction'?'경매':'');
-      else v=d[k]!==undefined?d[k]:(item[k]!==undefined?item[k]:'');
-      return '"'+String(v==null?'':v).replace(/"/g,'""')+'"';
-    }).join(',');
-  });
-  var csv='\uFEFF'+header+'\n'+rows.join('\n');
-  var blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
-  var url=URL.createObjectURL(blob);
-  var a=document.createElement('a');
-  a.href=url; a.download=filename; a.style.display='none';
-  document.body.appendChild(a); a.click();
-  setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(url); },100);
-}
-
-/* ── 저장목록 CSV (현재 필터 적용) ────────────────────────── */
-function pcExportCSV(exportAll) {
-  var sv = []; try { sv = JSON.parse(localStorage.getItem('re_sv') || '[]'); } catch(e) {}
-  if (!sv.length) { if(typeof showToast==='function') showToast('저장된 항목이 없어요', 'warn'); return; }
-  var filtered = sv.slice();
-  if (!exportAll) {
-    var region = (document.getElementById('regionSearch')||{}).value||'';
-    if (region.trim()) filtered = filtered.filter(function(s){ return (s.data&&s.data['소재지']||'').includes(region.trim())||(s.title||'').includes(region.trim()); });
-    if (window._lfActive && typeof checkListFilter==='function') filtered = filtered.filter(function(item){ return checkListFilter(item); });
-    var svF = window.svFilter||'all';
-    if (svF==='jumpo') filtered=filtered.filter(function(s){return s.source==='점포라인';});
-    else if (svF==='assa') filtered=filtered.filter(function(s){return s.source==='점포거래소';});
-    else if (svF==='disco') filtered=filtered.filter(function(s){return s.source==='디스코';});
-    else if (svF==='bds') filtered=filtered.filter(function(s){return s.source==='부동산플래닛';});
-    else if (svF==='transaction') filtered=filtered.filter(function(s){return s.mode==='transaction';});
-    else if (svF==='onbid') filtered=filtered.filter(function(s){return s.source==='온비드';});
-    else if (svF!=='all') filtered=filtered.filter(function(s){return s.mode===svF;});
-    var gf=(document.getElementById('svGroupFilter')||{}).value||'all';
-    if (gf&&gf!=='all') filtered=filtered.filter(function(s){return (s.group||'기본')===gf;});
-  }
-  if (!filtered.length) { if(typeof showToast==='function') showToast('조건에 맞는 항목 없음', 'warn'); return; }
-  var date=new Date().toLocaleDateString('ko-KR').replace(/\. /g,'-').replace('.','');
-  _buildUnifiedCSV(filtered, '저장목록_'+(exportAll?'전체_':'필터_')+date+'.csv');
-  if(typeof showToast==='function') showToast('CSV 다운로드 ('+filtered.length+'건)', 'ok');
-}
-
-/* ── 지도탭 CSV (지도 rf 필터 연동 또는 전체) ──────────────── */
-function pcMapExportCSV(exportAll) {
-  var sv = []; try { sv = JSON.parse(localStorage.getItem('re_sv') || '[]'); } catch(e) {}
-  if (!sv.length) { if(typeof showToast==='function') showToast('저장된 항목이 없어요', 'warn'); return; }
-  var filtered = sv.slice();
-  if (!exportAll && typeof _checkFilter==='function') {
-    filtered = filtered.filter(function(item){ return _checkFilter(item.data||{}, 'rf'); });
-    var rfDeal = document.querySelector('input[name="rfDealKind"]:checked');
-    if (rfDeal && rfDeal.value !== 'all') {
-      var dv = rfDeal.value;
-      filtered = filtered.filter(function(item){
-        var gt = ((item.data||{})['거래유형']||'').toLowerCase();
-        if (dv==='sale') return gt.includes('매매')||item.mode==='auction';
-        if (dv==='rent') return gt.includes('임대')||gt.includes('월세')||gt.includes('전세');
-        return true;
-      });
-    }
-  }
-  if (!filtered.length) { if(typeof showToast==='function') showToast('조건에 맞는 항목 없음', 'warn'); return; }
-  var date=new Date().toLocaleDateString('ko-KR').replace(/\. /g,'-').replace('.','');
-  _buildUnifiedCSV(filtered, '지도_'+(exportAll?'전체_':'필터_')+date+'.csv');
-  if(typeof showToast==='function') showToast('지도 CSV ('+filtered.length+'건)', 'ok');
-}
-var _DEFAULT_KCATS = ['📐 면적/건축','⚖️ 권리분석','📋 경매 절차','💰 세금/비용','🏘️ 상권/지역'];
-function _getKcats() {
-  var raw = localStorage.getItem('ins_kcat');
-  if (raw) { try { return JSON.parse(raw); } catch(e){} }
-  // localStorage에 없으면 기본값 저장 후 반환
-  localStorage.setItem('ins_kcat', JSON.stringify(_DEFAULT_KCATS));
-  return _DEFAULT_KCATS.slice();
-}
-function openKcatManager() {
-  var modal=document.getElementById('kcatManagerModal'); if(!modal) return;
-  var list=document.getElementById('kcatManagerList'); if(!list) return;
-  var cats = _getKcats();
-  list.innerHTML='';
-  cats.forEach(function(cat,i){
-    var row=document.createElement('div');
-    row.style.cssText='display:flex;align-items:center;gap:6px;padding:8px 0;border-bottom:1px solid var(--b1);';
-    var nm=document.createElement('span'); nm.style.cssText='flex:1;font-size:13px;color:var(--tx);'; nm.textContent=cat;
-    // 이름 변경 버튼
-    var ren=document.createElement('button'); ren.textContent='✏️';
-    ren.title='이름 변경';
-    ren.style.cssText='font-size:13px;padding:2px 7px;background:rgba(79,142,255,.1);border:1px solid rgba(79,142,255,.3);border-radius:5px;color:#4f8eff;cursor:pointer;';
-    ren.onclick=(function(c,rowEl,nmEl){ return function(){
-      var newName=prompt('새 이름:', c); if(!newName||!newName.trim()||newName.trim()===c) return;
-      newName=newName.trim();
-      var arr=_getKcats(); var idx2=arr.indexOf(c); if(idx2===-1) return;
-      arr[idx2]=newName; localStorage.setItem('ins_kcat',JSON.stringify(arr));
-      var cards=[]; try{cards=JSON.parse(localStorage.getItem('ins_kcards')||'[]');}catch(e){}
-      cards.forEach(function(k){if(k.cat===c)k.cat=newName;});
-      localStorage.setItem('ins_kcards',JSON.stringify(cards));
-      // kcardCats 메모리 동기화
-      if(window.kcardCats){var mi=window.kcardCats.indexOf(c);if(mi!==-1)window.kcardCats[mi]=newName;}
-      nmEl.textContent=newName;
-      if(typeof renderKcatTabs==='function') renderKcatTabs();
-      if(typeof renderKcards==='function') renderKcards();
-      if(typeof showToast==='function') showToast("'"+c+"' → '"+newName+"' 변경됨",'ok');
-    };})(cat,row,nm);
-    var del=document.createElement('button'); del.textContent='🗑';
-    del.title='삭제';
-    del.style.cssText='font-size:13px;padding:2px 7px;background:rgba(255,77,77,.1);border:1px solid rgba(255,77,77,.3);border-radius:5px;color:#ff4d4d;cursor:pointer;';
-    del.onclick=(function(c){ return function(){
-      if(!confirm("'"+c+"' 삭제할까요? 이 카테고리의 카드는 '기타'로 이동됩니다.")) return;
-      var arr=_getKcats(); arr=arr.filter(function(x){return x!==c;});
-      localStorage.setItem('ins_kcat',JSON.stringify(arr));
-      var cards=[]; try{cards=JSON.parse(localStorage.getItem('ins_kcards')||'[]');}catch(e){}
-      cards.forEach(function(k){if(k.cat===c)k.cat='기타';});
-      localStorage.setItem('ins_kcards',JSON.stringify(cards));
-      if(window.kcardCats) window.kcardCats=arr;
-      modal.style.display='none';
-      if(typeof renderKcatTabs==='function') renderKcatTabs();
-      if(typeof renderKcards==='function') renderKcards();
-      if(typeof showToast==='function') showToast("'"+c+"' 삭제됨",'ok');
-    };})(cat);
-    row.appendChild(nm); row.appendChild(ren); row.appendChild(del); list.appendChild(row);
-  });
-  modal.style.display='flex';
-}
-function closeKcatManager() { var m=document.getElementById('kcatManagerModal'); if(m) m.style.display='none'; }
-function addKcatFromManager() {
-  var inp=document.getElementById('kcatNewInput'); if(!inp) return;
-  var v=inp.value.trim(); if(!v) return;
-  var cats=_getKcats();
-  if(cats.indexOf(v)!==-1){if(typeof showToast==='function')showToast('이미 있어요','warn');return;}
-  cats.push(v); localStorage.setItem('ins_kcat',JSON.stringify(cats));
-  if(window.kcardCats) window.kcardCats=cats;
-  inp.value='';
-  openKcatManager();
-  if(typeof renderKcatTabs==='function') renderKcatTabs();
-  if(typeof showToast==='function') showToast("'"+v+"' 추가됨",'ok');
-}
-var _pcKcardImgs=[];
-function pcUpdateYtPreview(){
-  var inp=document.getElementById('kcardYtInput'); var prev=document.getElementById('kcardYtPreview');
-  if(!inp||!prev) return;
-  var m=inp.value.trim().match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([^&?#\s]{8,12})/);
-  var ytId=m?m[1]:null;
-  if(ytId){
-    prev.style.display='block';
-    prev.innerHTML='<div style="position:relative;cursor:pointer;" onclick="window.open(\'https://www.youtube.com/watch?v='+ytId+'\',\'_blank\')"><img src="https://img.youtube.com/vi/'+ytId+'/mqdefault.jpg" style="width:100%;border-radius:8px;display:block;"><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;"><div style="width:52px;height:36px;background:rgba(255,0,0,.88);border-radius:8px;display:flex;align-items:center;justify-content:center;"><span style="color:#fff;font-size:18px;margin-left:4px;">&#9654;</span></div></div></div>';
-  } else { prev.style.display='none'; prev.innerHTML=''; }
-}
-function pcHandleImgDrop(e){
-  e.preventDefault();
-  _pcProcessImgFiles(Array.from(e.dataTransfer.files).filter(function(f){return f.type.startsWith('image/');}));
-}
-function pcHandleImgSelect(inp){ _pcProcessImgFiles(Array.from(inp.files)); inp.value=''; }
-function _pcProcessImgFiles(files){
-  files.forEach(function(f){
-    var r=new FileReader();
-    r.onload=async function(ev){
-      var dataUrl=ev.target.result;
-      if(window._sbUploadImage){
-        var url=await window._sbUploadImage(dataUrl,'kcards/'+Date.now()+'_'+f.name);
-        _pcKcardImgs.push(url||dataUrl);
-      } else {
-        _pcKcardImgs.push(dataUrl);
-      }
-      _pcRenderImgPreview();
-    };
-    r.readAsDataURL(f);
-  });
-}
-function _pcRenderImgPreview(){
-  var el=document.getElementById('kcardImgPreview'); if(!el) return;
-  el.innerHTML='';
-  _pcKcardImgs.forEach(function(src,i){
-    var w=document.createElement('div'); w.style.cssText='position:relative;width:80px;height:80px;flex-shrink:0;';
-    var img=document.createElement('img'); img.src=src; img.style.cssText='width:100%;height:100%;object-fit:cover;border-radius:6px;border:1px solid var(--b1);';
-    var d=document.createElement('button'); d.textContent='x'; d.style.cssText='position:absolute;top:-5px;right:-5px;width:18px;height:18px;border-radius:50%;background:#ff4d4d;color:#fff;border:none;font-size:11px;cursor:pointer;padding:0;';
-    d.onclick=(function(idx){return function(ev){ev.stopPropagation();_pcKcardImgs.splice(idx,1);_pcRenderImgPreview();};})(i);
-    w.appendChild(img); w.appendChild(d); el.appendChild(w);
-  });
-}
-document.addEventListener('DOMContentLoaded', function(){
-  /* kcardAiInput 더미 생성 */
-  if(!document.getElementById('kcardAiInput')){ var d=document.createElement('input'); d.id='kcardAiInput'; d.type='hidden'; document.body.appendChild(d); }
-  /* openKcardEditor 패치 */
-  var _origOpen=window.openKcardEditor;
-  if(typeof _origOpen==='function'){
-    window.openKcardEditor=function(id){
-      _pcKcardImgs=[];
-      _origOpen(id);
-      var cards=[]; try{cards=JSON.parse(localStorage.getItem('ins_kcards')||'[]');}catch(e){}
-      var card=id?cards.find(function(k){return k.id===id;}):null;
-      var ytInp=document.getElementById('kcardYtInput');
-      if(ytInp) ytInp.value=card?card.youtube||'':'';
-      _pcKcardImgs=card&&card.images?card.images.slice():[];
-      _pcRenderImgPreview(); pcUpdateYtPreview();
-      if(!id){var p=document.getElementById('kcardYtPreview');if(p){p.style.display='none';p.innerHTML='';} var ip=document.getElementById('kcardImgPreview');if(ip)ip.innerHTML='';}
-    };
-  }
-  /* saveKcard 패치 */
-  var _origSave=window.saveKcard;
-  if(typeof _origSave==='function'){
-    window.saveKcard=function(){
-      var ytUrl=(document.getElementById('kcardYtInput')||{}).value||'';
-      var imgs=_pcKcardImgs.slice();
-      // editId를 _origSave 호출 전에 캡처 (호출 후엔 closeKcardEditor()로 null 초기화됨)
-      var editId=window.kcardEditId||null;
-      _origSave();
-      var cards=[]; try{cards=JSON.parse(localStorage.getItem('ins_kcards')||'[]');}catch(e){}
-      var target=editId
-        ? cards.find(function(k){return k.id===editId;})
-        : cards[0]; // 새 카드는 unshift로 맨 앞에 추가됨
-      if(target){
-        target.youtube=ytUrl;
-        target.images=imgs;
-        localStorage.setItem('ins_kcards',JSON.stringify(cards));
-        _pcKcardImgs=[];
-        if(typeof renderKcards==='function') renderKcards();
-      }
-    };
-  }
-});
-
-/* ════════════════════════════════════════════════════════
-   PC 설정 패널 (_cfg) ↔ Topbar API 입력 양방향 동기화 패치
-   중복 ID 문제: index.html에 apiKey, kakaoApiKey 등이 두 번 선언됨
-   → 설정 탭의 _cfg 입력과 topbar 입력을 실시간 동기화
-════════════════════════════════════════════════════════ */
-document.addEventListener('DOMContentLoaded', function () {
-  var cfgPairs = [
-    ['apiKey',            'apiKey_cfg'],
-    ['kakaoApiKey',       'kakaoApiKey_cfg'],
-    ['kakaoRestKey',      'kakaoRestKey_cfg'],
-    ['naverClientId',     'naverClientId_cfg'],
-    ['naverClientSecret', 'naverClientSecret_cfg'],
-    ['onbidApiKey',       'onbidApiKey_cfg'],
-    ['sbizApiKey',        'sbizApiKey_cfg'],
-  ];
-  var dotPairs = [
-    ['apiDot',       'apiDot_cfg'],
-    ['kakaoApiDot',  'kakaoApiDot_cfg'],
-    ['kakaoRestDot', 'kakaoRestDot_cfg'],
-    ['naverDot',     'naverDot_cfg'],
-    ['onbidDot',     'onbidDot_cfg'],
-    ['sbizDot',      'sbizDot_cfg'],
-  ];
-
-  function syncDots() {
-    dotPairs.forEach(function(pair) {
-      var src = document.getElementById(pair[0]);
-      var dst = document.getElementById(pair[1]);
-      if (!src || !dst) return;
-      dst.className = src.className;
-    });
-  }
-
-  function makeSyncHandler(srcId, dstId) {
-    return function () {
-      var src = document.getElementById(srcId);
-      var dst = document.getElementById(dstId);
-      if (src && dst && document.activeElement !== dst) {
-        dst.value = src.value;
-      }
-      setTimeout(syncDots, 50);
-    };
-  }
-
-  cfgPairs.forEach(function(pair) {
-    var topbar = document.getElementById(pair[0]);
-    var cfg    = document.getElementById(pair[1]);
-    if (!topbar || !cfg) return;
-
-    // 초기값: topbar → cfg 복사 (topbar가 localStorage에서 먼저 채워짐)
-    cfg.value = topbar.value;
-
-    // topbar 변경 → cfg 동기화
-    ['input', 'change', 'keyup', 'paste'].forEach(function(ev) {
-      topbar.addEventListener(ev, makeSyncHandler(pair[0], pair[1]));
-    });
-
-    // cfg 변경 → topbar 동기화 + 이벤트 트리거 (기존 리스너 실행)
-    ['input', 'change', 'keyup', 'paste'].forEach(function(ev) {
-      cfg.addEventListener(ev, function() {
-        var topbarEl = document.getElementById(pair[0]);
-        if (topbarEl && document.activeElement !== topbarEl) {
-          topbarEl.value = cfg.value;
-          // 기존 이벤트 리스너 트리거 (저장·dot 갱신 등)
-          topbarEl.dispatchEvent(new Event('input', { bubbles: true }));
-        }
-        setTimeout(syncDots, 50);
-      });
-    });
-  });
-
-  // 설정탭 kakaoApiKey_cfg의 "지도 적용" 버튼 동작 처리
-  // (index.html의 버튼이 kakaoApiKey_cfg 사용하도록 이미 변경됨)
-  // 초기 dot 동기화
-  setTimeout(syncDots, 300);
-});
