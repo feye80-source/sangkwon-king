@@ -600,11 +600,21 @@
         } catch(e) { console.warn('[SB] API key sync error', e); }
 
         window._sbSyncStatus('✅ 클라우드 로드 완료', true);
+
+        // ── 클라우드 로드 완료 후 화면 갱신 ──
+        try { if (typeof renderSaved === 'function') renderSaved(); } catch(e) {}
+        try { if (typeof updSvCnt === 'function') updSvCnt(); } catch(e) {}
+        try { if (typeof ntRender === 'function') ntRender(); } catch(e) {}
+        try { if (typeof wr2Render === 'function') wr2Render(); } catch(e) {}
+
       } catch(e) {
         console.warn('[SB] initLoad error', e);
         // QuotaExceededError는 네트워크 문제가 아니므로 오프라인 모드 표시 안 함
         if (e && e.name === 'QuotaExceededError') {
           window._sbSyncStatus('✅ 클라우드 로드 완료 (로컬저장 일부 생략)', true);
+          try { if (typeof renderSaved === 'function') renderSaved(); } catch(e2) {}
+          try { if (typeof ntRender === 'function') ntRender(); } catch(e2) {}
+          try { if (typeof wr2Render === 'function') wr2Render(); } catch(e2) {}
         } else {
           window._sbSyncStatus('⚠️ 오프라인 모드', false);
         }
