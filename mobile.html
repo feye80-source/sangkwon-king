@@ -3766,8 +3766,24 @@ body {
         if (typeof openKcardEditor === 'function') openKcardEditor(this.getAttribute('data-id'));
       };
 
+      var noteBtn = document.createElement('button');
+      noteBtn.textContent = '📝';
+      noteBtn.title = '이 카드로 노트 만들기';
+      noteBtn.style.cssText = 'background:rgba(79,142,255,.1);border:1px solid rgba(79,142,255,.25);'
+        + 'color:#4f8eff;cursor:pointer;font-size:11px;padding:2px 6px;border-radius:4px;font-weight:700;margin-left:auto;';
+      noteBtn.setAttribute('data-id', card.id);
+      noteBtn.onclick = function(e) {
+        e.stopPropagation();
+        if (typeof ntCreateFromKcard === 'function') ntCreateFromKcard(this.getAttribute('data-id'));
+      };
+
+      var btnRow = document.createElement('div');
+      btnRow.style.cssText = 'display:flex;gap:3px;align-items:center;';
+      btnRow.appendChild(noteBtn);
+      btnRow.appendChild(editBtn);
+
       hdr.appendChild(catSpan);
-      hdr.appendChild(editBtn);
+      hdr.appendChild(btnRow);
       body.appendChild(hdr);
 
       var titleDiv = document.createElement('div');
@@ -3775,13 +3791,42 @@ body {
       titleDiv.textContent = card.title || '';
       body.appendChild(titleDiv);
 
-      var bodyLines = (card.body || '').split('\n').filter(Boolean).slice(0, 3);
-      bodyLines.forEach(function(line) {
-        var lineDiv = document.createElement('div');
-        lineDiv.style.cssText = 'font-size:11px;color:var(--tx);line-height:1.6;';
-        lineDiv.textContent = line;
-        body.appendChild(lineDiv);
+      var bodyLines = (card.body || '').split('\n').filter(Boolean);
+      var keyLines = bodyLines.filter(function(l) {
+        return l.startsWith('•') || l.startsWith('-') || l.startsWith('·') || /^\d+[.)]/.test(l);
       });
+      var plainLines = bodyLines.filter(function(l) {
+        return !l.startsWith('•') && !l.startsWith('-') && !l.startsWith('·') && !/^\d+[.)]/.test(l);
+      });
+
+      // 요약 텍스트
+      plainLines.slice(0, 2).forEach(function(l) {
+        var p = document.createElement('div');
+        p.style.cssText = 'font-size:11px;color:var(--mu);line-height:1.6;margin-bottom:2px;';
+        p.textContent = l;
+        body.appendChild(p);
+      });
+
+      // 핵심 포인트 뱃지
+      var pointWrap = document.createElement('div');
+      pointWrap.style.cssText = 'display:flex;flex-direction:column;gap:3px;';
+      keyLines.slice(0, 5).forEach(function(line) {
+        var txt = line.replace(/^[•\-·]\s*/, '').replace(/^\d+[.)]\s*/, '');
+        var pt = document.createElement('div');
+        pt.style.cssText = 'display:flex;align-items:flex-start;gap:5px;padding:4px 7px;'
+          + 'background:' + color + '0d;border-left:2px solid ' + color + ';'
+          + 'border-radius:0 4px 4px 0;font-size:11px;color:var(--tx);line-height:1.5;';
+        pt.textContent = txt;
+        pointWrap.appendChild(pt);
+      });
+      body.appendChild(pointWrap);
+
+      if (bodyLines.length > 5) {
+        var more = document.createElement('div');
+        more.style.cssText = 'font-size:10px;color:var(--di);margin-top:2px;';
+        more.textContent = '+' + (bodyLines.length - 5) + '줄 더...';
+        body.appendChild(more);
+      }
       wrap.appendChild(body);
 
       /* 푸터 */
