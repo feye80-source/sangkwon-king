@@ -1149,6 +1149,7 @@ body {
     <!-- 서브탭 네비 -->
     <nav class="mb-ins-nav" role="tablist">
       <button class="mb-ins-tab active" id="mb-itab-note" onclick="mbInsTab('note')" role="tab">📓 노트</button>
+      <button class="mb-ins-tab" id="mb-itab-kcard"       onclick="mbInsTab('kcard')" role="tab">⭐ 알짜</button>
       <button class="mb-ins-tab" id="mb-itab-calc"        onclick="mbInsTab('calc')" role="tab">🧮 계산기</button>
       <button class="mb-ins-tab" id="mb-itab-room"        onclick="mbInsTab('room')" role="tab">🗂️ 작업룸</button>
       <button class="mb-ins-tab" id="mb-itab-pipe"        onclick="mbInsTab('pipe')" role="tab">🎯 파이프라인</button>
@@ -1192,6 +1193,19 @@ body {
         <div style="font-size:13px;">노트가 없어요</div>
         <button class="mb-btn mb-btn-gold" onclick="ntCreate('unified')" style="margin-top:12px;">첫 노트 작성</button>
       </div>
+    </div>
+
+    <!-- 알짜정보 패널 -->
+    <div id="mb-ins-kcard" class="mb-ins-panel" style="display:none;flex:1;overflow-y:auto;padding:12px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+        <span style="font-size:13px;font-weight:700;color:var(--tx);">⭐ 알짜정보</span>
+        <button onclick="if(typeof openKcardEditor==='function')openKcardEditor(null)"
+          style="padding:6px 14px;background:var(--ac);color:#111;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">+ 새 카드</button>
+      </div>
+      <!-- 카테고리 필터 -->
+      <div id="mb-kcat-tabs" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;"></div>
+      <!-- 카드 그리드 -->
+      <div id="mb-kcard-grid" style="display:flex;flex-direction:column;gap:10px;"></div>
     </div>
 
     <!-- 계산기 패널 -->
@@ -2161,7 +2175,7 @@ body {
   };
 
   /* ── 인사이트 서브탭 ── */
-  var INS_PANELS = ['note','calc','room','pipe','clip','site'];
+  var INS_PANELS = ['note','kcard','calc','room','pipe','clip','site'];
   var _mbLastInsTab = 'note';
   try { _mbLastInsTab = localStorage.getItem('mb_ins_tab') || 'note'; } catch(e) {}
   window.mbInsTab = function(name) {
@@ -2180,6 +2194,11 @@ body {
       } else if (typeof window.ntRender === 'function') {
         try { window.ntRender(); } catch(e) {}
       }
+    }
+    // 알짜정보 탭
+    if (name === 'kcard') {
+      if (typeof window._kcardsSyncFromCache === 'function') window._kcardsSyncFromCache();
+      mbRenderKcards();
     }
     // 작업룸 탭: 룸 목록 새로고침
     if (name === 'room') {
@@ -3630,9 +3649,73 @@ body {
     if (typeof window.ntRender === 'function') window.ntRender();
   };
 
-  /* ════ 지도 바텀시트 ════ */
-  var _mbBsCurrentId = null;
-  var _mbBsCurTab = 'card';
+  window.mbNtPhase = function(phase, btn) {
+    document.querySelectorAll('#ntPhaseFilter .mb-ftab').forEach(function(b){ b.classList.remove('active'); });
+    if (btn) btn.classList.add('active');
+    if (typeof window.ntRender === 'function') window.ntRender();
+  };
+
+  /* ════ 알짜정보 모바일 렌더 ════ */
+  var _mbKcardActiveCat = '전체';
+  window.mbRenderKcards = function() {
+    var kcards = (window._idbCache && window._idbCache['ins_kcards']) || [];
+    var kcardCats = (window._idbCache && window._idbCache['ins_kcat']) || [];
+    var catEl = document.getElementById('mb-kcat-tabs');
+    var gridEl = document.getElementById('mb-kcard-grid');
+    if (!gridEl) return;
+
+    // 카테고리 탭
+    if (catEl) {
+      var allCats = ['전체'].concat(kcardCats);
+      catEl.innerHTML = allCats.map(function(c) {
+        var isActive = c === _mbKcardActiveCat;
+        return '<button onclick="window._mbKcardActiveCat=\'' + c.replace(/'/g,"\\'") + '\';window.mbRenderKcards();" style="padding:4px 10px;font-size:11px;border-radius:10px;cursor:pointer;background:' + (isActive ? 'var(--ac)' : 'var(--s2)') + ';color:' + (isActive ? '#111' : 'var(--tx)') + ';border:1px solid ' + (isActive ? 'var(--ac)' : 'var(--b1)') + ';white-space:nowrap;">' + c + '</button>';
+      }).join('');
+    }
+
+    var filtered = _mbKcardActiveCat === '전체' ? kcards : kcards.filter(function(k){ return k.cat === _mbKcardActiveCat; });
+    if (!filtered.length) {
+      gridEl.innerHTML = '<div style="text-align:center;padding:40px 0;color:var(--mu);"><div style="font-size:32px;margin-bottom:8px;">⭐</div><div style="font-size:13px;">첫 알짜정보 카드를 만들어보세요</div></div>';
+      return;
+    }
+
+    var catColors = { '📐 면적/건축': '#4f8eff', '⚖️ 권리분석': '#ff6370', '📋 경매 절차': '#f9a825', '💰 세금/비용': '#a78bfa', '🏘️ 상권/지역': '#b47cff' };
+    gridEl.innerHTML = filtered.map(function(card) {
+      var color = catColors[card.cat] || '#ffd166';
+      var tags = (card.tags || []).map(function(t){ return '<span style="font-size:10px;padding:2px 6px;background:rgba(255,209,102,0.1);color:#ffd166;border-radius:8px;border:1px solid rgba(255,209,102,0.25);">#' + t + '</span>'; }).join('');
+      var d = new Date(card.createdAt).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
+
+      // 썸네일
+      var thumbHtml = '';
+      if (card.ytUrl) {
+        var m = card.ytUrl.match(/(?:v=|youtu\.be\/)([\w-]{11})/);
+        if (m) thumbHtml = '<div style="position:relative;width:100%;padding-top:56.25%;overflow:hidden;background:#000;border-radius:8px 8px 0 0;"><img src="https://img.youtube.com/vi/' + m[1] + '/hqdefault.jpg" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;" loading="lazy"><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;"><div style="width:36px;height:36px;background:rgba(255,0,0,.85);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;">▶</div></div></div>';
+      } else if (card.imgs && card.imgs.length > 0) {
+        thumbHtml = '<div style="width:100%;height:120px;overflow:hidden;border-radius:8px 8px 0 0;"><img src="' + card.imgs[0] + '" style="width:100%;height:100%;object-fit:cover;" loading="lazy"></div>';
+      }
+      var cardBg = (!card.ytUrl && (!card.imgs || !card.imgs.length) && card.bgColor) ? card.bgColor : 'var(--s1)';
+      var bodyLines = (card.body || '').split('\n').filter(Boolean).slice(0, 4);
+      var bodyHtml = bodyLines.map(function(l){ return '<div style="font-size:11px;color:var(--tx);line-height:1.6;padding:2px 0;">' + l.replace(/</g,'&lt;') + '</div>'; }).join('');
+
+      return '<div style="background:' + cardBg + ';border:1px solid var(--b1);border-top:3px solid ' + color + ';border-radius:' + (thumbHtml ? '0' : '8px 8px') + ' 8px 8px;overflow:hidden;">' +
+        thumbHtml +
+        '<div style="padding:10px 12px;">' +
+          '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">' +
+            '<span style="font-size:10px;padding:2px 7px;border-radius:8px;font-weight:700;background:' + color + '1a;color:' + color + ';border:1px solid ' + color + '33;">' + (card.cat || '기타') + '</span>' +
+            '<button onclick="event.stopPropagation();if(typeof openKcardEditor===\'function\')openKcardEditor(\'' + card.id + '\')" style="background:none;border:none;color:var(--mu);font-size:14px;cursor:pointer;padding:2px 4px;">✏️</button>' +
+          '</div>' +
+          '<div style="font-size:13px;font-weight:700;color:var(--tx);margin-bottom:6px;">' + (card.title || '').replace(/</g,'&lt;') + '</div>' +
+          bodyHtml +
+        '</div>' +
+        '<div style="padding:6px 12px;border-top:1px solid var(--b1);display:flex;align-items:center;gap:5px;flex-wrap:wrap;">' +
+          (tags || '') +
+          '<span style="margin-left:auto;font-size:10px;color:var(--di);">' + d + '</span>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+  };
+
+
 
   window.mbShowCardBottomSheet = function(markerIdOrItem) {
     // markerIdOrItem: 문자열 ID 또는 item 객체 모두 처리
