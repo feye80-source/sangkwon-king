@@ -41,14 +41,23 @@
     });
 
     // 인증 상태 변화 감지 (자동 로그인 유지 + 비밀번호 재설정)
+    let _sbInitLoadCalled = false;
     window._sb.auth.onAuthStateChange((event, session) => {
       if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session) {
         window._sbHideLogin && window._sbHideLogin();
         window._sbHideRecovery && window._sbHideRecovery();
         window._sbAddLogoutBtn && window._sbAddLogoutBtn();
+        // ★ 로그인 시 클라우드 동기화 자동 실행 (중복 방지)
+        if (!_sbInitLoadCalled) {
+          _sbInitLoadCalled = true;
+          setTimeout(() => {
+            if (window._sbInitLoad) window._sbInitLoad().catch(e => console.warn('[SB] initLoad on auth', e));
+          }, 300);
+        }
       } else if (event === 'PASSWORD_RECOVERY') {
         window._sbShowRecovery && window._sbShowRecovery();
       } else if (event === 'SIGNED_OUT') {
+        _sbCachedUserId = null;
         window._sbShowLogin && window._sbShowLogin();
       }
     });
@@ -87,37 +96,82 @@
     }
 
     // ─── 범용 헬퍼 ───────────────────────────────────────────
-    // 테이블에서 key로 단일 JSON 행 가져오기
-    async function sbGet(table, key) {
+    // user_id 캐시
+    let _sbCachedUserId = null;
+    async function _sbGetUserId() {
+      if (_sbCachedUserId) return _sbCachedUserId;
       try {
-        const { data, error } = await window._sb.from(table).select('*').eq('data->>__key', key).maybeSingle();
-        if (error) throw error;
-        return data ? data.data : null;
-      } catch(e) { console.warn('[SB] get error', table, key, e); return null; }
+        const { data: { session } } = await window._sb.auth.getSession();
+        _sbCachedUserId = session?.user?.id || null;
+        return _sbCachedUserId;
+      } catch(e) { return null; }
     }
 
-    // 테이블에 key로 단일 JSON 행 저장 (upsert)
-    async function sbSet(table, key, value) {
+    // ── kv_store 헬퍼 (섹션/API키 등 키-값 단건 저장) ──────
+    async function kvGet(key) {
       try {
-        // 기존 행 찾기
-        const { data: existing } = await window._sb.from(table).select('id').eq('data->>__key', key).maybeSingle();
-        const payload = { ...value, __key: key };
-        if (existing) {
-          await window._sb.from(table).update({ data: payload, updated_at: new Date().toISOString() }).eq('id', existing.id);
-        } else {
-          await window._sb.from(table).insert({ data: payload });
+        const uid = await _sbGetUserId();
+        if (!uid) return null;
+        const id = uid + '_' + key;
+        const { data, error } = await window._sb.from('kv_store').select('value').eq('id', id).maybeSingle();
+        if (error && error.code !== 'PGRST116') throw error;
+        return data ? data.value : null;
+      } catch(e) { console.warn('[SB] kvGet error', key, e); return null; }
+    }
+    async function kvSet(key, value) {
+      try {
+        const uid = await _sbGetUserId();
+        if (!uid) return;
+        const id = uid + '_' + key;
+        await window._sb.from('kv_store').upsert(
+          { id, user_id: uid, key, value, updated_at: new Date().toISOString() },
+          { onConflict: 'id' }
+        );
+      } catch(e) { console.warn('[SB] kvSet error', key, e); }
+    }
+
+    // ── 배열 테이블 헬퍼 (items / notes / workrooms / snapshots) ──
+    // 배열 → 테이블에 행별 upsert
+    async function tblSaveArr(table, arr) {
+      try {
+        const uid = await _sbGetUserId();
+        if (!uid || !arr || !arr.length) return;
+        const rows = arr.map(item => ({
+          id: uid + '_' + (item.id || item.item_id || Math.random().toString(36).slice(2)),
+          user_id: uid,
+          item_id: item.id || item.item_id || '',
+          data: item,
+          updated_at: new Date(item.updatedAt || item.timestamp || Date.now()).toISOString()
+        }));
+        // 50개씩 나눠서 upsert (Supabase 요청 크기 제한 대비)
+        for (let i = 0; i < rows.length; i += 50) {
+          const chunk = rows.slice(i, i + 50);
+          const { error } = await window._sb.from(table).upsert(chunk, { onConflict: 'id' });
+          if (error) throw error;
         }
-      } catch(e) { console.warn('[SB] set error', table, key, e); }
+      } catch(e) { console.warn('[SB] tblSaveArr error', table, e); }
     }
-
-    // 테이블에서 배열 전체 가져오기 (key='main')
-    async function sbGetArr(table) {
-      const d = await sbGet(table, 'main');
-      return Array.isArray(d?.value) ? d.value : null;
+    // 테이블 → 배열 로드 (본인 데이터만, RLS가 자동 필터)
+    async function tblLoadArr(table) {
+      try {
+        const uid = await _sbGetUserId();
+        if (!uid) return null;
+        const { data, error } = await window._sb.from(table)
+          .select('data, updated_at')
+          .eq('user_id', uid)
+          .order('updated_at', { ascending: false });
+        if (error) throw error;
+        return (data || []).map(r => r.data).filter(Boolean);
+      } catch(e) { console.warn('[SB] tblLoadArr error', table, e); return null; }
     }
-
-    async function sbSetArr(table, arr) {
-      await sbSet(table, 'main', { value: arr });
+    // 삭제된 항목 클라우드에서 제거 (deletedAt 있는 item_id 삭제)
+    async function tblDeleteItems(table, itemIds) {
+      try {
+        const uid = await _sbGetUserId();
+        if (!uid || !itemIds.length) return;
+        const ids = itemIds.map(iid => uid + '_' + iid);
+        await window._sb.from(table).delete().in('id', ids);
+      } catch(e) { console.warn('[SB] tblDeleteItems error', table, e); }
     }
 
     // ─── 동기화 상태 표시 ─────────────────────────────────────
@@ -139,173 +193,165 @@
 
     // ─── re_sv (저장목록) 동기화 ─────────────────────────────
     window._sbSaveSv = async function(arr) {
-      await sbSetArr('items', arr);
+      await tblSaveArr('items', arr);
+      // 소프트삭제 항목 클라우드에서도 제거
+      const deleted = (arr || []).filter(i => i.deletedAt).map(i => i.id);
+      if (deleted.length) await tblDeleteItems('items', deleted);
       window._sbSyncStatus('☁️ 저장목록 동기화 완료', true);
     };
-
     window._sbLoadSv = async function() {
-      return await sbGetArr('items');
+      return await tblLoadArr('items');
     };
 
     // ─── 노트 동기화 ─────────────────────────────────────────
     window._sbSaveNotes = async function(key, arr) {
-      await sbSetArr('notes_' + key, arr);
+      await kvSet('notes_' + key, arr);
     };
-    window._sbSaveNtNotes = async function(arr) { await sbSetArr('notes', arr); window._sbSyncStatus('☁️ 노트 동기화 완료', true); };
-    window._sbLoadNtNotes = async function() { return await sbGetArr('notes'); };
+    window._sbSaveNtNotes = async function(arr) {
+      await tblSaveArr('notes', arr);
+      window._sbSyncStatus('☁️ 노트 동기화 완료', true);
+    };
+    window._sbLoadNtNotes = async function() { return await tblLoadArr('notes'); };
 
     // ─── 작업룸 동기화 ────────────────────────────────────────
     window._sbSaveRooms = async function(arr) {
-      // 저장 전 클라우드 최신과 merge → 다기기 충돌 방지
       try {
-        const cloudArr = await sbGetArr('workrooms');
-        if (cloudArr && cloudArr.length) {
-          const merged = _sbMergeById(cloudArr, arr);
-          await sbSetArr('workrooms', merged);
-          // 로컬에는 deletedAt 없는 것만 저장 (소프트삭제 항목 로컬 제외)
-          const _orig = localStorage.setItem.bind(localStorage);
-          const mergedActive = merged.filter(item => !item.deletedAt);
-          _orig('wr2_rooms', JSON.stringify(mergedActive));
-          if (window.wr2State) window.wr2State.rooms = mergedActive;
-        } else {
-          await sbSetArr('workrooms', arr);
-        }
-      } catch(e) {
-        await sbSetArr('workrooms', arr);
-      }
+        const active = (arr || []).filter(r => !r.deletedAt);
+        const deleted = (arr || []).filter(r => r.deletedAt).map(r => r.id);
+        await tblSaveArr('workrooms', active);
+        if (deleted.length) await tblDeleteItems('workrooms', deleted);
+        // 로컬 동기화
+        const _orig = localStorage.setItem.bind(localStorage);
+        _orig('wr2_rooms', JSON.stringify(active));
+        if (window.wr2State) window.wr2State.rooms = active;
+      } catch(e) { console.warn('[SB] saveRooms error', e); }
       window._sbSyncStatus('☁️ 작업룸 동기화 완료', true);
     };
-    window._sbLoadRooms = async function() { return await sbGetArr('workrooms'); };
+    window._sbLoadRooms = async function() { return await tblLoadArr('workrooms'); };
+
+    // 섹션은 kv_store에 통째로 저장 (섹션은 roomId 참조 구조라 개별 행 관리 복잡)
     window._sbSaveSections = async function(arr) {
-      await sbSet('workrooms', 'sections', { value: arr });
+      await kvSet('wr2_sections', arr);
     };
     window._sbLoadSections = async function() {
-      const d = await sbGet('workrooms', 'sections');
-      return Array.isArray(d?.value) ? d.value : null;
+      const d = await kvGet('wr2_sections');
+      return Array.isArray(d) ? d : null;
     };
 
     // ─── 작업씬(WorkScene) 동기화 ────────────────────────────
-    window._sbSaveWorkScenes = async function(arr) { await sbSetArr('snapshots', arr); window._sbSyncStatus('☁️ 작업씬 동기화 완료', true); };
-    window._sbLoadWorkScenes = async function() { return await sbGetArr('snapshots'); };
+    window._sbSaveWorkScenes = async function(arr) {
+      await tblSaveArr('snapshots', arr);
+      window._sbSyncStatus('☁️ 작업씬 동기화 완료', true);
+    };
+    window._sbLoadWorkScenes = async function() { return await tblLoadArr('snapshots'); };
 
-    // ─── 앱 시작 시 Supabase → localStorage 자동 로드 ────────
     // ─── ID 기반 merge: 두 배열을 id로 합치고 최신 updatedAt 우선 ───
     function _sbMergeById(cloud, local) {
       const map = new Map();
-      // local 먼저 (기준)
       (local || []).forEach(item => { if (item && item.id) map.set(item.id, item); });
-      // cloud로 덮어쓰기 (더 최신이면)
       (cloud || []).forEach(item => {
         if (!item || !item.id) return;
         const existing = map.get(item.id);
         if (!existing) {
-          // cloud에만 있고 deletedAt 없으면 추가
           if (!item.deletedAt) map.set(item.id, item);
           return;
         }
-        // updatedAt 또는 timestamp 비교
         const cTime = new Date(item.updatedAt || item.timestamp || 0).getTime();
         const lTime = new Date(existing.updatedAt || existing.timestamp || 0).getTime();
         if (cTime >= lTime) map.set(item.id, item);
       });
-      // deletedAt 있는 항목 최종 제거
       return Array.from(map.values()).filter(item => !item.deletedAt);
     }
 
     window._sbInitLoad = async function() {
       try {
-        // 세션 확인 - 로그인 안 되어있으면 로그인 화면 표시
         const { data: { session } } = await window._sb.auth.getSession();
-        if (!session) {
-          window._sbShowLogin();
-          return;
-        }
+        if (!session) { window._sbShowLogin(); return; }
+        _sbCachedUserId = session.user.id; // 캐시 즉시 세팅
         window._sbAddLogoutBtn();
         window._sbSyncStatus('☁️ 클라우드에서 불러오는 중...', true);
 
-        // 저장목록 — id merge
+        // ── 저장목록 ──
         const svCloud = await window._sbLoadSv();
         if (svCloud !== null) {
           const svLocal = JSON.parse(localStorage.getItem('re_sv') || '[]');
           const merged = _sbMergeById(svCloud, svLocal);
           localStorage.setItem('re_sv', JSON.stringify(merged));
-          // 병합 결과를 클라우드에도 반영
-          if (merged.length > (svCloud.length || 0)) {
-            window._sbSaveSv(merged).catch(()=>{});
-          }
+          if (merged.length > svCloud.length) window._sbSaveSv(merged).catch(()=>{});
+        } else {
+          const svLocal = JSON.parse(localStorage.getItem('re_sv') || '[]');
+          if (svLocal.length) window._sbSaveSv(svLocal).catch(()=>{});
         }
 
-        // 노트 — id merge
+        // ── 노트 ──
         const ntCloud = await window._sbLoadNtNotes();
         if (ntCloud !== null) {
           const ntLocal = JSON.parse(localStorage.getItem('nt_notes') || '[]');
           const merged = _sbMergeById(ntCloud, ntLocal);
           localStorage.setItem('nt_notes', JSON.stringify(merged));
-          if (merged.length > (ntCloud.length || 0)) {
-            window._sbSaveNtNotes(merged).catch(()=>{});
-          }
+          if (merged.length > ntCloud.length) window._sbSaveNtNotes(merged).catch(()=>{});
+        } else {
+          const ntLocal = JSON.parse(localStorage.getItem('nt_notes') || '[]');
+          if (ntLocal.length) window._sbSaveNtNotes(ntLocal).catch(()=>{});
         }
 
-        // 작업룸 — id merge (소프트삭제 deletedAt 지원)
+        // ── 작업룸 ──
         const roomsCloud = await window._sbLoadRooms();
         if (roomsCloud !== null) {
           const roomsLocal = JSON.parse(localStorage.getItem('wr2_rooms') || '[]');
           const merged = _sbMergeById(roomsCloud, roomsLocal);
-          // 로컬에는 deletedAt 없는 활성 룸만 저장
           const mergedActive = merged.filter(r => !r.deletedAt);
           localStorage.setItem('wr2_rooms', JSON.stringify(mergedActive));
           if (window.wr2State) window.wr2State.rooms = mergedActive;
-          // 로컬에만 있던 활성 룸이 있으면 클라우드에도 업로드
-          if (mergedActive.length > roomsCloud.filter(r=>!r.deletedAt).length) {
+          if (mergedActive.length > roomsCloud.filter(r=>!r.deletedAt).length)
             window._sbSaveRooms(merged).catch(()=>{});
-          }
+        } else {
+          const roomsLocal = JSON.parse(localStorage.getItem('wr2_rooms') || '[]');
+          if (roomsLocal.length) window._sbSaveRooms(roomsLocal).catch(()=>{});
         }
 
-        // 섹션 — 클라우드 우선 (섹션은 id 구조 다를 수 있음)
+        // ── 섹션 ──
         const secCloud = await window._sbLoadSections();
         if (secCloud && secCloud.length > 0) {
           localStorage.setItem('wr2_sections', JSON.stringify(secCloud));
-          // ★ wr2State에도 즉시 반영
           if (window.wr2State) window.wr2State.sections = secCloud;
         } else {
-          // 로컬에 있으면 클라우드로 올림
           const secLocal = JSON.parse(localStorage.getItem('wr2_sections') || '[]');
-          if (secLocal.length > 0) {
+          if (secLocal.length) {
             if (window.wr2State) window.wr2State.sections = secLocal;
             window._sbSaveSections(secLocal).catch(()=>{});
           }
         }
 
-        // 작업씬 — id merge
+        // ── 작업씬 ──
         const wsCloud = await window._sbLoadWorkScenes();
         if (wsCloud !== null) {
           const wsLocal = JSON.parse(localStorage.getItem('re_ws') || '[]');
           const merged = _sbMergeById(wsCloud, wsLocal);
           localStorage.setItem('re_ws', JSON.stringify(merged));
-          if (merged.length > (wsCloud.length || 0)) {
-            window._sbSaveWorkScenes(merged).catch(()=>{});
-          }
+          if (merged.length > wsCloud.length) window._sbSaveWorkScenes(merged).catch(()=>{});
+        } else {
+          const wsLocal = JSON.parse(localStorage.getItem('re_ws') || '[]');
+          if (wsLocal.length) window._sbSaveWorkScenes(wsLocal).catch(()=>{});
         }
 
-        // API 키 동기화 (기기간 공유)
+        // ── API 키 ──
         try {
           const apiKeys = ['g_api', 'kakao_api', 'kakao_rest_key', 'sbiz_api'];
-          const { data: keysRow } = await window._sb.from('snapshots').select('data').eq('data->>__key', '__api_keys__').maybeSingle();
-          if (keysRow && keysRow.data) {
-            apiKeys.forEach(k => {
-              if (keysRow.data[k]) localStorage.setItem(k, keysRow.data[k]);
-            });
-            const mapping = { g_api: 'apiKey', kakao_api: 'kakaoKey', kakao_rest_key: 'kakaoRestKey', sbiz_api: 'sbizApiKey' };
+          const cloud = await kvGet('api_keys');
+          if (cloud) {
+            apiKeys.forEach(k => { if (cloud[k]) localStorage.setItem(k, cloud[k]); });
+            const mapping = { g_api:'apiKey', kakao_api:'kakaoApiKey', kakao_rest_key:'kakaoRestKey', sbiz_api:'sbizApiKey' };
             Object.entries(mapping).forEach(([lsKey, elId]) => {
               const el = document.getElementById(elId);
-              const val = keysRow.data[lsKey];
+              const val = cloud[lsKey];
               if (el && val) { el.value = val; el.dispatchEvent(new Event('input')); }
             });
           } else {
-            const payload = { __key: '__api_keys__' };
+            const payload = {};
             let hasAny = false;
             apiKeys.forEach(k => { const v = localStorage.getItem(k); if (v) { payload[k] = v; hasAny = true; } });
-            if (hasAny) await sbSet('snapshots', '__api_keys__', payload);
+            if (hasAny) await kvSet('api_keys', payload);
           }
         } catch(e) { console.warn('[SB] API key sync error', e); }
 
@@ -319,13 +365,13 @@
     // API 키 변경 시 Supabase 자동 저장
     window._sbSaveApiKeys = async function() {
       try {
-        const payload = { __key: '__api_keys__' };
+        const payload = {};
         ['g_api','kakao_api','kakao_rest_key','sbiz_api'].forEach(k => { const v = localStorage.getItem(k); if (v) payload[k] = v; });
-        await sbSet('snapshots', '__api_keys__', payload);
+        await kvSet('api_keys', payload);
       } catch(e) {}
     };
 
-    // ─── localStorage.setItem 패치: wr2_rooms/wr2_sections/re_sv 변경 시 자동 동기화 ──
+    // ─── localStorage.setItem 패치: 변경 시 자동 Supabase 동기화 ──
     (function() {
       const _origSet = localStorage.setItem.bind(localStorage);
       let _debounceRooms, _debounceSec, _debounceSv;
