@@ -2387,8 +2387,11 @@
     // ===================================================
     const CSV_RAW_STORAGE_KEY = 'csv_transaction_raw';
 
-    // CSV 데이터를 localStorage에 저장 (최대 50만 건, 약 50MB 주의)
+    // CSV 데이터는 localStorage에 저장하지 않음 (용량 문제로 비활성화)
+    // 기존 데이터가 남아있으면 즉시 삭제
+    (function(){ try { localStorage.removeItem('csv_transaction_raw'); } catch(e){} })();
     function saveTransactionRawToStorage() {
+      return false; // 저장 안 함 - 메모리에만 유지
       try {
         const toSave = transactionDataRaw.map(item => ({
           name: item.name,
@@ -2434,8 +2437,10 @@
       }
     }
 
-    // localStorage에서 CSV 데이터 복원
+    // CSV 데이터 복원 비활성화 (저장 안 하므로 복원도 불필요)
     function loadTransactionRawFromStorage() {
+      try { localStorage.removeItem('csv_transaction_raw'); } catch(e) {}
+      return 0;
       try {
         const raw = localStorage.getItem(CSV_RAW_STORAGE_KEY);
         if (!raw) return 0;
