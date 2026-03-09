@@ -2303,7 +2303,7 @@ body {
   /* ── 저장목록 렌더링 (모바일 카드 형태) ── */
   window.mbRenderSaved = function() {
     var allItems = [];
-    try { allItems = JSON.parse(localStorage.getItem('re_sv') || '[]'); } catch(e) {}
+    try { allItems = ((window._idbCache && window._idbCache['re_sv']) || JSON.parse(localStorage.getItem('re_sv') || '[]')); } catch(e) {}
 
     var filterVal = (window._svFilter || 'all');
     var searchVal = (document.getElementById('regionSearch') || {}).value || '';
@@ -2506,7 +2506,7 @@ body {
   // 저장목록 아이템 상세 바텀시트 열기 — 전면 재작성
   window.mbOpenSavedDetail = function(itemId) {
     try {
-      var items = JSON.parse(localStorage.getItem('re_sv') || '[]');
+      var items = ((window._idbCache && window._idbCache['re_sv']) || JSON.parse(localStorage.getItem('re_sv') || '[]'));
       var item = itemId ? items.find(function(x) { return x.id === itemId; }) : null;
       if (!item && !isNaN(itemId)) item = items[parseInt(itemId)];
       if (!item) { mbToast('매물 정보를 찾을 수 없어요', 'err'); return; }
@@ -2691,7 +2691,7 @@ body {
 
   window.mbSaveMemo = function(idx, val) {
     try {
-      var items = JSON.parse(localStorage.getItem('re_sv') || '[]');
+      var items = ((window._idbCache && window._idbCache['re_sv']) || JSON.parse(localStorage.getItem('re_sv') || '[]'));
       if (items[idx]) {
         items[idx].memo = val;
         localStorage.setItem('re_sv', JSON.stringify(items));
@@ -2712,7 +2712,7 @@ body {
       setTimeout(function() {
         // re_sv에서 아이템 찾아 좌표로 이동
         var sv = [];
-        try { sv = JSON.parse(localStorage.getItem('re_sv') || '[]'); } catch(e) {}
+        try { sv = ((window._idbCache && window._idbCache['re_sv']) || JSON.parse(localStorage.getItem('re_sv') || '[]')); } catch(e) {}
         var it = sv.find(function(x){ return x.id === itemId; });
         if (it) {
           var lat = parseFloat(it.lat), lng = parseFloat(it.lng);
@@ -3235,7 +3235,7 @@ body {
     if (!body) return;
     var html = '';
     var savedItems = [];
-    try { savedItems = JSON.parse(localStorage.getItem('re_sv') || '[]'); } catch(e) {}
+    try { savedItems = ((window._idbCache && window._idbCache['re_sv']) || JSON.parse(localStorage.getItem('re_sv') || '[]')); } catch(e) {}
     var linkedId = room.linkedSavedId;
     var linkedItems = room.linkedItems || [];
     var items = [];
@@ -3674,7 +3674,7 @@ body {
     }
     // 패널 생성
     var saved = [];
-    try { saved = JSON.parse(localStorage.getItem('re_sv') || '[]'); } catch(e) {}
+    try { saved = ((window._idbCache && window._idbCache['re_sv']) || JSON.parse(localStorage.getItem('re_sv') || '[]')); } catch(e) {}
     var item = saved.find(function(x){ return x.id === itemId; });
     var d = (item && item.data) || {};
     var container = document.getElementById('mb-map-bs-body');
@@ -3791,7 +3791,7 @@ body {
       // 없으면 저장목록에서 직접 찾기
       if (!obj || !obj.item) {
         var sv2 = [];
-        try { sv2 = JSON.parse(localStorage.getItem('re_sv') || '[]'); } catch(e) {}
+        try { sv2 = ((window._idbCache && window._idbCache['re_sv']) || JSON.parse(localStorage.getItem('re_sv') || '[]')); } catch(e) {}
         var svItem = sv2.find(function(x){ return x.id === _mbBsCurrentId || ('marker_' + x.id) === _mbBsCurrentId; });
         if (svItem) {
           // 저장목록 상세로 대체 렌더

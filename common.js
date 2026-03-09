@@ -601,11 +601,21 @@
 
         window._sbSyncStatus('✅ 클라우드 로드 완료', true);
 
-        // ── 클라우드 로드 완료 후 화면 갱신 ──
-        try { if (typeof renderSaved === 'function') renderSaved(); } catch(e) {}
-        try { if (typeof updSvCnt === 'function') updSvCnt(); } catch(e) {}
-        try { if (typeof ntRender === 'function') ntRender(); } catch(e) {}
-        try { if (typeof wr2Render === 'function') wr2Render(); } catch(e) {}
+        // ── 클라우드 로드 완료 후 로컬 변수 동기화 + 화면 갱신 ──
+        setTimeout(function() {
+          try {
+            // ntNotes 동기화: 모듈 초기화 시점에 IDB 캐시가 비어있었을 수 있음
+            const freshNotes = window._idbCache && window._idbCache['nt_notes'];
+            if (freshNotes && freshNotes.length > 0 && typeof window._ntSetNotes === 'function') {
+              window._ntSetNotes(freshNotes);
+            }
+          } catch(e) {}
+          try { if (typeof renderSaved === 'function') renderSaved(); } catch(e) {}
+          try { if (typeof mbRenderSaved === 'function') mbRenderSaved(); } catch(e) {}
+          try { if (typeof updSvCnt === 'function') updSvCnt(); } catch(e) {}
+          try { if (typeof ntRender === 'function') ntRender(); } catch(e) {}
+          try { if (typeof wr2Render === 'function') wr2Render(); } catch(e) {}
+        }, 300);
 
       } catch(e) {
         console.warn('[SB] initLoad error', e);
@@ -18749,6 +18759,12 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     let ntTypeFilter = 'all';
     let ntTagFilter = null;
     let ntAutoSaveTimer = null;
+
+    // ★ _sbInitLoad 완료 후 ntNotes 동기화를 위한 window 훅
+    window._ntSetNotes = function(arr) {
+      ntNotes = arr || [];
+    };
+    window._ntGetNotes = function() { return ntNotes; };
 
     // v236: 듀얼 모드 상태
     let _ntMode = localStorage.getItem('nt_mode') || 'all'; // 'all' | 'study' | 'deal'
