@@ -1072,9 +1072,26 @@ body {
     <input id="_sbEmail" type="email" placeholder="이메일" style="width:100%;box-sizing:border-box;padding:11px 14px;border-radius:8px;border:1px solid #2a3050;background:#0f1219;color:#e0e6ff;font-size:14px;margin-bottom:10px;outline:none;">
     <input id="_sbPw" type="password" placeholder="비밀번호" style="width:100%;box-sizing:border-box;padding:11px 14px;border-radius:8px;border:1px solid #2a3050;background:#0f1219;color:#e0e6ff;font-size:14px;margin-bottom:16px;outline:none;" onkeydown="if(event.key==='Enter') window._sbLogin()">
     <button id="_sbLoginBtn" onclick="window._sbLogin()" style="width:100%;padding:12px;border-radius:8px;background:#f59e0b;color:#000;font-size:15px;font-weight:700;border:none;cursor:pointer;">로그인</button>
+
+      <div style="display:flex;gap:8px;margin-top:10px;">
+        <button id="_sbForgotBtn" onclick="window._sbSendReset()" style="flex:1;padding:10px 12px;border-radius:8px;background:#202638;color:#cbd5e1;font-size:13px;font-weight:600;border:1px solid #2a3050;cursor:pointer;">비밀번호 재설정</button>
+      </div>
     <div id="_sbLoginErr" style="color:#f87171;font-size:12px;margin-top:10px;min-height:18px;"></div>
   </div>
 </div>
+
+<div id="_sbRecoveryOverlay" style="display:none;position:fixed;inset:0;z-index:1000000;background:rgba(10,12,20,0.97);align-items:center;justify-content:center;flex-direction:column;">
+  <div style="background:#1a1f2e;border:1px solid #2a3050;border-radius:16px;padding:40px 36px;width:340px;max-width:calc(100vw - 28px);box-shadow:0 20px 60px rgba(0,0,0,.8);text-align:center;">
+    <div style="font-size:32px;margin-bottom:8px;">🔐</div>
+    <div style="font-size:20px;font-weight:700;color:#f0f4ff;margin-bottom:4px;">비밀번호 재설정</div>
+    <div style="font-size:12px;color:#64748b;margin-bottom:28px;">새 비밀번호를 입력하고 변경을 완료하세요.</div>
+    <input id="_sbNewPw" type="password" placeholder="새 비밀번호 (6자 이상)" style="width:100%;box-sizing:border-box;padding:11px 14px;border-radius:8px;border:1px solid #2a3050;background:#0f1219;color:#e0e6ff;font-size:14px;margin-bottom:10px;outline:none;">
+    <input id="_sbNewPw2" type="password" placeholder="새 비밀번호 확인" style="width:100%;box-sizing:border-box;padding:11px 14px;border-radius:8px;border:1px solid #2a3050;background:#0f1219;color:#e0e6ff;font-size:14px;margin-bottom:16px;outline:none;" onkeydown="if(event.key==='Enter') window._sbApplyRecovery()">
+    <button id="_sbRecoveryBtn" onclick="window._sbApplyRecovery()" style="width:100%;padding:12px;border-radius:8px;background:#f59e0b;color:#000;font-size:15px;font-weight:700;border:none;cursor:pointer;">비밀번호 변경</button>
+    <div id="_sbRecoveryErr" style="color:#f87171;font-size:12px;margin-top:10px;min-height:18px;"></div>
+  </div>
+</div>
+
 
 <!-- 토스트 -->
 <div id="mb-toast-container"></div>

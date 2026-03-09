@@ -27,27 +27,64 @@
    블록2: Supabase
 ════════════════════════════════════════════════════════ */
   (function() {
-    const SUPABASE_URL = 'https://qgfkhbcpidmraxxjtetl.supabase.co';
-    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFnZmtoYmNwaWRtcmF4eGp0ZXRsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4NjEzNDcsImV4cCI6MjA4ODQzNzM0N30.kL8p6kNSxEI3_oxNrYguxhkU7wHNLRUTdvaIw5st5bo';
+    const SUPABASE_URL = 'https://pjwxjnsvvgbicuqnphkr.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_WyWdFsQNlyrfEDY5qRWYGw_3Vs_9C6n';
 
     // Supabase 클라이언트 초기화
     window._sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
       auth: {
         persistSession: true,
         autoRefreshToken: true,
+        detectSessionInUrl: true,
         storageKey: 'sb_sangkwon_session'
       }
     });
 
-    // 인증 상태 변화 감지 (자동 로그인 유지)
+    // 인증 상태 변화 감지 (자동 로그인 유지 + 비밀번호 재설정)
     window._sb.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_IN' && session) {
+      if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session) {
         window._sbHideLogin && window._sbHideLogin();
+        window._sbHideRecovery && window._sbHideRecovery();
         window._sbAddLogoutBtn && window._sbAddLogoutBtn();
+      } else if (event === 'PASSWORD_RECOVERY') {
+        window._sbShowRecovery && window._sbShowRecovery();
       } else if (event === 'SIGNED_OUT') {
         window._sbShowLogin && window._sbShowLogin();
       }
     });
+
+    function _sbEl(id) { return document.getElementById(id); }
+    function _sbClearHash() {
+      try {
+        history.replaceState(null, '', window.location.pathname + window.location.search);
+      } catch(e) {
+        window.location.hash = '';
+      }
+    }
+    function _sbGetRedirectUrl() {
+      return window.location.origin + window.location.pathname;
+    }
+    function _sbSetLoginState(isLoading, text) {
+      const btn = _sbEl('_sbLoginBtn');
+      if (!btn) return;
+      btn.disabled = !!isLoading;
+      btn.textContent = text || (isLoading ? '처리 중...' : '로그인');
+      btn.style.opacity = isLoading ? '0.7' : '1';
+      btn.style.cursor = isLoading ? 'default' : 'pointer';
+    }
+    function _sbSetRecoveryState(isLoading, text) {
+      const btn = _sbEl('_sbRecoveryBtn');
+      if (!btn) return;
+      btn.disabled = !!isLoading;
+      btn.textContent = text || (isLoading ? '변경 중...' : '비밀번호 변경');
+      btn.style.opacity = isLoading ? '0.7' : '1';
+      btn.style.cursor = isLoading ? 'default' : 'pointer';
+    }
+    function _sbIsRecoveryUrl() {
+      const hash = window.location.hash || '';
+      const hasToken = /access_token=/.test(hash) || /type=recovery/.test(hash);
+      return hasToken;
+    }
 
     // ─── 범용 헬퍼 ───────────────────────────────────────────
     // 테이블에서 key로 단일 JSON 행 가져오기
@@ -328,34 +365,120 @@
 
     // ─── 로그인 / 인증 ────────────────────────────────────────
     window._sbShowLogin = function() {
-      document.getElementById('_sbLoginOverlay').style.display = 'flex';
+      const el = _sbEl('_sbLoginOverlay');
+      if (el) el.style.display = 'flex';
+      const err = _sbEl('_sbLoginErr');
+      if (err) err.textContent = '';
+      if (_sbIsRecoveryUrl()) window._sbHideRecovery && window._sbHideRecovery();
     };
     window._sbHideLogin = function() {
-      document.getElementById('_sbLoginOverlay').style.display = 'none';
+      const el = _sbEl('_sbLoginOverlay');
+      if (el) el.style.display = 'none';
+    };
+
+    window._sbShowRecovery = function() {
+      const overlay = _sbEl('_sbRecoveryOverlay');
+      if (overlay) overlay.style.display = 'flex';
+      const err = _sbEl('_sbRecoveryErr');
+      if (err) err.textContent = '';
+      const pw1 = _sbEl('_sbNewPw');
+      const pw2 = _sbEl('_sbNewPw2');
+      if (pw1) pw1.value = '';
+      if (pw2) pw2.value = '';
+      window._sbHideLogin();
+    };
+    window._sbHideRecovery = function() {
+      const overlay = _sbEl('_sbRecoveryOverlay');
+      if (overlay) overlay.style.display = 'none';
+    };
+
+    window._sbSendReset = async function() {
+      const emailEl = _sbEl('_sbEmail');
+      const errEl = _sbEl('_sbLoginErr');
+      const email = emailEl ? emailEl.value.trim() : '';
+      if (errEl) errEl.textContent = '';
+      if (!email) {
+        if (errEl) errEl.textContent = '비밀번호 재설정 메일을 받을 이메일을 먼저 입력해주세요.';
+        return;
+      }
+      const btn = _sbEl('_sbForgotBtn');
+      try {
+        if (btn) { btn.disabled = true; btn.textContent = '메일 전송 중...'; }
+        const { error } = await window._sb.auth.resetPasswordForEmail(email, {
+          redirectTo: _sbGetRedirectUrl()
+        });
+        if (error) throw error;
+        if (errEl) errEl.style.color = '#22c55e';
+        if (errEl) errEl.textContent = '재설정 메일을 보냈어요. 최신 메일의 링크를 한 번만 열어주세요.';
+      } catch(e) {
+        if (errEl) errEl.style.color = '#f87171';
+        if (errEl) errEl.textContent = '재설정 메일 전송 실패: ' + (e.message || '잠시 후 다시 시도');
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '비밀번호 재설정'; }
+      }
     };
 
     window._sbLogin = async function() {
-      const email = document.getElementById('_sbEmail').value.trim();
-      const pw = document.getElementById('_sbPw').value.trim();
-      const errEl = document.getElementById('_sbLoginErr');
-      errEl.textContent = '';
-      if (!email || !pw) { errEl.textContent = '이메일과 비밀번호를 입력해주세요.'; return; }
-      document.getElementById('_sbLoginBtn').textContent = '로그인 중...';
+      const email = (_sbEl('_sbEmail') || { value: '' }).value.trim();
+      const pw = (_sbEl('_sbPw') || { value: '' }).value.trim();
+      const errEl = _sbEl('_sbLoginErr');
+      if (errEl) { errEl.textContent = ''; errEl.style.color = '#f87171'; }
+      if (!email || !pw) { if (errEl) errEl.textContent = '이메일과 비밀번호를 입력해주세요.'; return; }
+      _sbSetLoginState(true, '로그인 중...');
       try {
-        const { data, error } = await window._sb.auth.signInWithPassword({ email, password: pw });
+        const { error } = await window._sb.auth.signInWithPassword({ email, password: pw });
         if (error) throw error;
         window._sbHideLogin();
         window._sbSyncStatus('✅ 로그인 완료', true);
-        window._sbInitLoad();
+        await window._sbInitLoad();
       } catch(e) {
-        errEl.textContent = '로그인 실패: ' + (e.message || '이메일/비밀번호 확인');
-        document.getElementById('_sbLoginBtn').textContent = '로그인';
+        if (errEl) errEl.textContent = '로그인 실패: ' + (e.message || '이메일/비밀번호 확인');
+      } finally {
+        _sbSetLoginState(false, '로그인');
+      }
+    };
+
+    window._sbApplyRecovery = async function() {
+      const pw1 = (_sbEl('_sbNewPw') || { value: '' }).value.trim();
+      const pw2 = (_sbEl('_sbNewPw2') || { value: '' }).value.trim();
+      const errEl = _sbEl('_sbRecoveryErr');
+      if (errEl) errEl.textContent = '';
+      if (!pw1 || !pw2) { if (errEl) errEl.textContent = '새 비밀번호를 두 칸 모두 입력해주세요.'; return; }
+      if (pw1.length < 6) { if (errEl) errEl.textContent = '비밀번호는 6자 이상으로 입력해주세요.'; return; }
+      if (pw1 !== pw2) { if (errEl) errEl.textContent = '비밀번호 확인이 일치하지 않습니다.'; return; }
+      _sbSetRecoveryState(true, '변경 중...');
+      try {
+        const { error } = await window._sb.auth.updateUser({ password: pw1 });
+        if (error) throw error;
+        _sbClearHash();
+        window._sbHideRecovery();
+        window._sbShowLogin();
+        const loginErr = _sbEl('_sbLoginErr');
+        if (loginErr) { loginErr.style.color = '#22c55e'; loginErr.textContent = '비밀번호가 변경됐어요. 새 비밀번호로 로그인해주세요.'; }
+      } catch(e) {
+        if (errEl) errEl.textContent = '비밀번호 변경 실패: ' + (e.message || '잠시 후 다시 시도');
+      } finally {
+        _sbSetRecoveryState(false, '비밀번호 변경');
       }
     };
 
     window._sbLogout = async function() {
       await window._sb.auth.signOut();
+      _sbClearHash();
+      window._sbHideRecovery();
       window._sbShowLogin();
+    };
+
+    window._sbInitRecoveryUI = async function() {
+      try {
+        if (!_sbIsRecoveryUrl()) return;
+        const { data } = await window._sb.auth.getSession();
+        if (data && data.session) {
+          window._sbShowRecovery();
+        }
+      } catch(e) {
+        console.warn('[SB] recovery ui init error', e);
+      }
     };
 
     // 로그아웃 버튼 (우측 상단에 작게)
@@ -371,9 +494,15 @@
 
     // DOM 로드 후 초기화
     if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', window._sbInitLoad);
+      document.addEventListener('DOMContentLoaded', function() {
+        window._sbInitRecoveryUI && window._sbInitRecoveryUI();
+        window._sbInitLoad();
+      });
     } else {
-      setTimeout(window._sbInitLoad, 500);
+      setTimeout(function() {
+        window._sbInitRecoveryUI && window._sbInitRecoveryUI();
+        window._sbInitLoad();
+      }, 500);
     }
 
   })();
