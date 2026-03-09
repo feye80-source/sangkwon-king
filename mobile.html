@@ -553,6 +553,9 @@ body {
   font-size: 16px; font-family: 'Noto Sans KR', sans-serif;
   outline: none;
 }
+.mb-saved-search-row input:focus {
+  border-color: rgba(79,142,255,.5);
+}
 .mb-saved-sort {
   height: 36px; padding: 0 8px;
   background: var(--s2); border: 1px solid var(--b1);
@@ -569,16 +572,26 @@ body {
 .mb-filter-scroll::-webkit-scrollbar { display: none; }
 .mb-ftab {
   flex-shrink: 0;
-  padding: 4px 10px;
+  padding: 5px 12px;
   background: var(--s2); border: 1px solid var(--b1);
   border-radius: 14px; color: var(--mu);
   font-size: 11px; font-family: 'Noto Sans KR', sans-serif;
   cursor: pointer; white-space: nowrap;
+  transition: all .15s;
 }
 .mb-ftab.active {
-  background: rgba(245,158,11,.12);
-  border-color: rgba(245,158,11,.4);
+  background: rgba(245,158,11,.15);
+  border-color: rgba(245,158,11,.5);
   color: #f59e0b;
+  font-weight: 700;
+}
+
+/* 저장목록 카운트 헤더 */
+#mb-sv-count-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 10px 4px;
+  font-size: 11px; color: var(--mu);
+  flex-shrink: 0;
 }
 
 /* 저장목록 카드 목록 */
@@ -587,30 +600,49 @@ body {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
-  padding: 8px;
+  padding: 6px 10px 10px;
 }
 
-/* 저장 카드 */
+/* 저장 카드 — 완전히 재설계 */
 .mb-sv-card {
   background: var(--s2);
   border: 1px solid var(--b1);
-  border-radius: 12px;
-  padding: 12px;
-  margin-bottom: 8px;
+  border-radius: 14px;
+  padding: 14px 14px 10px;
+  margin-bottom: 10px;
   position: relative;
   overflow: hidden;
+  transition: transform .1s, box-shadow .1s;
+  cursor: pointer;
+  -webkit-tap-highlight-color: rgba(79,142,255,.08);
 }
-.mb-sv-card-header {
-  display: flex; justify-content: space-between;
-  align-items: flex-start; gap: 8px;
-  margin-bottom: 8px;
+.mb-sv-card:active { transform: scale(.99); opacity:.9; }
+
+/* 타입별 왼쪽 accent bar */
+.mb-sv-card::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+  border-radius: 14px 0 0 14px;
+  background: var(--mu);
+}
+.mb-sv-card[data-type="auction"]::before { background: var(--auction-c); }
+.mb-sv-card[data-type="listing"]::before,
+.mb-sv-card[data-type="naver"]::before { background: var(--naver-c); }
+.mb-sv-card[data-type="jumpo"]::before { background: var(--jumpo-c); }
+.mb-sv-card[data-type="assa"]::before { background: var(--assa-c); }
+.mb-sv-card[data-type="disco"]::before { background: var(--disco-c); }
+.mb-sv-card[data-type="bds"]::before { background: var(--bds-c); }
+.mb-sv-card[data-type="transaction"]::before { background: var(--transaction-c); }
+
+.mb-sv-card-top {
+  display: flex; align-items: flex-start; gap: 8px; margin-bottom: 6px;
 }
 .mb-sv-card-title {
   font-size: 14px; font-weight: 700;
   color: var(--tx); flex: 1; min-width: 0;
-  overflow: hidden; text-overflow: ellipsis;
-  white-space: nowrap;
-  line-height: 1.3;
+  line-height: 1.35;
 }
 .mb-sv-badge {
   flex-shrink: 0;
@@ -618,69 +650,85 @@ body {
   border-radius: 10px;
   font-size: 10px; font-weight: 700;
   border: 1px solid;
+  margin-top: 2px;
 }
-.mb-sv-card-meta {
-  display: flex; gap: 8px; flex-wrap: wrap;
+.mb-sv-card-addr {
   font-size: 11px; color: var(--mu);
   margin-bottom: 8px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .mb-sv-card-prices {
-  display: flex; gap: 10px; flex-wrap: wrap;
-  margin-bottom: 8px;
+  display: flex; gap: 14px; flex-wrap: wrap;
+  margin-bottom: 10px;
 }
 .mb-sv-price-item {
-  display: flex; flex-direction: column; gap: 2px;
+  display: flex; flex-direction: column; gap: 1px;
 }
 .mb-sv-price-label {
   font-size: 10px; color: var(--mu);
 }
 .mb-sv-price-value {
-  font-size: 14px; font-weight: 700;
+  font-size: 15px; font-weight: 700;
   font-family: 'JetBrains Mono', monospace;
+  line-height: 1.2;
 }
+.mb-sv-card-meta-row {
+  display: flex; gap: 8px; flex-wrap: wrap;
+  font-size: 11px; color: var(--di);
+  margin-bottom: 8px;
+}
+
+/* 카드 액션 — 하단 2버튼 */
 .mb-sv-card-actions {
   display: flex; gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--b1);
 }
 .mb-sv-action-btn {
   flex: 1;
-  height: 32px;
-  background: var(--s3); border: 1px solid var(--b1);
-  border-radius: 7px; color: var(--mu);
-  font-size: 11px; font-family: 'Noto Sans KR', sans-serif;
+  height: 34px;
+  background: transparent; border: 1px solid var(--b1);
+  border-radius: 8px; color: var(--mu);
+  font-size: 12px; font-family: 'Noto Sans KR', sans-serif;
   cursor: pointer;
   display: flex; align-items: center; justify-content: center;
-  gap: 3px;
+  gap: 4px;
+  transition: background .12s, color .12s;
 }
+.mb-sv-action-btn:active { opacity: .7; }
 .mb-sv-action-btn.memo {
-  color: var(--ac);
-  border-color: rgba(79,142,255,.3);
-  background: rgba(79,142,255,.07);
+  color: #7da4ff;
+  border-color: rgba(79,142,255,.25);
 }
+.mb-sv-action-btn.memo:active { background: rgba(79,142,255,.1); }
 .mb-sv-action-btn.map {
-  color: var(--g);
-  border-color: rgba(0,212,170,.3);
-  background: rgba(0,212,170,.07);
+  color: #00c9a0;
+  border-color: rgba(0,212,170,.25);
 }
+.mb-sv-action-btn.map:active { background: rgba(0,212,170,.08); }
 
 /* 메모 인라인 확장 */
 .mb-sv-memo {
   display: none;
   margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid var(--b1);
+  padding: 10px;
+  background: var(--s3);
+  border-radius: 8px;
+  border: 1px solid var(--b1);
 }
 .mb-sv-memo.open { display: block; }
 .mb-sv-memo textarea {
   width: 100%;
-  min-height: 80px; padding: 8px;
-  background: var(--s3); border: 1px solid var(--b1);
-  border-radius: 8px; color: var(--tx);
+  min-height: 72px; padding: 0;
+  background: transparent; border: none;
+  color: var(--tx);
   font-size: 12px; font-family: 'Noto Sans KR', sans-serif;
-  resize: vertical; outline: none;
-  line-height: 1.5;
+  resize: none; outline: none;
+  line-height: 1.6;
+  box-sizing: border-box;
 }
 .mb-sv-memo-btns {
-  display: flex; gap: 6px; margin-top: 6px; justify-content: flex-end;
+  display: flex; gap: 6px; margin-top: 8px; justify-content: flex-end;
 }
 
 /* ── [4] 추출 페이지 ── */
@@ -832,9 +880,184 @@ body {
   /* 커스텀 드롭다운 */
   #mb-room-sel-list div:active { background: var(--s3) !important; }
   #mb-room-sel-btn:active { border-color: rgba(79,142,255,.5); }
-  .mb-rtab { flex:1;padding:8px 4px;font-size:12px;background:transparent;border:none;border-bottom:2px solid transparent;color:var(--mu);cursor:pointer;font-family:'Noto Sans KR',sans-serif;transition:all .15s; }
+  .mb-rtab { flex:1;padding:9px 4px;font-size:12px;background:transparent;border:none;border-bottom:2px solid transparent;color:var(--mu);cursor:pointer;font-family:'Noto Sans KR',sans-serif;transition:all .15s; }
   .mb-rtab.active { color:#4f8eff;border-bottom-color:#4f8eff;font-weight:700; }
-  .mb-room-tabpanel { }
+  .mb-room-tabpanel { padding-top:2px; }
+
+  /* ── 작업룸 phase 칩 ── */
+  .mb-phase-bar {
+    display:flex; overflow-x:auto; scrollbar-width:none; gap:5px;
+    padding:8px 0 6px; flex-shrink:0;
+  }
+  .mb-phase-bar::-webkit-scrollbar { display:none; }
+  .mb-phase-chip {
+    flex-shrink:0; padding:4px 11px;
+    background:var(--s2); border:1px solid var(--b1);
+    border-radius:12px; color:var(--mu);
+    font-size:11px; cursor:pointer;
+    white-space:nowrap; transition:all .15s;
+  }
+  .mb-phase-chip.active {
+    background:rgba(245,158,11,.15); border-color:rgba(245,158,11,.5);
+    color:#f59e0b; font-weight:700;
+  }
+
+  /* ── 섹션 카드 ── */
+  .mb-sec-card {
+    background:var(--s2); border:1px solid var(--b1);
+    border-radius:12px; margin-bottom:8px; overflow:hidden;
+  }
+  .mb-sec-hd {
+    display:flex; align-items:center; gap:8px;
+    padding:11px 12px; cursor:pointer;
+    -webkit-tap-highlight-color:rgba(79,142,255,.06);
+  }
+  .mb-sec-hd:active { opacity:.8; }
+  .mb-sec-icon { font-size:14px; flex-shrink:0; }
+  .mb-sec-title {
+    flex:1; font-size:13px; font-weight:600; color:var(--tx);
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .mb-sec-preview {
+    font-size:11px; color:var(--mu); flex-shrink:0;
+    max-width:80px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .mb-sec-arrow { font-size:10px; color:var(--di); flex-shrink:0; transition:transform .2s; }
+  .mb-sec-card.open .mb-sec-arrow { transform:rotate(180deg); }
+  .mb-sec-body {
+    display:none; padding:0 12px 12px; border-top:1px solid var(--b1);
+  }
+  .mb-sec-card.open .mb-sec-body { display:block; }
+
+  /* 섹션 body 내부 */
+  .mb-sec-memo-ta {
+    width:100%; min-height:120px; padding:10px;
+    background:var(--s3); border:1px solid var(--b1);
+    border-radius:8px; color:var(--tx);
+    font-size:13px; font-family:'Noto Sans KR',sans-serif;
+    resize:vertical; outline:none; line-height:1.7;
+    box-sizing:border-box; margin-top:10px;
+  }
+  .mb-sec-checklist-item {
+    display:flex; align-items:center; gap:10px;
+    padding:9px 0; border-bottom:1px solid rgba(255,255,255,.04);
+    cursor:pointer; -webkit-tap-highlight-color:rgba(0,212,170,.08);
+  }
+  .mb-sec-checklist-item:last-child { border-bottom:none; }
+  .mb-sec-check-icon { font-size:18px; flex-shrink:0; }
+  .mb-sec-check-text {
+    flex:1; font-size:13px; color:var(--tx); line-height:1.4;
+  }
+  .mb-sec-check-text.done {
+    text-decoration:line-through; color:var(--di);
+  }
+  .mb-sec-metrics-row {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:8px 0; border-bottom:1px solid rgba(255,255,255,.04);
+  }
+  .mb-sec-metrics-row:last-child { border-bottom:none; }
+  .mb-sec-log-entry {
+    padding:8px 0; border-bottom:1px solid rgba(255,255,255,.04);
+  }
+  .mb-sec-log-entry:last-child { border-bottom:none; }
+  .mb-sec-log-time { font-size:10px; color:var(--di); margin-bottom:3px; }
+  .mb-sec-log-text { font-size:12px; color:var(--tx); line-height:1.5; }
+  .mb-sec-add-log {
+    display:flex; gap:6px; margin-top:10px;
+  }
+  .mb-sec-add-log input {
+    flex:1; height:34px; padding:0 10px;
+    background:var(--s3); border:1px solid var(--b1);
+    border-radius:7px; color:var(--tx);
+    font-size:12px; font-family:'Noto Sans KR',sans-serif; outline:none;
+  }
+  .mb-sec-add-log button {
+    height:34px; padding:0 12px;
+    background:rgba(79,142,255,.15); border:1px solid rgba(79,142,255,.3);
+    border-radius:7px; color:#4f8eff;
+    font-size:12px; cursor:pointer; white-space:nowrap;
+    font-family:'Noto Sans KR',sans-serif;
+  }
+
+  /* 저장목록 상세 바텀시트 */
+  .mb-detail-row {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:9px 0; border-bottom:1px solid var(--b1);
+  }
+  .mb-detail-row:last-child { border-bottom:none; }
+  .mb-detail-label { font-size:12px; color:var(--mu); }
+  .mb-detail-val { font-size:13px; font-weight:700; color:var(--tx); }
+
+  /* 바텀시트 개선 */
+
+  #mb-map-bs-backdrop {
+    position:fixed; inset:0;
+    background:rgba(0,0,0,.55);
+    backdrop-filter:blur(3px);
+    -webkit-backdrop-filter:blur(3px);
+    z-index:800;
+    display:none;
+    transition:opacity .22s;
+  }
+  #mb-map-bs-sheet {
+    position:relative; z-index:1;
+    background:var(--s1);
+    border-radius:20px 20px 0 0;
+    max-height:88vh;
+    display:flex; flex-direction:column;
+    padding-bottom:env(safe-area-inset-bottom,0px);
+    box-shadow:0 -8px 40px rgba(0,0,0,.6);
+    transform:translateY(0);
+    transition:transform .25s cubic-bezier(.32,.72,0,1);
+  }
+  #mb-map-bs-handle {
+    flex-shrink:0;
+    display:flex; align-items:center; justify-content:space-between;
+    padding:12px 16px 0;
+  }
+  #mb-map-bs-handle-bar {
+    width:40px; height:4px;
+    background:var(--b2); border-radius:2px;
+    margin:0 auto 2px;
+  }
+  #mb-map-bs-close {
+    width:32px; height:32px; border-radius:50%;
+    background:var(--s3); border:none; cursor:pointer;
+    color:var(--mu); font-size:16px;
+    display:flex; align-items:center; justify-content:center;
+    flex-shrink:0;
+  }
+  #mb-map-bs-close:active { background:var(--b2); }
+  #mb-map-bs-title-row {
+    padding:8px 16px 0; flex-shrink:0;
+  }
+  #mb-map-bs-title {
+    font-size:15px; font-weight:700; color:var(--tx);
+    line-height:1.4;
+  }
+  .mb-bs-tabs {
+    display:flex; flex-shrink:0;
+    border-bottom:1px solid var(--b1);
+    padding:0 12px;
+  }
+  .mb-bs-tab {
+    flex:1; padding:10px 4px;
+    background:none; border:none; border-bottom:2px solid transparent;
+    color:var(--mu); font-size:12px;
+    font-family:'Noto Sans KR',sans-serif; cursor:pointer;
+  }
+  .mb-bs-tab.active { color:var(--ac); border-bottom-color:var(--ac); font-weight:700; }
+  #mb-map-bs-body {
+    flex:1; overflow-y:auto;
+    -webkit-overflow-scrolling:touch;
+    padding:12px 16px;
+    overscroll-behavior:contain;
+  }
+  #mb-map-bs-actions {
+    flex-shrink:0;
+    display:flex; gap:8px; padding:10px 16px 12px;
+    border-top:1px solid var(--b1);
+  }
 
   </style>
 </head>
@@ -1192,8 +1415,11 @@ body {
         </div>
       </div>
 
+      <!-- 섹션 phase 칩바 (섹션탭 선택 시 표시) -->
+      <div id="mb-room-phase-bar" class="mb-phase-bar" style="display:none;"></div>
+
       <!-- 탭: 노트 / 섹션 / 매물 -->
-      <div id="mb-room-tabs" style="display:none;display:flex;gap:4px;margin-bottom:10px;border-bottom:1px solid var(--b1);padding-bottom:0;">
+      <div id="mb-room-tabs" style="display:flex;gap:4px;margin-bottom:2px;border-bottom:1px solid var(--b1);padding-bottom:0;display:none;">
         <button id="mb-rtab-note" class="mb-rtab active" onclick="mbRoomTab('note')">📝 노트</button>
         <button id="mb-rtab-section" class="mb-rtab" onclick="mbRoomTab('section')">📋 섹션</button>
         <button id="mb-rtab-item" class="mb-rtab" onclick="mbRoomTab('item')">🔗 매물</button>
@@ -1524,7 +1750,7 @@ body {
           <option value="yield">수익률</option>
           <option value="area">면적</option>
         </select>
-        <button class="mb-btn" id="sortDir" onclick="toggleDir()" style="padding:0 10px;">↓</button>
+        <button class="mb-btn" id="sortDir" onclick="toggleDir()" style="padding:0 10px;height:36px;">↓</button>
       </div>
       <div class="mb-filter-scroll">
         <button class="mb-ftab active" id="ft_all"         onclick="setFilter('all')">전체</button>
@@ -1538,10 +1764,16 @@ body {
         <button class="mb-ftab" id="ft_onbid"              onclick="setFilter('onbid')" style="color:var(--or);">🛡️ 온비드</button>
       </div>
     </div>
+    <!-- 결과 카운트 -->
+    <div id="mb-sv-count-bar">
+      <span id="mb-sv-count-txt" style="font-size:11px;color:var(--mu);"></span>
+      <span id="mb-sv-total-txt" style="font-size:11px;color:var(--di);"></span>
+    </div>
     <div id="mb-saved-list">
       <div class="mb-empty" id="mb-saved-empty" style="display:none;">
         <div class="mb-empty-icon">💾</div>
         <div>저장된 물건이 없어요</div>
+        <div style="font-size:11px;color:var(--di);margin-top:6px;">지도에서 마음에 드는 물건을 저장해보세요</div>
       </div>
       <!-- 카드는 mbRenderSaved()가 동적으로 렌더링 -->
     </div>
@@ -2049,47 +2281,52 @@ body {
 
   /* ── 저장목록 렌더링 (모바일 카드 형태) ── */
   window.mbRenderSaved = function() {
-    var items = [];
-    try { items = JSON.parse(localStorage.getItem('re_sv') || '[]'); } catch(e) {}
+    var allItems = [];
+    try { allItems = JSON.parse(localStorage.getItem('re_sv') || '[]'); } catch(e) {}
 
-    // PC renderSaved 필터 상태 재사용
     var filterVal = (window._svFilter || 'all');
     var searchVal = (document.getElementById('regionSearch') || {}).value || '';
     var sortKey   = (document.getElementById('sortKey') || {}).value || 'timestamp';
+    var sortDir   = window._svSortDir || -1; // -1 내림, +1 오름
 
-    // 필터
+    var items = allItems.slice();
+
     if (filterVal !== 'all') {
-      items = items.filter(function(it) { return it.mode === filterVal; });
+      items = items.filter(function(it) { return (it.mode || it.source) === filterVal; });
     }
     if (searchVal) {
       var q = searchVal.toLowerCase();
       items = items.filter(function(it) {
+        var d = it.data || {};
         return (it.title||'').toLowerCase().includes(q) ||
-               (it.data && JSON.stringify(it.data).toLowerCase().includes(q));
+               (d['소재지']||'').toLowerCase().includes(q) ||
+               (d['단지명']||'').toLowerCase().includes(q) ||
+               (it.address||'').toLowerCase().includes(q);
       });
     }
 
-    // 정렬
     items.sort(function(a,b) {
-      if (sortKey === 'timestamp') return (b.timestamp||0) - (a.timestamp||0);
-      var va = parseFloat((a.data||{})[sortKey])||0;
-      var vb = parseFloat((b.data||{})[sortKey])||0;
-      return vb - va;
+      var diff = 0;
+      if (sortKey === 'timestamp') diff = (b.timestamp||0) - (a.timestamp||0);
+      else {
+        var va = parseFloat((a.data||{})[sortKey])||0;
+        var vb = parseFloat((b.data||{})[sortKey])||0;
+        diff = vb - va;
+      }
+      return diff * (sortDir < 0 ? 1 : -1);
     });
 
-    var list    = document.getElementById('mb-saved-list');
-    var empty   = document.getElementById('mb-saved-empty');
-    var badge   = document.getElementById('mb-sv-badge');
-
+    var list  = document.getElementById('mb-saved-list');
+    var empty = document.getElementById('mb-saved-empty');
+    var badge = document.getElementById('mb-sv-badge');
+    var countTxt = document.getElementById('mb-sv-count-txt');
+    var totalTxt = document.getElementById('mb-sv-total-txt');
     if (!list) return;
 
-    // 뱃지 업데이트
-    var allItems = [];
-    try { allItems = JSON.parse(localStorage.getItem('re_sv') || '[]'); } catch(e) {}
-    if (badge) {
-      badge.textContent = allItems.length || '';
-      badge.classList.toggle('show', allItems.length > 0);
-    }
+    // 뱃지 + 카운트
+    if (badge) { badge.textContent = allItems.length || ''; badge.classList.toggle('show', allItems.length > 0); }
+    if (countTxt) countTxt.textContent = items.length + '개' + (filterVal !== 'all' || searchVal ? ' (필터 적용)' : '');
+    if (totalTxt) totalTxt.textContent = '전체 ' + allItems.length + '개';
 
     if (items.length === 0) {
       list.innerHTML = '';
@@ -2099,193 +2336,330 @@ body {
     if (empty) empty.style.display = 'none';
 
     var TYPE_LABELS = {
-      auction:'⚖️ 경매', listing:'🏪 네이버', jumpo:'🔵 점포라인',
-      assa:'🔷 아싸', disco:'🔴 디스코', bds:'🟣 플래닛',
-      transaction:'📊 실거래', onbid:'🛡️ 온비드',
-      general:'🏠 일반', naver:'🏪 네이버', csv:'📋 CSV'
+      auction:'⚖️ 경매', listing:'🏪 네이버', naver:'🏪 네이버',
+      jumpo:'🔵 점포라인', assa:'🔷 아싸', disco:'🔴 디스코',
+      bds:'🟣 플래닛', transaction:'📊 실거래', onbid:'🛡️ 온비드',
+      general:'🏠 일반', csv:'📋 CSV'
     };
     var TYPE_COLORS = {
-      auction:'var(--auction-c)', listing:'var(--naver-c)', jumpo:'var(--jumpo-c)',
-      assa:'var(--assa-c)', disco:'var(--disco-c)', bds:'var(--bds-c)',
-      transaction:'var(--transaction-c)', onbid:'var(--or)',
-      general:'var(--mu)', naver:'var(--naver-c)', csv:'var(--mu)'
+      auction:'var(--auction-c)', listing:'var(--naver-c)', naver:'var(--naver-c)',
+      jumpo:'var(--jumpo-c)', assa:'var(--assa-c)', disco:'var(--disco-c)',
+      bds:'var(--bds-c)', transaction:'var(--transaction-c)', onbid:'var(--or)',
+      general:'var(--mu)', csv:'var(--mu)'
     };
 
-    list.innerHTML = items.map(function(it, idx) {
+    // DOM으로 카드 생성 (innerHTML onclick 구문 오류 완전 방지)
+    var frag = document.createDocumentFragment();
+
+    items.forEach(function(it, idx) {
       var d    = it.data || {};
       var type = it.mode || it.source || 'general';
       var col  = TYPE_COLORS[type] || 'var(--mu)';
       var lbl  = TYPE_LABELS[type] || it.source || type;
-      var priceStr = '';
-      // ─ 경매 필드
-      var appPrice = d['감정가'] || null;
-      var minPrice = d['최저가'] || d['최저입찰가'] || null;
-      // ─ 매물 필드
-      var salePrice = d['매매가'] || null;
-      var deposit   = d['보증금'] || (d['기보증금_만원'] ? d['기보증금_만원']+'만원' : null);
-      var monthly   = d['월세'] || (d['월세_만원'] ? d['월세_만원']+'만원/월' : null) || (d['임차인_월세'] ? d['임차인_월세']+'만원/월' : null);
-      var yieldVal  = d['수익률'] || d['수익률_퍼센트'] || null;
-      if (appPrice) priceStr += '<div class="mb-sv-price-item"><div class="mb-sv-price-label">감정가</div><div class="mb-sv-price-value" style="color:var(--or);">' + appPrice + '</div></div>';
-      if (minPrice) priceStr += '<div class="mb-sv-price-item"><div class="mb-sv-price-label">최저가</div><div class="mb-sv-price-value" style="color:#f59e0b;">' + minPrice + '</div></div>';
-      if (salePrice) priceStr += '<div class="mb-sv-price-item"><div class="mb-sv-price-label">매매가</div><div class="mb-sv-price-value" style="color:var(--ac);">' + salePrice + '</div></div>';
-      if (deposit)  priceStr += '<div class="mb-sv-price-item"><div class="mb-sv-price-label">보증금</div><div class="mb-sv-price-value" style="color:#4f8eff;">' + deposit + '</div></div>';
-      if (monthly)  priceStr += '<div class="mb-sv-price-item"><div class="mb-sv-price-label">월세</div><div class="mb-sv-price-value" style="color:var(--g);">' + monthly + '</div></div>';
-      if (yieldVal) priceStr += '<div class="mb-sv-price-item"><div class="mb-sv-price-label">수익률</div><div class="mb-sv-price-value" style="color:var(--or);">' + yieldVal + (String(yieldVal).includes('%')?'':'%') + '</div></div>';
-      var metaArr = [];
-      var addr  = d['소재지'] || d['address'] || d['location'] || '';
-      var area  = d['전용면적_m2'] || d['건물면적_m2'] || d['계약면적_m2'] || d['면적'] || '';
-      var floor = d['해당층'] || d['층수'] || d['층'] || '';
-      if (addr)  metaArr.push('📍 ' + addr);
-      if (area)  metaArr.push('📐 ' + area + (String(area).includes('㎡')?'':'㎡'));
-      if (floor) metaArr.push('🏢 ' + floor + (String(floor).includes('층')?'':'층'));
       var memo = it.memo || '';
-      return '<div class="mb-sv-card" data-type="' + type + '" data-idx="' + idx + '" onclick="mbOpenSavedDetail(\'' + (it.id||idx) + '\')" style="cursor:pointer;">' +
-        '<div class="mb-sv-card-header">' +
-          '<div class="mb-sv-card-title">' + (it.title || '제목 없음') + '</div>' +
-          '<span class="mb-sv-badge" style="color:' + col + ';border-color:' + col + ';background:' + col.replace(')',', .08)').replace('var(','rgba(').replace('--','') + '">' + lbl + '</span>' +
-        '</div>' +
-        (metaArr.length ? '<div class="mb-sv-card-meta">' + metaArr.join(' · ') + '</div>' : '') +
-        (priceStr ? '<div class="mb-sv-card-prices">' + priceStr + '</div>' : '') +
-        '<div class="mb-sv-card-actions">' +
-          '<button class="mb-sv-action-btn memo" onclick="mbToggleMemo(' + idx + ',this)">📝 메모' + (memo ? ' ●' : '') + '</button>' +
-          '<button class="mb-sv-action-btn map" onclick="mbGoToMap(\'' + (d['소재지']||d.address||d.location||'') + '\',\'' + (it.id||'') + '\')">🗺️ 지도</button>' +
-        '</div>' +
-        '<div class="mb-sv-memo" id="mb-memo-' + idx + '">' +
-          '<textarea placeholder="메모 입력..." onchange="mbSaveMemo(' + idx + ',this.value)">' + (memo||'') + '</textarea>' +
-          '<div class="mb-sv-memo-btns">' +
-            '<button class="mb-btn" style="font-size:11px;height:30px;padding:0 10px;" onclick="mbToggleMemo(' + idx + ')">닫기</button>' +
-          '</div>' +
-        '</div>' +
-      '</div>';
-    }).join('');
+
+      // 가격 정보
+      var prices = [];
+      var appPrice = d['감정가'] || d['감정가_만원'] && (d['감정가_만원'] + '만원');
+      var minPrice = d['최저가'] || d['최저입찰가'];
+      var salePrice = d['매매가'] || d['price'];
+      var deposit = d['보증금'] || (d['기보증금_만원'] ? d['기보증금_만원'] + '만원' : null);
+      var monthly = d['월세'] || (d['월세_만원'] ? d['월세_만원'] + '만원/월' : null) || (d['임차인_월세'] ? d['임차인_월세'] + '만원/월' : null);
+      var yieldVal = d['수익률'] || d['수익률_퍼센트'];
+      if (appPrice) prices.push({ label:'감정가', val: appPrice, color:'#ff8c42' });
+      if (minPrice) prices.push({ label:'최저가', val: minPrice, color:'#f59e0b' });
+      if (salePrice) prices.push({ label:'매매가', val: salePrice, color:'#4f8eff' });
+      if (deposit) prices.push({ label:'보증금', val: deposit, color:'#7da4ff' });
+      if (monthly) prices.push({ label:'월세', val: monthly, color:'#00d4aa' });
+      if (yieldVal) prices.push({ label:'수익률', val: yieldVal + (String(yieldVal).includes('%') ? '' : '%'), color:'#ff8c42' });
+
+      // 메타
+      var addr = d['소재지'] || d['address'] || d['location'] || it.address || '';
+      var area = d['전용면적_m2'] || d['건물면적_m2'] || d['면적'] || '';
+      var floor = d['해당층'] || d['층수'] || d['층'] || '';
+
+      // 카드 루트
+      var card = document.createElement('div');
+      card.className = 'mb-sv-card';
+      card.setAttribute('data-type', type);
+      card.onclick = (function(id){ return function(){ mbOpenSavedDetail(id); }; })(it.id || idx);
+
+      // 상단: 제목 + 뱃지
+      var top = document.createElement('div');
+      top.className = 'mb-sv-card-top';
+      var titleEl = document.createElement('div');
+      titleEl.className = 'mb-sv-card-title';
+      titleEl.textContent = it.title || d['단지명'] || addr.split(' ').slice(-2).join(' ') || '제목 없음';
+      var badgeEl = document.createElement('span');
+      badgeEl.className = 'mb-sv-badge';
+      badgeEl.textContent = lbl;
+      badgeEl.style.cssText = 'color:' + col + ';border-color:' + col + ';background:' + col.replace('var(--','rgba(').replace(')',',0.1)') + ';';
+      top.appendChild(titleEl);
+      top.appendChild(badgeEl);
+      card.appendChild(top);
+
+      // 주소
+      if (addr) {
+        var addrEl = document.createElement('div');
+        addrEl.className = 'mb-sv-card-addr';
+        addrEl.textContent = '📍 ' + addr;
+        card.appendChild(addrEl);
+      }
+
+      // 가격
+      if (prices.length) {
+        var priceWrap = document.createElement('div');
+        priceWrap.className = 'mb-sv-card-prices';
+        prices.forEach(function(p) {
+          var pi = document.createElement('div');
+          pi.className = 'mb-sv-price-item';
+          var pl = document.createElement('div');
+          pl.className = 'mb-sv-price-label';
+          pl.textContent = p.label;
+          var pv = document.createElement('div');
+          pv.className = 'mb-sv-price-value';
+          pv.style.color = p.color;
+          pv.textContent = p.val;
+          pi.appendChild(pl);
+          pi.appendChild(pv);
+          priceWrap.appendChild(pi);
+        });
+        card.appendChild(priceWrap);
+      }
+
+      // 면적/층
+      var meta = [area && (area + (String(area).includes('㎡') ? '' : '㎡')), floor && (floor + (String(floor).includes('층') ? '' : '층'))].filter(Boolean);
+      if (meta.length) {
+        var metaEl = document.createElement('div');
+        metaEl.className = 'mb-sv-card-meta-row';
+        metaEl.textContent = meta.join(' · ');
+        card.appendChild(metaEl);
+      }
+
+      // 액션 버튼
+      var acts = document.createElement('div');
+      acts.className = 'mb-sv-card-actions';
+      // 메모 버튼
+      var memoBtn = document.createElement('button');
+      memoBtn.className = 'mb-sv-action-btn memo';
+      memoBtn.innerHTML = '📝 메모' + (memo ? ' <span style="color:#f59e0b;">●</span>' : '');
+      memoBtn.onclick = (function(i, btn){ return function(e){ e.stopPropagation(); mbToggleMemo(i, btn); }; })(idx, memoBtn);
+      // 지도 버튼
+      var mapBtn = document.createElement('button');
+      mapBtn.className = 'mb-sv-action-btn map';
+      mapBtn.textContent = '🗺️ 지도';
+      mapBtn.onclick = (function(a, id){ return function(e){ e.stopPropagation(); mbGoToMap(a, id); }; })(addr, it.id || '');
+      acts.appendChild(memoBtn);
+      acts.appendChild(mapBtn);
+      card.appendChild(acts);
+
+      // 메모 인라인
+      var memoDiv = document.createElement('div');
+      memoDiv.className = 'mb-sv-memo';
+      memoDiv.id = 'mb-memo-' + idx;
+      var memoTa = document.createElement('textarea');
+      memoTa.placeholder = '여기에 메모를 입력하세요...';
+      memoTa.value = memo;
+      memoTa.setAttribute('autocomplete', 'off');
+      memoTa.onclick = function(e){ e.stopPropagation(); };
+      memoTa.onchange = (function(i){ return function(){ mbSaveMemo(i, this.value); }; })(idx);
+      var memoBtns = document.createElement('div');
+      memoBtns.className = 'mb-sv-memo-btns';
+      var memoClose = document.createElement('button');
+      memoClose.className = 'mb-btn';
+      memoClose.style.cssText = 'font-size:11px;height:30px;padding:0 12px;';
+      memoClose.textContent = '닫기';
+      memoClose.onclick = (function(i, btn){ return function(e){ e.stopPropagation(); mbToggleMemo(i, btn); }; })(idx, memoBtn);
+      memoBtns.appendChild(memoClose);
+      memoDiv.appendChild(memoTa);
+      memoDiv.appendChild(memoBtns);
+      card.appendChild(memoDiv);
+
+      frag.appendChild(card);
+    });
+
+    list.innerHTML = '';
+    list.appendChild(frag);
   };
 
-  // 저장목록 아이템 상세 바텀시트 열기
+  // 저장목록 아이템 상세 바텀시트 열기 — 전면 재작성
   window.mbOpenSavedDetail = function(itemId) {
     try {
       var items = JSON.parse(localStorage.getItem('re_sv') || '[]');
       var item = itemId ? items.find(function(x) { return x.id === itemId; }) : null;
-      // id로 못 찾으면 index로 시도
       if (!item && !isNaN(itemId)) item = items[parseInt(itemId)];
       if (!item) { mbToast('매물 정보를 찾을 수 없어요', 'err'); return; }
 
-      var bs = document.getElementById('mb-map-bs');
-      var bd = document.getElementById('mb-map-bs-backdrop');
-      var body = document.getElementById('mb-map-bs-body');
-      var title = document.getElementById('mb-map-bs-title');
-      var actions = document.getElementById('mb-map-bs-actions');
+      var bs     = document.getElementById('mb-map-bs');
+      var bd     = document.getElementById('mb-map-bs-backdrop');
+      var body   = document.getElementById('mb-map-bs-body');
+      var title  = document.getElementById('mb-map-bs-title');
+      var actions= document.getElementById('mb-map-bs-actions');
       if (!bs || !body) return;
 
-      if (title) title.textContent = item.title || '매물 상세';
+      var d = item.data || {};
+      var addr = d['소재지'] || d['단지명'] || item.address || item.title || '';
+
+      // 제목
+      if (title) title.textContent = item.title || addr || '매물 상세';
+
+      // 바텀시트 표시 + 탭 숨김 (저장목록 상세는 탭 없음)
       bs.style.display = 'flex';
       if (bd) bd.style.display = 'block';
-
-      // 탭 버튼 숨김 (저장목록 상세는 탭 불필요)
       ['card','list','auction'].forEach(function(t) {
         var btn = document.getElementById('mb-bs-tab-' + t);
         if (btn) btn.style.display = 'none';
       });
 
-      var d = item.data || {};
-      var html = '';
+      // 본문 DOM 빌드
+      var frag = document.createDocumentFragment();
 
       // 타입 뱃지
-      var TYPE_LABELS = { auction:'⚖️ 경매', listing:'🏪 네이버', jumpo:'🔵 점포라인', assa:'🔷 아싸', disco:'🔴 디스코', bds:'🟣 플래닛', transaction:'📊 실거래', onbid:'🛡️ 온비드' };
-      var lbl = TYPE_LABELS[item.mode] || item.mode || '';
-      if (lbl) html += '<div style="margin-bottom:10px;"><span style="font-size:11px;padding:3px 8px;border:1px solid var(--b1);border-radius:10px;color:var(--mu);">' + lbl + '</span></div>';
+      var TYPE_LABELS2 = { auction:'⚖️ 경매', listing:'🏪 네이버', naver:'🏪 네이버',
+        jumpo:'🔵 점포라인', assa:'🔷 아싸', disco:'🔴 디스코',
+        bds:'🟣 플래닛', transaction:'📊 실거래', onbid:'🛡️ 온비드' };
+      var lbl2 = TYPE_LABELS2[item.mode] || item.mode || '';
+      if (lbl2) {
+        var bdg = document.createElement('div');
+        bdg.style.cssText = 'margin-bottom:12px;';
+        var bspan = document.createElement('span');
+        bspan.style.cssText = 'font-size:11px;padding:3px 10px;border:1px solid var(--b2);border-radius:10px;color:var(--mu);';
+        bspan.textContent = lbl2;
+        bdg.appendChild(bspan);
+        frag.appendChild(bdg);
+      }
 
       // 주소
-      var addr = d['소재지'] || d['address'] || d['location'] || d['주소'] || '';
-      if (addr) html += '<div style="font-size:12px;color:var(--mu);margin-bottom:10px;">📍 ' + addr + '</div>';
+      if (addr) {
+        var addrDiv = document.createElement('div');
+        addrDiv.style.cssText = 'font-size:12px;color:var(--mu);margin-bottom:12px;line-height:1.5;';
+        addrDiv.textContent = '📍 ' + addr;
+        frag.appendChild(addrDiv);
+      }
 
-      // 주요 가격 정보
-      var priceFields = [
-        ['감정가','감정가','#ff8c42'], ['최저입찰가','최저입찰가','#f59e0b'], ['낙찰가','낙찰가','#4f8eff'],
-        ['매매가','매매가','#ff8c42'], ['보증금','보증금','#4f8eff'], ['월세','월세','#00d482'],
-        ['전세가','전세가','#4f8eff'], ['수익률','수익률','#00d482']
+      // 핵심 가격 정보
+      var priceRows = [
+        ['감정가','#ff8c42'], ['최저입찰가','#f59e0b'], ['낙찰가','#4f8eff'],
+        ['매매가','#ff8c42'], ['보증금','#4f8eff'], ['월세','#00d482'],
+        ['전세가','#4f8eff'], ['수익률','#00d482']
       ];
-      var priceHtml = '';
-      priceFields.forEach(function(pf) {
-        var v = d[pf[0]] || (pf[0]==='수익률' && d['yield'] ? d['yield']+'%' : '') || (pf[0]==='매매가' && d['price'] ? d['price'] : '');
-        if (v) priceHtml += '<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--b1);">' +
-          '<span style="font-size:12px;color:var(--mu);">' + pf[1] + '</span>' +
-          '<b style="font-size:13px;color:' + pf[2] + ';">' + v + '</b></div>';
+      var priceSection = document.createElement('div');
+      priceSection.style.cssText = 'background:var(--s2);border-radius:10px;padding:4px 12px;margin-bottom:12px;';
+      var hasPriceRow = false;
+      priceRows.forEach(function(pf) {
+        var v = d[pf[0]] || (pf[0] === '수익률' && d['yield'] ? d['yield'] + '%' : '') || (pf[0] === '매매가' && d['price'] ? d['price'] : '');
+        if (!v) return;
+        hasPriceRow = true;
+        var row = document.createElement('div');
+        row.className = 'mb-detail-row';
+        var lbl = document.createElement('span');
+        lbl.className = 'mb-detail-label';
+        lbl.textContent = pf[0];
+        var val = document.createElement('b');
+        val.className = 'mb-detail-val';
+        val.style.color = pf[1];
+        val.textContent = v;
+        row.appendChild(lbl);
+        row.appendChild(val);
+        priceSection.appendChild(row);
       });
-      if (priceHtml) html += '<div style="margin-bottom:12px;">' + priceHtml + '</div>';
+      if (hasPriceRow) frag.appendChild(priceSection);
 
-      // 기타 상세
-      var detailFields = ['전용면적','면적','대지면적','층수','층','용도','업종','건물명','사건번호','매각기일','유찰횟수'];
-      var detailHtml = '';
+      // 상세 정보
+      var detailFields = [
+        '전용면적','면적','대지면적','층수','층','용도','업종',
+        '건물명','사건번호','매각기일','유찰횟수','기보증금_만원','월세_만원'
+      ];
+      var detailSection = document.createElement('div');
+      detailSection.style.cssText = 'background:var(--s2);border-radius:10px;padding:4px 12px;margin-bottom:12px;';
+      var hasDetail = false;
       detailFields.forEach(function(f) {
         var v = d[f];
-        if (v) detailHtml += '<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04);">' +
-          '<span style="font-size:11px;color:var(--mu);">' + f + '</span>' +
-          '<span style="font-size:11px;color:var(--tx);">' + v + '</span></div>';
+        if (!v) return;
+        hasDetail = true;
+        var row = document.createElement('div');
+        row.className = 'mb-detail-row';
+        var lbl = document.createElement('span');
+        lbl.className = 'mb-detail-label';
+        lbl.textContent = f.replace('_만원', '(만원)');
+        var val = document.createElement('span');
+        val.className = 'mb-detail-val';
+        val.style.fontWeight = '500';
+        val.textContent = v;
+        row.appendChild(lbl);
+        row.appendChild(val);
+        detailSection.appendChild(row);
       });
-      if (detailHtml) html += '<div style="margin-bottom:12px;">' + detailHtml + '</div>';
+      if (hasDetail) frag.appendChild(detailSection);
 
-      // 메모
-      if (item.memo) html += '<div style="margin-top:8px;padding:10px 12px;background:rgba(255,255,255,.04);border-radius:8px;font-size:12px;color:var(--mu);line-height:1.6;white-space:pre-wrap;">📝 ' + item.memo + '</div>';
+      // 메모 표시
+      if (item.memo) {
+        var memoBox = document.createElement('div');
+        memoBox.style.cssText = 'padding:10px 12px;background:rgba(79,142,255,.06);border:1px solid rgba(79,142,255,.2);border-radius:10px;font-size:12px;color:var(--tx);line-height:1.7;white-space:pre-wrap;margin-bottom:12px;';
+        memoBox.textContent = '📝 ' + item.memo;
+        frag.appendChild(memoBox);
+      }
 
-      body.innerHTML = html;
+      body.innerHTML = '';
+      body.appendChild(frag);
 
+      // 액션 버튼 DOM
       if (actions) {
-        var _iid = (item.id || '');
-        var _mode = item.mode || '';
-        var _d2 = item.data || {};
-        var _url = _d2['상세URL'] || '';
-        // DOM API로 버튼 생성 (innerHTML 내 JS 변수 참조 불가 버그 방지)
         actions.innerHTML = '';
-        var _b1 = document.createElement('button');
-        _b1.className = 'mb-btn mb-btn-primary';
-        _b1.style.cssText = 'flex:1;font-size:11px;';
-        _b1.textContent = '📋 상세';
-        _b1.onclick = (function(id){ return function(){ mbCloseBottomSheet(); setTimeout(function(){ if(typeof openPopup==='function') openPopup(id); }, 100); }; })(_iid);
-        actions.appendChild(_b1);
-        if (_url) {
-          var _la = document.createElement('a');
-          _la.href = _url;
-          _la.target = '_blank';
-          _la.className = 'mb-btn';
-          _la.style.cssText = 'flex:1;font-size:11px;text-decoration:none;text-align:center;';
-          _la.textContent = '🔗 링크';
-          _la.ontouchstart = function(e){ e.stopPropagation(); };
-          _la.onclick = function(){ window.open(this.href,'_blank'); return false; };
-          actions.appendChild(_la);
-        } else if (_mode === 'auction') {
-          var _la2 = document.createElement('a');
-          _la2.href = 'https://www.courtauction.go.kr/';
-          _la2.target = '_blank';
-          _la2.className = 'mb-btn';
-          _la2.style.cssText = 'flex:1;font-size:11px;text-decoration:none;text-align:center;';
-          _la2.textContent = '⚖️ 경매';
-          _la2.ontouchstart = function(e){ e.stopPropagation(); };
-          _la2.onclick = function(){ window.open(this.href,'_blank'); return false; };
-          actions.appendChild(_la2);
+        var iid = item.id || '';
+        var mode2 = item.mode || '';
+        var url2 = (item.data || {})['상세URL'] || '';
+
+        // 상세
+        var b1 = document.createElement('button');
+        b1.className = 'mb-btn mb-btn-primary';
+        b1.style.cssText = 'flex:1;font-size:12px;';
+        b1.textContent = '📋 상세';
+        b1.onclick = (function(id){ return function(){ mbCloseBottomSheet(); setTimeout(function(){ if(typeof openPopup==='function') openPopup(id); },100); }; })(iid);
+        actions.appendChild(b1);
+
+        // 링크 or 경매사이트
+        if (url2) {
+          var la = document.createElement('a');
+          la.href = url2; la.target = '_blank';
+          la.className = 'mb-btn'; la.style.cssText = 'flex:1;font-size:12px;text-decoration:none;text-align:center;';
+          la.textContent = '🔗 원본';
+          la.onclick = function(){ window.open(this.href,'_blank'); return false; };
+          actions.appendChild(la);
+        } else if (mode2 === 'auction') {
+          var la2 = document.createElement('a');
+          la2.href = 'https://www.courtauction.go.kr/'; la2.target = '_blank';
+          la2.className = 'mb-btn'; la2.style.cssText = 'flex:1;font-size:12px;text-decoration:none;text-align:center;';
+          la2.textContent = '⚖️ 경매';
+          la2.onclick = function(){ window.open(this.href,'_blank'); return false; };
+          actions.appendChild(la2);
         }
-        var _b3 = document.createElement('button');
-        _b3.className = 'mb-btn mb-btn-gold';
-        _b3.style.cssText = 'flex:1;font-size:11px;';
-        _b3.textContent = '💰 수익';
-        _b3.onclick = (function(id){ return function(){ _mbToggleYield(id); }; })(_iid);
-        actions.appendChild(_b3);
-        var _b4 = document.createElement('button');
-        _b4.className = 'mb-btn';
-        _b4.style.cssText = 'flex:1;font-size:11px;';
-        _b4.textContent = '닫기';
-        _b4.onclick = function(){ mbCloseBottomSheet(); };
-        actions.appendChild(_b4);
-        // 탭 버튼 다시 보이기
+
+        // 지도 이동
+        var b2 = document.createElement('button');
+        b2.className = 'mb-btn';
+        b2.style.cssText = 'flex:1;font-size:12px;color:#00c9a0;border-color:rgba(0,212,170,.3);';
+        b2.textContent = '🗺️ 지도';
+        b2.onclick = (function(id){ return function(){ mbCloseBottomSheet(); setTimeout(function(){ if(typeof goToMapFromCard==='function') goToMapFromCard(id); },150); }; })(iid);
+        actions.appendChild(b2);
+
+        // 닫기
+        var b3 = document.createElement('button');
+        b3.className = 'mb-btn'; b3.style.cssText = 'flex:0 0 auto;padding:0 14px;font-size:12px;';
+        b3.textContent = '닫기';
+        b3.onclick = function(){ mbCloseBottomSheet(); };
+        actions.appendChild(b3);
+
+        // 탭버튼 복원
         ['card','list','auction'].forEach(function(t) {
           var btn = document.getElementById('mb-bs-tab-' + t);
           if (btn) btn.style.display = '';
         });
-            }
+      }
     } catch(e) {
       console.error('mbOpenSavedDetail error:', e);
     }
   };
-
   window.mbToggleMemo = function(idx, btn) {
     var memo = document.getElementById('mb-memo-' + idx);
     if (!memo) return;
@@ -2451,6 +2825,9 @@ body {
       if (panel) panel.style.display = t === tab ? '' : 'none';
       if (btn) btn.classList.toggle('active', t === tab);
     });
+    // 섹션 탭일 때 phase bar 표시
+    var phaseBar = document.getElementById('mb-room-phase-bar');
+    if (phaseBar) phaseBar.style.display = tab === 'section' ? 'flex' : 'none';
   };
 
   // ── 노트 추가 ──
@@ -2562,100 +2939,262 @@ body {
     }
   }
 
-  // ── 섹션 탭 렌더 ──
+  // ── 섹션 탭 렌더 (전면 개선) ──
+  var _mbActivePhase = null; // 현재 선택된 phase
+
   function _mbRenderSectionTab(roomId, room, allSections) {
     var body = document.getElementById('mb-room-section-body');
+    var phaseBar = document.getElementById('mb-room-phase-bar');
     if (!body) return;
+
     var sections = (allSections || []).filter(function(s){ return s.roomId === roomId || s.room_id === roomId; });
-    if (!sections.length && room.sections && room.sections.length) sections = room.sections;
-    var html = '';
-    var TYPE_ICONS = { memo:'📝', checklist:'✅', metrics:'📊', log:'📋', capture:'📷', note:'📓' };
-    var PHASE_LABELS = { interest:'관심', review:'검토', field:'현장', bid:'입찰', won:'낙찰', sell:'매도', closed:'종료', etc:'기타' };
+    if (!sections.length && room.sections && room.sections.length) {
+      sections = room.sections.map(function(s){ return Object.assign({},s,{roomId:roomId}); });
+    }
+
     if (!sections.length) {
-      // 스냅샷만 있으면 표시
+      if (phaseBar) phaseBar.style.display = 'none';
       var mapScenes = room.mapScenes || (room.mapScene ? [room.mapScene] : []);
+      body.innerHTML = '';
       if (mapScenes.length) {
-        html += '<div style="font-size:10px;font-weight:700;color:var(--mu);margin-bottom:6px;">🗺️ 저장된 스냅샷</div>';
+        var scHd = document.createElement('div');
+        scHd.style.cssText = 'font-size:10px;font-weight:700;color:var(--mu);margin-bottom:8px;';
+        scHd.textContent = '🗺️ 저장된 지도 장면';
+        body.appendChild(scHd);
         mapScenes.forEach(function(ms) {
-          // DOM API로 생성 (복잡한 onclick 문자열 오류 방지)
-          var _msDiv = document.createElement('div');
-          _msDiv.style.cssText = 'padding:10px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;margin-bottom:6px;cursor:pointer;';
-          _msDiv.innerHTML = '<span style="font-size:11px;color:#4f8eff;">📷</span> <span style="font-size:13px;font-weight:600;color:var(--tx);">' + (ms.sceneName||ms.name||'스냅샷') + '</span>';
-          _msDiv.onclick = (function(id){ return function(){ if(window.wrOpenMapScene) window.wrOpenMapScene(id); }; })(ms.id||'');
-          body.appendChild(_msDiv);
-          html = ''; // DOM API 사용하므로 html 변수 불필요
+          var btn = document.createElement('div');
+          btn.style.cssText = 'padding:11px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:10px;margin-bottom:6px;cursor:pointer;display:flex;align-items:center;gap:8px;';
+          btn.innerHTML = '<span style="font-size:16px;">📷</span><span style="font-size:13px;font-weight:600;color:#4f8eff;">' + (ms.sceneName||ms.name||'스냅샷') + '</span>';
+          btn.onclick = (function(id){ return function(){ if(window.wrOpenMapScene) window.wrOpenMapScene(id); }; })(ms.id||'');
+          body.appendChild(btn);
         });
       } else {
-        html = '<div class="mb-empty" style="padding:24px 0;"><div class="mb-empty-icon">📭</div><div>섹션이 없어요</div><div style="font-size:11px;color:var(--di);margin-top:6px;">PC에서 작업룸에 섹션을 추가하세요</div></div>';
+        body.innerHTML = '<div class="mb-empty" style="padding:30px 0;"><div class="mb-empty-icon">📭</div><div>섹션이 없어요</div><div style="font-size:11px;color:var(--di);margin-top:6px;">PC에서 작업룸에 섹션을 추가하세요</div></div>';
       }
-      body.innerHTML = html;
       return;
     }
-    var byPhase = {};
-    var phaseOrder = ['interest','review','field','bid','won','sell','closed','etc'];
-    sections.forEach(function(sec) {
-      var ph = sec.phase || 'etc';
-      if (!byPhase[ph]) byPhase[ph] = [];
-      byPhase[ph].push(sec);
-    });
-    phaseOrder.forEach(function(ph) {
-      if (!byPhase[ph] || !byPhase[ph].length) return;
-      html += '<details open style="margin-bottom:8px;"><summary style="font-size:10px;font-weight:700;color:#f59e0b;letter-spacing:.5px;cursor:pointer;padding:4px 0;list-style:none;">── ' + (PHASE_LABELS[ph]||ph) + ' (' + byPhase[ph].length + ')</summary>';
-      byPhase[ph].forEach(function(sec) {
-        var sType = sec.type || '';
-        var icon = TYPE_ICONS[sType] || '📌';
-        var preview = '';
-        if ((sType==='memo'||sType==='note') && sec.data && (sec.data.content||sec.data.body)) {
-          preview = (sec.data.content||sec.data.body).replace(/<[^>]*>/g,'').slice(0,40);
-        } else if (sType==='checklist' && sec.data && sec.data.items) {
-          var done = sec.data.items.filter(function(x){return x.done;}).length;
-          preview = done + '/' + sec.data.items.length + ' 완료';
-        } else if (sType==='metrics' && sec.data && sec.data.rows) {
-          preview = sec.data.rows.length + '개 항목';
-        } else if (sType==='log' && sec.data && sec.data.entries) {
-          preview = sec.data.entries.length + '개 기록';
-        }
-        html += '<details style="margin-top:6px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;overflow:hidden;">';
-        html += '<summary style="padding:10px 12px;cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;">';
-        html += '<span>' + icon + '</span><span style="flex:1;font-size:12px;font-weight:600;color:var(--tx);">' + (sec.title||'섹션') + '</span>';
-        if (preview) html += '<span style="font-size:11px;color:var(--mu);max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + preview + '</span>';
-        html += '</summary><div style="padding:0 12px 10px;">';
-        if ((sType==='memo'||sType==='note') && sec.data && (sec.data.content||sec.data.body)) {
-          html += '<div style="font-size:12px;color:var(--tx);line-height:1.7;white-space:pre-wrap;padding-top:8px;border-top:1px solid var(--b1);">' + (sec.data.content||sec.data.body) + '</div>';
-        } else if (sType==='checklist' && sec.data && sec.data.items) {
-          html += '<div style="padding-top:8px;border-top:1px solid var(--b1);">';
-          sec.data.items.forEach(function(ci, ci_idx) {
-            var secId = sec.id;
-            html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04);" onclick="mbChecklistToggle(\' + secId + \',' + ci_idx + ')">';
-            html += '<span style="font-size:16px;">' + (ci.done ? '✅' : '⬜') + '</span>';
-            html += '<span style="font-size:12px;color:var(--tx);' + (ci.done?'text-decoration:line-through;opacity:.5;':'') + '">' + (ci.text||ci.label||'') + '</span>';
-            html += '</div>';
-          });
-          html += '</div>';
-        } else if (sType==='metrics' && sec.data && sec.data.rows) {
-          html += '<div style="padding-top:8px;border-top:1px solid var(--b1);">';
-          sec.data.rows.forEach(function(row) {
-            html += '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04);"><span style="font-size:12px;color:var(--mu);">' + (row.label||row.key||'') + '</span><span style="font-size:12px;font-weight:700;color:var(--ac);">' + (row.value||row.val||'-') + '</span></div>';
-          });
-          html += '</div>';
-        } else if (sType==='log' && sec.data && sec.data.entries && sec.data.entries.length) {
-          html += '<div style="padding-top:8px;border-top:1px solid var(--b1);">';
-          sec.data.entries.slice(0,10).forEach(function(en) {
-            html += '<div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04);">';
-            if (en.at) html += '<div style="font-size:10px;color:var(--di);">' + new Date(en.at).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) + '</div>';
-            html += '<div style="font-size:12px;color:var(--tx);margin-top:2px;">' + (en.text||'') + '</div></div>';
-          });
-          html += '</div>';
-        } else {
-          html += '<div style="font-size:11px;color:var(--di);padding-top:8px;">내용 없음</div>';
-        }
-        html += '</div></details>';
-      });
-      html += '</details>';
-    });
-    body.innerHTML = html;
-  }
 
+    // ── phase별 분류 ──
+    var PHASE_LABELS = { interest:'👀 관심', review:'🔍 검토', field:'📍 현장', bid:'🎯 입찰', won:'✅ 낙찰', sell:'💰 매도', closed:'🔒 종료', etc:'📌 기타' };
+    var phaseOrder = ['interest','review','field','bid','won','sell','closed','etc'];
+    var phaseSet = {};
+    sections.forEach(function(s){ phaseSet[s.phase || 'etc'] = true; });
+    var availPhases = phaseOrder.filter(function(p){ return phaseSet[p]; });
+
+    // 기본 phase 설정
+    if (!_mbActivePhase || !phaseSet[_mbActivePhase]) {
+      _mbActivePhase = availPhases[0] || 'etc';
+    }
+
+    // phase 칩바 렌더
+    if (phaseBar) {
+      phaseBar.style.display = 'flex';
+      phaseBar.innerHTML = '';
+      availPhases.forEach(function(ph) {
+        var chip = document.createElement('button');
+        chip.className = 'mb-phase-chip' + (ph === _mbActivePhase ? ' active' : '');
+        chip.textContent = PHASE_LABELS[ph] || ph;
+        var cnt = sections.filter(function(s){ return (s.phase||'etc') === ph; }).length;
+        chip.textContent += ' ' + cnt;
+        chip.onclick = (function(p){ return function(){
+          _mbActivePhase = p;
+          _mbRenderSectionTab(roomId, room, allSections);
+        }; })(ph);
+        phaseBar.appendChild(chip);
+      });
+    }
+
+    // 선택된 phase의 섹션만
+    var filtered = sections.filter(function(s){ return (s.phase||'etc') === _mbActivePhase; });
+    filtered.sort(function(a,b){ return (a.order||0) - (b.order||0); });
+
+    var TYPE_ICONS = { memo:'📝', checklist:'✅', metrics:'📊', log:'📋', note:'📓' };
+
+    body.innerHTML = '';
+
+    if (!filtered.length) {
+      var emp2 = document.createElement('div');
+      emp2.style.cssText = 'text-align:center;padding:24px 0;color:var(--di);font-size:12px;';
+      emp2.textContent = '이 단계에 섹션이 없어요';
+      body.appendChild(emp2);
+      return;
+    }
+
+    filtered.forEach(function(sec) {
+      var sType = sec.type || '';
+      var icon = TYPE_ICONS[sType] || '📌';
+
+      // preview 텍스트
+      var preview = '';
+      if ((sType==='memo'||sType==='note') && sec.data && (sec.data.content||sec.data.body)) {
+        preview = (sec.data.content||sec.data.body).replace(/<[^>]*>/g,'').slice(0,30);
+      } else if (sType==='checklist' && sec.data && sec.data.items) {
+        var done = sec.data.items.filter(function(x){return x.done;}).length;
+        preview = done + '/' + sec.data.items.length;
+      } else if (sType==='metrics' && sec.data && sec.data.rows) {
+        preview = sec.data.rows.length + '행';
+      } else if (sType==='log' && sec.data && sec.data.entries) {
+        preview = sec.data.entries.length + '개';
+      }
+
+      var card = document.createElement('div');
+      card.className = 'mb-sec-card';
+
+      // 헤더
+      var hd = document.createElement('div');
+      hd.className = 'mb-sec-hd';
+      hd.innerHTML = '<span class="mb-sec-icon">' + icon + '</span>' +
+        '<span class="mb-sec-title">' + (sec.title || '섹션') + '</span>' +
+        (preview ? '<span class="mb-sec-preview">' + preview + '</span>' : '') +
+        '<span class="mb-sec-arrow">▼</span>';
+      hd.onclick = function(){
+        card.classList.toggle('open');
+      };
+      card.appendChild(hd);
+
+      // 바디
+      var bd2 = document.createElement('div');
+      bd2.className = 'mb-sec-body';
+      bd2.style.paddingTop = '10px';
+
+      if (sType === 'memo' || sType === 'note') {
+        var ta = document.createElement('textarea');
+        ta.className = 'mb-sec-memo-ta';
+        ta.value = (sec.data && (sec.data.content || sec.data.body)) || '';
+        ta.placeholder = '내용을 입력하세요...';
+        var _saveTimer = null;
+        ta.oninput = (function(s2){ return function(){
+          s2.data = s2.data || {};
+          s2.data.content = this.value;
+          clearTimeout(_saveTimer);
+          _saveTimer = setTimeout(function(){
+            var secs = [];
+            try { secs = JSON.parse(localStorage.getItem('wr2_sections') || '[]'); } catch(e) {}
+            var found = secs.find(function(x){ return x.id === s2.id; });
+            if (found) { found.data = found.data || {}; found.data.content = s2.data.content; }
+            else { secs.push(s2); }
+            localStorage.setItem('wr2_sections', JSON.stringify(secs));
+            if (window.wr2State) window.wr2State.sections = secs;
+            if (window._sbSaveSections) window._sbSaveSections(secs).catch(function(){});
+          }, 800);
+        }; })(sec);
+        bd2.appendChild(ta);
+
+      } else if (sType === 'checklist') {
+        var items2 = (sec.data && sec.data.items) || [];
+        items2.forEach(function(ci, ciIdx) {
+          var row = document.createElement('div');
+          row.className = 'mb-sec-checklist-item';
+          row.onclick = (function(sId, cIdx){ return function(){
+            window.mbChecklistToggle(sId, cIdx);
+          }; })(sec.id, ciIdx);
+          var ck = document.createElement('span');
+          ck.className = 'mb-sec-check-icon';
+          ck.textContent = ci.done ? '✅' : '⬜';
+          var txt = document.createElement('span');
+          txt.className = 'mb-sec-check-text' + (ci.done ? ' done' : '');
+          txt.textContent = ci.text || ci.label || '';
+          row.appendChild(ck);
+          row.appendChild(txt);
+          bd2.appendChild(row);
+        });
+        if (!items2.length) {
+          var noItem = document.createElement('div');
+          noItem.style.cssText = 'font-size:11px;color:var(--di);padding:8px 0;';
+          noItem.textContent = '항목이 없어요';
+          bd2.appendChild(noItem);
+        }
+        // 진행률 표시
+        if (items2.length) {
+          var prog = document.createElement('div');
+          var done2 = items2.filter(function(x){ return x.done; }).length;
+          var pct = Math.round(done2 / items2.length * 100);
+          prog.style.cssText = 'margin-top:10px;';
+          prog.innerHTML = '<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--mu);margin-bottom:4px;"><span>진행률</span><span>' + done2 + '/' + items2.length + ' (' + pct + '%)</span></div>' +
+            '<div style="height:4px;background:var(--b2);border-radius:2px;overflow:hidden;"><div style="height:100%;width:' + pct + '%;background:' + (pct === 100 ? 'var(--g)' : 'var(--ac)') + ';border-radius:2px;transition:width .3s;"></div></div>';
+          bd2.appendChild(prog);
+        }
+
+      } else if (sType === 'metrics') {
+        var rows2 = (sec.data && sec.data.rows) || [];
+        rows2.forEach(function(row2) {
+          var r = document.createElement('div');
+          r.className = 'mb-sec-metrics-row';
+          var lbl3 = document.createElement('span');
+          lbl3.style.cssText = 'font-size:12px;color:var(--mu);';
+          lbl3.textContent = row2.label || row2.key || '';
+          var val3 = document.createElement('span');
+          val3.style.cssText = 'font-size:13px;font-weight:700;color:var(--ac);';
+          val3.textContent = row2.value || row2.val || '-';
+          r.appendChild(lbl3);
+          r.appendChild(val3);
+          bd2.appendChild(r);
+        });
+        if (!rows2.length) {
+          var noRow = document.createElement('div');
+          noRow.style.cssText = 'font-size:11px;color:var(--di);padding:8px 0;';
+          noRow.textContent = '데이터 없음';
+          bd2.appendChild(noRow);
+        }
+
+      } else if (sType === 'log') {
+        var entries = ((sec.data && sec.data.entries) || []).slice().reverse();
+        entries.slice(0, 15).forEach(function(en) {
+          var entry = document.createElement('div');
+          entry.className = 'mb-sec-log-entry';
+          if (en.at) {
+            var t = document.createElement('div');
+            t.className = 'mb-sec-log-time';
+            t.textContent = new Date(en.at).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'});
+            entry.appendChild(t);
+          }
+          var txt2 = document.createElement('div');
+          txt2.className = 'mb-sec-log-text';
+          txt2.textContent = en.text || '';
+          entry.appendChild(txt2);
+          bd2.appendChild(entry);
+        });
+        // 로그 입력
+        var addRow = document.createElement('div');
+        addRow.className = 'mb-sec-add-log';
+        var logInput = document.createElement('input');
+        logInput.type = 'text';
+        logInput.placeholder = '로그 입력 후 추가';
+        var logAddBtn = document.createElement('button');
+        logAddBtn.textContent = '+ 추가';
+        logAddBtn.onclick = (function(sId){ return function(){
+          var val4 = logInput.value.trim();
+          if (!val4) return;
+          var secs2 = [];
+          try { secs2 = JSON.parse(localStorage.getItem('wr2_sections') || '[]'); } catch(e) {}
+          var found2 = secs2.find(function(x){ return x.id === sId; });
+          if (found2) {
+            found2.data = found2.data || {};
+            found2.data.entries = found2.data.entries || [];
+            found2.data.entries.push({ id: 'le_' + Date.now(), at: Date.now(), text: val4 });
+            localStorage.setItem('wr2_sections', JSON.stringify(secs2));
+            if (window.wr2State) window.wr2State.sections = secs2;
+            if (window._sbSaveSections) window._sbSaveSections(secs2).catch(function(){});
+            logInput.value = '';
+            _mbRenderSectionTab(roomId, room, secs2);
+            mbToast('로그 추가됨', 'ok');
+          }
+        }; })(sec.id);
+        addRow.appendChild(logInput);
+        addRow.appendChild(logAddBtn);
+        bd2.appendChild(addRow);
+
+      } else {
+        var noContent = document.createElement('div');
+        noContent.style.cssText = 'font-size:11px;color:var(--di);padding:8px 0;';
+        noContent.textContent = '내용 없음';
+        bd2.appendChild(noContent);
+      }
+
+      card.appendChild(bd2);
+      body.appendChild(card);
+    });
+  }
   // ── 체크리스트 토글 (모바일에서 체크 가능) ──
   window.mbChecklistToggle = function(secId, itemIdx) {
     var secs = [];
@@ -2744,8 +3283,9 @@ body {
     _mbRenderSectionTab(roomId, room, allSections);
     _mbRenderItemTab(room);
 
-    // 기본 탭: 노트
-    mbRoomTab('note');
+    // 기본 탭: 섹션이 있으면 섹션, 없으면 노트
+    var _hasSecs = (allSections||[]).filter(function(s){ return s.roomId === roomId || s.room_id === roomId; }).length > 0;
+    mbRoomTab(_hasSecs ? 'section' : 'note');
   }
 
     window.mbRoomLoad = function(roomId) {
@@ -3225,9 +3765,19 @@ body {
 
     if (tab === 'card') {
       var overlays = window.mapOverlays || [];
-      var obj = overlays.find(function(o) { return o && o.id === _mbBsCurrentId; });
+      // _mbBsCurrentId는 'marker_xxx' 또는 item.id 형태 모두 처리
+      var obj = overlays.find(function(o) { return o && (o.id === _mbBsCurrentId || (o.item && o.item.id === _mbBsCurrentId)); });
+      // 없으면 저장목록에서 직접 찾기
       if (!obj || !obj.item) {
-        body.innerHTML = '<div style="text-align:center;color:var(--di);padding:30px;">매물 정보를 찾을 수 없어요<br><small style="font-size:11px;margin-top:6px;display:block;">마커를 다시 탭해주세요</small></div>';
+        var sv2 = [];
+        try { sv2 = JSON.parse(localStorage.getItem('re_sv') || '[]'); } catch(e) {}
+        var svItem = sv2.find(function(x){ return x.id === _mbBsCurrentId || ('marker_' + x.id) === _mbBsCurrentId; });
+        if (svItem) {
+          // 저장목록 상세로 대체 렌더
+          mbOpenSavedDetail(svItem.id);
+          return;
+        }
+        body.innerHTML = '<div style="text-align:center;color:var(--di);padding:30px;"><div style="font-size:28px;margin-bottom:10px;">📌</div>매물 정보를 찾을 수 없어요<br><small style="font-size:11px;margin-top:6px;display:block;color:var(--di);">마커를 다시 탭해주세요</small></div>';
         if (title) title.textContent = '매물 정보';
         if (actions) actions.innerHTML = '<button class="mb-btn" style="flex:1;" onclick="mbCloseBottomSheet()">닫기</button>';
         return;
@@ -3484,35 +4034,54 @@ body {
   window.mbCloseBottomSheet = function() {
     var bs = document.getElementById('mb-map-bs');
     var bd = document.getElementById('mb-map-bs-backdrop');
-    if (bs) { bs.style.transform = ''; bs.style.transition = ''; bs.style.display = 'none'; }
-    if (bd) bd.style.display = 'none';
+    var sheet = document.getElementById('mb-map-bs-sheet');
+    // 슬라이드 다운 후 숨김
+    if (sheet) {
+      sheet.style.transition = 'transform .22s cubic-bezier(.32,.72,0,1)';
+      sheet.style.transform = 'translateY(100%)';
+    }
+    if (bd) { bd.style.opacity = '0'; bd.style.transition = 'opacity .22s'; }
+    setTimeout(function(){
+      if (bs) bs.style.display = 'none';
+      if (bd) { bd.style.display = 'none'; bd.style.opacity = ''; bd.style.transition = ''; }
+      if (sheet) { sheet.style.transform = ''; sheet.style.transition = ''; }
+      _mbBsCurrentId = null;
+    }, 240);
   };
 
-  // 바텀시트 스와이프 다운 닫기
+  // 바텀시트 스와이프 다운 닫기 (sheet 기준)
   var _mbBsDragY = 0, _mbBsDragging = false;
   window._mbBsDragStart = function(e) {
+    // body가 스크롤 중이면 무시
+    var bsBody = document.getElementById('mb-map-bs-body');
+    if (bsBody && bsBody.scrollTop > 2) return;
     _mbBsDragY = e.touches[0].clientY;
     _mbBsDragging = true;
-    var bs = document.getElementById('mb-map-bs');
-    if (bs) { bs.style.transition = 'none'; }
+    var sheet = document.getElementById('mb-map-bs-sheet');
+    if (sheet) sheet.style.transition = 'none';
   };
   window._mbBsDragMove = function(e) {
     if (!_mbBsDragging) return;
     var dy = e.touches[0].clientY - _mbBsDragY;
-    if (dy < 0) return; // 위로는 이동 안함
-    var bs = document.getElementById('mb-map-bs');
-    if (bs) bs.style.transform = 'translateY(' + dy + 'px)';
+    if (dy < 0) return;
+    var sheet = document.getElementById('mb-map-bs-sheet');
+    if (sheet) sheet.style.transform = 'translateY(' + dy + 'px)';
+    if (dy > 0) e.preventDefault();
   };
   window._mbBsDragEnd = function(e) {
     if (!_mbBsDragging) return;
     _mbBsDragging = false;
     var dy = e.changedTouches[0].clientY - _mbBsDragY;
-    var bs = document.getElementById('mb-map-bs');
-    if (dy > 80) {
+    var sheet = document.getElementById('mb-map-bs-sheet');
+    if (dy > 100) {
       mbCloseBottomSheet();
     } else {
-      if (bs) { bs.style.transition = 'transform .25s ease'; bs.style.transform = ''; }
+      if (sheet) {
+        sheet.style.transition = 'transform .2s cubic-bezier(.32,.72,0,1)';
+        sheet.style.transform = '';
+      }
     }
+    _mbBsDragY = 0;
   };
 
   // 지도 탭 하단 "목록 보기" 버튼 - 전체 매물 바텀시트 열기
@@ -3540,28 +4109,34 @@ body {
 </div>
 
 <!-- ════ 지도 바텀시트 ════ -->
-<div id="mb-map-bs-backdrop" onclick="mbCloseBottomSheet()" style="display:none;position:fixed;inset:0;bottom:calc(var(--safe-bottom) + var(--tabbar-h));background:rgba(0,0,0,.5);z-index:1900;"></div>
-<div id="mb-map-bs" style="display:none;position:fixed;left:0;right:0;bottom:calc(var(--safe-bottom) + var(--tabbar-h));z-index:2000;background:var(--s1);border-radius:18px 18px 0 0;max-height:80vh;overflow:hidden;flex-direction:column;box-shadow:0 -4px 30px rgba(0,0,0,.5);">
-  <!-- 드래그 핸들 (아래로 스와이프하면 닫힘) -->
-  <div id="mb-bs-drag-handle" style="display:flex;justify-content:center;padding:12px 0 6px;cursor:grab;touch-action:none;" 
-    ontouchstart="_mbBsDragStart(event)" ontouchmove="_mbBsDragMove(event)" ontouchend="_mbBsDragEnd(event)">
-    <div style="width:40px;height:4px;background:var(--b2);border-radius:2px;"></div>
+<!-- ══ 지도 바텀시트 ══ -->
+<div id="mb-map-bs-backdrop" onclick="mbCloseBottomSheet()"></div>
+<div id="mb-map-bs">
+  <div id="mb-map-bs-sheet"
+    ontouchstart="_mbBsDragStart(event)"
+    ontouchmove="_mbBsDragMove(event)"
+    ontouchend="_mbBsDragEnd(event)">
+    <!-- 드래그 핸들바 -->
+    <div style="display:flex;justify-content:center;padding:10px 0 4px;flex-shrink:0;touch-action:none;">
+      <div style="width:40px;height:4px;background:var(--b2);border-radius:2px;"></div>
+    </div>
+    <!-- 타이틀 + 닫기 -->
+    <div style="display:flex;align-items:flex-start;gap:10px;padding:4px 14px 10px;flex-shrink:0;">
+      <span id="mb-map-bs-title" style="font-size:15px;font-weight:700;color:var(--tx);flex:1;line-height:1.4;padding-top:2px;"></span>
+      <button onclick="mbCloseBottomSheet()" id="mb-bs-close-btn"
+        style="flex-shrink:0;width:32px;height:32px;border-radius:50%;background:var(--s3);border:1px solid var(--b2);color:var(--mu);font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;">✕</button>
+    </div>
+    <!-- 탭 -->
+    <div class="mb-bs-tabs">
+      <button id="mb-bs-tab-card" class="mb-bs-tab active" onclick="mbBsTab('card')">📋 매물 정보</button>
+      <button id="mb-bs-tab-list" class="mb-bs-tab" onclick="mbBsTab('list')">📍 목록</button>
+      <button id="mb-bs-tab-auction" class="mb-bs-tab" onclick="mbBsTab('auction')">⚖️ 지역 경매</button>
+    </div>
+    <!-- 컨텐츠 -->
+    <div id="mb-map-bs-body"></div>
+    <!-- 액션 -->
+    <div id="mb-map-bs-actions"></div>
   </div>
-  <!-- 헤더 -->
-  <div id="mb-map-bs-header" style="display:flex;align-items:center;gap:10px;padding:4px 16px 12px;flex-shrink:0;">
-    <span id="mb-map-bs-title" style="font-size:15px;font-weight:700;color:var(--tx);flex:1;"></span>
-    <button onclick="mbCloseBottomSheet()" style="background:rgba(255,255,255,.08);border:none;color:var(--tx);font-size:18px;cursor:pointer;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;" title="닫기">✕</button>
-  </div>
-  <!-- 탭: 단일 매물 / 목록 / 경매 -->
-  <div style="display:flex;border-bottom:1px solid var(--b1);flex-shrink:0;">
-    <button id="mb-bs-tab-card" class="mb-bs-tab active" onclick="mbBsTab('card')">📋 매물 정보</button>
-    <button id="mb-bs-tab-list" class="mb-bs-tab" onclick="mbBsTab('list')">📍 목록</button>
-    <button id="mb-bs-tab-auction" class="mb-bs-tab" onclick="mbBsTab('auction')">⚖️ 지역 경매</button>
-  </div>
-  <!-- 컨텐츠 -->
-  <div id="mb-map-bs-body" style="flex:1;overflow-y:auto;padding:12px 14px;"></div>
-  <!-- 액션 버튼 -->
-  <div id="mb-map-bs-actions" style="display:flex;gap:8px;padding:10px 14px;border-top:1px solid var(--b1);flex-shrink:0;"></div>
 </div>
 
 </body>
