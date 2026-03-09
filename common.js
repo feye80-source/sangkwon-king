@@ -255,10 +255,10 @@
       } catch(e) {}
     };
 
-    // ─── localStorage.setItem 패치: wr2_rooms/wr2_sections 변경 시 자동 동기화 ──
+    // ─── localStorage.setItem 패치: wr2_rooms/wr2_sections/re_sv 변경 시 자동 동기화 ──
     (function() {
       const _origSet = localStorage.setItem.bind(localStorage);
-      let _debounceRooms, _debounceSec;
+      let _debounceRooms, _debounceSec, _debounceSv;
       localStorage.setItem = function(key, value) {
         _origSet(key, value);
         if (key === 'wr2_rooms') {
@@ -278,6 +278,15 @@
               if (window._sbSaveSections) window._sbSaveSections(arr).catch(e=>{});
             } catch(e) {}
           }, 1500);
+        }
+        if (key === 're_sv') {
+          clearTimeout(_debounceSv);
+          _debounceSv = setTimeout(() => {
+            try {
+              const arr = JSON.parse(value);
+              if (window._sbSaveSv) window._sbSaveSv(arr).catch(e=>{});
+            } catch(e) {}
+          }, 2000);
         }
       };
     })();
@@ -1439,10 +1448,13 @@
                   const notes = room.notes || [];
                   listEl.innerHTML = notes.map(n => {
                     const isActive = n.id === _activeNoteId;
-                    return \`<div onclick="wr2NoteSelect('\${n.id}')" style="display:flex;align-items:center;gap:4px;padding:4px 8px;border-radius:6px;font-size:11px;cursor:pointer;border:1px solid \${isActive ? 'rgba(79,142,255,.6)' : 'var(--b1)'};background:\${isActive ? 'rgba(79,142,255,.12)' : 'var(--s2)'};color:\${isActive ? '#4f8eff' : 'var(--tx)'};white-space:nowrap;">
-                      <span>\${n.title || '노트'}</span>
-                      <span onclick="event.stopPropagation();wr2NoteDel('\${n.id}')" style="color:var(--mu);font-size:10px;margin-left:2px;padding:0 2px;">✕</span>
-                    </div>\`;
+                    const border = isActive ? 'rgba(79,142,255,.6)' : 'var(--b1)';
+                    const bg = isActive ? 'rgba(79,142,255,.12)' : 'var(--s2)';
+                    const clr = isActive ? '#4f8eff' : 'var(--tx)';
+                    return '<div onclick="wr2NoteSelect(\'' + n.id + '\')" style="display:flex;align-items:center;gap:4px;padding:4px 8px;border-radius:6px;font-size:11px;cursor:pointer;border:1px solid ' + border + ';background:' + bg + ';color:' + clr + ';white-space:nowrap;">'
+                      + '<span>' + (n.title || '노트') + '</span>'
+                      + '<span onclick="event.stopPropagation();wr2NoteDel(\'' + n.id + '\')" style="color:var(--mu);font-size:10px;margin-left:2px;padding:0 2px;">✕</span>'
+                      + '</div>';
                   }).join('');
                 }
 
