@@ -615,6 +615,14 @@
           try { if (typeof updSvCnt === 'function') updSvCnt(); } catch(e) {}
           try { if (typeof ntRender === 'function') ntRender(); } catch(e) {}
           try { if (typeof wr2Render === 'function') wr2Render(); } catch(e) {}
+          // ── ins_kcards / ins_kcat 재동기화 (let kcards가 빈 배열로 고정될 수 있음) ──
+          try {
+            if (typeof window._kcardsSyncFromCache === 'function') window._kcardsSyncFromCache();
+            if (window._idbCache && window._idbCache['ins_kcards'] && window._idbCache['ins_kcards'].length > 0) {
+              if (typeof renderKcards === 'function') renderKcards();
+              if (typeof renderKcatTabs === 'function') renderKcatTabs();
+            }
+          } catch(e) {}
         }, 300);
 
       } catch(e) {
@@ -20911,6 +20919,18 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
     let kcards = (window._idbCache && window._idbCache['ins_kcards'] || []);
     let kcardCats = (window._idbCache && window._idbCache['ins_kcat'] || ["📐 면적/건축", "⚖️ 권리분석", "📋 경매 절차", "💰 세금/비용", "🏘️ 상권/지역"]);
+
+    // _sbInitLoad 완료 후 kcards가 빈 배열로 고정된 경우 재동기화
+    window._kcardsSyncFromCache = function() {
+      const cached = window._idbCache && window._idbCache['ins_kcards'];
+      if (cached && cached.length > 0 && kcards.length === 0) {
+        kcards = cached;
+      }
+      const cachedCats = window._idbCache && window._idbCache['ins_kcat'];
+      if (cachedCats && cachedCats.length > 0) {
+        kcardCats = cachedCats;
+      }
+    };
     let kcardEditId = null; // 수정 중인 카드 ID (null=새 카드)
     let kcardActiveCat = '전체'; // 현재 필터 카테고리
 
