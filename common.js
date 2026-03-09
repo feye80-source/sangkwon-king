@@ -20587,9 +20587,22 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
         const hasMore = bodyLines.length > 5;
 
+        // 이미지 썸네일 (images 배열 첫 번째)
+        const imgs = card.images || [];
+        const imgThumb = imgs.length > 0
+          ? `<div style="width:100%;height:120px;overflow:hidden;background:#111;"><img src="${imgs[0]}" style="width:100%;height:100%;object-fit:cover;display:block;" alt="썸네일"></div>`
+          : '';
+        // 유튜브 썸네일
+        const ytMatch = (card.youtube || '').match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([^&?#\s]{8,12})/);
+        const ytThumb = (!imgs.length && ytMatch)
+          ? `<div style="width:100%;height:100px;overflow:hidden;background:#111;position:relative;cursor:pointer;" onclick="event.stopPropagation();window.open('https://www.youtube.com/watch?v=${ytMatch[1]}','_blank')"><img src="https://img.youtube.com/vi/${ytMatch[1]}/mqdefault.jpg" style="width:100%;height:100%;object-fit:cover;display:block;"><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;"><div style="width:40px;height:28px;background:rgba(255,0,0,.85);border-radius:6px;display:flex;align-items:center;justify-content:center;"><span style="color:#fff;font-size:14px;margin-left:3px;">&#9654;</span></div></div></div>`
+          : '';
+
         return `<div style="background:var(--s1);border:1px solid var(--b1);border-top:3px solid ${color};border-radius:0 0 12px 12px;overflow:hidden;display:flex;flex-direction:column;transition:transform .15s,box-shadow .15s;cursor:pointer;" 
+      onclick="openKcardDetail('${card.id}')"
       onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='0 8px 24px rgba(0,0,0,.35)'" 
       onmouseout="this.style.transform='';this.style.boxShadow=''">
+      ${imgThumb}${ytThumb}
       <!-- 카드 헤더 -->
       <div style="padding:12px 14px 10px;">
         <div style="display:flex;align-items:flex-start;gap:7px;margin-bottom:8px;">
@@ -20606,6 +20619,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           ${summaryHtml}
           ${keyHtml}
           ${hasMore ? `<div style="font-size:10px;color:var(--di);margin-top:2px;">+${bodyLines.length - 5}줄 더...</div>` : ''}
+          ${imgs.length > 1 ? `<div style="font-size:10px;color:var(--di);">🖼️ 이미지 ${imgs.length}장</div>` : ''}
         </div>
       </div>
       <!-- 카드 푸터 -->
@@ -20714,6 +20728,48 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       kcards = kcards.filter(k => k.id !== id);
       saveKcards(); renderKcatTabs(); renderKcards();
       showToast('카드 삭제됨', 'ok');
+    }
+
+    // ── 카드 상세 보기 모달 ────────────────────────────
+    function openKcardDetail(id) {
+      const card = kcards.find(k => k.id === id);
+      if (!card) return;
+      // 기존 상세 모달 재활용 또는 새로 생성
+      let modal = document.getElementById('kcardDetailModal');
+      if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'kcardDetailModal';
+        modal.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:600;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;';
+        modal.onclick = function(e){ if(e.target===modal) modal.style.display='none'; };
+        document.body.appendChild(modal);
+      }
+      const catColorMap = {'📐 면적/건축':'#4f8eff','⚖️ 권리분석':'#ff6370','📋 경매 절차':'#f9a825','💰 세금/비용':'#a78bfa','🏘️ 상권/지역':'#b47cff'};
+      const color = catColorMap[card.cat] || '#ffd166';
+      const imgs = card.images || [];
+      const imgsHtml = imgs.map(src => `<img src="${src}" style="max-width:100%;border-radius:8px;margin-bottom:6px;display:block;" onclick="window.open(this.src,'_blank')">`).join('');
+      const ytMatch = (card.youtube||'').match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([^&?#\s]{8,12})/);
+      const ytHtml = ytMatch ? `<div style="margin-bottom:12px;cursor:pointer;" onclick="window.open('https://www.youtube.com/watch?v=${ytMatch[1]}','_blank')"><img src="https://img.youtube.com/vi/${ytMatch[1]}/mqdefault.jpg" style="width:100%;border-radius:8px;"></div>` : '';
+      const bodyHtml = (card.body||'').split('\n').map(l => `<div style="font-size:13px;color:var(--tx);line-height:1.7;min-height:1.3em;">${l ? esc(l) : '&nbsp;'}</div>`).join('');
+      const tags = (card.tags||[]).map(t => `<span style="font-size:11px;padding:2px 8px;background:rgba(255,209,102,.1);color:#ffd166;border-radius:8px;border:1px solid rgba(255,209,102,.25);">#${esc(t)}</span>`).join(' ');
+      modal.innerHTML = `<div style="background:var(--s1);border:1px solid var(--b1);border-top:4px solid ${color};border-radius:12px;max-width:600px;width:100%;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.6);">
+        <div style="padding:16px 18px 12px;border-bottom:1px solid var(--b1);display:flex;align-items:flex-start;gap:10px;">
+          <div style="flex:1;">
+            <span style="font-size:11px;padding:2px 10px;border-radius:10px;font-weight:700;background:${color}1a;color:${color};border:1px solid ${color}33;">${esc(card.cat||'기타')}</span>
+            <div style="font-size:16px;font-weight:800;color:var(--tx);margin-top:8px;line-height:1.35;">${esc(card.title||'제목 없음')}</div>
+          </div>
+          <div style="display:flex;gap:5px;flex-shrink:0;">
+            <button onclick="openKcardEditor('${id}')" style="padding:5px 10px;background:rgba(79,142,255,.1);border:1px solid rgba(79,142,255,.3);border-radius:6px;color:#4f8eff;cursor:pointer;font-size:12px;">✏️ 수정</button>
+            <button onclick="document.getElementById('kcardDetailModal').style.display='none'" style="padding:5px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:6px;color:var(--mu);cursor:pointer;font-size:14px;">✕</button>
+          </div>
+        </div>
+        <div style="padding:16px 18px;">
+          ${ytHtml}${imgsHtml}
+          <div style="margin-bottom:12px;">${bodyHtml}</div>
+          ${tags ? `<div style="display:flex;flex-wrap:wrap;gap:5px;padding-top:10px;border-top:1px solid var(--b1);">${tags}</div>` : ''}
+          ${card.sourceUrl ? `<a href="${esc(card.sourceUrl)}" target="_blank" style="display:inline-block;margin-top:10px;font-size:11px;color:#4f8eff;">🔗 출처 바로가기</a>` : ''}
+        </div>
+      </div>`;
+      modal.style.display = 'flex';
     }
 
     // ── AI 카드 자동 생성 ─────────────────────────────
@@ -27494,64 +27550,160 @@ function onbidCollectKeyInput(val) {
     if (dot) dot.classList.add('on');
   }
 }
-function pcExportCSV() {
-  var sv = []; try { sv = JSON.parse(localStorage.getItem('re_sv') || '[]'); } catch(e) {}
-  if (!sv.length) { if(typeof showToast==='function') showToast('저장된 항목이 없어요', 'warn'); return; }
-  var cols = [['소재지','소재지'],['물건종류','물건종류'],['층','층'],['전용면적','전용면적(㎡)'],['감정가','감정가'],['최저매각가격','최저가'],['매매가','매매가'],['보증금','보증금'],['월세','월세'],['사건번호','사건번호'],['매각기일','매각기일'],['상태','상태'],['_source','소스'],['lat','위도'],['lng','경도']];
-  var srcMap = {auction:'경매',listing:'네이버',naver:'네이버',jumpo:'점포라인',assa:'아싸',onbid:'온비드',transaction:'실거래'};
+/* ── 통일 컬럼 정의 (저장목록/지도 공통) ─────────────────── */
+var _UNIFIED_CSV_COLS = [
+  ['_source','소스'],['소재지','소재지'],['물건종류','물건종류'],['거래유형','거래유형'],
+  ['층','층'],['전용면적_m2','전용면적(㎡)'],['매매가','매매가(만)'],['보증금','보증금(만)'],
+  ['월세','월세(만)'],['수익률_퍼센트','수익률(%)'],['감정가','감정가'],['최저매각가격','최저가'],
+  ['사건번호','사건번호'],['매각기일','매각기일'],['권리분석','권리분석'],['상태','상태'],
+  ['lat','위도'],['lng','경도']
+];
+var _UNIFIED_SRC_MAP = {auction:'경매',listing:'네이버',naver:'네이버',jumpo:'점포라인',assa:'아싸점포',onbid:'온비드',transaction:'실거래',disco:'디스코',bds:'부동산플래닛'};
+
+function _buildUnifiedCSV(items, filename) {
+  var cols = _UNIFIED_CSV_COLS;
   var header = cols.map(function(c){ return '"'+c[1]+'"'; }).join(',');
-  var rows = sv.map(function(item) {
+  var rows = items.map(function(item) {
     var d = item.data || {};
     return cols.map(function(col) {
       var k=col[0], v='';
-      if (k==='_source') v=srcMap[item.mode||item.source||'']||item.mode||'';
+      if (k==='_source') v=_UNIFIED_SRC_MAP[item.mode||item.source||'']||item.source||item.mode||'';
+      else if (k==='전용면적_m2') v=d['전용면적_m2']!==undefined?d['전용면적_m2']:(d['전용면적']!==undefined?d['전용면적']:(d['면적']!==undefined?d['면적']:''));
+      else if (k==='매매가') v=d['매매가']!==undefined?d['매매가']:(d['price']!==undefined?d['price']:'');
+      else if (k==='보증금') v=d['보증금']!==undefined?d['보증금']:(d['보증금_만원']!==undefined?d['보증금_만원']:'');
+      else if (k==='월세') v=d['월세']!==undefined?d['월세']:(d['월세_만원']!==undefined?d['월세_만원']:'');
+      else if (k==='수익률_퍼센트') v=d['수익률_퍼센트']!==undefined?d['수익률_퍼센트']:(d['수익률']!==undefined?d['수익률']:'');
+      else if (k==='층') v=d['층']!==undefined?d['층']:(d['해당층']!==undefined?d['해당층']:'');
+      else if (k==='거래유형') v=d['거래유형']!==undefined?d['거래유형']:(item.mode==='auction'?'경매':'');
       else v=d[k]!==undefined?d[k]:(item[k]!==undefined?item[k]:'');
-      return '"'+String(v).replace(/"/g,'""')+'"';
+      return '"'+String(v==null?'':v).replace(/"/g,'""')+'"';
     }).join(',');
   });
   var csv='\uFEFF'+header+'\n'+rows.join('\n');
   var blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
   var url=URL.createObjectURL(blob);
   var a=document.createElement('a');
-  a.href=url; a.download='저장목록_'+new Date().toLocaleDateString('ko-KR').replace(/\. /g,'-').replace('.','')+'csv';
-  a.style.display='none'; document.body.appendChild(a); a.click();
+  a.href=url; a.download=filename; a.style.display='none';
+  document.body.appendChild(a); a.click();
   setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(url); },100);
-  if(typeof showToast==='function') showToast('CSV 다운로드 ('+sv.length+'건)', 'ok');
+}
+
+/* ── 저장목록 CSV (현재 필터 적용) ────────────────────────── */
+function pcExportCSV(exportAll) {
+  var sv = []; try { sv = JSON.parse(localStorage.getItem('re_sv') || '[]'); } catch(e) {}
+  if (!sv.length) { if(typeof showToast==='function') showToast('저장된 항목이 없어요', 'warn'); return; }
+  var filtered = sv.slice();
+  if (!exportAll) {
+    var region = (document.getElementById('regionSearch')||{}).value||'';
+    if (region.trim()) filtered = filtered.filter(function(s){ return (s.data&&s.data['소재지']||'').includes(region.trim())||(s.title||'').includes(region.trim()); });
+    if (window._lfActive && typeof checkListFilter==='function') filtered = filtered.filter(function(item){ return checkListFilter(item); });
+    var svF = window.svFilter||'all';
+    if (svF==='jumpo') filtered=filtered.filter(function(s){return s.source==='점포라인';});
+    else if (svF==='assa') filtered=filtered.filter(function(s){return s.source==='점포거래소';});
+    else if (svF==='disco') filtered=filtered.filter(function(s){return s.source==='디스코';});
+    else if (svF==='bds') filtered=filtered.filter(function(s){return s.source==='부동산플래닛';});
+    else if (svF==='transaction') filtered=filtered.filter(function(s){return s.mode==='transaction';});
+    else if (svF==='onbid') filtered=filtered.filter(function(s){return s.source==='온비드';});
+    else if (svF!=='all') filtered=filtered.filter(function(s){return s.mode===svF;});
+    var gf=(document.getElementById('svGroupFilter')||{}).value||'all';
+    if (gf&&gf!=='all') filtered=filtered.filter(function(s){return (s.group||'기본')===gf;});
+  }
+  if (!filtered.length) { if(typeof showToast==='function') showToast('조건에 맞는 항목 없음', 'warn'); return; }
+  var date=new Date().toLocaleDateString('ko-KR').replace(/\. /g,'-').replace('.','');
+  _buildUnifiedCSV(filtered, '저장목록_'+(exportAll?'전체_':'필터_')+date+'.csv');
+  if(typeof showToast==='function') showToast('CSV 다운로드 ('+filtered.length+'건)', 'ok');
+}
+
+/* ── 지도탭 CSV (지도 rf 필터 연동 또는 전체) ──────────────── */
+function pcMapExportCSV(exportAll) {
+  var sv = []; try { sv = JSON.parse(localStorage.getItem('re_sv') || '[]'); } catch(e) {}
+  if (!sv.length) { if(typeof showToast==='function') showToast('저장된 항목이 없어요', 'warn'); return; }
+  var filtered = sv.slice();
+  if (!exportAll && typeof _checkFilter==='function') {
+    filtered = filtered.filter(function(item){ return _checkFilter(item.data||{}, 'rf'); });
+    var rfDeal = document.querySelector('input[name="rfDealKind"]:checked');
+    if (rfDeal && rfDeal.value !== 'all') {
+      var dv = rfDeal.value;
+      filtered = filtered.filter(function(item){
+        var gt = ((item.data||{})['거래유형']||'').toLowerCase();
+        if (dv==='sale') return gt.includes('매매')||item.mode==='auction';
+        if (dv==='rent') return gt.includes('임대')||gt.includes('월세')||gt.includes('전세');
+        return true;
+      });
+    }
+  }
+  if (!filtered.length) { if(typeof showToast==='function') showToast('조건에 맞는 항목 없음', 'warn'); return; }
+  var date=new Date().toLocaleDateString('ko-KR').replace(/\. /g,'-').replace('.','');
+  _buildUnifiedCSV(filtered, '지도_'+(exportAll?'전체_':'필터_')+date+'.csv');
+  if(typeof showToast==='function') showToast('지도 CSV ('+filtered.length+'건)', 'ok');
+}
+var _DEFAULT_KCATS = ['📐 면적/건축','⚖️ 권리분석','📋 경매 절차','💰 세금/비용','🏘️ 상권/지역'];
+function _getKcats() {
+  var raw = localStorage.getItem('ins_kcat');
+  if (raw) { try { return JSON.parse(raw); } catch(e){} }
+  // localStorage에 없으면 기본값 저장 후 반환
+  localStorage.setItem('ins_kcat', JSON.stringify(_DEFAULT_KCATS));
+  return _DEFAULT_KCATS.slice();
 }
 function openKcatManager() {
   var modal=document.getElementById('kcatManagerModal'); if(!modal) return;
   var list=document.getElementById('kcatManagerList'); if(!list) return;
-  var cats=[]; try{cats=JSON.parse(localStorage.getItem('ins_kcat')||'[]');}catch(e){}
+  var cats = _getKcats();
   list.innerHTML='';
   cats.forEach(function(cat,i){
     var row=document.createElement('div');
-    row.style.cssText='display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--b1);';
+    row.style.cssText='display:flex;align-items:center;gap:6px;padding:8px 0;border-bottom:1px solid var(--b1);';
     var nm=document.createElement('span'); nm.style.cssText='flex:1;font-size:13px;color:var(--tx);'; nm.textContent=cat;
-    var del=document.createElement('button'); del.textContent='삭제';
-    del.style.cssText='font-size:11px;padding:3px 8px;background:rgba(255,77,77,.1);border:1px solid rgba(255,77,77,.3);border-radius:5px;color:#ff4d4d;cursor:pointer;';
+    // 이름 변경 버튼
+    var ren=document.createElement('button'); ren.textContent='✏️';
+    ren.title='이름 변경';
+    ren.style.cssText='font-size:13px;padding:2px 7px;background:rgba(79,142,255,.1);border:1px solid rgba(79,142,255,.3);border-radius:5px;color:#4f8eff;cursor:pointer;';
+    ren.onclick=(function(c,rowEl,nmEl){ return function(){
+      var newName=prompt('새 이름:', c); if(!newName||!newName.trim()||newName.trim()===c) return;
+      newName=newName.trim();
+      var arr=_getKcats(); var idx2=arr.indexOf(c); if(idx2===-1) return;
+      arr[idx2]=newName; localStorage.setItem('ins_kcat',JSON.stringify(arr));
+      var cards=[]; try{cards=JSON.parse(localStorage.getItem('ins_kcards')||'[]');}catch(e){}
+      cards.forEach(function(k){if(k.cat===c)k.cat=newName;});
+      localStorage.setItem('ins_kcards',JSON.stringify(cards));
+      // kcardCats 메모리 동기화
+      if(window.kcardCats){var mi=window.kcardCats.indexOf(c);if(mi!==-1)window.kcardCats[mi]=newName;}
+      nmEl.textContent=newName;
+      if(typeof renderKcatTabs==='function') renderKcatTabs();
+      if(typeof renderKcards==='function') renderKcards();
+      if(typeof showToast==='function') showToast("'"+c+"' → '"+newName+"' 변경됨",'ok');
+    };})(cat,row,nm);
+    var del=document.createElement('button'); del.textContent='🗑';
+    del.title='삭제';
+    del.style.cssText='font-size:13px;padding:2px 7px;background:rgba(255,77,77,.1);border:1px solid rgba(255,77,77,.3);border-radius:5px;color:#ff4d4d;cursor:pointer;';
     del.onclick=(function(c){ return function(){
-      if(!confirm("'"+c+"' 삭제할까요?")) return;
-      var arr=[]; try{arr=JSON.parse(localStorage.getItem('ins_kcat')||'[]');}catch(e){}
-      arr=arr.filter(function(x){return x!==c;});
+      if(!confirm("'"+c+"' 삭제할까요? 이 카테고리의 카드는 '기타'로 이동됩니다.")) return;
+      var arr=_getKcats(); arr=arr.filter(function(x){return x!==c;});
+      localStorage.setItem('ins_kcat',JSON.stringify(arr));
       var cards=[]; try{cards=JSON.parse(localStorage.getItem('ins_kcards')||'[]');}catch(e){}
       cards.forEach(function(k){if(k.cat===c)k.cat='기타';});
-      localStorage.setItem('ins_kcat',JSON.stringify(arr)); localStorage.setItem('ins_kcards',JSON.stringify(cards));
+      localStorage.setItem('ins_kcards',JSON.stringify(cards));
+      if(window.kcardCats) window.kcardCats=arr;
       modal.style.display='none';
       if(typeof renderKcatTabs==='function') renderKcatTabs();
       if(typeof renderKcards==='function') renderKcards();
       if(typeof showToast==='function') showToast("'"+c+"' 삭제됨",'ok');
     };})(cat);
-    row.appendChild(nm); row.appendChild(del); list.appendChild(row);
+    row.appendChild(nm); row.appendChild(ren); row.appendChild(del); list.appendChild(row);
   });
+  modal.style.display='flex';
+}
   modal.style.display='flex';
 }
 function closeKcatManager() { var m=document.getElementById('kcatManagerModal'); if(m) m.style.display='none'; }
 function addKcatFromManager() {
   var inp=document.getElementById('kcatNewInput'); if(!inp) return;
   var v=inp.value.trim(); if(!v) return;
-  var cats=[]; try{cats=JSON.parse(localStorage.getItem('ins_kcat')||'[]');}catch(e){}
+  var cats=_getKcats();
   if(cats.indexOf(v)!==-1){if(typeof showToast==='function')showToast('이미 있어요','warn');return;}
-  cats.push(v); localStorage.setItem('ins_kcat',JSON.stringify(cats)); inp.value='';
+  cats.push(v); localStorage.setItem('ins_kcat',JSON.stringify(cats));
+  if(window.kcardCats) window.kcardCats=cats;
+  inp.value='';
   openKcatManager();
   if(typeof renderKcatTabs==='function') renderKcatTabs();
   if(typeof showToast==='function') showToast("'"+v+"' 추가됨",'ok');

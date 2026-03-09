@@ -1675,16 +1675,16 @@ body {
   <div id="mb-page-insight" class="mb-page mb-active">
     <!-- 서브탭 네비 -->
     <nav class="mb-ins-nav" role="tablist">
-      <button class="mb-ins-tab active" id="mb-itab-note" onclick="mbInsTab('note')" role="tab">📓 노트</button>
-      <button class="mb-ins-tab" id="mb-itab-calc"        onclick="mbInsTab('calc')" role="tab">🧮 계산기</button>
-      <button class="mb-ins-tab" id="mb-itab-room"        onclick="mbInsTab('room')" role="tab">🗂️ 작업룸</button>
-      <button class="mb-ins-tab" id="mb-itab-pipe"        onclick="mbInsTab('pipe')" role="tab">🎯 파이프라인</button>
+      <button class="mb-ins-tab active" id="mb-itab-room"        onclick="mbInsTab('room')" role="tab">🗂️ 작업룸</button>
+      <button class="mb-ins-tab" id="mb-itab-note"        onclick="mbInsTab('note')" role="tab">📓 노트</button>
       <button class="mb-ins-tab" id="mb-itab-clip"        onclick="mbInsTab('clip')" role="tab">⭐ 알짜</button>
+      <button class="mb-ins-tab" id="mb-itab-calc"        onclick="mbInsTab('calc')" role="tab">🧮 계산기</button>
+      <button class="mb-ins-tab" id="mb-itab-pipe"        onclick="mbInsTab('pipe')" role="tab">🎯 파이프라인</button>
       <button class="mb-ins-tab" id="mb-itab-site"        onclick="mbInsTab('site')" role="tab">🔗 사이트</button>
     </nav>
 
     <!-- 노트 패널 -->
-    <div id="mb-ins-note" class="mb-ins-panel active">
+    <div id="mb-ins-note" class="mb-ins-panel">
       <div class="mb-note-toolbar">
         <input type="text" id="ntSearchInput" placeholder="🔍 노트 검색" oninput="if(typeof ntRender==='function')ntRender()">
         <button class="mb-btn mb-btn-gold" onclick="ntCreate('unified')">＋ 새 노트</button>
@@ -1930,7 +1930,7 @@ body {
     </div>
 
     <!-- 작업룸 패널 -->
-    <div id="mb-ins-room" class="mb-ins-panel">
+    <div id="mb-ins-room" class="mb-ins-panel active">
       <!-- 룸 선택 + 새 룸 버튼 -->
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
         <div id="mb-room-sel-wrap" style="flex:1;min-width:0;position:relative;">
@@ -2132,13 +2132,11 @@ body {
           </div>
 
           <!-- 전체불러오기 + 일괄 제어 -->
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;margin-bottom:5px;">
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;margin-bottom:8px;">
             <button onclick="loadCurrentAreaProperties()" style="height:32px;font-size:11px;font-weight:700;background:rgba(79,142,255,.15);border:1px solid rgba(79,142,255,.3);border-radius:7px;color:var(--ac);cursor:pointer;font-family:inherit;">📍 전체</button>
             <button id="toggleAllCardsBtn" onclick="toggleAllCards()" style="height:32px;font-size:11px;background:rgba(0,212,170,.1);border:1px solid rgba(0,212,170,.3);border-radius:7px;color:var(--g);cursor:pointer;font-family:inherit;">📂 모두열기</button>
             <button onclick="clearAllMarkersAndCards()" style="height:32px;font-size:11px;background:rgba(255,80,80,.08);border:1px solid rgba(255,80,80,.25);border-radius:7px;color:var(--red);cursor:pointer;font-family:inherit;">🗑 전체삭제</button>
           </div>
-          <button onclick="mbExportMapCSV()"
-            style="width:100%;height:30px;margin-bottom:8px;font-size:11px;font-weight:700;background:rgba(0,212,130,.08);border:1px solid rgba(0,212,130,.35);border-radius:7px;color:#00d482;cursor:pointer;font-family:inherit;letter-spacing:.2px;">📊 현재 지도 마커 → CSV 다운로드</button>
 
           <!-- 상세 제어 (접기/펼치기) -->
           <div id="mb-src-detail" style="display:none;">
@@ -2693,10 +2691,27 @@ body {
         try { window.ntRender(); } catch(e) {}
       }
     }
-    // 작업룸 탭: 룸 목록 새로고침
+    // 작업룸 탭: 룸 목록 새로고침 (클라우드 동기화 포함)
     if (name === 'room') {
-      // wr2State가 로드됐으면 동기화 (강제 호출 금지 - wr2Init이 wr2Render를 호출해 PC DOM을 건드림)
       mbRoomRefreshSel();
+      // 클라우드에서 룸 최신화 시도
+      if (window._sbLoadRooms) {
+        window._sbLoadRooms().then(function(cloudRooms) {
+          if (cloudRooms && cloudRooms.length) {
+            var localRooms = [];
+            try { localRooms = JSON.parse(localStorage.getItem('wr2_rooms')||'[]'); } catch(e) {}
+            // 병합: 클라우드 우선, 로컬에만 있는 것도 유지
+            var merged = cloudRooms.slice();
+            localRooms.forEach(function(lr){
+              if (!merged.find(function(cr){ return cr.id===lr.id; }) && !lr.deletedAt) merged.push(lr);
+            });
+            var active = merged.filter(function(r){ return !r.deletedAt; });
+            localStorage.setItem('wr2_rooms', JSON.stringify(active));
+            if (window.wr2State) window.wr2State.rooms = active;
+            mbRoomRefreshSel();
+          }
+        }).catch(function(){});
+      }
       var sel = document.getElementById('mb-room-sel');
       if (sel && sel.value) mbRoomLoad(sel.value);
     }
@@ -3292,23 +3307,14 @@ body {
     }
   };
 
-  /* ── Supabase 동기화 상태 훅 (오프라인 플로팅 배너 완전 차단) ── */
+  /* ── Supabase 동기화 상태 훅 ── */
   function hookSyncStatus() {
-    // common.js가 만드는 _sbStatusBar 오렌지 배너를 원천 차단
+    var orig = window._sbSyncStatus;
     window._sbSyncStatus = function(msg, ok) {
-      // 플로팅 배너 숨김
-      var bar = document.getElementById('_sbStatusBar');
-      if (bar) { bar.style.cssText += ';display:none!important;opacity:0!important;'; }
-      // 헤더 상태 텍스트만 업데이트
       var el = document.getElementById('mb-sync');
-      if (el) { el.textContent = ok ? '' : ''; } // 모바일 헤더에는 텍스트 숨김
+      if (el) { el.textContent = msg; el.style.color = ok ? 'var(--g)' : 'var(--warn)'; }
+      if (orig) orig(msg, ok);
     };
-    // DOM 생성 후 배너 감시
-    var _bannerKiller = setInterval(function() {
-      var bar = document.getElementById('_sbStatusBar');
-      if (bar) { bar.style.cssText += ';display:none!important;opacity:0!important;'; }
-    }, 300);
-    setTimeout(function() { clearInterval(_bannerKiller); }, 10000);
   }
 
   /* ── 토스트 (모바일 전용) ── */
@@ -4880,6 +4886,7 @@ setInterval(function() {
 
   <!-- 탭바 -->
   <div id="mb-room-layer-tabs">
+    <button class="mb-rl-tab" id="mb-rlt-overview" onclick="mbRoomLayerTab('overview')">📊 개요</button>
     <button class="mb-rl-tab active" id="mb-rlt-note"    onclick="mbRoomLayerTab('note')">📝 노트</button>
     <button class="mb-rl-tab"        id="mb-rlt-section" onclick="mbRoomLayerTab('section')">📋 섹션</button>
     <button class="mb-rl-tab"        id="mb-rlt-item"    onclick="mbRoomLayerTab('item')">🔗 매물</button>
@@ -4981,7 +4988,7 @@ function _mbRlSaveRooms(rooms) {
 /* 탭 전환 */
 window.mbRoomLayerTab = function(tab) {
   _mbRlTab = tab;
-  ['note','section','item'].forEach(function(t) {
+  ['overview','note','section','item'].forEach(function(t) {
     var btn = document.getElementById('mb-rlt-' + t);
     if (btn) btn.classList.toggle('active', t === tab);
   });
@@ -4995,9 +5002,138 @@ function _mbRlRender() {
   var body = document.getElementById('mb-room-layer-body');
   if (!body) return;
   body.innerHTML = '';
+  if (_mbRlTab === 'overview') _mbRlRenderOverview(body);
   if (_mbRlTab === 'note')    _mbRlRenderNote(body);
   if (_mbRlTab === 'section') _mbRlRenderSection(body);
   if (_mbRlTab === 'item')    _mbRlRenderItem(body);
+}
+
+/* ──────── 개요 탭 ──────── */
+function _mbRlRenderOverview(body) {
+  var room = _mbRlGetRoom();
+  if (!room) return;
+  var d = room;
+  var sv = []; try { sv = JSON.parse(localStorage.getItem('re_sv')||'[]'); } catch(e) {}
+  var linked = sv.find(function(s){ return s.id === (d.linkedItemId||d.itemId); });
+
+  // 캡처 이미지
+  var captures = d.captureImages || [];
+  var captureHtml = '';
+  if (captures.length) {
+    captureHtml = '<div style="margin-bottom:14px;"><div style="font-size:11px;font-weight:700;color:var(--mu);margin-bottom:7px;">📷 캡처 이미지 ('+captures.length+'장)</div>' +
+      '<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;">' +
+      captures.map(function(c,i){
+        var src = c.data || c;
+        return '<img src="'+src+'" style="height:90px;min-width:80px;border-radius:7px;object-fit:cover;border:1px solid var(--b1);cursor:pointer;flex-shrink:0;" onclick="window.open(this.src,\'_blank\')">';
+      }).join('') + '</div></div>';
+  }
+
+  // 물건 요약 (연결된 매물)
+  var itemHtml = '';
+  if (linked) {
+    var ld = linked.data || {};
+    var rows = [
+      ['소재지', ld['소재지']||linked.title||''],
+      ['물건종류', ld['물건종류']||''],
+      ['감정가', ld['감정가'] ? (Number(ld['감정가'])||0).toLocaleString()+'원' : ''],
+      ['최저가', ld['최저매각가격'] ? (Number(ld['최저매각가격'])||0).toLocaleString()+'원' : ''],
+      ['전용면적', ld['전용면적_m2']||ld['전용면적']||'' ? (ld['전용면적_m2']||ld['전용면적'])+'㎡' : ''],
+      ['사건번호', ld['사건번호']||''],
+    ].filter(function(r){return r[1];});
+    if (rows.length) {
+      itemHtml = '<div style="margin-bottom:14px;"><div style="font-size:11px;font-weight:700;color:var(--mu);margin-bottom:7px;">📋 물건 요약</div>' +
+        '<div style="background:var(--s2);border:1px solid var(--b1);border-radius:8px;overflow:hidden;">' +
+        rows.map(function(r){
+          return '<div style="display:flex;padding:7px 12px;border-bottom:1px solid var(--b1);gap:10px;">' +
+            '<span style="font-size:11px;color:var(--mu);min-width:60px;flex-shrink:0;">'+r[0]+'</span>' +
+            '<span style="font-size:12px;color:var(--tx);font-weight:600;word-break:break-all;">'+r[1]+'</span></div>';
+        }).join('') + '</div></div>';
+    }
+  }
+
+  // 수익률 빠른 계산
+  var yieldHtml = '<div style="margin-bottom:14px;"><div style="font-size:11px;font-weight:700;color:var(--mu);margin-bottom:7px;">📈 수익률 계산</div>' +
+    '<div style="background:var(--s2);border:1px solid var(--b1);border-radius:8px;padding:10px;">' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">' +
+    ['매매가(만)','보증금(만)','월세(만)','수익률(%)'].map(function(lbl,i){
+      var ids=['ov_price','ov_dep','ov_rent','ov_yield'];
+      return '<div><div style="font-size:10px;color:var(--mu);margin-bottom:3px;">'+lbl+'</div>' +
+        '<input id="'+ids[i]+'" type="number" style="width:100%;padding:5px 7px;background:var(--s3);border:1px solid var(--b1);border-radius:5px;color:var(--tx);font-size:12px;font-family:inherit;box-sizing:border-box;" oninput="mbOvCalcYield()" placeholder="-"></div>';
+    }).join('') + '</div>' +
+    '<div id="ov_result" style="font-size:12px;color:var(--di);text-align:center;padding:4px 0;"></div>' +
+    '</div></div>';
+
+  // 분석 체크리스트 (room.checklist)
+  var checklist = d.checklist || [];
+  var checkHtml = '<div style="margin-bottom:14px;"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px;">' +
+    '<span style="font-size:11px;font-weight:700;color:var(--mu);">✅ 체크리스트</span>' +
+    '<button onclick="mbOvAddCheck()" style="font-size:10px;padding:2px 8px;background:rgba(79,142,255,.1);border:1px solid rgba(79,142,255,.3);border-radius:5px;color:#4f8eff;cursor:pointer;">+ 추가</button>' +
+    '</div>' +
+    '<div id="ov_checklist" style="display:flex;flex-direction:column;gap:4px;">' +
+    (checklist.length ? checklist.map(function(c,i){
+      return '<label style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:6px;cursor:pointer;">' +
+        '<input type="checkbox" '+(c.done?'checked':'')+' onchange="mbOvToggleCheck('+i+',this.checked)" style="accent-color:#00d482;width:15px;height:15px;">' +
+        '<span style="font-size:12px;color:var(--tx);'+(c.done?'text-decoration:line-through;opacity:.5;':'')+' flex:1;">'+c.text+'</span>' +
+        '<button onclick="event.stopPropagation();mbOvDeleteCheck('+i+')" style="background:none;border:none;color:var(--di);font-size:13px;cursor:pointer;padding:0;flex-shrink:0;">✕</button>' +
+        '</label>';
+    }).join('') : '<div style="text-align:center;padding:16px;color:var(--di);font-size:12px;">+ 추가 버튼으로 체크 항목을 추가하세요</div>') +
+    '</div></div>';
+
+  body.innerHTML = captureHtml + itemHtml + yieldHtml + checkHtml;
+
+  // 수익률 초기값 세팅
+  if (linked) {
+    var ld2 = linked.data || {};
+    var price = parseFloat(String(ld2['매매가']||'').replace(/[^0-9.]/g,''))/10000 || 0;
+    var dep = parseFloat(String(ld2['보증금']||ld2['보증금_만원']||'').replace(/[^0-9.]/g,'')) || 0;
+    var rent = parseFloat(String(ld2['월세']||ld2['월세_만원']||'').replace(/[^0-9.]/g,'')) || 0;
+    if (price) { var el=document.getElementById('ov_price'); if(el) el.value=Math.round(price); }
+    if (dep)   { var el=document.getElementById('ov_dep');   if(el) el.value=dep; }
+    if (rent)  { var el=document.getElementById('ov_rent');  if(el) el.value=rent; }
+    mbOvCalcYield();
+  }
+}
+
+window.mbOvCalcYield = function() {
+  var price = parseFloat(document.getElementById('ov_price')&&document.getElementById('ov_price').value)||0;
+  var dep   = parseFloat(document.getElementById('ov_dep')  &&document.getElementById('ov_dep').value  )||0;
+  var rent  = parseFloat(document.getElementById('ov_rent') &&document.getElementById('ov_rent').value )||0;
+  var res   = document.getElementById('ov_result'); if(!res) return;
+  if (price && rent) {
+    var inv = price - dep;
+    if (inv <= 0) { res.textContent='보증금이 매매가 이상이에요'; res.style.color='#ff6370'; return; }
+    var yld = (rent*12/inv*100).toFixed(2);
+    document.getElementById('ov_yield').value = yld;
+    res.textContent = '💰 연 수익률: '+yld+'%  (월 '+rent+'만 / 실투자 '+(inv)+'만)';
+    res.style.color = parseFloat(yld) >= 6 ? '#00d482' : parseFloat(yld) >= 4 ? '#f9a825' : '#ff6370';
+  } else { res.textContent=''; }
+};
+
+window.mbOvAddCheck = function() {
+  var room = _mbRlGetRoom(); if (!room) return;
+  var text = prompt('체크 항목:'); if (!text||!text.trim()) return;
+  if (!room.checklist) room.checklist = [];
+  room.checklist.push({text:text.trim(), done:false});
+  _mbRlSaveRooms(_mbRlGetAllRooms().map(function(r){ return r.id===_mbRlRoomId?room:r; }));
+  _mbRlRender();
+};
+
+window.mbOvToggleCheck = function(i, done) {
+  var room = _mbRlGetRoom(); if (!room||!room.checklist) return;
+  room.checklist[i].done = done;
+  _mbRlSaveRooms(_mbRlGetAllRooms().map(function(r){ return r.id===_mbRlRoomId?room:r; }));
+  _mbRlRender();
+};
+
+window.mbOvDeleteCheck = function(i) {
+  var room = _mbRlGetRoom(); if (!room||!room.checklist) return;
+  room.checklist.splice(i,1);
+  _mbRlSaveRooms(_mbRlGetAllRooms().map(function(r){ return r.id===_mbRlRoomId?room:r; }));
+  _mbRlRender();
+};
+
+function _mbRlGetAllRooms() {
+  try { return JSON.parse(localStorage.getItem('wr2_rooms')||'[]'); } catch(e) { return []; }
 }
 
 /* ──────── 노트 탭 ──────── */
@@ -5907,134 +6043,135 @@ window.mbInsTab = function(tab) {
     if (fab) fab.classList.add('visible');
     mbKcardRender();
   }
+  // 작업룸 탭이 기본 활성이면 클라우드에서 룸 로드
+  if (activeTab && activeTab.id === 'mb-itab-room') {
+    // common.js 로드 완료 후 동기화
+    setTimeout(function() {
+      if (typeof mbRoomRefreshSel === 'function') mbRoomRefreshSel();
+      if (window._sbLoadRooms) {
+        window._sbLoadRooms().then(function(cloudRooms) {
+          if (!cloudRooms || !cloudRooms.length) return;
+          var localRooms = [];
+          try { localRooms = JSON.parse(localStorage.getItem('wr2_rooms')||'[]'); } catch(e) {}
+          var merged = cloudRooms.slice();
+          localRooms.forEach(function(lr){
+            if (!merged.find(function(cr){ return cr.id===lr.id; }) && !lr.deletedAt) merged.push(lr);
+          });
+          var active = merged.filter(function(r){ return !r.deletedAt; });
+          localStorage.setItem('wr2_rooms', JSON.stringify(active));
+          if (window.wr2State) window.wr2State.rooms = active;
+          if (typeof mbRoomRefreshSel === 'function') mbRoomRefreshSel();
+        }).catch(function(){});
+      }
+    }, 1200); // common.js 초기화 대기
+  }
 })();
 </script>
 <script>
 /* ════════════════════════════════════════════
-   CSV 다운로드 (저장목록 + 지도 마커)
-   iOS Safari 호환 버전
+   저장목록 CSV/Excel 다운로드
    ════════════════════════════════════════════ */
-
-/* ── iOS/Android 호환 다운로드 ── */
-function _csvDownload(content, filename) {
-  var BOM = '\uFEFF';
-  var blob = new Blob([BOM + content], { type: 'text/csv;charset=utf-8;' });
-  var url = URL.createObjectURL(blob);
-  var a = document.createElement('a');
-  a.href = url;
-  a.setAttribute('download', filename);
-  a.style.display = 'none';
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(function() {
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }, 100);
-}
-
-/* ── 공통 컬럼 정의 ── */
-var _COLS = [
-  ['_source','소스'], ['소재지','소재지'], ['물건종류','물건종류'], ['층','층'],
-  ['전용면적','전용면적(㎡)'], ['_평','전용면적(평)'], ['평당가','평당가'],
-  ['감정가','감정가'], ['최저매각가격','최저가'], ['매매가','매매가'],
-  ['보증금','보증금'], ['월세','월세'], ['관리비','관리비'],
-  ['사건번호','사건번호'], ['유찰횟수','유찰횟수'], ['매각기일','매각기일'],
-  ['상태','상태'], ['lat','위도'], ['lng','경도'], ['_memo','메모'], ['_date','저장일']
-];
-var _SRC = {auction:'경매',listing:'네이버',naver:'네이버',jumpo:'점포라인',assa:'아싸',disco:'디스코',bds:'플래닛',transaction:'실거래',onbid:'온비드'};
-
-function _itemToRow(item) {
-  var d = item.data || {};
-  return _COLS.map(function(col) {
-    var k = col[0], v = '';
-    if      (k === '_source') v = _SRC[item.mode||item.source||''] || item.mode || item.source || '';
-    else if (k === '_평')     { var m2 = parseFloat(d['전용면적']||''); v = isNaN(m2) ? '' : (m2/3.3058).toFixed(1); }
-    else if (k === '_memo')   v = item.memo || '';
-    else if (k === '_date')   v = item.timestamp ? new Date(item.timestamp).toLocaleDateString('ko-KR') : '';
-    else if (k === 'lat')     v = item.lat || d.lat || '';
-    else if (k === 'lng')     v = item.lng || d.lng || '';
-    else v = d[k] !== undefined ? String(d[k]) : (item[k] !== undefined ? String(item[k]) : '');
-    return '"' + String(v).replace(/"/g, '""') + '"';
-  });
-}
-
-function _buildCSV(items) {
-  var header = _COLS.map(function(c){ return '"' + c[1] + '"'; }).join(',');
-  var rows = [header].concat(items.map(function(item){ return _itemToRow(item).join(','); }));
-  return rows.join('\r\n');
-}
-
-function _todayStr() {
-  return new Date().toLocaleDateString('ko-KR',{year:'2-digit',month:'2-digit',day:'2-digit'})
-    .replace(/\. /g,'-').replace(/\.$/,'');
-}
-
-/* ── 저장목록 CSV ── */
 window.mbExportCSV = function() {
   var items = [];
   try { items = JSON.parse(localStorage.getItem('re_sv') || '[]'); } catch(e) {}
-  if (!items.length) { mbToast && mbToast('저장된 데이터가 없어요','warn'); return; }
-
-  // 현재 필터 적용
-  var kw = ((document.getElementById('regionSearch')||{}).value||'').toLowerCase();
-  var activeFt = document.querySelector('.mb-ftab.active');
-  var af = activeFt ? activeFt.id.replace('ft_','') : 'all';
-
-  var filtered = items.filter(function(it) {
-    var d = it.data||{};
-    var addr = (d['소재지']||it.address||'').toLowerCase();
-    var name = (d['물건종류']||it.type||'').toLowerCase();
-    var src  = it.mode||it.source||'';
-    var ok1  = !kw || addr.includes(kw) || name.includes(kw) || (it.memo||'').toLowerCase().includes(kw);
-    var ok2  = af==='all' || src===af || (af==='listing'&&(src==='listing'||src==='naver'));
-    return ok1 && ok2;
-  });
-
-  if (!filtered.length) { mbToast && mbToast('표시된 데이터가 없어요','warn'); return; }
-  _csvDownload(_buildCSV(filtered), '상권King_저장목록_' + _todayStr() + '.csv');
-  mbToast && mbToast(filtered.length + '건 CSV 다운로드 📊', 'ok');
-};
-
-/* ── 지도 마커 CSV ── */
-window.mbExportMapCSV = function() {
-  var overlays = window.mapOverlays || [];
-  var markers  = window.mapMarkers  || [];
-
-  if (!overlays.length && !markers.length) {
-    mbToast && mbToast('지도에 불러온 마커가 없어요. 소스를 먼저 불러와주세요.', 'warn');
-    return;
-  }
-
-  var items = [];
-  overlays.forEach(function(ov) {
-    if (!ov.item) return;
-    var item = JSON.parse(JSON.stringify(ov.item)); // 복사
-    // 좌표 보강
-    if (!item.lat || !item.lng) {
-      var mObj = markers.find ? markers.find(function(m){ return m.id === ov.id; }) : null;
-      if (mObj && mObj.marker) {
-        try { item.lat = mObj.marker.getPosition().getLat(); item.lng = mObj.marker.getPosition().getLng(); } catch(e) {}
-      }
-    }
-    items.push(item);
-  });
-
-  // mapOverlays에 item이 없는 경우 re_sv에서 마커 id 기준 추출
-  if (!items.length && markers.length) {
-    try {
-      var sv = JSON.parse(localStorage.getItem('re_sv')||'[]');
-      var ids = markers.map(function(m){ return (m.id||'').replace(/^marker_/,''); });
-      items = sv.filter(function(it){ return ids.indexOf(it.id)>=0; });
-    } catch(e) {}
-  }
 
   if (!items.length) {
-    mbToast && mbToast('마커 데이터를 읽을 수 없어요. 저장목록에 저장 후 시도해보세요.', 'warn');
+    if (typeof mbToast === 'function') mbToast('저장된 데이터가 없어요', 'warn');
     return;
   }
 
-  _csvDownload(_buildCSV(items), '상권King_지도마커_' + _todayStr() + '.csv');
-  mbToast && mbToast(items.length + '건 지도 CSV 다운로드 📊', 'ok');
+  // 현재 필터 적용 (검색어 + 소스 필터)
+  var searchVal = (document.getElementById('regionSearch') || {}).value || '';
+  var activeFilter = '';
+  var activeFt = document.querySelector('.mb-ftab.active');
+  if (activeFt) activeFilter = activeFt.id.replace('ft_', '');
+
+  var filtered = items.filter(function(item) {
+    var d = item.data || {};
+    var addr = (d['소재지'] || item.address || '').toLowerCase();
+    var name = (d['물건종류'] || d['종류'] || item.type || '').toLowerCase();
+    var memo = (item.memo || '').toLowerCase();
+    var src  = (item.mode || item.source || '');
+    var kw   = searchVal.toLowerCase();
+
+    var matchSearch = !kw || addr.includes(kw) || name.includes(kw) || memo.includes(kw);
+    var matchFilter = !activeFilter || activeFilter === 'all' ||
+      src === activeFilter ||
+      (activeFilter === 'auction' && (src === 'auction' || item.mode === 'auction')) ||
+      (activeFilter === 'listing' && (src === 'listing' || src === 'naver')) ||
+      (activeFilter === 'jumpo'   && src === 'jumpo') ||
+      (activeFilter === 'assa'    && src === 'assa') ||
+      (activeFilter === 'disco'   && src === 'disco') ||
+      (activeFilter === 'bds'     && src === 'bds') ||
+      (activeFilter === 'transaction' && src === 'transaction');
+
+    return matchSearch && matchFilter;
+  });
+
+  if (!filtered.length) {
+    if (typeof mbToast === 'function') mbToast('표시된 데이터가 없어요', 'warn');
+    return;
+  }
+
+  // 컬럼 정의
+  var COLS = [
+    { key: '_source',     label: '소스' },
+    { key: '소재지',      label: '소재지' },
+    { key: '물건종류',    label: '물건종류' },
+    { key: '층',          label: '층' },
+    { key: '전용면적',    label: '전용면적(㎡)' },
+    { key: '면적평',      label: '전용면적(평)' },
+    { key: '감정가',      label: '감정가' },
+    { key: '최저매각가격',label: '최저가' },
+    { key: '평당가',      label: '평당가' },
+    { key: '매매가',      label: '매매가' },
+    { key: '보증금',      label: '보증금' },
+    { key: '월세',        label: '월세' },
+    { key: '관리비',      label: '관리비' },
+    { key: '사건번호',    label: '사건번호' },
+    { key: '유찰횟수',    label: '유찰횟수' },
+    { key: '매각기일',    label: '매각기일' },
+    { key: '상태',        label: '상태' },
+    { key: '_memo',       label: '메모' },
+    { key: '_savedAt',    label: '저장일' },
+  ];
+
+  // 소스명 변환
+  var SRC_NAMES = { auction:'경매', listing:'네이버', naver:'네이버', jumpo:'점포라인', assa:'아싸', disco:'디스코', bds:'플래닛', transaction:'실거래' };
+
+  // CSV 생성
+  var rows = [COLS.map(function(col){ return '"' + col.label + '"'; }).join(',')];
+  filtered.forEach(function(item) {
+    var d = item.data || {};
+    var row = COLS.map(function(col) {
+      var val = '';
+      if (col.key === '_source')  val = SRC_NAMES[item.mode || item.source || ''] || (item.mode || item.source || '');
+      else if (col.key === '_memo')    val = item.memo || '';
+      else if (col.key === '_savedAt') val = item.timestamp ? new Date(item.timestamp).toLocaleDateString('ko-KR') : '';
+      else if (col.key === '면적평') {
+        var m2 = parseFloat(d['전용면적'] || '');
+        val = !isNaN(m2) ? (m2 / 3.3058).toFixed(1) : '';
+      }
+      else val = d[col.key] !== undefined ? d[col.key] : (item[col.key] || '');
+      // 숫자 그대로, 문자열은 따옴표 처리
+      var str = String(val).replace(/"/g, '""');
+      return '"' + str + '"';
+    });
+    rows.push(row.join(','));
+  });
+
+  var csvContent = '﻿' + rows.join('
+'); // BOM for Excel Korean
+  var blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  var url  = URL.createObjectURL(blob);
+  var a    = document.createElement('a');
+  var date = new Date().toLocaleDateString('ko-KR',{year:'2-digit',month:'2-digit',day:'2-digit'}).replace(/\. /g,'-').replace('.','');
+  a.href     = url;
+  a.download = '상권King_저장목록_' + date + '.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+
+  if (typeof mbToast === 'function') mbToast(filtered.length + '건 CSV 저장됨 📊', 'ok');
 };
 </script>
 </body>
