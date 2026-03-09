@@ -2346,6 +2346,26 @@ body {
 
     var html = '';
 
+    // ── 메모 ──
+    // 노트: room.notes 배열 우선, 없으면 room.note/room.memo 레거시 처리
+    var _roomNotes = [];
+    if (room.notes && room.notes.length) {
+      _roomNotes = room.notes;
+    } else if (room.note || room.memo) {
+      _roomNotes = [{ id: 'legacy', title: '노트', body: room.note || room.memo }];
+    }
+    if (_roomNotes.length) {
+      html += '<details style="margin-top:8px;" open><summary style="font-size:10px;font-weight:700;color:#60a5fa;letter-spacing:.5px;cursor:pointer;padding:4px 0;list-style:none;">── 📝 노트 (' + _roomNotes.length + ')</summary>';
+      _roomNotes.forEach(function(rn) {
+        var body = (rn.body || '').replace(/<[^>]*>/g, '');
+        html += '<details style="margin-top:6px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;overflow:hidden;" open>';
+        html += '<summary style="padding:10px 12px;cursor:pointer;list-style:none;font-size:12px;font-weight:600;color:var(--tx);">' + (rn.title || '노트') + '</summary>';
+        html += '<div style="padding:8px 12px 12px;font-size:12px;color:var(--tx);line-height:1.7;white-space:pre-wrap;border-top:1px solid var(--b1);">' + body + '</div>';
+        html += '</details>';
+      });
+      html += '</details>';
+    }
+
     // ── 스냅샷 (접기/펼치기) ──
     var mapScenes = room.mapScenes || (room.mapScene ? [room.mapScene] : []);
     if (mapScenes.length) {
@@ -2455,26 +2475,6 @@ body {
       }
     } else if (!mapScenes.length) {
       html += '<div class="mb-empty" style="padding:24px 0;"><div class="mb-empty-icon">📭</div><div>아직 내용이 없어요</div><div style="font-size:11px;color:var(--di);margin-top:6px;">PC에서 작업룸에 섹션을 추가하면 여기서 볼 수 있어요</div></div>';
-    }
-
-    // ── 메모 ──
-    // 노트: room.notes 배열 우선, 없으면 room.note/room.memo 레거시 처리
-    var _roomNotes = [];
-    if (room.notes && room.notes.length) {
-      _roomNotes = room.notes;
-    } else if (room.note || room.memo) {
-      _roomNotes = [{ id: 'legacy', title: '노트', body: room.note || room.memo }];
-    }
-    if (_roomNotes.length) {
-      html += '<details style="margin-top:8px;" open><summary style="font-size:10px;font-weight:700;color:#60a5fa;letter-spacing:.5px;cursor:pointer;padding:4px 0;list-style:none;">── 📝 노트 (' + _roomNotes.length + ')</summary>';
-      _roomNotes.forEach(function(rn) {
-        var body = (rn.body || '').replace(/<[^>]*>/g, '');
-        html += '<details style="margin-top:6px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;overflow:hidden;" open>';
-        html += '<summary style="padding:10px 12px;cursor:pointer;list-style:none;font-size:12px;font-weight:600;color:var(--tx);">' + (rn.title || '노트') + '</summary>';
-        html += '<div style="padding:8px 12px 12px;font-size:12px;color:var(--tx);line-height:1.7;white-space:pre-wrap;border-top:1px solid var(--b1);">' + body + '</div>';
-        html += '</details>';
-      });
-      html += '</details>';
     }
 
     // ── 연결 매물 ──

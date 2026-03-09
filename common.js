@@ -118,7 +118,25 @@
     window._sbLoadNtNotes = async function() { return await sbGetArr('notes'); };
 
     // ─── 작업룸 동기화 ────────────────────────────────────────
-    window._sbSaveRooms = async function(arr) { await sbSetArr('workrooms', arr); window._sbSyncStatus('☁️ 작업룸 동기화 완료', true); };
+    window._sbSaveRooms = async function(arr) {
+      // 저장 전 클라우드 최신과 merge → 다기기 충돌 방지
+      try {
+        const cloudArr = await sbGetArr('workrooms');
+        if (cloudArr && cloudArr.length) {
+          const merged = _sbMergeById(cloudArr, arr);
+          await sbSetArr('workrooms', merged);
+          // 로컬도 merge 결과로 업데이트
+          const _orig = localStorage.setItem.bind(localStorage);
+          _orig('wr2_rooms', JSON.stringify(merged));
+          if (window.wr2State) window.wr2State.rooms = merged;
+        } else {
+          await sbSetArr('workrooms', arr);
+        }
+      } catch(e) {
+        await sbSetArr('workrooms', arr);
+      }
+      window._sbSyncStatus('☁️ 작업룸 동기화 완료', true);
+    };
     window._sbLoadRooms = async function() { return await sbGetArr('workrooms'); };
     window._sbSaveSections = async function(arr) {
       await sbSet('workrooms', 'sections', { value: arr });
