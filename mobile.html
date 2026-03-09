@@ -1078,25 +1078,6 @@ body {
 
 <!-- 토스트 -->
 <div id="mb-toast-container"></div>
-<div id="mb-room-create-modal" style="display:none;position:fixed;inset:0;z-index:5200;background:rgba(0,0,0,.56);padding:18px;align-items:flex-end;">
-  <div style="width:100%;background:var(--s1);border:1px solid var(--b1);border-radius:18px 18px 14px 14px;padding:16px;box-shadow:0 20px 50px rgba(0,0,0,.55);">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-      <div>
-        <div style="font-size:14px;font-weight:800;color:var(--tx);">새 작업룸 만들기</div>
-        <div style="font-size:11px;color:var(--mu);margin-top:3px;">모바일에서도 바로 생성하고 매물을 연결할 수 있어요</div>
-      </div>
-      <button type="button" onclick="mbRoomCreateClose()" style="border:none;background:none;color:var(--mu);font-size:20px;line-height:1;">✕</button>
-    </div>
-    <div style="display:flex;flex-direction:column;gap:10px;">
-      <input id="mb-room-create-name" type="text" placeholder="예: 역세권 상가 후보" style="height:42px;padding:0 12px;background:var(--s2);border:1px solid var(--b1);border-radius:10px;color:var(--tx);font-size:13px;">
-      <input id="mb-room-create-address" type="text" placeholder="주소 또는 메모 (선택)" style="height:42px;padding:0 12px;background:var(--s2);border:1px solid var(--b1);border-radius:10px;color:var(--tx);font-size:13px;">
-    </div>
-    <div style="display:flex;gap:8px;margin-top:14px;">
-      <button type="button" class="mb-btn" style="flex:1;" onclick="mbRoomCreateClose()">취소</button>
-      <button type="button" class="mb-btn mb-btn-gold" style="flex:1;" onclick="mbRoomCreateSubmit()">생성</button>
-    </div>
-  </div>
-</div>
 <div id="toast-container" style="display:none;"></div>
 
 <!-- ── 상단바 ── -->
@@ -1417,7 +1398,18 @@ body {
           <div id="mb-room-sel-list" style="display:none;position:absolute;top:42px;left:0;right:0;background:var(--s2);border:1px solid var(--b1);border-radius:8px;z-index:9999;max-height:220px;overflow-y:auto;box-shadow:0 4px 20px rgba(0,0,0,.5);"></div>
         </div>
         <select id="mb-room-sel" style="display:none;" onchange="mbRoomLoad(this.value)"><option value="">-- 작업룸 선택 --</option></select>
-        <button class="mb-btn mb-btn-gold" onclick="mbRoomNew()">＋ 새 룸</button>
+        <button class="mb-btn mb-btn-gold" onclick="mbRoomNewToggle()" id="mb-room-new-btn" style="flex-shrink:0;">＋ 새 룸</button>
+      </div>
+      <!-- 인라인 룸 생성 UI -->
+      <div id="mb-room-new-inline" style="display:none;margin-bottom:10px;padding:10px 12px;background:rgba(79,142,255,.06);border:1px solid rgba(79,142,255,.25);border-radius:10px;">
+        <div style="font-size:11px;color:var(--mu);margin-bottom:6px;">새 작업룸 이름을 입력하세요</div>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <input id="mb-room-new-input" type="text" placeholder="예: 강남 상가 분석" maxlength="40"
+            style="flex:1;height:36px;padding:0 10px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;color:var(--tx);font-size:13px;outline:none;font-family:inherit;"
+            onkeydown="if(event.key==='Enter')mbRoomNewConfirm();if(event.key==='Escape')mbRoomNewToggle();">
+          <button onclick="mbRoomNewConfirm()" style="height:36px;padding:0 14px;background:#4f8eff;border:none;border-radius:8px;color:#fff;font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0;">생성</button>
+          <button onclick="mbRoomNewToggle()" style="height:36px;padding:0 10px;background:transparent;border:1px solid var(--b1);border-radius:8px;color:var(--mu);font-size:12px;cursor:pointer;flex-shrink:0;">취소</button>
+        </div>
       </div>
 
       <!-- 룸 헤더: 이름 + 단계뱃지 + 삭제 -->
@@ -2800,67 +2792,7 @@ body {
   }
 
   /* ── 작업룸 로직 ── */
-  function _mbCreateRoom(name, address) {
-    name = (name || '').trim();
-    if (!name) return null;
-    var rooms = [];
-    try { rooms = JSON.parse(localStorage.getItem('wr2_rooms') || '[]'); } catch(e) {}
-    var now = Date.now();
-    var newRoom = {
-      id: 'room_' + now.toString(36) + Math.random().toString(36).slice(2,6),
-      title: name, address: (address || '').trim(), status: 'interest', phase: 'interest',
-      tags: [], sections: [], captureImages: [], mapScenes: [], linkedItems: [],
-      createdAt: now, updatedAt: now
-    };
-    rooms.unshift(newRoom);
-    localStorage.setItem('wr2_rooms', JSON.stringify(rooms));
-    if (window.wr2State && window.wr2State.rooms) window.wr2State.rooms.unshift(newRoom);
-    if (typeof window._sbSaveRooms === 'function') window._sbSaveRooms(rooms).catch(function(e){ console.warn('[mb] room sync fail', e); });
-    if (typeof window.wr2Render === 'function') { try { window.wr2Render(); } catch(e) {} }
-    mbToast('작업룸 "' + newRoom.title + '" 생성됨 ✅', 'ok');
-    mbRoomRefreshSel();
-    setTimeout(function() {
-      var sel = document.getElementById('mb-room-sel');
-      if (sel) { sel.value = newRoom.id; mbRoomLoad(newRoom.id); }
-    }, 100);
-    return newRoom;
-  }
-
-  window.mbRoomNew = function(prefillTitle, prefillAddress, afterCreate) {
-    var modal = document.getElementById('mb-room-create-modal');
-    var nameInput = document.getElementById('mb-room-create-name');
-    var addrInput = document.getElementById('mb-room-create-address');
-    if (modal && nameInput) {
-      modal.style.display = 'flex';
-      nameInput.value = (prefillTitle || '').trim();
-      if (addrInput) addrInput.value = (prefillAddress || '').trim();
-      modal.dataset.afterCreate = typeof afterCreate === 'function' ? '1' : '';
-      window._mbAfterRoomCreate = afterCreate || null;
-      setTimeout(function(){ nameInput.focus(); nameInput.select && nameInput.select(); }, 30);
-      return;
-    }
-    var name = prompt('새 작업룸 이름:', prefillTitle || '');
-    if (!name || !name.trim()) return;
-    var room = _mbCreateRoom(name, prefillAddress || '');
-    if (room && typeof afterCreate === 'function') afterCreate(room);
-  };
-
-  window.mbRoomCreateSubmit = function() {
-    var nameInput = document.getElementById('mb-room-create-name');
-    var addrInput = document.getElementById('mb-room-create-address');
-    var room = _mbCreateRoom(nameInput ? nameInput.value : '', addrInput ? addrInput.value : '');
-    if (!room) { mbToast('작업룸 이름을 입력해주세요', 'warn'); return; }
-    var cb = window._mbAfterRoomCreate;
-    window._mbAfterRoomCreate = null;
-    window.mbRoomCreateClose();
-    if (typeof cb === 'function') cb(room);
-  };
-
-  window.mbRoomCreateClose = function() {
-    var modal = document.getElementById('mb-room-create-modal');
-    if (modal) modal.style.display = 'none';
-    window._mbAfterRoomCreate = null;
-  };
+  // mbRoomNew: replaced by mbRoomNewConfirm (inline UI)
 
   // ── 작업룸 탭 전환 ──
   var _mbActiveRoomId = null;
@@ -2962,15 +2894,24 @@ body {
       if (!notes.length) {
         listEl.innerHTML = '<span style="font-size:11px;color:var(--di);">노트가 없어요. 추가 버튼을 눌러주세요.</span>';
       } else {
-        listEl.innerHTML = notes.map(function(n) {
+        listEl.innerHTML = '';
+        notes.forEach(function(n) {
           var isActive = n.id === _mbActiveNoteId;
-          return '<div onclick="mbRoomNoteSelect(\'' + n.id + '\')" style="display:flex;align-items:center;gap:4px;padding:4px 8px;border-radius:6px;font-size:11px;cursor:pointer;border:1px solid ' + (isActive ? 'rgba(79,142,255,.6)' : 'var(--b1)') + ';background:' + (isActive ? 'rgba(79,142,255,.12)' : 'var(--s2)') + ';color:' + (isActive ? '#4f8eff' : 'var(--tx)') + ';white-space:nowrap;">'
-            + '<span>' + (n.title || '노트') + '</span>'
-            + '<span onclick="event.stopPropagation();mbRoomNoteDel(\'' + n.id + '\')" style="color:var(--mu);font-size:10px;padding:0 2px;">✕</span>'
-            + '</div>';
-        }).join('');
-      }
-    }
+          var div = document.createElement('div');
+          div.style.cssText = 'display:flex;align-items:center;gap:4px;padding:4px 8px;border-radius:6px;font-size:11px;cursor:pointer;white-space:nowrap;border:1px solid ' + (isActive ? 'rgba(79,142,255,.6)' : 'var(--b1)') + ';background:' + (isActive ? 'rgba(79,142,255,.12)' : 'var(--s2)') + ';color:' + (isActive ? '#4f8eff' : 'var(--tx)') + ';margin-bottom:2px;';
+          div.onclick = (function(id){ return function(){ mbRoomNoteSelect(id); }; })(n.id);
+          var titleSpan = document.createElement('span');
+          titleSpan.style.cssText = 'flex:1;overflow:hidden;text-overflow:ellipsis;';
+          titleSpan.textContent = n.title || '노트';
+          var delSpan = document.createElement('span');
+          delSpan.style.cssText = 'color:var(--mu);font-size:10px;padding:0 2px;flex-shrink:0;';
+          delSpan.textContent = '✕';
+          delSpan.onclick = (function(id){ return function(e){ e.stopPropagation(); mbRoomNoteDel(id); }; })(n.id);
+          div.appendChild(titleSpan);
+          div.appendChild(delSpan);
+          listEl.appendChild(div);
+        });
+      }   }
     // 에디터
     var ta = document.getElementById('mb-room-note-ta');
     var status = document.getElementById('mb-room-note-status');
@@ -3257,145 +3198,25 @@ body {
     mbRoomLoad(_mbActiveRoomId);
   };
 
-  function _mbGetSavedItems() {
-    try { return JSON.parse(localStorage.getItem('re_sv') || '[]'); } catch(e) { return []; }
-  }
-
-  function _mbNormalizeRoomLinkedItems(room, savedItems) {
-    savedItems = savedItems || _mbGetSavedItems();
-    var ids = [];
-    if (room.linkedSavedId) ids.push(String(room.linkedSavedId));
-    (room.linkedItems || []).forEach(function(entry) {
-      if (!entry) return;
-      if (typeof entry === 'string') ids.push(entry);
-      else if (entry.id) ids.push(String(entry.id));
-    });
-    var uniq = [];
-    ids.forEach(function(id){ if (uniq.indexOf(String(id)) < 0) uniq.push(String(id)); });
-    return uniq.map(function(id){ return savedItems.find(function(it){ return String(it.id) === String(id); }); }).filter(Boolean);
-  }
-
-  function _mbPersistRoomPatch(roomId, patcher) {
-    var rooms = [];
-    try { rooms = JSON.parse(localStorage.getItem('wr2_rooms') || '[]'); } catch(e) {}
-    var room = rooms.find(function(r){ return r.id === roomId; });
-    if (!room) return null;
-    patcher(room);
-    room.updatedAt = Date.now();
-    localStorage.setItem('wr2_rooms', JSON.stringify(rooms));
-    if (window.wr2State && window.wr2State.rooms) {
-      var idx = window.wr2State.rooms.findIndex(function(r){ return r.id === roomId; });
-      if (idx >= 0) window.wr2State.rooms[idx] = room;
-    }
-    if (window._sbSaveRooms) window._sbSaveRooms(rooms).catch(function(){});
-    return room;
-  }
-
-  window.mbRoomLinkItem = function(roomId, itemId, silent) {
-    var savedItems = _mbGetSavedItems();
-    var item = savedItems.find(function(it){ return String(it.id) === String(itemId); });
-    if (!item) { mbToast('매물을 찾을 수 없어요', 'err'); return; }
-    var room = _mbPersistRoomPatch(roomId, function(r) {
-      if (!r.linkedItems) r.linkedItems = [];
-      var ids = (r.linkedItems || []).map(function(entry){ return typeof entry === 'string' ? String(entry) : String(entry && entry.id); }).filter(Boolean);
-      if (ids.indexOf(String(itemId)) < 0) r.linkedItems.push(String(itemId));
-      if (!r.linkedSavedId) r.linkedSavedId = String(itemId);
-      if (!r.address) r.address = (item.data || {})['소재지'] || item.address || '';
-    });
-    if (!room) return;
-    if (!silent) mbToast('작업룸에 매물을 연결했어요', 'ok');
-    if (_mbActiveRoomId === roomId) _mbRenderItemTab(room);
-    if (window.wr2Render) { try { window.wr2Render(); } catch(e) {} }
-  };
-
-  function _mbRenderItemLinkPicker(room, savedItems) {
-    var wrap = document.createElement('div');
-    wrap.style.cssText = 'margin-top:12px;padding:12px;background:rgba(79,142,255,.06);border:1px solid rgba(79,142,255,.16);border-radius:12px;';
-    var head = document.createElement('div');
-    head.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;';
-    head.innerHTML = '<div><div style="font-size:12px;font-weight:700;color:var(--tx);">＋ 저장목록에서 연결</div><div style="font-size:10px;color:var(--mu);margin-top:2px;">모바일에서도 바로 작업룸에 묶을 수 있어요</div></div>';
-    wrap.appendChild(head);
-
-    var search = document.createElement('input');
-    search.type = 'search';
-    search.placeholder = '주소·제목·사건번호 검색';
-    search.style.cssText = 'width:100%;height:36px;padding:0 10px;background:var(--s3);border:1px solid var(--b2);border-radius:8px;color:var(--tx);font-size:12px;margin-bottom:8px;';
-    wrap.appendChild(search);
-
-    var list = document.createElement('div');
-    list.style.cssText = 'display:flex;flex-direction:column;gap:6px;max-height:240px;overflow:auto;';
-    wrap.appendChild(list);
-
-    var linkedIds = _mbNormalizeRoomLinkedItems(room, savedItems).map(function(it){ return String(it.id); });
-
-    function renderList() {
-      var q = (search.value || '').trim();
-      var pool = savedItems.filter(function(it) {
-        if (linkedIds.indexOf(String(it.id)) >= 0) return false;
-        if (!q) return true;
-        var d = it.data || {};
-        var hay = [it.title, it.address, d['소재지'], d['단지명'], d['사건번호'], d['건물명']].filter(Boolean).join(' ').toLowerCase();
-        return hay.indexOf(q.toLowerCase()) >= 0;
-      }).slice(0, 20);
-      if (!pool.length) {
-        list.innerHTML = '<div style="font-size:11px;color:var(--di);text-align:center;padding:10px 0;">연결할 수 있는 매물이 없어요</div>';
-        return;
-      }
-      list.innerHTML = '';
-      pool.forEach(function(it) {
-        var d = it.data || {};
-        var row = document.createElement('button');
-        row.type = 'button';
-        row.style.cssText = 'text-align:left;padding:10px 12px;border-radius:10px;border:1px solid var(--b1);background:var(--s2);color:var(--tx);display:flex;align-items:center;justify-content:space-between;gap:10px;';
-        var left = document.createElement('div');
-        left.style.cssText = 'min-width:0;';
-        left.innerHTML = '<div style="font-size:12px;font-weight:700;color:var(--tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + (it.title || d['소재지'] || '매물') + '</div>' +
-          '<div style="font-size:10px;color:var(--mu);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + ((d['소재지'] || it.address || '') || '주소 없음') + '</div>';
-        var add = document.createElement('span');
-        add.style.cssText = 'flex:0 0 auto;font-size:11px;color:#4f8eff;font-weight:700;';
-        add.textContent = '연결';
-        row.appendChild(left);
-        row.appendChild(add);
-        row.onclick = function() { mbRoomLinkItem(room.id, it.id); };
-        list.appendChild(row);
-      });
-    }
-    search.oninput = renderList;
-    renderList();
-    return wrap;
-  }
-
-  window.mbLinkCurrentSheetItemToRoom = function() {
-    var currentId = (_mbBsCurrentId || '').replace(/^marker_/, '');
-    if (!currentId) { mbToast('현재 매물을 찾을 수 없어요', 'err'); return; }
-    var sel = document.getElementById('mb-room-sel');
-    var roomId = sel && sel.value;
-    if (roomId) {
-      mbRoomLinkItem(roomId, currentId);
-      return;
-    }
-    var savedItems = _mbGetSavedItems();
-    var item = savedItems.find(function(it){ return String(it.id) === String(currentId); });
-    var title = item ? (item.title || '') : '';
-    var addr = item ? ((item.data || {})['소재지'] || item.address || '') : '';
-    mbRoomNew(title, addr, function(room) {
-      mbRoomLinkItem(room.id, currentId, true);
-      mbToast('새 작업룸에 바로 연결했어요', 'ok');
-    });
-  };
-
   // ── 매물 탭 렌더 ──
   function _mbRenderItemTab(room) {
     var body = document.getElementById('mb-room-item-body');
     if (!body) return;
-    var savedItems = _mbGetSavedItems();
-    var items = _mbNormalizeRoomLinkedItems(room, savedItems);
-    body.innerHTML = '';
-
-    if (!items.length) {
-      body.innerHTML = '<div class="mb-empty" style="padding:24px 0 16px;"><div class="mb-empty-icon">🔗</div><div>연결된 매물이 없어요</div><div style="font-size:11px;color:var(--di);margin-top:6px;">아래에서 저장목록 매물을 바로 연결할 수 있어요</div></div>';
+    var html = '';
+    var savedItems = [];
+    try { savedItems = JSON.parse(localStorage.getItem('re_sv') || '[]'); } catch(e) {}
+    var linkedId = room.linkedSavedId;
+    var linkedItems = room.linkedItems || [];
+    var items = [];
+    if (linkedId) {
+      var found = savedItems.find(function(x){ return x.id === linkedId; });
+      if (found) items.push(found);
     }
-
+    if (!items.length && linkedItems.length) items = linkedItems;
+    if (!items.length) {
+      body.innerHTML = '<div class="mb-empty" style="padding:24px 0;"><div class="mb-empty-icon">🔗</div><div>연결된 매물이 없어요</div><div style="font-size:11px;color:var(--di);margin-top:6px;">PC에서 작업룸에 물건을 연결하세요</div></div>';
+      return;
+    }
     items.forEach(function(it) {
       var d = it.data || {};
       var addr = d['소재지'] || d['단지명'] || it.address || it.title || '';
@@ -3403,25 +3224,16 @@ body {
       var monthly = d['월세_만원'] ? d['월세_만원'] + '만원/월' : '';
       var area = d['전용면적_m2'] ? Math.round(d['전용면적_m2']) + '㎡ (' + Math.round(d['전용면적_m2']/3.3) + '평)' : '';
       var floor = d['해당층'] ? d['해당층'] + '층' : '';
-      var card = document.createElement('div');
-      card.style.cssText = 'padding:12px;background:var(--s2);border:1px solid rgba(0,212,170,.2);border-radius:10px;margin-bottom:8px;cursor:pointer;';
-      card.onclick = function(){ mbOpenSavedDetail(it.id); };
-      card.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">' +
-        '<div style="min-width:0;flex:1;">' +
-        '<div style="font-size:13px;font-weight:700;color:var(--ac);margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + (it.title || addr || '매물') + '</div>' +
-        (addr && addr !== it.title ? '<div style="font-size:11px;color:var(--mu);margin-bottom:6px;line-height:1.45;">📍 ' + addr + '</div>' : '') +
-        (price ? '<div style="font-size:13px;color:#ff8c42;font-weight:700;">' + price + (monthly ? ' / ' + monthly : '') + '</div>' : '') +
-        ((area || floor) ? '<div style="font-size:11px;color:var(--mu);margin-top:4px;">' + [area,floor].filter(Boolean).join(' · ') + '</div>' : '') +
-        '</div>' +
-        '<button type="button" style="flex:0 0 auto;height:28px;padding:0 10px;border-radius:8px;border:1px solid var(--b1);background:var(--s3);color:var(--mu);font-size:11px;" onclick="event.stopPropagation();mbGoToMap('' + ((addr||'').replace(/'/g, "\'")) + '','' + String(it.id).replace(/'/g, "\'") + '')">지도</button>' +
-        '</div>' +
-        '<div style="display:flex;gap:10px;margin-top:8px;">' +
-        '<a href="' + (d['상세URL']||'#') + '" target="_blank" onclick="event.stopPropagation();return' + (d['상세URL'] ? ' true' : ' false') + ';" style="font-size:11px;color:#4f8eff;text-decoration:none;">🔗 원본 보기</a>' +
-        '</div>';
-      body.appendChild(card);
+      var _eid = (it.id||'').replace(/'/g,"\'");
+      html += '<div style="padding:12px;background:var(--s2);border:1px solid rgba(0,212,170,.2);border-radius:10px;margin-bottom:8px;cursor:pointer;" onclick="mbOpenSavedDetail(\'' + _eid + '\')">';
+      html += '<div style="font-size:13px;font-weight:700;color:var(--ac);margin-bottom:4px;">' + (it.title || addr || '매물') + '</div>';
+      if (addr && addr !== it.title) html += '<div style="font-size:11px;color:var(--mu);margin-bottom:6px;">📍 ' + addr + '</div>';
+      if (price) html += '<div style="font-size:13px;color:#ff8c42;font-weight:700;">' + price + (monthly ? ' / ' + monthly : '') + '</div>';
+      if (area || floor) html += '<div style="font-size:11px;color:var(--mu);margin-top:4px;">' + [area,floor].filter(Boolean).join(' · ') + '</div>';
+      html += '<div style="margin-top:8px;"><a href="' + (d['상세URL']||'#') + '" target="_blank" onclick="event.stopPropagation();return' + (d['상세URL'] ? ' true' : ' false') + ';" style="font-size:11px;color:#4f8eff;text-decoration:none;">🔗 원본 보기</a></div>';
+      html += '</div>';
     });
-
-    body.appendChild(_mbRenderItemLinkPicker(room, savedItems));
+    body.innerHTML = html;
   }
 
   // 작업룸 렌더 내부 함수 (sections 로드 완료 후 호출)
@@ -4064,16 +3876,16 @@ body {
           actions.appendChild(_al2);
         }
         var _ab3 = document.createElement('button');
-        _ab3.className = 'mb-btn';
-        _ab3.style.cssText = 'flex:1;font-size:11px;border-color:rgba(79,142,255,.28);color:#4f8eff;';
-        _ab3.textContent = '🗂️ 작업룸';
-        _ab3.onclick = function(){ mbLinkCurrentSheetItemToRoom(); };
+        _ab3.className = 'mb-btn mb-btn-gold';
+        _ab3.style.cssText = 'flex:1;font-size:11px;';
+        _ab3.textContent = '💰 수익';
+        _ab3.onclick = (function(id){ return function(){ _mbToggleYield(id); }; })(iid);
         actions.appendChild(_ab3);
         var _ab4 = document.createElement('button');
-        _ab4.className = 'mb-btn mb-btn-gold';
-        _ab4.style.cssText = 'flex:1;font-size:11px;';
-        _ab4.textContent = '💰 수익';
-        _ab4.onclick = (function(id){ return function(){ _mbToggleYield(id); }; })(iid);
+        _ab4.className = 'mb-btn';
+        _ab4.style.cssText = 'flex:1;font-size:11px;color:#a78bfa;border-color:rgba(167,139,250,.3);';
+        _ab4.textContent = '🗂️ 룸';
+        _ab4.onclick = (function(id, itemObj){ return function(){ mbBsAddToRoom(id, itemObj); }; })(iid, item);
         actions.appendChild(_ab4);
       }
 
@@ -4323,5 +4135,87 @@ body {
   </div>
 </div>
 
+<script>
+/* ─ 인라인 룸 생성 UI ─ */
+window.mbRoomNewToggle = function() {
+  var inline = document.getElementById('mb-room-new-inline');
+  var btn    = document.getElementById('mb-room-new-btn');
+  if (!inline) return;
+  var isOpen = inline.style.display !== 'none';
+  inline.style.display = isOpen ? 'none' : 'block';
+  btn.textContent = isOpen ? '＋ 새 룸' : '✕ 취소';
+  if (!isOpen) { setTimeout(function(){ var i=document.getElementById('mb-room-new-input'); if(i)i.focus(); },80); }
+  else { var i=document.getElementById('mb-room-new-input'); if(i)i.value=''; }
+};
+window.mbRoomNewConfirm = function() {
+  var inp  = document.getElementById('mb-room-new-input');
+  var name = inp ? inp.value.trim() : '';
+  if (!name) { mbToast('룸 이름을 입력해주세요','err'); return; }
+  var rooms=[]; try{ rooms=JSON.parse(localStorage.getItem('wr2_rooms')||'[]'); }catch(e){}
+  var now=Date.now();
+  var newRoom={ id:'room_'+now.toString(36)+Math.random().toString(36).slice(2,6), title:name,
+    address:'', status:'interest', phase:'interest', tags:[], sections:[], captureImages:[], mapScenes:[],
+    createdAt:now, updatedAt:now };
+  rooms.unshift(newRoom);
+  localStorage.setItem('wr2_rooms',JSON.stringify(rooms));
+  if(window.wr2State&&window.wr2State.rooms) window.wr2State.rooms.unshift(newRoom);
+  if(typeof window._sbSaveRooms==='function') window._sbSaveRooms(rooms).catch(function(e){});
+  if(typeof window.wr2Render==='function') try{window.wr2Render();}catch(e){}
+  mbToast('✅ 작업룸 "'+name+'" 생성됨','ok');
+  mbRoomNewToggle();
+  mbRoomRefreshSel();
+  setTimeout(function(){ mbRoomLoad(newRoom.id); },120);
+};
+
+/* ─ 바텀시트 작업룸 연동 ─ */
+window.mbBsAddToRoom = function(itemId, itemObj) {
+  var rooms=[]; try{ rooms=JSON.parse(localStorage.getItem('wr2_rooms')||'[]'); }catch(e){}
+  if(!rooms.length){ mbToast('작업룸이 없어요. 먼저 작업룸을 만드세요.','err'); return; }
+  var existing=document.getElementById('mb-bs-room-picker');
+  if(existing){ existing.remove(); return; }
+  var picker=document.createElement('div');
+  picker.id='mb-bs-room-picker';
+  picker.style.cssText='position:absolute;bottom:calc(100% + 6px);right:0;width:220px;background:var(--s2);border:1px solid var(--b1);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.6);z-index:9999;overflow:hidden;';
+  var hdr=document.createElement('div');
+  hdr.style.cssText='padding:10px 14px 6px;font-size:11px;color:var(--mu);font-weight:700;border-bottom:1px solid var(--b1);';
+  hdr.textContent='🗂️ 작업룸 선택';
+  picker.appendChild(hdr);
+  rooms.slice(0,8).forEach(function(room){
+    var row=document.createElement('div');
+    row.style.cssText='padding:10px 14px;font-size:12px;color:var(--tx);cursor:pointer;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--b1);';
+    row.innerHTML='<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;">'+(room.title||'작업룸')+'</span>';
+    row.onclick=(function(r){ return function(){ picker.remove(); _mbLinkToRoom(itemId,itemObj,r); }; })(room);
+    picker.appendChild(row);
+  });
+  var newRow=document.createElement('div');
+  newRow.style.cssText='padding:10px 14px;font-size:12px;color:#4f8eff;font-weight:700;cursor:pointer;';
+  newRow.textContent='＋ 새 작업룸 만들기';
+  newRow.onclick=function(){ picker.remove(); mbCloseBottomSheet(); setTimeout(function(){ mbGoPage('insight',document.getElementById('mb-tab-insight')); setTimeout(mbRoomNewToggle,300); },200); };
+  picker.appendChild(newRow);
+  var actions=document.getElementById('mb-map-bs-actions');
+  if(actions){ actions.style.position='relative'; actions.appendChild(picker); }
+  setTimeout(function(){ document.addEventListener('click',function _cp(e){ if(!picker.contains(e.target)){ picker.remove(); document.removeEventListener('click',_cp); } }); },100);
+};
+window._mbLinkToRoom = function(itemId, itemObj, room) {
+  var rooms=[]; try{ rooms=JSON.parse(localStorage.getItem('wr2_rooms')||'[]'); }catch(e){}
+  var target=rooms.find(function(r){ return r.id===room.id; });
+  if(!target){ mbToast('작업룸을 찾을 수 없어요','err'); return; }
+  if(!target.linkedItems) target.linkedItems=[];
+  if(target.linkedItems.find(function(x){ return x.id===itemId; })){ mbToast('이미 연결된 매물이에요','err'); return; }
+  var d=(itemObj&&itemObj.data)?itemObj.data:{};
+  target.linkedItems.push({ id:itemId, mode:(itemObj&&itemObj.mode)||'', title:d['소재지']||d['단지명']||(itemObj&&itemObj.title)||itemId, address:d['소재지']||(itemObj&&itemObj.address)||'', data:d, linkedAt:Date.now() });
+  target.updatedAt=Date.now();
+  localStorage.setItem('wr2_rooms',JSON.stringify(rooms));
+  if(typeof window._sbSaveRooms==='function') window._sbSaveRooms(rooms).catch(function(e){});
+  mbToast('✅ "'+room.title+'"에 연결됐어요!','ok');
+  setTimeout(function(){
+    if(confirm('"'+room.title+'" 작업룸으로 이동할까요?')){
+      mbCloseBottomSheet();
+      mbGoPage('insight',document.getElementById('mb-tab-insight'));
+      setTimeout(function(){ mbRoomLoad(room.id); },200);
+    }
+  },400);
+};
+</script>
 </body>
 </html>
