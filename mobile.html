@@ -315,8 +315,13 @@ body {
   display: flex; gap: 6px;
   margin-bottom: 14px;
   overflow-x: auto; scrollbar-width: none;
-  padding-bottom: 2px;
+  padding-bottom: 6px;
   flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  background: var(--s1);
+  z-index: 10;
+  padding-top: 2px;
 }
 .mb-calc-tabs::-webkit-scrollbar { display: none; }
 .mb-calc-tab {
@@ -2301,12 +2306,32 @@ body {
   };
 
   window.mbGoToMap = function(addr, itemId) {
+    // 1. goToMapFromCard 우선 (마커 찾기 + 이동 + 바텀시트)
     if (itemId && typeof window.goToMapFromCard === 'function') {
-      // goToMapFromCard가 탭전환+마커표시까지 모두 처리
       window.goToMapFromCard(itemId);
       return;
     }
-    // fallback: 주소로 검색
+    // 2. itemId만 있고 goToMapFromCard 없는 경우
+    if (itemId) {
+      mbGoPage('map', document.getElementById('mb-tab-map'));
+      setTimeout(function() {
+        // re_sv에서 아이템 찾아 좌표로 이동
+        var sv = [];
+        try { sv = JSON.parse(localStorage.getItem('re_sv') || '[]'); } catch(e) {}
+        var it = sv.find(function(x){ return x.id === itemId; });
+        if (it) {
+          var lat = parseFloat(it.lat), lng = parseFloat(it.lng);
+          if (!isNaN(lat) && !isNaN(lng) && window.map) {
+            try { window.map.setCenter(new kakao.maps.LatLng(lat, lng)); window.map.setLevel(3); } catch(e) {}
+          } else if ((it.data || {})['소재지'] && addr) {
+            var inp = document.getElementById('mapKeyword');
+            if (inp) { inp.value = addr; if (typeof searchMap === 'function') searchMap(); }
+          }
+        }
+      }, 400);
+      return;
+    }
+    // 3. 주소만 있는 경우
     mbGoPage('map', document.getElementById('mb-tab-map'));
     setTimeout(function() {
       if (addr) {
@@ -2782,17 +2807,21 @@ body {
         ? room.sections.map(function(s){ return Object.assign({},s,{roomId:roomId,room_id:roomId}); })
         : [];
       var _bestLocal = _memSecs.length ? _memSecs : (_lsSecs.length ? _lsSecs : _fallbackSecs);
+      // ★ 로컬 데이터 있으면 즉시 렌더 (UX 개선: 기다리지 않음)
+      if (_bestLocal.length) _doRender(_bestLocal);
+      // 병렬로 클라우드 최신 데이터도 확인
       if (window._sbLoadSections) {
         window._sbLoadSections().then(function(cloudSecs) {
           if (cloudSecs && cloudSecs.length) {
             localStorage.setItem('wr2_sections', JSON.stringify(cloudSecs));
-            _doRender(cloudSecs);
-          } else {
-            _doRender(_bestLocal);
+            if (window.wr2State) window.wr2State.sections = cloudSecs;
+            _doRender(cloudSecs); // 클라우드 데이터로 재렌더
+          } else if (!_bestLocal.length) {
+            _doRender([]); // 완전히 없는 경우
           }
-        }).catch(function() { _doRender(_bestLocal); });
-      } else {
-        _doRender(_bestLocal);
+        }).catch(function() { if (!_bestLocal.length) _doRender([]); });
+      } else if (!_bestLocal.length) {
+        _doRender([]);
       }
     } catch(e) {
       console.error('mbRoomLoad error:', e);
@@ -3044,8 +3073,17 @@ body {
   var _mbBsCurrentId = null;
   var _mbBsCurTab = 'card';
 
-  window.mbShowCardBottomSheet = function(markerId) {
-    _mbBsCurrentId = markerId;
+  window.mbShowCardBottomSheet = function(markerIdOrItem) {
+    // markerIdOrItem: 문자열 ID 또는 item 객체 모두 처리
+    if (markerIdOrItem && typeof markerIdOrItem === 'object') {
+      // item 객체가 들어온 경우 → overlays에서 id 찾기
+      var _itemId = markerIdOrItem.id;
+      var _overlays = window.mapOverlays || [];
+      var _found = _overlays.find(function(o){ return o && o.item && o.item.id === _itemId; });
+      _mbBsCurrentId = _found ? _found.id : ('marker_' + _itemId);
+    } else {
+      _mbBsCurrentId = markerIdOrItem;
+    }
     _mbBsCurTab = 'card';
     var bs = document.getElementById('mb-map-bs');
     var bd = document.getElementById('mb-map-bs-backdrop');

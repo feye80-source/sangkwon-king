@@ -228,10 +228,15 @@
         const secCloud = await window._sbLoadSections();
         if (secCloud && secCloud.length > 0) {
           localStorage.setItem('wr2_sections', JSON.stringify(secCloud));
+          // ★ wr2State에도 즉시 반영
+          if (window.wr2State) window.wr2State.sections = secCloud;
         } else {
           // 로컬에 있으면 클라우드로 올림
           const secLocal = JSON.parse(localStorage.getItem('wr2_sections') || '[]');
-          if (secLocal.length > 0) window._sbSaveSections(secLocal).catch(()=>{});
+          if (secLocal.length > 0) {
+            if (window.wr2State) window.wr2State.sections = secLocal;
+            window._sbSaveSections(secLocal).catch(()=>{});
+          }
         }
 
         // 작업씬 — id merge
@@ -6842,7 +6847,7 @@ ${inputDesc.substring(0, 3000)}
           try { oObj.overlay.setMap(map); } catch (e) { }
           // 모바일: 바텀시트로 카드 내용 표시
           if (window.innerWidth <= 768 && typeof window.mbShowCardBottomSheet === 'function') {
-            try { window.mbShowCardBottomSheet(oObj.item || item); } catch(e) {}
+            try { window.mbShowCardBottomSheet(oObj.id); } catch(e) {}
           }
           try { oObj.marker.setMap(map); } catch (e) { }
         }
