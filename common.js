@@ -276,6 +276,16 @@
       return Array.from(map.values()).filter(item => !item.deletedAt);
     }
 
+    // localStorage 안전 쓰기 (QuotaExceeded 시 해당 키만 skip)
+    function _safeLocalSet(key, value) {
+      try {
+        localStorage.setItem(key, value);
+      } catch(e) {
+        console.warn('[SB] localStorage 용량 초과, 스킵:', key);
+        localStorage.removeItem(key); // 공간 확보 시도
+      }
+    }
+
     window._sbInitLoad = async function() {
       try {
         const { data: { session } } = await window._sb.auth.getSession();
@@ -306,7 +316,7 @@
         if (ntCloud !== null) {
           const ntLocal = JSON.parse(localStorage.getItem('nt_notes') || '[]');
           const merged = _sbMergeById(ntCloud, ntLocal);
-          localStorage.setItem('nt_notes', JSON.stringify(merged));
+          _safeLocalSet('nt_notes', JSON.stringify(merged));
           if (merged.length > ntCloud.length) window._sbSaveNtNotes(merged).catch(()=>{});
         } else {
           const ntLocal = JSON.parse(localStorage.getItem('nt_notes') || '[]');
@@ -319,7 +329,7 @@
           const roomsLocal = JSON.parse(localStorage.getItem('wr2_rooms') || '[]');
           const merged = _sbMergeById(roomsCloud, roomsLocal);
           const mergedActive = merged.filter(r => !r.deletedAt);
-          localStorage.setItem('wr2_rooms', JSON.stringify(mergedActive));
+          _safeLocalSet('wr2_rooms', JSON.stringify(mergedActive));
           if (window.wr2State) window.wr2State.rooms = mergedActive;
           if (mergedActive.length > roomsCloud.filter(r=>!r.deletedAt).length)
             window._sbSaveRooms(merged).catch(()=>{});
@@ -331,7 +341,7 @@
         // ── 섹션 ──
         const secCloud = await window._sbLoadSections();
         if (secCloud && secCloud.length > 0) {
-          localStorage.setItem('wr2_sections', JSON.stringify(secCloud));
+          _safeLocalSet('wr2_sections', JSON.stringify(secCloud));
           if (window.wr2State) window.wr2State.sections = secCloud;
         } else {
           const secLocal = JSON.parse(localStorage.getItem('wr2_sections') || '[]');
@@ -346,7 +356,7 @@
         if (wsCloud !== null) {
           const wsLocal = JSON.parse(localStorage.getItem('re_ws') || '[]');
           const merged = _sbMergeById(wsCloud, wsLocal);
-          localStorage.setItem('re_ws', JSON.stringify(merged));
+          _safeLocalSet('re_ws', JSON.stringify(merged));
           if (merged.length > wsCloud.length) window._sbSaveWorkScenes(merged).catch(()=>{});
         } else {
           const wsLocal = JSON.parse(localStorage.getItem('re_ws') || '[]');
@@ -376,7 +386,12 @@
         window._sbSyncStatus('✅ 클라우드 로드 완료', true);
       } catch(e) {
         console.warn('[SB] initLoad error', e);
-        window._sbSyncStatus('⚠️ 오프라인 모드', false);
+        // QuotaExceededError는 네트워크 문제가 아니므로 오프라인 모드 표시 안 함
+        if (e && e.name === 'QuotaExceededError') {
+          window._sbSyncStatus('✅ 클라우드 로드 완료 (로컬저장 일부 생략)', true);
+        } else {
+          window._sbSyncStatus('⚠️ 오프라인 모드', false);
+        }
       }
     };
 
