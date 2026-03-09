@@ -12781,7 +12781,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         ${src === '부동산플래닛' ? row('용도', 매물명) : ''}
         <div class="map-card-action-row">
           <button class="mca-btn saved" onclick="goToSavedFromMap('${item.id}')" onmousedown="event.stopPropagation()">📋 목록</button>
-          ${src === '부동산플래닛' ? `<button class="mca-btn link-a" onmousedown="event.stopPropagation()" onclick="(()=>{const _a='${esc(d.소재지 || '')}';if(_a){try{navigator.clipboard.writeText(_a);}catch(e){}const ta=document.createElement('textarea');ta.value=_a;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.focus();ta.select();try{document.execCommand('copy');}catch(e){}document.body.removeChild(ta);}window.open('https://www.bdsplanet.com/map/realprice_map.ytp','_blank');})()" title="주소복사+플래닛">🌍 링크</button>` : (d.상세URL ? `<a href="${esc(d.상세URL)}" target="_blank" class="mca-btn link-a" onmousedown="event.stopPropagation()" style="text-decoration:none;">🔗 링크</a>` : '')}
+          ${src === '부동산플래닛' ? `<button class="mca-btn link-a" onmousedown="event.stopPropagation()" onclick="(()=>{const _a='${esc(d.소재지 || '')}';if(_a){try{navigator.clipboard.writeText(_a);}catch(e){}const ta=document.createElement('textarea');ta.value=_a;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.focus();ta.select();try{document.execCommand('copy');}catch(e){}document.body.removeChild(ta);}window.open('https://www.bdsplanet.com/map/realprice_map.ytp','_blank');})()" title="주소복사+플래닛">🌍 링크</button>` : (d.상세URL ? `<a href="${esc(d.상세URL)}" target="_blank" class="mca-btn link-a" onmousedown="event.stopPropagation()" ontouchstart="event.stopPropagation()" onclick="window.open(this.href,'_blank');return false;" style="text-decoration:none;">🔗 링크</a>` : '')}
           <button class="mca-btn yield" onclick="toggleYieldPanel('${item.id}')" onmousedown="event.stopPropagation()">💰 수익</button>
         </div>
         <div class="memo-tri-toggle ${item.memo ? 'has-memo' : ''}" onclick="toggleMapCardMemo(this)" onmousedown="event.stopPropagation()" title="메모"></div>
@@ -12912,7 +12912,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       <button class="rights-toggle-btn" onclick="toggleRightsPanel('${item.id}')">👤 권리정보 보기 ▶</button>
       <div class="map-card-action-row">
         <button class="mca-btn saved" onclick="goToSavedFromMap('${item.id}')" onmousedown="event.stopPropagation()">📋 목록</button>
-        <a href="#" target="_blank" class="mca-btn link-a" onmousedown="event.stopPropagation()" style="text-decoration:none;" title="경매사이트">⚖️ 링크</a>
+        <a href="#" target="_blank" class="mca-btn link-a" onmousedown="event.stopPropagation()" ontouchstart="event.stopPropagation()" onclick="window.open(this.href,'_blank');return false;" style="text-decoration:none;" title="경매사이트">⚖️ 링크</a>
         <button class="mca-btn yield" onclick="toggleYieldPanel('${item.id}')" onmousedown="event.stopPropagation()">💰 수익</button>
       </div>
       <button class="mca-memo-btn ${item.memo ? 'has-memo' : ''}" onclick="toggleMapCardMemo(this)" onmousedown="event.stopPropagation()">📝 메모</button>
@@ -13055,7 +13055,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     <div class="map-card-row"><span class="map-card-label">방향</span><span class="map-card-value" id="dir_disp_${item.id}" onclick="inlineEditFloor('${item.id}','dir')" title="클릭하여 수정" style="cursor:pointer;border-bottom:1px dashed rgba(255,255,255,.2);">${방향 || '-'}</span></div>
     <div class="map-card-action-row">
       <button class="mca-btn saved" onclick="goToSavedFromMap('${item.id}')" onmousedown="event.stopPropagation()">📋 목록</button>
-      ${d.상세URL ? `<a href="${esc(d.상세URL)}" target="_blank" class="mca-btn link-a" onmousedown="event.stopPropagation()" style="text-decoration:none;">🔗 링크</a>` : ''}
+      ${d.상세URL ? `<a href="${esc(d.상세URL)}" target="_blank" class="mca-btn link-a" onmousedown="event.stopPropagation()" ontouchstart="event.stopPropagation()" onclick="window.open(this.href,'_blank');return false;" style="text-decoration:none;">🔗 링크</a>` : ''}
       <button class="mca-btn yield" onclick="toggleYieldPanel('${item.id}')" onmousedown="event.stopPropagation()">💰 수익</button>
     </div>
     <div class="memo-tri-toggle ${item.memo ? 'has-memo' : ''}" onclick="toggleMapCardMemo(this)" onmousedown="event.stopPropagation()" title="메모"></div>
@@ -13946,8 +13946,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       }));
       try {
         if (typeof renderCSVSourceList === 'function') renderCSVSourceList();
-        document.getElementById('csvStatusPanel').style.display = 'block';
-        document.getElementById('csvDataInfo').textContent = `CSV 소스 ${csvDatasets.length}개 (외부 파일)`;
+        // csvStatusPanel은 실제 로드 후에만 표시 (initExternalCSVDatasets에서는 숨김 유지)
       } catch (e) { }
     }
 
@@ -15601,21 +15600,24 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const list = document.getElementById('csvSourceList');
       if (!list) return;
       list.innerHTML = '';
-      const summary = document.getElementById('csvSourceSummary');
-      if (summary) {
-        const loaded = csvDatasets.filter(d => d.loaded && d.data && d.data.length).length;
-        summary.textContent = `📋 데이터 소스 (${csvDatasets.length}개${loaded > 0 ? ', ' + loaded + '개 로드됨' : ''})`;
-      }
-      csvDatasets.forEach(dataset => {
-        const cnt = dataset.loaded && dataset.data ? dataset.data.length : null;
+      // 로드된 것만 표시
+      const loaded = csvDatasets.filter(d => d.loaded && d.data && d.data.length);
+      if (loaded.length === 0) return;
+      loaded.forEach(dataset => {
+        const cnt = dataset.data.length;
         const row = document.createElement('div');
-        row.style.cssText = 'display:flex;align-items:center;gap:5px;padding:4px 6px;background:#151924;border-radius:5px;border:1px solid #2a3045;';
-        row.innerHTML = `
-      <div class="toggle-switch ${dataset.visible ? 'on' : ''}" style="flex-shrink:0;width:28px;height:16px;" onclick="toggleCSVDataset('${dataset.id}')"></div>
-      <span style="font-size:10px;color:#c8cede;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(dataset.name)}">${esc(dataset.name)}</span>
-      <span style="font-size:9px;color:${cnt !== null ? '#4f8eff' : '#3d4560'};flex-shrink:0;">${cnt !== null ? cnt.toLocaleString() + '건' : '미로드'}</span>`;
+        row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:5px 7px;background:#151924;border-radius:5px;border:1px solid #2a3045;margin-bottom:2px;';
+        row.innerHTML = '<div class="toggle-switch ' + (dataset.visible ? 'on' : '') + '" style="flex-shrink:0;width:28px;height:16px;" onclick="toggleCSVDataset('' + dataset.id + '')"></div>'
+          + '<span style="font-size:10px;color:#c8cede;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(dataset.name) + '</span>'
+          + '<span style="font-size:9px;color:' + (dataset.visible ? '#4f8eff' : '#3d4560') + ';flex-shrink:0;">' + (dataset.visible ? '지도표시 ' + cnt.toLocaleString() + '건' : '숨김') + '</span>';
         list.appendChild(row);
       });
+      // 로드 현황 업데이트
+      const totalCnt = loaded.reduce((s, d) => s + d.data.length, 0);
+      const panel = document.getElementById('csvStatusPanel');
+      const info = document.getElementById('csvDataInfo');
+      if (panel) panel.style.display = 'block';
+      if (info) info.textContent = '✅ ' + loaded.length + '개 파일 로드됨 · ' + totalCnt.toLocaleString() + '건';
     }
     function renderCSVList() { const list = document.getElementById('csvList'); if (!list) { return; } list.innerHTML = ''; csvDatasets.forEach(dataset => { const div = document.createElement('div'); div.className = 'csv-item'; div.innerHTML = `<div class="csv-toggle ${dataset.visible ? 'on' : ''}" onclick="toggleCSVDataset('${dataset.id}')"></div><span class="csv-name">${esc(dataset.name)}</span><span class="csv-delete" onclick="deleteCSVDataset('${dataset.id}')">×</span>`; list.appendChild(div); }); }
     window.toggleCSVDataset = function (id) { const dataset = csvDatasets.find(d => d.id === id); if (!dataset) return; dataset.visible = !dataset.visible; saveCSVDatasets(); renderCSVList(); renderCSVSourceList(); mapMarkers.forEach(m => { if (m.item && m.item.datasetId === id) { if (dataset.visible) { m.marker.setMap(map); } else { m.marker.setMap(null); if (m.overlay) m.overlay.setMap(null); } } }); }

@@ -826,6 +826,9 @@ body {
   /* 커스텀 드롭다운 */
   #mb-room-sel-list div:active { background: var(--s3) !important; }
   #mb-room-sel-btn:active { border-color: rgba(79,142,255,.5); }
+  .mb-rtab { flex:1;padding:8px 4px;font-size:12px;background:transparent;border:none;border-bottom:2px solid transparent;color:var(--mu);cursor:pointer;font-family:'Noto Sans KR',sans-serif;transition:all .15s; }
+  .mb-rtab.active { color:#4f8eff;border-bottom-color:#4f8eff;font-weight:700; }
+  .mb-room-tabpanel { }
 
   </style>
 </head>
@@ -1155,39 +1158,77 @@ body {
 
     <!-- 작업룸 패널 -->
     <div id="mb-ins-room" class="mb-ins-panel">
-      <!-- 룸 선택 커스텀 드롭다운 -->
+      <!-- 룸 선택 + 새 룸 버튼 -->
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
         <div id="mb-room-sel-wrap" style="flex:1;min-width:0;position:relative;">
-          <div id="mb-room-sel-btn"
-            onclick="mbRoomDropToggle()"
-            style="height:38px;padding:0 36px 0 10px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;color:var(--tx);font-size:13px;font-family:'Noto Sans KR',sans-serif;display:flex;align-items:center;cursor:pointer;user-select:none;box-sizing:border-box;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">
-            <span id="mb-room-sel-label" style="flex:1;overflow:hidden;text-overflow:ellipsis;">-- 작업룸 선택 --</span>
+          <div id="mb-room-sel-btn" onclick="mbRoomDropToggle()"
+            style="height:38px;padding:0 36px 0 10px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;color:var(--tx);font-size:13px;display:flex;align-items:center;cursor:pointer;user-select:none;overflow:hidden;">
+            <span id="mb-room-sel-label" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">-- 작업룸 선택 --</span>
             <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:10px;color:var(--mu);">▼</span>
           </div>
-          <div id="mb-room-sel-list"
-            style="display:none;position:absolute;top:42px;left:0;right:0;background:var(--s2);border:1px solid var(--b1);border-radius:8px;z-index:9999;max-height:220px;overflow-y:auto;box-shadow:0 4px 20px rgba(0,0,0,.5);">
-          </div>
+          <div id="mb-room-sel-list" style="display:none;position:absolute;top:42px;left:0;right:0;background:var(--s2);border:1px solid var(--b1);border-radius:8px;z-index:9999;max-height:220px;overflow-y:auto;box-shadow:0 4px 20px rgba(0,0,0,.5);"></div>
         </div>
-        <!-- hidden select for compatibility -->
-        <select id="mb-room-sel" style="display:none;" onchange="mbRoomLoad(this.value)">
-          <option value="">-- 작업룸 선택 --</option>
-        </select>
+        <select id="mb-room-sel" style="display:none;" onchange="mbRoomLoad(this.value)"><option value="">-- 작업룸 선택 --</option></select>
         <button class="mb-btn mb-btn-gold" onclick="mbRoomNew()">＋ 새 룸</button>
       </div>
-      <!-- 현재 룸 제목 + 삭제 -->
+
+      <!-- 룸 헤더: 이름 + 단계뱃지 + 삭제 -->
       <div id="mb-room-header" style="display:none;margin-bottom:10px;padding:10px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:10px;">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
-          <span id="mb-room-name" style="font-size:14px;font-weight:700;color:var(--tx);"></span>
-          <button class="mb-btn" style="height:28px;padding:0 10px;font-size:11px;color:var(--red);border-color:rgba(255,77,77,.3);" onclick="mbRoomDelete()">🗑 삭제</button>
+          <div style="flex:1;min-width:0;">
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+              <span id="mb-room-name" style="font-size:14px;font-weight:700;color:var(--tx);"></span>
+              <span id="mb-room-phase-badge" style="font-size:10px;padding:2px 7px;border-radius:10px;background:rgba(79,142,255,.15);color:#4f8eff;display:none;"></span>
+            </div>
+            <div id="mb-room-desc" style="font-size:11px;color:var(--mu);margin-top:3px;"></div>
+          </div>
+          <button class="mb-btn" style="height:28px;padding:0 10px;font-size:11px;color:var(--red);border-color:rgba(255,77,77,.3);flex-shrink:0;" onclick="mbRoomDelete()">🗑</button>
         </div>
-        <div id="mb-room-desc" style="font-size:11px;color:var(--mu);margin-top:4px;"></div>
       </div>
-      <!-- 물건 목록 (섹션별) -->
+
+      <!-- 탭: 노트 / 섹션 / 매물 -->
+      <div id="mb-room-tabs" style="display:none;display:flex;gap:4px;margin-bottom:10px;border-bottom:1px solid var(--b1);padding-bottom:0;">
+        <button id="mb-rtab-note" class="mb-rtab active" onclick="mbRoomTab('note')">📝 노트</button>
+        <button id="mb-rtab-section" class="mb-rtab" onclick="mbRoomTab('section')">📋 섹션</button>
+        <button id="mb-rtab-item" class="mb-rtab" onclick="mbRoomTab('item')">🔗 매물</button>
+      </div>
+
+      <!-- 노트 탭 -->
+      <div id="mb-room-tab-note" class="mb-room-tabpanel">
+        <!-- 노트 탭 목록 -->
+        <div id="mb-room-note-list" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;"></div>
+        <!-- 노트 추가 버튼 -->
+        <button onclick="mbRoomNoteAdd()" style="font-size:11px;padding:4px 10px;background:rgba(79,142,255,.12);border:1px solid rgba(79,142,255,.3);border-radius:6px;color:#4f8eff;cursor:pointer;margin-bottom:8px;">＋ 노트 추가</button>
+        <!-- 노트 에디터 -->
+        <textarea id="mb-room-note-ta" placeholder="노트를 선택하거나 새로 추가하세요"
+          style="width:100%;min-height:180px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;color:var(--tx);font-size:13px;padding:10px;box-sizing:border-box;resize:vertical;font-family:'Noto Sans KR',sans-serif;line-height:1.6;"
+          oninput="mbRoomNoteInput(this.value)" disabled></textarea>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;">
+          <span id="mb-room-note-status" style="font-size:10px;color:var(--di);">노트를 선택하세요</span>
+          <span id="mb-room-note-time" style="font-size:10px;color:var(--di);"></span>
+        </div>
+      </div>
+
+      <!-- 섹션 탭 -->
+      <div id="mb-room-tab-section" class="mb-room-tabpanel" style="display:none;">
+        <div id="mb-room-section-body"></div>
+      </div>
+
+      <!-- 매물 탭 -->
+      <div id="mb-room-tab-item" class="mb-room-tabpanel" style="display:none;">
+        <div id="mb-room-item-body">
+          <div class="mb-empty" style="padding:24px 0;">
+            <div class="mb-empty-icon">🔗</div>
+            <div>연결된 매물이 없어요</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 빈 상태 (룸 미선택) -->
       <div id="mb-room-list">
         <div class="mb-empty" id="mb-room-empty">
           <div class="mb-empty-icon">🗂️</div>
-          <div>작업룸을 선택해주세요</div>
-          <div style="font-size:11px;color:var(--di);margin-top:4px;">PC에서 만든 작업룸이 여기 표시돼요</div>
+          <div>작업룸을 선택하거나 새로 만드세요</div>
         </div>
       </div>
     </div>
@@ -2326,181 +2367,309 @@ body {
     }, 100);
   };
 
+  // ── 작업룸 탭 전환 ──
+  var _mbActiveRoomId = null;
+  var _mbActiveNoteId = null;
+  var _mbNoteTimer = null;
+
+  window.mbRoomTab = function(tab) {
+    ['note','section','item'].forEach(function(t) {
+      var panel = document.getElementById('mb-room-tab-' + t);
+      var btn = document.getElementById('mb-rtab-' + t);
+      if (panel) panel.style.display = t === tab ? '' : 'none';
+      if (btn) btn.classList.toggle('active', t === tab);
+    });
+  };
+
+  // ── 노트 추가 ──
+  window.mbRoomNoteAdd = function() {
+    var rooms = [];
+    try { rooms = JSON.parse(localStorage.getItem('wr2_rooms') || '[]'); } catch(e) {}
+    var room = rooms.find(function(r){ return r.id === _mbActiveRoomId; });
+    if (!room) return;
+    if (!room.notes) room.notes = [];
+    var idx = room.notes.length + 1;
+    var note = { id: 'note_' + Date.now().toString(36), title: '노트 ' + idx, body: '', createdAt: Date.now() };
+    room.notes.push(note);
+    room.updatedAt = Date.now();
+    localStorage.setItem('wr2_rooms', JSON.stringify(rooms));
+    if (window._sbSaveRooms) window._sbSaveRooms(rooms).catch(function(){});
+    _mbActiveNoteId = note.id;
+    _mbRenderNoteTab(room);
+    var ta = document.getElementById('mb-room-note-ta');
+    if (ta) ta.focus();
+  };
+
+  // ── 노트 선택 ──
+  window.mbRoomNoteSelect = function(noteId) {
+    var rooms = [];
+    try { rooms = JSON.parse(localStorage.getItem('wr2_rooms') || '[]'); } catch(e) {}
+    var room = rooms.find(function(r){ return r.id === _mbActiveRoomId; });
+    if (!room) return;
+    _mbActiveNoteId = noteId;
+    _mbRenderNoteTab(room);
+    var ta = document.getElementById('mb-room-note-ta');
+    if (ta) { ta.disabled = false; ta.focus(); }
+  };
+
+  // ── 노트 삭제 ──
+  window.mbRoomNoteDel = function(noteId) {
+    if (!confirm('이 노트를 삭제할까요?')) return;
+    var rooms = [];
+    try { rooms = JSON.parse(localStorage.getItem('wr2_rooms') || '[]'); } catch(e) {}
+    var room = rooms.find(function(r){ return r.id === _mbActiveRoomId; });
+    if (!room || !room.notes) return;
+    room.notes = room.notes.filter(function(n){ return n.id !== noteId; });
+    if (_mbActiveNoteId === noteId) _mbActiveNoteId = room.notes.length ? room.notes[0].id : null;
+    room.updatedAt = Date.now();
+    localStorage.setItem('wr2_rooms', JSON.stringify(rooms));
+    if (window._sbSaveRooms) window._sbSaveRooms(rooms).catch(function(){});
+    _mbRenderNoteTab(room);
+  };
+
+  // ── 노트 입력 자동저장 ──
+  window.mbRoomNoteInput = function(val) {
+    var status = document.getElementById('mb-room-note-status');
+    if (status) status.textContent = '저장 중...';
+    clearTimeout(_mbNoteTimer);
+    _mbNoteTimer = setTimeout(function() {
+      var rooms = [];
+      try { rooms = JSON.parse(localStorage.getItem('wr2_rooms') || '[]'); } catch(e) {}
+      var room = rooms.find(function(r){ return r.id === _mbActiveRoomId; });
+      if (!room || !_mbActiveNoteId) return;
+      var note = (room.notes || []).find(function(n){ return n.id === _mbActiveNoteId; });
+      if (!note) return;
+      note.body = val;
+      note.updatedAt = Date.now();
+      room.updatedAt = Date.now();
+      localStorage.setItem('wr2_rooms', JSON.stringify(rooms));
+      if (window._sbSaveRooms) window._sbSaveRooms(rooms).catch(function(){});
+      if (window.wr2State) window.wr2State.rooms = rooms;
+      if (status) status.textContent = '✅ 저장됨';
+      var time = document.getElementById('mb-room-note-time');
+      if (time) time.textContent = new Date().toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'});
+      setTimeout(function(){ if (status) status.textContent = ''; }, 2000);
+    }, 600);
+  };
+
+  // ── 노트 탭 렌더 ──
+  function _mbRenderNoteTab(room) {
+    var notes = room.notes || [];
+    // 레거시 마이그레이션
+    if (!notes.length && (room.note || room.memo)) {
+      notes = [{ id: 'legacy', title: '노트', body: room.note || room.memo }];
+    }
+    var listEl = document.getElementById('mb-room-note-list');
+    if (listEl) {
+      if (!notes.length) {
+        listEl.innerHTML = '<span style="font-size:11px;color:var(--di);">노트가 없어요. 추가 버튼을 눌러주세요.</span>';
+      } else {
+        listEl.innerHTML = notes.map(function(n) {
+          var isActive = n.id === _mbActiveNoteId;
+          return '<div onclick="mbRoomNoteSelect('' + n.id + '')" style="display:flex;align-items:center;gap:4px;padding:4px 8px;border-radius:6px;font-size:11px;cursor:pointer;border:1px solid ' + (isActive ? 'rgba(79,142,255,.6)' : 'var(--b1)') + ';background:' + (isActive ? 'rgba(79,142,255,.12)' : 'var(--s2)') + ';color:' + (isActive ? '#4f8eff' : 'var(--tx)') + ';white-space:nowrap;">'
+            + '<span>' + (n.title || '노트') + '</span>'
+            + '<span onclick="event.stopPropagation();mbRoomNoteDel('' + n.id + '')" style="color:var(--mu);font-size:10px;padding:0 2px;">✕</span>'
+            + '</div>';
+        }).join('');
+      }
+    }
+    // 에디터
+    var ta = document.getElementById('mb-room-note-ta');
+    var status = document.getElementById('mb-room-note-status');
+    var time = document.getElementById('mb-room-note-time');
+    var activeNote = _mbActiveNoteId ? notes.find(function(n){ return n.id === _mbActiveNoteId; }) : (notes[0] || null);
+    if (!_mbActiveNoteId && activeNote) _mbActiveNoteId = activeNote.id;
+    if (ta) {
+      ta.value = activeNote ? (activeNote.body || '') : '';
+      ta.disabled = !activeNote;
+      ta.placeholder = activeNote ? '내용을 입력하세요...' : '노트를 선택하거나 추가하세요';
+    }
+    if (status) status.textContent = activeNote ? '' : '노트를 선택하세요';
+    if (time && activeNote && activeNote.updatedAt) {
+      time.textContent = new Date(activeNote.updatedAt).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'});
+    }
+  }
+
+  // ── 섹션 탭 렌더 ──
+  function _mbRenderSectionTab(roomId, room, allSections) {
+    var body = document.getElementById('mb-room-section-body');
+    if (!body) return;
+    var sections = (allSections || []).filter(function(s){ return s.roomId === roomId || s.room_id === roomId; });
+    if (!sections.length && room.sections && room.sections.length) sections = room.sections;
+    var html = '';
+    var TYPE_ICONS = { memo:'📝', checklist:'✅', metrics:'📊', log:'📋', capture:'📷', note:'📓' };
+    var PHASE_LABELS = { interest:'관심', review:'검토', field:'현장', bid:'입찰', won:'낙찰', sell:'매도', closed:'종료', etc:'기타' };
+    if (!sections.length) {
+      // 스냅샷만 있으면 표시
+      var mapScenes = room.mapScenes || (room.mapScene ? [room.mapScene] : []);
+      if (mapScenes.length) {
+        html += '<div style="font-size:10px;font-weight:700;color:var(--mu);margin-bottom:6px;">🗺️ 저장된 스냅샷</div>';
+        mapScenes.forEach(function(ms) {
+          html += '<div style="padding:10px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;margin-bottom:6px;cursor:pointer;" onclick="(function(){if(window.wrOpenMapScene)window.wrOpenMapScene('' + (ms.id||'') + '');})()"><span style="font-size:11px;color:#4f8eff;">📷</span> <span style="font-size:13px;font-weight:600;color:var(--tx);">' + (ms.sceneName||ms.name||'스냅샷') + '</span></div>';
+        });
+      } else {
+        html = '<div class="mb-empty" style="padding:24px 0;"><div class="mb-empty-icon">📭</div><div>섹션이 없어요</div><div style="font-size:11px;color:var(--di);margin-top:6px;">PC에서 작업룸에 섹션을 추가하세요</div></div>';
+      }
+      body.innerHTML = html;
+      return;
+    }
+    var byPhase = {};
+    var phaseOrder = ['interest','review','field','bid','won','sell','closed','etc'];
+    sections.forEach(function(sec) {
+      var ph = sec.phase || 'etc';
+      if (!byPhase[ph]) byPhase[ph] = [];
+      byPhase[ph].push(sec);
+    });
+    phaseOrder.forEach(function(ph) {
+      if (!byPhase[ph] || !byPhase[ph].length) return;
+      html += '<details open style="margin-bottom:8px;"><summary style="font-size:10px;font-weight:700;color:#f59e0b;letter-spacing:.5px;cursor:pointer;padding:4px 0;list-style:none;">── ' + (PHASE_LABELS[ph]||ph) + ' (' + byPhase[ph].length + ')</summary>';
+      byPhase[ph].forEach(function(sec) {
+        var sType = sec.type || '';
+        var icon = TYPE_ICONS[sType] || '📌';
+        var preview = '';
+        if ((sType==='memo'||sType==='note') && sec.data && (sec.data.content||sec.data.body)) {
+          preview = (sec.data.content||sec.data.body).replace(/<[^>]*>/g,'').slice(0,40);
+        } else if (sType==='checklist' && sec.data && sec.data.items) {
+          var done = sec.data.items.filter(function(x){return x.done;}).length;
+          preview = done + '/' + sec.data.items.length + ' 완료';
+        } else if (sType==='metrics' && sec.data && sec.data.rows) {
+          preview = sec.data.rows.length + '개 항목';
+        } else if (sType==='log' && sec.data && sec.data.entries) {
+          preview = sec.data.entries.length + '개 기록';
+        }
+        html += '<details style="margin-top:6px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;overflow:hidden;">';
+        html += '<summary style="padding:10px 12px;cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;">';
+        html += '<span>' + icon + '</span><span style="flex:1;font-size:12px;font-weight:600;color:var(--tx);">' + (sec.title||'섹션') + '</span>';
+        if (preview) html += '<span style="font-size:11px;color:var(--mu);max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + preview + '</span>';
+        html += '</summary><div style="padding:0 12px 10px;">';
+        if ((sType==='memo'||sType==='note') && sec.data && (sec.data.content||sec.data.body)) {
+          html += '<div style="font-size:12px;color:var(--tx);line-height:1.7;white-space:pre-wrap;padding-top:8px;border-top:1px solid var(--b1);">' + (sec.data.content||sec.data.body) + '</div>';
+        } else if (sType==='checklist' && sec.data && sec.data.items) {
+          html += '<div style="padding-top:8px;border-top:1px solid var(--b1);">';
+          sec.data.items.forEach(function(ci, ci_idx) {
+            var secId = sec.id;
+            html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04);" onclick="mbChecklistToggle('' + secId + '',' + ci_idx + ')">';
+            html += '<span style="font-size:16px;">' + (ci.done ? '✅' : '⬜') + '</span>';
+            html += '<span style="font-size:12px;color:var(--tx);' + (ci.done?'text-decoration:line-through;opacity:.5;':'') + '">' + (ci.text||ci.label||'') + '</span>';
+            html += '</div>';
+          });
+          html += '</div>';
+        } else if (sType==='metrics' && sec.data && sec.data.rows) {
+          html += '<div style="padding-top:8px;border-top:1px solid var(--b1);">';
+          sec.data.rows.forEach(function(row) {
+            html += '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04);"><span style="font-size:12px;color:var(--mu);">' + (row.label||row.key||'') + '</span><span style="font-size:12px;font-weight:700;color:var(--ac);">' + (row.value||row.val||'-') + '</span></div>';
+          });
+          html += '</div>';
+        } else if (sType==='log' && sec.data && sec.data.entries && sec.data.entries.length) {
+          html += '<div style="padding-top:8px;border-top:1px solid var(--b1);">';
+          sec.data.entries.slice(0,10).forEach(function(en) {
+            html += '<div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04);">';
+            if (en.at) html += '<div style="font-size:10px;color:var(--di);">' + new Date(en.at).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) + '</div>';
+            html += '<div style="font-size:12px;color:var(--tx);margin-top:2px;">' + (en.text||'') + '</div></div>';
+          });
+          html += '</div>';
+        } else {
+          html += '<div style="font-size:11px;color:var(--di);padding-top:8px;">내용 없음</div>';
+        }
+        html += '</div></details>';
+      });
+      html += '</details>';
+    });
+    body.innerHTML = html;
+  }
+
+  // ── 체크리스트 토글 (모바일에서 체크 가능) ──
+  window.mbChecklistToggle = function(secId, itemIdx) {
+    var secs = [];
+    try { secs = JSON.parse(localStorage.getItem('wr2_sections') || '[]'); } catch(e) {}
+    var sec = secs.find(function(s){ return s.id === secId; });
+    if (!sec || !sec.data || !sec.data.items) return;
+    sec.data.items[itemIdx].done = !sec.data.items[itemIdx].done;
+    localStorage.setItem('wr2_sections', JSON.stringify(secs));
+    if (window._sbSaveSections) window._sbSaveSections(secs).catch(function(){});
+    // 재렌더
+    mbRoomLoad(_mbActiveRoomId);
+  };
+
+  // ── 매물 탭 렌더 ──
+  function _mbRenderItemTab(room) {
+    var body = document.getElementById('mb-room-item-body');
+    if (!body) return;
+    var html = '';
+    var savedItems = [];
+    try { savedItems = JSON.parse(localStorage.getItem('re_sv') || '[]'); } catch(e) {}
+    var linkedId = room.linkedSavedId;
+    var linkedItems = room.linkedItems || [];
+    var items = [];
+    if (linkedId) {
+      var found = savedItems.find(function(x){ return x.id === linkedId; });
+      if (found) items.push(found);
+    }
+    if (!items.length && linkedItems.length) items = linkedItems;
+    if (!items.length) {
+      body.innerHTML = '<div class="mb-empty" style="padding:24px 0;"><div class="mb-empty-icon">🔗</div><div>연결된 매물이 없어요</div><div style="font-size:11px;color:var(--di);margin-top:6px;">PC에서 작업룸에 물건을 연결하세요</div></div>';
+      return;
+    }
+    items.forEach(function(it) {
+      var d = it.data || {};
+      var addr = d['소재지'] || d['단지명'] || it.address || it.title || '';
+      var price = d['매매가'] || d['보증금'] || d['감정가'] || '';
+      var monthly = d['월세_만원'] ? d['월세_만원'] + '만원/월' : '';
+      var area = d['전용면적_m2'] ? Math.round(d['전용면적_m2']) + '㎡ (' + Math.round(d['전용면적_m2']/3.3) + '평)' : '';
+      var floor = d['해당층'] ? d['해당층'] + '층' : '';
+      html += '<div style="padding:12px;background:var(--s2);border:1px solid rgba(0,212,170,.2);border-radius:10px;margin-bottom:8px;cursor:pointer;" onclick="mbOpenSavedDetail('' + (it.id||'') + '')">';
+      html += '<div style="font-size:13px;font-weight:700;color:var(--ac);margin-bottom:4px;">' + (it.title || addr || '매물') + '</div>';
+      if (addr && addr !== it.title) html += '<div style="font-size:11px;color:var(--mu);margin-bottom:6px;">📍 ' + addr + '</div>';
+      if (price) html += '<div style="font-size:13px;color:#ff8c42;font-weight:700;">' + price + (monthly ? ' / ' + monthly : '') + '</div>';
+      if (area || floor) html += '<div style="font-size:11px;color:var(--mu);margin-top:4px;">' + [area,floor].filter(Boolean).join(' · ') + '</div>';
+      html += '<div style="margin-top:8px;"><a href="' + (d['상세URL']||'#') + '" target="_blank" onclick="event.stopPropagation();return' + (d['상세URL'] ? ' true' : ' false') + ';" style="font-size:11px;color:#4f8eff;text-decoration:none;">🔗 원본 보기</a></div>';
+      html += '</div>';
+    });
+    body.innerHTML = html;
+  }
+
   // 작업룸 렌더 내부 함수 (sections 로드 완료 후 호출)
   function _mbRoomRender(roomId, room, allSections) {
     var header = document.getElementById('mb-room-header');
     var nameEl = document.getElementById('mb-room-name');
     var descEl = document.getElementById('mb-room-desc');
+    var phaseBadge = document.getElementById('mb-room-phase-badge');
+    var tabsEl = document.getElementById('mb-room-tabs');
+    var emptyEl = document.getElementById('mb-room-empty');
     var listEl = document.getElementById('mb-room-list');
-    if (!listEl) return;
+
+    // 빈 상태 숨김
+    if (emptyEl) emptyEl.style.display = 'none';
+    if (listEl) listEl.style.display = 'none';
+
+    // 헤더 표시
     if (header) header.style.display = 'block';
     if (nameEl) nameEl.textContent = room.title || room.name || '이름 없음';
     if (descEl) descEl.textContent = room.address || room.desc || '';
     var _dropLbl = document.getElementById('mb-room-sel-label');
     if (_dropLbl) _dropLbl.textContent = room.title || room.name || '이름 없음';
 
-    var sections = (allSections || []).filter(function(s) {
-      return s.roomId === roomId || s.room_id === roomId;
-    });
-    if (!sections.length && room.sections && room.sections.length) sections = room.sections;
-
-    var html = '';
-
-    // ── 메모 ──
-    // 노트: room.notes 배열 우선, 없으면 room.note/room.memo 레거시 처리
-    var _roomNotes = [];
-    if (room.notes && room.notes.length) {
-      _roomNotes = room.notes;
-    } else if (room.note || room.memo) {
-      _roomNotes = [{ id: 'legacy', title: '노트', body: room.note || room.memo }];
-    }
-    if (_roomNotes.length) {
-      html += '<details style="margin-top:8px;" open><summary style="font-size:10px;font-weight:700;color:#60a5fa;letter-spacing:.5px;cursor:pointer;padding:4px 0;list-style:none;">── 📝 노트 (' + _roomNotes.length + ')</summary>';
-      _roomNotes.forEach(function(rn) {
-        var body = (rn.body || '').replace(/<[^>]*>/g, '');
-        html += '<details style="margin-top:6px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;overflow:hidden;" open>';
-        html += '<summary style="padding:10px 12px;cursor:pointer;list-style:none;font-size:12px;font-weight:600;color:var(--tx);">' + (rn.title || '노트') + '</summary>';
-        html += '<div style="padding:8px 12px 12px;font-size:12px;color:var(--tx);line-height:1.7;white-space:pre-wrap;border-top:1px solid var(--b1);">' + body + '</div>';
-        html += '</details>';
-      });
-      html += '</details>';
+    // 단계 뱃지
+    var PHASE_LABELS = { interest:'👀 관심', review:'🔍 검토', field:'📍 현장', bid:'🎯 입찰', won:'✅ 낙찰', sell:'💰 매도' };
+    var phase = room.phase || room.status || 'interest';
+    if (phaseBadge) {
+      phaseBadge.textContent = PHASE_LABELS[phase] || phase;
+      phaseBadge.style.display = 'inline-block';
     }
 
-    // ── 스냅샷 (접기/펼치기) ──
-    var mapScenes = room.mapScenes || (room.mapScene ? [room.mapScene] : []);
-    if (mapScenes.length) {
-      html += '<details style="margin-bottom:10px;" open><summary style="font-size:10px;font-weight:700;color:var(--mu);letter-spacing:.6px;cursor:pointer;padding:4px 0;list-style:none;display:flex;align-items:center;gap:6px;">🗺️ 저장된 스냅샷 <span style="font-weight:400;color:var(--di);">(' + mapScenes.length + ')</span></summary>';
-      mapScenes.forEach(function(ms) {
-        html += '<div style="padding:10px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;margin-top:6px;cursor:pointer;" onclick="(function(){var rid=\'' + (ms.id||'') + '\',sn=\'' + (ms.sceneName||ms.name||'') + '\';if(rid&&window.wrOpenMapScene){window.wrOpenMapScene(rid);}else if(sn&&window.swLoadSnap){window.swLoadSnap(sn,null);}})()"><span style="font-size:11px;color:#4f8eff;">📷</span> <span style="font-size:13px;font-weight:600;color:var(--tx);">' + (ms.sceneName||ms.name||'스냅샷') + '</span></div>';
-      });
-      html += '</details>';
-    }
+    // 탭 표시
+    if (tabsEl) tabsEl.style.display = 'flex';
 
-    // ── 섹션 (phase별, 접기/펼치기) ──
-    if (sections.length) {
-      var TYPE_ICONS = { memo:'📝', checklist:'✅', metrics:'📊', log:'📋', capture:'📷', note:'📓' };
-      var PHASE_LABELS = { interest:'관심', review:'검토', field:'현장', bid:'입찰', won:'낙찰', sell:'매도', closed:'종료', etc:'기타' };
-      var byPhase = {};
-      var phaseOrder = ['interest','review','field','bid','won','sell','closed','etc'];
-      sections.forEach(function(sec) {
-        var ph = sec.phase || 'etc';
-        if (!byPhase[ph]) byPhase[ph] = [];
-        byPhase[ph].push(sec);
-      });
-      phaseOrder.forEach(function(ph) {
-        if (!byPhase[ph] || !byPhase[ph].length) return;
-        html += '<details style="margin-bottom:8px;" open><summary style="font-size:10px;font-weight:700;color:#f59e0b;letter-spacing:.5px;cursor:pointer;padding:4px 0;list-style:none;">── ' + (PHASE_LABELS[ph]||ph) + ' 단계 (' + byPhase[ph].length + ')</summary>';
-        byPhase[ph].forEach(function(sec) {
-          var sType = sec.type || '';
-          var icon = TYPE_ICONS[sType] || '📌';
-          // 섹션 내용 미리보기 (한 줄 요약)
-          var preview = '';
-          if (sType === 'memo' && sec.data && (sec.data.content || sec.data.body)) {
-            preview = (sec.data.content || sec.data.body).replace(/<[^>]*>/g,'').slice(0,40);
-          } else if (sType === 'note' && sec.data && (sec.data.content || sec.data.body)) {
-            preview = (sec.data.content || sec.data.body).replace(/<[^>]*>/g,'').slice(0,40);
-          } else if (sType === 'checklist' && sec.data && sec.data.items) {
-            var done = sec.data.items.filter(function(x){return x.done;}).length;
-            preview = done + '/' + sec.data.items.length + ' 완료';
-          } else if (sType === 'metrics' && sec.data && sec.data.rows) {
-            preview = sec.data.rows.length + '개 항목';
-          } else if (sType === 'log' && sec.data && sec.data.entries) {
-            preview = sec.data.entries.length + '개 기록';
-          }
-          // 섹션 헤더 (클릭하면 토글)
-          html += '<details style="margin-top:6px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;overflow:hidden;">';
-          html += '<summary style="padding:10px 12px;cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;">';
-          html += '<span>' + icon + '</span>';
-          html += '<span style="flex:1;font-size:12px;font-weight:600;color:var(--tx);">' + (sec.title||'섹션') + '</span>';
-          if (preview) html += '<span style="font-size:11px;color:var(--mu);max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + preview + '</span>';
-          html += '</summary>';
-          // 섹션 내용 (펼쳤을 때)
-          html += '<div style="padding:0 12px 10px;">';
-          if (sType === 'memo' && sec.data && (sec.data.content || sec.data.body)) {
-            html += '<div style="font-size:12px;color:var(--tx);line-height:1.7;white-space:pre-wrap;padding-top:8px;border-top:1px solid var(--b1);">' + (sec.data.content || sec.data.body) + '</div>';
-          } else if (sType === 'note' && sec.data && (sec.data.content || sec.data.body)) {
-            html += '<div style="font-size:12px;color:var(--tx);line-height:1.7;white-space:pre-wrap;padding-top:8px;border-top:1px solid var(--b1);">' + (sec.data.content || sec.data.body) + '</div>';
-          } else if (sType === 'checklist' && sec.data && sec.data.items) {
-            html += '<div style="padding-top:8px;border-top:1px solid var(--b1);">';
-            sec.data.items.forEach(function(ci) {
-              html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04);">';
-              html += '<span>' + (ci.done ? '✅' : '⬜') + '</span>';
-              html += '<span style="font-size:12px;color:var(--tx);' + (ci.done?'text-decoration:line-through;opacity:.5;':'') + '">' + (ci.text||ci.label||'') + '</span>';
-              html += '</div>';
-            });
-            html += '</div>';
-          } else if (sType === 'metrics' && sec.data && sec.data.rows) {
-            html += '<div style="padding-top:8px;border-top:1px solid var(--b1);">';
-            sec.data.rows.forEach(function(row) {
-              html += '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04);">';
-              html += '<span style="font-size:12px;color:var(--mu);">' + (row.label||row.key||'') + '</span>';
-              html += '<span style="font-size:12px;font-weight:700;color:var(--ac);">' + (row.value||row.val||'-') + '</span>';
-              html += '</div>';
-            });
-            html += '</div>';
-          } else if (sType === 'log' && sec.data && sec.data.entries && sec.data.entries.length) {
-            html += '<div style="padding-top:8px;border-top:1px solid var(--b1);">';
-            sec.data.entries.slice(0,10).forEach(function(en) {
-              html += '<div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04);">';
-              if (en.at) html += '<div style="font-size:10px;color:var(--di);">' + new Date(en.at).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) + '</div>';
-              html += '<div style="font-size:12px;color:var(--tx);margin-top:2px;">' + (en.text||'') + '</div>';
-              html += '</div>';
-            });
-            html += '</div>';
-          } else {
-            html += '<div style="font-size:11px;color:var(--di);padding-top:8px;">내용 없음</div>';
-          }
-          html += '</div></details>';
-        });
-        html += '</details>';
-      });
+    // 각 탭 렌더
+    _mbRenderNoteTab(room);
+    _mbRenderSectionTab(roomId, room, allSections);
+    _mbRenderItemTab(room);
 
-      // ── 연결된 노트 (접기/펼치기) ──
-      var ntArr = [];
-      try { ntArr = JSON.parse(localStorage.getItem('nt_notes') || '[]'); } catch(e2) {}
-      var roomNotes = ntArr.filter(function(n) { return n.roomId === roomId || n.room_id === roomId; });
-      if (roomNotes.length) {
-        html += '<details style="margin-top:8px;" open><summary style="font-size:10px;font-weight:700;color:#a78bfa;letter-spacing:.5px;cursor:pointer;padding:4px 0;list-style:none;">── 연결된 노트 (' + roomNotes.length + ')</summary>';
-        roomNotes.forEach(function(n) {
-          var noteBody = n.content || n.body || '';
-          html += '<div style="margin-top:6px;padding:10px 12px;background:rgba(167,139,250,.06);border:1px solid rgba(167,139,250,.2);border-radius:8px;cursor:pointer;" onclick="mbInsTab(\'note\');setTimeout(function(){if(typeof ntOpen===\'function\')ntOpen(\'' + n.id + '\');},100);">';
-          html += '<div style="display:flex;align-items:center;gap:6px;">';
-          html += '<span>📓</span><span style="flex:1;font-size:13px;font-weight:600;color:var(--tx);">' + (n.title||'제목 없음') + '</span>';
-          if (n.updatedAt) html += '<span style="font-size:10px;color:var(--di);">' + new Date(n.updatedAt).toLocaleDateString('ko') + '</span>';
-          html += '</div>';
-          if (noteBody) html += '<div style="font-size:11px;color:var(--mu);margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + noteBody.replace(/<[^>]*>/g,'').slice(0,60) + '</div>';
-          html += '</div>';
-        });
-        html += '</details>';
-      }
-    } else if (!mapScenes.length) {
-      html += '<div class="mb-empty" style="padding:24px 0;"><div class="mb-empty-icon">📭</div><div>아직 내용이 없어요</div><div style="font-size:11px;color:var(--di);margin-top:6px;">PC에서 작업룸에 섹션을 추가하면 여기서 볼 수 있어요</div></div>';
-    }
-
-    // ── 연결 매물 ──
-    if (room.linkedSavedId || (room.linkedItems && room.linkedItems.length)) {
-      var linkedId = room.linkedSavedId;
-      var savedItems = [];
-      try { savedItems = JSON.parse(localStorage.getItem('re_sv')||'[]'); } catch(e2) {}
-      var linkedItem = linkedId ? savedItems.find(function(x){ return x.id===linkedId; }) : null;
-      if (linkedItem || (room.linkedItems && room.linkedItems.length)) {
-        var dispItem = linkedItem || (room.linkedItems && room.linkedItems[0]);
-        if (dispItem) {
-          var d2 = dispItem.data || {};
-          var addr2 = d2['소재지']||d2['address']||dispItem.title||'';
-          html += '<div style="margin-top:8px;padding:10px 12px;background:rgba(0,212,170,.06);border:1px solid rgba(0,212,170,.2);border-radius:8px;cursor:pointer;" onclick="mbOpenSavedDetail(\'' + (dispItem.id||'') + '\')">';
-          html += '<div style="font-size:10px;font-weight:700;color:var(--mu);margin-bottom:4px;">🔗 연결 매물</div>';
-          html += '<div style="font-size:12px;font-weight:600;color:var(--ac);">' + (dispItem.title||addr2||'매물') + '</div>';
-          if (addr2 && addr2 !== dispItem.title) html += '<div style="font-size:11px;color:var(--mu);margin-top:2px;">📍 ' + addr2 + '</div>';
-          html += '</div>';
-        }
-      }
-    }
-
-    listEl.innerHTML = html;
+    // 기본 탭: 노트
+    mbRoomTab('note');
   }
 
-  window.mbRoomLoad = function(roomId) {
+    window.mbRoomLoad = function(roomId) {
     // wr2Init 안전 호출 (wr2State 초기화)
     if (window.wr2Init && !window.__wr2Inited) {
       try { window.__wr2Inited = true; window.wr2Init(); } catch(e0) {}
@@ -2515,12 +2684,22 @@ body {
     var listEl = document.getElementById('mb-room-list');
     if (!roomId) {
       if (header) header.style.display = 'none';
-      if (listEl) listEl.innerHTML = '<div class="mb-empty"><div class="mb-empty-icon">🗂️</div><div>작업룸을 선택해주세요</div></div>';
+      var tabsEl2 = document.getElementById('mb-room-tabs');
+      if (tabsEl2) tabsEl2.style.display = 'none';
+      ['note','section','item'].forEach(function(t){
+        var p = document.getElementById('mb-room-tab-' + t);
+        if (p) p.style.display = 'none';
+      });
+      if (listEl) listEl.style.display = '';
+      var emptyEl2 = document.getElementById('mb-room-empty');
+      if (emptyEl2) emptyEl2.style.display = '';
       var lbl = document.getElementById('mb-room-sel-label');
       if (lbl) lbl.textContent = '-- 작업룸 선택 --';
       return;
     }
     try {
+      _mbActiveRoomId = roomId;
+      _mbActiveNoteId = null; // 룸 바뀌면 노트 선택 초기화
       var rooms = (window.wr2State && window.wr2State.rooms && window.wr2State.rooms.length)
         ? window.wr2State.rooms
         : JSON.parse(localStorage.getItem('wr2_rooms') || '[]');
@@ -2844,7 +3023,12 @@ body {
         return;
       }
       var item = obj.item;
-      if (title) title.textContent = item.title || item.address || '매물 정보';
+      // 매물명: 주소가 있으면 우선 표시, title이 업종명이면 주소+업종 조합
+      var _d = item.data || {};
+      var _addr = _d['소재지'] || _d['단지명'] || item.address || '';
+      var _titleRaw = item.title || '';
+      var _displayTitle = _addr || _titleRaw || '매물 정보';
+      if (title) title.textContent = _displayTitle;
       // 카드 바디 HTML 재사용
       var html = '';
       if (typeof window.buildMapCardBodyHTML === 'function') {

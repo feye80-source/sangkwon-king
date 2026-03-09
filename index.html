@@ -3441,15 +3441,20 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
                           <div class="wr2-widget wr2-widget-note" id="wr2WidgetNote">
                             <div class="wr2-widget-hd">
                               📝 노트
-                              <label class="wr2-hd-btn" style="cursor:pointer;">
-                                📎 첨부
-                                <input type="file" id="wr2FileInput" multiple accept="image/*,.pdf,.docx,.xlsx,.txt"
-                                  style="display:none;" onchange="wr2HandleFiles(this)">
-                              </label>
+                              <div style="display:flex;gap:4px;align-items:center;">
+                                <button class="wr2-hd-btn" onclick="wr2NoteAdd()" style="background:#4f8eff22;border:1px solid #4f8eff44;color:#4f8eff;">＋ 노트</button>
+                                <label class="wr2-hd-btn" style="cursor:pointer;">
+                                  📎 첨부
+                                  <input type="file" id="wr2FileInput" multiple accept="image/*,.pdf,.docx,.xlsx,.txt"
+                                    style="display:none;" onchange="wr2HandleFiles(this)">
+                                </label>
+                              </div>
                             </div>
                             <div class="wr2-widget-body wr2-note-body" id="wr2NoteDropZone">
+                              <!-- 노트 탭 목록 -->
+                              <div id="wr2NoteList" style="display:flex;flex-wrap:wrap;gap:4px;padding:4px 0 6px;min-height:0;"></div>
                               <textarea id="wr2NoteText" class="wr2-note-textarea"
-                                placeholder="자유롭게 메모하세요...&#10;권리분석, 임장 기록, 특이사항 등"></textarea>
+                                placeholder="＋ 노트 버튼으로 새 노트를 추가하세요"></textarea>
                               <div id="wr2Attachments" class="wr2-attachments"></div>
                             </div>
                           </div>
