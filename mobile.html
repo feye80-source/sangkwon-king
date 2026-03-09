@@ -2145,12 +2145,14 @@ body {
     // 지도 탭 전환 시 카카오 지도 리사이즈 or 초기화
     if (name === 'map') {
       setTimeout(function() {
-        if (window.map) {
-          kakao.maps.event.trigger(window.map, 'resize');
-        } else if (typeof initMap === 'function') {
-          initMap();
-        }
-      }, 150);
+        try {
+          if (window.map && window.kakao) {
+            kakao.maps.event.trigger(window.map, 'resize');
+          } else if (typeof initMap === 'function') {
+            initMap();
+          }
+        } catch(e) { console.warn('[map init]', e); }
+      }, 300);
     }
 
     // common.js의 showPage 호출 (page0~3 번호 매핑)

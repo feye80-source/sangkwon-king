@@ -658,6 +658,19 @@
       const err = _sbEl('_sbLoginErr');
       if (err) err.textContent = '';
       if (_sbIsRecoveryUrl()) window._sbHideRecovery && window._sbHideRecovery();
+      // 저장된 이메일 자동 채우기
+      try {
+        const savedEmail = localStorage.getItem('_sb_saved_email');
+        const savedPw    = localStorage.getItem('_sb_saved_pw');
+        const emailEl = _sbEl('_sbEmail');
+        const pwEl    = _sbEl('_sbPw');
+        if (emailEl && savedEmail) emailEl.value = savedEmail;
+        if (pwEl    && savedPw)    pwEl.value    = savedPw;
+        // 자동 로그인 시도 (둘 다 저장된 경우)
+        if (savedEmail && savedPw) {
+          setTimeout(function() { if (typeof window._sbLogin === 'function') window._sbLogin(); }, 200);
+        }
+      } catch(e) {}
     };
     window._sbHideLogin = function() {
       const el = _sbEl('_sbLoginOverlay');
@@ -716,6 +729,8 @@
       try {
         const { error } = await window._sb.auth.signInWithPassword({ email, password: pw });
         if (error) throw error;
+        // 로그인 정보 저장
+        try { localStorage.setItem('_sb_saved_email', email); localStorage.setItem('_sb_saved_pw', pw); } catch(e) {}
         window._sbHideLogin();
         window._sbSyncStatus('✅ 로그인 완료', true);
         await window._sbInitLoad();
@@ -21211,6 +21226,15 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       saveKcards(); renderKcatTabs(); renderKcards();
       showToast('카드 삭제됨', 'ok');
     }
+
+    // ── 모바일에서 접근 가능하도록 window 노출 ──────────
+    window.openKcardEditor  = openKcardEditor;
+    window.closeKcardEditor = closeKcardEditor;
+    window.deleteKcard      = deleteKcard;
+    window.setKcardCat      = setKcardCat;
+    window.renderKcards     = renderKcards;
+    window.renderKcatTabs   = renderKcatTabs;
+    window.saveKcard        = saveKcard;
 
     // ── AI 카드 자동 생성 ─────────────────────────────
     // 현재 소스 타입 추적
