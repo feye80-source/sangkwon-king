@@ -15635,7 +15635,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         const cnt = dataset.data.length;
         const row = document.createElement('div');
         row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:5px 7px;background:#151924;border-radius:5px;border:1px solid #2a3045;margin-bottom:2px;';
-        row.innerHTML = '<div class="toggle-switch ' + (dataset.visible ? 'on' : '') + '" style="flex-shrink:0;width:28px;height:16px;" onclick="toggleCSVDataset('' + dataset.id + '')"></div>'
+        row.innerHTML = '<div class="toggle-switch ' + (dataset.visible ? 'on' : '') + '" style="flex-shrink:0;width:28px;height:16px;" onclick="toggleCSVDataset(\' + dataset.id + \')"></div>'
           + '<span style="font-size:10px;color:#c8cede;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(dataset.name) + '</span>'
           + '<span style="font-size:9px;color:' + (dataset.visible ? '#4f8eff' : '#3d4560') + ';flex-shrink:0;">' + (dataset.visible ? '지도표시 ' + cnt.toLocaleString() + '건' : '숨김') + '</span>';
         list.appendChild(row);
@@ -20633,13 +20633,13 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         document.getElementById('kcardTitle').value = card.title || '';
         document.getElementById('kcardBody').value = card.body || '';
         document.getElementById('kcardTags').value = (card.tags || []).join(', ');
-        const _aiInp = document.getElementById('kcardAiInput'); if(_aiInp) _aiInp.value = '';
+        document.getElementById('kcardAiInput').value = '';
       } else {
         // 새 카드
         document.getElementById('kcardTitle').value = '';
         document.getElementById('kcardBody').value = '';
         document.getElementById('kcardTags').value = '';
-        const _aiInp = document.getElementById('kcardAiInput'); if(_aiInp) _aiInp.value = '';
+        document.getElementById('kcardAiInput').value = '';
       }
 
       modal.style.display = 'flex';
@@ -27485,187 +27485,135 @@ ${newsText}
   });
 
 /* ════════════════════════════════════════════════════════
-   알짜정보 PC 보조 함수 (index.html HTML에서 호출)
+   누락 함수 보완
 ════════════════════════════════════════════════════════ */
-
-// openKcardEditor의 kcardAiInput 오류 패치 (optional chaining 추가)
-(function() {
-  var _orig = window.openKcardEditor || (typeof openKcardEditor !== 'undefined' ? openKcardEditor : null);
-  // 아래는 index.html HTML에서 직접 호출하는 함수들이므로 window에 등록
-  // openKcardEditor는 common.js IIFE 내부에 있으므로 여기서 window로 노출
-})();
-
-// 유튜브 ID 추출
-function _pcYtId(url) {
-  if (!url) return null;
-  var m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([^&?#\s]{8,12})/);
-  return m ? m[1] : null;
-}
-
-// 유튜브 프리뷰
-function pcUpdateYtPreview() {
-  var inp = document.getElementById('kcardYtInput');
-  var prev = document.getElementById('kcardYtPreview');
-  if (!inp || !prev) return;
-  var ytId = _pcYtId(inp.value.trim());
-  if (ytId) {
-    prev.style.display = 'block';
-    prev.innerHTML = '<div style="position:relative;cursor:pointer;" onclick="window.open(\'https://www.youtube.com/watch?v=' + ytId + '\',\'_blank\')">' +
-      '<img src="https://img.youtube.com/vi/' + ytId + '/mqdefault.jpg" style="width:100%;border-radius:8px;display:block;">' +
-      '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;">' +
-        '<div style="width:52px;height:36px;background:rgba(255,0,0,.88);border-radius:8px;display:flex;align-items:center;justify-content:center;">' +
-          '<span style="color:#fff;font-size:18px;margin-left:4px;">&#9654;</span>' +
-        '</div>' +
-      '</div></div>';
-  } else {
-    prev.style.display = 'none';
-    prev.innerHTML = '';
+function onbidCollectKeyInput(val) {
+  if (val && val.length > 5) {
+    localStorage.setItem('onbid_key', val.trim());
+    var dot = document.getElementById('onbidApiDot') || document.getElementById('onbidDot');
+    if (dot) dot.classList.add('on');
   }
 }
-
-// 이미지 배열 (전역)
-var _pcKcardImgs = [];
-
-function pcHandleImgDrop(e) {
-  e.preventDefault();
-  var files = Array.from(e.dataTransfer.files).filter(function(f){ return f.type.startsWith('image/'); });
-  _pcProcessImgFiles(files);
-}
-function pcHandleImgSelect(inp) {
-  _pcProcessImgFiles(Array.from(inp.files));
-  inp.value = '';
-}
-function _pcProcessImgFiles(files) {
-  files.forEach(function(f) {
-    var reader = new FileReader();
-    reader.onload = function(ev) { _pcKcardImgs.push(ev.target.result); _pcRenderImgPreview(); };
-    reader.readAsDataURL(f);
+function pcExportCSV() {
+  var sv = []; try { sv = JSON.parse(localStorage.getItem('re_sv') || '[]'); } catch(e) {}
+  if (!sv.length) { if(typeof showToast==='function') showToast('저장된 항목이 없어요', 'warn'); return; }
+  var cols = [['소재지','소재지'],['물건종류','물건종류'],['층','층'],['전용면적','전용면적(㎡)'],['감정가','감정가'],['최저매각가격','최저가'],['매매가','매매가'],['보증금','보증금'],['월세','월세'],['사건번호','사건번호'],['매각기일','매각기일'],['상태','상태'],['_source','소스'],['lat','위도'],['lng','경도']];
+  var srcMap = {auction:'경매',listing:'네이버',naver:'네이버',jumpo:'점포라인',assa:'아싸',onbid:'온비드',transaction:'실거래'};
+  var header = cols.map(function(c){ return '"'+c[1]+'"'; }).join(',');
+  var rows = sv.map(function(item) {
+    var d = item.data || {};
+    return cols.map(function(col) {
+      var k=col[0], v='';
+      if (k==='_source') v=srcMap[item.mode||item.source||'']||item.mode||'';
+      else v=d[k]!==undefined?d[k]:(item[k]!==undefined?item[k]:'');
+      return '"'+String(v).replace(/"/g,'""')+'"';
+    }).join(',');
   });
+  var csv='\uFEFF'+header+'\n'+rows.join('\n');
+  var blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');
+  a.href=url; a.download='저장목록_'+new Date().toLocaleDateString('ko-KR').replace(/\. /g,'-').replace('.','')+'csv';
+  a.style.display='none'; document.body.appendChild(a); a.click();
+  setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(url); },100);
+  if(typeof showToast==='function') showToast('CSV 다운로드 ('+sv.length+'건)', 'ok');
 }
-function _pcRenderImgPreview() {
-  var el = document.getElementById('kcardImgPreview'); if (!el) return;
-  el.innerHTML = '';
-  _pcKcardImgs.forEach(function(src, i) {
-    var wrap = document.createElement('div');
-    wrap.style.cssText = 'position:relative;width:80px;height:80px;flex-shrink:0;';
-    var img = document.createElement('img');
-    img.src = src;
-    img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:6px;border:1px solid var(--b1);';
-    var del = document.createElement('button');
-    del.textContent = 'x';
-    del.style.cssText = 'position:absolute;top:-5px;right:-5px;width:18px;height:18px;border-radius:50%;background:#ff4d4d;color:#fff;border:none;font-size:11px;cursor:pointer;line-height:18px;padding:0;';
-    del.onclick = (function(idx){ return function(ev){ ev.stopPropagation(); _pcKcardImgs.splice(idx,1); _pcRenderImgPreview(); }; })(i);
-    wrap.appendChild(img); wrap.appendChild(del);
-    el.appendChild(wrap);
-  });
-}
-
-// 카테고리 관리 모달
 function openKcatManager() {
-  var modal = document.getElementById('kcatManagerModal'); if (!modal) return;
-  var list = document.getElementById('kcatManagerList'); if (!list) return;
-  // kcardCats는 common.js IIFE 내부 변수라 직접 접근 안 됨
-  // localStorage에서 직접 읽기
-  var cats = [];
-  try { cats = JSON.parse(localStorage.getItem('ins_kcat') || '[]'); } catch(e) {}
-  list.innerHTML = '';
-  cats.forEach(function(cat, i) {
-    var row = document.createElement('div');
-    row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--b1);';
-    var nm = document.createElement('span');
-    nm.style.cssText = 'flex:1;font-size:13px;color:var(--tx);';
-    nm.textContent = cat;
-    var del = document.createElement('button');
-    del.textContent = '삭제';
-    del.style.cssText = 'font-size:11px;padding:3px 8px;background:rgba(255,77,77,.1);border:1px solid rgba(255,77,77,.3);border-radius:5px;color:#ff4d4d;cursor:pointer;';
-    del.onclick = (function(c){ return function() {
-      if (!confirm("'" + c + "' 카테고리를 삭제할까요?")) return;
-      var arr = [];
-      try { arr = JSON.parse(localStorage.getItem('ins_kcat') || '[]'); } catch(e) {}
-      arr = arr.filter(function(x){ return x !== c; });
-      var cards = [];
-      try { cards = JSON.parse(localStorage.getItem('ins_kcards') || '[]'); } catch(e) {}
-      cards.forEach(function(k){ if(k.cat === c) k.cat = '기타'; });
-      localStorage.setItem('ins_kcat', JSON.stringify(arr));
-      localStorage.setItem('ins_kcards', JSON.stringify(cards));
-      modal.style.display = 'none';
-      if (typeof renderKcatTabs === 'function') renderKcatTabs();
-      if (typeof renderKcards === 'function') renderKcards();
-      if (typeof showToast === 'function') showToast("'" + c + "' 삭제됨", 'ok');
-    }; })(cat);
-    row.appendChild(nm); row.appendChild(del);
-    list.appendChild(row);
+  var modal=document.getElementById('kcatManagerModal'); if(!modal) return;
+  var list=document.getElementById('kcatManagerList'); if(!list) return;
+  var cats=[]; try{cats=JSON.parse(localStorage.getItem('ins_kcat')||'[]');}catch(e){}
+  list.innerHTML='';
+  cats.forEach(function(cat,i){
+    var row=document.createElement('div');
+    row.style.cssText='display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--b1);';
+    var nm=document.createElement('span'); nm.style.cssText='flex:1;font-size:13px;color:var(--tx);'; nm.textContent=cat;
+    var del=document.createElement('button'); del.textContent='삭제';
+    del.style.cssText='font-size:11px;padding:3px 8px;background:rgba(255,77,77,.1);border:1px solid rgba(255,77,77,.3);border-radius:5px;color:#ff4d4d;cursor:pointer;';
+    del.onclick=(function(c){ return function(){
+      if(!confirm("'"+c+"' 삭제할까요?")) return;
+      var arr=[]; try{arr=JSON.parse(localStorage.getItem('ins_kcat')||'[]');}catch(e){}
+      arr=arr.filter(function(x){return x!==c;});
+      var cards=[]; try{cards=JSON.parse(localStorage.getItem('ins_kcards')||'[]');}catch(e){}
+      cards.forEach(function(k){if(k.cat===c)k.cat='기타';});
+      localStorage.setItem('ins_kcat',JSON.stringify(arr)); localStorage.setItem('ins_kcards',JSON.stringify(cards));
+      modal.style.display='none';
+      if(typeof renderKcatTabs==='function') renderKcatTabs();
+      if(typeof renderKcards==='function') renderKcards();
+      if(typeof showToast==='function') showToast("'"+c+"' 삭제됨",'ok');
+    };})(cat);
+    row.appendChild(nm); row.appendChild(del); list.appendChild(row);
   });
-  modal.style.display = 'flex';
+  modal.style.display='flex';
 }
-function closeKcatManager() {
-  var modal = document.getElementById('kcatManagerModal');
-  if (modal) modal.style.display = 'none';
-}
+function closeKcatManager() { var m=document.getElementById('kcatManagerModal'); if(m) m.style.display='none'; }
 function addKcatFromManager() {
-  var inp = document.getElementById('kcatNewInput'); if (!inp) return;
-  var v = inp.value.trim(); if (!v) return;
-  var cats = [];
-  try { cats = JSON.parse(localStorage.getItem('ins_kcat') || '[]'); } catch(e) {}
-  if (cats.indexOf(v) !== -1) { if(typeof showToast==='function') showToast('이미 있는 카테고리예요','warn'); return; }
-  cats.push(v);
-  localStorage.setItem('ins_kcat', JSON.stringify(cats));
-  inp.value = '';
+  var inp=document.getElementById('kcatNewInput'); if(!inp) return;
+  var v=inp.value.trim(); if(!v) return;
+  var cats=[]; try{cats=JSON.parse(localStorage.getItem('ins_kcat')||'[]');}catch(e){}
+  if(cats.indexOf(v)!==-1){if(typeof showToast==='function')showToast('이미 있어요','warn');return;}
+  cats.push(v); localStorage.setItem('ins_kcat',JSON.stringify(cats)); inp.value='';
   openKcatManager();
-  if (typeof renderKcatTabs === 'function') renderKcatTabs();
-  if (typeof showToast === 'function') showToast("'" + v + "' 추가됨", 'ok');
+  if(typeof renderKcatTabs==='function') renderKcatTabs();
+  if(typeof showToast==='function') showToast("'"+v+"' 추가됨",'ok');
 }
-
-// saveKcard 확장 — youtube + images 저장 포함
-// common.js 내부 saveKcard를 덮어쓰기
-document.addEventListener('DOMContentLoaded', function() {
-  // openKcardEditor 패치: kcardAiInput 없어도 에러 안 나게
-  // (optional chaining ?. 으로 안전하게 처리)
-  var _origOpen = window.openKcardEditor;
-  if (typeof _origOpen === 'function') {
-    window.openKcardEditor = function(id) {
-      _pcKcardImgs = [];
+var _pcKcardImgs=[];
+function pcUpdateYtPreview(){
+  var inp=document.getElementById('kcardYtInput'); var prev=document.getElementById('kcardYtPreview');
+  if(!inp||!prev) return;
+  var m=inp.value.trim().match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([^&?#\s]{8,12})/);
+  var ytId=m?m[1]:null;
+  if(ytId){
+    prev.style.display='block';
+    prev.innerHTML='<div style="position:relative;cursor:pointer;" onclick="window.open(\'https://www.youtube.com/watch?v='+ytId+'\',\'_blank\')"><img src="https://img.youtube.com/vi/'+ytId+'/mqdefault.jpg" style="width:100%;border-radius:8px;display:block;"><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;"><div style="width:52px;height:36px;background:rgba(255,0,0,.88);border-radius:8px;display:flex;align-items:center;justify-content:center;"><span style="color:#fff;font-size:18px;margin-left:4px;">&#9654;</span></div></div></div>';
+  } else { prev.style.display='none'; prev.innerHTML=''; }
+}
+function pcHandleImgDrop(e){
+  e.preventDefault();
+  _pcProcessImgFiles(Array.from(e.dataTransfer.files).filter(function(f){return f.type.startsWith('image/');}));
+}
+function pcHandleImgSelect(inp){ _pcProcessImgFiles(Array.from(inp.files)); inp.value=''; }
+function _pcProcessImgFiles(files){
+  files.forEach(function(f){ var r=new FileReader(); r.onload=function(ev){_pcKcardImgs.push(ev.target.result);_pcRenderImgPreview();}; r.readAsDataURL(f); });
+}
+function _pcRenderImgPreview(){
+  var el=document.getElementById('kcardImgPreview'); if(!el) return;
+  el.innerHTML='';
+  _pcKcardImgs.forEach(function(src,i){
+    var w=document.createElement('div'); w.style.cssText='position:relative;width:80px;height:80px;flex-shrink:0;';
+    var img=document.createElement('img'); img.src=src; img.style.cssText='width:100%;height:100%;object-fit:cover;border-radius:6px;border:1px solid var(--b1);';
+    var d=document.createElement('button'); d.textContent='x'; d.style.cssText='position:absolute;top:-5px;right:-5px;width:18px;height:18px;border-radius:50%;background:#ff4d4d;color:#fff;border:none;font-size:11px;cursor:pointer;padding:0;';
+    d.onclick=(function(idx){return function(ev){ev.stopPropagation();_pcKcardImgs.splice(idx,1);_pcRenderImgPreview();};})(i);
+    w.appendChild(img); w.appendChild(d); el.appendChild(w);
+  });
+}
+document.addEventListener('DOMContentLoaded', function(){
+  /* kcardAiInput 더미 생성 */
+  if(!document.getElementById('kcardAiInput')){ var d=document.createElement('input'); d.id='kcardAiInput'; d.type='hidden'; document.body.appendChild(d); }
+  /* openKcardEditor 패치 */
+  var _origOpen=window.openKcardEditor;
+  if(typeof _origOpen==='function'){
+    window.openKcardEditor=function(id){
+      _pcKcardImgs=[];
       _origOpen(id);
-      // youtube 필드 복원
-      if (id) {
-        var cards = [];
-        try { cards = JSON.parse(localStorage.getItem('ins_kcards') || '[]'); } catch(e) {}
-        var card = cards.find(function(k){ return k.id === id; });
-        var ytInp = document.getElementById('kcardYtInput');
-        if (ytInp && card) ytInp.value = card.youtube || '';
-        _pcKcardImgs = card && card.images ? card.images.slice() : [];
-        _pcRenderImgPreview();
-        pcUpdateYtPreview();
-      } else {
-        var ytInp2 = document.getElementById('kcardYtInput');
-        if (ytInp2) ytInp2.value = '';
-        var ytPrev = document.getElementById('kcardYtPreview');
-        if (ytPrev) { ytPrev.style.display = 'none'; ytPrev.innerHTML = ''; }
-        var imgPrev = document.getElementById('kcardImgPreview');
-        if (imgPrev) imgPrev.innerHTML = '';
-      }
+      var cards=[]; try{cards=JSON.parse(localStorage.getItem('ins_kcards')||'[]');}catch(e){}
+      var card=id?cards.find(function(k){return k.id===id;}):null;
+      var ytInp=document.getElementById('kcardYtInput');
+      if(ytInp) ytInp.value=card?card.youtube||'':'';
+      _pcKcardImgs=card&&card.images?card.images.slice():[];
+      _pcRenderImgPreview(); pcUpdateYtPreview();
+      if(!id){var p=document.getElementById('kcardYtPreview');if(p){p.style.display='none';p.innerHTML='';} var ip=document.getElementById('kcardImgPreview');if(ip)ip.innerHTML='';}
     };
   }
-
-  // saveKcard 패치: youtube + images 포함해서 저장
-  var _origSave = window.saveKcard;
-  if (typeof _origSave === 'function') {
-    window.saveKcard = function() {
-      // youtube, images를 카드에 임시 주입 후 원본 호출
-      // 저장 후 마지막으로 저장된 카드에 youtube/images 추가
-      var ytUrl = (document.getElementById('kcardYtInput') || {}).value || '';
-      var editId = window.kcardEditId || null;
+  /* saveKcard 패치 */
+  var _origSave=window.saveKcard;
+  if(typeof _origSave==='function'){
+    window.saveKcard=function(){
+      var ytUrl=(document.getElementById('kcardYtInput')||{}).value||'';
+      var editId=window.kcardEditId||null;
       _origSave();
-      // 원본 save 후 localStorage에서 방금 저장/수정한 카드에 youtube+images 추가
-      var cards = [];
-      try { cards = JSON.parse(localStorage.getItem('ins_kcards') || '[]'); } catch(e) {}
-      var target = editId ? cards.find(function(k){ return k.id === editId; }) : cards[0];
-      if (target) {
-        target.youtube = ytUrl;
-        target.images = _pcKcardImgs.slice();
-        localStorage.setItem('ins_kcards', JSON.stringify(cards));
-        _pcKcardImgs = [];
-      }
+      var cards=[]; try{cards=JSON.parse(localStorage.getItem('ins_kcards')||'[]');}catch(e){}
+      var target=editId?cards.find(function(k){return k.id===editId;}):cards[0];
+      if(target){ target.youtube=ytUrl; target.images=_pcKcardImgs.slice(); localStorage.setItem('ins_kcards',JSON.stringify(cards)); _pcKcardImgs=[]; if(typeof renderKcards==='function') renderKcards(); }
     };
   }
 });
