@@ -620,35 +620,8 @@
       } catch(e) {}
     };
 
-    // ─── IDB 변경 시 자동 Supabase 동기화 훅 ──
-    // (localStorage.setItem 패치는 블록1-B IDB 래퍼에서 처리됨)
-    // idbSetSync 호출 시 Supabase 동기화 debounce
-    (function() {
-      let _debounceRooms, _debounceSec, _debounceSv;
-      const _origIdbSet = window.idbSet;
-      window.idbSet = async function(key, value) {
-        const result = await _origIdbSet(key, value);
-        if (key === 'wr2_rooms') {
-          clearTimeout(_debounceRooms);
-          _debounceRooms = setTimeout(() => {
-            if (window._sbSaveRooms) window._sbSaveRooms(value).catch(e=>{});
-          }, 1500);
-        }
-        if (key === 'wr2_sections') {
-          clearTimeout(_debounceSec);
-          _debounceSec = setTimeout(() => {
-            if (window._sbSaveSections) window._sbSaveSections(value).catch(e=>{});
-          }, 1500);
-        }
-        if (key === 're_sv') {
-          clearTimeout(_debounceSv);
-          _debounceSv = setTimeout(() => {
-            if (window._sbSaveSv) window._sbSaveSv(value).catch(e=>{});
-          }, 2000);
-        }
-        return result;
-      };
-    })();
+    // ─── Supabase 동기화는 각 _sbSaveXxx 함수에서 직접 호출 ──
+    // idbSet에 훅을 걸면 무한루프 위험이 있으므로 훅 없이 운영
 
 
 
