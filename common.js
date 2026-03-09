@@ -27693,8 +27693,6 @@ function openKcatManager() {
   });
   modal.style.display='flex';
 }
-  modal.style.display='flex';
-}
 function closeKcatManager() { var m=document.getElementById('kcatManagerModal'); if(m) m.style.display='none'; }
 function addKcatFromManager() {
   var inp=document.getElementById('kcatNewInput'); if(!inp) return;

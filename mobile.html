@@ -979,6 +979,59 @@ body {
     font-family:'Noto Sans KR',sans-serif;
   }
 
+  /* ── 작업룸 위젯 (개요탭) ── */
+  .mb-wr-widget {
+    background:var(--s2); border:1px solid var(--b1);
+    border-radius:12px; margin-bottom:10px; overflow:hidden;
+  }
+  .mb-wr-widget-hd {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:10px 13px 8px; border-bottom:1px solid rgba(255,255,255,.05);
+  }
+  .mb-wr-widget-title {
+    font-size:11px; font-weight:700; color:var(--mu);
+    text-transform:uppercase; letter-spacing:.05em;
+  }
+  .mb-wr-widget-body { padding:12px 13px; }
+  .mb-wr-item-row {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:7px 0; border-bottom:1px solid rgba(255,255,255,.04);
+  }
+  .mb-wr-item-row:last-child { border-bottom:none; }
+  .mb-wr-item-lbl { font-size:11px; color:var(--mu); }
+  .mb-wr-item-val { font-size:12px; font-weight:700; color:var(--tx); }
+  .mb-wr-calc-row {
+    display:flex; align-items:center; gap:8px; margin-bottom:8px;
+  }
+  .mb-wr-calc-lbl { font-size:11px; color:var(--mu); width:40px; flex-shrink:0; }
+  .mb-wr-calc-inp {
+    flex:1; height:34px; padding:0 10px;
+    background:var(--s3); border:1px solid var(--b1);
+    border-radius:7px; color:var(--tx); font-size:12px;
+    font-family:'Noto Sans KR',sans-serif; outline:none; box-sizing:border-box;
+  }
+  .mb-wr-calc-inp:focus { border-color:rgba(79,142,255,.4); }
+  .mb-wr-calc-target {
+    width:28px; height:28px; flex-shrink:0; background:transparent;
+    border:1px solid var(--b1); border-radius:6px; cursor:pointer;
+    font-size:12px; transition:all .15s;
+  }
+  .mb-wr-calc-target.active { background:rgba(255,209,102,.15); border-color:rgba(255,209,102,.5); }
+  .mb-wr-calc-result {
+    margin-top:8px; padding:9px 11px;
+    background:rgba(79,142,255,.06); border:1px solid rgba(79,142,255,.2);
+    border-radius:8px; font-size:12px; color:var(--tx); line-height:1.7;
+  }
+  .mb-wr-check-item {
+    display:flex; align-items:center; gap:10px; padding:8px 0;
+    border-bottom:1px solid rgba(255,255,255,.04); cursor:pointer;
+    -webkit-tap-highlight-color:rgba(0,212,170,.06);
+  }
+  .mb-wr-check-item:last-child { border-bottom:none; }
+  .mb-wr-check-icon { font-size:16px; flex-shrink:0; }
+  .mb-wr-check-text { flex:1; font-size:12px; color:var(--tx); line-height:1.4; }
+  .mb-wr-check-text.done { text-decoration:line-through; color:var(--di); }
+
   /* 저장목록 상세 바텀시트 */
   .mb-detail-row {
     display:flex; justify-content:space-between; align-items:center;
@@ -1931,104 +1984,178 @@ body {
 
     <!-- 작업룸 패널 -->
     <div id="mb-ins-room" class="mb-ins-panel active">
-      <!-- 룸 선택 + 새 룸 버튼 -->
+
+      <!-- ── 상단: 룸 선택 드롭다운 + 새 룸 버튼 ── -->
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
         <div id="mb-room-sel-wrap" style="flex:1;min-width:0;position:relative;">
           <div id="mb-room-sel-btn" onclick="mbRoomDropToggle()"
-            style="height:38px;padding:0 36px 0 10px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;color:var(--tx);font-size:13px;display:flex;align-items:center;cursor:pointer;user-select:none;overflow:hidden;">
+            style="height:38px;padding:0 36px 0 12px;background:var(--s2);border:1px solid var(--b1);border-radius:9px;color:var(--tx);font-size:13px;display:flex;align-items:center;cursor:pointer;user-select:none;overflow:hidden;transition:border-color .15s;">
             <span id="mb-room-sel-label" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">-- 작업룸 선택 --</span>
             <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:10px;color:var(--mu);">▼</span>
           </div>
-          <div id="mb-room-sel-list" style="display:none;position:absolute;top:42px;left:0;right:0;background:var(--s2);border:1px solid var(--b1);border-radius:8px;z-index:9999;max-height:220px;overflow-y:auto;box-shadow:0 4px 20px rgba(0,0,0,.5);"></div>
+          <div id="mb-room-sel-list" style="display:none;position:absolute;top:42px;left:0;right:0;background:var(--s2);border:1px solid var(--b1);border-radius:9px;z-index:9999;max-height:220px;overflow-y:auto;box-shadow:0 6px 24px rgba(0,0,0,.6);"></div>
         </div>
         <select id="mb-room-sel" style="display:none;" onchange="mbRoomLoad(this.value)"><option value="">-- 작업룸 선택 --</option></select>
-        <button class="mb-btn mb-btn-gold" onclick="mbRoomNewAndOpen()">＋ 새 룸</button>
+        <button class="mb-btn mb-btn-gold" onclick="mbRoomNewAndOpen()" style="white-space:nowrap;">＋ 새 룸</button>
       </div>
 
-      <!-- 룸 헤더: 이름 + 단계뱃지 + 단계변경 + 삭제 -->
-      <div id="mb-room-header" style="display:none;margin-bottom:10px;padding:10px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:10px;">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
-          <div style="flex:1;min-width:0;">
-            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px;">
-              <span id="mb-room-name" style="font-size:14px;font-weight:700;color:var(--tx);"></span>
-              <span id="mb-room-phase-badge" onclick="mbRoomPhaseToggle()" style="font-size:10px;padding:2px 8px;border-radius:10px;background:rgba(79,142,255,.15);color:#4f8eff;display:none;cursor:pointer;">관심 ▾</span>
-            </div>
-            <div id="mb-room-desc" style="font-size:11px;color:var(--mu);"></div>
-          </div>
-          <button class="mb-btn" style="height:28px;padding:0 10px;font-size:11px;color:var(--red);border-color:rgba(255,77,77,.3);flex-shrink:0;" onclick="mbRoomDelete()">🗑</button>
-        </div>
-        <!-- 단계 선택 바 (뱃지 탭 시 펼쳐짐) -->
-        <div id="mb-room-phase-picker" style="display:none;margin-top:8px;display:none;">
-          <div style="display:flex;flex-wrap:wrap;gap:5px;">
-            <button onclick="mbRoomSetPhase('interest')"  class="mb-phase-btn" style="--pc:#4f8eff;">👀 관심</button>
-            <button onclick="mbRoomSetPhase('site_check')" class="mb-phase-btn" style="--pc:#f59e0b;">🏃 현장</button>
-            <button onclick="mbRoomSetPhase('review')"    class="mb-phase-btn" style="--pc:#a78bfa;">🔍 검토</button>
-            <button onclick="mbRoomSetPhase('contract')"  class="mb-phase-btn" style="--pc:#00d482;">📝 계약</button>
-            <button onclick="mbRoomSetPhase('done')"      class="mb-phase-btn" style="--pc:#64748b;">✅ 완료</button>
-            <button onclick="mbRoomSetPhase('dropped')"   class="mb-phase-btn" style="--pc:#ff5050;">⛔ 보류</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- 섹션 phase 칩바 (섹션탭 선택 시 표시) -->
-      <div id="mb-room-phase-bar" class="mb-phase-bar" style="display:none;"></div>
-
-      <!-- 탭: 노트 / 섹션 / 매물 -->
-      <div id="mb-room-tabs" style="display:flex;gap:4px;margin-bottom:2px;border-bottom:1px solid var(--b1);padding-bottom:0;display:none;">
-        <button id="mb-rtab-note" class="mb-rtab active" onclick="mbRoomTab('note')">📝 노트</button>
-        <button id="mb-rtab-section" class="mb-rtab" onclick="mbRoomTab('section')">📋 섹션</button>
-        <button id="mb-rtab-item" class="mb-rtab" onclick="mbRoomTab('item')">🔗 매물</button>
-      </div>
-
-      <!-- 노트 탭 -->
-      <div id="mb-room-tab-note" class="mb-room-tabpanel">
-        <!-- 노트 목록 (세로 리스트) -->
-        <div id="mb-room-note-list" style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px;max-height:160px;overflow-y:auto;"></div>
-        <!-- 노트 추가: 인라인 입력 -->
-        <div id="mb-note-add-wrap" style="margin-bottom:8px;">
-          <button id="mb-note-add-btn" onclick="mbNoteAddToggle()" style="font-size:11px;padding:4px 10px;background:rgba(79,142,255,.12);border:1px solid rgba(79,142,255,.3);border-radius:6px;color:#4f8eff;cursor:pointer;">＋ 노트 추가</button>
-          <div id="mb-note-add-inline" style="display:none;margin-top:6px;display:none;">
-            <div style="display:flex;gap:6px;">
-              <input id="mb-note-add-input" type="text" placeholder="노트 제목 (예: 현장 메모)" maxlength="30"
-                style="flex:1;height:32px;padding:0 8px;background:var(--s2);border:1px solid var(--b1);border-radius:6px;color:var(--tx);font-size:12px;outline:none;font-family:inherit;"
-                onkeydown="if(event.key==='Enter')mbNoteAddConfirm();if(event.key==='Escape')mbNoteAddToggle();">
-              <button onclick="mbNoteAddConfirm()" style="height:32px;padding:0 12px;background:#4f8eff;border:none;border-radius:6px;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">추가</button>
-              <button onclick="mbNoteAddToggle()" style="height:32px;padding:0 8px;background:transparent;border:1px solid var(--b1);border-radius:6px;color:var(--mu);font-size:12px;cursor:pointer;">✕</button>
-            </div>
-          </div>
-        </div>
-        <!-- 노트 에디터 -->
-        <textarea id="mb-room-note-ta" placeholder="노트를 선택하거나 새로 추가하세요"
-          style="width:100%;min-height:160px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;color:var(--tx);font-size:13px;padding:10px;box-sizing:border-box;resize:vertical;font-family:'Noto Sans KR',sans-serif;line-height:1.6;"
-          oninput="mbRoomNoteInput(this.value)" disabled></textarea>
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;">
-          <span id="mb-room-note-status" style="font-size:10px;color:var(--di);">노트를 선택하세요</span>
-          <span id="mb-room-note-time" style="font-size:10px;color:var(--di);"></span>
-        </div>
-      </div>
-
-      <!-- 섹션 탭 -->
-      <div id="mb-room-tab-section" class="mb-room-tabpanel" style="display:none;">
-        <div id="mb-room-section-body"></div>
-      </div>
-
-      <!-- 매물 탭 -->
-      <div id="mb-room-tab-item" class="mb-room-tabpanel" style="display:none;">
-        <div id="mb-room-item-body">
-          <div class="mb-empty" style="padding:24px 0;">
-            <div class="mb-empty-icon">🔗</div>
-            <div>연결된 매물이 없어요</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 빈 상태 (룸 미선택) -->
+      <!-- ── 빈 상태 (룸 미선택) ── -->
       <div id="mb-room-list">
         <div class="mb-empty" id="mb-room-empty">
           <div class="mb-empty-icon">🗂️</div>
           <div>작업룸을 선택하거나 새로 만드세요</div>
         </div>
       </div>
+
+      <!-- ── 룸 선택 시 표시 영역 ── -->
+      <div id="mb-room-content" style="display:none;">
+
+        <!-- 룸 헤더 카드 -->
+        <div id="mb-room-header" style="margin-bottom:10px;padding:11px 13px;background:var(--s2);border:1px solid var(--b1);border-radius:11px;">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+            <div style="flex:1;min-width:0;">
+              <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:3px;">
+                <span id="mb-room-name" style="font-size:14px;font-weight:700;color:var(--tx);"></span>
+                <span id="mb-room-phase-badge" onclick="mbRoomPhaseToggle()"
+                  style="font-size:10px;padding:2px 9px;border-radius:10px;cursor:pointer;display:none;font-weight:600;">관심 ▾</span>
+              </div>
+              <div id="mb-room-desc" style="font-size:11px;color:var(--mu);line-height:1.4;"></div>
+            </div>
+            <button class="mb-btn" style="height:28px;padding:0 10px;font-size:12px;color:var(--red);border-color:rgba(255,77,77,.3);flex-shrink:0;" onclick="mbRoomDelete()">🗑</button>
+          </div>
+          <!-- 단계 변경 펼침 -->
+          <div id="mb-room-phase-picker" style="display:none;margin-top:9px;">
+            <div style="display:flex;flex-wrap:wrap;gap:5px;">
+              <button onclick="mbRoomSetPhase('interest')"   class="mb-phase-btn" style="--pc:#4f8eff;">👀 관심</button>
+              <button onclick="mbRoomSetPhase('site_check')" class="mb-phase-btn" style="--pc:#f59e0b;">🏃 현장</button>
+              <button onclick="mbRoomSetPhase('review')"     class="mb-phase-btn" style="--pc:#a78bfa;">🔍 검토</button>
+              <button onclick="mbRoomSetPhase('contract')"   class="mb-phase-btn" style="--pc:#00d482;">📝 계약</button>
+              <button onclick="mbRoomSetPhase('done')"       class="mb-phase-btn" style="--pc:#64748b;">✅ 완료</button>
+              <button onclick="mbRoomSetPhase('dropped')"    class="mb-phase-btn" style="--pc:#ff5050;">⛔ 보류</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4탭 네비게이션 -->
+        <div id="mb-room-tabs" style="display:flex;border-bottom:1px solid var(--b1);margin-bottom:10px;">
+          <button id="mb-rtab-overview" class="mb-rtab active" onclick="mbRoomTab('overview')">📋 개요</button>
+          <button id="mb-rtab-note"     class="mb-rtab" onclick="mbRoomTab('note')">📝 노트</button>
+          <button id="mb-rtab-section"  class="mb-rtab" onclick="mbRoomTab('section')">📁 섹션</button>
+          <button id="mb-rtab-item"     class="mb-rtab" onclick="mbRoomTab('item')">🔗 매물</button>
+        </div>
+
+        <!-- ══ 개요 탭 ══ -->
+        <div id="mb-room-tab-overview" class="mb-room-tabpanel">
+
+          <!-- 물건 요약 위젯 -->
+          <div class="mb-wr-widget" id="mb-wr-item-widget">
+            <div class="mb-wr-widget-hd">
+              <span class="mb-wr-widget-title">📋 물건 요약</span>
+              <button id="mb-wr-link-btn" onclick="mbRoomLinkItem()"
+                style="font-size:10px;padding:3px 9px;background:rgba(79,142,255,.1);border:1px solid rgba(79,142,255,.3);border-radius:5px;color:#4f8eff;cursor:pointer;">🔗 연결</button>
+            </div>
+            <div class="mb-wr-widget-body" id="mb-wr-item-body">
+              <div style="text-align:center;padding:10px 0;font-size:12px;color:var(--di);">연결된 물건이 없습니다</div>
+            </div>
+          </div>
+
+          <!-- 수익률 계산기 위젯 -->
+          <div class="mb-wr-widget">
+            <div class="mb-wr-widget-hd">
+              <span class="mb-wr-widget-title">📈 수익률 계산기</span>
+              <button onclick="mbWrCalcClear()"
+                style="font-size:10px;padding:3px 9px;background:rgba(255,255,255,.05);border:1px solid var(--b1);border-radius:5px;color:var(--mu);cursor:pointer;">초기화</button>
+            </div>
+            <div class="mb-wr-widget-body">
+              <div style="font-size:10px;color:var(--di);margin-bottom:8px;">🎯 버튼으로 구하려는 값 선택 후 나머지 입력</div>
+              <div class="mb-wr-calc-row">
+                <span class="mb-wr-calc-lbl">매매가</span>
+                <input class="mb-wr-calc-inp" id="mb-wc-price" type="text" inputmode="numeric" placeholder="예: 300,000,000"
+                  oninput="fmtComma&&fmtComma(this);mbWrCalcRun('price')">
+                <button id="mb-wct-price" class="mb-wr-calc-target" onclick="mbWrSetTarget('price')">🎯</button>
+              </div>
+              <div class="mb-wr-calc-row">
+                <span class="mb-wr-calc-lbl">보증금</span>
+                <input class="mb-wr-calc-inp" id="mb-wc-deposit" type="text" inputmode="numeric" placeholder="예: 50,000,000"
+                  oninput="fmtComma&&fmtComma(this);mbWrCalcRun('deposit')">
+                <button id="mb-wct-deposit" class="mb-wr-calc-target" onclick="mbWrSetTarget('deposit')">🎯</button>
+              </div>
+              <div class="mb-wr-calc-row">
+                <span class="mb-wr-calc-lbl">월세</span>
+                <input class="mb-wr-calc-inp" id="mb-wc-rent" type="text" inputmode="numeric" placeholder="예: 1,500,000"
+                  oninput="fmtComma&&fmtComma(this);mbWrCalcRun('rent')">
+                <button id="mb-wct-rent" class="mb-wr-calc-target" onclick="mbWrSetTarget('rent')">🎯</button>
+              </div>
+              <div class="mb-wr-calc-row">
+                <span class="mb-wr-calc-lbl" style="color:#ffd166;">수익률</span>
+                <input class="mb-wr-calc-inp" id="mb-wc-yield" type="text" inputmode="decimal" placeholder="예: 6.5"
+                  oninput="mbWrCalcRun('yield')" style="border-color:rgba(255,209,102,.25);color:#ffd166;">
+                <button id="mb-wct-yield" class="mb-wr-calc-target" onclick="mbWrSetTarget('yield')">🎯</button>
+              </div>
+              <div id="mb-wc-result" class="mb-wr-calc-result" style="display:none;"></div>
+            </div>
+          </div>
+
+          <!-- 분석 체크리스트 위젯 -->
+          <div class="mb-wr-widget">
+            <div class="mb-wr-widget-hd">
+              <span class="mb-wr-widget-title">☑ 분석 체크리스트</span>
+              <button onclick="mbWrCheckAdd()"
+                style="font-size:10px;padding:3px 9px;background:rgba(0,212,170,.08);border:1px solid rgba(0,212,170,.25);border-radius:5px;color:#00d4aa;cursor:pointer;">＋ 추가</button>
+            </div>
+            <div class="mb-wr-widget-body" id="mb-wr-check-body">
+              <div style="text-align:center;padding:6px 0;font-size:12px;color:var(--di);">체크리스트가 없습니다</div>
+            </div>
+          </div>
+
+        </div><!-- /개요탭 -->
+
+        <!-- ══ 노트 탭 ══ -->
+        <div id="mb-room-tab-note" class="mb-room-tabpanel" style="display:none;">
+          <!-- 노트 목록 -->
+          <div id="mb-room-note-list" style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px;max-height:150px;overflow-y:auto;"></div>
+          <!-- 노트 추가 버튼 -->
+          <div id="mb-note-add-wrap" style="margin-bottom:8px;">
+            <button id="mb-note-add-btn" onclick="mbNoteAddToggle()"
+              style="font-size:11px;padding:5px 12px;background:rgba(79,142,255,.1);border:1px solid rgba(79,142,255,.25);border-radius:7px;color:#4f8eff;cursor:pointer;">＋ 노트 추가</button>
+            <div id="mb-note-add-inline" style="display:none;margin-top:6px;">
+              <div style="display:flex;gap:6px;">
+                <input id="mb-note-add-input" type="text" placeholder="노트 제목" maxlength="30"
+                  style="flex:1;height:34px;padding:0 10px;background:var(--s2);border:1px solid var(--b1);border-radius:7px;color:var(--tx);font-size:12px;outline:none;font-family:inherit;"
+                  onkeydown="if(event.key==='Enter')mbNoteAddConfirm();if(event.key==='Escape')mbNoteAddToggle();">
+                <button onclick="mbNoteAddConfirm()" style="height:34px;padding:0 14px;background:#4f8eff;border:none;border-radius:7px;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">추가</button>
+                <button onclick="mbNoteAddToggle()" style="height:34px;padding:0 10px;background:transparent;border:1px solid var(--b1);border-radius:7px;color:var(--mu);font-size:12px;cursor:pointer;">✕</button>
+              </div>
+            </div>
+          </div>
+          <!-- 노트 에디터 -->
+          <textarea id="mb-room-note-ta" placeholder="노트를 선택하거나 새로 추가하세요"
+            style="width:100%;min-height:200px;background:var(--s2);border:1px solid var(--b1);border-radius:9px;color:var(--tx);font-size:13px;padding:12px;box-sizing:border-box;resize:vertical;font-family:'Noto Sans KR',sans-serif;line-height:1.7;outline:none;"
+            oninput="mbRoomNoteInput(this.value)" disabled></textarea>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:5px;">
+            <span id="mb-room-note-status" style="font-size:10px;color:var(--di);">노트를 선택하세요</span>
+            <span id="mb-room-note-time" style="font-size:10px;color:var(--di);"></span>
+          </div>
+        </div>
+
+        <!-- ══ 섹션 탭 ══ -->
+        <div id="mb-room-tab-section" class="mb-room-tabpanel" style="display:none;">
+          <!-- phase 칩바 -->
+          <div id="mb-room-phase-bar" class="mb-phase-bar" style="display:none;"></div>
+          <div id="mb-room-section-body"></div>
+        </div>
+
+        <!-- ══ 매물 탭 ══ -->
+        <div id="mb-room-tab-item" class="mb-room-tabpanel" style="display:none;">
+          <div id="mb-room-item-body">
+            <div class="mb-empty" style="padding:24px 0;">
+              <div class="mb-empty-icon">🔗</div>
+              <div>연결된 매물이 없어요</div>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /mb-room-content -->
     </div>
 
     <!-- 파이프라인 패널 -->
@@ -2648,7 +2775,7 @@ body {
       setTimeout(mbRenderSaved, 50);
     }
     if (name === 'insight') {
-      setTimeout(function(){ if (typeof mbInsTab === 'function') mbInsTab(_mbLastInsTab || 'note'); }, 80);
+      setTimeout(function(){ if (typeof mbInsTab === 'function') mbInsTab(_mbLastInsTab || 'room'); }, 80);
     }
   };
 
@@ -2672,8 +2799,8 @@ body {
 
   /* ── 인사이트 서브탭 ── */
   var INS_PANELS = ['note','calc','room','pipe','clip','site'];
-  var _mbLastInsTab = 'note';
-  try { _mbLastInsTab = localStorage.getItem('mb_ins_tab') || 'note'; } catch(e) {}
+  var _mbLastInsTab = 'room';
+  try { _mbLastInsTab = localStorage.getItem('mb_ins_tab') || 'room'; } catch(e) {}
   window.mbInsTab = function(name) {
     _mbLastInsTab = name;
     try { localStorage.setItem('mb_ins_tab', name); } catch(e) {}
@@ -3384,7 +3511,7 @@ body {
   var _mbNoteTimer = null;
 
   window.mbRoomTab = function(tab) {
-    ['note','section','item'].forEach(function(t) {
+    ['overview','note','section','item'].forEach(function(t) {
       var panel = document.getElementById('mb-room-tab-' + t);
       var btn = document.getElementById('mb-rtab-' + t);
       if (panel) panel.style.display = t === tab ? '' : 'none';
@@ -3808,6 +3935,207 @@ body {
     mbRoomLoad(_mbActiveRoomId);
   };
 
+  // ── 개요 탭 렌더 ──
+  function _mbRenderOverviewTab(roomId, room) {
+    _mbRenderItemSummary(room);
+    _mbWrCalcInit(room);
+    _mbRenderChecklist(roomId, room);
+  }
+
+  // ── 물건 요약 렌더 ──
+  function _mbRenderItemSummary(room) {
+    var body = document.getElementById('mb-wr-item-body');
+    if (!body) return;
+    var savedItems = [];
+    try { savedItems = JSON.parse(localStorage.getItem('re_sv') || '[]'); } catch(e) {}
+    var linkedId = room.linkedSavedId;
+    var item = linkedId ? savedItems.find(function(x){ return x.id === linkedId; }) : null;
+    if (!item && room.linkedItems && room.linkedItems.length) item = room.linkedItems[0];
+    if (!item) {
+      body.innerHTML = '<div style="text-align:center;padding:10px 0;font-size:12px;color:var(--di);">연결된 물건이 없습니다<br><span style="font-size:11px;color:#4f8eff;cursor:pointer;" onclick="mbRoomLinkItem()">🔗 물건연결 버튼으로 연결하세요</span></div>';
+      return;
+    }
+    var d = item.data || {};
+    var rows = [];
+    var addRow = function(lbl, val) { if (val) rows.push({ lbl: lbl, val: val }); };
+    addRow('유형', d['거래유형'] || d['type'] || item.type || '');
+    addRow('소재지', d['소재지'] || d['단지명'] || item.address || item.title || '');
+    addRow('감정가', d['감정가'] || '');
+    addRow('매매가', d['매매가'] || '');
+    addRow('보증금', d['보증금'] ? d['보증금'] + (d['월세_만원'] ? ' / ' + d['월세_만원'] + '만원/월' : '') : '');
+    addRow('전용면적', d['전용면적_m2'] ? Math.round(d['전용면적_m2']) + '㎡ (' + Math.round(d['전용면적_m2']/3.3) + '평)' : '');
+    addRow('층', d['해당층'] ? d['해당층'] + '층' : '');
+    addRow('수익률', d['수익률'] ? d['수익률'] + '%' : '');
+    addRow('사건번호', d['사건번호'] || '');
+    addRow('권리분석', d['권리분석요약'] || '');
+    if (!rows.length) { body.innerHTML = '<div style="text-align:center;padding:10px 0;font-size:12px;color:var(--di);">물건 정보가 없습니다</div>'; return; }
+    var html = rows.map(function(r) {
+      return '<div class="mb-wr-item-row"><span class="mb-wr-item-lbl">' + r.lbl + '</span><span class="mb-wr-item-val">' + r.val + '</span></div>';
+    }).join('');
+    var url = d['상세URL'] || '';
+    if (url) html += '<div style="padding-top:9px;"><a href="' + url + '" target="_blank" style="font-size:11px;color:#4f8eff;text-decoration:none;">🔗 원본 보기</a></div>';
+    body.innerHTML = html;
+  }
+
+  // ── 수익률 계산기 초기화 ──
+  var _mbWcTarget = null;
+  function _mbWcNum(id) {
+    var el = document.getElementById(id); if (!el) return NaN;
+    return parseFloat((el.value || '').replace(/,/g,'')) || NaN;
+  }
+  window.mbWrSetTarget = function(f) {
+    _mbWcTarget = (_mbWcTarget === f) ? null : f;
+    ['price','deposit','rent','yield'].forEach(function(t) {
+      var btn = document.getElementById('mb-wct-' + t);
+      if (btn) btn.classList.toggle('active', t === _mbWcTarget);
+    });
+    window.mbWrCalcRun(null);
+  };
+  window.mbWrCalcRun = function(changed) {
+    var result = document.getElementById('mb-wc-result');
+    if (!result) return;
+    var price   = _mbWcNum('mb-wc-price');
+    var deposit = _mbWcNum('mb-wc-deposit');
+    var rent    = _mbWcNum('mb-wc-rent');
+    var yld     = _mbWcNum('mb-wc-yield');
+    var t = _mbWcTarget;
+    var out = '';
+    if (t === 'yield' && !isNaN(price) && !isNaN(deposit) && !isNaN(rent)) {
+      var realYield = (rent * 12) / (price - deposit) * 100;
+      out = '수익률 <span style="font-size:16px;font-weight:800;color:#ffd166;">' + realYield.toFixed(2) + '%</span><br>실투자금 ' + _mbFmt(price - deposit) + '원';
+    } else if (t === 'price' && !isNaN(deposit) && !isNaN(rent) && !isNaN(yld)) {
+      var calcPrice = (rent * 12 / (yld / 100)) + deposit;
+      out = '매매가 <span style="font-size:15px;font-weight:800;color:#4f8eff;">' + _mbFmt(calcPrice) + '원</span>';
+    } else if (t === 'rent' && !isNaN(price) && !isNaN(deposit) && !isNaN(yld)) {
+      var calcRent = (price - deposit) * (yld / 100) / 12;
+      out = '월세 <span style="font-size:15px;font-weight:800;color:#00d4aa;">' + _mbFmt(calcRent) + '원/월</span>';
+    } else if (t === 'deposit' && !isNaN(price) && !isNaN(rent) && !isNaN(yld)) {
+      var calcDeposit = price - (rent * 12 / (yld / 100));
+      out = '보증금 <span style="font-size:15px;font-weight:800;color:#a78bfa;">' + _mbFmt(calcDeposit) + '원</span>';
+    }
+    if (out) { result.innerHTML = out; result.style.display = ''; }
+    else result.style.display = 'none';
+  };
+  function _mbFmt(n) {
+    if (isNaN(n) || n < 0) return '-';
+    var v = Math.round(n);
+    if (v >= 100000000) return (v/100000000).toFixed(1).replace(/\.0$/,'') + '억';
+    if (v >= 10000) return Math.round(v/10000) + '만';
+    return v.toLocaleString();
+  }
+  function _mbWcCalcInit(room) {
+    // 연결된 물건에서 값 자동 채우기
+    var savedItems = [];
+    try { savedItems = JSON.parse(localStorage.getItem('re_sv') || '[]'); } catch(e) {}
+    var item = room.linkedSavedId ? savedItems.find(function(x){ return x.id === room.linkedSavedId; }) : null;
+    if (!item && room.linkedItems && room.linkedItems.length) item = room.linkedItems[0];
+    if (!item) return;
+    var d = item.data || {};
+    function _setVal(id, raw) {
+      var el = document.getElementById(id); if (!el || !raw) return;
+      var n = parseFloat((raw+'').replace(/[^0-9.]/g,''));
+      if (!isNaN(n)) el.value = n.toLocaleString();
+    }
+    _setVal('mb-wc-price',   d['매매가'] || d['감정가'] || '');
+    _setVal('mb-wc-deposit', d['보증금'] || '');
+    _setVal('mb-wc-rent',    d['월세_만원'] ? (parseFloat(d['월세_만원']) * 10000) + '' : '');
+    _setVal('mb-wc-yield',   d['수익률'] || '');
+  }
+  function _mbWcInitFromRoom(room) { _mbWcCalcInit(room); window.mbWrCalcRun(null); }
+  function _mbWcInitEmpty() {
+    ['mb-wc-price','mb-wc-deposit','mb-wc-rent','mb-wc-yield'].forEach(function(id) {
+      var el = document.getElementById(id); if (el) el.value = '';
+    });
+    var r = document.getElementById('mb-wc-result'); if (r) r.style.display = 'none';
+    _mbWcTarget = null;
+    ['price','deposit','rent','yield'].forEach(function(t) {
+      var btn = document.getElementById('mb-wct-' + t); if (btn) btn.classList.remove('active');
+    });
+  }
+  function _mbWrCalcInit(room) { _mbWcInitEmpty(); if (room) _mbWcInitFromRoom(room); }
+  window.mbWrCalcClear = function() { _mbWcInitEmpty(); };
+
+  // ── 체크리스트 렌더 ──
+  function _mbRenderChecklist(roomId, room) {
+    var body = document.getElementById('mb-wr-check-body');
+    if (!body) return;
+    var checklist = [];
+    // room.checklist에서 가져오거나 wr2_sections에서 찾기
+    if (room.checklist && room.checklist.length) {
+      checklist = room.checklist;
+    } else {
+      var secs = [];
+      try { secs = JSON.parse(localStorage.getItem('wr2_sections') || '[]'); } catch(e) {}
+      var checkSec = secs.find(function(s) {
+        return (s.roomId === roomId || s.room_id === roomId) && s.type === 'checklist';
+      });
+      if (checkSec && checkSec.data && checkSec.data.items) checklist = checkSec.data.items;
+    }
+    if (!checklist.length) {
+      body.innerHTML = '<div style="text-align:center;padding:8px 0;font-size:12px;color:var(--di);">체크리스트가 없습니다<br><span style="font-size:11px;color:#00d4aa;cursor:pointer;" onclick="mbWrCheckAdd()">＋ 추가 버튼으로 항목을 만드세요</span></div>';
+      return;
+    }
+    var html = '';
+    checklist.forEach(function(it, idx) {
+      var done = !!it.done;
+      html += '<div class="mb-wr-check-item" onclick="mbWrCheckToggle(' + idx + ')">';
+      html += '<span class="mb-wr-check-icon">' + (done ? '✅' : '⬜') + '</span>';
+      html += '<span class="mb-wr-check-text' + (done ? ' done' : '') + '">' + (it.text || it.label || '') + '</span>';
+      html += '</div>';
+    });
+    body.innerHTML = html;
+  }
+  window.mbWrCheckToggle = function(idx) {
+    var rooms = [];
+    try { rooms = JSON.parse(localStorage.getItem('wr2_rooms') || '[]'); } catch(e) {}
+    var room = rooms.find(function(r){ return r.id === _mbActiveRoomId; });
+    if (!room) return;
+    if (!room.checklist || !room.checklist.length) return;
+    room.checklist[idx].done = !room.checklist[idx].done;
+    localStorage.setItem('wr2_rooms', JSON.stringify(rooms));
+    if (window.wr2State) window.wr2State.rooms = rooms;
+    _mbRenderChecklist(_mbActiveRoomId, room);
+  };
+  window.mbWrCheckAdd = function() {
+    var text = prompt('체크 항목 내용:'); if (!text || !text.trim()) return;
+    var rooms = [];
+    try { rooms = JSON.parse(localStorage.getItem('wr2_rooms') || '[]'); } catch(e) {}
+    var room = rooms.find(function(r){ return r.id === _mbActiveRoomId; });
+    if (!room) return;
+    if (!room.checklist) room.checklist = [];
+    room.checklist.push({ text: text.trim(), done: false });
+    localStorage.setItem('wr2_rooms', JSON.stringify(rooms));
+    if (window.wr2State) window.wr2State.rooms = rooms;
+    _mbRenderChecklist(_mbActiveRoomId, room);
+  };
+  window.mbRoomLinkItem = function() {
+    var savedItems = [];
+    try { savedItems = JSON.parse(localStorage.getItem('re_sv') || '[]'); } catch(e) {}
+    if (!savedItems.length) { mbToast('저장된 물건이 없어요', 'warn'); return; }
+    // 간단한 선택 목록 (최근 10개)
+    var recent = savedItems.slice(0, 10);
+    var opts = recent.map(function(it, i) {
+      var d = it.data || {};
+      var addr = d['소재지'] || d['단지명'] || it.title || it.address || '물건 ' + (i+1);
+      return i + ': ' + addr;
+    }).join('\n');
+    var sel = prompt('연결할 물건 번호를 입력하세요:\n' + opts);
+    if (sel === null) return;
+    var idx = parseInt(sel);
+    if (isNaN(idx) || idx < 0 || idx >= recent.length) { mbToast('잘못된 번호예요', 'err'); return; }
+    var rooms = [];
+    try { rooms = JSON.parse(localStorage.getItem('wr2_rooms') || '[]'); } catch(e) {}
+    var roomIdx = rooms.findIndex(function(r){ return r.id === _mbActiveRoomId; });
+    if (roomIdx === -1) return;
+    rooms[roomIdx].linkedSavedId = recent[idx].id;
+    rooms[roomIdx].updatedAt = Date.now();
+    localStorage.setItem('wr2_rooms', JSON.stringify(rooms));
+    if (window.wr2State) window.wr2State.rooms = rooms;
+    _mbRenderItemSummary(rooms[roomIdx]);
+    _mbWrCalcInit(rooms[roomIdx]);
+    mbToast('물건이 연결됐어요 ✅', 'ok');
+  };
+
   // ── 매물 탭 렌더 ──
   function _mbRenderItemTab(room) {
     var body = document.getElementById('mb-room-item-body');
@@ -3848,20 +4176,19 @@ body {
 
   // 작업룸 렌더 내부 함수 (sections 로드 완료 후 호출)
   function _mbRoomRender(roomId, room, allSections) {
-    var header = document.getElementById('mb-room-header');
-    var nameEl = document.getElementById('mb-room-name');
-    var descEl = document.getElementById('mb-room-desc');
+    var contentEl = document.getElementById('mb-room-content');
+    var nameEl    = document.getElementById('mb-room-name');
+    var descEl    = document.getElementById('mb-room-desc');
     var phaseBadge = document.getElementById('mb-room-phase-badge');
-    var tabsEl = document.getElementById('mb-room-tabs');
-    var emptyEl = document.getElementById('mb-room-empty');
-    var listEl = document.getElementById('mb-room-list');
+    var emptyEl   = document.getElementById('mb-room-empty');
+    var listEl    = document.getElementById('mb-room-list');
 
-    // 빈 상태 숨김
+    // 빈 상태 숨김, 콘텐츠 표시
     if (emptyEl) emptyEl.style.display = 'none';
-    if (listEl) listEl.style.display = 'none';
+    if (listEl)  listEl.style.display  = 'none';
+    if (contentEl) contentEl.style.display = 'block';
 
-    // 헤더 표시
-    if (header) header.style.display = 'block';
+    // 헤더
     if (nameEl) nameEl.textContent = room.title || room.name || '이름 없음';
     if (descEl) descEl.textContent = room.address || room.desc || '';
     var _dropLbl = document.getElementById('mb-room-sel-label');
@@ -3880,17 +4207,14 @@ body {
       phaseBadge.style.display = 'inline-block';
     }
 
-    // 탭 표시
-    if (tabsEl) tabsEl.style.display = 'flex';
-
     // 각 탭 렌더
+    _mbRenderOverviewTab(roomId, room);
     _mbRenderNoteTab(room);
     _mbRenderSectionTab(roomId, room, allSections);
     _mbRenderItemTab(room);
 
-    // 기본 탭: 섹션이 있으면 섹션, 없으면 노트
-    var _hasSecs = (allSections||[]).filter(function(s){ return s.roomId === roomId || s.room_id === roomId; }).length > 0;
-    mbRoomTab(_hasSecs ? 'section' : 'note');
+    // 기본 탭: 개요
+    mbRoomTab('overview');
   }
 
     window.mbRoomLoad = function(roomId) {
@@ -3904,16 +4228,10 @@ body {
       if (!window.wr2State.sections || !window.wr2State.sections.length)
         try { window.wr2State.sections = JSON.parse(localStorage.getItem('wr2_sections') || '[]'); } catch(e4) {}
     }
-    var header = document.getElementById('mb-room-header');
     var listEl = document.getElementById('mb-room-list');
     if (!roomId) {
-      if (header) header.style.display = 'none';
-      var tabsEl2 = document.getElementById('mb-room-tabs');
-      if (tabsEl2) tabsEl2.style.display = 'none';
-      ['note','section','item'].forEach(function(t){
-        var p = document.getElementById('mb-room-tab-' + t);
-        if (p) p.style.display = 'none';
-      });
+      var contentEl2 = document.getElementById('mb-room-content');
+      if (contentEl2) contentEl2.style.display = 'none';
       if (listEl) listEl.style.display = '';
       var emptyEl2 = document.getElementById('mb-room-empty');
       if (emptyEl2) emptyEl2.style.display = '';
