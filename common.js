@@ -191,6 +191,19 @@
       window._sbStatusTimer = setTimeout(() => { el.style.opacity = '0'; }, 2500);
     };
 
+    // ─── re_sv 메모리 캐시 getter/setter (localStorage 용량 초과 방지) ──
+    window._svCache = null;
+    window._getSv = function() {
+      if (window._svCache) return window._svCache;
+      try { return JSON.parse(localStorage.getItem('re_sv') || '[]'); } catch(e) { return []; }
+    };
+    window._setSv = function(arr) {
+      window._svCache = arr;
+      try { localStorage.setItem('re_sv', JSON.stringify(arr)); } catch(e) {
+        localStorage.removeItem('re_sv'); // 용량 초과 시 메모리만 사용
+      }
+    };
+
     // ─── re_sv (저장목록) 동기화 ─────────────────────────────
     window._sbSaveSv = async function(arr) {
       await tblSaveArr('items', arr);
@@ -276,10 +289,15 @@
         if (svCloud !== null) {
           const svLocal = JSON.parse(localStorage.getItem('re_sv') || '[]');
           const merged = _sbMergeById(svCloud, svLocal);
-          localStorage.setItem('re_sv', JSON.stringify(merged));
+          // 메모리 캐시에 저장 (localStorage 용량 초과 방지)
+          window._svCache = merged;
+          try { localStorage.setItem('re_sv', JSON.stringify(merged)); } catch(e) {
+            localStorage.removeItem('re_sv');
+          }
           if (merged.length > svCloud.length) window._sbSaveSv(merged).catch(()=>{});
         } else {
           const svLocal = JSON.parse(localStorage.getItem('re_sv') || '[]');
+          window._svCache = svLocal;
           if (svLocal.length) window._sbSaveSv(svLocal).catch(()=>{});
         }
 
@@ -396,6 +414,8 @@
           }, 1500);
         }
         if (key === 're_sv') {
+          // 메모리 캐시도 동기 업데이트
+          try { window._svCache = JSON.parse(value); } catch(e) {}
           clearTimeout(_debounceSv);
           _debounceSv = setTimeout(() => {
             try {
