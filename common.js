@@ -20556,10 +20556,10 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
       if (!filtered.length) {
         el.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:60px 0;color:var(--mu);">
-          <div style="font-size:40px;margin-bottom:12px;">⭐</div>
-          <div style="font-size:13px;font-weight:600;margin-bottom:6px;">${kcardActiveCat === '전체' ? '첫 알짜정보 카드를 만들어보세요' : '이 카테고리에 카드가 없어요'}</div>
-          <div style="font-size:12px;color:var(--di);">+ 새 카드 버튼으로 추가하세요</div>
-        </div>`;
+      <div style="font-size:40px;margin-bottom:12px;">⭐</div>
+      <div style="font-size:13px;font-weight:600;margin-bottom:6px;">${kcardActiveCat === '전체' ? '첫 알짜정보 카드를 만들어보세요' : '이 카테고리에 카드가 없어요'}</div>
+      <div style="font-size:12px;">+ 새 카드 버튼으로 추가하거나 AI로 자동 생성</div>
+    </div>`;
         return;
       }
 
@@ -20569,122 +20569,78 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         return map[cat] || '#ffd166';
       };
 
-      el.innerHTML = '';
-      filtered.forEach(card => {
+      el.innerHTML = filtered.map(card => {
+        const d = new Date(card.createdAt).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
+        const tags = (card.tags || []).map(t => `<span style="font-size:10px;padding:2px 6px;background:rgba(255,209,102,0.1);color:#ffd166;border-radius:8px;border:1px solid rgba(255,209,102,0.25);">#${esc(t)}</span>`).join('');
         const color = catColor(card.cat);
-        const d = card.createdAt ? new Date(card.createdAt).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' }) : '';
-        const tags = (card.tags || []).map(t => `<span style="font-size:10px;padding:2px 7px;background:${color}14;color:${color};border-radius:8px;border:1px solid ${color}30;">#${esc(t)}</span>`).join('');
-        const ytId = card.ytId || _pcYtId(card.youtube || '');
-
-        // ── 썸네일 영역 ──
-        let thumbHtml = '';
-        if (ytId) {
-          thumbHtml = `<div style="position:relative;overflow:hidden;max-height:160px;cursor:pointer;background:#000;"
-            onclick="event.stopPropagation();window.open('https://www.youtube.com/watch?v=${ytId}','_blank')">
-            <img src="https://img.youtube.com/vi/${ytId}/mqdefault.jpg"
-              style="width:100%;display:block;object-fit:cover;opacity:.88;">
-            <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;">
-              <div style="width:52px;height:36px;background:rgba(255,0,0,.9);border-radius:8px;display:flex;align-items:center;justify-content:center;">
-                <span style="color:#fff;font-size:18px;margin-left:4px;">▶</span>
-              </div>
-            </div>
-          </div>`;
-        } else if (card.images && card.images.length) {
-          thumbHtml = `<div style="overflow:hidden;max-height:160px;cursor:pointer;background:#111;"
-            onclick="event.stopPropagation();_pcImgViewer('${card.id}')">
-            <img src="${card.images[0]}" style="width:100%;display:block;object-fit:cover;">
-            ${card.images.length > 1 ? `<div style="position:absolute;bottom:6px;right:8px;background:rgba(0,0,0,.65);color:#fff;font-size:10px;padding:2px 6px;border-radius:10px;">+${card.images.length - 1}</div>` : ''}
-          </div>`;
-        }
-
-        // ── 내용 파싱 ──
+        // 내용 파싱: 불릿/번호 목록 → 핵심 포인트 카드
         const bodyLines = (card.body || '').split('\n').filter(Boolean);
-        const keyLines = bodyLines.filter(l => /^[•\-·]|^\d+[.)]/.test(l));
-        const plainLines = bodyLines.filter(l => !/^[•\-·]|^\d+[.)]/.test(l));
+        const keyLines = bodyLines.filter(l => l.startsWith('•') || l.startsWith('-') || l.startsWith('·') || l.match(/^\d+[.)]/));
+        const plainLines = bodyLines.filter(l => !l.startsWith('•') && !l.startsWith('-') && !l.startsWith('·') && !l.match(/^\d+[.)]/));
 
+        // 핵심 포인트가 있으면 뱃지 스타일로, 없으면 텍스트
         const keyHtml = keyLines.slice(0, 5).map(line => {
           const txt = line.replace(/^[•\-·]\s*/, '').replace(/^\d+[.)]\s*/, '');
-          return `<div style="display:flex;align-items:flex-start;gap:6px;padding:5px 8px;background:${color}0e;border-left:2px solid ${color};border-radius:0 5px 5px 0;font-size:11px;color:var(--tx);line-height:1.5;">${esc(txt)}</div>`;
+          return `<div style="display:flex;align-items:flex-start;gap:6px;padding:5px 8px;background:${color}0d;border-left:2px solid ${color};border-radius:0 5px 5px 0;font-size:11px;color:var(--tx);line-height:1.5;">${esc(txt)}</div>`;
         }).join('');
         const summaryHtml = plainLines.slice(0, 2).map(l => `<div style="font-size:11px;color:var(--mu);line-height:1.6;">${esc(l)}</div>`).join('');
+
         const hasMore = bodyLines.length > 5;
 
-        const div = document.createElement('div');
-        div.style.cssText = `background:var(--s1);border:1px solid var(--b1);border-top:3px solid ${color};border-radius:0 0 12px 12px;overflow:hidden;display:flex;flex-direction:column;transition:transform .15s,box-shadow .15s;position:relative;`;
-        div.onmouseover = () => { div.style.transform = 'translateY(-3px)'; div.style.boxShadow = '0 8px 24px rgba(0,0,0,.35)'; };
-        div.onmouseout = () => { div.style.transform = ''; div.style.boxShadow = ''; };
-
-        div.innerHTML = thumbHtml + `
-          <div style="padding:12px 14px 10px;flex:1;display:flex;flex-direction:column;">
-            <div style="display:flex;align-items:flex-start;gap:6px;margin-bottom:7px;">
-              <span style="font-size:10px;padding:2px 8px;border-radius:10px;font-weight:700;white-space:nowrap;background:${color}1a;color:${color};border:1px solid ${color}33;">${esc(card.cat || '기타')}</span>
-              <div style="display:flex;gap:3px;flex-shrink:0;margin-left:auto;">
-                <button onclick="event.stopPropagation();ntCreateFromKcard('${card.id}')" title="노트로 저장"
-                  style="background:rgba(79,142,255,.1);border:1px solid rgba(79,142,255,.25);color:#4f8eff;cursor:pointer;font-size:11px;padding:2px 6px;border-radius:4px;font-weight:700;">📝</button>
-                <button onclick="event.stopPropagation();openKcardEditor('${card.id}')" title="수정"
-                  style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:13px;padding:2px 4px;border-radius:3px;opacity:.7;">✏️</button>
-                <button onclick="event.stopPropagation();deleteKcard('${card.id}')" title="삭제"
-                  style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:13px;padding:2px 4px;border-radius:3px;opacity:.7;">🗑</button>
-              </div>
-            </div>
-            <div style="font-size:13px;font-weight:800;color:var(--tx);line-height:1.35;margin-bottom:8px;">${esc(card.title || '제목 없음')}</div>
-            <div style="display:flex;flex-direction:column;gap:4px;flex:1;">
-              ${summaryHtml}${keyHtml}
-              ${hasMore ? `<div style="font-size:10px;color:var(--di);margin-top:2px;">+${bodyLines.length - 5}줄 더...</div>` : ''}
-            </div>
+        return `<div style="background:var(--s1);border:1px solid var(--b1);border-top:3px solid ${color};border-radius:0 0 12px 12px;overflow:hidden;display:flex;flex-direction:column;transition:transform .15s,box-shadow .15s;cursor:pointer;" 
+      onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='0 8px 24px rgba(0,0,0,.35)'" 
+      onmouseout="this.style.transform='';this.style.boxShadow=''">
+      <!-- 카드 헤더 -->
+      <div style="padding:12px 14px 10px;">
+        <div style="display:flex;align-items:flex-start;gap:7px;margin-bottom:8px;">
+          <span style="font-size:10px;padding:2px 8px;border-radius:10px;font-weight:700;white-space:nowrap;flex-shrink:0;background:${color}1a;color:${color};border:1px solid ${color}33;letter-spacing:.3px;">${esc(card.cat || '기타')}</span>
+          <div style="display:flex;gap:3px;flex-shrink:0;margin-left:auto;">
+            <button onclick="event.stopPropagation();ntCreateFromKcard('${card.id}')" title="이 카드로 노트 만들기" style="background:rgba(79,142,255,.1);border:1px solid rgba(79,142,255,.25);color:#4f8eff;cursor:pointer;font-size:11px;padding:2px 6px;border-radius:4px;font-weight:700;" onmouseover="this.style.background='rgba(79,142,255,.25)'" onmouseout="this.style.background='rgba(79,142,255,.1)'">📝</button>
+            <button onclick="event.stopPropagation();openKcardEditor('${card.id}')" title="수정" style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:12px;padding:1px 4px;border-radius:3px;opacity:.6;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='.6'">✏️</button>
+            <button onclick="event.stopPropagation();deleteKcard('${card.id}')" title="삭제" style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:12px;padding:1px 4px;border-radius:3px;opacity:.6;" onmouseover="this.style.opacity='1';this.style.color='#ff6370'" onmouseout="this.style.opacity='.6';this.style.color='var(--mu)'">🗑</button>
           </div>
-          <div style="padding:8px 14px;border-top:1px solid var(--b1);display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
-            ${tags || ''}
-            <span style="margin-left:auto;font-size:10px;color:var(--di);">${d}</span>
-          </div>`;
-        el.appendChild(div);
-      });
-    }
-
-    // 이미지 전체보기
-    function _pcImgViewer(cardId) {
-      const card = kcards.find(k => k.id === cardId);
-      if (!card || !card.images || !card.images.length) return;
-      const ov = document.createElement('div');
-      ov.style.cssText = 'position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;cursor:zoom-out;';
-      ov.onclick = () => ov.remove();
-      const img = document.createElement('img');
-      img.src = card.images[0];
-      img.style.cssText = 'max-width:92vw;max-height:88vh;border-radius:10px;object-fit:contain;';
-      ov.appendChild(img);
-      document.body.appendChild(ov);
+        </div>
+        <div style="font-size:13px;font-weight:800;color:var(--tx);line-height:1.35;margin-bottom:10px;">${esc(card.title || '제목 없음')}</div>
+        <!-- 핵심 포인트 -->
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          ${summaryHtml}
+          ${keyHtml}
+          ${hasMore ? `<div style="font-size:10px;color:var(--di);margin-top:2px;">+${bodyLines.length - 5}줄 더...</div>` : ''}
+        </div>
+      </div>
+      <!-- 카드 푸터 -->
+      <div style="padding:8px 14px;border-top:1px solid var(--b1);display:flex;align-items:center;gap:6px;margin-top:auto;flex-wrap:wrap;">
+        ${tags || ''}
+        <span style="margin-left:auto;font-size:10px;color:var(--di);">${d}</span>
+      </div>
+    </div>`;
+      }).join('');
     }
 
     // ── 에디터 열기/닫기 ───────────────────────────────
-    let _kcardImgs = []; // 현재 편집 중인 이미지 base64 배열
-
     function openKcardEditor(id) {
       kcardEditId = id;
-      _kcardImgs = [];
       const modal = document.getElementById('kcardModal');
       if (!modal) return;
 
       // 카테고리 피커 렌더
       renderKcardCatPicker(id ? (kcards.find(k => k.id === id)?.cat || kcardCats[0]) : kcardCats[0]);
 
-      const card = id ? kcards.find(k => k.id === id) : null;
-
-      const setVal = (elId, val) => { const el = document.getElementById(elId); if (el) el.value = val || ''; };
-      setVal('kcardTitle', card?.title);
-      setVal('kcardBody', card?.body);
-      setVal('kcardTags', (card?.tags || []).join(', '));
-      setVal('kcardYtInput', card?.youtube);
-
-      // 이미지 복원
-      _kcardImgs = card ? (card.images || []).slice() : [];
-      _pcRenderImgPreview();
-
-      // 유튜브 프리뷰 복원
-      pcUpdateYtPreview();
-
-      // 유튜브 프리뷰 숨김 (빈 경우)
-      const ytPrev = document.getElementById('kcardYtPreview');
-      if (ytPrev && !card?.youtube) ytPrev.style.display = 'none';
+      if (id) {
+        // 수정 모드: 기존 카드 데이터 채우기
+        const card = kcards.find(k => k.id === id);
+        if (!card) return;
+        document.getElementById('kcardTitle').value = card.title || '';
+        document.getElementById('kcardBody').value = card.body || '';
+        document.getElementById('kcardTags').value = (card.tags || []).join(', ');
+        const _aiInp = document.getElementById('kcardAiInput'); if(_aiInp) _aiInp.value = '';
+      } else {
+        // 새 카드
+        document.getElementById('kcardTitle').value = '';
+        document.getElementById('kcardBody').value = '';
+        document.getElementById('kcardTags').value = '';
+        const _aiInp = document.getElementById('kcardAiInput'); if(_aiInp) _aiInp.value = '';
+      }
 
       modal.style.display = 'flex';
     }
@@ -20693,120 +20649,6 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const modal = document.getElementById('kcardModal');
       if (modal) modal.style.display = 'none';
       kcardEditId = null;
-      _kcardImgs = [];
-      const ytPrev = document.getElementById('kcardYtPreview');
-      if (ytPrev) { ytPrev.style.display = 'none'; ytPrev.innerHTML = ''; }
-      const imgPrev = document.getElementById('kcardImgPreview');
-      if (imgPrev) imgPrev.innerHTML = '';
-    }
-
-    // ── 유튜브 ID 추출 ────────────────────────────────
-    function _pcYtId(url) {
-      if (!url) return null;
-      const m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([^&?#\s]{8,12})/);
-      return m ? m[1] : null;
-    }
-
-    // ── 유튜브 프리뷰 업데이트 ────────────────────────
-    function pcUpdateYtPreview() {
-      const inp = document.getElementById('kcardYtInput');
-      const prev = document.getElementById('kcardYtPreview');
-      if (!inp || !prev) return;
-      const ytId = _pcYtId(inp.value.trim());
-      if (ytId) {
-        prev.style.display = 'block';
-        prev.innerHTML = `<div style="position:relative;cursor:pointer;" onclick="window.open('https://www.youtube.com/watch?v=${ytId}','_blank')">
-          <img src="https://img.youtube.com/vi/${ytId}/mqdefault.jpg" style="width:100%;border-radius:8px;display:block;">
-          <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;">
-            <div style="width:52px;height:36px;background:rgba(255,0,0,.88);border-radius:8px;display:flex;align-items:center;justify-content:center;">
-              <span style="color:#fff;font-size:18px;margin-left:4px;">▶</span>
-            </div>
-          </div>
-        </div>`;
-      } else {
-        prev.style.display = 'none';
-        prev.innerHTML = '';
-      }
-    }
-
-    // ── 이미지 처리 ───────────────────────────────────
-    function pcHandleImgDrop(e) {
-      e.preventDefault();
-      const dz = document.getElementById('kcardImgDrop');
-      if (dz) { dz.style.borderColor = 'var(--b2)'; dz.style.background = 'var(--s2)'; }
-      const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
-      _pcProcessImgFiles(files);
-    }
-    function pcHandleImgSelect(inp) {
-      _pcProcessImgFiles(Array.from(inp.files));
-      inp.value = '';
-    }
-    function _pcProcessImgFiles(files) {
-      files.forEach(f => {
-        const reader = new FileReader();
-        reader.onload = ev => { _kcardImgs.push(ev.target.result); _pcRenderImgPreview(); };
-        reader.readAsDataURL(f);
-      });
-    }
-    function _pcRenderImgPreview() {
-      const el = document.getElementById('kcardImgPreview'); if (!el) return;
-      el.innerHTML = '';
-      _kcardImgs.forEach((src, i) => {
-        const wrap = document.createElement('div');
-        wrap.style.cssText = 'position:relative;width:80px;height:80px;flex-shrink:0;';
-        const img = document.createElement('img');
-        img.src = src;
-        img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:6px;display:block;border:1px solid var(--b1);';
-        const del = document.createElement('button');
-        del.textContent = '×';
-        del.style.cssText = 'position:absolute;top:-5px;right:-5px;width:18px;height:18px;border-radius:50%;background:#ff4d4d;color:#fff;border:none;font-size:12px;cursor:pointer;line-height:1;display:flex;align-items:center;justify-content:center;padding:0;';
-        del.onclick = (ev) => { ev.stopPropagation(); _kcardImgs.splice(i, 1); _pcRenderImgPreview(); };
-        wrap.appendChild(img); wrap.appendChild(del);
-        el.appendChild(wrap);
-      });
-    }
-
-    // ── 카테고리 관리 모달 ────────────────────────────
-    function openKcatManager() {
-      const modal = document.getElementById('kcatManagerModal'); if (!modal) return;
-      const list = document.getElementById('kcatManagerList'); if (!list) return;
-      list.innerHTML = '';
-      kcardCats.forEach((cat, i) => {
-        const row = document.createElement('div');
-        row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--b1);';
-        const nm = document.createElement('span');
-        nm.style.cssText = 'flex:1;font-size:13px;color:var(--tx);';
-        nm.textContent = cat;
-        const del = document.createElement('button');
-        del.textContent = '삭제';
-        del.style.cssText = 'font-size:11px;padding:3px 8px;background:rgba(255,77,77,.1);border:1px solid rgba(255,77,77,.3);border-radius:5px;color:#ff4d4d;cursor:pointer;';
-        del.onclick = () => {
-          if (!confirm(`'${cat}' 카테고리를 삭제할까요?`)) return;
-          kcardCats.splice(i, 1);
-          kcards.forEach(k => { if (k.cat === cat) k.cat = '기타'; });
-          saveKcardCats(); saveKcards();
-          modal.style.display = 'none';
-          renderKcatTabs(); renderKcards();
-          showToast(`'${cat}' 삭제됨`, 'ok');
-        };
-        row.appendChild(nm); row.appendChild(del);
-        list.appendChild(row);
-      });
-      modal.style.display = 'flex';
-    }
-    function closeKcatManager() {
-      const modal = document.getElementById('kcatManagerModal');
-      if (modal) modal.style.display = 'none';
-    }
-    function addKcatFromManager() {
-      const inp = document.getElementById('kcatNewInput'); if (!inp) return;
-      const c = inp.value.trim(); if (!c) return;
-      if (kcardCats.includes(c)) { showToast('이미 있는 카테고리예요', 'warn'); return; }
-      kcardCats.push(c); saveKcardCats();
-      inp.value = '';
-      openKcatManager(); // 재렌더
-      renderKcatTabs();
-      showToast(`'${c}' 추가됨`, 'ok');
     }
 
     // ── 카테고리 피커 렌더 ─────────────────────────────
@@ -20845,18 +20687,18 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const title = document.getElementById('kcardTitle')?.value?.trim();
       const body = document.getElementById('kcardBody')?.value?.trim();
       const tagsRaw = document.getElementById('kcardTags')?.value?.trim();
-      const youtube = document.getElementById('kcardYtInput')?.value?.trim() || '';
       if (!title) { showToast('제목을 입력해주세요', 'warn'); return; }
 
       const tags = tagsRaw ? tagsRaw.split(/[,，]+/).map(t => t.trim()).filter(Boolean) : [];
       const now = new Date().toISOString();
-      const ytId = _pcYtId(youtube);
 
       if (kcardEditId) {
+        // 수정
         const card = kcards.find(k => k.id === kcardEditId);
-        if (card) Object.assign(card, { title, body, tags, cat: kcardSelectedCat, youtube, ytId, images: _kcardImgs.slice(), updatedAt: now });
+        if (card) { card.title = title; card.body = body; card.tags = tags; card.cat = kcardSelectedCat; card.updatedAt = now; }
       } else {
-        kcards.unshift({ id: 'kc_' + Date.now(), title, body, tags, cat: kcardSelectedCat, youtube, ytId, images: _kcardImgs.slice(), createdAt: now, updatedAt: now });
+        // 새 카드
+        kcards.unshift({ id: 'kc_' + Date.now(), title, body, tags, cat: kcardSelectedCat, createdAt: now, updatedAt: now });
       }
 
       saveKcards();
@@ -27641,3 +27483,189 @@ ${newsText}
     var btns = document.querySelectorAll('#_mbTabBar button');
     if (btns.length) btns[0].classList.add('active');
   });
+
+/* ════════════════════════════════════════════════════════
+   알짜정보 PC 보조 함수 (index.html HTML에서 호출)
+════════════════════════════════════════════════════════ */
+
+// openKcardEditor의 kcardAiInput 오류 패치 (optional chaining 추가)
+(function() {
+  var _orig = window.openKcardEditor || (typeof openKcardEditor !== 'undefined' ? openKcardEditor : null);
+  // 아래는 index.html HTML에서 직접 호출하는 함수들이므로 window에 등록
+  // openKcardEditor는 common.js IIFE 내부에 있으므로 여기서 window로 노출
+})();
+
+// 유튜브 ID 추출
+function _pcYtId(url) {
+  if (!url) return null;
+  var m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([^&?#\s]{8,12})/);
+  return m ? m[1] : null;
+}
+
+// 유튜브 프리뷰
+function pcUpdateYtPreview() {
+  var inp = document.getElementById('kcardYtInput');
+  var prev = document.getElementById('kcardYtPreview');
+  if (!inp || !prev) return;
+  var ytId = _pcYtId(inp.value.trim());
+  if (ytId) {
+    prev.style.display = 'block';
+    prev.innerHTML = '<div style="position:relative;cursor:pointer;" onclick="window.open(\'https://www.youtube.com/watch?v=' + ytId + '\',\'_blank\')">' +
+      '<img src="https://img.youtube.com/vi/' + ytId + '/mqdefault.jpg" style="width:100%;border-radius:8px;display:block;">' +
+      '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;">' +
+        '<div style="width:52px;height:36px;background:rgba(255,0,0,.88);border-radius:8px;display:flex;align-items:center;justify-content:center;">' +
+          '<span style="color:#fff;font-size:18px;margin-left:4px;">&#9654;</span>' +
+        '</div>' +
+      '</div></div>';
+  } else {
+    prev.style.display = 'none';
+    prev.innerHTML = '';
+  }
+}
+
+// 이미지 배열 (전역)
+var _pcKcardImgs = [];
+
+function pcHandleImgDrop(e) {
+  e.preventDefault();
+  var files = Array.from(e.dataTransfer.files).filter(function(f){ return f.type.startsWith('image/'); });
+  _pcProcessImgFiles(files);
+}
+function pcHandleImgSelect(inp) {
+  _pcProcessImgFiles(Array.from(inp.files));
+  inp.value = '';
+}
+function _pcProcessImgFiles(files) {
+  files.forEach(function(f) {
+    var reader = new FileReader();
+    reader.onload = function(ev) { _pcKcardImgs.push(ev.target.result); _pcRenderImgPreview(); };
+    reader.readAsDataURL(f);
+  });
+}
+function _pcRenderImgPreview() {
+  var el = document.getElementById('kcardImgPreview'); if (!el) return;
+  el.innerHTML = '';
+  _pcKcardImgs.forEach(function(src, i) {
+    var wrap = document.createElement('div');
+    wrap.style.cssText = 'position:relative;width:80px;height:80px;flex-shrink:0;';
+    var img = document.createElement('img');
+    img.src = src;
+    img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:6px;border:1px solid var(--b1);';
+    var del = document.createElement('button');
+    del.textContent = 'x';
+    del.style.cssText = 'position:absolute;top:-5px;right:-5px;width:18px;height:18px;border-radius:50%;background:#ff4d4d;color:#fff;border:none;font-size:11px;cursor:pointer;line-height:18px;padding:0;';
+    del.onclick = (function(idx){ return function(ev){ ev.stopPropagation(); _pcKcardImgs.splice(idx,1); _pcRenderImgPreview(); }; })(i);
+    wrap.appendChild(img); wrap.appendChild(del);
+    el.appendChild(wrap);
+  });
+}
+
+// 카테고리 관리 모달
+function openKcatManager() {
+  var modal = document.getElementById('kcatManagerModal'); if (!modal) return;
+  var list = document.getElementById('kcatManagerList'); if (!list) return;
+  // kcardCats는 common.js IIFE 내부 변수라 직접 접근 안 됨
+  // localStorage에서 직접 읽기
+  var cats = [];
+  try { cats = JSON.parse(localStorage.getItem('ins_kcat') || '[]'); } catch(e) {}
+  list.innerHTML = '';
+  cats.forEach(function(cat, i) {
+    var row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--b1);';
+    var nm = document.createElement('span');
+    nm.style.cssText = 'flex:1;font-size:13px;color:var(--tx);';
+    nm.textContent = cat;
+    var del = document.createElement('button');
+    del.textContent = '삭제';
+    del.style.cssText = 'font-size:11px;padding:3px 8px;background:rgba(255,77,77,.1);border:1px solid rgba(255,77,77,.3);border-radius:5px;color:#ff4d4d;cursor:pointer;';
+    del.onclick = (function(c){ return function() {
+      if (!confirm("'" + c + "' 카테고리를 삭제할까요?")) return;
+      var arr = [];
+      try { arr = JSON.parse(localStorage.getItem('ins_kcat') || '[]'); } catch(e) {}
+      arr = arr.filter(function(x){ return x !== c; });
+      var cards = [];
+      try { cards = JSON.parse(localStorage.getItem('ins_kcards') || '[]'); } catch(e) {}
+      cards.forEach(function(k){ if(k.cat === c) k.cat = '기타'; });
+      localStorage.setItem('ins_kcat', JSON.stringify(arr));
+      localStorage.setItem('ins_kcards', JSON.stringify(cards));
+      modal.style.display = 'none';
+      if (typeof renderKcatTabs === 'function') renderKcatTabs();
+      if (typeof renderKcards === 'function') renderKcards();
+      if (typeof showToast === 'function') showToast("'" + c + "' 삭제됨", 'ok');
+    }; })(cat);
+    row.appendChild(nm); row.appendChild(del);
+    list.appendChild(row);
+  });
+  modal.style.display = 'flex';
+}
+function closeKcatManager() {
+  var modal = document.getElementById('kcatManagerModal');
+  if (modal) modal.style.display = 'none';
+}
+function addKcatFromManager() {
+  var inp = document.getElementById('kcatNewInput'); if (!inp) return;
+  var v = inp.value.trim(); if (!v) return;
+  var cats = [];
+  try { cats = JSON.parse(localStorage.getItem('ins_kcat') || '[]'); } catch(e) {}
+  if (cats.indexOf(v) !== -1) { if(typeof showToast==='function') showToast('이미 있는 카테고리예요','warn'); return; }
+  cats.push(v);
+  localStorage.setItem('ins_kcat', JSON.stringify(cats));
+  inp.value = '';
+  openKcatManager();
+  if (typeof renderKcatTabs === 'function') renderKcatTabs();
+  if (typeof showToast === 'function') showToast("'" + v + "' 추가됨", 'ok');
+}
+
+// saveKcard 확장 — youtube + images 저장 포함
+// common.js 내부 saveKcard를 덮어쓰기
+document.addEventListener('DOMContentLoaded', function() {
+  // openKcardEditor 패치: kcardAiInput 없어도 에러 안 나게
+  // (optional chaining ?. 으로 안전하게 처리)
+  var _origOpen = window.openKcardEditor;
+  if (typeof _origOpen === 'function') {
+    window.openKcardEditor = function(id) {
+      _pcKcardImgs = [];
+      _origOpen(id);
+      // youtube 필드 복원
+      if (id) {
+        var cards = [];
+        try { cards = JSON.parse(localStorage.getItem('ins_kcards') || '[]'); } catch(e) {}
+        var card = cards.find(function(k){ return k.id === id; });
+        var ytInp = document.getElementById('kcardYtInput');
+        if (ytInp && card) ytInp.value = card.youtube || '';
+        _pcKcardImgs = card && card.images ? card.images.slice() : [];
+        _pcRenderImgPreview();
+        pcUpdateYtPreview();
+      } else {
+        var ytInp2 = document.getElementById('kcardYtInput');
+        if (ytInp2) ytInp2.value = '';
+        var ytPrev = document.getElementById('kcardYtPreview');
+        if (ytPrev) { ytPrev.style.display = 'none'; ytPrev.innerHTML = ''; }
+        var imgPrev = document.getElementById('kcardImgPreview');
+        if (imgPrev) imgPrev.innerHTML = '';
+      }
+    };
+  }
+
+  // saveKcard 패치: youtube + images 포함해서 저장
+  var _origSave = window.saveKcard;
+  if (typeof _origSave === 'function') {
+    window.saveKcard = function() {
+      // youtube, images를 카드에 임시 주입 후 원본 호출
+      // 저장 후 마지막으로 저장된 카드에 youtube/images 추가
+      var ytUrl = (document.getElementById('kcardYtInput') || {}).value || '';
+      var editId = window.kcardEditId || null;
+      _origSave();
+      // 원본 save 후 localStorage에서 방금 저장/수정한 카드에 youtube+images 추가
+      var cards = [];
+      try { cards = JSON.parse(localStorage.getItem('ins_kcards') || '[]'); } catch(e) {}
+      var target = editId ? cards.find(function(k){ return k.id === editId; }) : cards[0];
+      if (target) {
+        target.youtube = ytUrl;
+        target.images = _pcKcardImgs.slice();
+        localStorage.setItem('ins_kcards', JSON.stringify(cards));
+        _pcKcardImgs = [];
+      }
+    };
+  }
+});
