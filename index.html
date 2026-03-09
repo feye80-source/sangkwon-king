@@ -1156,7 +1156,7 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
             <button onclick="openGroupManager()"
               style="padding:3px 8px;font-size:11px;border-radius:6px;border:1px solid var(--b1);color:var(--mu);background:var(--s2);cursor:pointer;white-space:nowrap;flex-shrink:0;">🏷️</button>
             <button onclick="pcExportCSV()" title="현재 목록 CSV 다운로드"
-              style="padding:3px 8px;font-size:11px;border-radius:6px;border:1px solid rgba(0,212,130,.4);color:#00d482;background:rgba(0,212,130,.08);cursor:pointer;white-space:nowrap;flex-shrink:0;font-family:'Noto Sans KR',sans-serif;">📊 CSV</button>
+              style="padding:3px 10px;font-size:11px;border-radius:6px;border:1px solid rgba(0,212,130,.4);color:#00d482;background:rgba(0,212,130,.08);cursor:pointer;white-space:nowrap;flex-shrink:0;font-family:'Noto Sans KR',sans-serif;font-weight:700;">📊 CSV</button>
           </div>
         </div>
         <!-- 전역 조건 필터 패널 (저장목록탭) - 접기/펼치기 -->
@@ -2900,136 +2900,110 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
             <!-- 클리핑 탭 전용 CSS -->
           </div>
           <div id="ipage4" class="ins-panel" style="display:none;">
-            <div class="ins-wrap">
+            <div class="ins-wrap" style="padding:0 20px;flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;">
 
-              <!-- 상단: 카테고리 필터 + 새 카드 버튼 -->
-              <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
-                <div id="kcatTabs" style="display:flex;gap:5px;flex-wrap:wrap;flex:1;"></div>
+              <!-- 상단 툴바 -->
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-shrink:0;flex-wrap:wrap;">
+                <div id="kcatTabs" style="display:flex;gap:6px;flex-wrap:wrap;flex:1;min-width:0;"></div>
                 <button onclick="openKcardEditor(null)"
-                  style="padding:7px 18px;background:var(--ac);color:#111;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">⭐
-                  새 카드</button>
+                  style="padding:7px 16px;background:var(--ac);color:#111;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;font-family:'Noto Sans KR',sans-serif;">⭐ 새 카드</button>
+                <button onclick="openKcatManager()"
+                  style="padding:7px 11px;background:var(--s2);color:var(--mu);border:1px solid var(--b1);border-radius:8px;font-size:12px;cursor:pointer;flex-shrink:0;font-family:'Noto Sans KR',sans-serif;" title="카테고리 관리">⚙️</button>
               </div>
 
               <!-- 카드 그리드 -->
               <div id="kcardGrid"
-                style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;"></div>
+                style="flex:1;overflow-y:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;align-content:start;padding-bottom:20px;scrollbar-width:thin;"></div>
 
-              <!-- 에디터 모달 -->
-              <div id="kcardModal"
-                style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;align-items:center;justify-content:center;">
-                <div
-                  style="background:var(--s1);border:1px solid var(--b1);border-radius:14px;padding:24px;width:560px;max-width:90vw;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.5);">
-                  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
-                    <h3 style="font-size:15px;font-weight:700;color:var(--tx);margin:0;">⭐ 알짜정보 카드</h3>
-                    <button onclick="closeKcardEditor()"
-                      style="background:none;border:none;color:var(--mu);font-size:20px;cursor:pointer;line-height:1;">×</button>
+              <!-- ── 카드 편집 모달 ── -->
+              <div id="kcardModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:500;align-items:center;justify-content:center;">
+                <div style="background:var(--s1);border:1px solid var(--b1);border-radius:14px;padding:24px;width:500px;max-width:92vw;max-height:88vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.5);position:relative;">
+                  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+                    <h3 style="font-size:15px;font-weight:700;color:var(--tx);margin:0;">⭐ 알짜정보</h3>
+                    <button onclick="closeKcardEditor()" style="background:none;border:none;color:var(--mu);font-size:22px;cursor:pointer;line-height:1;">×</button>
                   </div>
 
                   <!-- 카테고리 선택 -->
                   <div style="margin-bottom:14px;">
                     <label style="font-size:11px;color:var(--mu);display:block;margin-bottom:6px;">카테고리</label>
-                    <div style="display:flex;gap:6px;flex-wrap:wrap;" id="kcardCatPicker"></div>
-                    <div style="display:flex;gap:6px;margin-top:8px;">
+                    <div id="kcardCatPicker" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;"></div>
+                    <div style="display:flex;gap:6px;">
                       <input id="kcardNewCat" placeholder="새 카테고리 직접 입력..."
-                        style="flex:1;padding:6px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:6px;color:var(--tx);font-size:12px;outline:none;">
+                        style="flex:1;padding:6px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:6px;color:var(--tx);font-size:12px;outline:none;font-family:'Noto Sans KR',sans-serif;">
                       <button onclick="addKcardCat()"
-                        style="padding:6px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:6px;color:var(--tx);font-size:12px;cursor:pointer;">추가</button>
+                        style="padding:6px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:6px;color:var(--tx);font-size:12px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;white-space:nowrap;">추가</button>
                     </div>
                   </div>
 
                   <!-- 제목 -->
-                  <div style="margin-bottom:14px;">
-                    <label style="font-size:11px;color:var(--mu);display:block;margin-bottom:6px;">제목</label>
-                    <input id="kcardTitle" placeholder="예: 면적 개념 정리"
-                      style="width:100%;padding:9px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:7px;color:var(--tx);font-size:13px;outline:none;box-sizing:border-box;">
+                  <div style="margin-bottom:12px;">
+                    <label style="font-size:11px;color:var(--mu);display:block;margin-bottom:5px;">제목</label>
+                    <input id="kcardTitle" placeholder="예: 1층 임대료 30만원 이상 조건"
+                      style="width:100%;padding:9px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:7px;color:var(--tx);font-size:13px;outline:none;box-sizing:border-box;font-family:'Noto Sans KR',sans-serif;">
                   </div>
 
                   <!-- 내용 -->
-                  <div style="margin-bottom:14px;">
-                    <label style="font-size:11px;color:var(--mu);display:block;margin-bottom:6px;">핵심 내용</label>
-                    <textarea id="kcardBody" placeholder="핵심 내용을 입력하거나&#10;아래 AI 요약 기능을 사용하세요."
-                      style="width:100%;height:160px;padding:10px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:7px;color:var(--tx);font-size:12px;line-height:1.7;resize:vertical;font-family:inherit;outline:none;box-sizing:border-box;"></textarea>
+                  <div style="margin-bottom:12px;">
+                    <label style="font-size:11px;color:var(--mu);display:block;margin-bottom:5px;">핵심 내용</label>
+                    <textarea id="kcardBody" placeholder="핵심 내용을 입력하세요..."
+                      style="width:100%;height:110px;padding:10px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:7px;color:var(--tx);font-size:12px;line-height:1.7;resize:vertical;font-family:'Noto Sans KR',sans-serif;outline:none;box-sizing:border-box;"></textarea>
                   </div>
 
-                  <!-- AI 카드 자동 생성 -->
-                  <div
-                    style="margin-bottom:18px;padding:14px;background:rgba(167,139,250,0.05);border:1px solid rgba(79,142,255,0.2);border-radius:10px;">
-                    <div style="font-size:12px;color:var(--ac);font-weight:700;margin-bottom:12px;">✨ AI 카드 자동 생성 <span
-                        style="color:var(--mu);font-weight:400;font-size:11px;">(Gemini)</span></div>
+                  <!-- 유튜브 링크 -->
+                  <div style="margin-bottom:12px;">
+                    <label style="font-size:11px;color:var(--mu);display:block;margin-bottom:5px;">📺 유튜브 링크 (썸네일 자동 표시)</label>
+                    <input id="kcardYtInput" placeholder="https://youtu.be/xxxxx 또는 youtube.com/watch?v=..."
+                      oninput="pcUpdateYtPreview()"
+                      style="width:100%;padding:9px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:7px;color:var(--tx);font-size:12px;outline:none;box-sizing:border-box;font-family:'Noto Sans KR',sans-serif;">
+                    <div id="kcardYtPreview" style="margin-top:8px;display:none;border-radius:8px;overflow:hidden;"></div>
+                  </div>
 
-                    <!-- 입력 소스 선택 탭 -->
-                    <div style="display:flex;gap:4px;margin-bottom:10px;">
-                      <button id="ksrc_text" onclick="setKcardSrc('text')"
-                        style="flex:1;padding:5px;font-size:11px;border-radius:6px;cursor:pointer;background:var(--ac);color:#111;border:1px solid var(--ac);font-weight:600;">📝
-                        텍스트</button>
-                      <button id="ksrc_file" onclick="setKcardSrc('file')"
-                        style="flex:1;padding:5px;font-size:11px;border-radius:6px;cursor:pointer;background:var(--s2);color:var(--tx);border:1px solid var(--b1);">📎
-                        파일</button>
-                      <button id="ksrc_url" onclick="setKcardSrc('url')"
-                        style="flex:1;padding:5px;font-size:11px;border-radius:6px;cursor:pointer;background:var(--s2);color:var(--tx);border:1px solid var(--b1);">🔗
-                        URL</button>
-                      <button id="ksrc_youtube" onclick="setKcardSrc('youtube')"
-                        style="flex:1;padding:5px;font-size:11px;border-radius:6px;cursor:pointer;background:var(--s2);color:var(--tx);border:1px solid var(--b1);">▶️
-                        유튜브</button>
+                  <!-- 이미지 업로드 -->
+                  <div style="margin-bottom:12px;">
+                    <label style="font-size:11px;color:var(--mu);display:block;margin-bottom:5px;">🖼️ 이미지 첨부 (여러 장 · 드래그앤드롭)</label>
+                    <div id="kcardImgDrop"
+                      style="border:2px dashed var(--b2);border-radius:8px;padding:18px;text-align:center;cursor:pointer;transition:all .2s;background:var(--s2);"
+                      onclick="document.getElementById('kcardImgInput').click()"
+                      ondragover="event.preventDefault();this.style.borderColor='var(--ac)';this.style.background='rgba(79,142,255,.05)';"
+                      ondragleave="this.style.borderColor='var(--b2)';this.style.background='var(--s2)';"
+                      ondrop="pcHandleImgDrop(event)">
+                      <div style="font-size:22px;margin-bottom:4px;">🖼️</div>
+                      <div style="font-size:12px;color:var(--tx);font-weight:600;">이미지 드래그 or 클릭</div>
+                      <div style="font-size:10px;color:var(--mu);margin-top:2px;">JPG · PNG · WEBP · GIF · 다중 선택 가능</div>
                     </div>
-
-                    <!-- 텍스트 입력 -->
-                    <div id="ksrc_text_area">
-                      <textarea id="kcardAiInput"
-                        placeholder="공부한 내용, PDF 텍스트, 기사 내용 등을 붙여넣으세요.&#10;AI가 카드 형식으로 요약해줍니다."
-                        style="width:100%;height:90px;padding:8px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:7px;color:var(--tx);font-size:11px;resize:vertical;font-family:inherit;outline:none;box-sizing:border-box;"></textarea>
-                    </div>
-
-                    <!-- 파일 업로드 -->
-                    <div id="ksrc_file_area" style="display:none;">
-                      <div id="kcardDropZone" onclick="document.getElementById('kcardFileInput').click()"
-                        style="border:2px dashed var(--b2);border-radius:8px;padding:20px;text-align:center;cursor:pointer;transition:all .2s;background:var(--s2);"
-                        onmouseover="this.style.borderColor='var(--ac)'" onmouseout="this.style.borderColor='var(--b2)'"
-                        ondragover="event.preventDefault();this.style.borderColor='var(--ac)'"
-                        ondragleave="this.style.borderColor='var(--b2)'" ondrop="handleKcardFileDrop(event)">
-                        <div style="font-size:24px;margin-bottom:6px;">📎</div>
-                        <div style="font-size:12px;color:var(--tx);font-weight:600;">PDF, 이미지 드래그 or 클릭</div>
-                        <div style="font-size:11px;color:var(--mu);margin-top:3px;">PDF · JPG · PNG · WEBP 지원</div>
-                      </div>
-                      <input type="file" id="kcardFileInput" accept=".pdf,image/*" style="display:none;"
-                        onchange="handleKcardFile(this)">
-                      <div id="kcardFileStatus" style="font-size:11px;color:var(--ac);margin-top:6px;min-height:16px;">
-                      </div>
-                    </div>
-
-                    <!-- URL 입력 -->
-                    <div id="ksrc_url_area" style="display:none;">
-                      <input id="kcardUrlInput" placeholder="블로그, 뉴스기사 URL 붙여넣기..."
-                        style="width:100%;padding:8px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:7px;color:var(--tx);font-size:12px;outline:none;box-sizing:border-box;">
-                      <div style="font-size:10px;color:var(--mu);margin-top:5px;">* 일부 사이트는 접근 제한으로 내용을 못 가져올 수 있어요
-                      </div>
-                    </div>
-
-                    <!-- 유튜브 -->
-                    <div id="ksrc_youtube_area" style="display:none;">
-                      <input id="kcardYtInput" placeholder="유튜브 링크 붙여넣기... (예: https://youtu.be/xxxxx)"
-                        style="width:100%;padding:8px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:7px;color:var(--tx);font-size:12px;outline:none;box-sizing:border-box;">
-                      <div style="font-size:10px;color:var(--mu);margin-top:5px;">* 제목/설명 기반으로 카드를 생성합니다 (자막은 미지원)</div>
-                    </div>
-
-                    <button onclick="aiSummarizeKcard()"
-                      style="margin-top:10px;width:100%;padding:9px;background:var(--ac);color:#111;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">✨
-                      AI 카드 생성</button>
+                    <input type="file" id="kcardImgInput" accept="image/*" multiple style="display:none;" onchange="pcHandleImgSelect(this)">
+                    <div id="kcardImgPreview" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;"></div>
                   </div>
 
                   <!-- 태그 -->
                   <div style="margin-bottom:18px;">
-                    <label style="font-size:11px;color:var(--mu);display:block;margin-bottom:6px;">태그</label>
-                    <input id="kcardTags" placeholder="예: 면적, 건폐율, 기초개념 (쉼표로 구분)"
-                      style="width:100%;padding:8px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:7px;color:var(--tx);font-size:12px;outline:none;box-sizing:border-box;">
+                    <label style="font-size:11px;color:var(--mu);display:block;margin-bottom:5px;">태그 (쉼표로 구분)</label>
+                    <input id="kcardTags" placeholder="예: 임대료, 상가, 투자조건"
+                      style="width:100%;padding:8px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:7px;color:var(--tx);font-size:12px;outline:none;box-sizing:border-box;font-family:'Noto Sans KR',sans-serif;">
                   </div>
 
                   <div style="display:flex;gap:8px;">
                     <button onclick="saveKcard()"
-                      style="flex:1;padding:10px;background:var(--ac);color:#111;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">💾
-                      저장</button>
+                      style="flex:1;padding:11px;background:var(--ac);color:#111;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">💾 저장</button>
                     <button onclick="closeKcardEditor()"
-                      style="padding:10px 18px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;color:var(--tx);font-size:13px;cursor:pointer;">취소</button>
+                      style="padding:11px 20px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;color:var(--tx);font-size:13px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">취소</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- ── 카테고리 관리 모달 ── -->
+              <div id="kcatManagerModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:510;align-items:center;justify-content:center;">
+                <div style="background:var(--s1);border:1px solid var(--b1);border-radius:14px;padding:24px;width:340px;max-width:90vw;max-height:70vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.5);">
+                  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+                    <h3 style="font-size:15px;font-weight:700;color:var(--tx);margin:0;">⚙️ 카테고리 관리</h3>
+                    <button onclick="closeKcatManager()" style="background:none;border:none;color:var(--mu);font-size:22px;cursor:pointer;line-height:1;">×</button>
+                  </div>
+                  <div id="kcatManagerList" style="margin-bottom:14px;"></div>
+                  <div style="display:flex;gap:6px;">
+                    <input id="kcatNewInput" placeholder="새 카테고리 이름"
+                      style="flex:1;padding:8px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:7px;color:var(--tx);font-size:12px;outline:none;font-family:'Noto Sans KR',sans-serif;">
+                    <button onclick="addKcatFromManager()"
+                      style="padding:8px 14px;background:var(--ac);border:none;border-radius:7px;color:#111;font-size:12px;font-weight:700;cursor:pointer;font-family:'Noto Sans KR',sans-serif;white-space:nowrap;">추가</button>
                   </div>
                 </div>
               </div>
