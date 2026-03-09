@@ -615,7 +615,15 @@
           try { if (typeof updSvCnt === 'function') updSvCnt(); } catch(e) {}
           try { if (typeof ntRender === 'function') ntRender(); } catch(e) {}
           try { if (typeof wr2Render === 'function') wr2Render(); } catch(e) {}
-          try { if (typeof window._kcardsSyncFromCache === 'function') window._kcardsSyncFromCache(); if (typeof renderKcards === 'function') renderKcards(); if (typeof renderKcatTabs === 'function') renderKcatTabs(); } catch(e) {}
+          // kcards 재동기화 (let kcards가 IDB 로드 전에 빈 배열로 고정되는 문제)
+          try {
+            const _kc = window._idbCache && window._idbCache['ins_kcards'];
+            if (_kc && _kc.length > 0) {
+              if (typeof renderKcards === 'function') renderKcards();
+              if (typeof renderKcatTabs === 'function') renderKcatTabs();
+            }
+            if (typeof window.mbRenderKcards === 'function') window.mbRenderKcards();
+          } catch(e) {}
         }, 300);
 
       } catch(e) {
@@ -7620,8 +7628,8 @@ ${inputDesc.substring(0, 3000)}
       })();
 
       renderPopup(id);
-      document.getElementById('overlay').classList.add('on');
-      document.getElementById('popup').classList.add('on');
+      const _ov1 = document.getElementById('overlay'); if (_ov1) _ov1.classList.add('on');
+      const _pp1 = document.getElementById('popup'); if (_pp1) _pp1.classList.add('on');
     }
 
     function renderPopup(id) {
@@ -7950,8 +7958,8 @@ ${inputDesc.substring(0, 3000)}
     }
 
     function closePopup() {
-      document.getElementById('overlay').classList.remove('on');
-      document.getElementById('popup').classList.remove('on');
+      const _ov2 = document.getElementById('overlay'); if (_ov2) _ov2.classList.remove('on');
+      const _pp2 = document.getElementById('popup'); if (_pp2) _pp2.classList.remove('on');
       popupEditMode = false; popupId = null;
       const pbtn = document.getElementById('popupScrollTopBtn');
       if (pbtn) pbtn.classList.remove('visible');
@@ -20912,11 +20920,12 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
     let kcards = (window._idbCache && window._idbCache['ins_kcards'] || []);
     let kcardCats = (window._idbCache && window._idbCache['ins_kcat'] || ["📐 면적/건축", "⚖️ 권리분석", "📋 경매 절차", "💰 세금/비용", "🏘️ 상권/지역"]);
+    // IDB 로드 완료 후 kcards 재동기화용
     window._kcardsSyncFromCache = function() {
-      const cached = window._idbCache && window._idbCache['ins_kcards'];
-      if (cached && cached.length > 0 && kcards.length === 0) kcards = cached;
-      const cachedCats = window._idbCache && window._idbCache['ins_kcat'];
-      if (cachedCats && cachedCats.length > 0) kcardCats = cachedCats;
+      const _c = window._idbCache && window._idbCache['ins_kcards'];
+      if (_c && _c.length > 0) kcards = _c;
+      const _cc = window._idbCache && window._idbCache['ins_kcat'];
+      if (_cc && _cc.length > 0) kcardCats = _cc;
     };
     let kcardEditId = null; // 수정 중인 카드 ID (null=새 카드)
     let kcardActiveCat = '전체'; // 현재 필터 카테고리
@@ -20970,6 +20979,40 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       return 'auction';
     }
 
+
+    // ── 알짜카드 유튜브 미리보기 ──────────────────────
+    window._kcardPendingImgs = [];
+    window.pcUpdateYtPreview = function() {
+      const val = document.getElementById('kcardYtInput')?.value?.trim() || '';
+      const prev = document.getElementById('kcardYtPreview');
+      if (!prev) return;
+      const m = val.match(/(?:v=|youtu\.be\/)+([\w-]{11})/);
+      if (m) {
+        prev.style.display = 'block';
+        prev.innerHTML = `<img src="https://img.youtube.com/vi/${m[1]}/hqdefault.jpg" style="width:100%;border-radius:8px;display:block;">`;
+      } else { prev.style.display = 'none'; prev.innerHTML = ''; }
+    };
+    window.pcRenderImgPreview = function() {
+      const el = document.getElementById('kcardImgPreview'); if (!el) return;
+      el.innerHTML = (window._kcardPendingImgs||[]).map((src,i) =>
+        `<div style="position:relative;width:80px;height:80px;border-radius:6px;overflow:hidden;flex-shrink:0;">
+          <img src="${src}" style="width:100%;height:100%;object-fit:cover;">
+          <button onclick="window._kcardPendingImgs.splice(${i},1);window.pcRenderImgPreview();" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,.6);border:none;color:#fff;border-radius:50%;width:18px;height:18px;font-size:10px;cursor:pointer;line-height:1;padding:0;">✕</button>
+        </div>`).join('');
+    };
+    window.pcHandleImgSelect = function(input) {
+      const files = Array.from(input.files||[]).filter(f=>f.type.startsWith('image/'));
+      let done=0;
+      files.forEach(f=>{ const r=new FileReader(); r.onload=e=>{ window._kcardPendingImgs.push(e.target.result); if(++done===files.length) window.pcRenderImgPreview(); }; r.readAsDataURL(f); });
+    };
+    window.pcHandleImgDrop = function(e) {
+      e.preventDefault();
+      const drop=document.getElementById('kcardImgDrop');
+      if(drop){drop.style.borderColor='var(--b2)';drop.style.background='var(--s2)';}
+      const files=Array.from(e.dataTransfer.files||[]).filter(f=>f.type.startsWith('image/'));
+      let done=0;
+      files.forEach(f=>{ const r=new FileReader(); r.onload=ev=>{ window._kcardPendingImgs.push(ev.target.result); if(++done===files.length) window.pcRenderImgPreview(); }; r.readAsDataURL(f); });
+    };
     function saveKcards() { if(window._idbCache)window._idbCache['ins_kcards']=kcards;if(window.idbSet)window.idbSet('ins_kcards',kcards).catch(()=>{}); }
     function saveKcardCats() { if(window._idbCache)window._idbCache['ins_kcat']=kcardCats;if(window.idbSet)window.idbSet('ins_kcat',kcardCats).catch(()=>{}); }
 
@@ -21028,21 +21071,18 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         const hasMore = bodyLines.length > 5;
 
         // ── 썸네일 결정 ──
-        let thumbHtml = '';
+        let _thumbHtml = '';
         if (card.ytUrl) {
-          const ytId = card.ytUrl.match(/(?:v=|youtu\.be\/)([\w-]{11})/)?.[1];
-          if (ytId) thumbHtml = `<div style="position:relative;width:100%;padding-top:56.25%;overflow:hidden;background:#000;"><img src="https://img.youtube.com/vi/${ytId}/hqdefault.jpg" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;" loading="lazy"><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;"><div style="width:36px;height:36px;background:rgba(255,0,0,.85);border-radius:50%;display:flex;align-items:center;justify-content:center;"><span style="color:#fff;font-size:14px;margin-left:2px;">▶</span></div></div></div>`;
+          const _ytId = card.ytUrl.match(/(?:v=|youtu\.be\/)+([\w-]{11})/)?.[1];
+          if (_ytId) _thumbHtml = `<div style="position:relative;width:100%;padding-top:56.25%;overflow:hidden;background:#000;"><img src="https://img.youtube.com/vi/${_ytId}/hqdefault.jpg" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;" loading="lazy"><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;"><div style="width:36px;height:36px;background:rgba(255,0,0,.85);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;margin-left:2px;">▶</div></div></div>`;
         } else if (card.imgs && card.imgs.length > 0) {
-          thumbHtml = `<div style="width:100%;height:140px;overflow:hidden;"><img src="${card.imgs[0]}" style="width:100%;height:100%;object-fit:cover;" loading="lazy"></div>`;
+          _thumbHtml = `<div style="width:100%;height:140px;overflow:hidden;"><img src="${card.imgs[0]}" style="width:100%;height:100%;object-fit:cover;" loading="lazy"></div>`;
         }
-        // 텍스트 카드 배경색 (bgColor 필드)
-        const cardBg = (!card.ytUrl && (!card.imgs || !card.imgs.length) && card.bgColor) ? card.bgColor : 'var(--s1)';
-        const cardBgStyle = cardBg !== 'var(--s1)' ? `background:${cardBg};` : 'background:var(--s1);';
-
-        return `<div style="${cardBgStyle}border:1px solid var(--b1);border-top:3px solid ${color};border-radius:0 0 12px 12px;overflow:hidden;display:flex;flex-direction:column;transition:transform .15s,box-shadow .15s;cursor:pointer;" 
+        const _cardBg = (!card.ytUrl && (!card.imgs || !card.imgs.length) && card.bgColor) ? card.bgColor : 'var(--s1)';
+        return `<div style="background:${_cardBg};border:1px solid var(--b1);border-top:3px solid ${color};border-radius:0 0 12px 12px;overflow:hidden;display:flex;flex-direction:column;transition:transform .15s,box-shadow .15s;cursor:pointer;" 
       onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='0 8px 24px rgba(0,0,0,.35)'" 
       onmouseout="this.style.transform='';this.style.boxShadow=''">
-      ${thumbHtml}
+      ${_thumbHtml}
       <!-- 카드 헤더 -->
       <div style="padding:12px 14px 10px;">
         <div style="display:flex;align-items:flex-start;gap:7px;margin-bottom:8px;">
@@ -21078,7 +21118,6 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
       // 카테고리 피커 렌더
       renderKcardCatPicker(id ? (kcards.find(k => k.id === id)?.cat || kcardCats[0]) : kcardCats[0]);
-      window._kcardPendingImgs = [];
 
       if (id) {
         // 수정 모드: 기존 카드 데이터 채우기
@@ -21087,21 +21126,13 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         document.getElementById('kcardTitle').value = card.title || '';
         document.getElementById('kcardBody').value = card.body || '';
         document.getElementById('kcardTags').value = (card.tags || []).join(', ');
-        const ytEl = document.getElementById('kcardYtInput'); if (ytEl) { ytEl.value = card.ytUrl || ''; if (card.ytUrl && typeof pcUpdateYtPreview === 'function') pcUpdateYtPreview(); }
-        const bgEl = document.getElementById('kcardBgColor'); if (bgEl) bgEl.value = card.bgColor || '#2a2d3a';
-        window._kcardPendingImgs = card.imgs ? [...card.imgs] : [];
-        if (typeof pcRenderImgPreview === 'function') pcRenderImgPreview();
-        const aiEl1 = document.getElementById('kcardAiInput'); if (aiEl1) aiEl1.value = '';
+        const _ai1 = document.getElementById('kcardAiInput'); if(_ai1) _ai1.value = '';
       } else {
         // 새 카드
         document.getElementById('kcardTitle').value = '';
         document.getElementById('kcardBody').value = '';
         document.getElementById('kcardTags').value = '';
-        const ytEl2 = document.getElementById('kcardYtInput'); if (ytEl2) ytEl2.value = '';
-        const bgEl2 = document.getElementById('kcardBgColor'); if (bgEl2) bgEl2.value = '#2a2d3a';
-        const prevEl = document.getElementById('kcardYtPreview'); if (prevEl) { prevEl.style.display = 'none'; prevEl.innerHTML = ''; }
-        const imgPrev = document.getElementById('kcardImgPreview'); if (imgPrev) imgPrev.innerHTML = '';
-        const aiEl2 = document.getElementById('kcardAiInput'); if (aiEl2) aiEl2.value = '';
+        const _ai2 = document.getElementById('kcardAiInput'); if(_ai2) _ai2.value = '';
       }
 
       modal.style.display = 'flex';
@@ -21111,69 +21142,47 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const modal = document.getElementById('kcardModal');
       if (modal) modal.style.display = 'none';
       kcardEditId = null;
-      window._kcardPendingImgs = [];
+    }
+    function openKcatManager() {
+      const modal = document.getElementById('kcatManagerModal');
+      if (!modal) return;
+      renderKcatManagerList();
+      modal.style.display = 'flex';
+    }
+    function closeKcatManager() {
+      const modal = document.getElementById('kcatManagerModal');
+      if (modal) modal.style.display = 'none';
+    }
+    function renderKcatManagerList() {
+      const el = document.getElementById('kcatManagerList'); if (!el) return;
+      el.innerHTML = kcardCats.map((c, i) => `
+        <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--b1);">
+          <span style="flex:1;font-size:13px;color:var(--tx);">${c}</span>
+          <button onclick="deleteKcardCat(${i})" style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:14px;padding:2px 6px;" onmouseover="this.style.color='#ff6370'" onmouseout="this.style.color='var(--mu)'">🗑</button>
+        </div>`).join('');
+    }
+    function deleteKcardCat(idx) {
+      if (!confirm('카테고리를 삭제할까요? 해당 카테고리 카드는 유지됩니다.')) return;
+      kcardCats.splice(idx, 1);
+      saveKcardCats();
+      renderKcatManagerList();
+      renderKcatTabs();
+    }
+    function addKcatFromManager() {
+      const inp = document.getElementById('kcatNewInput');
+      const val = inp ? inp.value.trim() : '';
+      if (!val) return;
+      if (kcardCats.includes(val)) { if(typeof showToast==='function') showToast('이미 존재하는 카테고리입니다', 'warn'); return; }
+      kcardCats.push(val);
+      saveKcardCats();
+      if (inp) inp.value = '';
+      renderKcatManagerList();
+      renderKcatTabs();
+      if(typeof showToast==='function') showToast('카테고리 추가됨 ✅', 'ok');
     }
 
-    // ── 유튜브 미리보기 ───────────────────────────────
-    window.pcUpdateYtPreview = function() {
-      const val = document.getElementById('kcardYtInput')?.value?.trim() || '';
-      const prev = document.getElementById('kcardYtPreview');
-      if (!prev) return;
-      const m = val.match(/(?:v=|youtu\.be\/)([\w-]{11})/);
-      if (m) {
-        prev.style.display = 'block';
-        prev.innerHTML = `<img src="https://img.youtube.com/vi/${m[1]}/hqdefault.jpg" style="width:100%;border-radius:8px;display:block;">`;
-      } else {
-        prev.style.display = 'none';
-        prev.innerHTML = '';
-      }
-    };
 
-    // ── 이미지 처리 ───────────────────────────────────
-    window._kcardPendingImgs = [];
-    window.pcRenderImgPreview = function() {
-      const el = document.getElementById('kcardImgPreview');
-      if (!el) return;
-      el.innerHTML = (window._kcardPendingImgs || []).map((src, i) =>
-        `<div style="position:relative;width:80px;height:80px;border-radius:6px;overflow:hidden;">
-          <img src="${src}" style="width:100%;height:100%;object-fit:cover;">
-          <button onclick="window._kcardPendingImgs.splice(${i},1);window.pcRenderImgPreview();" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,.6);border:none;color:#fff;border-radius:50%;width:18px;height:18px;font-size:10px;cursor:pointer;line-height:1;">✕</button>
-        </div>`
-      ).join('');
-    };
-    window.pcHandleImgSelect = function(input) {
-      const files = Array.from(input.files || []).filter(f => f.type.startsWith('image/'));
-      if (!files.length) return;
-      let done = 0;
-      files.forEach(f => {
-        const r = new FileReader();
-        r.onload = e => {
-          window._kcardPendingImgs.push(e.target.result);
-          done++;
-          if (done === files.length) window.pcRenderImgPreview();
-        };
-        r.readAsDataURL(f);
-      });
-    };
-    window.pcHandleImgDrop = function(e) {
-      e.preventDefault();
-      const drop = document.getElementById('kcardImgDrop');
-      if (drop) { drop.style.borderColor = 'var(--b2)'; drop.style.background = 'var(--s2)'; }
-      const files = Array.from(e.dataTransfer.files || []).filter(f => f.type.startsWith('image/'));
-      if (!files.length) return;
-      let done = 0;
-      files.forEach(f => {
-        const r = new FileReader();
-        r.onload = ev => {
-          window._kcardPendingImgs.push(ev.target.result);
-          done++;
-          if (done === files.length) window.pcRenderImgPreview();
-        };
-        r.readAsDataURL(f);
-      });
-    };
-
-
+    // ── 카테고리 피커 렌더 ─────────────────────────────
     let kcardSelectedCat = '';
     function renderKcardCatPicker(defaultCat) {
       kcardSelectedCat = defaultCat || kcardCats[0];
@@ -21213,18 +21222,17 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
       const tags = tagsRaw ? tagsRaw.split(/[,，]+/).map(t => t.trim()).filter(Boolean) : [];
       const now = new Date().toISOString();
-      const ytUrl = document.getElementById('kcardYtInput')?.value?.trim() || '';
-      const bgColor = document.getElementById('kcardBgColor')?.value || '';
-      // 이미지: _kcardPendingImgs 전역 배열에서 가져옴 (pcHandleImgSelect에서 채움)
-      const imgs = window._kcardPendingImgs || [];
 
+      const _ytUrl = document.getElementById('kcardYtInput')?.value?.trim() || '';
+      const _bgColor = document.getElementById('kcardBgColor')?.value || '';
+      const _imgs = window._kcardPendingImgs || [];
       if (kcardEditId) {
         // 수정
         const card = kcards.find(k => k.id === kcardEditId);
-        if (card) { card.title = title; card.body = body; card.tags = tags; card.cat = kcardSelectedCat; card.updatedAt = now; card.ytUrl = ytUrl; if (imgs.length) card.imgs = imgs; if (bgColor) card.bgColor = bgColor; }
+        if (card) { card.title = title; card.body = body; card.tags = tags; card.cat = kcardSelectedCat; card.updatedAt = now; card.ytUrl = _ytUrl; if (_imgs.length) card.imgs = _imgs; if (_bgColor) card.bgColor = _bgColor; }
       } else {
         // 새 카드
-        kcards.unshift({ id: 'kc_' + Date.now(), title, body, tags, cat: kcardSelectedCat, createdAt: now, updatedAt: now, ytUrl, imgs, bgColor });
+        kcards.unshift({ id: 'kc_' + Date.now(), title, body, tags, cat: kcardSelectedCat, createdAt: now, updatedAt: now, ytUrl: _ytUrl, imgs: _imgs, bgColor: _bgColor });
       }
       window._kcardPendingImgs = [];
 
