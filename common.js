@@ -30,12 +30,27 @@
     const SUPABASE_URL = 'https://qgfkhbcpidmraxxjtetl.supabase.co';
     const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFnZmtoYmNwaWRtcmF4eGp0ZXRsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4NjEzNDcsImV4cCI6MjA4ODQzNzM0N30.kL8p6kNSxEI3_oxNrYguxhkU7wHNLRUTdvaIw5st5bo';
 
-    // Supabase 클라이언트 초기화
+    // Supabase 클라이언트 초기화 (모바일 Safari 세션 유지 강화)
     window._sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
       auth: {
         persistSession: true,
         autoRefreshToken: true,
-        storageKey: 'sb_sangkwon_session'
+        detectSessionInUrl: true,
+        storageKey: 'sb_sangkwon_session',
+        storage: {
+          // Safari 모바일: localStorage + sessionStorage 이중 저장
+          getItem: function(key) {
+            try { return localStorage.getItem(key) || sessionStorage.getItem(key); } catch(e) { return null; }
+          },
+          setItem: function(key, value) {
+            try { localStorage.setItem(key, value); } catch(e) {}
+            try { sessionStorage.setItem(key, value); } catch(e) {}
+          },
+          removeItem: function(key) {
+            try { localStorage.removeItem(key); } catch(e) {}
+            try { sessionStorage.removeItem(key); } catch(e) {}
+          }
+        }
       }
     });
 
@@ -177,8 +192,12 @@
 
     window._sbInitLoad = async function() {
       try {
-        // 세션 확인 - 로그인 안 되어있으면 로그인 화면 표시
-        const { data: { session } } = await window._sb.auth.getSession();
+        // 세션 확인 - 없으면 토큰 갱신 먼저 시도 (모바일 Safari 대응)
+        let { data: { session } } = await window._sb.auth.getSession();
+        if (!session) {
+          const { data: refreshed } = await window._sb.auth.refreshSession();
+          session = refreshed && refreshed.session;
+        }
         if (!session) {
           window._sbShowLogin();
           return;
@@ -20590,12 +20609,12 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         // 이미지 썸네일 (images 배열 첫 번째)
         const imgs = card.images || [];
         const imgThumb = imgs.length > 0
-          ? `<div style="width:100%;background:#111;display:flex;align-items:center;justify-content:center;max-height:200px;overflow:hidden;"><img src="${imgs[0]}" style="width:100%;max-height:200px;object-fit:contain;display:block;" alt="썸네일"></div>`
+          ? `<div style="width:100%;height:160px;background:#0d0f14;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;"><img src="${imgs[0]}" style="max-width:100%;max-height:160px;object-fit:contain;display:block;" alt="썸네일"></div>`
           : '';
         // 유튜브 썸네일
         const ytMatch = (card.youtube || '').match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([^&?#\s]{8,12})/);
         const ytThumb = (!imgs.length && ytMatch)
-          ? `<div style="width:100%;height:100px;overflow:hidden;background:#111;position:relative;cursor:pointer;" onclick="event.stopPropagation();window.open('https://www.youtube.com/watch?v=${ytMatch[1]}','_blank')"><img src="https://img.youtube.com/vi/${ytMatch[1]}/mqdefault.jpg" style="width:100%;height:100%;object-fit:cover;display:block;"><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;"><div style="width:40px;height:28px;background:rgba(255,0,0,.85);border-radius:6px;display:flex;align-items:center;justify-content:center;"><span style="color:#fff;font-size:14px;margin-left:3px;">&#9654;</span></div></div></div>`
+          ? `<div style="width:100%;height:160px;overflow:hidden;background:#111;position:relative;cursor:pointer;flex-shrink:0;" onclick="event.stopPropagation();window.open('https://www.youtube.com/watch?v=${ytMatch[1]}','_blank')"><img src="https://img.youtube.com/vi/${ytMatch[1]}/mqdefault.jpg" style="width:100%;height:100%;object-fit:cover;display:block;"><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;"><div style="width:44px;height:30px;background:rgba(255,0,0,.88);border-radius:6px;display:flex;align-items:center;justify-content:center;"><span style="color:#fff;font-size:15px;margin-left:3px;">&#9654;</span></div></div></div>`
           : '';
 
         return `<div style="background:var(--s1);border:1px solid var(--b1);border-top:3px solid ${color};border-radius:0 0 12px 12px;overflow:hidden;display:flex;flex-direction:column;transition:transform .15s,box-shadow .15s;cursor:pointer;" 
