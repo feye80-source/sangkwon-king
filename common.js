@@ -24,6 +24,210 @@
     };
 
 /* ════════════════════════════════════════════════════════
+   블록1-B: IndexedDB 래퍼 (대용량 데이터 로컬 저장소)
+   - localStorage 용량 한계(~2.5MB) 근본 해결
+   - 대용량 키: re_sv, wr2_rooms, wr2_sections, nt_notes, re_ws,
+                ins_notes, ins_news, ins_kcards, ins_kcat,
+                ins_vars, ins_cl, csvDatasets, map_memos
+   - 소용량 설정값(API키, 토큰 등)은 localStorage 그대로 유지
+════════════════════════════════════════════════════════ */
+(function() {
+  const IDB_NAME = 'sangkwon_king_db';
+  const IDB_VERSION = 1;
+  const IDB_STORE = 'kv';
+
+  // IDB 대상 키 목록
+  const IDB_KEYS = new Set([
+    're_sv', 'wr2_rooms', 'wr2_sections', 'nt_notes', 're_ws',
+    'ins_notes', 'ins_news', 'ins_kcards', 'ins_kcat',
+    'ins_vars', 'ins_cl', 'ins_kw', 'ins_feed',
+    'csvDatasets', 'map_memos', 'news_auto_clips'
+  ]);
+
+  let _idbInstance = null;
+  let _idbReady = false;
+  let _idbReadyCallbacks = [];
+
+  function _idbOpen() {
+    return new Promise((resolve, reject) => {
+      if (_idbInstance) { resolve(_idbInstance); return; }
+      const req = indexedDB.open(IDB_NAME, IDB_VERSION);
+      req.onupgradeneeded = (e) => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains(IDB_STORE)) {
+          db.createObjectStore(IDB_STORE);
+        }
+      };
+      req.onsuccess = (e) => {
+        _idbInstance = e.target.result;
+        _idbReady = true;
+        _idbReadyCallbacks.forEach(cb => cb());
+        _idbReadyCallbacks = [];
+        resolve(_idbInstance);
+      };
+      req.onerror = (e) => {
+        console.warn('[IDB] 열기 실패, localStorage fallback 사용:', e);
+        reject(e);
+      };
+    });
+  }
+
+  // IDB get
+  window.idbGet = async function(key) {
+    try {
+      const db = await _idbOpen();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(IDB_STORE, 'readonly');
+        const req = tx.objectStore(IDB_STORE).get(key);
+        req.onsuccess = () => resolve(req.result !== undefined ? req.result : null);
+        req.onerror = () => reject(req.error);
+      });
+    } catch(e) {
+      // IDB 실패 시 localStorage fallback
+      try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : null; } catch(e2) { return null; }
+    }
+  };
+
+  // IDB set
+  window.idbSet = async function(key, value) {
+    try {
+      const db = await _idbOpen();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(IDB_STORE, 'readwrite');
+        const req = tx.objectStore(IDB_STORE).put(value, key);
+        req.onsuccess = () => resolve(true);
+        req.onerror = () => reject(req.error);
+      });
+    } catch(e) {
+      // IDB 실패 시 localStorage fallback (safeLocalSet)
+      try { localStorage.setItem(key, JSON.stringify(value)); } catch(e2) {
+        try { localStorage.removeItem(key); } catch(e3) {}
+      }
+      return false;
+    }
+  };
+
+  // IDB remove
+  window.idbRemove = async function(key) {
+    try {
+      const db = await _idbOpen();
+      return new Promise((resolve) => {
+        const tx = db.transaction(IDB_STORE, 'readwrite');
+        tx.objectStore(IDB_STORE).delete(key);
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => resolve(false);
+      });
+    } catch(e) {
+      try { localStorage.removeItem(key); } catch(e2) {}
+      return false;
+    }
+  };
+
+  // 동기 래퍼 (기존 코드 호환용 - 읽기는 캐시 기반, 쓰기는 비동기 fire-and-forget)
+  // 각 키별 메모리 캐시
+  window._idbCache = {};
+
+  window.idbGetSync = function(key, defaultVal) {
+    if (window._idbCache[key] !== undefined) return window._idbCache[key];
+    // IDB 준비 전에는 localStorage fallback
+    try { const v = localStorage.getItem(key); if (v) return JSON.parse(v); } catch(e) {}
+    return defaultVal !== undefined ? defaultVal : null;
+  };
+
+  window.idbSetSync = function(key, value) {
+    window._idbCache[key] = value;
+    // 비동기로 IDB에 저장 (fire-and-forget)
+    window.idbSet(key, value).catch(e => console.warn('[IDB] setSync 저장 실패:', key, e));
+  };
+
+  // localStorage.setItem/getItem/removeItem 패치: IDB_KEYS는 IDB로 리다이렉트
+  const _lsSetOrig = localStorage.setItem.bind(localStorage);
+  const _lsGetOrig = localStorage.getItem.bind(localStorage);
+  const _lsRemoveOrig = localStorage.removeItem.bind(localStorage);
+
+  localStorage.setItem = function(key, value) {
+    if (IDB_KEYS.has(key)) {
+      try {
+        const parsed = JSON.parse(value);
+        window._idbCache[key] = parsed;
+        window.idbSet(key, parsed).catch(e => console.warn('[IDB] ls patch set 실패:', key, e));
+      } catch(e) {
+        window._idbCache[key] = value;
+        window.idbSet(key, value).catch(e2 => console.warn('[IDB] ls patch set 실패:', key, e2));
+      }
+      return;
+    }
+    try { _lsSetOrig(key, value); } catch(e) {
+      if (e.name === 'QuotaExceededError') {
+        console.warn('[IDB] localStorage QuotaExceeded for non-IDB key:', key);
+        try { localStorage.removeItem(key); _lsSetOrig(key, value); } catch(e2) {}
+      }
+    }
+  };
+
+  localStorage.getItem = function(key) {
+    if (IDB_KEYS.has(key)) {
+      // 캐시에 있으면 캐시 반환 (동기)
+      if (window._idbCache[key] !== undefined) {
+        return JSON.stringify(window._idbCache[key]);
+      }
+      // 캐시 없으면 null 반환 (비동기 IDB 로드는 _idbPreload가 처리)
+      return null;
+    }
+    return _lsGetOrig(key);
+  };
+
+  localStorage.removeItem = function(key) {
+    if (IDB_KEYS.has(key)) {
+      delete window._idbCache[key];
+      window.idbRemove(key).catch(e => console.warn('[IDB] remove 실패:', key, e));
+      return;
+    }
+    _lsRemoveOrig(key);
+  };
+
+  // 앱 시작 시 IDB에서 모든 IDB_KEYS를 메모리 캐시로 프리로드
+  // 이 Promise가 resolve되기 전까지 _sbInitLoad가 실행되지 않도록 함
+  window._idbPreloadDone = false;
+  window._idbPreload = async function() {
+    try {
+      await _idbOpen();
+      const loadPromises = Array.from(IDB_KEYS).map(async (key) => {
+        try {
+          const val = await window.idbGet(key);
+          if (val !== null) {
+            window._idbCache[key] = val;
+          } else {
+            // IDB에 없으면 localStorage에서 마이그레이션
+            const lsVal = _lsGetOrig(key);
+            if (lsVal) {
+              try {
+                const parsed = JSON.parse(lsVal);
+                window._idbCache[key] = parsed;
+                await window.idbSet(key, parsed);
+                _lsRemoveOrig(key); // localStorage에서 삭제 (공간 확보)
+                console.log('[IDB] 마이그레이션 완료:', key, Array.isArray(parsed) ? parsed.length + '개' : '');
+              } catch(e) {}
+            }
+          }
+        } catch(e) {
+          console.warn('[IDB] preload 실패:', key, e);
+        }
+      });
+      await Promise.all(loadPromises);
+      window._idbPreloadDone = true;
+      console.log('[IDB] 프리로드 완료. 캐시 키:', Object.keys(window._idbCache).join(', '));
+    } catch(e) {
+      console.warn('[IDB] 프리로드 실패, localStorage fallback으로 동작:', e);
+      window._idbPreloadDone = true; // 실패해도 앱은 계속 동작
+    }
+  };
+
+  // 즉시 프리로드 시작
+  window._idbPreload();
+})();
+
+/* ════════════════════════════════════════════════════════
    블록2: Supabase
 ════════════════════════════════════════════════════════ */
   (function() {
@@ -47,12 +251,25 @@
         window._sbHideLogin && window._sbHideLogin();
         window._sbHideRecovery && window._sbHideRecovery();
         window._sbAddLogoutBtn && window._sbAddLogoutBtn();
-        // ★ 로그인 시 클라우드 동기화 자동 실행 (중복 방지)
+        // ★ 로그인 시 클라우드 동기화 자동 실행 (IDB 프리로드 완료 후 실행)
         if (!_sbInitLoadCalled) {
           _sbInitLoadCalled = true;
-          setTimeout(() => {
+          const _runInitLoad = () => {
             if (window._sbInitLoad) window._sbInitLoad().catch(e => console.warn('[SB] initLoad on auth', e));
-          }, 300);
+          };
+          // IDB 프리로드가 완료될 때까지 대기 (최대 3초)
+          if (window._idbPreloadDone) {
+            setTimeout(_runInitLoad, 100);
+          } else {
+            let _waited = 0;
+            const _waitIdb = setInterval(() => {
+              _waited += 50;
+              if (window._idbPreloadDone || _waited >= 3000) {
+                clearInterval(_waitIdb);
+                _runInitLoad();
+              }
+            }, 50);
+          }
         }
       } else if (event === 'PASSWORD_RECOVERY') {
         window._sbShowRecovery && window._sbShowRecovery();
@@ -191,17 +408,16 @@
       window._sbStatusTimer = setTimeout(() => { el.style.opacity = '0'; }, 2500);
     };
 
-    // ─── re_sv 메모리 캐시 getter/setter (localStorage 용량 초과 방지) ──
-    window._svCache = null;
+    // ─── re_sv getter/setter (IDB 기반, 메모리 캐시 병행) ──
+    // _idbCache['re_sv']가 메모리 캐시 역할을 함
     window._getSv = function() {
-      if (window._svCache) return window._svCache;
-      try { return JSON.parse(localStorage.getItem('re_sv') || '[]'); } catch(e) { return []; }
+      const cached = window._idbCache && window._idbCache['re_sv'];
+      if (cached) return cached;
+      return [];
     };
     window._setSv = function(arr) {
-      window._svCache = arr;
-      try { localStorage.setItem('re_sv', JSON.stringify(arr)); } catch(e) {
-        localStorage.removeItem('re_sv'); // 용량 초과 시 메모리만 사용
-      }
+      if (window._idbCache) window._idbCache['re_sv'] = arr;
+      window.idbSet('re_sv', arr).catch(e => console.warn('[IDB] _setSv 실패', e));
     };
 
     // ─── re_sv (저장목록) 동기화 ─────────────────────────────
@@ -233,9 +449,9 @@
         const deleted = (arr || []).filter(r => r.deletedAt).map(r => r.id);
         await tblSaveArr('workrooms', active);
         if (deleted.length) await tblDeleteItems('workrooms', deleted);
-        // 로컬 동기화
-        const _orig = localStorage.setItem.bind(localStorage);
-        _orig('wr2_rooms', JSON.stringify(active));
+        // 로컬 동기화 (IDB)
+        if (window._idbCache) window._idbCache['wr2_rooms'] = active;
+        window.idbSet('wr2_rooms', active).catch(e => console.warn('[IDB] saveRooms 로컬 저장 실패', e));
         if (window.wr2State) window.wr2State.rooms = active;
       } catch(e) { console.warn('[SB] saveRooms error', e); }
       window._sbSyncStatus('☁️ 작업룸 동기화 완료', true);
@@ -297,54 +513,53 @@
         // ── 저장목록 ──
         const svCloud = await window._sbLoadSv();
         if (svCloud !== null) {
-          const svLocal = JSON.parse(localStorage.getItem('re_sv') || '[]');
+          const svLocal = window._idbCache['re_sv'] || [];
           const merged = _sbMergeById(svCloud, svLocal);
-          // 메모리 캐시에 저장 (localStorage 용량 초과 방지)
-          window._svCache = merged;
-          try { localStorage.setItem('re_sv', JSON.stringify(merged)); } catch(e) {
-            localStorage.removeItem('re_sv');
-          }
+          window._idbCache['re_sv'] = merged;
+          await window.idbSet('re_sv', merged);
           if (merged.length > svCloud.length) window._sbSaveSv(merged).catch(()=>{});
         } else {
-          const svLocal = JSON.parse(localStorage.getItem('re_sv') || '[]');
-          window._svCache = svLocal;
+          const svLocal = window._idbCache['re_sv'] || [];
           if (svLocal.length) window._sbSaveSv(svLocal).catch(()=>{});
         }
 
         // ── 노트 ──
         const ntCloud = await window._sbLoadNtNotes();
         if (ntCloud !== null) {
-          const ntLocal = JSON.parse(localStorage.getItem('nt_notes') || '[]');
+          const ntLocal = window._idbCache['nt_notes'] || [];
           const merged = _sbMergeById(ntCloud, ntLocal);
-          _safeLocalSet('nt_notes', JSON.stringify(merged));
+          window._idbCache['nt_notes'] = merged;
+          await window.idbSet('nt_notes', merged);
           if (merged.length > ntCloud.length) window._sbSaveNtNotes(merged).catch(()=>{});
         } else {
-          const ntLocal = JSON.parse(localStorage.getItem('nt_notes') || '[]');
+          const ntLocal = window._idbCache['nt_notes'] || [];
           if (ntLocal.length) window._sbSaveNtNotes(ntLocal).catch(()=>{});
         }
 
         // ── 작업룸 ──
         const roomsCloud = await window._sbLoadRooms();
         if (roomsCloud !== null) {
-          const roomsLocal = JSON.parse(localStorage.getItem('wr2_rooms') || '[]');
+          const roomsLocal = window._idbCache['wr2_rooms'] || [];
           const merged = _sbMergeById(roomsCloud, roomsLocal);
           const mergedActive = merged.filter(r => !r.deletedAt);
-          _safeLocalSet('wr2_rooms', JSON.stringify(mergedActive));
+          window._idbCache['wr2_rooms'] = mergedActive;
+          await window.idbSet('wr2_rooms', mergedActive);
           if (window.wr2State) window.wr2State.rooms = mergedActive;
           if (mergedActive.length > roomsCloud.filter(r=>!r.deletedAt).length)
             window._sbSaveRooms(merged).catch(()=>{});
         } else {
-          const roomsLocal = JSON.parse(localStorage.getItem('wr2_rooms') || '[]');
+          const roomsLocal = window._idbCache['wr2_rooms'] || [];
           if (roomsLocal.length) window._sbSaveRooms(roomsLocal).catch(()=>{});
         }
 
         // ── 섹션 ──
         const secCloud = await window._sbLoadSections();
         if (secCloud && secCloud.length > 0) {
-          _safeLocalSet('wr2_sections', JSON.stringify(secCloud));
+          window._idbCache['wr2_sections'] = secCloud;
+          await window.idbSet('wr2_sections', secCloud);
           if (window.wr2State) window.wr2State.sections = secCloud;
         } else {
-          const secLocal = JSON.parse(localStorage.getItem('wr2_sections') || '[]');
+          const secLocal = window._idbCache['wr2_sections'] || [];
           if (secLocal.length) {
             if (window.wr2State) window.wr2State.sections = secLocal;
             window._sbSaveSections(secLocal).catch(()=>{});
@@ -354,12 +569,13 @@
         // ── 작업씬 ──
         const wsCloud = await window._sbLoadWorkScenes();
         if (wsCloud !== null) {
-          const wsLocal = JSON.parse(localStorage.getItem('re_ws') || '[]');
+          const wsLocal = window._idbCache['re_ws'] || [];
           const merged = _sbMergeById(wsCloud, wsLocal);
-          _safeLocalSet('re_ws', JSON.stringify(merged));
+          window._idbCache['re_ws'] = merged;
+          await window.idbSet('re_ws', merged);
           if (merged.length > wsCloud.length) window._sbSaveWorkScenes(merged).catch(()=>{});
         } else {
-          const wsLocal = JSON.parse(localStorage.getItem('re_ws') || '[]');
+          const wsLocal = window._idbCache['re_ws'] || [];
           if (wsLocal.length) window._sbSaveWorkScenes(wsLocal).catch(()=>{});
         }
 
@@ -404,41 +620,33 @@
       } catch(e) {}
     };
 
-    // ─── localStorage.setItem 패치: 변경 시 자동 Supabase 동기화 ──
+    // ─── IDB 변경 시 자동 Supabase 동기화 훅 ──
+    // (localStorage.setItem 패치는 블록1-B IDB 래퍼에서 처리됨)
+    // idbSetSync 호출 시 Supabase 동기화 debounce
     (function() {
-      const _origSet = localStorage.setItem.bind(localStorage);
       let _debounceRooms, _debounceSec, _debounceSv;
-      localStorage.setItem = function(key, value) {
-        _origSet(key, value);
+      const _origIdbSet = window.idbSet;
+      window.idbSet = async function(key, value) {
+        const result = await _origIdbSet(key, value);
         if (key === 'wr2_rooms') {
           clearTimeout(_debounceRooms);
           _debounceRooms = setTimeout(() => {
-            try {
-              const arr = JSON.parse(value);
-              if (window._sbSaveRooms) window._sbSaveRooms(arr).catch(e=>{});
-            } catch(e) {}
+            if (window._sbSaveRooms) window._sbSaveRooms(value).catch(e=>{});
           }, 1500);
         }
         if (key === 'wr2_sections') {
           clearTimeout(_debounceSec);
           _debounceSec = setTimeout(() => {
-            try {
-              const arr = JSON.parse(value);
-              if (window._sbSaveSections) window._sbSaveSections(arr).catch(e=>{});
-            } catch(e) {}
+            if (window._sbSaveSections) window._sbSaveSections(value).catch(e=>{});
           }, 1500);
         }
         if (key === 're_sv') {
-          // 메모리 캐시도 동기 업데이트
-          try { window._svCache = JSON.parse(value); } catch(e) {}
           clearTimeout(_debounceSv);
           _debounceSv = setTimeout(() => {
-            try {
-              const arr = JSON.parse(value);
-              if (window._sbSaveSv) window._sbSaveSv(arr).catch(e=>{});
-            } catch(e) {}
+            if (window._sbSaveSv) window._sbSaveSv(value).catch(e=>{});
           }, 2000);
         }
+        return result;
       };
     })();
 
@@ -573,17 +781,26 @@
       document.body.appendChild(btn);
     };
 
-    // DOM 로드 후 초기화
+    // DOM 로드 후 초기화 (IDB 프리로드 완료 후 실행)
+    function _sbDomInit() {
+      window._sbInitRecoveryUI && window._sbInitRecoveryUI();
+      if (window._idbPreloadDone) {
+        window._sbInitLoad();
+      } else {
+        let _waited = 0;
+        const _waitIdb = setInterval(() => {
+          _waited += 50;
+          if (window._idbPreloadDone || _waited >= 3000) {
+            clearInterval(_waitIdb);
+            window._sbInitLoad();
+          }
+        }, 50);
+      }
+    }
     if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', function() {
-        window._sbInitRecoveryUI && window._sbInitRecoveryUI();
-        window._sbInitLoad();
-      });
+      document.addEventListener('DOMContentLoaded', _sbDomInit);
     } else {
-      setTimeout(function() {
-        window._sbInitRecoveryUI && window._sbInitRecoveryUI();
-        window._sbInitLoad();
-      }, 500);
+      setTimeout(_sbDomInit, 100);
     }
 
   })();
@@ -609,16 +826,17 @@
                   try { return raw ? JSON.parse(raw) : fallback; } catch (e) { return fallback; }
                 }
 
-                function loadRooms() { wr2State.rooms = safeJSONParse(localStorage.getItem(LS_KEY_ROOMS), []); }
+                function loadRooms() { wr2State.rooms = (window._idbCache && window._idbCache[LS_KEY_ROOMS]) || []; }
                 function saveRooms() {
                   // 렌더링용 rooms는 deletedAt 포함 유지, 로컬 저장·Supabase는 deletedAt 없는 것만
                   const toSave = wr2State.rooms.filter(r => !r.deletedAt);
-                  localStorage.setItem(LS_KEY_ROOMS, JSON.stringify(toSave));
+                  if (window._idbCache) window._idbCache[LS_KEY_ROOMS] = toSave;
+                  if (window.idbSet) window.idbSet(LS_KEY_ROOMS, toSave).catch(()=>{});
                   // 소프트삭제 정보는 Supabase에만 전달 (deletedAt 포함 전달해야 다기기 삭제 동기화)
                   if (window._sbSaveRooms) window._sbSaveRooms(wr2State.rooms).catch(e => {});
                 }
-                function loadSections() { wr2State.sections = safeJSONParse(localStorage.getItem(LS_KEY_SECTIONS), []); }
-                function saveSections() { localStorage.setItem(LS_KEY_SECTIONS, JSON.stringify(wr2State.sections)); }
+                function loadSections() { wr2State.sections = (window._idbCache && window._idbCache[LS_KEY_SECTIONS]) || []; }
+                function saveSections() { if (window._idbCache) window._idbCache[LS_KEY_SECTIONS] = wr2State.sections; if (window.idbSet) window.idbSet(LS_KEY_SECTIONS, wr2State.sections).catch(()=>{}); }
 
                 function genId(prefix) { return prefix + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
                 function getActiveRoom() { return wr2State.rooms.find(r => r.id === wr2State.activeRoomId) || null; }
@@ -1501,7 +1719,7 @@
                   const el = document.getElementById('wr2ItemSummary');
                   const openBtn = document.getElementById('wr2OpenSavedBtn');
                   if (!el) return;
-                  const sv = (typeof getSv === 'function') ? getSv() : (() => { try { return JSON.parse(localStorage.getItem('re_sv') || '[]'); } catch (e) { return []; } })();
+                  const sv = (typeof getSv === 'function') ? getSv() : (() => { try { return (window._idbCache && window._idbCache['re_sv'] || []); } catch (e) { return []; } })();
                   const linkedId = room.linkedSavedId || room.auctionId;
                   const item = linkedId ? sv.find(s => String(s.id) === String(linkedId)) : null;
 
@@ -4092,8 +4310,8 @@
     // ⚡ 스냅샷 + 🗂 작업룸 통합 시스템 (v253 - v249 기반)
     // ══════════════════════════════════════════════════════════════
     const WS_KEY = 're_ws';
-    function getWorkScenes() { try { return JSON.parse(localStorage.getItem(WS_KEY) || '[]'); } catch (e) { return []; } }
-    function setWorkScenes(arr) { localStorage.setItem(WS_KEY, JSON.stringify(arr)); if (window._sbSaveWorkScenes) window._sbSaveWorkScenes(arr).catch(e=>{}); }
+    function getWorkScenes() { return (window._idbCache && window._idbCache[WS_KEY]) || []; }
+    function setWorkScenes(arr) { if(window._idbCache)window._idbCache[WS_KEY]=arr; if(window.idbSet)window.idbSet(WS_KEY,arr).catch(()=>{}); if (window._sbSaveWorkScenes) window._sbSaveWorkScenes(arr).catch(e=>{}); }
 
     window.swSaveSnap = function () {
       const scenes = getWorkScenes();
@@ -4153,10 +4371,10 @@
               if (idx2 >= 0) room.mapScenes[idx2] = newEntry; else room.mapScenes.push(newEntry);
               if (!room.mapScene) room.mapScene = newEntry;
               try {
-                const allRoomsArr = JSON.parse(localStorage.getItem('wr2_rooms') || '[]');
+                const allRoomsArr = (window._idbCache && window._idbCache['wr2_rooms'] || []);
                 const ri = allRoomsArr.findIndex(r => r.id === roomId);
                 if (ri >= 0) allRoomsArr[ri] = room; else allRoomsArr.push(room);
-                localStorage.setItem('wr2_rooms', JSON.stringify(allRoomsArr));
+                if(window._idbCache)window._idbCache['wr2_rooms']=allRoomsArr;if(window.idbSet)window.idbSet('wr2_rooms',allRoomsArr).catch(()=>{});
                 if (window.wr2State) window.wr2State.rooms = allRoomsArr;
               } catch(e) {}
               showToast('✅ 스냅샷 저장 + 작업룸 [' + (room.title||room.name||'룸') + '] 추가', 'ok');
@@ -4174,10 +4392,10 @@
               const ri2 = rm2.mapScenes.findIndex(ms => ms.sceneName === name);
               if (ri2 >= 0) rm2.mapScenes[ri2] = ne2; else rm2.mapScenes.push(ne2);
               try {
-                const arr2 = JSON.parse(localStorage.getItem('wr2_rooms') || '[]');
+                const arr2 = (window._idbCache && window._idbCache['wr2_rooms'] || []);
                 const i2 = arr2.findIndex(r => r.id === roomId);
                 if (i2 >= 0) arr2[i2] = rm2; else arr2.push(rm2);
-                localStorage.setItem('wr2_rooms', JSON.stringify(arr2));
+                if(window._idbCache)window._idbCache['wr2_rooms']=arr2;if(window.idbSet)window.idbSet('wr2_rooms',arr2).catch(()=>{});
                 if (window.wr2State) window.wr2State.rooms = arr2;
               } catch(e) {}
               showToast('✅ 스냅샷 저장 + 작업룸 추가', 'ok');
@@ -4266,7 +4484,7 @@
 
       // 작업룸에 저장된 스냅샷인지 확인
       let rooms = [];
-      try { rooms = JSON.parse(localStorage.getItem('wr2_rooms') || '[]'); } catch(e) {}
+      try { rooms = (window._idbCache && window._idbCache['wr2_rooms'] || []); } catch(e) {}
       const allNames = [name].concat(children.map(c => c.name));
       const savedInRooms = rooms.filter(r => {
         return allNames.some(n =>
@@ -4432,7 +4650,7 @@
           }
           room.updatedAt = now;
           if (window.wr2State) {
-            localStorage.setItem('wr2_rooms', JSON.stringify(window.wr2State.rooms));
+            if(window._idbCache)window._idbCache['wr2_rooms']=window.wr2State.rooms;if(window.idbSet)window.idbSet('wr2_rooms',window.wr2State.rooms).catch(()=>{});
             if (typeof window._sbSaveRooms === 'function') window._sbSaveRooms(window.wr2State.rooms).catch(e => console.warn('[sw] room sync fail', e));
           }
           swRefreshRoomSelect();
@@ -4486,7 +4704,7 @@
       });
       if (window.wr2State) {
         window.wr2State.rooms.unshift(room);
-        localStorage.setItem('wr2_rooms', JSON.stringify(window.wr2State.rooms));
+        if(window._idbCache)window._idbCache['wr2_rooms']=window.wr2State.rooms;if(window.idbSet)window.idbSet('wr2_rooms',window.wr2State.rooms).catch(()=>{});
         if (typeof window._sbSaveRooms === 'function') window._sbSaveRooms(window.wr2State.rooms).catch(e => console.warn('[sw] makeRoom sync fail', e));
         if (typeof window.wr2Render === 'function') window.wr2Render();
       }
@@ -4539,7 +4757,7 @@
         html += '<div class="sw-row" data-n="'+rn+'">';
         // 작업룸에 저장된 스냅샷인지 확인
         var rooms = [];
-        try { rooms = JSON.parse(localStorage.getItem('wr2_rooms')||'[]'); } catch(e){}
+        try { rooms = (window._idbCache && window._idbCache['wr2_rooms'] || []); } catch(e){}
         var inRoom = rooms.some(function(r){ return (r.mapScene && r.mapScene.sceneName===root.name) || (r.captureImages||[]).some(function(i){return i.snapName===root.name;}); });
         html += '<button class="sw-row-main" onclick="swLoadSnap(this.closest(\'.sw-row\').dataset.n,null)">';
         html += '<span class="sw-row-icon">📷</span>';
@@ -4644,7 +4862,7 @@
     window.wrSetRooms = function (arr) {
       if (!window.wr2State) return;
       window.wr2State.rooms = Array.isArray(arr) ? arr : [];
-      localStorage.setItem('wr2_rooms', JSON.stringify(window.wr2State.rooms));
+      if(window._idbCache)window._idbCache['wr2_rooms']=window.wr2State.rooms;if(window.idbSet)window.idbSet('wr2_rooms',window.wr2State.rooms).catch(()=>{});
       if (typeof window.wr2Render === 'function') window.wr2Render();
     };
     window.wrGetRoom = function (id) {
@@ -4675,8 +4893,8 @@
         window.wr2State.rooms[roomIdx].updatedAt = Date.now();
       }
       window.wr2State.sections = window.wr2State.sections.filter(function (s) { return s.roomId !== id; });
-      localStorage.setItem('wr2_rooms', JSON.stringify(window.wr2State.rooms));
-      localStorage.setItem('wr2_sections', JSON.stringify(window.wr2State.sections));
+      if(window._idbCache)window._idbCache['wr2_rooms']=window.wr2State.rooms;if(window.idbSet)window.idbSet('wr2_rooms',window.wr2State.rooms).catch(()=>{});
+      if(window._idbCache)window._idbCache['wr2_sections']=window.wr2State.sections;if(window.idbSet)window.idbSet('wr2_sections',window.wr2State.sections).catch(()=>{});
       if (window._sbSaveRooms) window._sbSaveRooms(window.wr2State.rooms).catch(function(){});
       if (window.wr2State.activeRoomId === id) window.wr2State.activeRoomId = null;
       if (typeof window.wr2Render === 'function') window.wr2Render();
@@ -4689,8 +4907,7 @@
         if (!raw) return;
         var oldRooms = JSON.parse(raw);
         if (!Array.isArray(oldRooms) || !oldRooms.length) { localStorage.removeItem('re_workrooms'); return; }
-        var existRaw = localStorage.getItem('wr2_rooms');
-        var existing = existRaw ? JSON.parse(existRaw) : [];
+        var existing = (window._idbCache && window._idbCache['wr2_rooms']) || [];
         var existIds = new Set(existing.map(function (r) { return r.id; }));
         var stMap = { '검토중': 'review', '현장예정': 'field', '입찰준비': 'bid', '완료': 'won', '패스': 'closed' };
         var added = 0;
@@ -4714,7 +4931,7 @@
           });
           added++;
         });
-        if (added > 0) localStorage.setItem('wr2_rooms', JSON.stringify(existing));
+        if (added > 0) if(window._idbCache)window._idbCache['wr2_rooms']=existing;if(window.idbSet)window.idbSet('wr2_rooms',existing).catch(()=>{});
         localStorage.removeItem('re_workrooms');
         if (added > 0) console.log('[wr2] 구 작업룸 ' + added + '개 마이그레이션 완료');
       } catch (e) { console.warn('[wr2 migration]', e); }
@@ -4817,7 +5034,7 @@
         if (idx >= 0) {
           window.wr2State.rooms[idx].mapScene = { mapCenter: mapCenter, mapLevel: mapLevel, cards: cards, savedAt: Date.now(), sceneName: window.wr2State.rooms[idx].title || window.wr2State.rooms[idx].name };
           window.wr2State.rooms[idx].updatedAt = Date.now();
-          localStorage.setItem('wr2_rooms', JSON.stringify(window.wr2State.rooms));
+          if(window._idbCache)window._idbCache['wr2_rooms']=window.wr2State.rooms;if(window.idbSet)window.idbSet('wr2_rooms',window.wr2State.rooms).catch(()=>{});
           if (typeof window.wr2Render === 'function') window.wr2Render();
         }
       }
@@ -4887,7 +5104,7 @@
       };
       if (window.wr2State) {
         window.wr2State.rooms.unshift(room);
-        localStorage.setItem('wr2_rooms', JSON.stringify(window.wr2State.rooms));
+        if(window._idbCache)window._idbCache['wr2_rooms']=window.wr2State.rooms;if(window.idbSet)window.idbSet('wr2_rooms',window.wr2State.rooms).catch(()=>{});
         window.wr2State.activeRoomId = room.id;
         window.wr2State.activePhase = 'review';
         if (typeof window.wr2Render === 'function') window.wr2Render();
@@ -4909,7 +5126,7 @@
       var item = sv.find(function (s) { return s.id === itemId; });
       if (!item) { showToast('물건을 찾을 수 없습니다', 'warn'); return; }
       var d = item.data || {};
-      var notes = JSON.parse(localStorage.getItem('ins_notes') || '[]');
+      var notes = (window._idbCache && window._idbCache['ins_notes'] || []);
       var note = {
         id: 'note_' + Date.now(),
         title: (d['소재지'] || item.title || item.id).substring(0, 30) + ' 분석',
@@ -4918,7 +5135,7 @@
         createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
       };
       notes.unshift(note);
-      localStorage.setItem('ins_notes', JSON.stringify(notes));
+      if(window._idbCache)window._idbCache['ins_notes']=notes;if(window.idbSet)window.idbSet('ins_notes',notes).catch(()=>{});
       showInsTab(0);
       setTimeout(function () { if (typeof openNote === 'function') openNote(note.id); }, 100);
       showToast('노트가 만들어졌습니다', 'ok');
@@ -5001,7 +5218,7 @@
     function isGFilterActive() { return false; }
 
     function getSv() {
-      const arr = JSON.parse(localStorage.getItem('re_sv') || '[]');
+      const arr = (window._idbCache && window._idbCache['re_sv'] || []);
       // ★ 마이그레이션: source 필드 없는 기존 데이터에 source 자동 복원
       let needSave = false;
       arr.forEach(item => {
@@ -5015,7 +5232,7 @@
           item.source = '점포라인'; needSave = true;
         }
       });
-      if (needSave) localStorage.setItem('re_sv', JSON.stringify(arr));
+      if (needSave) if(window._idbCache)window._idbCache['re_sv']=arr;if(window.idbSet)window.idbSet('re_sv',arr).catch(()=>{});
 
       // ★ 마이그레이션: 점포라인/아싸 계약면적_m2 → 전용면적_m2 이동
       // (과거에 계약면적으로 저장된 데이터를 전용면적으로 자동 전환)
@@ -5029,12 +5246,12 @@
           needSave2 = true;
         }
       });
-      if (needSave2) localStorage.setItem('re_sv', JSON.stringify(arr));
+      if (needSave2) if(window._idbCache)window._idbCache['re_sv']=arr;if(window.idbSet)window.idbSet('re_sv',arr).catch(()=>{});
 
       return arr;
     }
     function setSv(arr) {
-      localStorage.setItem("re_sv", JSON.stringify(arr));
+      if(window._idbCache)window._idbCache['re_sv']=arr;if(window.idbSet)window.idbSet('re_sv',arr).catch(()=>{});
       if (window._sbSaveSv) window._sbSaveSv(arr).catch(e => console.warn("[SB] setSv sync fail", e));
     }
 
@@ -5267,7 +5484,7 @@
 
     function clearAll() {
       if (confirm('저장된 모든 항목을 삭제할까요?')) {
-        localStorage.removeItem('re_sv');
+        if(window._idbCache)delete window._idbCache['re_sv']; if(window.idbRemove)window.idbRemove('re_sv').catch(()=>{});
         renderSaved();
         updSvCnt();
       }
@@ -15833,7 +16050,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     function saveCSVDatasets() {
       // 내장(builtin) 데이터는 localStorage에 저장하지 않음 (용량/중복 방지)
       const toSave = (csvDatasets || []).filter(ds => !ds.builtin);
-      localStorage.setItem('csvDatasets', JSON.stringify(toSave));
+      if(window._idbCache)window._idbCache['csvDatasets']=toSave;if(window.idbSet)window.idbSet('csvDatasets',toSave).catch(()=>{});
     }
     function loadCSVDatasetsOnInit() {
       // localStorage 기반 CSV 저장은 용량 폭발 위험이 커서 사용하지 않습니다.
@@ -15916,11 +16133,11 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           cardHeight: card ? card.offsetHeight : 0
         };
       });
-      localStorage.setItem('map_memos', JSON.stringify(memos));
+      if(window._idbCache)window._idbCache['map_memos']=memos;if(window.idbSet)window.idbSet('map_memos',memos).catch(()=>{});
     }
 
     function loadMemos() {
-      const saved = localStorage.getItem('map_memos');
+      const saved = (window._idbCache && window._idbCache['map_memos'] ? JSON.stringify(window._idbCache['map_memos']) : null);
       if (!saved) return;
 
       try {
@@ -17031,7 +17248,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           // ✅ 중복 업로드 방지: 내용 기반 해시 (동일 파일 반복 업로드 방지)
           const fileHash = 'fnv_' + fnv1a32(text + '|' + file.name + '|' + file.size).toString(16);
 
-          const existingDatasets = JSON.parse(localStorage.getItem('csvDatasets') || '[]');
+          const existingDatasets = (window._idbCache && window._idbCache['csvDatasets'] || []);
           const dup = existingDatasets.find(d => d && d.hash === fileHash);
           if (dup) {
             showToast(`⚠️ 동일 CSV가 이미 등록돼 있어요: ${dup.name}`, 'warn');
@@ -17085,7 +17302,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             visible: true
           });
 
-          localStorage.setItem('csvDatasets', JSON.stringify(existingDatasets));
+          if(window._idbCache)window._idbCache['csvDatasets']=existingDatasets;if(window.idbSet)window.idbSet('csvDatasets',existingDatasets).catch(()=>{});
           csvDatasets = existingDatasets;
           saveCSVDatasets();
 
@@ -17282,7 +17499,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         linkedItems: [], mapScene: null, createdAt: now, updatedAt: now
       };
       window.wr2State.rooms.unshift(room);
-      localStorage.setItem('wr2_rooms', JSON.stringify(window.wr2State.rooms));
+      if(window._idbCache)window._idbCache['wr2_rooms']=window.wr2State.rooms;if(window.idbSet)window.idbSet('wr2_rooms',window.wr2State.rooms).catch(()=>{});
       if (typeof window.wr2Render === 'function') window.wr2Render();
       // 선택 목록 갱신 후 자동 선택
       const sel = document.getElementById('captureRoomSelectEl');
@@ -17338,7 +17555,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     window._safeSetRooms = function(rooms, onSuccess, onFail) {
       var _trySet = function(attempt) {
         try {
-          localStorage.setItem('wr2_rooms', JSON.stringify(rooms));
+          if(window._idbCache)window._idbCache['wr2_rooms']=rooms;if(window.idbSet)window.idbSet('wr2_rooms',rooms).catch(()=>{});
           if (onSuccess) onSuccess();
           return;
         } catch(e) {
@@ -17392,7 +17609,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         try { window.wr2Init(); } catch (e) { }
       }
       if (window.wr2State && (!window.wr2State.rooms || !window.wr2State.rooms.length)) {
-        try { const r = localStorage.getItem('wr2_rooms'); if (r) window.wr2State.rooms = JSON.parse(r); } catch (e) { }
+        try { const r = window._idbCache && window._idbCache['wr2_rooms']; if (r && r.length) window.wr2State.rooms = r; } catch (e) { }
       }
 
       const imgHtml = `\n\n<img src="${window._captureDataUrl}" style="max-width:100%;border-radius:8px;margin:8px 0;" alt="지도캡처_${new Date().toLocaleString('ko-KR')}" />\n\n`;
@@ -17414,7 +17631,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           }
           if (!room) {
             // fallback: localStorage에서 로드 후 wr2State에 반영
-            const rooms = JSON.parse(localStorage.getItem('wr2_rooms') || '[]');
+            const rooms = (window._idbCache && window._idbCache['wr2_rooms'] || []);
             room = rooms.find(r => r.id === roomId) || null;
             if (room && window.wr2State) window.wr2State.rooms = rooms;
           }
@@ -17817,9 +18034,9 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             if (typeof ntRender === 'function') ntRender();
             showToast('📝 노트에 저장됐어요!', 'ok');
           } else {
-            const notes = JSON.parse(localStorage.getItem('nt_notes') || '[]');
+            const notes = (window._idbCache && window._idbCache['nt_notes'] || []);
             notes.unshift(note);
-            localStorage.setItem('nt_notes', JSON.stringify(notes));
+            if(window._idbCache)window._idbCache['nt_notes']=notes;if(window.idbSet)window.idbSet('nt_notes',notes).catch(()=>{});
             showToast('📝 노트에 저장됐어요!', 'ok');
           }
         } catch (e) { showToast('저장 실패: ' + e.message, 'warn'); }
@@ -18544,7 +18761,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     // ═══════════════════════════════════════════════════
     // 📓 노트 탭 (통합: 노트·유튜브·기사·리포트)
     // ═══════════════════════════════════════════════════
-    let ntNotes = JSON.parse(localStorage.getItem('nt_notes') || '[]');
+    let ntNotes = (window._idbCache && window._idbCache['nt_notes'] || []);
     let ntActiveId = null;
     let ntTypeFilter = 'all';
     let ntTagFilter = null;
@@ -18558,7 +18775,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     const NT_DOMAIN_LABELS = { auction: '⚖️ 경매', tax: '💰 세금', legal: '📋 권리', market: '🏘️ 상권', operation: '🔧 운영', etc: '기타' };
     const NT_PHASE_LABELS = { legal: '⚖️ 권리', field: '📍 임장', profit: '📈 수익', bid: '🎯 입찰', review: '📝 회고' };
 
-    function ntSave() { localStorage.setItem('nt_notes', JSON.stringify(ntNotes)); if (window._sbSaveNtNotes) window._sbSaveNtNotes(ntNotes).catch(e=>{}); }
+    function ntSave() { if(window._idbCache)window._idbCache['nt_notes']=ntNotes;if(window.idbSet)window.idbSet('nt_notes',ntNotes).catch(()=>{}); if (window._sbSaveNtNotes) window._sbSaveNtNotes(ntNotes).catch(e=>{}); }
 
     // v236: 모드 전환
     window.ntSetMode = function (mode) {
@@ -18701,7 +18918,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     // ── 렌더: 목록 (v236 듀얼 모드) ────────────────────
     window.ntRender = function () {
       const q = (document.getElementById('ntSearchInput')?.value || '').toLowerCase();
-      const _sv_nt = JSON.parse(localStorage.getItem('re_sv') || '[]');
+      const _sv_nt = (window._idbCache && window._idbCache['re_sv'] || []);
 
       // 모드별 정렬 기준 (B안: 모드별 독립 정렬)
       const sortFn = (a, b) => (new Date(b.updatedAt || b.createdAt || 0).getTime()) - (new Date(a.updatedAt || a.createdAt || 0).getTime());
@@ -18807,7 +19024,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       // 연결 물건 1줄 표시용 데이터 준비
       let _linkedHtml = '';
       if (note.linkedItemId) {
-        const _sv = JSON.parse(localStorage.getItem('re_sv') || '[]');
+        const _sv = (window._idbCache && window._idbCache['re_sv'] || []);
         const _it = _sv.find(s => s.id === note.linkedItemId);
         if (_it) {
           const _stage = _it.group || '기본';
@@ -19333,7 +19550,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           const data = await r.json();
           if (data && data.items && data.items.length) {
             // localStorage에 병합 저장
-            let existing = JSON.parse(localStorage.getItem('ins_news') || '[]');
+            let existing = (window._idbCache && window._idbCache['ins_news'] || []);
             let added = 0;
             data.items.forEach(item => {
               const dup = existing.find(e => e.link === item.link || e.title === item.title);
@@ -19351,7 +19568,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
               }
             });
             if (added > 0) {
-              localStorage.setItem('ins_news', JSON.stringify(existing));
+              if(window._idbCache)window._idbCache['ins_news']=existing;if(window.idbSet)window.idbSet('ins_news',existing).catch(()=>{});
               newsClips = existing;
               showToast(`📰 뉴스 ${added}건 자동 로드됨`, 'ok');
               if (typeof renderNewsClips === 'function') renderNewsClips();
@@ -20024,7 +20241,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             };
             window.wr2State.sections.push(newSec);
           }
-          localStorage.setItem('wr2_sections', JSON.stringify(window.wr2State.sections));
+          if(window._idbCache)window._idbCache['wr2_sections']=window.wr2State.sections;if(window.idbSet)window.idbSet('wr2_sections',window.wr2State.sections).catch(()=>{});
 
           // ② 개요탭 노트 위젯(room.note)에도 추가 → 어느 탭에서든 바로 확인 가능
           const _room = window.wr2State.rooms.find(r => r.id === roomId);
@@ -20037,7 +20254,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             _tgtNote.body = (_tgtNote.body || '') + sep + content;
             _tgtNote.updatedAt = Date.now();
             _room.updatedAt = Date.now();
-            localStorage.setItem('wr2_rooms', JSON.stringify(window.wr2State.rooms));
+            if(window._idbCache)window._idbCache['wr2_rooms']=window.wr2State.rooms;if(window.idbSet)window.idbSet('wr2_rooms',window.wr2State.rooms).catch(()=>{});
           }
 
           // ③ 해당 작업룸 열고 단계탭으로 이동
@@ -20148,14 +20365,14 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     // 📰 뉴스 클리핑 - 네이버 자동수집 + Gemini 분석
     // ═══════════════════════════════════════════════════
 
-    let newsClips = JSON.parse(localStorage.getItem('ins_news') || '[]');
-    let newsKeywords = JSON.parse(localStorage.getItem('ins_kw') || '["상가 경매","토지 경매","경매 낙찰가율","GTX 호재","상권 개발"]');
-    let newsFeedCache = JSON.parse(localStorage.getItem('ins_feed') || '{}'); // {keyword: [{title,link,pubDate,description}]}
+    let newsClips = (window._idbCache && window._idbCache['ins_news'] || []);
+    let newsKeywords = (window._idbCache && window._idbCache['ins_kw'] || ["상가 경매", "토지 경매", "경매 낙찰가율", "GTX 호재", "상권 개발"]);
+    let newsFeedCache = (window._idbCache && window._idbCache['ins_feed'] || {}); // {keyword: [{title,link,pubDate,description}]}
     let newsFeedActiveKw = null; // 현재 보여주는 키워드 (null=전체)
 
-    function saveNewsData() { localStorage.setItem('ins_news', JSON.stringify(newsClips)); }
-    function saveKeywords() { localStorage.setItem('ins_kw', JSON.stringify(newsKeywords)); }
-    function saveFeedCache() { localStorage.setItem('ins_feed', JSON.stringify(newsFeedCache)); }
+    function saveNewsData() { if(window._idbCache)window._idbCache['ins_news']=newsClips;if(window.idbSet)window.idbSet('ins_news',newsClips).catch(()=>{}); }
+    function saveKeywords() { if(window._idbCache)window._idbCache['ins_kw']=newsKeywords;if(window.idbSet)window.idbSet('ins_kw',newsKeywords).catch(()=>{}); }
+    function saveFeedCache() { if(window._idbCache)window._idbCache['ins_feed']=newsFeedCache;if(window.idbSet)window.idbSet('ins_feed',newsFeedCache).catch(()=>{}); }
 
     // ── 네이버 API 키 헬퍼 ─────────────────────────────
     function getNaverKeys() {
@@ -20598,10 +20815,10 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       '낙찰 후 취득세 납부 기한 확인',
     ];
 
-    function loadInvestVars() { return JSON.parse(localStorage.getItem('ins_vars') || JSON.stringify(DEFAULT_VARS)); }
-    function saveInvestVars(vars) { localStorage.setItem('ins_vars', JSON.stringify(vars)); }
-    function loadChecklist() { return JSON.parse(localStorage.getItem('ins_cl') || JSON.stringify(DEFAULT_CL.map((t, i) => ({ id: i, text: t, done: false })))); }
-    function saveChecklist(cl) { localStorage.setItem('ins_cl', JSON.stringify(cl)); }
+    function loadInvestVars() { return JSON.parse((window._idbCache && window._idbCache['ins_vars'] ? JSON.stringify(window._idbCache['ins_vars']) : null) || JSON.stringify(DEFAULT_VARS)); }
+    function saveInvestVars(vars) { if(window._idbCache)window._idbCache['ins_vars']=vars;if(window.idbSet)window.idbSet('ins_vars',vars).catch(()=>{}); }
+    function loadChecklist() { return JSON.parse((window._idbCache && window._idbCache['ins_cl'] ? JSON.stringify(window._idbCache['ins_cl']) : null) || JSON.stringify(DEFAULT_CL.map((t, i) => ({ id: i, text: t, done: false })))); }
+    function saveChecklist(cl) { if(window._idbCache)window._idbCache['ins_cl']=cl;if(window.idbSet)window.idbSet('ins_cl',cl).catch(()=>{}); }
 
     function renderInvestVars() {
       const list = document.getElementById('investVarList'); if (!list) return;
@@ -20693,8 +20910,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     // 📚 지식 카드 시스템
     // ═══════════════════════════════════════════════════
 
-    let kcards = JSON.parse(localStorage.getItem('ins_kcards') || '[]');
-    let kcardCats = JSON.parse(localStorage.getItem('ins_kcat') || '["📐 면적/건축","⚖️ 권리분석","📋 경매 절차","💰 세금/비용","🏘️ 상권/지역"]');
+    let kcards = (window._idbCache && window._idbCache['ins_kcards'] || []);
+    let kcardCats = (window._idbCache && window._idbCache['ins_kcat'] || ["📐 면적/건축", "⚖️ 권리분석", "📋 경매 절차", "💰 세금/비용", "🏘️ 상권/지역"]);
     let kcardEditId = null; // 수정 중인 카드 ID (null=새 카드)
     let kcardActiveCat = '전체'; // 현재 필터 카테고리
 
@@ -20747,8 +20964,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       return 'auction';
     }
 
-    function saveKcards() { localStorage.setItem('ins_kcards', JSON.stringify(kcards)); }
-    function saveKcardCats() { localStorage.setItem('ins_kcat', JSON.stringify(kcardCats)); }
+    function saveKcards() { if(window._idbCache)window._idbCache['ins_kcards']=kcards;if(window.idbSet)window.idbSet('ins_kcards',kcards).catch(()=>{}); }
+    function saveKcardCats() { if(window._idbCache)window._idbCache['ins_kcat']=kcardCats;if(window.idbSet)window.idbSet('ins_kcat',kcardCats).catch(()=>{}); }
 
     // ── 카테고리 탭 렌더 ───────────────────────────────
     function renderKcatTabs() {
@@ -21167,7 +21384,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             })() : '';
 
             // 노트 수
-            const noteCnt = (typeof insNotes !== 'undefined' ? insNotes : (JSON.parse(localStorage.getItem('nt_notes') || '[]'))).filter(n => n.linkedItemId === item.id).length;
+            const noteCnt = (typeof insNotes !== 'undefined' ? insNotes : ((window._idbCache && window._idbCache['nt_notes'] || []))).filter(n => n.linkedItemId === item.id).length;
 
             // 분석 진행도 (연결된 작업룸 기준)
             let progressHtml = '';
@@ -21333,7 +21550,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const item = sv.find(s => s.id === itemId);
       if (!item) { showToast('물건을 찾을 수 없습니다', 'warn'); return; }
       const d = item.data || {};
-      const notes = JSON.parse(localStorage.getItem('ins_notes') || '[]');
+      const notes = (window._idbCache && window._idbCache['ins_notes'] || []);
       const note = {
         id: 'note_' + Date.now(),
         title: (d.소재지 || item.title || item.id).substring(0, 30) + ' 분석',
@@ -21344,7 +21561,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         updatedAt: new Date().toISOString(),
       };
       notes.unshift(note);
-      localStorage.setItem('ins_notes', JSON.stringify(notes));
+      if(window._idbCache)window._idbCache['ins_notes']=notes;if(window.idbSet)window.idbSet('ins_notes',notes).catch(()=>{});
       showInsTab(0);
       setTimeout(() => openNote(note.id), 100);
       showToast('📓 노트가 만들어졌습니다', 'ok');
@@ -21489,7 +21706,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     // ═══════════════════════════════════════════════════
     function loadAutoBriefing() {
       try {
-        const clips = JSON.parse(localStorage.getItem('news_auto_clips') || '[]');
+        const clips = (window._idbCache && window._idbCache['news_auto_clips'] || []);
         if (!clips.length) return;
         const latest = clips[0];
         const banner = document.getElementById('autoBriefingBanner');
@@ -21519,7 +21736,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
     function expandAutoBriefing() {
       try {
-        const clips = JSON.parse(localStorage.getItem('news_auto_clips') || '[]');
+        const clips = (window._idbCache && window._idbCache['news_auto_clips'] || []);
         if (!clips.length) { showToast('저장된 브리핑이 없습니다', 'warn'); return; }
         const latest = clips[0];
         const modal = document.getElementById('autoBriefModal');
@@ -21728,7 +21945,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       // 뉴스 컨텍스트 (news_clipper.py 연결)
       let newsContext = '(뉴스 데이터 없음)';
       try {
-        const clips = JSON.parse(localStorage.getItem('news_auto_clips') || '[]');
+        const clips = (window._idbCache && window._idbCache['news_auto_clips'] || []);
         if (clips.length) {
           const arts = clips[0].analysis?.articles || [];
           newsContext = arts.slice(0, 15).map(a => `- ${a.title}: ${a.one_line || ''}`).join('\n');
@@ -26042,7 +26259,7 @@ ${newsContext}
         get: function () {
           // nt 시스템 우선, 없으면 ins_notes fallback
           if (typeof ntNotes !== 'undefined') return ntNotes;
-          try { return JSON.parse(localStorage.getItem('nt_notes') || '[]'); } catch (e) { return []; }
+          try { return (window._idbCache && window._idbCache['nt_notes'] || []); } catch (e) { return []; }
         },
         configurable: true
       });
@@ -27519,7 +27736,7 @@ ${newsContext}
           const RE_NOISE  = /(와인|달항아리|포켓몬|골동품|예술품|그림|조각|미술|주식|코인|가상화폐|암호화폐|NFT|스포츠|야구|축구|농구|골프|배구|연예|영화|드라마|음악|콘서트|게임|아이돌)/;
 
           // 저장된 키워드 우선, 없으면 기본값
-          const savedKws  = JSON.parse(localStorage.getItem('ins_kw') || '[]');
+          const savedKws  = (window._idbCache && window._idbCache['ins_kw'] || []);
           const defaultKws = ['부동산 법원경매', '아파트 낙찰가율', '상가 오피스텔 경매', '토지 단독주택 경매', '부동산 대출 규제', '재건축 재개발 시장', 'GTX 역세권 분양', '전세 임대 시장'];
           const keywords  = savedKws.length > 0 ? savedKws : defaultKws;
 
