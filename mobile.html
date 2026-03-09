@@ -1734,6 +1734,7 @@ body {
       <button class="mb-ins-tab" id="mb-itab-calc"        onclick="mbInsTab('calc')" role="tab">🧮 계산기</button>
       <button class="mb-ins-tab" id="mb-itab-pipe"        onclick="mbInsTab('pipe')" role="tab">🎯 파이프라인</button>
       <button class="mb-ins-tab" id="mb-itab-site"        onclick="mbInsTab('site')" role="tab">🔗 사이트</button>
+      <button class="mb-ins-tab" id="mb-itab-clipping"    onclick="mbInsTab('clipping')" role="tab">📰 클리핑</button>
     </nav>
 
     <!-- 노트 패널 -->
@@ -2190,11 +2191,17 @@ body {
         <a href="https://www.jompoline.com" target="_blank" class="mb-btn" style="justify-content:flex-start;text-decoration:none;">🔵 점포라인</a>
         <a href="https://assa.jum.co.kr" target="_blank" class="mb-btn" style="justify-content:flex-start;text-decoration:none;">🔷 아싸점포</a>
         <a href="https://rt.molit.go.kr" target="_blank" class="mb-btn" style="justify-content:flex-start;text-decoration:none;">📊 실거래가 공개</a>
+    </div>
+    <!-- 클리핑 패널 -->
+    <div id="mb-ins-clipping" class="mb-ins-panel">
+      <div id="mb-clipping-list" style="display:flex;flex-direction:column;gap:8px;">
+        <div style="text-align:center;padding:50px 0;color:var(--di);">
+          <div style="font-size:36px;margin-bottom:10px;">📰</div>
+          <div style="font-size:13px;">클리핑 콘텐츠가 없어요</div>
+        </div>
       </div>
     </div>
   </div>
-
-  <!-- ════════ [2] 지도 페이지 ════════ -->
   <div id="mb-page-map" class="mb-page">
     <!-- 카카오 지도 컨테이너 -->
     <div id="mb-map-container">
@@ -2798,7 +2805,7 @@ body {
   };
 
   /* ── 인사이트 서브탭 ── */
-  var INS_PANELS = ['note','calc','room','pipe','clip','site'];
+  var INS_PANELS = ['note','calc','room','pipe','clip','site','clipping'];
   var _mbLastInsTab = 'room';
   try { _mbLastInsTab = localStorage.getItem('mb_ins_tab') || 'room'; } catch(e) {}
   window.mbInsTab = function(name) {
@@ -6231,8 +6238,14 @@ window.mbKcardImgSelect = function(inp) {
 function _mbKcardProcessFiles(files) {
   files.forEach(function(f) {
     var reader = new FileReader();
-    reader.onload = function(e) {
-      _mbKcardImgs.push(e.target.result);
+    reader.onload = async function(e) {
+      var dataUrl = e.target.result;
+      if (window._sbUploadImage) {
+        var url = await window._sbUploadImage(dataUrl, 'kcards/' + Date.now() + '_' + f.name);
+        _mbKcardImgs.push(url || dataUrl);
+      } else {
+        _mbKcardImgs.push(dataUrl);
+      }
       _mbKcardRenderImgPreview();
     };
     reader.readAsDataURL(f);

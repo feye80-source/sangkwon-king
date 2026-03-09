@@ -98,6 +98,54 @@
       await sbSet(table, 'main', { value: arr });
     }
 
+    // ─── Storage: 이미지 업로드/삭제 ──────────────────────────
+    // 버킷: attachments (Supabase 대시보드에서 public 버킷으로 생성 필요)
+    const SB_BUCKET = 'attachments';
+
+    window._sbUploadImage = async function(dataUrl, path) {
+      // dataUrl: "data:image/jpeg;base64,..." 또는 base64 string
+      try {
+        let base64, mimeType;
+        if (dataUrl.startsWith('data:')) {
+          const [meta, data] = dataUrl.split(',');
+          base64 = data;
+          mimeType = meta.match(/:(.*?);/)[1];
+        } else {
+          base64 = dataUrl;
+          mimeType = 'image/jpeg';
+        }
+        // base64 → Uint8Array
+        const binary = atob(base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        const blob = new Blob([bytes], { type: mimeType });
+        const ext = mimeType.split('/')[1] || 'jpg';
+        const fullPath = path || ('img_' + Date.now() + '_' + Math.random().toString(36).slice(2) + '.' + ext);
+
+        const { data, error } = await window._sb.storage.from(SB_BUCKET).upload(fullPath, blob, {
+          contentType: mimeType, upsert: true
+        });
+        if (error) throw error;
+
+        const { data: urlData } = window._sb.storage.from(SB_BUCKET).getPublicUrl(fullPath);
+        return urlData.publicUrl;
+      } catch(e) {
+        console.warn('[SB Storage] upload error', e);
+        return null;
+      }
+    };
+
+    window._sbDeleteImage = async function(url) {
+      try {
+        // URL에서 path 추출
+        const marker = '/object/public/' + SB_BUCKET + '/';
+        const idx = url.indexOf(marker);
+        if (idx < 0) return;
+        const path = url.slice(idx + marker.length);
+        await window._sb.storage.from(SB_BUCKET).remove([path]);
+      } catch(e) { console.warn('[SB Storage] delete error', e); }
+    };
+
     // ─── 동기화 상태 표시 ─────────────────────────────────────
     window._sbSyncStatus = function(msg, ok) {
       let el = document.getElementById('_sbStatusBar');
@@ -1575,7 +1623,8 @@
                   const files = room.attachments || [];
                   el.innerHTML = files.map((f, i) => {
                     if (f.type === 'image') {
-                      return `<div class="wr2-attach-item"><img class="wr2-attach-img" src="${f.data}" title="${f.name}"><button class="wr2-attach-del" onclick="wr2DelAttach(${i})">✕</button></div>`;
+                      const src = f.url || f.data || '';
+                      return `<div class="wr2-attach-item"><img class="wr2-attach-img" src="${src}" title="${f.name}" onclick="window.open('${src}','_blank')"><button class="wr2-attach-del" onclick="wr2DelAttach(${i})">✕</button></div>`;
                     }
                     return `<div class="wr2-attach-item"><div class="wr2-attach-file">📎 ${f.name}</div><button class="wr2-attach-del" onclick="wr2DelAttach(${i})">✕</button></div>`;
                   }).join('');
@@ -2054,14 +2103,27 @@
                   if (!room.attachments) room.attachments = [];
                   let done = 0;
                   files.forEach(file => {
-                    const reader = new FileReader();
-                    reader.onload = e => {
-                      const isImg = file.type.startsWith('image/');
-                      room.attachments.push({ name: file.name, type: isImg ? 'image' : 'file', data: e.target.result });
-                      room.updatedAt = Date.now(); done++;
-                      if (done === files.length) { saveRooms(); renderAttachments(room); }
-                    };
-                    reader.readAsDataURL(file);
+                    const isImg = file.type.startsWith('image/');
+                    if (isImg && window._sbUploadImage) {
+                      // 이미지 → Supabase Storage 업로드
+                      const reader = new FileReader();
+                      reader.onload = async e => {
+                        const url = await window._sbUploadImage(e.target.result, 'rooms/' + (room.id||'r') + '/' + Date.now() + '_' + file.name);
+                        room.attachments.push({ name: file.name, type: 'image', url: url || e.target.result });
+                        room.updatedAt = Date.now(); done++;
+                        if (done === files.length) { saveRooms(); renderAttachments(room); }
+                      };
+                      reader.readAsDataURL(file);
+                    } else {
+                      // 일반 파일 → base64 유지 (이미지 아닌 파일은 용량 작음)
+                      const reader = new FileReader();
+                      reader.onload = e => {
+                        room.attachments.push({ name: file.name, type: 'file', data: e.target.result });
+                        room.updatedAt = Date.now(); done++;
+                        if (done === files.length) { saveRooms(); renderAttachments(room); }
+                      };
+                      reader.readAsDataURL(file);
+                    }
                   });
                 }
 
@@ -19094,10 +19156,16 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const files = Array.from(input.files);
       let loaded = 0;
       files.forEach(file => {
+        const isImg = file.type.startsWith('image/');
         const reader = new FileReader();
-        reader.onload = e => {
+        reader.onload = async e => {
           if (!note.attachments) note.attachments = [];
-          note.attachments.push({ name: file.name, type: file.type, data: e.target.result });
+          if (isImg && window._sbUploadImage) {
+            const url = await window._sbUploadImage(e.target.result, 'notes/' + id + '/' + Date.now() + '_' + file.name);
+            note.attachments.push({ name: file.name, type: file.type, url: url || e.target.result });
+          } else {
+            note.attachments.push({ name: file.name, type: file.type, data: e.target.result });
+          }
           note.updatedAt = new Date().toISOString();
           loaded++;
           if (loaded === files.length) { ntSave(); ntOpen(id); showToast('📎 파일 첨부 완료', 'ok'); }
@@ -19113,8 +19181,10 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     window.ntUtPreviewAtt = function (id, atti) {
       const note = ntNotes.find(n => n.id === id); if (!note || !note.attachments[atti]) return;
       const att = note.attachments[atti];
+      const src = att.url || att.data || '';
+      if (!src) return;
       const w = window.open('', '_blank');
-      w.document.write(`<html><body style="margin:0;background:#000;display:flex;align-items:center;justify-content:center;min-height:100vh;"><img src="${att.data}" style="max-width:100%;max-height:100vh;object-fit:contain;"><\/body><\/html>`);
+      w.document.write(`<html><body style="margin:0;background:#000;display:flex;align-items:center;justify-content:center;min-height:100vh;"><img src="${src}" style="max-width:100%;max-height:100vh;object-fit:contain;"><\/body><\/html>`);
     };
 
     // ── 뉴스 clip JSON 자동 로드 (news_clipper.py 연동) ──
@@ -27742,7 +27812,20 @@ function pcHandleImgDrop(e){
 }
 function pcHandleImgSelect(inp){ _pcProcessImgFiles(Array.from(inp.files)); inp.value=''; }
 function _pcProcessImgFiles(files){
-  files.forEach(function(f){ var r=new FileReader(); r.onload=function(ev){_pcKcardImgs.push(ev.target.result);_pcRenderImgPreview();}; r.readAsDataURL(f); });
+  files.forEach(function(f){
+    var r=new FileReader();
+    r.onload=async function(ev){
+      var dataUrl=ev.target.result;
+      if(window._sbUploadImage){
+        var url=await window._sbUploadImage(dataUrl,'kcards/'+Date.now()+'_'+f.name);
+        _pcKcardImgs.push(url||dataUrl);
+      } else {
+        _pcKcardImgs.push(dataUrl);
+      }
+      _pcRenderImgPreview();
+    };
+    r.readAsDataURL(f);
+  });
 }
 function _pcRenderImgPreview(){
   var el=document.getElementById('kcardImgPreview'); if(!el) return;
