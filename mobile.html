@@ -992,14 +992,6 @@ body {
 
   #mb-map-bs-backdrop {
     display:none;
-    position:fixed;
-    inset:0;
-    z-index:899;
-    background:transparent;
-    cursor:pointer;
-  }
-  #mb-map-bs-backdrop.open {
-    display:block;
   }
   #mb-map-bs {
     position:fixed; left:0; right:0; bottom:0; z-index:900;
@@ -2472,16 +2464,12 @@ body {
           var pv = document.createElement('div');
           pv.className = 'mb-sv-price-value';
           pv.style.color = p.color;
-          // 숫자에 콤마 포맷
-          var _pval = p.val;
-          if (typeof _pval === 'number') {
-            pv.textContent = Math.round(_pval).toLocaleString('ko-KR');
-          } else if (typeof _pval === 'string') {
-            pv.textContent = _pval.replace(/\d+/g, function(m) {
-              return parseInt(m, 10).toLocaleString('ko-KR');
-            });
+          if (typeof p.val === 'number') {
+            pv.textContent = Math.round(p.val).toLocaleString('ko-KR');
+          } else if (typeof p.val === 'string') {
+            pv.textContent = p.val.replace(/\d+/g, function(m) { return parseInt(m,10).toLocaleString('ko-KR'); });
           } else {
-            pv.textContent = _pval;
+            pv.textContent = p.val;
           }
           pi.appendChild(pl);
           pi.appendChild(pv);
@@ -3740,6 +3728,10 @@ body {
       document.getElementById('mbKcardBody').value = '';
       document.getElementById('mbKcardTags').value = '';
       document.getElementById('mbKcardYt').value = '';
+      window._mbKcardPendingImgs = [];
+      window.mbKcardSelectBg('');
+      var prev = document.getElementById('mbKcardImgPreview');
+      if (prev) prev.innerHTML = '';
     }
 
     modal.style.display = 'flex';
@@ -3749,6 +3741,48 @@ body {
     var modal = document.getElementById('mbKcardModal');
     if (modal) modal.style.display = 'none';
     _mbKcardEditId = null;
+  };
+
+  // 배경색 선택
+  window._mbKcardSelectedBg = '';
+  window.mbKcardSelectBg = function(color) {
+    window._mbKcardSelectedBg = color;
+    // 모든 팔레트 테두리 초기화
+    var picker = document.getElementById('mbKcardBgPicker');
+    if (!picker) return;
+    picker.querySelectorAll('div').forEach(function(d) {
+      d.style.border = '2px solid transparent';
+      d.innerHTML = '';
+    });
+    // 선택된 것 표시
+    var key = color ? color.replace('#','') : 'default';
+    var sel = document.getElementById('mbKcardBg_' + key);
+    if (sel) {
+      sel.style.border = '2px solid var(--ac)';
+      sel.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:11px;color:' + (color ? '#1a1a2e' : '#fff') + ';">✓</div>';
+    }
+  };
+
+  // 이미지 선택
+  window.mbKcardImgPick = function(input) {
+    if (!input.files || !input.files[0]) return;
+    var file = input.files[0];
+    if (file.size > 5*1024*1024) { alert('5MB 이하 이미지만 첨부 가능해요'); return; }
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      if (!window._mbKcardPendingImgs) window._mbKcardPendingImgs = [];
+      window._mbKcardPendingImgs = [e.target.result]; // 1장만
+      var prev = document.getElementById('mbKcardImgPreview');
+      if (prev) {
+        prev.innerHTML = '<div style="position:relative;display:inline-block;">' +
+          '<img src="' + e.target.result + '" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--b1);">' +
+          '<button onclick="window._mbKcardPendingImgs=[];document.getElementById('mbKcardImgPreview').innerHTML='';document.getElementById('mbKcardImgInput').value='';" ' +
+          'style="position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;background:#ff6370;border:none;color:#fff;font-size:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;">✕</button>' +
+          '</div>';
+      }
+      input.value = '';
+    };
+    reader.readAsDataURL(file);
   };
 
   window.mbSaveKcard = function() {
@@ -3769,10 +3803,13 @@ body {
       if (card) {
         card.title = title; card.body = body; card.tags = tags;
         card.cat = _mbKcardSelectedCat; card.updatedAt = now; card.ytUrl = ytUrl;
+        card.bgColor = window._mbKcardSelectedBg || card.bgColor || '';
+        if (window._mbKcardPendingImgs && window._mbKcardPendingImgs.length) card.imgs = window._mbKcardPendingImgs;
       }
     } else {
       kcards.unshift({ id:'kc_'+Date.now(), title:title, body:body, tags:tags,
-        cat:_mbKcardSelectedCat, createdAt:now, updatedAt:now, ytUrl:ytUrl, imgs:[], bgColor:'' });
+        cat:_mbKcardSelectedCat, createdAt:now, updatedAt:now, ytUrl:ytUrl,
+        imgs: window._mbKcardPendingImgs || [], bgColor: window._mbKcardSelectedBg || '' });
     }
 
     if (window._idbCache) window._idbCache['ins_kcards'] = kcards;
@@ -3841,20 +3878,28 @@ body {
     if (!body) return;
     var html = '';
 
-    // 썸네일
+    // 썸네일 — 유튜브: 탭하면 인앱 재생 / 이미지: 탭하면 전체화면
     var ytId = null;
     if (card.ytUrl) {
-      var ytM = card.ytUrl.match(/(?:v=|youtu\.be\/)([\\w-]{11})/);
+      var ytM = card.ytUrl.match(/(?:v=|youtu\.be\/)([A-Za-z0-9_-]{11})/);
       if (ytM) ytId = ytM[1];
     }
     if (ytId) {
-      html += '<div style="position:relative;width:100%;padding-top:56.25%;overflow:hidden;background:#000;border-radius:10px;margin-bottom:14px;">' +
-        '<img src="https://img.youtube.com/vi/' + ytId + '/hqdefault.jpg" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;">' +
-        '<a href="' + card.ytUrl + '" target="_blank" onclick="window.open(this.href,\'_blank\');return false;" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-decoration:none;">' +
-        '<div style="width:48px;height:48px;background:rgba(255,0,0,.9);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:20px;margin-left:4px;">▶</div></a></div>';
+      var _safeUrl = card.ytUrl.replace(/'/g,'');
+      html += '<div id="mbDtYtThumb" style="position:relative;width:100%;padding-top:56.25%;overflow:hidden;background:#000;border-radius:10px;margin-bottom:14px;cursor:pointer;" onclick="mbDtPlayYt(\'' + ytId + '\')">' +
+        '<img src="https://img.youtube.com/vi/' + ytId + '/hqdefault.jpg" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;">' +
+        '<div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;">' +
+        '<div style="width:56px;height:56px;background:rgba(255,0,0,.92);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:24px;padding-left:4px;">▶</div>' +
+        '<span style="color:#fff;font-size:12px;background:rgba(0,0,0,.55);padding:4px 12px;border-radius:12px;">탭하여 재생</span>' +
+        '</div></div>' +
+        '<div id="mbDtYtFrame" style="display:none;position:relative;width:100%;padding-top:56.25%;border-radius:10px;overflow:hidden;margin-bottom:14px;">' +
+        '<iframe id="mbDtYtIframe" src="" style="position:absolute;inset:0;width:100%;height:100%;border:none;" allowfullscreen allow="autoplay;encrypted-media;fullscreen;picture-in-picture;web-share" referrerpolicy="strict-origin-when-cross-origin"></iframe>' +
+        '</div>';
     } else if (card.imgs && card.imgs.length) {
-      html += '<div style="border-radius:10px;overflow:hidden;margin-bottom:14px;background:#111;">' +
-        '<img src="' + card.imgs[0] + '" style="width:100%;height:auto;display:block;object-fit:contain;max-height:300px;"></div>';
+      html += '<div style="position:relative;border-radius:10px;overflow:hidden;margin-bottom:14px;background:#111;cursor:pointer;" onclick="mbDtImgFull(this.querySelector(\'img\').src)">' +
+        '<img src="' + card.imgs[0] + '" style="width:100%;height:auto;display:block;object-fit:contain;max-height:280px;">' +
+        '<div style="position:absolute;bottom:0;left:0;right:0;padding:6px;text-align:center;font-size:10px;color:rgba(255,255,255,.7);background:rgba(0,0,0,.4);">🔍 탭하여 전체화면</div>' +
+        '</div>';
     }
 
     // 제목
@@ -3889,6 +3934,34 @@ body {
     if (modal) modal.style.display = 'none';
     document.body.style.overflow = '';
   };
+  // 유튜브 인앱 재생
+  window.mbDtPlayYt = function(ytId) {
+    var thumb = document.getElementById('mbDtYtThumb');
+    var frame = document.getElementById('mbDtYtFrame');
+    var iframe = document.getElementById('mbDtYtIframe');
+    if (!frame || !iframe) return;
+    if (thumb) thumb.style.display = 'none';
+    iframe.src = 'https://www.youtube.com/embed/' + ytId + '?autoplay=1&playsinline=1';
+    frame.style.display = 'block';
+  };
+
+  // 이미지 전체화면
+  window.mbDtImgFull = function(src) {
+    var ov = document.getElementById('_mbImgFsOv');
+    if (!ov) {
+      ov = document.createElement('div');
+      ov.id = '_mbImgFsOv';
+      ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.96);display:flex;align-items:center;justify-content:center;';
+      ov.innerHTML = '<img id="_mbImgFsImg" style="max-width:100%;max-height:100%;object-fit:contain;">' +
+        '<button onclick="document.getElementById('_mbImgFsOv').style.display='none'" ' +
+        'style="position:absolute;top:16px;right:16px;background:rgba(0,0,0,.6);border:none;color:#fff;font-size:22px;width:44px;height:44px;border-radius:50%;cursor:pointer;">✕</button>';
+      ov.onclick = function(e){ if(e.target===ov) ov.style.display='none'; };
+      document.body.appendChild(ov);
+    }
+    document.getElementById('_mbImgFsImg').src = src;
+    ov.style.display = 'flex';
+  };
+
 
   window.mbRenderKcards = function() {
     if (typeof window._kcardsSyncFromCache === 'function') window._kcardsSyncFromCache();
@@ -3942,22 +4015,9 @@ body {
       var d = new Date(card.createdAt).toLocaleDateString('ko-KR', {month:'numeric', day:'numeric'});
       var cardBg = (!card.ytUrl && (!card.imgs || !card.imgs.length) && card.bgColor)
         ? card.bgColor : 'var(--s1)';
-      // 밝은 배경색이면 텍스트 어둡게
-      var _isLight = false;
-      if (card.bgColor && !card.ytUrl && (!card.imgs || !card.imgs.length)) {
-        try {
-          var _h = card.bgColor.replace('#','');
-          var _r = parseInt(_h.slice(0,2),16), _g = parseInt(_h.slice(2,4),16), _b = parseInt(_h.slice(4,6),16);
-          _isLight = (_r*299+_g*587+_b*114)/1000 > 160;
-        } catch(e2) {}
-      }
-      var _txColor = _isLight ? '#1a1a2e' : 'var(--tx)';
-      var _muColor = _isLight ? '#44475a' : 'var(--mu)';
-      var _diColor = _isLight ? '#6272a4' : 'var(--di)';
-      var _b1Color = _isLight ? 'rgba(0,0,0,0.12)' : 'var(--b1)';
 
       var wrap = document.createElement('div');
-      wrap.style.cssText = 'background:' + cardBg + ';border:1px solid ' + _b1Color + ';'
+      wrap.style.cssText = 'background:' + cardBg + ';border:1px solid var(--b1);'
         + 'border-top:3px solid ' + color + ';border-radius:8px;overflow:hidden;cursor:pointer;'
         + 'display:flex;flex-direction:column;min-height:140px;';
 
@@ -3975,7 +4035,7 @@ body {
       }
       if (ytId) {
         var tDiv = document.createElement('div');
-        tDiv.style.cssText = 'width:100%;padding-top:56.25%;position:relative;background:#000;flex-shrink:0;overflow:hidden;';
+        tDiv.style.cssText = 'width:100%;padding-top:56.25%;position:relative;background:#000;flex-shrink:0;overflow:hidden;cursor:pointer;';
         tDiv.innerHTML = '<img src="https://img.youtube.com/vi/' + ytId + '/hqdefault.jpg"'
           + ' style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;" loading="lazy">'
           + '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;">'
@@ -4036,7 +4096,7 @@ body {
       body.appendChild(hdr);
 
       var titleDiv = document.createElement('div');
-      titleDiv.style.cssText = 'font-size:13px;font-weight:700;color:' + _txColor + ';margin-bottom:5px;';
+      titleDiv.style.cssText = 'font-size:13px;font-weight:700;color:var(--tx);margin-bottom:5px;';
       titleDiv.textContent = card.title || '';
       body.appendChild(titleDiv);
 
@@ -4051,7 +4111,7 @@ body {
       // 요약 텍스트
       plainLines.slice(0, 2).forEach(function(l) {
         var p = document.createElement('div');
-        p.style.cssText = 'font-size:11px;color:' + _muColor + ';line-height:1.6;margin-bottom:2px;';
+        p.style.cssText = 'font-size:11px;color:var(--mu);line-height:1.6;margin-bottom:2px;';
         p.textContent = l;
         body.appendChild(p);
       });
@@ -4064,7 +4124,7 @@ body {
         var pt = document.createElement('div');
         pt.style.cssText = 'display:flex;align-items:flex-start;gap:5px;padding:4px 7px;'
           + 'background:' + color + '0d;border-left:2px solid ' + color + ';'
-          + 'border-radius:0 4px 4px 0;font-size:11px;color:' + _txColor + ';line-height:1.5;';
+          + 'border-radius:0 4px 4px 0;font-size:11px;color:var(--tx);line-height:1.5;';
         pt.textContent = txt;
         pointWrap.appendChild(pt);
       });
@@ -4072,7 +4132,7 @@ body {
 
       if (bodyLines.length > 5) {
         var more = document.createElement('div');
-        more.style.cssText = 'font-size:10px;color:' + _diColor + ';margin-top:2px;';
+        more.style.cssText = 'font-size:10px;color:var(--di);margin-top:2px;';
         more.textContent = '+' + (bodyLines.length - 5) + '줄 더...';
         body.appendChild(more);
       }
@@ -4080,7 +4140,7 @@ body {
 
       /* 푸터 */
       var footer = document.createElement('div');
-      footer.style.cssText = 'padding:6px 12px;border-top:1px solid ' + _b1Color + ';'
+      footer.style.cssText = 'padding:6px 12px;border-top:1px solid var(--b1);'
         + 'display:flex;align-items:center;gap:5px;flex-wrap:wrap;';
       (card.tags || []).forEach(function(t) {
         var tag = document.createElement('span');
@@ -4591,18 +4651,18 @@ body {
 
 <!-- ════ 알짜카드 에디터 모달 (모바일) ════ -->
 <div id="mbKcardModal" style="display:none;position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.7);align-items:flex-end;">
-  <div style="background:var(--s1);border-radius:20px 20px 0 0;width:100%;max-height:90vh;display:flex;flex-direction:column;padding-bottom:env(safe-area-inset-bottom,0px);">
+  <div style="background:var(--s1);border-radius:20px 20px 0 0;width:100%;height:92%;display:flex;flex-direction:column;">
     <!-- 핸들 -->
-    <div style="display:flex;justify-content:center;padding:10px 0 4px;">
+    <div style="display:flex;justify-content:center;padding:10px 0 4px;flex-shrink:0;">
       <div style="width:40px;height:4px;background:var(--b2);border-radius:2px;"></div>
     </div>
     <!-- 헤더 -->
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:4px 16px 12px;flex-shrink:0;">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:4px 16px 10px;flex-shrink:0;">
       <span id="mbKcardModalTitle" style="font-size:16px;font-weight:800;color:var(--tx);">+ 새 카드</span>
       <button onclick="window.mbCloseKcardModal()" style="width:32px;height:32px;border-radius:50%;background:var(--s3);border:1px solid var(--b2);color:var(--mu);font-size:15px;cursor:pointer;">✕</button>
     </div>
     <!-- 스크롤 영역 -->
-    <div style="flex:1;overflow-y:auto;padding:0 16px 16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 16px 8px;display:flex;flex-direction:column;gap:12px;min-height:0;">
       <!-- 카테고리 -->
       <div>
         <div style="font-size:11px;color:var(--mu);margin-bottom:6px;font-weight:600;">카테고리</div>
@@ -4611,28 +4671,65 @@ body {
       <!-- 제목 -->
       <div>
         <div style="font-size:11px;color:var(--mu);margin-bottom:6px;font-weight:600;">제목 *</div>
-        <input id="mbKcardTitle" type="text" placeholder="카드 제목"
+        <input id="mbKcardTitle" type="text" placeholder="카드 제목" enterkeyhint="next"
           style="width:100%;box-sizing:border-box;padding:10px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:10px;color:var(--tx);font-size:14px;font-family:inherit;outline:none;">
       </div>
       <!-- 내용 -->
       <div>
         <div style="font-size:11px;color:var(--mu);margin-bottom:6px;font-weight:600;">내용</div>
         <textarea id="mbKcardBody" placeholder="내용 입력 (• 또는 - 로 시작하면 핵심 포인트로 표시)"
-          style="width:100%;box-sizing:border-box;padding:10px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:10px;color:var(--tx);font-size:13px;font-family:inherit;outline:none;resize:none;height:120px;line-height:1.6;"></textarea>
+          style="width:100%;box-sizing:border-box;padding:10px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:10px;color:var(--tx);font-size:13px;font-family:inherit;outline:none;resize:none;height:100px;line-height:1.6;"></textarea>
       </div>
       <!-- 태그 -->
       <div>
         <div style="font-size:11px;color:var(--mu);margin-bottom:6px;font-weight:600;">태그 (쉼표로 구분)</div>
-        <input id="mbKcardTags" type="text" placeholder="예: 경매, 낙찰"
+        <input id="mbKcardTags" type="text" placeholder="예: 경매, 낙찰" enterkeyhint="next"
           style="width:100%;box-sizing:border-box;padding:10px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:10px;color:var(--tx);font-size:13px;font-family:inherit;outline:none;">
       </div>
       <!-- 유튜브 URL -->
       <div>
         <div style="font-size:11px;color:var(--mu);margin-bottom:6px;font-weight:600;">유튜브 URL (선택)</div>
-        <input id="mbKcardYt" type="text" placeholder="https://youtube.com/..."
+        <input id="mbKcardYt" type="url" inputmode="url" placeholder="https://youtube.com/..." enterkeyhint="done"
           style="width:100%;box-sizing:border-box;padding:10px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:10px;color:var(--tx);font-size:13px;font-family:inherit;outline:none;">
       </div>
-      <!-- 저장 버튼 -->
+      <!-- 이미지 첨부 -->
+      <div>
+        <div style="font-size:11px;color:var(--mu);margin-bottom:6px;font-weight:600;">이미지 첨부 (선택)</div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <label style="display:flex;align-items:center;gap:6px;padding:8px 14px;background:var(--s2);border:1px dashed var(--b2);border-radius:10px;cursor:pointer;font-size:12px;color:var(--mu);">
+            📎 사진 선택
+            <input id="mbKcardImgInput" type="file" accept="image/*" style="display:none;" onchange="window.mbKcardImgPick(this)">
+          </label>
+          <div id="mbKcardImgPreview" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
+        </div>
+      </div>
+      <!-- 배경색 -->
+      <div>
+        <div style="font-size:11px;color:var(--mu);margin-bottom:6px;font-weight:600;">카드 배경색</div>
+        <div style="display:flex;gap:7px;flex-wrap:wrap;" id="mbKcardBgPicker">
+          <div onclick="window.mbKcardSelectBg('')" id="mbKcardBg_default"
+            style="width:28px;height:28px;border-radius:50%;background:#2a2d3a;border:2px solid var(--ac);cursor:pointer;position:relative;" title="기본">
+            <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;">✓</div>
+          </div>
+          <div onclick="window.mbKcardSelectBg('#fef08a')" id="mbKcardBg_fef08a"
+            style="width:28px;height:28px;border-radius:50%;background:#fef08a;border:2px solid transparent;cursor:pointer;" title="노랑"></div>
+          <div onclick="window.mbKcardSelectBg('#86efac')" id="mbKcardBg_86efac"
+            style="width:28px;height:28px;border-radius:50%;background:#86efac;border:2px solid transparent;cursor:pointer;" title="민트"></div>
+          <div onclick="window.mbKcardSelectBg('#93c5fd')" id="mbKcardBg_93c5fd"
+            style="width:28px;height:28px;border-radius:50%;background:#93c5fd;border:2px solid transparent;cursor:pointer;" title="하늘"></div>
+          <div onclick="window.mbKcardSelectBg('#f9a8d4')" id="mbKcardBg_f9a8d4"
+            style="width:28px;height:28px;border-radius:50%;background:#f9a8d4;border:2px solid transparent;cursor:pointer;" title="핑크"></div>
+          <div onclick="window.mbKcardSelectBg('#c4b5fd')" id="mbKcardBg_c4b5fd"
+            style="width:28px;height:28px;border-radius:50%;background:#c4b5fd;border:2px solid transparent;cursor:pointer;" title="보라"></div>
+          <div onclick="window.mbKcardSelectBg('#fdba74')" id="mbKcardBg_fdba74"
+            style="width:28px;height:28px;border-radius:50%;background:#fdba74;border:2px solid transparent;cursor:pointer;" title="오렌지"></div>
+          <div onclick="window.mbKcardSelectBg('#fca5a5')" id="mbKcardBg_fca5a5"
+            style="width:28px;height:28px;border-radius:50%;background:#fca5a5;border:2px solid transparent;cursor:pointer;" title="레드"></div>
+        </div>
+      </div>
+    </div>
+    <!-- 저장 버튼 - 항상 하단 고정 -->
+    <div style="padding:12px 16px;padding-bottom:max(12px,env(safe-area-inset-bottom));flex-shrink:0;border-top:1px solid var(--b1);">
       <button onclick="window.mbSaveKcard()"
         style="width:100%;padding:14px;background:var(--ac);color:#111;border:none;border-radius:12px;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit;">💾 저장</button>
     </div>

@@ -21088,16 +21088,10 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         const hasMore = bodyLines.length > 5;
 
         let _th='';
-        if(card.ytUrl){const _ym=card.ytUrl.match(/(?:v=|youtu\.be\/)+([\w-]{11})/);if(_ym)_th=`<div style="width:100%;height:180px;overflow:hidden;background:#000;position:relative;flex-shrink:0;"><img src="https://img.youtube.com/vi/${_ym[1]}/hqdefault.jpg" style="width:100%;height:100%;object-fit:cover;" loading="lazy"><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;"><div style="width:40px;height:40px;background:rgba(255,0,0,.85);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;margin-left:3px;">▶</div></div></div>`;}
-        else if(card.imgs&&card.imgs.length)_th=`<div style="width:100%;height:180px;overflow:hidden;background:#111;flex-shrink:0;display:flex;align-items:center;justify-content:center;"><img src="${card.imgs[0]}" style="width:100%;height:100%;object-fit:contain;" loading="lazy"></div>`;
+        if(card.ytUrl){const _ym=card.ytUrl.match(/(?:v=|youtu\.be\/)([A-Za-z0-9_-]{11})/);if(_ym)_th=`<div style="width:100%;padding-top:56.25%;position:relative;background:#000;overflow:hidden;flex-shrink:0;"><img src="https://img.youtube.com/vi/${_ym[1]}/hqdefault.jpg" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;" loading="lazy"><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;"><div style="width:40px;height:40px;background:rgba(255,0,0,.85);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;padding-left:3px;">▶</div></div></div>`;}
+        else if(card.imgs&&card.imgs.length)_th=`<div style="width:100%;padding-top:56.25%;position:relative;background:#111;overflow:hidden;flex-shrink:0;"><img src="${card.imgs[0]}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;" loading="lazy"></div>`;
         const _bg=(!card.ytUrl&&(!card.imgs||!card.imgs.length)&&card.bgColor)?card.bgColor:'var(--s1)';
-        // 밝은 배경색(포스트잇)이면 텍스트를 어둡게
-        const _isLight = card.bgColor && !card.ytUrl && (!card.imgs||!card.imgs.length) && (function(hex){try{const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);return (r*299+g*587+b*114)/1000>160;}catch(e){return false;}})(card.bgColor);
-        const _txC = _isLight ? '#1a1a2e' : 'var(--tx)';
-        const _muC = _isLight ? '#44475a' : 'var(--mu)';
-        const _diC = _isLight ? '#6272a4' : 'var(--di)';
-        const _b1C = _isLight ? 'rgba(0,0,0,0.12)' : 'var(--b1)';
-        return `<div style="background:${_bg};border:1px solid ${_b1C};border-top:3px solid ${color};border-radius:0 0 12px 12px;overflow:hidden;display:flex;flex-direction:column;transition:transform .15s,box-shadow .15s;cursor:pointer;" 
+        return `<div style="background:${_bg};border:1px solid var(--b1);border-top:3px solid ${color};border-radius:0 0 12px 12px;overflow:hidden;display:flex;flex-direction:column;transition:transform .15s,box-shadow .15s;cursor:pointer;" 
       onclick="if(!event.target.closest('button'))showKcardDetail('${card.id}')"
       onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='0 8px 24px rgba(0,0,0,.35)'" 
       onmouseout="this.style.transform='';this.style.boxShadow=''">
@@ -21108,22 +21102,22 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           <span style="font-size:10px;padding:2px 8px;border-radius:10px;font-weight:700;white-space:nowrap;flex-shrink:0;background:${color}33;color:${color};border:1px solid ${color}77;letter-spacing:.3px;">${esc(card.cat || '기타')}</span>
           <div style="display:flex;gap:3px;flex-shrink:0;margin-left:auto;">
             <button onclick="event.stopPropagation();ntCreateFromKcard('${card.id}')" title="이 카드로 노트 만들기" style="background:rgba(79,142,255,.1);border:1px solid rgba(79,142,255,.25);color:#4f8eff;cursor:pointer;font-size:11px;padding:2px 6px;border-radius:4px;font-weight:700;" onmouseover="this.style.background='rgba(79,142,255,.25)'" onmouseout="this.style.background='rgba(79,142,255,.1)'">📝</button>
-            <button onclick="event.stopPropagation();openKcardEditor('${card.id}')" title="수정" style="background:none;border:none;color:${_muC};cursor:pointer;font-size:12px;padding:1px 4px;border-radius:3px;opacity:.6;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='.6'">✏️</button>
-            <button onclick="event.stopPropagation();deleteKcard('${card.id}')" title="삭제" style="background:none;border:none;color:${_muC};cursor:pointer;font-size:12px;padding:1px 4px;border-radius:3px;opacity:.6;" onmouseover="this.style.opacity='1';this.style.color='#ff6370'" onmouseout="this.style.opacity='.6';this.style.color='${_muC}'">🗑</button>
+            <button onclick="event.stopPropagation();openKcardEditor('${card.id}')" title="수정" style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:12px;padding:1px 4px;border-radius:3px;opacity:.6;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='.6'">✏️</button>
+            <button onclick="event.stopPropagation();deleteKcard('${card.id}')" title="삭제" style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:12px;padding:1px 4px;border-radius:3px;opacity:.6;" onmouseover="this.style.opacity='1';this.style.color='#ff6370'" onmouseout="this.style.opacity='.6';this.style.color='var(--mu)'">🗑</button>
           </div>
         </div>
-        <div style="font-size:13px;font-weight:800;color:${_txC};line-height:1.35;margin-bottom:10px;">${esc(card.title || '제목 없음')}</div>
+        <div style="font-size:13px;font-weight:800;color:var(--tx);line-height:1.35;margin-bottom:10px;">${esc(card.title || '제목 없음')}</div>
         <!-- 핵심 포인트 -->
         <div style="display:flex;flex-direction:column;gap:4px;">
           ${summaryHtml}
           ${keyHtml}
-          ${hasMore ? `<div style="font-size:10px;color:${_diC};margin-top:2px;">+${bodyLines.length - 5}줄 더...</div>` : ''}
+          ${hasMore ? `<div style="font-size:10px;color:var(--di);margin-top:2px;">+${bodyLines.length - 5}줄 더...</div>` : ''}
         </div>
       </div>
       <!-- 카드 푸터 -->
-      <div style="padding:8px 14px;border-top:1px solid ${_b1C};display:flex;align-items:center;gap:6px;margin-top:auto;flex-wrap:wrap;">
+      <div style="padding:8px 14px;border-top:1px solid var(--b1);display:flex;align-items:center;gap:6px;margin-top:auto;flex-wrap:wrap;">
         ${tags || ''}
-        <span style="margin-left:auto;font-size:10px;color:${_diC};">${d}</span>
+        <span style="margin-left:auto;font-size:10px;color:var(--di);">${d}</span>
       </div>
     </div>`;
       }).join('');
