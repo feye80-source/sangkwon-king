@@ -3809,7 +3809,7 @@ body {
     var catEl = document.getElementById('mbKcardDetailCat');
     if (catEl) {
       catEl.textContent = card.cat || '기타';
-      catEl.style.cssText = 'font-size:11px;padding:2px 9px;border-radius:10px;font-weight:700;background:' + color + '22;color:' + color + ';border:1px solid ' + color + '55;';
+      catEl.style.cssText = 'font-size:11px;padding:2px 9px;border-radius:10px;font-weight:700;background:' + color + '33;color:' + color + ';border:1px solid ' + color + '88;';
     }
 
     // 수정 버튼
@@ -3927,7 +3927,8 @@ body {
 
       var wrap = document.createElement('div');
       wrap.style.cssText = 'background:' + cardBg + ';border:1px solid var(--b1);'
-        + 'border-top:3px solid ' + color + ';border-radius:8px;overflow:hidden;cursor:pointer;';
+        + 'border-top:3px solid ' + color + ';border-radius:8px;overflow:hidden;cursor:pointer;'
+        + 'display:flex;flex-direction:column;min-height:140px;';
 
       // 카드 전체 클릭 → 상세보기
       wrap.onclick = (function(c){ return function(e) {
@@ -3935,7 +3936,7 @@ body {
         mbShowKcardDetail(c);
       }; })(card);
 
-      /* 썸네일: 잘리지 않게 contain 사용 */
+      /* 썸네일: 고정 높이 140px 영역에 cover로 꽉 채움 */
       var ytId = null;
       if (card.ytUrl) {
         var ytM = card.ytUrl.match(/(?:v=|youtu\.be\/)([\w-]{11})/);
@@ -3943,19 +3944,19 @@ body {
       }
       if (ytId) {
         var tDiv = document.createElement('div');
-        tDiv.style.cssText = 'position:relative;width:100%;padding-top:56.25%;overflow:hidden;background:#000;';
+        tDiv.style.cssText = 'width:100%;height:140px;overflow:hidden;background:#000;flex-shrink:0;position:relative;';
         tDiv.innerHTML = '<img src="https://img.youtube.com/vi/' + ytId + '/hqdefault.jpg"'
-          + ' style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;" loading="lazy">'
+          + ' style="width:100%;height:100%;object-fit:cover;" loading="lazy">'
           + '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;">'
-          + '<div style="width:32px;height:32px;background:rgba(255,0,0,.85);border-radius:50%;'
-          + 'display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;">▶</div></div>';
+          + '<div style="width:36px;height:36px;background:rgba(255,0,0,.85);border-radius:50%;'
+          + 'display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;">▶</div></div>';
         wrap.appendChild(tDiv);
       } else if (card.imgs && card.imgs.length) {
         var iDiv = document.createElement('div');
-        iDiv.style.cssText = 'width:100%;background:#111;display:flex;align-items:center;justify-content:center;';
+        iDiv.style.cssText = 'width:100%;height:140px;overflow:hidden;background:#111;flex-shrink:0;';
         var img = document.createElement('img');
         img.src = card.imgs[0];
-        img.style.cssText = 'width:100%;height:auto;display:block;object-fit:contain;max-height:200px;';
+        img.style.cssText = 'width:100%;height:100%;object-fit:cover;';
         img.loading = 'lazy';
         iDiv.appendChild(img);
         wrap.appendChild(iDiv);
@@ -3970,7 +3971,7 @@ body {
 
       var catSpan = document.createElement('span');
       catSpan.style.cssText = 'font-size:10px;padding:2px 7px;border-radius:8px;font-weight:700;'
-        + 'background:' + color + '1a;color:' + color + ';border:1px solid ' + color + '33;';
+        + 'background:' + color + '28;color:' + color + ';border:1px solid ' + color + '66;';
       catSpan.textContent = card.cat || '기타';
 
       var editBtn = document.createElement('button');

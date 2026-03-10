@@ -21081,15 +21081,15 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         // 핵심 포인트가 있으면 뱃지 스타일로, 없으면 텍스트
         const keyHtml = keyLines.slice(0, 5).map(line => {
           const txt = line.replace(/^[•\-·]\s*/, '').replace(/^\d+[.)]\s*/, '');
-          return `<div style="display:flex;align-items:flex-start;gap:6px;padding:5px 8px;background:${color}0d;border-left:2px solid ${color};border-radius:0 5px 5px 0;font-size:11px;color:var(--tx);line-height:1.5;">${esc(txt)}</div>`;
+          return `<div style="display:flex;align-items:flex-start;gap:6px;padding:5px 8px;background:${color}22;border-left:3px solid ${color};border-radius:0 5px 5px 0;font-size:11px;color:var(--tx);line-height:1.5;">${esc(txt)}</div>`;
         }).join('');
         const summaryHtml = plainLines.slice(0, 2).map(l => `<div style="font-size:11px;color:var(--mu);line-height:1.6;">${esc(l)}</div>`).join('');
 
         const hasMore = bodyLines.length > 5;
 
         let _th='';
-        if(card.ytUrl){const _ym=card.ytUrl.match(/(?:v=|youtu\.be\/)+([\w-]{11})/);if(_ym)_th=`<div style="position:relative;width:100%;padding-top:56.25%;overflow:hidden;background:#000;"><img src="https://img.youtube.com/vi/${_ym[1]}/hqdefault.jpg" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;" loading="lazy"><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;"><div style="width:36px;height:36px;background:rgba(255,0,0,.85);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;margin-left:2px;">▶</div></div></div>`;}
-        else if(card.imgs&&card.imgs.length)_th=`<div style="width:100%;background:#111;display:flex;align-items:center;justify-content:center;border-radius:0;"><img src="${card.imgs[0]}" style="width:100%;height:auto;display:block;object-fit:contain;max-height:220px;" loading="lazy"></div>`;
+        if(card.ytUrl){const _ym=card.ytUrl.match(/(?:v=|youtu\.be\/)+([\w-]{11})/);if(_ym)_th=`<div style="width:100%;height:180px;overflow:hidden;background:#000;position:relative;flex-shrink:0;"><img src="https://img.youtube.com/vi/${_ym[1]}/hqdefault.jpg" style="width:100%;height:100%;object-fit:cover;" loading="lazy"><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;"><div style="width:40px;height:40px;background:rgba(255,0,0,.85);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;margin-left:3px;">▶</div></div></div>`;}
+        else if(card.imgs&&card.imgs.length)_th=`<div style="width:100%;height:180px;overflow:hidden;background:#111;flex-shrink:0;"><img src="${card.imgs[0]}" style="width:100%;height:100%;object-fit:cover;" loading="lazy"></div>`;
         const _bg=(!card.ytUrl&&(!card.imgs||!card.imgs.length)&&card.bgColor)?card.bgColor:'var(--s1)';
         return `<div style="background:${_bg};border:1px solid var(--b1);border-top:3px solid ${color};border-radius:0 0 12px 12px;overflow:hidden;display:flex;flex-direction:column;transition:transform .15s,box-shadow .15s;cursor:pointer;" 
       onclick="if(!event.target.closest('button'))showKcardDetail('${card.id}')"
@@ -21099,7 +21099,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       <!-- 카드 헤더 -->
       <div style="padding:12px 14px 10px;">
         <div style="display:flex;align-items:flex-start;gap:7px;margin-bottom:8px;">
-          <span style="font-size:10px;padding:2px 8px;border-radius:10px;font-weight:700;white-space:nowrap;flex-shrink:0;background:${color}1a;color:${color};border:1px solid ${color}33;letter-spacing:.3px;">${esc(card.cat || '기타')}</span>
+          <span style="font-size:10px;padding:2px 8px;border-radius:10px;font-weight:700;white-space:nowrap;flex-shrink:0;background:${color}33;color:${color};border:1px solid ${color}77;letter-spacing:.3px;">${esc(card.cat || '기타')}</span>
           <div style="display:flex;gap:3px;flex-shrink:0;margin-left:auto;">
             <button onclick="event.stopPropagation();ntCreateFromKcard('${card.id}')" title="이 카드로 노트 만들기" style="background:rgba(79,142,255,.1);border:1px solid rgba(79,142,255,.25);color:#4f8eff;cursor:pointer;font-size:11px;padding:2px 6px;border-radius:4px;font-weight:700;" onmouseover="this.style.background='rgba(79,142,255,.25)'" onmouseout="this.style.background='rgba(79,142,255,.1)'">📝</button>
             <button onclick="event.stopPropagation();openKcardEditor('${card.id}')" title="수정" style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:12px;padding:1px 4px;border-radius:3px;opacity:.6;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='.6'">✏️</button>
