@@ -988,6 +988,8 @@ body {
   .mb-detail-label { font-size:12px; color:var(--mu); }
   .mb-detail-val { font-size:13px; font-weight:700; color:var(--tx); }
 
+  /* 바텀시트 개선 */
+
   #mb-map-bs-backdrop {
     display:none;
     position:fixed;
@@ -1210,8 +1212,12 @@ body {
     <div id="mb-ins-kcard" class="mb-ins-panel">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-shrink:0;">
         <span style="font-size:13px;font-weight:700;color:var(--tx);">⭐ 알짜정보</span>
-        <button onclick="window.mbOpenKcardModal(null)"
-          style="padding:6px 14px;background:var(--ac);color:#111;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">+ 새 카드</button>
+        <div style="display:flex;gap:6px;">
+          <button onclick="window.mbOpenKcatManager()"
+            style="padding:6px 10px;background:var(--s2);color:var(--mu);border:1px solid var(--b1);border-radius:8px;font-size:12px;cursor:pointer;">⚙️</button>
+          <button onclick="window.mbOpenKcardModal(null)"
+            style="padding:6px 14px;background:var(--ac);color:#111;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">+ 새 카드</button>
+        </div>
       </div>
       <div id="mb-kcat-tabs" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;flex-shrink:0;"></div>
       <div id="mb-kcard-grid" style="flex:1;overflow-y:auto;display:grid;grid-template-columns:1fr 1fr;gap:10px;padding-bottom:20px;align-content:start;"></div>
@@ -2125,7 +2131,7 @@ body {
     var _bs  = document.getElementById('mb-map-bs');
     var _bd  = document.getElementById('mb-map-bs-backdrop');
     if (_bs) { _bs.style.display=''; _bs.classList.remove('open'); }
-    if (_bd)  { _bd.style.display = 'none'; _bd.classList.remove('open'); }
+    if (_bd) { _bd.style.display = 'none'; _bd.classList.remove('open'); }
     document.body.style.pointerEvents = '';
     document.body.style.overflow = '';
     // 페이지 전환
@@ -2470,18 +2476,7 @@ body {
           var pv = document.createElement('div');
           pv.className = 'mb-sv-price-value';
           pv.style.color = p.color;
-      // 숫자면 콤마 포맷, 아니면 그대로
-      var rawVal = p.val;
-      if (typeof rawVal === 'number') {
-        pv.textContent = rawVal.toLocaleString('ko-KR');
-      } else if (typeof rawVal === 'string') {
-        // 숫자+단위 패턴: "130만원/월", "22440000" 등
-        pv.textContent = rawVal.replace(/(\d+)/g, function(m) {
-          return parseInt(m, 10).toLocaleString('ko-KR');
-        });
-      } else {
-        pv.textContent = rawVal;
-      }
+          pv.textContent = p.val;
           pi.appendChild(pl);
           pi.appendChild(pv);
           priceWrap.appendChild(pi);
@@ -2567,7 +2562,7 @@ body {
 
       // 바텀시트 표시 + 탭 숨김 (저장목록 상세는 탭 없음)
       bs.classList.add('open');
-      if (bd) { bd.style.display='block'; bd.classList.add('open'); }
+      if (bd) { bd.style.display = 'block'; bd.classList.add('open'); }
       ['card','list','auction'].forEach(function(t) {
         var btn = document.getElementById('mb-bs-tab-' + t);
         if (btn) btn.style.display = 'none';
@@ -2903,11 +2898,7 @@ body {
     var note = { id: 'note_' + Date.now().toString(36), title: '노트 ' + idx, body: '', createdAt: Date.now() };
     room.notes.push(note);
     room.updatedAt = Date.now();
-    // idbCache 동기화
-    if (window._idbCache) window._idbCache['wr2_rooms'] = rooms;
-    if (window.wr2State) window.wr2State.rooms = rooms;
     localStorage.setItem('wr2_rooms', JSON.stringify(rooms));
-    if (window.idbSet) window.idbSet('wr2_rooms', rooms).catch(function(){});
     if (window._sbSaveRooms) window._sbSaveRooms(rooms).catch(function(){});
     _mbActiveNoteId = note.id;
     _mbRenderNoteTab(room);
@@ -2937,10 +2928,7 @@ body {
     room.notes = room.notes.filter(function(n){ return n.id !== noteId; });
     if (_mbActiveNoteId === noteId) _mbActiveNoteId = room.notes.length ? room.notes[0].id : null;
     room.updatedAt = Date.now();
-    if (window._idbCache) window._idbCache['wr2_rooms'] = rooms;
-    if (window.wr2State) window.wr2State.rooms = rooms;
     localStorage.setItem('wr2_rooms', JSON.stringify(rooms));
-    if (window.idbSet) window.idbSet('wr2_rooms', rooms).catch(function(){});
     if (window._sbSaveRooms) window._sbSaveRooms(rooms).catch(function(){});
     _mbRenderNoteTab(room);
   };
@@ -3733,30 +3721,6 @@ body {
       document.getElementById('mbKcardBody').value = card.body || '';
       document.getElementById('mbKcardTags').value = (card.tags || []).join(', ');
       document.getElementById('mbKcardYt').value = card.ytUrl || '';
-      // 배경색 복원
-      var bgEl = document.getElementById('mbKcardBgColor');
-      if (bgEl) bgEl.value = card.bgColor || '#2a2d3a';
-      // 기존 이미지 복원
-      window._mbKcardPendingImgs = card.imgs ? [].concat(card.imgs) : [];
-      var prev = document.getElementById('mbKcardImgPreview');
-      if (prev) {
-        prev.innerHTML = '';
-        window._mbKcardPendingImgs.forEach(function(src, i) {
-          var wrap = document.createElement('div');
-          wrap.style.cssText = 'position:relative;width:72px;height:72px;';
-          var img = document.createElement('img');
-          img.src = src;
-          img.style.cssText = 'width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--b1);';
-          var del = document.createElement('button');
-          del.textContent = '✕';
-          del.style.cssText = 'position:absolute;top:2px;right:2px;width:18px;height:18px;border-radius:50%;background:rgba(0,0,0,.7);border:none;color:#fff;font-size:10px;cursor:pointer;padding:0;';
-          del.onclick = (function(idx, w) { return function() {
-            window._mbKcardPendingImgs.splice(idx, 1);
-            w.remove();
-          }; })(i, wrap);
-          wrap.appendChild(img); wrap.appendChild(del); prev.appendChild(wrap);
-        });
-      }
       // 카테고리 버튼 활성화
       if (picker) picker.querySelectorAll('button').forEach(function(b) {
         var active = b.getAttribute('data-cat') === _mbKcardSelectedCat;
@@ -3770,76 +3734,14 @@ body {
       document.getElementById('mbKcardBody').value = '';
       document.getElementById('mbKcardTags').value = '';
       document.getElementById('mbKcardYt').value = '';
-      var bgEl2 = document.getElementById('mbKcardBgColor');
-      if (bgEl2) bgEl2.value = '#2a2d3a';
-      window._mbKcardPendingImgs = [];
-      var prev2 = document.getElementById('mbKcardImgPreview');
-      if (prev2) prev2.innerHTML = '';
     }
 
     modal.style.display = 'flex';
-    // iOS 키보드 올라올 때 모달 위치 보정
-    if (window.visualViewport) {
-      function _kcardVpHandler() {
-        var sheet = document.getElementById('mbKcardModalSheet');
-        if (!sheet) return;
-        var offsetBottom = window.innerHeight - window.visualViewport.height - window.visualViewport.offsetTop;
-        sheet.style.marginBottom = (offsetBottom > 0 ? offsetBottom : 0) + 'px';
-      }
-      window.visualViewport.addEventListener('resize', _kcardVpHandler);
-      window.visualViewport.addEventListener('scroll', _kcardVpHandler);
-      modal._kcardVpHandler = _kcardVpHandler;
-    }
-  };
-
-  // 이미지 선택 핸들러
-  window.mbKcardImgChange = function(input) {
-    var file = input.files && input.files[0];
-    if (!file) return;
-    var reader = new FileReader();
-    reader.onload = function(e) {
-      var data = e.target.result;
-      if (!window._mbKcardPendingImgs) window._mbKcardPendingImgs = [];
-      window._mbKcardPendingImgs.push(data);
-      var prev = document.getElementById('mbKcardImgPreview');
-      if (prev) {
-        var idx = window._mbKcardPendingImgs.length - 1;
-        var wrap = document.createElement('div');
-        wrap.style.cssText = 'position:relative;width:72px;height:72px;';
-        var img = document.createElement('img');
-        img.src = data;
-        img.style.cssText = 'width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--b1);';
-        var del = document.createElement('button');
-        del.textContent = '✕';
-        del.style.cssText = 'position:absolute;top:2px;right:2px;width:18px;height:18px;border-radius:50%;background:rgba(0,0,0,.7);border:none;color:#fff;font-size:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;';
-        del.onclick = (function(i, w) { return function() {
-          window._mbKcardPendingImgs.splice(i, 1);
-          w.remove();
-        }; })(idx, wrap);
-        wrap.appendChild(img);
-        wrap.appendChild(del);
-        prev.appendChild(wrap);
-      }
-      input.value = '';
-    };
-    reader.readAsDataURL(file);
   };
 
   window.mbCloseKcardModal = function() {
     var modal = document.getElementById('mbKcardModal');
-    if (modal) {
-      modal.style.display = 'none';
-      if (window.visualViewport && modal._kcardVpHandler) {
-        window.visualViewport.removeEventListener('resize', modal._kcardVpHandler);
-        window.visualViewport.removeEventListener('scroll', modal._kcardVpHandler);
-        modal._kcardVpHandler = null;
-      }
-      var sheet = document.getElementById('mbKcardModalSheet');
-      if (sheet) sheet.style.marginBottom = '';
-    }
-    window._mbKcardPendingImgs = [];
-    var prev = document.getElementById('mbKcardImgPreview');
-    if (prev) prev.innerHTML = '';
+    if (modal) modal.style.display = 'none';
     _mbKcardEditId = null;
   };
 
@@ -3849,8 +3751,6 @@ body {
     var body = ((document.getElementById('mbKcardBody') || {}).value || '').trim();
     var tagsRaw = ((document.getElementById('mbKcardTags') || {}).value || '').trim();
     var ytUrl = ((document.getElementById('mbKcardYt') || {}).value || '').trim();
-    var bgColor = ((document.getElementById('mbKcardBgColor') || {}).value || '').trim();
-    var imgs = window._mbKcardPendingImgs ? [].concat(window._mbKcardPendingImgs) : [];
 
     if (!title) { if (typeof showToast === 'function') showToast('제목을 입력해주세요', 'warn'); return; }
 
@@ -3863,12 +3763,10 @@ body {
       if (card) {
         card.title = title; card.body = body; card.tags = tags;
         card.cat = _mbKcardSelectedCat; card.updatedAt = now; card.ytUrl = ytUrl;
-        card.bgColor = bgColor;
-        if (imgs.length) card.imgs = imgs;
       }
     } else {
       kcards.unshift({ id:'kc_'+Date.now(), title:title, body:body, tags:tags,
-        cat:_mbKcardSelectedCat, createdAt:now, updatedAt:now, ytUrl:ytUrl, imgs:imgs, bgColor:bgColor });
+        cat:_mbKcardSelectedCat, createdAt:now, updatedAt:now, ytUrl:ytUrl, imgs:[], bgColor:'' });
     }
 
     if (window._idbCache) window._idbCache['ins_kcards'] = kcards;
@@ -3940,17 +3838,26 @@ body {
     // 썸네일
     var ytId = null;
     if (card.ytUrl) {
-      var ytM = card.ytUrl.match(/(?:v=|youtu\.be\/)([\\w-]{11})/);
+      var ytM = card.ytUrl.match(/(?:v=|youtu\.be\/)([A-Za-z0-9_-]{11})/);
       if (ytM) ytId = ytM[1];
     }
     if (ytId) {
-      html += '<div style="position:relative;width:100%;padding-top:56.25%;overflow:hidden;background:#000;border-radius:10px;margin-bottom:14px;">' +
+      // 유튜브 인앱 embed — 썸네일 탭 → iframe 재생
+      html += '<div id="mbYtThumb_' + ytId + '" style="position:relative;width:100%;padding-top:56.25%;overflow:hidden;background:#000;border-radius:10px;margin-bottom:14px;cursor:pointer;" onclick="mbExpandYoutube(\'' + ytId + '\',\'' + card.ytUrl.replace(/\'/g,"") + '\'">' +
         '<img src="https://img.youtube.com/vi/' + ytId + '/hqdefault.jpg" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;">' +
-        '<a href="' + card.ytUrl + '" target="_blank" onclick="window.open(this.href,\'_blank\');return false;" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-decoration:none;">' +
-        '<div style="width:48px;height:48px;background:rgba(255,0,0,.9);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:20px;margin-left:4px;">▶</div></a></div>';
+        '<div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;">' +
+        '<div style="width:56px;height:56px;background:rgba(255,0,0,.92);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:24px;padding-left:4px;">▶</div>' +
+        '<span style="color:#fff;font-size:11px;background:rgba(0,0,0,.5);padding:3px 10px;border-radius:10px;">탭하여 재생</span>' +
+        '</div></div>' +
+        '<div id="mbYtFrame_' + ytId + '" style="display:none;position:relative;width:100%;padding-top:56.25%;border-radius:10px;overflow:hidden;margin-bottom:14px;">' +
+        '<iframe src="" data-src="https://www.youtube.com/embed/' + ytId + '?autoplay=1&playsinline=1" style="position:absolute;inset:0;width:100%;height:100%;border:none;" allowfullscreen allow="autoplay;encrypted-media;fullscreen;picture-in-picture"></iframe>' +
+        '</div>';
     } else if (card.imgs && card.imgs.length) {
-      html += '<div style="border-radius:10px;overflow:hidden;margin-bottom:14px;background:#111;">' +
-        '<img src="' + card.imgs[0] + '" style="width:100%;height:auto;display:block;object-fit:contain;max-height:300px;"></div>';
+      // 이미지 — 탭하면 전체화면 뷰어
+      var _encSrc = encodeURIComponent(card.imgs[0]);
+      html += '<div style="border-radius:10px;overflow:hidden;margin-bottom:14px;background:#111;cursor:pointer;" onclick="mbImgFullscreen(\'' + _encSrc + '\'">' +
+        '<img src="' + card.imgs[0] + '" style="width:100%;height:auto;display:block;object-fit:contain;max-height:260px;">' +
+        '<div style="text-align:center;padding:5px;font-size:10px;color:var(--di);">🔍 탭하여 전체화면</div></div>';
     }
 
     // 제목
@@ -3984,6 +3891,115 @@ body {
     var modal = document.getElementById('mbKcardDetailModal');
     if (modal) modal.style.display = 'none';
     document.body.style.overflow = '';
+  };
+
+  // 유튜브 인앱 재생: 썸네일 숨기고 iframe 활성화
+  window.mbExpandYoutube = function(ytId, ytUrl) {
+    var thumb = document.getElementById('mbYtThumb_' + ytId);
+    var frame = document.getElementById('mbYtFrame_' + ytId);
+    if (!frame) return;
+    if (thumb) thumb.style.display = 'none';
+    // iframe src 설정 (lazy-load → autoplay)
+    var iframe = frame.querySelector('iframe');
+    if (iframe && !iframe.src) {
+      iframe.src = iframe.getAttribute('data-src') || ('https://www.youtube.com/embed/' + ytId + '?autoplay=1&playsinline=1');
+    }
+    frame.style.display = 'block';
+  };
+
+  // 이미지 전체화면 뷰어
+  window.mbImgFullscreen = function(encodedSrc) {
+    var src = decodeURIComponent(encodedSrc);
+    var ov = document.getElementById('mbImgFullscreenOv');
+    if (!ov) {
+      ov = document.createElement('div');
+      ov.id = 'mbImgFullscreenOv';
+      ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.95);display:flex;align-items:center;justify-content:center;';
+      ov.onclick = function() { ov.style.display = 'none'; };
+      var img = document.createElement('img');
+      img.id = 'mbImgFullscreenImg';
+      img.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;';
+      var closeBtn = document.createElement('button');
+      closeBtn.textContent = '✕';
+      closeBtn.style.cssText = 'position:absolute;top:16px;right:16px;background:rgba(0,0,0,.6);border:none;color:#fff;font-size:22px;width:40px;height:40px;border-radius:50%;cursor:pointer;z-index:1;';
+      closeBtn.onclick = function(e) { e.stopPropagation(); ov.style.display = 'none'; };
+      ov.appendChild(img);
+      ov.appendChild(closeBtn);
+      document.body.appendChild(ov);
+    }
+    var img = document.getElementById('mbImgFullscreenImg');
+    if (img) img.src = src;
+    ov.style.display = 'flex';
+  };
+
+  /* ════ 카테고리 관리 ════ */
+  function _mbGetKcats() {
+    return (window._idbCache && window._idbCache['ins_kcat']) ||
+      ['📐 면적/건축','⚖️ 권리분석','📋 경매 절차','💰 세금/비용','🏘️ 상권/지역'];
+  }
+  function _mbSaveKcats(cats) {
+    if (window._idbCache) window._idbCache['ins_kcat'] = cats;
+    if (window.idbSet) window.idbSet('ins_kcat', cats).catch(function(){});
+    if (window._sbSaveKcats) window._sbSaveKcats(cats).catch(function(){});
+    localStorage.setItem('ins_kcat', JSON.stringify(cats));
+  }
+  function _mbRenderKcatList() {
+    var el = document.getElementById('mbKcatList');
+    if (!el) return;
+    var cats = _mbGetKcats();
+    if (!cats.length) {
+      el.innerHTML = '<div style="padding:20px;text-align:center;font-size:12px;color:var(--di);">카테고리가 없어요</div>';
+      return;
+    }
+    el.innerHTML = cats.map(function(c, i) {
+      return '<div style="display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--b1);">' +
+        '<span style="flex:1;font-size:13px;color:var(--tx);">' + c + '</span>' +
+        '<button onclick="window.mbRenameKcat(' + i + ')" style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:14px;padding:2px 6px;" title="이름 변경">✏️</button>' +
+        '<button onclick="window.mbDeleteKcat(' + i + ')" style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:14px;padding:2px 6px;" onmouseenter="this.style.color=\'#ff6370\'" onmouseleave="this.style.color=\'var(--mu)\'" title="삭제">🗑</button>' +
+        '</div>';
+    }).join('');
+  }
+  window.mbOpenKcatManager = function() {
+    var modal = document.getElementById('mbKcatModal');
+    if (!modal) return;
+    _mbRenderKcatList();
+    modal.style.display = 'flex';
+  };
+  window.mbCloseKcatModal = function() {
+    var modal = document.getElementById('mbKcatModal');
+    if (modal) modal.style.display = 'none';
+    // 카테고리 변경 후 렌더 갱신
+    if (typeof window.mbRenderKcards === 'function') window.mbRenderKcards();
+  };
+  window.mbAddKcat = function() {
+    var inp = document.getElementById('mbKcatNewInput');
+    var val = inp ? inp.value.trim() : '';
+    if (!val) return;
+    var cats = _mbGetKcats();
+    if (cats.indexOf(val) >= 0) { if(typeof showToast==='function') showToast('이미 존재하는 카테고리예요','warn'); return; }
+    cats.push(val);
+    _mbSaveKcats(cats);
+    if (inp) inp.value = '';
+    _mbRenderKcatList();
+    if(typeof showToast==='function') showToast('카테고리 추가됨 ✅','ok');
+  };
+  window.mbDeleteKcat = function(idx) {
+    if (!confirm('이 카테고리를 삭제할까요?')) return;
+    var cats = _mbGetKcats();
+    cats.splice(idx, 1);
+    _mbSaveKcats(cats);
+    _mbRenderKcatList();
+  };
+  window.mbRenameKcat = function(idx) {
+    var cats = _mbGetKcats();
+    var cur = cats[idx] || '';
+    var newName = prompt('카테고리 이름 변경:', cur);
+    if (!newName || !newName.trim() || newName.trim() === cur) return;
+    newName = newName.trim();
+    if (cats.indexOf(newName) >= 0) { if(typeof showToast==='function') showToast('이미 존재하는 이름이에요','warn'); return; }
+    cats[idx] = newName;
+    _mbSaveKcats(cats);
+    _mbRenderKcatList();
   };
 
   window.mbRenderKcards = function() {
@@ -4067,10 +4083,10 @@ body {
         wrap.appendChild(tDiv);
       } else if (card.imgs && card.imgs.length) {
         var iDiv = document.createElement('div');
-        iDiv.style.cssText = 'width:100%;height:140px;overflow:hidden;background:#111;flex-shrink:0;display:flex;align-items:center;justify-content:center;';
+        iDiv.style.cssText = 'width:100%;height:140px;overflow:hidden;background:#111;flex-shrink:0;';
         var img = document.createElement('img');
         img.src = card.imgs[0];
-        img.style.cssText = 'width:100%;height:100%;object-fit:contain;';
+        img.style.cssText = 'width:100%;height:100%;object-fit:cover;';
         img.loading = 'lazy';
         iDiv.appendChild(img);
         wrap.appendChild(iDiv);
@@ -4202,7 +4218,7 @@ body {
     var bd = document.getElementById('mb-map-bs-backdrop');
     if (!bs) return;
     bs.classList.add('open');
-    if (bd) { bd.style.display='block'; bd.classList.add('open'); }
+    if (bd) { bd.style.display = 'block'; bd.classList.add('open'); }
     mbBsTab('card');
   };
 
@@ -4663,7 +4679,7 @@ body {
     var bs = document.getElementById('mb-map-bs');
     var bd = document.getElementById('mb-map-bs-backdrop');
     if (bs) bs.classList.add('open');
-    if (bd) { bd.style.display='block'; bd.classList.add('open'); }
+    if (bd) { bd.style.display = 'block'; bd.classList.add('open'); }
     mbBsTab('list');
   };
 
@@ -4673,19 +4689,19 @@ body {
 <!-- ════ 노트 에디터 전체화면 오버레이 ════ -->
 
 <!-- ════ 알짜카드 에디터 모달 (모바일) ════ -->
-<div id="mbKcardModal" style="display:none;position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.75);align-items:flex-end;">
-  <div id="mbKcardModalSheet" style="background:var(--s1);border-radius:20px 20px 0 0;width:100%;height:92%;display:flex;flex-direction:column;">
+<div id="mbKcardModal" style="display:none;position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.7);align-items:flex-end;">
+  <div style="background:var(--s1);border-radius:20px 20px 0 0;width:100%;max-height:90vh;display:flex;flex-direction:column;padding-bottom:env(safe-area-inset-bottom,0px);">
     <!-- 핸들 -->
-    <div style="display:flex;justify-content:center;padding:10px 0 4px;flex-shrink:0;">
+    <div style="display:flex;justify-content:center;padding:10px 0 4px;">
       <div style="width:40px;height:4px;background:var(--b2);border-radius:2px;"></div>
     </div>
     <!-- 헤더 -->
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:4px 16px 10px;flex-shrink:0;">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:4px 16px 12px;flex-shrink:0;">
       <span id="mbKcardModalTitle" style="font-size:16px;font-weight:800;color:var(--tx);">+ 새 카드</span>
-      <button onclick="window.mbCloseKcardModal()" style="width:32px;height:32px;border-radius:50%;background:var(--s3);border:1px solid var(--b2);color:var(--mu);font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;">✕</button>
+      <button onclick="window.mbCloseKcardModal()" style="width:32px;height:32px;border-radius:50%;background:var(--s3);border:1px solid var(--b2);color:var(--mu);font-size:15px;cursor:pointer;">✕</button>
     </div>
     <!-- 스크롤 영역 -->
-    <div style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 16px 8px;display:flex;flex-direction:column;gap:14px;">
+    <div style="flex:1;overflow-y:auto;padding:0 16px 16px;display:flex;flex-direction:column;gap:12px;">
       <!-- 카테고리 -->
       <div>
         <div style="font-size:11px;color:var(--mu);margin-bottom:6px;font-weight:600;">카테고리</div>
@@ -4694,59 +4710,28 @@ body {
       <!-- 제목 -->
       <div>
         <div style="font-size:11px;color:var(--mu);margin-bottom:6px;font-weight:600;">제목 *</div>
-        <input id="mbKcardTitle" type="text" placeholder="카드 제목" enterkeyhint="next"
-          onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('mbKcardBody').focus();}"
+        <input id="mbKcardTitle" type="text" placeholder="카드 제목"
           style="width:100%;box-sizing:border-box;padding:10px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:10px;color:var(--tx);font-size:14px;font-family:inherit;outline:none;">
       </div>
       <!-- 내용 -->
       <div>
         <div style="font-size:11px;color:var(--mu);margin-bottom:6px;font-weight:600;">내용</div>
         <textarea id="mbKcardBody" placeholder="내용 입력 (• 또는 - 로 시작하면 핵심 포인트로 표시)"
-          style="width:100%;box-sizing:border-box;padding:10px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:10px;color:var(--tx);font-size:13px;font-family:inherit;outline:none;resize:none;height:100px;line-height:1.6;"></textarea>
+          style="width:100%;box-sizing:border-box;padding:10px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:10px;color:var(--tx);font-size:13px;font-family:inherit;outline:none;resize:none;height:120px;line-height:1.6;"></textarea>
       </div>
       <!-- 태그 -->
       <div>
         <div style="font-size:11px;color:var(--mu);margin-bottom:6px;font-weight:600;">태그 (쉼표로 구분)</div>
-        <input id="mbKcardTags" type="text" placeholder="예: 경매, 낙찰" enterkeyhint="next"
-          onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('mbKcardYt').focus();}"
+        <input id="mbKcardTags" type="text" placeholder="예: 경매, 낙찰"
           style="width:100%;box-sizing:border-box;padding:10px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:10px;color:var(--tx);font-size:13px;font-family:inherit;outline:none;">
       </div>
       <!-- 유튜브 URL -->
       <div>
         <div style="font-size:11px;color:var(--mu);margin-bottom:6px;font-weight:600;">유튜브 URL (선택)</div>
-        <input id="mbKcardYt" type="text" placeholder="https://youtube.com/..." enterkeyhint="done"
-          onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}"
+        <input id="mbKcardYt" type="text" placeholder="https://youtube.com/..."
           style="width:100%;box-sizing:border-box;padding:10px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:10px;color:var(--tx);font-size:13px;font-family:inherit;outline:none;">
       </div>
-      <!-- 이미지 첨부 -->
-      <div>
-        <div style="font-size:11px;color:var(--mu);margin-bottom:8px;font-weight:600;">🖼️ 이미지 첨부 (선택)</div>
-        <label style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;background:var(--s2);border:1px dashed var(--b2);border-radius:10px;cursor:pointer;font-size:12px;color:var(--mu);">
-          📁 이미지 선택
-          <input id="mbKcardImgInput" type="file" accept="image/*" style="display:none;" onchange="window.mbKcardImgChange(this)">
-        </label>
-        <div id="mbKcardImgPreview" style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;"></div>
-      </div>
-      <!-- 배경색 -->
-      <div>
-        <div style="font-size:11px;color:var(--mu);margin-bottom:8px;font-weight:600;">🎨 카드 배경색</div>
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-          <input type="color" id="mbKcardBgColor" value="#2a2d3a"
-            style="width:36px;height:36px;border:none;border-radius:8px;cursor:pointer;padding:2px;background:none;flex-shrink:0;">
-          <button onclick="document.getElementById('mbKcardBgColor').value='#2a2d3a'" style="width:28px;height:28px;background:#2a2d3a;border:2px solid #555;border-radius:6px;cursor:pointer;" title="기본(다크)"></button>
-          <button onclick="document.getElementById('mbKcardBgColor').value='#fef08a'" style="width:28px;height:28px;background:#fef08a;border:2px solid #ca8a04;border-radius:6px;cursor:pointer;" title="노랑"></button>
-          <button onclick="document.getElementById('mbKcardBgColor').value='#86efac'" style="width:28px;height:28px;background:#86efac;border:2px solid #16a34a;border-radius:6px;cursor:pointer;" title="민트"></button>
-          <button onclick="document.getElementById('mbKcardBgColor').value='#93c5fd'" style="width:28px;height:28px;background:#93c5fd;border:2px solid #2563eb;border-radius:6px;cursor:pointer;" title="하늘"></button>
-          <button onclick="document.getElementById('mbKcardBgColor').value='#f9a8d4'" style="width:28px;height:28px;background:#f9a8d4;border:2px solid #db2777;border-radius:6px;cursor:pointer;" title="핑크"></button>
-          <button onclick="document.getElementById('mbKcardBgColor').value='#c4b5fd'" style="width:28px;height:28px;background:#c4b5fd;border:2px solid #7c3aed;border-radius:6px;cursor:pointer;" title="보라"></button>
-          <button onclick="document.getElementById('mbKcardBgColor').value='#fdba74'" style="width:28px;height:28px;background:#fdba74;border:2px solid #ea580c;border-radius:6px;cursor:pointer;" title="오렌지"></button>
-          <button onclick="document.getElementById('mbKcardBgColor').value='#fca5a5'" style="width:28px;height:28px;background:#fca5a5;border:2px solid #dc2626;border-radius:6px;cursor:pointer;" title="레드"></button>
-        </div>
-      </div>
-      <div style="height:4px;flex-shrink:0;"></div>
-    </div>
-    <!-- 저장 버튼 — 항상 하단 고정 -->
-    <div style="padding:12px 16px;padding-bottom:max(12px,env(safe-area-inset-bottom));border-top:1px solid var(--b1);flex-shrink:0;background:var(--s1);">
+      <!-- 저장 버튼 -->
       <button onclick="window.mbSaveKcard()"
         style="width:100%;padding:14px;background:var(--ac);color:#111;border:none;border-radius:12px;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit;">💾 저장</button>
     </div>
@@ -4765,6 +4750,27 @@ body {
 
 <!-- ════ 지도 바텀시트 ════ -->
 <!-- ══ 지도 바텀시트 ══ -->
+<!-- ════ 카테고리 관리 모달 (모바일) ════ -->
+<div id="mbKcatModal" style="display:none;position:fixed;inset:0;z-index:2100;background:rgba(0,0,0,.75);align-items:center;justify-content:center;padding:20px;box-sizing:border-box;">
+  <div style="background:var(--s1);border-radius:16px;width:100%;max-width:360px;max-height:80vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.5);">
+    <!-- 헤더 -->
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px 12px;border-bottom:1px solid var(--b1);flex-shrink:0;">
+      <span style="font-size:15px;font-weight:800;color:var(--tx);">⚙️ 카테고리 관리</span>
+      <button onclick="window.mbCloseKcatModal()" style="background:none;border:none;color:var(--mu);font-size:22px;cursor:pointer;line-height:1;padding:0;">×</button>
+    </div>
+    <!-- 목록 -->
+    <div id="mbKcatList" style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:8px 0;"></div>
+    <!-- 추가 입력 -->
+    <div style="padding:12px 16px;border-top:1px solid var(--b1);display:flex;gap:8px;flex-shrink:0;padding-bottom:max(12px,env(safe-area-inset-bottom));">
+      <input id="mbKcatNewInput" type="text" placeholder="새 카테고리 이름" enterkeyhint="done"
+        onkeydown="if(event.key==='Enter'){event.preventDefault();window.mbAddKcat();}"
+        style="flex:1;padding:9px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;color:var(--tx);font-size:13px;font-family:inherit;outline:none;box-sizing:border-box;">
+      <button onclick="window.mbAddKcat()"
+        style="padding:9px 16px;background:var(--ac);color:#111;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;">추가</button>
+    </div>
+  </div>
+</div>
+
 <div id="mb-map-bs-backdrop" onclick="mbCloseBottomSheet()"></div>
 <div id="mb-map-bs">
   <div id="mb-map-bs-sheet"
