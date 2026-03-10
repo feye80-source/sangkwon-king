@@ -467,6 +467,23 @@
       return Array.isArray(d) ? d : null;
     };
 
+    // ─── 알짜정보(kcards) 동기화 ────────────────────────────
+    window._sbSaveKcards = async function(arr) {
+      await kvSet('ins_kcards', arr);
+      window._sbSyncStatus('☁️ 알짜정보 동기화 완료', true);
+    };
+    window._sbLoadKcards = async function() {
+      const d = await kvGet('ins_kcards');
+      return Array.isArray(d) ? d : null;
+    };
+    window._sbSaveKcat = async function(arr) {
+      await kvSet('ins_kcat', arr);
+    };
+    window._sbLoadKcat = async function() {
+      const d = await kvGet('ins_kcat');
+      return Array.isArray(d) ? d : null;
+    };
+
     // ─── 작업씬(WorkScene) 동기화 ────────────────────────────
     window._sbSaveWorkScenes = async function(arr) {
       await tblSaveArr('snapshots', arr);
@@ -578,6 +595,29 @@
           const wsLocal = window._idbCache['re_ws'] || [];
           if (wsLocal.length) window._sbSaveWorkScenes(wsLocal).catch(()=>{});
         }
+
+        // ── 알짜정보 카드 ──
+        try {
+          const kcCloud = await window._sbLoadKcards();
+          if (kcCloud !== null && kcCloud.length > 0) {
+            const kcLocal = window._idbCache['ins_kcards'] || [];
+            const merged = _sbMergeById(kcCloud, kcLocal);
+            window._idbCache['ins_kcards'] = merged;
+            await window.idbSet('ins_kcards', merged);
+            if (merged.length > kcCloud.length) window._sbSaveKcards(merged).catch(()=>{});
+          } else {
+            const kcLocal = window._idbCache['ins_kcards'] || [];
+            if (kcLocal.length) window._sbSaveKcards(kcLocal).catch(()=>{});
+          }
+          const kcatCloud = await window._sbLoadKcat();
+          if (kcatCloud !== null && kcatCloud.length > 0) {
+            window._idbCache['ins_kcat'] = kcatCloud;
+            await window.idbSet('ins_kcat', kcatCloud);
+          } else {
+            const kcatLocal = window._idbCache['ins_kcat'] || [];
+            if (kcatLocal.length) window._sbSaveKcat(kcatLocal).catch(()=>{});
+          }
+        } catch(e) { console.warn('[SB] kcards sync error', e); }
 
         // ── API 키 ──
         try {
@@ -20990,8 +21030,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       return 'auction';
     }
 
-    function saveKcards() { if(window._idbCache)window._idbCache['ins_kcards']=kcards;if(window.idbSet)window.idbSet('ins_kcards',kcards).catch(()=>{}); }
-    function saveKcardCats() { if(window._idbCache)window._idbCache['ins_kcat']=kcardCats;if(window.idbSet)window.idbSet('ins_kcat',kcardCats).catch(()=>{}); }
+    function saveKcards() { if(window._idbCache)window._idbCache['ins_kcards']=kcards;if(window.idbSet)window.idbSet('ins_kcards',kcards).catch(()=>{});if(window._sbSaveKcards)window._sbSaveKcards(kcards).catch(()=>{}); }
+    function saveKcardCats() { if(window._idbCache)window._idbCache['ins_kcat']=kcardCats;if(window.idbSet)window.idbSet('ins_kcat',kcardCats).catch(()=>{});if(window._sbSaveKcat)window._sbSaveKcat(kcardCats).catch(()=>{}); }
 
     // ── 카테고리 탭 렌더 ───────────────────────────────
     function renderKcatTabs() {
