@@ -25612,8 +25612,11 @@ ${newsContext}
           sbizPanelMarkers.push(mk);
         });
 
-        // 지도 클릭 시 팝업 닫기
-        kakao.maps.event.addListener(window.map, 'click', function () { closeCurrentPopup(); });
+        // 지도 클릭 시 팝업 닫기 + 바텀시트 닫기
+        kakao.maps.event.addListener(window.map, 'click', function () {
+          closeCurrentPopup();
+          if (typeof window.mbCloseBottomSheet === 'function') window.mbCloseBottomSheet();
+        });
 
         // 레이어 필터 패널 렌더
         if (typeof window.renderLayerPanel === 'function') {
