@@ -21085,11 +21085,16 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         // 핵심 포인트가 있으면 뱃지 스타일로, 없으면 텍스트
         const keyHtml = keyLines.slice(0, 5).map(line => {
           const txt = line.replace(/^[•\-·]\s*/, '').replace(/^\d+[.)]\s*/, '');
-          return `<div style="display:flex;align-items:flex-start;gap:6px;padding:5px 8px;background:${color}22;border-left:3px solid ${color};border-radius:0 5px 5px 0;font-size:11px;color:var(--tx);line-height:1.5;">${esc(txt)}</div>`;
+          return `<div style="display:flex;align-items:flex-start;gap:6px;padding:5px 8px;background:${color}22;border-left:3px solid ${color};border-radius:0 5px 5px 0;font-size:11px;color:${_txColor};line-height:1.5;">${esc(txt)}</div>`;
         }).join('');
-        const summaryHtml = plainLines.slice(0, 2).map(l => `<div style="font-size:11px;color:var(--mu);line-height:1.6;">${esc(l)}</div>`).join('');
+        const summaryHtml = plainLines.slice(0, 2).map(l => `<div style="font-size:11px;color:${_muColor};line-height:1.6;">${esc(l)}</div>`).join('');
 
         const hasMore = bodyLines.length > 5;
+
+        const _brightBgs = ['#fef08a','#86efac','#93c5fd','#f9a8d4','#c4b5fd','#fdba74','#fca5a5'];
+        const _isBright = card.bgColor && _brightBgs.includes(card.bgColor);
+        const _txColor = _isBright ? '#1a1a2e' : 'var(--tx)';
+        const _muColor = _isBright ? '#333355' : 'var(--mu)';
 
         let _th='';
         if(card.ytUrl){const _ym=card.ytUrl.match(/(?:v=|youtu\.be\/)([A-Za-z0-9_-]{11})/);if(_ym)_th=`<div style="width:100%;padding-top:56.25%;position:relative;background:#000;overflow:hidden;flex-shrink:0;"><img src="https://img.youtube.com/vi/${_ym[1]}/hqdefault.jpg" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;" loading="lazy"><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;"><div style="width:40px;height:40px;background:rgba(255,0,0,.85);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;padding-left:3px;">▶</div></div></div>`;}
@@ -21110,7 +21115,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             <button onclick="event.stopPropagation();deleteKcard('${card.id}')" title="삭제" style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:12px;padding:1px 4px;border-radius:3px;opacity:.6;" onmouseover="this.style.opacity='1';this.style.color='#ff6370'" onmouseout="this.style.opacity='.6';this.style.color='var(--mu)'">🗑</button>
           </div>
         </div>
-        <div style="font-size:13px;font-weight:800;color:var(--tx);line-height:1.35;margin-bottom:10px;">${esc(card.title || '제목 없음')}</div>
+        <div style="font-size:13px;font-weight:800;color:${_txColor};line-height:1.35;margin-bottom:10px;">${esc(card.title || '제목 없음')}</div>
         <!-- 핵심 포인트 -->
         <div style="display:flex;flex-direction:column;gap:4px;">
           ${summaryHtml}

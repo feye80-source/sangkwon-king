@@ -4049,6 +4049,12 @@ body {
       var cardBg = (!card.ytUrl && (!card.imgs || !card.imgs.length) && card.bgColor)
         ? card.bgColor : 'var(--s1)';
 
+      // 밝은 배경색이면 텍스트를 어둡게
+      var brightBgs = ['#fef08a','#86efac','#93c5fd','#f9a8d4','#c4b5fd','#fdba74','#fca5a5'];
+      var isBright = card.bgColor && brightBgs.indexOf(card.bgColor) !== -1;
+      var txColor = isBright ? '#1a1a2e' : 'var(--tx)';
+      var muColor = isBright ? '#333355' : 'var(--mu)';
+
       var wrap = document.createElement('div');
       wrap.style.cssText = 'background:' + cardBg + ';border:1px solid var(--b1);'
         + 'border-top:3px solid ' + color + ';border-radius:8px;overflow:hidden;cursor:pointer;'
@@ -4129,7 +4135,7 @@ body {
       body.appendChild(hdr);
 
       var titleDiv = document.createElement('div');
-      titleDiv.style.cssText = 'font-size:13px;font-weight:700;color:var(--tx);margin-bottom:5px;';
+      titleDiv.style.cssText = 'font-size:13px;font-weight:700;color:' + txColor + ';margin-bottom:5px;';
       titleDiv.textContent = card.title || '';
       body.appendChild(titleDiv);
 
@@ -4144,7 +4150,7 @@ body {
       // 요약 텍스트
       plainLines.slice(0, 2).forEach(function(l) {
         var p = document.createElement('div');
-        p.style.cssText = 'font-size:11px;color:var(--mu);line-height:1.6;margin-bottom:2px;';
+        p.style.cssText = 'font-size:11px;color:' + muColor + ';line-height:1.6;margin-bottom:2px;';
         p.textContent = l;
         body.appendChild(p);
       });
@@ -4157,7 +4163,7 @@ body {
         var pt = document.createElement('div');
         pt.style.cssText = 'display:flex;align-items:flex-start;gap:5px;padding:4px 7px;'
           + 'background:' + color + '0d;border-left:2px solid ' + color + ';'
-          + 'border-radius:0 4px 4px 0;font-size:11px;color:var(--tx);line-height:1.5;';
+          + 'border-radius:0 4px 4px 0;font-size:11px;color:' + txColor + ';line-height:1.5;';
         pt.textContent = txt;
         pointWrap.appendChild(pt);
       });
@@ -4183,7 +4189,7 @@ body {
         footer.appendChild(tag);
       });
       var dateSpan = document.createElement('span');
-      dateSpan.style.cssText = 'margin-left:auto;font-size:10px;color:var(--di);';
+      dateSpan.style.cssText = 'margin-left:auto;font-size:10px;color:' + muColor + ';';
       dateSpan.textContent = d;
       footer.appendChild(dateSpan);
       wrap.appendChild(footer);
@@ -4684,7 +4690,7 @@ body {
 
 <!-- ════ 알짜카드 에디터 모달 (모바일) ════ -->
 <div id="mbKcardModal" style="display:none;position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.7);" onclick="if(event.target===this)window.mbCloseKcardModal();">
-  <div style="position:absolute;bottom:0;left:0;right:0;height:92%;background:var(--s1);border-radius:20px 20px 0 0;display:flex;flex-direction:column;overflow:hidden;">
+  <div style="position:absolute;bottom:calc(var(--tabbar-h, 60px) + var(--safe-bottom, 0px));left:0;right:0;height:88%;background:var(--s1);border-radius:20px 20px 0 0;display:flex;flex-direction:column;overflow:hidden;">
     <!-- 핸들 -->
     <div style="display:flex;justify-content:center;padding:10px 0 4px;flex-shrink:0;">
       <div style="width:40px;height:4px;background:var(--b2);border-radius:2px;"></div>
