@@ -1073,7 +1073,7 @@ body {
     <div style="font-size:32px;margin-bottom:8px;">👑</div>
     <div style="font-size:20px;font-weight:700;color:#f0f4ff;margin-bottom:4px;">상권King</div>
     <div style="font-size:12px;color:#64748b;margin-bottom:28px;">클라우드 동기화 로그인</div>
-    <input id="_sbEmail" type="email" placeholder="이메일" style="width:100%;box-sizing:border-box;padding:11px 14px;border-radius:8px;border:1px solid #2a3050;background:#0f1219;color:#e0e6ff;font-size:14px;margin-bottom:10px;outline:none;">
+    <input id="_sbEmail" type="email" placeholder="이메일" enterkeyhint="next" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('_sbPw').focus();}" style="width:100%;box-sizing:border-box;padding:11px 14px;border-radius:8px;border:1px solid #2a3050;background:#0f1219;color:#e0e6ff;font-size:14px;margin-bottom:10px;outline:none;">
     <input id="_sbPw" type="password" placeholder="비밀번호" style="width:100%;box-sizing:border-box;padding:11px 14px;border-radius:8px;border:1px solid #2a3050;background:#0f1219;color:#e0e6ff;font-size:14px;margin-bottom:16px;outline:none;" onkeydown="if(event.key==='Enter') window._sbLogin()">
     <button id="_sbLoginBtn" onclick="window._sbLogin()" style="width:100%;padding:12px;border-radius:8px;background:#f59e0b;color:#000;font-size:15px;font-weight:700;border:none;cursor:pointer;">로그인</button>
 
@@ -1304,7 +1304,7 @@ body {
           <div id="flLinked" style="font-size:11px;color:var(--ac);margin-bottom:8px;display:none;"></div>
           <div class="mb-calc-box">
             <div class="mb-calc-box-title">🏠 주택 경매 수익분석 <span style="font-size:10px;color:var(--mu);font-weight:400;">(단기매도)</span></div>
-            <div class="mb-cf"><label>사건번호</label><input type="text" id="fl_case" placeholder="2024타경45137" style="font-family:inherit;"></div>
+            <div class="mb-cf"><label>사건번호</label><input type="text" id="fl_case" placeholder="2024타경45137" enterkeyhint="done" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}" style="font-family:inherit;"></div>
             <div class="mb-cf"><label>감정가 (원)</label><input type="text" inputmode="numeric" enterkeyhint="done" onkeydown="if(event.key===\'Enter\')this.blur()" id="fl_appraisal" oninput="if(typeof xlCommaFmt==='function')xlCommaFmt(this);if(typeof calcFlipLive==='function')calcFlipLive()" placeholder="0"></div>
             <div class="mb-cf" style="align-items:center;">
               <label>입찰가율 (%)</label>
@@ -1359,7 +1359,7 @@ body {
           <div id="rtLinked" style="font-size:11px;color:var(--ac);margin-bottom:8px;display:none;"></div>
           <div class="mb-calc-box">
             <div class="mb-calc-box-title">🏢 상가 경매 수익분석 <span style="font-size:10px;color:var(--mu);font-weight:400;">(임대수익)</span></div>
-            <div class="mb-cf"><label>사건번호</label><input type="text" id="rt_case" placeholder="2024타경12345" style="font-family:inherit;"></div>
+            <div class="mb-cf"><label>사건번호</label><input type="text" id="rt_case" placeholder="2024타경12345" enterkeyhint="done" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}" style="font-family:inherit;"></div>
             <div class="mb-cf"><label>감정가 (원)</label><input type="text" inputmode="numeric" enterkeyhint="done" onkeydown="if(event.key===\'Enter\')this.blur()" id="rt_appraisal" oninput="if(typeof xlCommaFmt==='function')xlCommaFmt(this);mbCalcRent()" placeholder="0"></div>
             <div class="mb-cf" style="align-items:center;"><label>입찰가율 (%)</label><input type="text" inputmode="decimal" enterkeyhint="done" onkeydown="if(event.key===\'Enter\')this.blur()" id="rt_bid_rate" oninput="mbCalcRent()" value="70.0" style="width:70px;flex:0 0 70px;"></div>
             <div class="mb-cf"><label>입찰가 (원)</label><input type="text" inputmode="numeric" enterkeyhint="done" onkeydown="if(event.key===\'Enter\')this.blur()" id="rt_bid" oninput="if(typeof xlCommaFmt==='function')xlCommaFmt(this);mbCalcRent()" placeholder="자동계산" style="color:var(--or);font-weight:600;"></div>
@@ -3725,11 +3725,33 @@ body {
     }
 
     modal.style.display = 'flex';
+    // iOS 키보드 올라올 때 모달 위치 보정
+    if (window.visualViewport) {
+      function _kcardVpHandler() {
+        var sheet = document.getElementById('mbKcardModalSheet');
+        if (!sheet) return;
+        var offsetBottom = window.innerHeight - window.visualViewport.height - window.visualViewport.offsetTop;
+        sheet.style.marginBottom = (offsetBottom > 0 ? offsetBottom : 0) + 'px';
+      }
+      window.visualViewport.addEventListener('resize', _kcardVpHandler);
+      window.visualViewport.addEventListener('scroll', _kcardVpHandler);
+      modal._kcardVpHandler = _kcardVpHandler;
+    }
   };
 
   window.mbCloseKcardModal = function() {
     var modal = document.getElementById('mbKcardModal');
-    if (modal) modal.style.display = 'none';
+    if (modal) {
+      modal.style.display = 'none';
+      // visualViewport 리스너 정리
+      if (window.visualViewport && modal._kcardVpHandler) {
+        window.visualViewport.removeEventListener('resize', modal._kcardVpHandler);
+        window.visualViewport.removeEventListener('scroll', modal._kcardVpHandler);
+        modal._kcardVpHandler = null;
+      }
+      var sheet = document.getElementById('mbKcardModalSheet');
+      if (sheet) sheet.style.marginBottom = '';
+    }
     _mbKcardEditId = null;
   };
 
@@ -4560,9 +4582,9 @@ body {
 
 <!-- ════ 알짜카드 에디터 모달 (모바일) ════ -->
 <div id="mbKcardModal" style="display:none;position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.7);align-items:flex-end;">
-  <div style="background:var(--s1);border-radius:20px 20px 0 0;width:100%;max-height:90vh;display:flex;flex-direction:column;padding-bottom:env(safe-area-inset-bottom,0px);">
+  <div id="mbKcardModalSheet" style="background:var(--s1);border-radius:20px 20px 0 0;width:100%;height:92%;max-height:92%;display:flex;flex-direction:column;">
     <!-- 핸들 -->
-    <div style="display:flex;justify-content:center;padding:10px 0 4px;">
+    <div style="display:flex;justify-content:center;padding:10px 0 4px;flex-shrink:0;">
       <div style="width:40px;height:4px;background:var(--b2);border-radius:2px;"></div>
     </div>
     <!-- 헤더 -->
@@ -4571,7 +4593,7 @@ body {
       <button onclick="window.mbCloseKcardModal()" style="width:32px;height:32px;border-radius:50%;background:var(--s3);border:1px solid var(--b2);color:var(--mu);font-size:15px;cursor:pointer;">✕</button>
     </div>
     <!-- 스크롤 영역 -->
-    <div style="flex:1;overflow-y:auto;padding:0 16px 16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 16px 8px;display:flex;flex-direction:column;gap:12px;">
       <!-- 카테고리 -->
       <div>
         <div style="font-size:11px;color:var(--mu);margin-bottom:6px;font-weight:600;">카테고리</div>
@@ -4580,28 +4602,34 @@ body {
       <!-- 제목 -->
       <div>
         <div style="font-size:11px;color:var(--mu);margin-bottom:6px;font-weight:600;">제목 *</div>
-        <input id="mbKcardTitle" type="text" placeholder="카드 제목"
+        <input id="mbKcardTitle" type="text" placeholder="카드 제목" enterkeyhint="next"
+          onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('mbKcardBody').focus();}"
           style="width:100%;box-sizing:border-box;padding:10px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:10px;color:var(--tx);font-size:14px;font-family:inherit;outline:none;">
       </div>
       <!-- 내용 -->
       <div>
         <div style="font-size:11px;color:var(--mu);margin-bottom:6px;font-weight:600;">내용</div>
         <textarea id="mbKcardBody" placeholder="내용 입력 (• 또는 - 로 시작하면 핵심 포인트로 표시)"
-          style="width:100%;box-sizing:border-box;padding:10px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:10px;color:var(--tx);font-size:13px;font-family:inherit;outline:none;resize:none;height:120px;line-height:1.6;"></textarea>
+          style="width:100%;box-sizing:border-box;padding:10px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:10px;color:var(--tx);font-size:13px;font-family:inherit;outline:none;resize:none;height:110px;line-height:1.6;"></textarea>
       </div>
       <!-- 태그 -->
       <div>
         <div style="font-size:11px;color:var(--mu);margin-bottom:6px;font-weight:600;">태그 (쉼표로 구분)</div>
-        <input id="mbKcardTags" type="text" placeholder="예: 경매, 낙찰"
+        <input id="mbKcardTags" type="text" placeholder="예: 경매, 낙찰" enterkeyhint="next"
+          onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('mbKcardYt').focus();}"
           style="width:100%;box-sizing:border-box;padding:10px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:10px;color:var(--tx);font-size:13px;font-family:inherit;outline:none;">
       </div>
       <!-- 유튜브 URL -->
       <div>
         <div style="font-size:11px;color:var(--mu);margin-bottom:6px;font-weight:600;">유튜브 URL (선택)</div>
-        <input id="mbKcardYt" type="text" placeholder="https://youtube.com/..."
+        <input id="mbKcardYt" type="text" placeholder="https://youtube.com/..." enterkeyhint="done"
+          onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}"
           style="width:100%;box-sizing:border-box;padding:10px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:10px;color:var(--tx);font-size:13px;font-family:inherit;outline:none;">
       </div>
-      <!-- 저장 버튼 -->
+      <div style="height:8px;flex-shrink:0;"></div>
+    </div>
+    <!-- 저장 버튼 — 항상 하단 고정 -->
+    <div style="padding:12px 16px;padding-bottom:max(12px,env(safe-area-inset-bottom));border-top:1px solid var(--b1);flex-shrink:0;background:var(--s1);">
       <button onclick="window.mbSaveKcard()"
         style="width:100%;padding:14px;background:var(--ac);color:#111;border:none;border-radius:12px;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit;">💾 저장</button>
     </div>
