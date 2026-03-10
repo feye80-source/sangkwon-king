@@ -1009,10 +1009,11 @@ body {
   }
   #mb-map-bs.open {
     display:block;
-    pointer-events:auto;
+    pointer-events:none;
   }
   #mb-map-bs-sheet {
     position:relative; z-index:1;
+    pointer-events:auto;
     background:var(--s1);
     border-radius:20px 20px 0 0;
     max-height:100%;
@@ -3746,7 +3747,7 @@ body {
       if (prev) prev.innerHTML = '';
     }
 
-    modal.style.display = 'flex';
+    modal.style.display = 'block';
   };
 
   window.mbCloseKcardModal = function() {
@@ -3856,11 +3857,11 @@ body {
       // 모달 동적 생성
       modal = document.createElement('div');
       modal.id = 'mbKcardDetailModal';
-      modal.style.cssText = 'display:none;position:fixed;inset:0;z-index:3500;background:rgba(0,0,0,.8);align-items:flex-end;overflow:hidden;';
+      modal.style.cssText = 'display:none;position:fixed;inset:0;z-index:3500;background:rgba(0,0,0,.8);';
       modal.onclick = function(e){ if(e.target===modal) mbCloseKcardDetail(); };
       var sheet = document.createElement('div');
       sheet.id = 'mbKcardDetailSheet';
-      sheet.style.cssText = 'background:var(--s1);border-radius:20px 20px 0 0;width:100%;max-height:90vh;display:flex;flex-direction:column;padding-bottom:env(safe-area-inset-bottom,0px);';
+      sheet.style.cssText = 'position:absolute;bottom:0;left:0;right:0;max-height:90%;background:var(--s1);border-radius:20px 20px 0 0;display:flex;flex-direction:column;padding-bottom:env(safe-area-inset-bottom,0px);overflow:hidden;';
       sheet.innerHTML =
         '<div style="display:flex;justify-content:center;padding:10px 0 4px;flex-shrink:0;">' +
           '<div style="width:40px;height:4px;background:var(--b2);border-radius:2px;"></div>' +
@@ -3951,7 +3952,7 @@ body {
     }
 
     body.innerHTML = html;
-    modal.style.display = 'flex';
+    modal.style.display = 'block';
     document.body.style.overflow = 'hidden';
   };
 
@@ -4682,8 +4683,8 @@ body {
 <!-- ════ 노트 에디터 전체화면 오버레이 ════ -->
 
 <!-- ════ 알짜카드 에디터 모달 (모바일) ════ -->
-<div id="mbKcardModal" style="display:none;position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.7);align-items:flex-end;">
-  <div style="background:var(--s1);border-radius:20px 20px 0 0;width:100%;height:92%;display:flex;flex-direction:column;">
+<div id="mbKcardModal" style="display:none;position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.7);" onclick="if(event.target===this)window.mbCloseKcardModal();">
+  <div style="position:absolute;bottom:0;left:0;right:0;height:92%;background:var(--s1);border-radius:20px 20px 0 0;display:flex;flex-direction:column;overflow:hidden;">
     <!-- 핸들 -->
     <div style="display:flex;justify-content:center;padding:10px 0 4px;flex-shrink:0;">
       <div style="width:40px;height:4px;background:var(--b2);border-radius:2px;"></div>
@@ -4694,7 +4695,7 @@ body {
       <button onclick="window.mbCloseKcardModal()" style="width:32px;height:32px;border-radius:50%;background:var(--s3);border:1px solid var(--b2);color:var(--mu);font-size:15px;cursor:pointer;">✕</button>
     </div>
     <!-- 스크롤 영역 -->
-    <div style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 16px 8px;display:flex;flex-direction:column;gap:12px;min-height:0;">
+    <div style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 16px 8px;display:flex;flex-direction:column;gap:12px;min-height:0;height:0;">
       <!-- 카테고리 -->
       <div>
         <div style="font-size:11px;color:var(--mu);margin-bottom:6px;font-weight:600;">카테고리</div>

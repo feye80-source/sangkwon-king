@@ -9555,6 +9555,10 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       });
       kakao.maps.event.addListener(map, 'click', _hideMapCtxMenu);
       kakao.maps.event.addListener(map, 'click', function () { _removeSearchPin(); });
+      // 모바일: 지도 클릭 시 바텀시트 닫기
+      kakao.maps.event.addListener(map, 'click', function () {
+        if (typeof window.mbCloseBottomSheet === 'function') window.mbCloseBottomSheet();
+      });
       kakao.maps.event.addListener(map, 'dragstart', _hideMapCtxMenu);
       document.addEventListener('click', function (e) {
         const m = document.getElementById('mapContextMenu');
