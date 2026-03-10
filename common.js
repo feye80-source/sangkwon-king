@@ -21078,7 +21078,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         const keyLines = bodyLines.filter(l => l.startsWith('•') || l.startsWith('-') || l.startsWith('·') || l.match(/^\d+[.)]/));
         const plainLines = bodyLines.filter(l => !l.startsWith('•') && !l.startsWith('-') && !l.startsWith('·') && !l.match(/^\d+[.)]/));
 
-        // 밝은 배경 감지
+        // 밝은 배경 감지 (밝은 배경일 때 텍스트 어둡게)
         const _brightBgs=['#fef08a','#86efac','#93c5fd','#f9a8d4','#c4b5fd','#fdba74','#fca5a5'];
         const _isBright=card.bgColor&&_brightBgs.includes(card.bgColor);
         const _txColor=_isBright?'#1a1a2e':'var(--tx)';
@@ -25612,7 +25612,7 @@ ${newsContext}
           sbizPanelMarkers.push(mk);
         });
 
-        // 지도 클릭 시 팝업 닫기 + 바텀시트 닫기
+        // 지도 클릭 시 팝업 닫기 + 모바일 바텀시트 닫기
         kakao.maps.event.addListener(window.map, 'click', function () {
           closeCurrentPopup();
           if (typeof window.mbCloseBottomSheet === 'function') window.mbCloseBottomSheet();

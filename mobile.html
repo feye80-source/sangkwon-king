@@ -3747,7 +3747,7 @@ body {
       if (prev) prev.innerHTML = '';
     }
 
-    modal.style.display = 'block';
+    modal.style.display = 'flex';
   };
 
   window.mbCloseKcardModal = function() {
@@ -3857,11 +3857,11 @@ body {
       // 모달 동적 생성
       modal = document.createElement('div');
       modal.id = 'mbKcardDetailModal';
-      modal.style.cssText = 'display:none;position:fixed;inset:0;z-index:3500;background:rgba(0,0,0,.8);';
+      modal.style.cssText = 'display:none;position:fixed;inset:0;z-index:3500;background:rgba(0,0,0,.8);align-items:flex-end;overflow:hidden;';
       modal.onclick = function(e){ if(e.target===modal) mbCloseKcardDetail(); };
       var sheet = document.createElement('div');
       sheet.id = 'mbKcardDetailSheet';
-      sheet.style.cssText = 'position:absolute;bottom:0;left:0;right:0;max-height:90%;background:var(--s1);border-radius:20px 20px 0 0;display:flex;flex-direction:column;padding-bottom:env(safe-area-inset-bottom,0px);overflow:hidden;';
+      sheet.style.cssText = 'background:var(--s1);border-radius:20px 20px 0 0;width:100%;max-height:90vh;display:flex;flex-direction:column;padding-bottom:env(safe-area-inset-bottom,0px);';
       sheet.innerHTML =
         '<div style="display:flex;justify-content:center;padding:10px 0 4px;flex-shrink:0;">' +
           '<div style="width:40px;height:4px;background:var(--b2);border-radius:2px;"></div>' +
@@ -3952,7 +3952,7 @@ body {
     }
 
     body.innerHTML = html;
-    modal.style.display = 'block';
+    modal.style.display = 'flex';
     document.body.style.overflow = 'hidden';
   };
 
@@ -4049,12 +4049,6 @@ body {
       var cardBg = (!card.ytUrl && (!card.imgs || !card.imgs.length) && card.bgColor)
         ? card.bgColor : 'var(--s1)';
 
-      // 밝은 배경색이면 텍스트를 어둡게
-      var brightBgs = ['#fef08a','#86efac','#93c5fd','#f9a8d4','#c4b5fd','#fdba74','#fca5a5'];
-      var isBright = card.bgColor && brightBgs.indexOf(card.bgColor) !== -1;
-      var txColor = isBright ? '#1a1a2e' : 'var(--tx)';
-      var muColor = isBright ? '#333355' : 'var(--mu)';
-
       var wrap = document.createElement('div');
       wrap.style.cssText = 'background:' + cardBg + ';border:1px solid var(--b1);'
         + 'border-top:3px solid ' + color + ';border-radius:8px;overflow:hidden;cursor:pointer;'
@@ -4135,7 +4129,7 @@ body {
       body.appendChild(hdr);
 
       var titleDiv = document.createElement('div');
-      titleDiv.style.cssText = 'font-size:13px;font-weight:700;color:' + txColor + ';margin-bottom:5px;';
+      titleDiv.style.cssText = 'font-size:13px;font-weight:700;color:var(--tx);margin-bottom:5px;';
       titleDiv.textContent = card.title || '';
       body.appendChild(titleDiv);
 
@@ -4150,7 +4144,7 @@ body {
       // 요약 텍스트
       plainLines.slice(0, 2).forEach(function(l) {
         var p = document.createElement('div');
-        p.style.cssText = 'font-size:11px;color:' + muColor + ';line-height:1.6;margin-bottom:2px;';
+        p.style.cssText = 'font-size:11px;color:var(--mu);line-height:1.6;margin-bottom:2px;';
         p.textContent = l;
         body.appendChild(p);
       });
@@ -4163,7 +4157,7 @@ body {
         var pt = document.createElement('div');
         pt.style.cssText = 'display:flex;align-items:flex-start;gap:5px;padding:4px 7px;'
           + 'background:' + color + '0d;border-left:2px solid ' + color + ';'
-          + 'border-radius:0 4px 4px 0;font-size:11px;color:' + txColor + ';line-height:1.5;';
+          + 'border-radius:0 4px 4px 0;font-size:11px;color:var(--tx);line-height:1.5;';
         pt.textContent = txt;
         pointWrap.appendChild(pt);
       });
@@ -4189,7 +4183,7 @@ body {
         footer.appendChild(tag);
       });
       var dateSpan = document.createElement('span');
-      dateSpan.style.cssText = 'margin-left:auto;font-size:10px;color:' + muColor + ';';
+      dateSpan.style.cssText = 'margin-left:auto;font-size:10px;color:var(--di);';
       dateSpan.textContent = d;
       footer.appendChild(dateSpan);
       wrap.appendChild(footer);
@@ -4689,8 +4683,8 @@ body {
 <!-- ════ 노트 에디터 전체화면 오버레이 ════ -->
 
 <!-- ════ 알짜카드 에디터 모달 (모바일) ════ -->
-<div id="mbKcardModal" style="display:none;position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.7);" onclick="if(event.target===this)window.mbCloseKcardModal();">
-  <div style="position:absolute;bottom:calc(var(--tabbar-h, 60px) + var(--safe-bottom, 0px));left:0;right:0;height:88%;background:var(--s1);border-radius:20px 20px 0 0;display:flex;flex-direction:column;overflow:hidden;">
+<div id="mbKcardModal" style="display:none;position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.7);align-items:flex-end;">
+  <div style="background:var(--s1);border-radius:20px 20px 0 0;width:100%;height:92%;display:flex;flex-direction:column;">
     <!-- 핸들 -->
     <div style="display:flex;justify-content:center;padding:10px 0 4px;flex-shrink:0;">
       <div style="width:40px;height:4px;background:var(--b2);border-radius:2px;"></div>
@@ -4701,7 +4695,7 @@ body {
       <button onclick="window.mbCloseKcardModal()" style="width:32px;height:32px;border-radius:50%;background:var(--s3);border:1px solid var(--b2);color:var(--mu);font-size:15px;cursor:pointer;">✕</button>
     </div>
     <!-- 스크롤 영역 -->
-    <div style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 16px 8px;display:flex;flex-direction:column;gap:12px;min-height:0;height:0;">
+    <div style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 16px 8px;display:flex;flex-direction:column;gap:12px;min-height:0;">
       <!-- 카테고리 -->
       <div>
         <div style="font-size:11px;color:var(--mu);margin-bottom:6px;font-weight:600;">카테고리</div>
