@@ -992,6 +992,14 @@ body {
 
   #mb-map-bs-backdrop {
     display:none;
+    position:fixed;
+    inset:0;
+    z-index:899;
+    background:transparent;
+    cursor:pointer;
+  }
+  #mb-map-bs-backdrop.open {
+    display:block;
   }
   #mb-map-bs {
     position:fixed; left:0; right:0; bottom:0; z-index:900;
@@ -2469,7 +2477,11 @@ body {
           } else if (typeof p.val === 'string') {
             pv.textContent = p.val.replace(/\d+/g, function(m) { return parseInt(m,10).toLocaleString('ko-KR'); });
           } else {
-            pv.textContent = p.val;
+            if (typeof p.val === 'number') {
+            pv.textContent = Math.round(p.val).toLocaleString('ko-KR');
+          } else if (typeof p.val === 'string') {
+            pv.textContent = p.val.replace(/\d+/g, function(m){ return parseInt(m,10).toLocaleString('ko-KR'); });
+          } else { pv.textContent = p.val; }
           }
           pi.appendChild(pl);
           pi.appendChild(pv);
@@ -3770,19 +3782,33 @@ body {
     if (file.size > 5*1024*1024) { alert('5MB 이하 이미지만 첨부 가능해요'); return; }
     var reader = new FileReader();
     reader.onload = function(e) {
-      if (!window._mbKcardPendingImgs) window._mbKcardPendingImgs = [];
-      window._mbKcardPendingImgs = [e.target.result]; // 1장만
+      window._mbKcardPendingImgs = [e.target.result];
       var prev = document.getElementById('mbKcardImgPreview');
       if (prev) {
-        prev.innerHTML = '<div style="position:relative;display:inline-block;">' +
-          '<img src="' + e.target.result + '" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--b1);">' +
-          '<button onclick="window._mbKcardPendingImgs=[];document.getElementById('mbKcardImgPreview').innerHTML='';document.getElementById('mbKcardImgInput').value='';" ' +
-          'style="position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;background:#ff6370;border:none;color:#fff;font-size:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;">✕</button>' +
-          '</div>';
+        var wrap = document.createElement('div');
+        wrap.style.cssText = 'position:relative;display:inline-block;';
+        var img = document.createElement('img');
+        img.src = e.target.result;
+        img.style.cssText = 'width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--b1);';
+        var delBtn = document.createElement('button');
+        delBtn.textContent = '✕';
+        delBtn.style.cssText = 'position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;background:#ff6370;border:none;color:#fff;font-size:10px;cursor:pointer;';
+        delBtn.onclick = function() { window.mbKcardImgClear(); };
+        wrap.appendChild(img);
+        wrap.appendChild(delBtn);
+        prev.innerHTML = '';
+        prev.appendChild(wrap);
       }
       input.value = '';
     };
     reader.readAsDataURL(file);
+  };
+  window.mbKcardImgClear = function() {
+    window._mbKcardPendingImgs = [];
+    var prev = document.getElementById('mbKcardImgPreview');
+    if (prev) prev.innerHTML = '';
+    var inp = document.getElementById('mbKcardImgInput');
+    if (inp) inp.value = '';
   };
 
   window.mbSaveKcard = function() {
@@ -3952,10 +3978,16 @@ body {
       ov = document.createElement('div');
       ov.id = '_mbImgFsOv';
       ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.96);display:flex;align-items:center;justify-content:center;';
-      ov.innerHTML = '<img id="_mbImgFsImg" style="max-width:100%;max-height:100%;object-fit:contain;">' +
-        '<button onclick="document.getElementById('_mbImgFsOv').style.display='none'" ' +
-        'style="position:absolute;top:16px;right:16px;background:rgba(0,0,0,.6);border:none;color:#fff;font-size:22px;width:44px;height:44px;border-radius:50%;cursor:pointer;">✕</button>';
-      ov.onclick = function(e){ if(e.target===ov) ov.style.display='none'; };
+      var fsImg = document.createElement('img');
+      fsImg.id = '_mbImgFsImg';
+      fsImg.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;';
+      var closeBtn = document.createElement('button');
+      closeBtn.textContent = '✕';
+      closeBtn.style.cssText = 'position:absolute;top:16px;right:16px;background:rgba(0,0,0,.6);border:none;color:#fff;font-size:22px;width:44px;height:44px;border-radius:50%;cursor:pointer;';
+      closeBtn.onclick = function(e) { e.stopPropagation(); ov.style.display = 'none'; };
+      ov.onclick = function(e) { if (e.target === ov) ov.style.display = 'none'; };
+      ov.appendChild(fsImg);
+      ov.appendChild(closeBtn);
       document.body.appendChild(ov);
     }
     document.getElementById('_mbImgFsImg').src = src;
