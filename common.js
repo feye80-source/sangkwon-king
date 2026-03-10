@@ -21065,7 +21065,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
       // 카테고리별 색상
       const catColor = (cat) => {
-        const map = { '📐 면적/건축': '#4f8eff', '⚖️ 권리분석': '#ff6370', '📋 경매 절차': '#f9a825', '💰 세금/비용': '#a78bfa', '🏘️ 상권/지역': '#b47cff' };
+        const map = { '📐 면적/건축': '#5b9fff', '⚖️ 권리분석': '#ff4060', '📋 경매 절차': '#ffb300', '💰 세금/비용': '#b06eff', '🏘️ 상권/지역': '#cc55ff' };
         return map[cat] || '#ffd166';
       };
 
@@ -21089,9 +21089,10 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
         let _th='';
         if(card.ytUrl){const _ym=card.ytUrl.match(/(?:v=|youtu\.be\/)+([\w-]{11})/);if(_ym)_th=`<div style="position:relative;width:100%;padding-top:56.25%;overflow:hidden;background:#000;"><img src="https://img.youtube.com/vi/${_ym[1]}/hqdefault.jpg" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;" loading="lazy"><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;"><div style="width:36px;height:36px;background:rgba(255,0,0,.85);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;margin-left:2px;">▶</div></div></div>`;}
-        else if(card.imgs&&card.imgs.length)_th=`<div style="position:relative;width:100%;padding-top:56.25%;overflow:hidden;background:#111;"><img src="${card.imgs[0]}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;" loading="lazy"></div>`;
+        else if(card.imgs&&card.imgs.length)_th=`<div style="width:100%;background:#111;display:flex;align-items:center;justify-content:center;border-radius:0;"><img src="${card.imgs[0]}" style="width:100%;height:auto;display:block;object-fit:contain;max-height:220px;" loading="lazy"></div>`;
         const _bg=(!card.ytUrl&&(!card.imgs||!card.imgs.length)&&card.bgColor)?card.bgColor:'var(--s1)';
         return `<div style="background:${_bg};border:1px solid var(--b1);border-top:3px solid ${color};border-radius:0 0 12px 12px;overflow:hidden;display:flex;flex-direction:column;transition:transform .15s,box-shadow .15s;cursor:pointer;" 
+      onclick="if(!event.target.closest('button'))showKcardDetail('${card.id}')"
       onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='0 8px 24px rgba(0,0,0,.35)'" 
       onmouseout="this.style.transform='';this.style.boxShadow=''">
       ${_th}
@@ -21121,6 +21122,76 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     </div>`;
       }).join('');
     }
+
+    // ── 알짜카드 상세보기 모달 ──────────────────────────────
+    function showKcardDetail(id) {
+      const card = kcards.find(k => k.id === id);
+      if (!card) return;
+      const catColor = (cat) => {
+        const map = { '📐 면적/건축': '#5b9fff', '⚖️ 권리분석': '#ff4060', '📋 경매 절차': '#ffb300', '💰 세금/비용': '#b06eff', '🏘️ 상권/지역': '#cc55ff' };
+        return map[cat] || '#ffd166';
+      };
+      const color = catColor(card.cat);
+
+      // 기존 모달 재사용 or 생성
+      let modal = document.getElementById('kcardDetailModal');
+      if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'kcardDetailModal';
+        modal.style.cssText = 'display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.75);align-items:center;justify-content:center;';
+        modal.onclick = function(e){ if(e.target===modal) closeKcardDetail(); };
+        document.body.appendChild(modal);
+      }
+
+      // 썸네일
+      let thHtml = '';
+      const ym = card.ytUrl && card.ytUrl.match(/(?:v=|youtu\.be\/)+([\w-]{11})/);
+      if (ym) {
+        thHtml = `<div style="position:relative;width:100%;padding-top:56.25%;background:#000;border-radius:10px;overflow:hidden;margin-bottom:16px;">
+          <img src="https://img.youtube.com/vi/${ym[1]}/hqdefault.jpg" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;">
+          <a href="${card.ytUrl}" target="_blank" onclick="window.open(this.href,'_blank');return false;" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-decoration:none;">
+            <div style="width:52px;height:52px;background:rgba(255,0,0,.9);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:22px;margin-left:4px;">▶</div></a></div>`;
+      } else if (card.imgs && card.imgs.length) {
+        thHtml = `<div style="border-radius:10px;overflow:hidden;margin-bottom:16px;background:#111;"><img src="${card.imgs[0]}" style="width:100%;height:auto;display:block;object-fit:contain;max-height:320px;"></div>`;
+      }
+
+      // 본문 파싱
+      const bodyLines = (card.body || '').split('\n').filter(Boolean);
+      const bodyHtml = bodyLines.map(line => {
+        const isBullet = line.startsWith('•') || line.startsWith('-') || line.startsWith('·') || /^\d+[.)]/.test(line);
+        const txt = isBullet ? line.replace(/^[•\-·]\s*/, '').replace(/^\d+[.)]\s*/, '') : null;
+        return isBullet
+          ? `<div style="display:flex;align-items:flex-start;gap:8px;padding:8px 12px;background:${color}11;border-left:3px solid ${color};border-radius:0 6px 6px 0;font-size:13px;color:var(--tx);line-height:1.6;margin-bottom:6px;">${esc(txt)}</div>`
+          : `<div style="font-size:13px;color:var(--mu);line-height:1.7;margin-bottom:6px;">${esc(line)}</div>`;
+      }).join('');
+
+      const tagsHtml = (card.tags || []).map(t => `<span style="font-size:11px;padding:3px 9px;background:rgba(255,209,102,.12);color:#ffd166;border-radius:8px;border:1px solid rgba(255,209,102,.3);">#${esc(t)}</span>`).join('');
+
+      modal.innerHTML = `
+        <div style="background:var(--s1);border-radius:16px;width:560px;max-width:calc(100vw - 40px);max-height:85vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.7);">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px 12px;border-bottom:1px solid var(--b1);flex-shrink:0;">
+            <span style="font-size:11px;padding:3px 10px;border-radius:10px;font-weight:700;background:${color}22;color:${color};border:1px solid ${color}55;">${esc(card.cat || '기타')}</span>
+            <div style="display:flex;gap:8px;">
+              <button onclick="closeKcardDetail();setTimeout(()=>openKcardEditor('${card.id}'),100)" style="padding:6px 14px;background:rgba(79,142,255,.15);border:1px solid rgba(79,142,255,.4);border-radius:8px;color:#4f8eff;font-size:12px;font-weight:700;cursor:pointer;">✏️ 수정</button>
+              <button onclick="closeKcardDetail()" style="width:32px;height:32px;border-radius:50%;background:var(--s3);border:1px solid var(--b2);color:var(--mu);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;">✕</button>
+            </div>
+          </div>
+          <div style="flex:1;overflow-y:auto;padding:20px;">
+            ${thHtml}
+            <div style="font-size:20px;font-weight:800;color:var(--tx);line-height:1.4;margin-bottom:14px;">${esc(card.title || '')}</div>
+            <div style="display:flex;flex-direction:column;">${bodyHtml}</div>
+            ${tagsHtml ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:16px;">${tagsHtml}</div>` : ''}
+          </div>
+        </div>`;
+
+      modal.style.display = 'flex';
+    }
+    function closeKcardDetail() {
+      const modal = document.getElementById('kcardDetailModal');
+      if (modal) modal.style.display = 'none';
+    }
+    window.showKcardDetail = showKcardDetail;
+    window.closeKcardDetail = closeKcardDetail;
 
     // ── 에디터 열기/닫기 ───────────────────────────────
     function openKcardEditor(id) {

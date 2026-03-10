@@ -1089,7 +1089,7 @@ body {
     <div style="font-size:32px;margin-bottom:8px;">🔐</div>
     <div style="font-size:20px;font-weight:700;color:#f0f4ff;margin-bottom:4px;">비밀번호 재설정</div>
     <div style="font-size:12px;color:#64748b;margin-bottom:28px;">새 비밀번호를 입력하고 변경을 완료하세요.</div>
-    <input id="_sbNewPw" type="password" placeholder="새 비밀번호 (6자 이상)" style="width:100%;box-sizing:border-box;padding:11px 14px;border-radius:8px;border:1px solid #2a3050;background:#0f1219;color:#e0e6ff;font-size:14px;margin-bottom:10px;outline:none;">
+    <input id="_sbNewPw" type="password" placeholder="새 비밀번호 (6자 이상)" enterkeyhint="next" onkeydown="if(event.key==='Enter')document.getElementById('_sbNewPw2').focus()" style="width:100%;box-sizing:border-box;padding:11px 14px;border-radius:8px;border:1px solid #2a3050;background:#0f1219;color:#e0e6ff;font-size:14px;margin-bottom:10px;outline:none;">
     <input id="_sbNewPw2" type="password" placeholder="새 비밀번호 확인" style="width:100%;box-sizing:border-box;padding:11px 14px;border-radius:8px;border:1px solid #2a3050;background:#0f1219;color:#e0e6ff;font-size:14px;margin-bottom:16px;outline:none;" onkeydown="if(event.key==='Enter') window._sbApplyRecovery()">
     <button id="_sbRecoveryBtn" onclick="window._sbApplyRecovery()" style="width:100%;padding:12px;border-radius:8px;background:#f59e0b;color:#000;font-size:15px;font-weight:700;border:none;cursor:pointer;">비밀번호 변경</button>
     <div id="_sbRecoveryErr" style="color:#f87171;font-size:12px;margin-top:10px;min-height:18px;"></div>
@@ -1117,27 +1117,27 @@ body {
   <div class="mba-row">
     <span class="mba-lbl">Gemini</span>
     <span class="mba-dot" id="mba-dot-0"></span>
-    <input class="mba-input" id="mba-gemini" type="text" placeholder="AIza..." autocomplete="off">
+    <input class="mba-input" id="mba-gemini" type="text" enterkeyhint="done" onkeydown="if(event.key==='Enter')this.blur()" placeholder="AIza..." autocomplete="off">
   </div>
   <div class="mba-row">
     <span class="mba-lbl">Kakao JS</span>
     <span class="mba-dot" id="mba-dot-1"></span>
-    <input class="mba-input" id="mba-kakaojs" type="text" placeholder="Kakao JS Key" autocomplete="off">
+    <input class="mba-input" id="mba-kakaojs" type="text" enterkeyhint="done" onkeydown="if(event.key==='Enter')this.blur()" placeholder="Kakao JS Key" autocomplete="off">
   </div>
   <div class="mba-row">
     <span class="mba-lbl">Kakao REST</span>
     <span class="mba-dot" id="mba-dot-2"></span>
-    <input class="mba-input" id="mba-kakaorest" type="password" placeholder="Kakao REST Key" autocomplete="off">
+    <input class="mba-input" id="mba-kakaorest" type="password" enterkeyhint="done" onkeydown="if(event.key==='Enter')this.blur()" placeholder="Kakao REST Key" autocomplete="off">
   </div>
   <div class="mba-row">
     <span class="mba-lbl">온비드</span>
     <span class="mba-dot" id="mba-dot-3"></span>
-    <input class="mba-input" id="mba-onbid" type="password" placeholder="온비드 인증키" autocomplete="off">
+    <input class="mba-input" id="mba-onbid" type="password" enterkeyhint="done" onkeydown="if(event.key==='Enter')this.blur()" placeholder="온비드 인증키" autocomplete="off">
   </div>
   <div class="mba-row">
     <span class="mba-lbl">소상공인</span>
     <span class="mba-dot" id="mba-dot-4"></span>
-    <input class="mba-input" id="mba-sbiz" type="password" placeholder="소상공인 인증키" autocomplete="off">
+    <input class="mba-input" id="mba-sbiz" type="password" enterkeyhint="done" onkeydown="if(event.key==='Enter')this.blur()" placeholder="소상공인 인증키" autocomplete="off">
   </div>
   <div style="display:flex;gap:8px;margin-top:4px;">
     <button class="mb-btn mb-btn-primary" onclick="mbSaveApiKeys()" style="flex:1;">💾 저장</button>
@@ -1164,7 +1164,7 @@ body {
     <!-- 노트 패널 -->
     <div id="mb-ins-note" class="mb-ins-panel active">
       <div class="mb-note-toolbar">
-        <input type="text" id="ntSearchInput" placeholder="🔍 노트 검색" oninput="if(typeof ntRender==='function')ntRender()">
+        <input type="text" id="ntSearchInput" placeholder="🔍 노트 검색" inputmode="search" enterkeyhint="search" oninput="if(typeof ntRender==='function')ntRender()">
         <button class="mb-btn mb-btn-gold" onclick="ntCreate('unified')">＋ 새 노트</button>
       </div>
       <!-- 모드 버튼 -->
@@ -1231,14 +1231,14 @@ body {
             <button class="mb-btn mb-btn-primary" onclick="loadBidItem()">불러오기</button>
           </div>
           <div id="bdLinked" style="font-size:11px;color:var(--ac);margin-bottom:8px;display:none;"></div>
-          <div class="mb-cf"><label>감정가 (원)</label><input type="text" inputmode="numeric" id="bd_app" oninput="formatCalcInput(this);calcBid()" placeholder="0"></div>
-          <div class="mb-cf"><label>최저입찰가 (원)</label><input type="text" inputmode="numeric" id="bd_min" oninput="formatCalcInput(this);calcBid()" placeholder="자동계산 또는 직접 입력"></div>
-          <div class="mb-cf"><label>목표 수익률 (%)</label><input type="text" inputmode="numeric" id="bd_yr" oninput="formatCalcInput(this);calcBid()" value="7"></div>
-          <div class="mb-cf"><label>월 예상 임대료 (원)</label><input type="text" inputmode="numeric" id="bd_rent" oninput="formatCalcInput(this);calcBid()" placeholder="0"></div>
-          <div class="mb-cf"><label>보증금 (원)</label><input type="text" inputmode="numeric" id="bd_dep" oninput="formatCalcInput(this);calcBid()" value="0"></div>
-          <div class="mb-cf"><label>취득세 + 부대비용 (%)</label><input type="text" inputmode="numeric" id="bd_tax" oninput="formatCalcInput(this);calcBid()" value="4.6"></div>
-          <div class="mb-cf"><label>명도 예상 비용 (원)</label><input type="text" inputmode="numeric" id="bd_evic" oninput="formatCalcInput(this);calcBid()" value="3000000"></div>
-          <div class="mb-cf"><label>인테리어 예상 비용 (원)</label><input type="text" inputmode="numeric" id="bd_int" oninput="formatCalcInput(this);calcBid()" value="0"></div>
+          <div class="mb-cf"><label>감정가 (원)</label><input type="text" inputmode="numeric" enterkeyhint="done" onkeydown="if(event.key===\'Enter\')this.blur()" id="bd_app" oninput="formatCalcInput(this);calcBid()" placeholder="0"></div>
+          <div class="mb-cf"><label>최저입찰가 (원)</label><input type="text" inputmode="numeric" enterkeyhint="done" onkeydown="if(event.key===\'Enter\')this.blur()" id="bd_min" oninput="formatCalcInput(this);calcBid()" placeholder="자동계산 또는 직접 입력"></div>
+          <div class="mb-cf"><label>목표 수익률 (%)</label><input type="text" inputmode="numeric" enterkeyhint="done" onkeydown="if(event.key===\'Enter\')this.blur()" id="bd_yr" oninput="formatCalcInput(this);calcBid()" value="7"></div>
+          <div class="mb-cf"><label>월 예상 임대료 (원)</label><input type="text" inputmode="numeric" enterkeyhint="done" onkeydown="if(event.key===\'Enter\')this.blur()" id="bd_rent" oninput="formatCalcInput(this);calcBid()" placeholder="0"></div>
+          <div class="mb-cf"><label>보증금 (원)</label><input type="text" inputmode="numeric" enterkeyhint="done" onkeydown="if(event.key===\'Enter\')this.blur()" id="bd_dep" oninput="formatCalcInput(this);calcBid()" value="0"></div>
+          <div class="mb-cf"><label>취득세 + 부대비용 (%)</label><input type="text" inputmode="numeric" enterkeyhint="done" onkeydown="if(event.key===\'Enter\')this.blur()" id="bd_tax" oninput="formatCalcInput(this);calcBid()" value="4.6"></div>
+          <div class="mb-cf"><label>명도 예상 비용 (원)</label><input type="text" inputmode="numeric" enterkeyhint="done" onkeydown="if(event.key===\'Enter\')this.blur()" id="bd_evic" oninput="formatCalcInput(this);calcBid()" value="3000000"></div>
+          <div class="mb-cf"><label>인테리어 예상 비용 (원)</label><input type="text" inputmode="numeric" enterkeyhint="done" onkeydown="if(event.key===\'Enter\')this.blur()" id="bd_int" oninput="formatCalcInput(this);calcBid()" value="0"></div>
         </div>
         <div class="mb-res-box">
           <div class="mb-calc-box-title" style="margin-bottom:10px;">📊 적정 입찰가 분석</div>
@@ -1263,13 +1263,13 @@ body {
             <button class="mb-btn mb-btn-primary" onclick="loadYieldItem()">불러오기</button>
           </div>
           <div id="yrLinked" style="font-size:11px;color:var(--ac);margin-bottom:8px;display:none;"></div>
-          <div class="mb-cf"><label>매입가 / 낙찰가 (원)</label><input type="text" inputmode="numeric" id="yr_price" oninput="formatCalcInput(this);calcYield()" placeholder="0"></div>
-          <div class="mb-cf"><label>월 임대료 (원)</label><input type="text" inputmode="numeric" id="yr_rent" oninput="formatCalcInput(this);calcYield()" placeholder="0"></div>
-          <div class="mb-cf"><label>보증금 (원)</label><input type="text" inputmode="numeric" id="yr_dep" oninput="formatCalcInput(this);calcYield()" value="0"></div>
-          <div class="mb-cf"><label>연간 관리비 등 (원)</label><input type="text" inputmode="numeric" id="yr_exp" oninput="formatCalcInput(this);calcYield()" value="0"></div>
-          <div class="mb-cf"><label>대출금 (원)</label><input type="text" inputmode="numeric" id="yr_loan" oninput="formatCalcInput(this);calcYield()" value="0"></div>
-          <div class="mb-cf"><label>대출 이율 (%)</label><input type="text" inputmode="numeric" id="yr_rate" oninput="formatCalcInput(this);calcYield()" value="3.8"></div>
-          <div class="mb-cf"><label>전용면적 (㎡, 선택)</label><input type="text" inputmode="numeric" id="yr_area" oninput="formatCalcInput(this);calcYield()" placeholder="평당가 계산용"></div>
+          <div class="mb-cf"><label>매입가 / 낙찰가 (원)</label><input type="text" inputmode="numeric" enterkeyhint="done" onkeydown="if(event.key===\'Enter\')this.blur()" id="yr_price" oninput="formatCalcInput(this);calcYield()" placeholder="0"></div>
+          <div class="mb-cf"><label>월 임대료 (원)</label><input type="text" inputmode="numeric" enterkeyhint="done" onkeydown="if(event.key===\'Enter\')this.blur()" id="yr_rent" oninput="formatCalcInput(this);calcYield()" placeholder="0"></div>
+          <div class="mb-cf"><label>보증금 (원)</label><input type="text" inputmode="numeric" enterkeyhint="done" onkeydown="if(event.key===\'Enter\')this.blur()" id="yr_dep" oninput="formatCalcInput(this);calcYield()" value="0"></div>
+          <div class="mb-cf"><label>연간 관리비 등 (원)</label><input type="text" inputmode="numeric" enterkeyhint="done" onkeydown="if(event.key===\'Enter\')this.blur()" id="yr_exp" oninput="formatCalcInput(this);calcYield()" value="0"></div>
+          <div class="mb-cf"><label>대출금 (원)</label><input type="text" inputmode="numeric" enterkeyhint="done" onkeydown="if(event.key===\'Enter\')this.blur()" id="yr_loan" oninput="formatCalcInput(this);calcYield()" value="0"></div>
+          <div class="mb-cf"><label>대출 이율 (%)</label><input type="text" inputmode="numeric" enterkeyhint="done" onkeydown="if(event.key===\'Enter\')this.blur()" id="yr_rate" oninput="formatCalcInput(this);calcYield()" value="3.8"></div>
+          <div class="mb-cf"><label>전용면적 (㎡, 선택)</label><input type="text" inputmode="numeric" enterkeyhint="done" onkeydown="if(event.key===\'Enter\')this.blur()" id="yr_area" oninput="formatCalcInput(this);calcYield()" placeholder="평당가 계산용"></div>
         </div>
         <div class="mb-res-box" id="yieldResult">
           <div class="mb-calc-box-title" style="margin-bottom:10px;">📊 수익률 분석</div>
@@ -1305,24 +1305,24 @@ body {
           <div class="mb-calc-box">
             <div class="mb-calc-box-title">🏠 주택 경매 수익분석 <span style="font-size:10px;color:var(--mu);font-weight:400;">(단기매도)</span></div>
             <div class="mb-cf"><label>사건번호</label><input type="text" id="fl_case" placeholder="2024타경45137" style="font-family:inherit;"></div>
-            <div class="mb-cf"><label>감정가 (원)</label><input type="text" inputmode="numeric" id="fl_appraisal" oninput="if(typeof xlCommaFmt==='function')xlCommaFmt(this);if(typeof calcFlipLive==='function')calcFlipLive()" placeholder="0"></div>
+            <div class="mb-cf"><label>감정가 (원)</label><input type="text" inputmode="numeric" enterkeyhint="done" onkeydown="if(event.key===\'Enter\')this.blur()" id="fl_appraisal" oninput="if(typeof xlCommaFmt==='function')xlCommaFmt(this);if(typeof calcFlipLive==='function')calcFlipLive()" placeholder="0"></div>
             <div class="mb-cf" style="align-items:center;">
               <label>입찰가율 (%)</label>
-              <input type="text" inputmode="decimal" id="fl_bid_rate" oninput="if(typeof calcFlipLive==='function')calcFlipLive()" value="64.5" style="width:70px;flex:0 0 70px;">
+              <input type="text" inputmode="decimal" enterkeyhint="done" onkeydown="if(event.key===\'Enter\')this.blur()" id="fl_bid_rate" oninput="if(typeof calcFlipLive==='function')calcFlipLive()" value="64.5" style="width:70px;flex:0 0 70px;">
             </div>
-            <div class="mb-cf"><label>입찰가 (원)</label><input type="text" inputmode="numeric" id="fl_bid" oninput="if(typeof xlCommaFmt==='function')xlCommaFmt(this);if(typeof calcFlipLive==='function')calcFlipLive()" placeholder="자동계산" style="color:var(--or);font-weight:600;"></div>
-            <div class="mb-cf" style="align-items:center;"><label>대출금율 (%)</label><input type="text" inputmode="decimal" id="fl_loan_rate" oninput="if(typeof calcFlipLive==='function')calcFlipLive()" value="80" style="width:70px;flex:0 0 70px;"></div>
-            <div class="mb-cf" style="align-items:center;"><label>취득세 (%)</label><input type="text" inputmode="decimal" id="fl_acq_tax" oninput="if(typeof calcFlipLive==='function')calcFlipLive()" value="1.1" style="width:70px;flex:0 0 70px;"></div>
-            <div class="mb-cf" style="align-items:center;"><label>법무비/채권 (%)</label><input type="text" inputmode="decimal" id="fl_legal_rate" oninput="if(typeof calcFlipLive==='function')calcFlipLive()" value="0.9" style="width:70px;flex:0 0 70px;"></div>
-            <div class="mb-cf" style="align-items:center;"><label>대출이자율 (%/연)</label><input type="text" inputmode="decimal" id="fl_interest_rate" oninput="if(typeof calcFlipLive==='function')calcFlipLive()" value="4.5" style="width:70px;flex:0 0 70px;"></div>
-            <div class="mb-cf" style="align-items:center;"><label>중도상환수수료 (%)</label><input type="text" inputmode="decimal" id="fl_prepay_rate" oninput="if(typeof calcFlipLive==='function')calcFlipLive()" value="0.5" style="width:70px;flex:0 0 70px;"></div>
-            <div class="mb-cf" style="align-items:center;"><label>중개료 (%)</label><input type="text" inputmode="decimal" id="fl_agent_rate" oninput="if(typeof calcFlipLive==='function')calcFlipLive()" value="0.5" style="width:70px;flex:0 0 70px;"></div>
-            <div class="mb-cf"><label>미납관리비 (원)</label><input type="text" inputmode="numeric" id="fl_mgmt" oninput="if(typeof xlCommaFmt==='function')xlCommaFmt(this);if(typeof calcFlipLive==='function')calcFlipLive()" placeholder="0"></div>
-            <div class="mb-cf"><label>수리비 (원)</label><input type="text" inputmode="numeric" id="fl_repair" oninput="if(typeof xlCommaFmt==='function')xlCommaFmt(this);if(typeof calcFlipLive==='function')calcFlipLive()" placeholder="0"></div>
-            <div class="mb-cf"><label>명도비 (원)</label><input type="text" inputmode="numeric" id="fl_evict" oninput="if(typeof xlCommaFmt==='function')xlCommaFmt(this);if(typeof calcFlipLive==='function')calcFlipLive()" placeholder="0"></div>
-            <div class="mb-cf"><label>기타비용 (원)</label><input type="text" inputmode="numeric" id="fl_memo_amt" oninput="if(typeof xlCommaFmt==='function')xlCommaFmt(this);if(typeof calcFlipLive==='function')calcFlipLive()" placeholder="0"></div>
-            <div class="mb-cf"><label>매도가 (원)</label><input type="text" inputmode="numeric" id="fl_sellprice" oninput="if(typeof xlCommaFmt==='function')xlCommaFmt(this);if(typeof calcFlipLive==='function')calcFlipLive()" placeholder="0" style="color:var(--or);font-weight:600;"></div>
-            <div class="mb-cf" style="align-items:center;"><label>종합소득세 (%)</label><input type="text" inputmode="decimal" id="fl_transfer_tax" oninput="if(typeof calcFlipLive==='function')calcFlipLive()" value="16.5" style="width:70px;flex:0 0 70px;"></div>
+            <div class="mb-cf"><label>입찰가 (원)</label><input type="text" inputmode="numeric" enterkeyhint="done" onkeydown="if(event.key===\'Enter\')this.blur()" id="fl_bid" oninput="if(typeof xlCommaFmt==='function')xlCommaFmt(this);if(typeof calcFlipLive==='function')calcFlipLive()" placeholder="자동계산" style="color:var(--or);font-weight:600;"></div>
+            <div class="mb-cf" style="align-items:center;"><label>대출금율 (%)</label><input type="text" inputmode="decimal" enterkeyhint="done" onkeydown="if(event.key===\'Enter\')this.blur()" id="fl_loan_rate" oninput="if(typeof calcFlipLive==='function')calcFlipLive()" value="80" style="width:70px;flex:0 0 70px;"></div>
+            <div class="mb-cf" style="align-items:center;"><label>취득세 (%)</label><input type="text" inputmode="decimal" enterkeyhint="done" onkeydown="if(event.key===\'Enter\')this.blur()" id="fl_acq_tax" oninput="if(typeof calcFlipLive==='function')calcFlipLive()" value="1.1" style="width:70px;flex:0 0 70px;"></div>
+            <div class="mb-cf" style="align-items:center;"><label>법무비/채권 (%)</label><input type="text" inputmode="decimal" enterkeyhint="done" onkeydown="if(event.key===\'Enter\')this.blur()" id="fl_legal_rate" oninput="if(typeof calcFlipLive==='function')calcFlipLive()" value="0.9" style="width:70px;flex:0 0 70px;"></div>
+            <div class="mb-cf" style="align-items:center;"><label>대출이자율 (%/연)</label><input type="text" inputmode="decimal" enterkeyhint="done" onkeydown="if(event.key===\'Enter\')this.blur()" id="fl_interest_rate" oninput="if(typeof calcFlipLive==='function')calcFlipLive()" value="4.5" style="width:70px;flex:0 0 70px;"></div>
+            <div class="mb-cf" style="align-items:center;"><label>중도상환수수료 (%)</label><input type="text" inputmode="decimal" enterkeyhint="done" onkeydown="if(event.key===\'Enter\')this.blur()" id="fl_prepay_rate" oninput="if(typeof calcFlipLive==='function')calcFlipLive()" value="0.5" style="width:70px;flex:0 0 70px;"></div>
+            <div class="mb-cf" style="align-items:center;"><label>중개료 (%)</label><input type="text" inputmode="decimal" enterkeyhint="done" onkeydown="if(event.key===\'Enter\')this.blur()" id="fl_agent_rate" oninput="if(typeof calcFlipLive==='function')calcFlipLive()" value="0.5" style="width:70px;flex:0 0 70px;"></div>
+            <div class="mb-cf"><label>미납관리비 (원)</label><input type="text" inputmode="numeric" enterkeyhint="done" onkeydown="if(event.key===\'Enter\')this.blur()" id="fl_mgmt" oninput="if(typeof xlCommaFmt==='function')xlCommaFmt(this);if(typeof calcFlipLive==='function')calcFlipLive()" placeholder="0"></div>
+            <div class="mb-cf"><label>수리비 (원)</label><input type="text" inputmode="numeric" enterkeyhint="done" onkeydown="if(event.key===\'Enter\')this.blur()" id="fl_repair" oninput="if(typeof xlCommaFmt==='function')xlCommaFmt(this);if(typeof calcFlipLive==='function')calcFlipLive()" placeholder="0"></div>
+            <div class="mb-cf"><label>명도비 (원)</label><input type="text" inputmode="numeric" enterkeyhint="done" onkeydown="if(event.key===\'Enter\')this.blur()" id="fl_evict" oninput="if(typeof xlCommaFmt==='function')xlCommaFmt(this);if(typeof calcFlipLive==='function')calcFlipLive()" placeholder="0"></div>
+            <div class="mb-cf"><label>기타비용 (원)</label><input type="text" inputmode="numeric" enterkeyhint="done" onkeydown="if(event.key===\'Enter\')this.blur()" id="fl_memo_amt" oninput="if(typeof xlCommaFmt==='function')xlCommaFmt(this);if(typeof calcFlipLive==='function')calcFlipLive()" placeholder="0"></div>
+            <div class="mb-cf"><label>매도가 (원)</label><input type="text" inputmode="numeric" enterkeyhint="done" onkeydown="if(event.key===\'Enter\')this.blur()" id="fl_sellprice" oninput="if(typeof xlCommaFmt==='function')xlCommaFmt(this);if(typeof calcFlipLive==='function')calcFlipLive()" placeholder="0" style="color:var(--or);font-weight:600;"></div>
+            <div class="mb-cf" style="align-items:center;"><label>종합소득세 (%)</label><input type="text" inputmode="decimal" enterkeyhint="done" onkeydown="if(event.key===\'Enter\')this.blur()" id="fl_transfer_tax" oninput="if(typeof calcFlipLive==='function')calcFlipLive()" value="16.5" style="width:70px;flex:0 0 70px;"></div>
           </div>
           <div class="mb-res-box">
             <div class="mb-calc-box-title" style="margin-bottom:10px;">📊 수익 분석</div>
@@ -1360,19 +1360,19 @@ body {
           <div class="mb-calc-box">
             <div class="mb-calc-box-title">🏢 상가 경매 수익분석 <span style="font-size:10px;color:var(--mu);font-weight:400;">(임대수익)</span></div>
             <div class="mb-cf"><label>사건번호</label><input type="text" id="rt_case" placeholder="2024타경12345" style="font-family:inherit;"></div>
-            <div class="mb-cf"><label>감정가 (원)</label><input type="text" inputmode="numeric" id="rt_appraisal" oninput="if(typeof xlCommaFmt==='function')xlCommaFmt(this);mbCalcRent()" placeholder="0"></div>
-            <div class="mb-cf" style="align-items:center;"><label>입찰가율 (%)</label><input type="text" inputmode="decimal" id="rt_bid_rate" oninput="mbCalcRent()" value="70.0" style="width:70px;flex:0 0 70px;"></div>
-            <div class="mb-cf"><label>입찰가 (원)</label><input type="text" inputmode="numeric" id="rt_bid" oninput="if(typeof xlCommaFmt==='function')xlCommaFmt(this);mbCalcRent()" placeholder="자동계산" style="color:var(--or);font-weight:600;"></div>
-            <div class="mb-cf" style="align-items:center;"><label>등록세+법무사 (%)</label><input type="text" inputmode="decimal" id="rt_reg_rate" oninput="mbCalcRent()" value="5.0" style="width:70px;flex:0 0 70px;"></div>
-            <div class="mb-cf" style="align-items:center;"><label>대출비율 (%)</label><input type="text" inputmode="decimal" id="rt_loan_rate" oninput="mbCalcRent()" value="70" style="width:70px;flex:0 0 70px;"></div>
-            <div class="mb-cf" style="align-items:center;"><label>대출이율 (%/연)</label><input type="text" inputmode="decimal" id="rt_interest_rate" oninput="mbCalcRent()" value="5.0" style="width:70px;flex:0 0 70px;"></div>
-            <div class="mb-cf"><label>명도비 (원)</label><input type="text" inputmode="numeric" id="rt_evict" oninput="if(typeof xlCommaFmt==='function')xlCommaFmt(this);mbCalcRent()" placeholder="0"></div>
-            <div class="mb-cf"><label>수리비 (원)</label><input type="text" inputmode="numeric" id="rt_repair" oninput="if(typeof xlCommaFmt==='function')xlCommaFmt(this);mbCalcRent()" placeholder="0"></div>
-            <div class="mb-cf"><label>기타비용 (원)</label><input type="text" inputmode="numeric" id="rt_extra" oninput="if(typeof xlCommaFmt==='function')xlCommaFmt(this);mbCalcRent()" placeholder="0"></div>
-            <div class="mb-cf"><label>보증금 (원)</label><input type="text" inputmode="numeric" id="rt_deposit" oninput="if(typeof xlCommaFmt==='function')xlCommaFmt(this);mbCalcRent()" placeholder="0"></div>
-            <div class="mb-cf"><label>월세 (원)</label><input type="text" inputmode="numeric" id="rt_monthly" oninput="if(typeof xlCommaFmt==='function')xlCommaFmt(this);mbCalcRent()" placeholder="0"></div>
-            <div class="mb-cf" style="align-items:center;"><label>공실율 (%)</label><input type="text" inputmode="decimal" id="rt_vacancy" oninput="mbCalcRent()" value="10" style="width:70px;flex:0 0 70px;"></div>
-            <div class="mb-cf"><label>연간 관리비용 (원)</label><input type="text" inputmode="numeric" id="rt_running" oninput="if(typeof xlCommaFmt==='function')xlCommaFmt(this);mbCalcRent()" placeholder="0"></div>
+            <div class="mb-cf"><label>감정가 (원)</label><input type="text" inputmode="numeric" enterkeyhint="done" onkeydown="if(event.key===\'Enter\')this.blur()" id="rt_appraisal" oninput="if(typeof xlCommaFmt==='function')xlCommaFmt(this);mbCalcRent()" placeholder="0"></div>
+            <div class="mb-cf" style="align-items:center;"><label>입찰가율 (%)</label><input type="text" inputmode="decimal" enterkeyhint="done" onkeydown="if(event.key===\'Enter\')this.blur()" id="rt_bid_rate" oninput="mbCalcRent()" value="70.0" style="width:70px;flex:0 0 70px;"></div>
+            <div class="mb-cf"><label>입찰가 (원)</label><input type="text" inputmode="numeric" enterkeyhint="done" onkeydown="if(event.key===\'Enter\')this.blur()" id="rt_bid" oninput="if(typeof xlCommaFmt==='function')xlCommaFmt(this);mbCalcRent()" placeholder="자동계산" style="color:var(--or);font-weight:600;"></div>
+            <div class="mb-cf" style="align-items:center;"><label>등록세+법무사 (%)</label><input type="text" inputmode="decimal" enterkeyhint="done" onkeydown="if(event.key===\'Enter\')this.blur()" id="rt_reg_rate" oninput="mbCalcRent()" value="5.0" style="width:70px;flex:0 0 70px;"></div>
+            <div class="mb-cf" style="align-items:center;"><label>대출비율 (%)</label><input type="text" inputmode="decimal" enterkeyhint="done" onkeydown="if(event.key===\'Enter\')this.blur()" id="rt_loan_rate" oninput="mbCalcRent()" value="70" style="width:70px;flex:0 0 70px;"></div>
+            <div class="mb-cf" style="align-items:center;"><label>대출이율 (%/연)</label><input type="text" inputmode="decimal" enterkeyhint="done" onkeydown="if(event.key===\'Enter\')this.blur()" id="rt_interest_rate" oninput="mbCalcRent()" value="5.0" style="width:70px;flex:0 0 70px;"></div>
+            <div class="mb-cf"><label>명도비 (원)</label><input type="text" inputmode="numeric" enterkeyhint="done" onkeydown="if(event.key===\'Enter\')this.blur()" id="rt_evict" oninput="if(typeof xlCommaFmt==='function')xlCommaFmt(this);mbCalcRent()" placeholder="0"></div>
+            <div class="mb-cf"><label>수리비 (원)</label><input type="text" inputmode="numeric" enterkeyhint="done" onkeydown="if(event.key===\'Enter\')this.blur()" id="rt_repair" oninput="if(typeof xlCommaFmt==='function')xlCommaFmt(this);mbCalcRent()" placeholder="0"></div>
+            <div class="mb-cf"><label>기타비용 (원)</label><input type="text" inputmode="numeric" enterkeyhint="done" onkeydown="if(event.key===\'Enter\')this.blur()" id="rt_extra" oninput="if(typeof xlCommaFmt==='function')xlCommaFmt(this);mbCalcRent()" placeholder="0"></div>
+            <div class="mb-cf"><label>보증금 (원)</label><input type="text" inputmode="numeric" enterkeyhint="done" onkeydown="if(event.key===\'Enter\')this.blur()" id="rt_deposit" oninput="if(typeof xlCommaFmt==='function')xlCommaFmt(this);mbCalcRent()" placeholder="0"></div>
+            <div class="mb-cf"><label>월세 (원)</label><input type="text" inputmode="numeric" enterkeyhint="done" onkeydown="if(event.key===\'Enter\')this.blur()" id="rt_monthly" oninput="if(typeof xlCommaFmt==='function')xlCommaFmt(this);mbCalcRent()" placeholder="0"></div>
+            <div class="mb-cf" style="align-items:center;"><label>공실율 (%)</label><input type="text" inputmode="decimal" enterkeyhint="done" onkeydown="if(event.key===\'Enter\')this.blur()" id="rt_vacancy" oninput="mbCalcRent()" value="10" style="width:70px;flex:0 0 70px;"></div>
+            <div class="mb-cf"><label>연간 관리비용 (원)</label><input type="text" inputmode="numeric" enterkeyhint="done" onkeydown="if(event.key===\'Enter\')this.blur()" id="rt_running" oninput="if(typeof xlCommaFmt==='function')xlCommaFmt(this);mbCalcRent()" placeholder="0"></div>
           </div>
           <div class="mb-res-box">
             <div class="mb-calc-box-title" style="margin-bottom:10px;">📊 상가 임대 수익 분석</div>
@@ -1404,10 +1404,10 @@ body {
       <div id="mb-calc-npl" class="mb-calc-pane">
         <div class="mb-calc-box">
           <div class="mb-calc-box-title">⚖️ NPL 계산기</div>
-          <div class="mb-cf"><label>채권 매입가 (원)</label><input type="text" inputmode="numeric" id="npl_buy" oninput="formatCalcInput(this);calcNpl()" placeholder="0"></div>
-          <div class="mb-cf"><label>채권 원금 (원)</label><input type="text" inputmode="numeric" id="npl_prin" oninput="formatCalcInput(this);calcNpl()" placeholder="0"></div>
-          <div class="mb-cf"><label>예상 낙찰가 (원)</label><input type="text" inputmode="numeric" id="npl_bid" oninput="formatCalcInput(this);calcNpl()" placeholder="0"></div>
-          <div class="mb-cf"><label>배당 순위 (선순위 채권, 원)</label><input type="text" inputmode="numeric" id="npl_prior" oninput="formatCalcInput(this);calcNpl()" value="0"></div>
+          <div class="mb-cf"><label>채권 매입가 (원)</label><input type="text" inputmode="numeric" enterkeyhint="done" onkeydown="if(event.key===\'Enter\')this.blur()" id="npl_buy" oninput="formatCalcInput(this);calcNpl()" placeholder="0"></div>
+          <div class="mb-cf"><label>채권 원금 (원)</label><input type="text" inputmode="numeric" enterkeyhint="done" onkeydown="if(event.key===\'Enter\')this.blur()" id="npl_prin" oninput="formatCalcInput(this);calcNpl()" placeholder="0"></div>
+          <div class="mb-cf"><label>예상 낙찰가 (원)</label><input type="text" inputmode="numeric" enterkeyhint="done" onkeydown="if(event.key===\'Enter\')this.blur()" id="npl_bid" oninput="formatCalcInput(this);calcNpl()" placeholder="0"></div>
+          <div class="mb-cf"><label>배당 순위 (선순위 채권, 원)</label><input type="text" inputmode="numeric" enterkeyhint="done" onkeydown="if(event.key===\'Enter\')this.blur()" id="npl_prior" oninput="formatCalcInput(this);calcNpl()" value="0"></div>
         </div>
         <div class="mb-res-box" id="nplResult">
           <div class="mb-calc-box-title" style="margin-bottom:10px;">📊 NPL 분석</div>
@@ -1545,7 +1545,7 @@ body {
 
     <!-- 검색바 -->
     <div id="mb-map-search-bar">
-      <input type="text" id="mapKeyword" placeholder="🔍 지역명 검색 (예: 강남)">
+      <input type="text" id="mapKeyword" placeholder="🔍 지역명 검색 (예: 강남)" inputmode="search" enterkeyhint="go" onkeydown="if(event.key==='Enter'){searchMap();this.blur();}">
       <button onclick="searchMap()">이동</button>
     </div>
 
@@ -1777,7 +1777,7 @@ body {
   <div id="mb-page-saved" class="mb-page">
     <div id="mb-saved-header">
       <div class="mb-saved-search-row">
-        <input type="text" id="regionSearch" placeholder="🔍 지역·이름 검색" oninput="if(typeof mbRenderSaved==='function')mbRenderSaved();else renderSaved();">
+        <input type="text" id="regionSearch" placeholder="🔍 지역·이름 검색" inputmode="search" enterkeyhint="search" oninput="if(typeof mbRenderSaved==='function')mbRenderSaved();else renderSaved();" onkeydown="if(event.key==='Enter')this.blur();">
         <select id="sortKey" class="mb-saved-sort" onchange="if(typeof mbRenderSaved==='function')mbRenderSaved();else renderSaved();">
           <option value="timestamp">저장일</option>
           <option value="price">가격</option>
@@ -3205,8 +3205,10 @@ body {
         var logInput = document.createElement('input');
         logInput.type = 'text';
         logInput.placeholder = '로그 입력 후 추가';
+        logInput.setAttribute('enterkeyhint','send');
         var logAddBtn = document.createElement('button');
         logAddBtn.textContent = '+ 추가';
+        logInput.onkeydown = (function(btn){ return function(e){ if(e.key==='Enter'){ e.preventDefault(); btn.click(); } }; })(logAddBtn);
         logAddBtn.onclick = (function(sId){ return function(){
           var val4 = logInput.value.trim();
           if (!val4) return;
@@ -3766,6 +3768,110 @@ body {
     if (typeof showToast === 'function') showToast(_mbKcardEditId ? '카드 수정됨 ✅' : '카드 저장됨 📚', 'ok');
   };
 
+  /* ════ 알짜카드 상세보기 모달 ════ */
+  window.mbShowKcardDetail = function(card) {
+    var modal = document.getElementById('mbKcardDetailModal');
+    if (!modal) {
+      // 모달 동적 생성
+      modal = document.createElement('div');
+      modal.id = 'mbKcardDetailModal';
+      modal.style.cssText = 'display:none;position:fixed;inset:0;z-index:3500;background:rgba(0,0,0,.8);align-items:flex-end;overflow:hidden;';
+      modal.onclick = function(e){ if(e.target===modal) mbCloseKcardDetail(); };
+      var sheet = document.createElement('div');
+      sheet.id = 'mbKcardDetailSheet';
+      sheet.style.cssText = 'background:var(--s1);border-radius:20px 20px 0 0;width:100%;max-height:90vh;display:flex;flex-direction:column;padding-bottom:env(safe-area-inset-bottom,0px);';
+      sheet.innerHTML =
+        '<div style="display:flex;justify-content:center;padding:10px 0 4px;flex-shrink:0;">' +
+          '<div style="width:40px;height:4px;background:var(--b2);border-radius:2px;"></div>' +
+        '</div>' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 16px 10px;flex-shrink:0;">' +
+          '<span id="mbKcardDetailCat" style="font-size:11px;padding:2px 9px;border-radius:10px;font-weight:700;"></span>' +
+          '<button onclick="mbCloseKcardDetail()" style="width:32px;height:32px;border-radius:50%;background:var(--s3);border:1px solid var(--b2);color:var(--mu);font-size:15px;cursor:pointer;">✕</button>' +
+        '</div>' +
+        '<div style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 16px 20px;">' +
+          '<div id="mbKcardDetailBody"></div>' +
+        '</div>' +
+        '<div style="flex-shrink:0;padding:10px 16px 12px;border-top:1px solid var(--b1);display:flex;gap:8px;">' +
+          '<button id="mbKcardDetailEditBtn" style="flex:1;height:40px;background:rgba(79,142,255,.15);border:1px solid rgba(79,142,255,.4);border-radius:10px;color:#4f8eff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;">✏️ 수정</button>' +
+          '<button onclick="mbCloseKcardDetail()" style="flex:1;height:40px;background:var(--s2);border:1px solid var(--b1);border-radius:10px;color:var(--mu);font-size:13px;cursor:pointer;font-family:inherit;">닫기</button>' +
+        '</div>';
+      modal.appendChild(sheet);
+      document.body.appendChild(modal);
+    }
+
+    var catColors = {
+      '📐 면적/건축': '#5b9fff', '⚖️ 권리분석': '#ff4060',
+      '📋 경매 절차': '#ffb300', '💰 세금/비용': '#b06eff', '🏘️ 상권/지역': '#cc55ff'
+    };
+    var color = catColors[card.cat] || '#ffd166';
+
+    // 카테고리 뱃지
+    var catEl = document.getElementById('mbKcardDetailCat');
+    if (catEl) {
+      catEl.textContent = card.cat || '기타';
+      catEl.style.cssText = 'font-size:11px;padding:2px 9px;border-radius:10px;font-weight:700;background:' + color + '22;color:' + color + ';border:1px solid ' + color + '55;';
+    }
+
+    // 수정 버튼
+    var editBtn = document.getElementById('mbKcardDetailEditBtn');
+    if (editBtn) {
+      editBtn.onclick = (function(id){ return function(){ mbCloseKcardDetail(); setTimeout(function(){ window.mbOpenKcardModal(id); }, 200); }; })(card.id);
+    }
+
+    // 본문
+    var body = document.getElementById('mbKcardDetailBody');
+    if (!body) return;
+    var html = '';
+
+    // 썸네일
+    var ytId = null;
+    if (card.ytUrl) {
+      var ytM = card.ytUrl.match(/(?:v=|youtu\.be\/)([\\w-]{11})/);
+      if (ytM) ytId = ytM[1];
+    }
+    if (ytId) {
+      html += '<div style="position:relative;width:100%;padding-top:56.25%;overflow:hidden;background:#000;border-radius:10px;margin-bottom:14px;">' +
+        '<img src="https://img.youtube.com/vi/' + ytId + '/hqdefault.jpg" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;">' +
+        '<a href="' + card.ytUrl + '" target="_blank" onclick="window.open(this.href,\'_blank\');return false;" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-decoration:none;">' +
+        '<div style="width:48px;height:48px;background:rgba(255,0,0,.9);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:20px;margin-left:4px;">▶</div></a></div>';
+    } else if (card.imgs && card.imgs.length) {
+      html += '<div style="border-radius:10px;overflow:hidden;margin-bottom:14px;background:#111;">' +
+        '<img src="' + card.imgs[0] + '" style="width:100%;height:auto;display:block;object-fit:contain;max-height:300px;"></div>';
+    }
+
+    // 제목
+    html += '<div style="font-size:18px;font-weight:800;color:var(--tx);line-height:1.4;margin-bottom:12px;">' + (card.title || '') + '</div>';
+
+    // 본문 파싱
+    var bodyLines = (card.body || '').split('\n').filter(Boolean);
+    bodyLines.forEach(function(line) {
+      var isBullet = line.startsWith('•') || line.startsWith('-') || line.startsWith('·') || /^\d+[.)]/.test(line);
+      if (isBullet) {
+        var txt = line.replace(/^[•\-·]\s*/, '').replace(/^\d+[.)]\s*/, '');
+        html += '<div style="display:flex;align-items:flex-start;gap:8px;padding:8px 10px;background:' + color + '11;border-left:3px solid ' + color + ';border-radius:0 6px 6px 0;font-size:13px;color:var(--tx);line-height:1.6;margin-bottom:5px;">' + txt + '</div>';
+      } else {
+        html += '<div style="font-size:13px;color:var(--mu);line-height:1.7;margin-bottom:6px;">' + line + '</div>';
+      }
+    });
+
+    // 태그
+    if (card.tags && card.tags.length) {
+      html += '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:14px;">';
+      card.tags.forEach(function(t){ html += '<span style="font-size:11px;padding:3px 8px;background:rgba(255,209,102,.12);color:#ffd166;border-radius:8px;border:1px solid rgba(255,209,102,.3);">#' + t + '</span>'; });
+      html += '</div>';
+    }
+
+    body.innerHTML = html;
+    modal.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+  };
+
+  window.mbCloseKcardDetail = function() {
+    var modal = document.getElementById('mbKcardDetailModal');
+    if (modal) modal.style.display = 'none';
+    document.body.style.overflow = '';
+  };
+
   window.mbRenderKcards = function() {
     if (typeof window._kcardsSyncFromCache === 'function') window._kcardsSyncFromCache();
     var kcards = (window._idbCache && window._idbCache['ins_kcards']) || [];
@@ -3809,8 +3915,8 @@ body {
     }
 
     var catColors = {
-      '📐 면적/건축': '#4f8eff', '⚖️ 권리분석': '#ff6370',
-      '📋 경매 절차': '#f9a825', '💰 세금/비용': '#a78bfa', '🏘️ 상권/지역': '#b47cff'
+      '📐 면적/건축': '#5b9fff', '⚖️ 권리분석': '#ff4060',
+      '📋 경매 절차': '#ffb300', '💰 세금/비용': '#b06eff', '🏘️ 상권/지역': '#cc55ff'
     };
 
     filtered.forEach(function(card) {
@@ -3821,9 +3927,15 @@ body {
 
       var wrap = document.createElement('div');
       wrap.style.cssText = 'background:' + cardBg + ';border:1px solid var(--b1);'
-        + 'border-top:3px solid ' + color + ';border-radius:8px;overflow:hidden;';
+        + 'border-top:3px solid ' + color + ';border-radius:8px;overflow:hidden;cursor:pointer;';
 
-      /* 썸네일: 유튜브/이미지 모두 56.25% 비율 동일 적용 */
+      // 카드 전체 클릭 → 상세보기
+      wrap.onclick = (function(c){ return function(e) {
+        if (e.target.tagName === 'BUTTON' || e.target.closest('button')) return;
+        mbShowKcardDetail(c);
+      }; })(card);
+
+      /* 썸네일: 잘리지 않게 contain 사용 */
       var ytId = null;
       if (card.ytUrl) {
         var ytM = card.ytUrl.match(/(?:v=|youtu\.be\/)([\w-]{11})/);
@@ -3840,10 +3952,10 @@ body {
         wrap.appendChild(tDiv);
       } else if (card.imgs && card.imgs.length) {
         var iDiv = document.createElement('div');
-        iDiv.style.cssText = 'position:relative;width:100%;padding-top:56.25%;overflow:hidden;background:#111;';
+        iDiv.style.cssText = 'width:100%;background:#111;display:flex;align-items:center;justify-content:center;';
         var img = document.createElement('img');
         img.src = card.imgs[0];
-        img.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;';
+        img.style.cssText = 'width:100%;height:auto;display:block;object-fit:contain;max-height:200px;';
         img.loading = 'lazy';
         iDiv.appendChild(img);
         wrap.appendChild(iDiv);
