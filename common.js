@@ -4661,22 +4661,23 @@
       function chk(sfx) { const el = document.getElementById(prefix + sfx); return el ? el.checked : false; }
       function radio(name) { const el = document.querySelector(`input[name="${name}"]:checked`); return el ? el.value : 'all'; }
 
-      // ── 소스(유형) 필터 ──
-      const _srcBoxIds = ['lfSrc_경매', 'lfSrc_네이버', 'lfSrc_점포라인', 'lfSrc_아싸', 'lfSrc_디스코', 'lfSrc_플래닛', 'lfSrc_온비드'];
-      const _srcBoxes = _srcBoxIds.map(id => document.getElementById(id)).filter(Boolean);
+      // ── 소스(유형) 필터 — prefix 기반 id 우선, lf 하드코딩 fallback ──
+      const _srcKeys = ['경매','네이버','점포라인','아싸','디스코','플래닛','온비드'];
+      const _srcBoxes = _srcKeys.map(k => document.getElementById(prefix + 'Src_' + k) || document.getElementById('lfSrc_' + k)).filter(Boolean);
       if (_srcBoxes.length > 0) {
         const _anySrcChecked = _srcBoxes.some(el => el.checked);
         if (_anySrcChecked && item) {
           const src = item.source || d.출처 || '';
           const mode = item.mode || '';
+          const _g = (k) => document.getElementById(prefix + 'Src_' + k) || document.getElementById('lfSrc_' + k);
           const _srcMatch =
-            (document.getElementById('lfSrc_경매')?.checked && (mode === 'auction' && src !== '온비드')) ||
-            (document.getElementById('lfSrc_네이버')?.checked && src === '네이버부동산') ||
-            (document.getElementById('lfSrc_점포라인')?.checked && src === '점포라인') ||
-            (document.getElementById('lfSrc_아싸')?.checked && src === '점포거래소') ||
-            (document.getElementById('lfSrc_디스코')?.checked && src === '디스코') ||
-            (document.getElementById('lfSrc_플래닛')?.checked && src === '부동산플래닛') ||
-            (document.getElementById('lfSrc_온비드')?.checked && src === '온비드');
+            (_g('경매')?.checked   && (mode === 'auction' && src !== '온비드')) ||
+            (_g('네이버')?.checked  && (src === '네이버부동산' || src === '네이버')) ||
+            (_g('점포라인')?.checked && src === '점포라인') ||
+            (_g('아싸')?.checked   && (src === '점포거래소' || src === '아싸점포')) ||
+            (_g('디스코')?.checked  && src === '디스코') ||
+            (_g('플래닛')?.checked  && src === '부동산플래닛') ||
+            (_g('온비드')?.checked  && src === '온비드');
           if (!_srcMatch) return false;
         }
       }
@@ -4822,6 +4823,49 @@
           const itemType = String(n?.매물유형 ?? d.매물유형 ?? d.물건종류 ?? d.매물종류 ?? d.용도 ?? '');
           if (!types.some(t => itemType.includes(t))) return false;
         }
+      }
+
+      // ── 실거래가 ──
+      const txMin = num('TxPriceMin'), txMax = num('TxPriceMax');
+      if (txMin !== null || txMax !== null) {
+        const p = n?.실거래가_만원;
+        if (p == null || p <= 0) return false;
+        if (txMin !== null && p < txMin) return false;
+        if (txMax !== null && p > txMax) return false;
+      }
+
+      // ── 소재지 키워드 ──
+      const addrKw = v('AddrKeyword').trim();
+      if (addrKw) {
+        const addr = String(n?.소재지 ?? d.소재지 ?? d.물건소재지 ?? d.주소 ?? item?.title ?? '');
+        if (!addrKw.split(/\s+/).every(kw => addr.includes(kw))) return false;
+      }
+
+      // ── 제목 키워드 ──
+      const titleKw = v('TitleKeyword').trim();
+      if (titleKw) {
+        const title = String(item?.title ?? d.소재지 ?? '');
+        if (!titleKw.split(/\s+/).every(kw => title.includes(kw))) return false;
+      }
+
+      // ── 메모 키워드 ──
+      const memoKw = v('MemoKeyword').trim();
+      if (memoKw) {
+        const memo = String(item?.memo ?? '');
+        if (!memoKw.split(/\s+/).every(kw => memo.includes(kw))) return false;
+      }
+
+      // ── 값 존재여부 체크박스 ──
+      if (chk('HasArea')     && (n?.면적_m2 == null || n.면적_m2 <= 0))       return false;
+      if (chk('HasPrice')    && (n?.매매가_만원 == null || n.매매가_만원 <= 0)) return false;
+      if (chk('HasDeposit')  && (n?.보증금_만원 == null || n.보증금_만원 <= 0)) return false;
+      if (chk('HasRent')     && (n?.월세_만원 == null || n.월세_만원 <= 0))     return false;
+      if (chk('HasTxPrice')  && (n?.실거래가_만원 == null || n.실거래가_만원 <= 0)) return false;
+      if (chk('HasYield')    && (n?.수익률 == null || n.수익률 <= 0))           return false;
+
+      // ── 전용추정 제외 ──
+      if (chk('ExclEstArea')) {
+        if (d._area_estimated === true || d._area_estimated === 'true') return false;
       }
 
       return true;
@@ -5765,6 +5809,7 @@
       const btn = document.getElementById('svFilterToggleBtn');
       if (panel) panel.style.display = 'none';
       if (btn) { btn.style.color = 'var(--ac)'; btn.style.borderColor = 'var(--ac)'; btn.style.background = 'rgba(79,142,255,.12)'; }
+      renderGFilterPanels();
       showToast('✅ 필터 적용됨', 'ok');
     };
 
@@ -5774,10 +5819,13 @@
         'lfMinBidMin', 'lfMinBidMax', 'lfPpMin', 'lfPpMax',
         'lfDepositMin', 'lfDepositMax', 'lfJeonseMin', 'lfJeonseMax',
         'lfRentMin', 'lfRentMax', 'lfYieldMin', 'lfYieldMax',
+        'lfTxPriceMin', 'lfTxPriceMax',
         'lfBldgAreaMin', 'lfBldgAreaMax', 'lfFailCntMin', 'lfFailCntMax',
-        'lfDateMin', 'lfDateMax', 'lfPropType'
+        'lfDateMin', 'lfDateMax', 'lfPropType',
+        'lfAddrKeyword', 'lfTitleKeyword', 'lfMemoKeyword'
       ].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
       ['lfFloorIncludeEmpty', 'lfAreaIncludeEmpty',
+        'lfHasArea', 'lfHasPrice', 'lfHasDeposit', 'lfHasRent', 'lfHasTxPrice', 'lfHasYield', 'lfExclEstArea',
         'lfSrc_경매', 'lfSrc_네이버', 'lfSrc_점포라인', 'lfSrc_아싸', 'lfSrc_디스코', 'lfSrc_플래닛', 'lfSrc_온비드'
       ].forEach(id => {
         const el = document.getElementById(id); if (el) el.checked = false;
@@ -5786,6 +5834,7 @@
       if (r) r.checked = true;
       window._lfActive = false;
       renderSaved();
+      renderGFilterPanels();
       showToast('초기화됨', 'ok');
     };
 
@@ -5804,6 +5853,8 @@
     };
 
     function checkListFilter(item) {
+      // _norm 없으면 필터 진입 전 정규화
+      if (item && !item._norm && typeof normalizeItem === 'function') normalizeItem(item);
       if (!window._lfActive) {
         // dealKind 라디오나 빈값 체크박스만 켜져 있어도 필터 적용
         const dkEl = document.querySelector('input[name="lfDealKind"]:checked');
@@ -5811,14 +5862,229 @@
         const hasCbk = ['lfFloorIncludeEmpty', 'lfAreaIncludeEmpty'].some(id => {
           const el = document.getElementById(id); return el && el.checked;
         });
-        if (!hasDk && !hasCbk) return true;
+        // 소스 체크박스도 체크
+        const _anySrc = ['경매','네이버','점포라인','아싸','디스코','플래닛','온비드'].some(k => document.getElementById('lfSrc_' + k)?.checked);
+        if (!hasDk && !hasCbk && !_anySrc) return true;
       }
       return _checkFilter(item.data || {}, 'lf', item);
     }
 
     // (기존 gFilter 함수들 호환성 스텁 - renderGFilterPanels는 빈 함수로 유지)
-    function renderGFilterPanels() { }
-    function isGFilterActive() { return false; }
+    function renderGFilterPanels() {
+      // 저장목록 결과 건수 업데이트
+      try {
+        const sv = getFilteredSv ? getFilteredSv() : getSv();
+        const cntEl = document.getElementById('lfResultCount');
+        if (cntEl) cntEl.textContent = sv.length + '건';
+        // 활성 필터 칩 업데이트
+        _updateFilterChips('lf', 'lfChips');
+      } catch(e) {}
+      // 지도탭 결과 건수 업데이트
+      try {
+        const svAll = getSv ? getSv() : [];
+        const filtered = svAll.filter(item => {
+          if (!item || !item.data) return false;
+          if (!item._norm && typeof normalizeItem === 'function') normalizeItem(item);
+          return _checkFilter(item.data || {}, 'gf', item);
+        });
+        const cntEl2 = document.getElementById('gfResultCount');
+        if (cntEl2) cntEl2.textContent = filtered.length + '건';
+        _updateFilterChips('gf', 'gfChips');
+      } catch(e) {}
+    }
+    function isGFilterActive() {
+      // gf prefix 기준으로 실제 입력값 체크
+      const ids = ['gfFloorMin','gfFloorMax','gfAreaMin','gfAreaMax',
+        'gfPriceMin','gfPriceMax','gfTxPriceMin','gfTxPriceMax',
+        'gfAppraisalMin','gfAppraisalMax','gfMinBidMin','gfMinBidMax',
+        'gfDepositMin','gfDepositMax','gfJeonseMin','gfJeonseMax',
+        'gfRentMin','gfRentMax','gfYieldMin','gfYieldMax',
+        'gfPpMin','gfPpMax','gfFailCntMin','gfFailCntMax',
+        'gfDateMin','gfDateMax','gfPropType',
+        'gfAddrKeyword','gfTitleKeyword','gfMemoKeyword'];
+      if (ids.some(id => { const el = document.getElementById(id); return el && el.value.trim(); })) return true;
+      const cbIds = ['gfFloorIncludeEmpty','gfAreaIncludeEmpty',
+        'gfHasArea','gfHasPrice','gfHasDeposit','gfHasRent','gfHasTxPrice','gfHasYield','gfExclEstArea',
+        'gfSrc_경매','gfSrc_네이버','gfSrc_점포라인','gfSrc_아싸','gfSrc_디스코','gfSrc_플래닛','gfSrc_온비드'];
+      if (cbIds.some(id => { const el = document.getElementById(id); return el && el.checked; })) return true;
+      const dk = document.querySelector('input[name="gfDealKind"]:checked');
+      if (dk && dk.value !== 'all') return true;
+      return false;
+    }
+
+    // ── 활성 필터 칩 생성 헬퍼 ─────────────────────────────────
+    function _updateFilterChips(prefix, containerId) {
+      const el = document.getElementById(containerId);
+      if (!el) return;
+      const chips = [];
+      const v = (sfx) => ((document.getElementById(prefix + sfx) || {}).value || '').trim();
+      const chk = (sfx) => { const e = document.getElementById(prefix + sfx); return e && e.checked; };
+      const rng = (lbl, sfx1, sfx2, unit) => {
+        const a = v(sfx1), b = v(sfx2);
+        if (a || b) chips.push((a||'') + '~' + (b||'') + (unit||'') + ' ' + lbl);
+      };
+      const dk = document.querySelector('input[name="' + prefix + 'DealKind"]:checked');
+      if (dk && dk.value !== 'all') {
+        const map = { sale:'매매', rent:'임대', unknown:'기타' };
+        chips.push(map[dk.value] || dk.value);
+      }
+      rng('매매가', 'PriceMin','PriceMax','만');
+      rng('보증금', 'DepositMin','DepositMax','만');
+      rng('월세', 'RentMin','RentMax','만');
+      rng('실거래가', 'TxPriceMin','TxPriceMax','만');
+      rng('면적', 'AreaMin','AreaMax','㎡');
+      rng('수익률', 'YieldMin','YieldMax','%');
+      rng('평당가', 'PpMin','PpMax','만');
+      rng('층', 'FloorMin','FloorMax','층');
+      rng('감정가', 'AppraisalMin','AppraisalMax','만');
+      rng('최저가', 'MinBidMin','MinBidMax','만');
+      rng('유찰', 'FailCntMin','FailCntMax','회');
+      const pt = v('PropType'); if (pt) chips.push('유형:' + pt);
+      const ak = v('AddrKeyword'); if (ak) chips.push('주소:' + ak);
+      const tk = v('TitleKeyword'); if (tk) chips.push('제목:' + tk);
+      const mk = v('MemoKeyword'); if (mk) chips.push('메모:' + mk);
+      const srcLabels = { '경매':'경매','네이버':'네이버','점포라인':'점포라인','아싸':'아싸','디스코':'디스코','플래닛':'플래닛','온비드':'온비드' };
+      const activeSrc = Object.keys(srcLabels).filter(k => chk('Src_' + k));
+      if (activeSrc.length) chips.push('소스:' + activeSrc.join('/'));
+      el.innerHTML = chips.map(c =>
+        `<span style="display:inline-block;background:rgba(79,142,255,.18);border:1px solid rgba(79,142,255,.35);border-radius:10px;padding:1px 7px;font-size:10px;color:#7db3ff;white-space:nowrap;">${c}</span>`
+      ).join('');
+    }
+
+    // ── 지도탭 조건필터 적용/초기화 ───────────────────────────────
+    window.applyMapFilter = function () {
+      window._gfActive = true;
+      // 지도 마커 재로드
+      try {
+        const loaded = [...new Set((mapOverlays||[]).map(o=>o.item&&o.item.source).filter(Boolean))];
+        const modes = [...new Set((mapOverlays||[]).map(o=>o.item&&o.item.mode).filter(Boolean))];
+        const types = [];
+        if (loaded.some(s=>s==='디스코')) types.push('disco');
+        if (loaded.some(s=>s==='부동산플래닛')) types.push('bds');
+        if (loaded.some(s=>s==='점포라인')) types.push('jumpo');
+        if (loaded.some(s=>s==='점포거래소')) types.push('assa');
+        if (loaded.some(s=>s==='네이버부동산'||s==='네이버') || modes.some(m=>m==='listing'||m==='general')) types.push('listing');
+        if (modes.some(m=>m==='auction')) types.push('auction');
+        if (types.length) types.forEach((t,i)=>setTimeout(()=>loadCurrentAreaByType(t),i*200));
+        else if (typeof loadCurrentAreaProperties==='function') loadCurrentAreaProperties();
+      } catch(e){}
+      const panel = document.getElementById('gfPanel_map');
+      if (panel) panel.style.display = 'none';
+      const btn = document.getElementById('gfMapToggleBtn');
+      if (btn) { btn.style.color='#4f8eff'; btn.style.borderColor='rgba(79,142,255,.5)'; btn.style.background='rgba(79,142,255,.12)'; }
+      showToast('✅ 지도 필터 적용됨', 'ok');
+      renderGFilterPanels();
+    };
+
+    window.resetMapGFilter = function () {
+      ['gfFloorMin','gfFloorMax','gfAreaMin','gfAreaMax',
+       'gfPriceMin','gfPriceMax','gfTxPriceMin','gfTxPriceMax',
+       'gfAppraisalMin','gfAppraisalMax','gfMinBidMin','gfMinBidMax',
+       'gfDepositMin','gfDepositMax','gfJeonseMin','gfJeonseMax',
+       'gfRentMin','gfRentMax','gfYieldMin','gfYieldMax',
+       'gfPpMin','gfPpMax','gfFailCntMin','gfFailCntMax',
+       'gfDateMin','gfDateMax','gfPropType',
+       'gfAddrKeyword','gfTitleKeyword','gfMemoKeyword'
+      ].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+      ['gfFloorIncludeEmpty','gfAreaIncludeEmpty',
+       'gfHasArea','gfHasPrice','gfHasDeposit','gfHasRent','gfHasTxPrice','gfHasYield','gfExclEstArea',
+       'gfSrc_경매','gfSrc_네이버','gfSrc_점포라인','gfSrc_아싸','gfSrc_디스코','gfSrc_플래닛','gfSrc_온비드'
+      ].forEach(id=>{const el=document.getElementById(id);if(el)el.checked=false;});
+      const r=document.querySelector('input[name="gfDealKind"][value="all"]');
+      if(r)r.checked=true;
+      window._gfActive=false;
+      const btn=document.getElementById('gfMapToggleBtn');
+      if(btn){btn.style.color='rgba(232,237,245,.6)';btn.style.borderColor='rgba(232,237,245,.15)';btn.style.background='rgba(255,255,255,.04)';}
+      // 마커 재로드
+      try{
+        const loaded=[...new Set((mapOverlays||[]).map(o=>o.item&&o.item.source).filter(Boolean))];
+        const modes=[...new Set((mapOverlays||[]).map(o=>o.item&&o.item.mode).filter(Boolean))];
+        const types=[];
+        if(loaded.some(s=>s==='디스코'))types.push('disco');
+        if(loaded.some(s=>s==='부동산플래닛'))types.push('bds');
+        if(loaded.some(s=>s==='점포라인'))types.push('jumpo');
+        if(loaded.some(s=>s==='점포거래소'))types.push('assa');
+        if(loaded.some(s=>s==='네이버부동산'||s==='네이버')||modes.some(m=>m==='listing'||m==='general'))types.push('listing');
+        if(modes.some(m=>m==='auction'))types.push('auction');
+        if(types.length)types.forEach((t,i)=>setTimeout(()=>loadCurrentAreaByType(t),i*200));
+        else if(typeof loadCurrentAreaProperties==='function')loadCurrentAreaProperties();
+      }catch(e){}
+      showToast('🔄 지도 필터 초기화됨', 'ok');
+      renderGFilterPanels();
+    };
+
+    // ── 지도탭 필터 패널 토글 ──────────────────────────────────────
+    window.toggleMapGFilterPanel = function () {
+      const panel = document.getElementById('gfPanel_map');
+      const btn = document.getElementById('gfMapToggleBtn');
+      if (!panel) return;
+      const isOpen = panel.style.display !== 'none';
+      panel.style.display = isOpen ? 'none' : 'block';
+      if (btn) {
+        const active = isGFilterActive() || window._gfActive;
+        btn.style.color = (!isOpen || active) ? '#4f8eff' : 'rgba(232,237,245,.6)';
+        btn.style.borderColor = (!isOpen || active) ? 'rgba(79,142,255,.5)' : 'rgba(232,237,245,.15)';
+        btn.style.background = (!isOpen || active) ? 'rgba(79,142,255,.12)' : 'rgba(255,255,255,.04)';
+      }
+      if (!isOpen) renderGFilterPanels();
+    };
+
+    // ── 지도탭 고급 필터 토글 ──────────────────────────────────────
+    window.toggleGfAdvPanel = function () {
+      const panel = document.getElementById('gfAdvBody');
+      if (!panel) return;
+      const isOpen = panel.style.display !== 'none';
+      panel.style.display = isOpen ? 'none' : 'block';
+      const lbl = document.getElementById('gfAdvToggleLbl');
+      if (lbl) lbl.textContent = isOpen ? '▼ 고급' : '▲ 고급';
+    };
+
+    // ── pcMapExportCSV: 지도탭 CSV 내보내기 (gf 필터 기준) ────────
+    window.pcMapExportCSV = function (allItems) {
+      // gf 필터를 lf 필터와 동일한 결과셋으로 내보내기
+      // gf 필터가 활성이면 gf 기준, 아니면 저장목록(lf) 기준 사용
+      let sv;
+      if (allItems) {
+        sv = getSv();
+      } else if (isGFilterActive() || window._gfActive) {
+        sv = getSv().filter(item => {
+          if (!item || !item.data) return false;
+          if (!item._norm && typeof normalizeItem === 'function') normalizeItem(item);
+          return _checkFilter(item.data || {}, 'gf', item);
+        });
+      } else {
+        sv = getFilteredSv(); // lf 필터 결과 재사용
+      }
+      if (!sv.length) { showToast(allItems ? '저장된 항목이 없습니다' : '필터 결과가 없습니다', 'warn'); return; }
+      const keySet = new Set();
+      sv.forEach(item => { if (item.data) Object.keys(item.data).forEach(k => keySet.add(k)); });
+      const normHdrs = ['_거래유형','_매물유형','_면적_m2','_면적기준','_면적_평','_층',
+        '_매매가_만원','_실거래가_만원','_감정가_만원','_최저가_만원','_보증금_만원','_전세가_만원','_월세_만원',
+        '_평당가_만원','_수익률','_수익률_산출방식','_표시가격기준','_거래년월','_유찰횟수'];
+      const allHdrs = ['ID','소재지','출처','유형','lat','lng',...normHdrs,...Array.from(keySet)];
+      const esc2 = v => { const s = String(v ?? '').replace(/"/g, '""'); return (s.includes(',')||s.includes('"')||s.includes('\n'))?`"${s}"`:s; };
+      const rows = sv.map(item => {
+        const d = item.data || {};
+        return allHdrs.map(h => {
+          if (h==='ID') return esc2(item.id||'');
+          if (h==='소재지') return esc2(d.소재지||item.title||'');
+          if (h==='출처') return esc2(item.source||d.출처||'');
+          if (h==='유형') return esc2(item.mode||'');
+          if (h==='lat') return esc2(item.lat||'');
+          if (h==='lng') return esc2(item.lng||'');
+          if (h.startsWith('_') && item._norm) { const nk=h.slice(1); return esc2(item._norm[nk]??''); }
+          return esc2(d[h]??'');
+        }).join(',');
+      });
+      const label = allItems ? '전체' : '지도필터';
+      const csvStr = '\uFEFF' + allHdrs.join(',') + '\n' + rows.join('\n');
+      const a = Object.assign(document.createElement('a'), {
+        href: URL.createObjectURL(new Blob([csvStr], {type:'text/csv;charset=utf-8;'})),
+        download: `상권King_지도_${label}_${new Date().toISOString().slice(0,10)}.csv`
+      });
+      a.click();
+      showToast(`📊 CSV ${sv.length}건 다운로드 완료`, 'ok');
+    };
 
     function getSv() {
       const arr = (window._idbCache && window._idbCache['re_sv'] || []);
@@ -6034,7 +6300,8 @@
       const isAuction = mode === 'auction';
 
       const 매매가_만원    = toMan(d.매매가_만원 ?? d.매매가) ;
-      const 실거래가_만원  = (mode === 'transaction') ? toMan(d.매매가 ?? d.거래가격) : null;
+      const _isTxMode = mode === 'transaction' || (d.거래유형 && (d.거래유형.includes('매매') && (src === '디스코' || src === '부동산플래닛')));
+      const 실거래가_만원  = _isTxMode ? toMan(d.매매가 ?? d.실거래가 ?? d.거래가격) : null;
       const 감정가_만원    = isAuction ? wonToMan(d.감정가) : null;
       const 최저가_만원    = isAuction ? wonToMan(d.최저가) : null;
       const 보증금_만원    = toMan(d.기보증금_만원 ?? d.보증금_만원 ?? d.보증금);
@@ -6075,8 +6342,10 @@
       let 거래유형 = null;
       if (isAuction)                        거래유형 = '경매';
       else if (mode === 'transaction')      거래유형 = '실거래';
-      else if (매매가_만원 && !월세_만원)   거래유형 = '매매';
-      else if (월세_만원 || 전세가_만원 || 보증금_만원) 거래유형 = '임대';
+      else if (매매가_만원 && !월세_만원 && !전세가_만원) 거래유형 = '매매';
+      else if (월세_만원 || 전세가_만원)   거래유형 = '임대';
+      else if (보증금_만원 && !매매가_만원) 거래유형 = '임대';
+      else if (매매가_만원)                 거래유형 = '매매';
       else if (거래유형_raw?.includes('매매')) 거래유형 = '매매';
       else if (거래유형_raw?.includes('전세') || 거래유형_raw?.includes('월세')) 거래유형 = '임대';
 
@@ -6569,7 +6838,8 @@
       } else {
         // _lfActive=false여도 소스 체크박스만 켜진 경우 처리
         const _srcBoxIds = ['lfSrc_경매','lfSrc_네이버','lfSrc_점포라인','lfSrc_아싸','lfSrc_디스코','lfSrc_플래닛','lfSrc_온비드'];
-        const _anyChecked = _srcBoxIds.some(id => document.getElementById(id)?.checked);
+        const _anyChecked = _srcBoxIds.some(id => document.getElementById(id)?.checked) ||
+          ['경매','네이버','점포라인','아싸','디스코','플래닛','온비드'].some(k => document.getElementById('lfSrc_' + k)?.checked);
         if (_anyChecked) sv = sv.filter(item => checkListFilter(item));
       }
 
@@ -11336,19 +11606,21 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           toLoad.sort((a, b) => _getSortVal(a) - _getSortVal(b));
         }
 
-        // ★ 조건 필터 적용 (지도탭 rf-* 입력값 기준)
-        const _rfHasFilter = ['rfFloorMin', 'rfFloorMax', 'rfAreaMin', 'rfAreaMax',
-          'rfPriceMin', 'rfPriceMax', 'rfRentMin', 'rfRentMax',
-          'rfYieldMin', 'rfYieldMax', 'rfDateMin', 'rfDateMax'
-        ].some(id => { const el = document.getElementById(id); return el && el.value.trim() !== ''; }) ||
-          (['rfFloorIncludeEmpty', 'rfAreaIncludeEmpty'].some(id => { const el = document.getElementById(id); return el && el.checked; })) ||
-          ((() => { const el = document.querySelector('input[name="rfDealKind"]:checked'); return el && el.value !== 'all'; })());
+        // ★ 조건 필터 적용 — gf(전체화면 공통필터) 우선, 없으면 rf(반경전용필터)
+        const _gfHasFilter = (typeof isGFilterActive === 'function') && isGFilterActive();
+        const _rfHasFilter = !_gfHasFilter && (
+          ['rfFloorMin','rfFloorMax','rfAreaMin','rfAreaMax',
+           'rfPriceMin','rfPriceMax','rfRentMin','rfRentMax',
+           'rfYieldMin','rfYieldMax','rfDateMin','rfDateMax'
+          ].some(id => { const el = document.getElementById(id); return el && el.value.trim() !== ''; }) ||
+          (['rfFloorIncludeEmpty','rfAreaIncludeEmpty'].some(id => { const el = document.getElementById(id); return el && el.checked; })) ||
+          ((() => { const el = document.querySelector('input[name="rfDealKind"]:checked'); return el && el.value !== 'all'; })())
+        );
 
-        // ★ [v159 FIX] _rfHasFilter=false일 때 _filteredLoad=toLoad(같은 참조)인데
-        // toLoad.length=0으로 먼저 비우면 _filteredLoad도 비워지는 버그 수정
-        // → slice()로 복사본 생성
-        const _filteredLoad = _rfHasFilter
-          ? toLoad.filter(item => _checkFilter(item.data || {}, 'rf'))
+        // ★ [v159 FIX] 복사본 생성으로 참조 버그 방지
+        const _activePrefix = _gfHasFilter ? 'gf' : (_rfHasFilter ? 'rf' : null);
+        const _filteredLoad = _activePrefix
+          ? toLoad.filter(item => { if (!item._norm && typeof normalizeItem==='function') normalizeItem(item); return _checkFilter(item.data || {}, _activePrefix, item); })
           : toLoad.slice();
 
         // 필터 적용된 배열로 교체

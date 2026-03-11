@@ -1153,69 +1153,109 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
         </div>
         <!-- 전역 조건 필터 패널 (저장목록탭) - 접기/펼치기 -->
         <div id="gfPanel_saved" class="gf-panel" style="margin:4px 0 6px;display:none;">
+          <!-- 헤더: 제목 + 버튼 -->
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-            <span style="font-size:11px;font-weight:700;color:var(--tx);">🔍 조건 필터</span>
+            <span style="font-size:11px;font-weight:700;color:var(--tx);">🔍 조건 필터
+              <span id="lfResultCount" style="font-size:10px;color:var(--ac);font-weight:400;margin-left:6px;"></span>
+            </span>
             <div style="display:flex;gap:4px;">
               <button onclick="applyListFilter()"
                 style="padding:2px 9px;font-size:11px;background:rgba(79,142,255,.15);border:1px solid var(--ac);border-radius:5px;color:var(--ac);cursor:pointer;font-family:'Noto Sans KR',sans-serif;">적용</button>
               <button onclick="resetListFilter()"
                 style="padding:2px 9px;font-size:11px;background:var(--s1);border:1px solid var(--b1);border-radius:5px;color:var(--mu);cursor:pointer;font-family:'Noto Sans KR',sans-serif;">초기화</button>
               <button onclick="deleteByListFilter()"
-                style="padding:2px 9px;font-size:11px;background:rgba(255,68,68,.1);border:1px solid #ff4444;border-radius:5px;color:#ff4444;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">🗑
-                조건외삭제</button>
+                style="padding:2px 9px;font-size:11px;background:rgba(255,68,68,.1);border:1px solid #ff4444;border-radius:5px;color:#ff4444;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">🗑 조건외삭제</button>
             </div>
           </div>
+          <!-- 활성 필터 칩 -->
+          <div id="lfChips" style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:5px;min-height:0;"></div>
           <div class="lf-grid">
-            <!-- 거래유형 필터 -->
-            <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap;">
-              <span class="lf-lbl">거래유형</span>
-              <label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;cursor:pointer;"><input
-                  type="radio" name="lfDealKind" value="all" checked style="accent-color:var(--ac);"> 전체</label>
-              <label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;cursor:pointer;"><input
-                  type="radio" name="lfDealKind" value="sale" style="accent-color:#4f8eff;"> 💙 매매</label>
-              <label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;cursor:pointer;"><input
-                  type="radio" name="lfDealKind" value="rent" style="accent-color:#ff8c42;"> 🧡 임대</label>
-              <label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;cursor:pointer;"><input
-                  type="radio" name="lfDealKind" value="unknown" style="accent-color:#888;"> ❓ 기타</label>
+            <!-- 소스 -->
+            <div style="display:flex;align-items:center;gap:5px;margin-bottom:5px;flex-wrap:wrap;grid-column:1/-1;">
+              <span class="lf-lbl">소스</span>
+              <label style="display:inline-flex;align-items:center;gap:2px;font-size:10px;cursor:pointer;"><input type="checkbox" id="lfSrc_경매" style="accent-color:#ff8c42;"> ⚖️경매</label>
+              <label style="display:inline-flex;align-items:center;gap:2px;font-size:10px;cursor:pointer;"><input type="checkbox" id="lfSrc_네이버" style="accent-color:#03c75a;"> 🏠네이버</label>
+              <label style="display:inline-flex;align-items:center;gap:2px;font-size:10px;cursor:pointer;"><input type="checkbox" id="lfSrc_점포라인" style="accent-color:#67c6e8;"> 🏪점포라인</label>
+              <label style="display:inline-flex;align-items:center;gap:2px;font-size:10px;cursor:pointer;"><input type="checkbox" id="lfSrc_아싸" style="accent-color:#3b82f6;"> 🏬아싸</label>
+              <label style="display:inline-flex;align-items:center;gap:2px;font-size:10px;cursor:pointer;"><input type="checkbox" id="lfSrc_디스코" style="accent-color:#e8365d;"> 🟣디스코</label>
+              <label style="display:inline-flex;align-items:center;gap:2px;font-size:10px;cursor:pointer;"><input type="checkbox" id="lfSrc_플래닛" style="accent-color:#a78bfa;"> 🪐플래닛</label>
+              <label style="display:inline-flex;align-items:center;gap:2px;font-size:10px;cursor:pointer;"><input type="checkbox" id="lfSrc_온비드" style="accent-color:#fbbf24;"> 🏛온비드</label>
             </div>
-            <!-- 층: 범위 + 빈값포함 체크 -->
+            <!-- 거래유형 -->
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;flex-wrap:wrap;grid-column:1/-1;">
+              <span class="lf-lbl">거래유형</span>
+              <label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;cursor:pointer;"><input type="radio" name="lfDealKind" value="all" checked style="accent-color:var(--ac);"> 전체</label>
+              <label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;cursor:pointer;"><input type="radio" name="lfDealKind" value="sale" style="accent-color:#4f8eff;"> 💙 매매</label>
+              <label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;cursor:pointer;"><input type="radio" name="lfDealKind" value="rent" style="accent-color:#ff8c42;"> 🧡 임대</label>
+              <label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;cursor:pointer;"><input type="radio" name="lfDealKind" value="unknown" style="accent-color:#888;"> ❓ 기타</label>
+            </div>
+            <!-- 매물유형 -->
+            <div class="lf-cell" style="grid-column:1/-1;">
+              <span class="lf-lbl">매물유형</span>
+              <input class="lf-inp" id="lfPropType" type="text" placeholder="상가,사무실 (쉼표구분)" style="flex:1;">
+            </div>
+            <!-- 층수 -->
             <div class="lf-cell" style="flex-direction:column;align-items:flex-start;gap:2px;grid-column:1/-1;">
               <div style="display:flex;align-items:center;gap:4px;">
                 <span class="lf-lbl">층수</span>
                 <input class="lf-inp" id="lfFloorMin" type="number" placeholder="최소" style="width:70px;">
                 <span class="lf-sep">~</span>
                 <input class="lf-inp" id="lfFloorMax" type="number" placeholder="최대" style="width:70px;">
-                <label
-                  style="display:inline-flex;align-items:center;gap:3px;font-size:10px;color:var(--mu);cursor:pointer;margin-left:6px;white-space:nowrap;">
-                  <input type="checkbox" id="lfFloorIncludeEmpty" style="accent-color:var(--ac);"> 층정보 없는 것도 포함
+                <label style="display:inline-flex;align-items:center;gap:3px;font-size:10px;color:var(--mu);cursor:pointer;margin-left:6px;white-space:nowrap;">
+                  <input type="checkbox" id="lfFloorIncludeEmpty" style="accent-color:var(--ac);"> 층없음포함
                 </label>
               </div>
             </div>
-            <!-- 면적: 범위 + 빈값포함 체크 -->
+            <!-- 면적 -->
             <div class="lf-cell" style="flex-direction:column;align-items:flex-start;gap:2px;grid-column:1/-1;">
               <div style="display:flex;align-items:center;gap:4px;">
                 <span class="lf-lbl">면적㎡</span>
                 <input class="lf-inp" id="lfAreaMin" type="number" placeholder="최소" style="width:70px;">
                 <span class="lf-sep">~</span>
                 <input class="lf-inp" id="lfAreaMax" type="number" placeholder="최대" style="width:70px;">
-                <label
-                  style="display:inline-flex;align-items:center;gap:3px;font-size:10px;color:var(--mu);cursor:pointer;margin-left:6px;white-space:nowrap;">
-                  <input type="checkbox" id="lfAreaIncludeEmpty" style="accent-color:var(--ac);"> 면적 없는 것도 포함
+                <label style="display:inline-flex;align-items:center;gap:3px;font-size:10px;color:var(--mu);cursor:pointer;margin-left:6px;white-space:nowrap;">
+                  <input type="checkbox" id="lfAreaIncludeEmpty" style="accent-color:var(--ac);"> 면적없음포함
                 </label>
               </div>
             </div>
-            <div class="lf-cell"><span class="lf-lbl">매매가</span><input class="lf-inp" id="lfPriceMin" type="number"
-                placeholder="최소(만)"><span class="lf-sep">~</span><input class="lf-inp" id="lfPriceMax" type="number"
-                placeholder="최대"></div>
-            <div class="lf-cell"><span class="lf-lbl">월세</span><input class="lf-inp" id="lfRentMin" type="number"
-                placeholder="최소(만)"><span class="lf-sep">~</span><input class="lf-inp" id="lfRentMax" type="number"
-                placeholder="최대"></div>
-            <div class="lf-cell"><span class="lf-lbl">수익률%</span><input class="lf-inp" id="lfYieldMin" type="number"
-                placeholder="최소" step="0.1"><span class="lf-sep">~</span><input class="lf-inp" id="lfYieldMax"
-                type="number" placeholder="최대" step="0.1"></div>
-            <div class="lf-cell"><span class="lf-lbl">거래년월</span><input class="lf-inp" id="lfDateMin" type="text"
-                placeholder="202401"><span class="lf-sep">~</span><input class="lf-inp" id="lfDateMax" type="text"
-                placeholder="202412"></div>
+            <!-- 기본 가격 필터 -->
+            <div class="lf-cell"><span class="lf-lbl">매매가</span><input class="lf-inp" id="lfPriceMin" type="number" placeholder="최소(만)"><span class="lf-sep">~</span><input class="lf-inp" id="lfPriceMax" type="number" placeholder="최대"></div>
+            <div class="lf-cell"><span class="lf-lbl">보증금</span><input class="lf-inp" id="lfDepositMin" type="number" placeholder="최소(만)"><span class="lf-sep">~</span><input class="lf-inp" id="lfDepositMax" type="number" placeholder="최대"></div>
+            <div class="lf-cell"><span class="lf-lbl">월세</span><input class="lf-inp" id="lfRentMin" type="number" placeholder="최소(만)"><span class="lf-sep">~</span><input class="lf-inp" id="lfRentMax" type="number" placeholder="최대"></div>
+            <div class="lf-cell"><span class="lf-lbl">실거래가</span><input class="lf-inp" id="lfTxPriceMin" type="number" placeholder="최소(만)"><span class="lf-sep">~</span><input class="lf-inp" id="lfTxPriceMax" type="number" placeholder="최대"></div>
+            <div class="lf-cell"><span class="lf-lbl">수익률%</span><input class="lf-inp" id="lfYieldMin" type="number" placeholder="최소" step="0.1"><span class="lf-sep">~</span><input class="lf-inp" id="lfYieldMax" type="number" placeholder="최대" step="0.1"></div>
+            <div class="lf-cell"><span class="lf-lbl">평당가</span><input class="lf-inp" id="lfPpMin" type="number" placeholder="최소(만)"><span class="lf-sep">~</span><input class="lf-inp" id="lfPpMax" type="number" placeholder="최대"></div>
+            <div class="lf-cell"><span class="lf-lbl">거래년월</span><input class="lf-inp" id="lfDateMin" type="text" placeholder="202401"><span class="lf-sep">~</span><input class="lf-inp" id="lfDateMax" type="text" placeholder="202412"></div>
+          </div>
+          <!-- 고급 필터 토글 -->
+          <div style="margin-top:5px;">
+            <div onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none';this.querySelector('span').textContent=this.nextElementSibling.style.display==='none'?'▼ 고급 필터':'▲ 고급 필터'"
+              style="display:flex;align-items:center;gap:4px;cursor:pointer;padding:3px 0;border-top:1px solid var(--b1);">
+              <span style="font-size:10px;color:var(--mu);">▼ 고급 필터</span>
+            </div>
+            <div style="display:none;">
+              <div class="lf-grid" style="margin-top:5px;">
+                <div class="lf-cell"><span class="lf-lbl">감정가</span><input class="lf-inp" id="lfAppraisalMin" type="number" placeholder="최소(만)"><span class="lf-sep">~</span><input class="lf-inp" id="lfAppraisalMax" type="number" placeholder="최대"></div>
+                <div class="lf-cell"><span class="lf-lbl">최저가</span><input class="lf-inp" id="lfMinBidMin" type="number" placeholder="최소(만)"><span class="lf-sep">~</span><input class="lf-inp" id="lfMinBidMax" type="number" placeholder="최대"></div>
+                <div class="lf-cell"><span class="lf-lbl">전세가</span><input class="lf-inp" id="lfJeonseMin" type="number" placeholder="최소(만)"><span class="lf-sep">~</span><input class="lf-inp" id="lfJeonseMax" type="number" placeholder="최대"></div>
+                <div class="lf-cell"><span class="lf-lbl">유찰횟수</span><input class="lf-inp" id="lfFailCntMin" type="number" placeholder="최소"><span class="lf-sep">~</span><input class="lf-inp" id="lfFailCntMax" type="number" placeholder="최대"></div>
+                <!-- 키워드 -->
+                <div class="lf-cell" style="grid-column:1/-1;"><span class="lf-lbl">소재지</span><input class="lf-inp" id="lfAddrKeyword" type="text" placeholder="예: 강남 역삼" style="flex:1;"></div>
+                <div class="lf-cell" style="grid-column:1/-1;"><span class="lf-lbl">제목</span><input class="lf-inp" id="lfTitleKeyword" type="text" placeholder="제목 키워드" style="flex:1;"></div>
+                <div class="lf-cell" style="grid-column:1/-1;"><span class="lf-lbl">메모</span><input class="lf-inp" id="lfMemoKeyword" type="text" placeholder="메모 키워드" style="flex:1;"></div>
+                <!-- 값 존재여부 -->
+                <div style="grid-column:1/-1;display:flex;flex-wrap:wrap;gap:4px;padding:3px 0;">
+                  <span class="lf-lbl">있음</span>
+                  <label style="font-size:10px;cursor:pointer;display:inline-flex;align-items:center;gap:2px;"><input type="checkbox" id="lfHasArea" style="accent-color:var(--ac);"> 면적</label>
+                  <label style="font-size:10px;cursor:pointer;display:inline-flex;align-items:center;gap:2px;"><input type="checkbox" id="lfHasPrice" style="accent-color:var(--ac);"> 매매가</label>
+                  <label style="font-size:10px;cursor:pointer;display:inline-flex;align-items:center;gap:2px;"><input type="checkbox" id="lfHasDeposit" style="accent-color:var(--ac);"> 보증금</label>
+                  <label style="font-size:10px;cursor:pointer;display:inline-flex;align-items:center;gap:2px;"><input type="checkbox" id="lfHasRent" style="accent-color:var(--ac);"> 월세</label>
+                  <label style="font-size:10px;cursor:pointer;display:inline-flex;align-items:center;gap:2px;"><input type="checkbox" id="lfHasTxPrice" style="accent-color:var(--ac);"> 실거래가</label>
+                  <label style="font-size:10px;cursor:pointer;display:inline-flex;align-items:center;gap:2px;"><input type="checkbox" id="lfHasYield" style="accent-color:var(--ac);"> 수익률</label>
+                  <label style="font-size:10px;cursor:pointer;display:inline-flex;align-items:center;gap:2px;"><input type="checkbox" id="lfExclEstArea" style="accent-color:#ff8c42;"> 전용추정제외</label>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
         <!-- ★ 1000건 이상 과부하 경고 (renderSaved에서 동적 갱신) -->
@@ -1242,6 +1282,178 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
             <input type="text" id="mapKeyword" placeholder="🔍 지역명 (예: 강남)"
               onkeypress="if(event.keyCode==13) searchMap()">
             <button onclick="searchMap()">이동</button>
+            <button id="gfMapToggleBtn" onclick="toggleMapGFilterPanel()"
+              style="padding:4px 9px;font-size:11px;border-radius:6px;border:1px solid rgba(232,237,245,.15);color:rgba(232,237,245,.6);background:rgba(255,255,255,.04);cursor:pointer;white-space:nowrap;flex-shrink:0;font-family:'Noto Sans KR',sans-serif;"
+              title="지도 조건 필터">🔍 필터</button>
+          </div>
+
+          <!-- 지도탭 공통 조건 필터 패널 (gf prefix) -->
+          <div id="gfPanel_map" style="display:none;background:rgba(15,20,35,.97);border:1px solid rgba(79,142,255,.25);border-radius:10px;padding:10px 12px;margin-top:5px;font-family:'Noto Sans KR',sans-serif;z-index:200;position:relative;">
+            <!-- 헤더 -->
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px;">
+              <span style="font-size:11px;font-weight:700;color:rgba(232,237,245,.9);">🔍 조건 필터
+                <span id="gfResultCount" style="font-size:10px;color:#4f8eff;font-weight:400;margin-left:6px;"></span>
+              </span>
+              <div style="display:flex;gap:4px;">
+                <button onclick="applyMapFilter()"
+                  style="padding:2px 9px;font-size:11px;background:rgba(79,142,255,.2);border:1px solid rgba(79,142,255,.5);border-radius:5px;color:#4f8eff;cursor:pointer;font-weight:700;">적용</button>
+                <button onclick="resetMapGFilter()"
+                  style="padding:2px 9px;font-size:11px;background:rgba(255,255,255,.06);border:1px solid rgba(232,237,245,.15);border-radius:5px;color:rgba(232,237,245,.5);cursor:pointer;">초기화</button>
+                <button onclick="toggleMapGFilterPanel()"
+                  style="padding:2px 7px;font-size:11px;background:rgba(255,255,255,.04);border:1px solid rgba(232,237,245,.12);border-radius:5px;color:rgba(232,237,245,.4);cursor:pointer;">✕</button>
+              </div>
+            </div>
+            <!-- 활성 칩 -->
+            <div id="gfChips" style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:5px;min-height:0;"></div>
+            <!-- 소스 -->
+            <div style="display:flex;align-items:center;gap:5px;margin-bottom:5px;flex-wrap:wrap;">
+              <span style="font-size:10px;color:rgba(232,237,245,.5);min-width:36px;">소스</span>
+              <label style="display:inline-flex;align-items:center;gap:2px;font-size:10px;cursor:pointer;color:rgba(232,237,245,.8);"><input type="checkbox" id="gfSrc_경매" style="accent-color:#ff8c42;"> ⚖️경매</label>
+              <label style="display:inline-flex;align-items:center;gap:2px;font-size:10px;cursor:pointer;color:rgba(232,237,245,.8);"><input type="checkbox" id="gfSrc_네이버" style="accent-color:#03c75a;"> 🏠네이버</label>
+              <label style="display:inline-flex;align-items:center;gap:2px;font-size:10px;cursor:pointer;color:rgba(232,237,245,.8);"><input type="checkbox" id="gfSrc_점포라인" style="accent-color:#67c6e8;"> 🏪점포라인</label>
+              <label style="display:inline-flex;align-items:center;gap:2px;font-size:10px;cursor:pointer;color:rgba(232,237,245,.8);"><input type="checkbox" id="gfSrc_아싸" style="accent-color:#3b82f6;"> 🏬아싸</label>
+              <label style="display:inline-flex;align-items:center;gap:2px;font-size:10px;cursor:pointer;color:rgba(232,237,245,.8);"><input type="checkbox" id="gfSrc_디스코" style="accent-color:#e8365d;"> 🟣디스코</label>
+              <label style="display:inline-flex;align-items:center;gap:2px;font-size:10px;cursor:pointer;color:rgba(232,237,245,.8);"><input type="checkbox" id="gfSrc_플래닛" style="accent-color:#a78bfa;"> 🪐플래닛</label>
+              <label style="display:inline-flex;align-items:center;gap:2px;font-size:10px;cursor:pointer;color:rgba(232,237,245,.8);"><input type="checkbox" id="gfSrc_온비드" style="accent-color:#fbbf24;"> 🏛온비드</label>
+            </div>
+            <!-- 거래유형 -->
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;flex-wrap:wrap;">
+              <span style="font-size:10px;color:rgba(232,237,245,.5);min-width:36px;">거래유형</span>
+              <label style="display:inline-flex;align-items:center;gap:2px;font-size:10px;cursor:pointer;color:rgba(232,237,245,.8);"><input type="radio" name="gfDealKind" value="all" checked style="accent-color:#4f8eff;"> 전체</label>
+              <label style="display:inline-flex;align-items:center;gap:2px;font-size:10px;cursor:pointer;color:rgba(232,237,245,.8);"><input type="radio" name="gfDealKind" value="sale" style="accent-color:#4f8eff;"> 💙매매</label>
+              <label style="display:inline-flex;align-items:center;gap:2px;font-size:10px;cursor:pointer;color:rgba(232,237,245,.8);"><input type="radio" name="gfDealKind" value="rent" style="accent-color:#ff8c42;"> 🧡임대</label>
+              <label style="display:inline-flex;align-items:center;gap:2px;font-size:10px;cursor:pointer;color:rgba(232,237,245,.8);"><input type="radio" name="gfDealKind" value="unknown" style="accent-color:#888;"> ❓기타</label>
+            </div>
+            <!-- 매물유형 -->
+            <div style="display:flex;align-items:center;gap:4px;margin-bottom:4px;">
+              <span style="font-size:10px;color:rgba(232,237,245,.5);min-width:36px;">매물유형</span>
+              <input id="gfPropType" type="text" placeholder="상가,사무실 (쉼표구분)" style="flex:1;background:rgba(0,0,0,.25);border:1px solid rgba(232,237,245,.12);border-radius:5px;color:rgba(232,237,245,.9);font-size:10px;padding:3px 6px;font-family:'Noto Sans KR',sans-serif;">
+            </div>
+            <!-- 층수 -->
+            <div style="display:flex;align-items:center;gap:4px;margin-bottom:4px;flex-wrap:wrap;">
+              <span style="font-size:10px;color:rgba(232,237,245,.5);min-width:36px;">층수</span>
+              <input id="gfFloorMin" type="number" placeholder="최소" style="width:60px;background:rgba(0,0,0,.25);border:1px solid rgba(232,237,245,.12);border-radius:5px;color:rgba(232,237,245,.9);font-size:10px;padding:3px 5px;">
+              <span style="color:rgba(232,237,245,.3);font-size:10px;">~</span>
+              <input id="gfFloorMax" type="number" placeholder="최대" style="width:60px;background:rgba(0,0,0,.25);border:1px solid rgba(232,237,245,.12);border-radius:5px;color:rgba(232,237,245,.9);font-size:10px;padding:3px 5px;">
+              <label style="display:inline-flex;align-items:center;gap:2px;font-size:10px;color:rgba(232,237,245,.5);cursor:pointer;"><input type="checkbox" id="gfFloorIncludeEmpty" style="accent-color:#4f8eff;"> 층없음포함</label>
+            </div>
+            <!-- 면적 -->
+            <div style="display:flex;align-items:center;gap:4px;margin-bottom:4px;flex-wrap:wrap;">
+              <span style="font-size:10px;color:rgba(232,237,245,.5);min-width:36px;">면적㎡</span>
+              <input id="gfAreaMin" type="number" placeholder="최소" style="width:60px;background:rgba(0,0,0,.25);border:1px solid rgba(232,237,245,.12);border-radius:5px;color:rgba(232,237,245,.9);font-size:10px;padding:3px 5px;">
+              <span style="color:rgba(232,237,245,.3);font-size:10px;">~</span>
+              <input id="gfAreaMax" type="number" placeholder="최대" style="width:60px;background:rgba(0,0,0,.25);border:1px solid rgba(232,237,245,.12);border-radius:5px;color:rgba(232,237,245,.9);font-size:10px;padding:3px 5px;">
+              <label style="display:inline-flex;align-items:center;gap:2px;font-size:10px;color:rgba(232,237,245,.5);cursor:pointer;"><input type="checkbox" id="gfAreaIncludeEmpty" style="accent-color:#4f8eff;"> 면적없음포함</label>
+            </div>
+            <!-- 기본 가격 필터 (2열 그리드) -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px;">
+              <div style="display:flex;align-items:center;gap:3px;">
+                <span style="font-size:9px;color:rgba(232,237,245,.45);min-width:32px;flex-shrink:0;">매매가</span>
+                <input id="gfPriceMin" type="number" placeholder="최소" style="width:100%;background:rgba(0,0,0,.25);border:1px solid rgba(232,237,245,.12);border-radius:4px;color:rgba(232,237,245,.9);font-size:9px;padding:2px 4px;">
+                <span style="color:rgba(232,237,245,.3);font-size:9px;">~</span>
+                <input id="gfPriceMax" type="number" placeholder="최대" style="width:100%;background:rgba(0,0,0,.25);border:1px solid rgba(232,237,245,.12);border-radius:4px;color:rgba(232,237,245,.9);font-size:9px;padding:2px 4px;">
+              </div>
+              <div style="display:flex;align-items:center;gap:3px;">
+                <span style="font-size:9px;color:rgba(232,237,245,.45);min-width:32px;flex-shrink:0;">보증금</span>
+                <input id="gfDepositMin" type="number" placeholder="최소" style="width:100%;background:rgba(0,0,0,.25);border:1px solid rgba(232,237,245,.12);border-radius:4px;color:rgba(232,237,245,.9);font-size:9px;padding:2px 4px;">
+                <span style="color:rgba(232,237,245,.3);font-size:9px;">~</span>
+                <input id="gfDepositMax" type="number" placeholder="최대" style="width:100%;background:rgba(0,0,0,.25);border:1px solid rgba(232,237,245,.12);border-radius:4px;color:rgba(232,237,245,.9);font-size:9px;padding:2px 4px;">
+              </div>
+              <div style="display:flex;align-items:center;gap:3px;">
+                <span style="font-size:9px;color:rgba(232,237,245,.45);min-width:32px;flex-shrink:0;">월세</span>
+                <input id="gfRentMin" type="number" placeholder="최소" style="width:100%;background:rgba(0,0,0,.25);border:1px solid rgba(232,237,245,.12);border-radius:4px;color:rgba(232,237,245,.9);font-size:9px;padding:2px 4px;">
+                <span style="color:rgba(232,237,245,.3);font-size:9px;">~</span>
+                <input id="gfRentMax" type="number" placeholder="최대" style="width:100%;background:rgba(0,0,0,.25);border:1px solid rgba(232,237,245,.12);border-radius:4px;color:rgba(232,237,245,.9);font-size:9px;padding:2px 4px;">
+              </div>
+              <div style="display:flex;align-items:center;gap:3px;">
+                <span style="font-size:9px;color:rgba(232,237,245,.45);min-width:32px;flex-shrink:0;">실거래가</span>
+                <input id="gfTxPriceMin" type="number" placeholder="최소" style="width:100%;background:rgba(0,0,0,.25);border:1px solid rgba(232,237,245,.12);border-radius:4px;color:rgba(232,237,245,.9);font-size:9px;padding:2px 4px;">
+                <span style="color:rgba(232,237,245,.3);font-size:9px;">~</span>
+                <input id="gfTxPriceMax" type="number" placeholder="최대" style="width:100%;background:rgba(0,0,0,.25);border:1px solid rgba(232,237,245,.12);border-radius:4px;color:rgba(232,237,245,.9);font-size:9px;padding:2px 4px;">
+              </div>
+              <div style="display:flex;align-items:center;gap:3px;">
+                <span style="font-size:9px;color:rgba(232,237,245,.45);min-width:32px;flex-shrink:0;">수익률%</span>
+                <input id="gfYieldMin" type="number" placeholder="최소" step="0.1" style="width:100%;background:rgba(0,0,0,.25);border:1px solid rgba(232,237,245,.12);border-radius:4px;color:rgba(232,237,245,.9);font-size:9px;padding:2px 4px;">
+                <span style="color:rgba(232,237,245,.3);font-size:9px;">~</span>
+                <input id="gfYieldMax" type="number" placeholder="최대" step="0.1" style="width:100%;background:rgba(0,0,0,.25);border:1px solid rgba(232,237,245,.12);border-radius:4px;color:rgba(232,237,245,.9);font-size:9px;padding:2px 4px;">
+              </div>
+              <div style="display:flex;align-items:center;gap:3px;">
+                <span style="font-size:9px;color:rgba(232,237,245,.45);min-width:32px;flex-shrink:0;">평당가</span>
+                <input id="gfPpMin" type="number" placeholder="최소" style="width:100%;background:rgba(0,0,0,.25);border:1px solid rgba(232,237,245,.12);border-radius:4px;color:rgba(232,237,245,.9);font-size:9px;padding:2px 4px;">
+                <span style="color:rgba(232,237,245,.3);font-size:9px;">~</span>
+                <input id="gfPpMax" type="number" placeholder="최대" style="width:100%;background:rgba(0,0,0,.25);border:1px solid rgba(232,237,245,.12);border-radius:4px;color:rgba(232,237,245,.9);font-size:9px;padding:2px 4px;">
+              </div>
+              <div style="display:flex;align-items:center;gap:3px;">
+                <span style="font-size:9px;color:rgba(232,237,245,.45);min-width:32px;flex-shrink:0;">거래년월</span>
+                <input id="gfDateMin" type="text" placeholder="202401" style="width:100%;background:rgba(0,0,0,.25);border:1px solid rgba(232,237,245,.12);border-radius:4px;color:rgba(232,237,245,.9);font-size:9px;padding:2px 4px;">
+                <span style="color:rgba(232,237,245,.3);font-size:9px;">~</span>
+                <input id="gfDateMax" type="text" placeholder="202412" style="width:100%;background:rgba(0,0,0,.25);border:1px solid rgba(232,237,245,.12);border-radius:4px;color:rgba(232,237,245,.9);font-size:9px;padding:2px 4px;">
+              </div>
+            </div>
+            <!-- 고급 필터 토글 -->
+            <div style="border-top:1px solid rgba(232,237,245,.08);padding-top:4px;margin-top:2px;">
+              <div onclick="const b=this.nextElementSibling;const open=b.style.display!=='none';b.style.display=open?'none':'block';this.querySelector('span').textContent=open?'▼ 고급 필터':'▲ 고급 필터'"
+                style="cursor:pointer;display:flex;align-items:center;gap:4px;padding:2px 0;">
+                <span style="font-size:10px;color:rgba(232,237,245,.35);">▼ 고급 필터</span>
+              </div>
+              <div style="display:none;margin-top:5px;">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px;">
+                  <div style="display:flex;align-items:center;gap:3px;">
+                    <span style="font-size:9px;color:rgba(232,237,245,.45);min-width:32px;flex-shrink:0;">감정가</span>
+                    <input id="gfAppraisalMin" type="number" placeholder="최소" style="width:100%;background:rgba(0,0,0,.25);border:1px solid rgba(232,237,245,.12);border-radius:4px;color:rgba(232,237,245,.9);font-size:9px;padding:2px 4px;">
+                    <span style="color:rgba(232,237,245,.3);font-size:9px;">~</span>
+                    <input id="gfAppraisalMax" type="number" placeholder="최대" style="width:100%;background:rgba(0,0,0,.25);border:1px solid rgba(232,237,245,.12);border-radius:4px;color:rgba(232,237,245,.9);font-size:9px;padding:2px 4px;">
+                  </div>
+                  <div style="display:flex;align-items:center;gap:3px;">
+                    <span style="font-size:9px;color:rgba(232,237,245,.45);min-width:32px;flex-shrink:0;">최저가</span>
+                    <input id="gfMinBidMin" type="number" placeholder="최소" style="width:100%;background:rgba(0,0,0,.25);border:1px solid rgba(232,237,245,.12);border-radius:4px;color:rgba(232,237,245,.9);font-size:9px;padding:2px 4px;">
+                    <span style="color:rgba(232,237,245,.3);font-size:9px;">~</span>
+                    <input id="gfMinBidMax" type="number" placeholder="최대" style="width:100%;background:rgba(0,0,0,.25);border:1px solid rgba(232,237,245,.12);border-radius:4px;color:rgba(232,237,245,.9);font-size:9px;padding:2px 4px;">
+                  </div>
+                  <div style="display:flex;align-items:center;gap:3px;">
+                    <span style="font-size:9px;color:rgba(232,237,245,.45);min-width:32px;flex-shrink:0;">전세가</span>
+                    <input id="gfJeonseMin" type="number" placeholder="최소" style="width:100%;background:rgba(0,0,0,.25);border:1px solid rgba(232,237,245,.12);border-radius:4px;color:rgba(232,237,245,.9);font-size:9px;padding:2px 4px;">
+                    <span style="color:rgba(232,237,245,.3);font-size:9px;">~</span>
+                    <input id="gfJeonseMax" type="number" placeholder="최대" style="width:100%;background:rgba(0,0,0,.25);border:1px solid rgba(232,237,245,.12);border-radius:4px;color:rgba(232,237,245,.9);font-size:9px;padding:2px 4px;">
+                  </div>
+                  <div style="display:flex;align-items:center;gap:3px;">
+                    <span style="font-size:9px;color:rgba(232,237,245,.45);min-width:32px;flex-shrink:0;">유찰횟수</span>
+                    <input id="gfFailCntMin" type="number" placeholder="최소" style="width:100%;background:rgba(0,0,0,.25);border:1px solid rgba(232,237,245,.12);border-radius:4px;color:rgba(232,237,245,.9);font-size:9px;padding:2px 4px;">
+                    <span style="color:rgba(232,237,245,.3);font-size:9px;">~</span>
+                    <input id="gfFailCntMax" type="number" placeholder="최대" style="width:100%;background:rgba(0,0,0,.25);border:1px solid rgba(232,237,245,.12);border-radius:4px;color:rgba(232,237,245,.9);font-size:9px;padding:2px 4px;">
+                  </div>
+                </div>
+                <!-- 키워드 -->
+                <div style="display:flex;align-items:center;gap:4px;margin-bottom:3px;">
+                  <span style="font-size:9px;color:rgba(232,237,245,.45);min-width:36px;flex-shrink:0;">소재지</span>
+                  <input id="gfAddrKeyword" type="text" placeholder="예: 강남 역삼" style="flex:1;background:rgba(0,0,0,.25);border:1px solid rgba(232,237,245,.12);border-radius:4px;color:rgba(232,237,245,.9);font-size:9px;padding:2px 4px;font-family:'Noto Sans KR',sans-serif;">
+                </div>
+                <div style="display:flex;align-items:center;gap:4px;margin-bottom:3px;">
+                  <span style="font-size:9px;color:rgba(232,237,245,.45);min-width:36px;flex-shrink:0;">제목</span>
+                  <input id="gfTitleKeyword" type="text" placeholder="제목 키워드" style="flex:1;background:rgba(0,0,0,.25);border:1px solid rgba(232,237,245,.12);border-radius:4px;color:rgba(232,237,245,.9);font-size:9px;padding:2px 4px;font-family:'Noto Sans KR',sans-serif;">
+                </div>
+                <div style="display:flex;align-items:center;gap:4px;margin-bottom:5px;">
+                  <span style="font-size:9px;color:rgba(232,237,245,.45);min-width:36px;flex-shrink:0;">메모</span>
+                  <input id="gfMemoKeyword" type="text" placeholder="메모 키워드" style="flex:1;background:rgba(0,0,0,.25);border:1px solid rgba(232,237,245,.12);border-radius:4px;color:rgba(232,237,245,.9);font-size:9px;padding:2px 4px;font-family:'Noto Sans KR',sans-serif;">
+                </div>
+                <!-- 값 존재여부 -->
+                <div style="display:flex;flex-wrap:wrap;gap:4px;padding:3px 0;">
+                  <span style="font-size:9px;color:rgba(232,237,245,.4);min-width:26px;">있음</span>
+                  <label style="font-size:9px;cursor:pointer;display:inline-flex;align-items:center;gap:2px;color:rgba(232,237,245,.6);"><input type="checkbox" id="gfHasArea" style="accent-color:#4f8eff;"> 면적</label>
+                  <label style="font-size:9px;cursor:pointer;display:inline-flex;align-items:center;gap:2px;color:rgba(232,237,245,.6);"><input type="checkbox" id="gfHasPrice" style="accent-color:#4f8eff;"> 매매가</label>
+                  <label style="font-size:9px;cursor:pointer;display:inline-flex;align-items:center;gap:2px;color:rgba(232,237,245,.6);"><input type="checkbox" id="gfHasDeposit" style="accent-color:#4f8eff;"> 보증금</label>
+                  <label style="font-size:9px;cursor:pointer;display:inline-flex;align-items:center;gap:2px;color:rgba(232,237,245,.6);"><input type="checkbox" id="gfHasRent" style="accent-color:#4f8eff;"> 월세</label>
+                  <label style="font-size:9px;cursor:pointer;display:inline-flex;align-items:center;gap:2px;color:rgba(232,237,245,.6);"><input type="checkbox" id="gfHasTxPrice" style="accent-color:#4f8eff;"> 실거래가</label>
+                  <label style="font-size:9px;cursor:pointer;display:inline-flex;align-items:center;gap:2px;color:rgba(232,237,245,.6);"><input type="checkbox" id="gfHasYield" style="accent-color:#4f8eff;"> 수익률</label>
+                  <label style="font-size:9px;cursor:pointer;display:inline-flex;align-items:center;gap:2px;color:rgba(232,237,245,.6);"><input type="checkbox" id="gfExclEstArea" style="accent-color:#ff8c42;"> 전용추정제외</label>
+                </div>
+              </div>
+            </div>
+            <!-- CSV 다운로드 버튼 -->
+            <div style="display:flex;gap:4px;margin-top:7px;padding-top:6px;border-top:1px solid rgba(232,237,245,.08);">
+              <button onclick="pcMapExportCSV(false)" style="flex:1;padding:5px 0;background:rgba(0,212,130,.14);border:1px solid rgba(0,212,130,.4);border-radius:5px;color:#00d482;font-size:10px;cursor:pointer;font-weight:700;font-family:'Noto Sans KR',sans-serif;">📊 필터 CSV</button>
+              <button onclick="pcMapExportCSV(true)" style="flex:1;padding:5px 0;background:rgba(0,212,130,.06);border:1px solid rgba(0,212,130,.2);border-radius:5px;color:#00d482;font-size:10px;cursor:pointer;opacity:.8;font-family:'Noto Sans KR',sans-serif;">📊 전체 CSV</button>
+            </div>
           </div>
 
           <div class="area-mini area-mini-floating" aria-label="지도 수집 설정">
