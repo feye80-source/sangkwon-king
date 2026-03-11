@@ -467,14 +467,64 @@
       return Array.isArray(d) ? d : null;
     };
 
-    // ─── 알짜정보(kcards) 동기화 ────────────────────────────
+    // ─── Storage 이미지 업로드 공통 헬퍼 ─────────────────────
+    // blob/File/base64dataURL → Storage 업로드 → public URL 반환
+    window._sbUploadImage = async function(source, folder) {
+      const uid = await _sbGetUserId();
+      if (!uid) throw new Error('로그인이 필요합니다');
+      folder = folder || 'captures';
+
+      let blob, mimeType, ext;
+
+      if (typeof source === 'string' && source.startsWith('data:')) {
+        // base64 dataURL → Blob 변환
+        const match = source.match(/^data:(.+?);base64,(.+)$/);
+        if (!match) throw new Error('잘못된 dataURL 형식');
+        mimeType = match[1];
+        const byteStr = atob(match[2]);
+        const arr = new Uint8Array(byteStr.length);
+        for (let i = 0; i < byteStr.length; i++) arr[i] = byteStr.charCodeAt(i);
+        blob = new Blob([arr], { type: mimeType });
+        ext = mimeType.split('/')[1].replace('jpeg', 'jpg').split('+')[0];
+      } else if (source instanceof File || source instanceof Blob) {
+        blob = source;
+        mimeType = source.type || 'image/jpeg';
+        ext = mimeType.split('/')[1].replace('jpeg', 'jpg').split('+')[0];
+      } else {
+        throw new Error('지원하지 않는 이미지 형식');
+      }
+
+      const path = uid + '/' + folder + '/' + Date.now() + '_' + Math.random().toString(36).slice(2) + '.' + ext;
+      const { error } = await window._sb.storage
+        .from('room-images')
+        .upload(path, blob, { contentType: mimeType, upsert: false });
+      if (error) throw error;
+
+      const { data: urlData } = window._sb.storage.from('room-images').getPublicUrl(path);
+      return { url: urlData.publicUrl, path };
+    };
+
+    // Storage에서 이미지 삭제 (path 배열)
+    window._sbDeleteImages = async function(paths) {
+      if (!paths || !paths.length) return;
+      try {
+        await window._sb.storage.from('room-images').remove(paths);
+      } catch(e) { console.warn('[SB] deleteImages error', e); }
+    };
+
+    // ─── 알짜정보(kcards) 동기화 ─────────────────────────────
+    // 카드 1개 = kcards 테이블 1행으로 저장 (kv_store 단일 row 저장 방식 제거)
     window._sbSaveKcards = async function(arr) {
-      await kvSet('ins_kcards', arr);
-      window._sbSyncStatus('☁️ 알짜정보 동기화 완료', true);
+      try {
+        const active = (arr || []).filter(k => !k.deletedAt);
+        const deleted = (arr || []).filter(k => k.deletedAt).map(k => k.id);
+        await tblSaveArr('kcards', active);
+        if (deleted.length) await tblDeleteItems('kcards', deleted);
+        window._sbSyncStatus('☁️ 알짜정보 동기화 완료', true);
+      } catch(e) { console.warn('[SB] saveKcards error', e); }
     };
     window._sbLoadKcards = async function() {
-      const d = await kvGet('ins_kcards');
-      return Array.isArray(d) ? d : null;
+      return await tblLoadArr('kcards');
     };
     window._sbSaveKcat = async function(arr) {
       await kvSet('ins_kcat', arr);
@@ -602,8 +652,9 @@
           if (kcCloud !== null && kcCloud.length > 0) {
             const kcLocal = window._idbCache['ins_kcards'] || [];
             const merged = _sbMergeById(kcCloud, kcLocal);
-            window._idbCache['ins_kcards'] = merged;
-            await window.idbSet('ins_kcards', merged);
+            const mergedActive = merged.filter(k => !k.deletedAt);
+            window._idbCache['ins_kcards'] = mergedActive;
+            await window.idbSet('ins_kcards', mergedActive);
             if (merged.length > kcCloud.length) window._sbSaveKcards(merged).catch(()=>{});
           } else {
             const kcLocal = window._idbCache['ins_kcards'] || [];
@@ -1587,10 +1638,15 @@
                   document.addEventListener('keydown', onKey);
                 };
 
-                window.wr2DeleteCaptureAt = function(idx) {
+                window.wr2DeleteCaptureAt = async function(idx) {
                   var room = getActiveRoom(); if (!room) return;
                   migrateCaptures(room);
                   if (!confirm('이 캡처 이미지를 삭제할까요?')) return;
+                  const img = room.captureImages[idx];
+                  // Storage에 업로드된 이미지면 실제 파일도 삭제
+                  if (img && img.storagePath) {
+                    window._sbDeleteImages([img.storagePath]).catch(()=>{});
+                  }
                   room.captureImages.splice(idx, 1);
                   room.updatedAt = Date.now();
                   saveRooms(); renderCaptureWidget(room);
@@ -1707,35 +1763,40 @@
                 window.wr2UploadCapture = function (input) {
                   if (input.files[0]) wr2LoadCaptureFile(input.files[0]);
                 };
-                function wr2LoadCaptureFile(file) {
-                  const r = new FileReader();
-                  r.onload = e => {
-                    const room = getActiveRoom(); if (!room) return;
-                    migrateCaptures(room);
-                    const _snapName = window._lastLoadedSnap || null;
+                async function wr2LoadCaptureFile(file) {
+                  const room = getActiveRoom(); if (!room) return;
+                  migrateCaptures(room);
+                  const _snapName = window._lastLoadedSnap || null;
+                  showToast('이미지 업로드 중...', 'info');
+                  try {
+                    const { url, path } = await window._sbUploadImage(file, 'captures');
                     if (!room.captureImages) room.captureImages = [];
-                    room.captureImages.push({ src: e.target.result, savedAt: Date.now(), snapName: _snapName });
+                    room.captureImages.push({ src: url, storagePath: path, savedAt: Date.now(), snapName: _snapName });
                     room.updatedAt = Date.now();
                     saveRooms(); renderCaptureWidget(room);
-                  };
-                  r.readAsDataURL(file);
+                    showToast('📸 이미지 저장됨', 'ok');
+                  } catch(e) {
+                    console.error('[wr2 capture upload]', e);
+                    showToast('이미지 업로드 실패: ' + (e.message || ''), 'error');
+                  }
                 }
-                window.wr2DeleteCapture = function () {
-                  // 하위호환: 전체 삭제
+                window.wr2DeleteCapture = async function () {
                   const room = getActiveRoom(); if (!room) return;
                   if (!confirm('모든 캡처 이미지를 삭제할까요?')) return;
+                  // Storage에서 실제 파일 삭제
+                  const paths = (room.captureImages || []).filter(i => i.storagePath).map(i => i.storagePath);
+                  if (paths.length) window._sbDeleteImages(paths).catch(()=>{});
                   room.captureImages = []; delete room.captureImage;
                   room.updatedAt = Date.now();
                   saveRooms(); renderCaptureWidget(room);
                 };
-                window.wr2CaptureMap = function () {
-                  // html2canvas 방식 (카카오맵 타일 제한으로 부분 캡처)
+                window.wr2CaptureMap = async function () {
                   const mapEl = document.getElementById('map');
                   if (!mapEl) { showToast('지도를 먼저 불러오세요', 'warn'); return; }
                   if (typeof html2canvas !== 'undefined') {
                     showToast('지도 캡처 중...', 'info');
-                    html2canvas(mapEl, { useCORS: true, scale: 1 }).then(canvas => {
-                      // CORS 체크: 실제 이미지 데이터가 있는지 확인
+                    try {
+                      const canvas = await html2canvas(mapEl, { useCORS: true, scale: 1 });
                       const testCtx = canvas.getContext('2d');
                       const px = testCtx ? testCtx.getImageData(canvas.width>>1, canvas.height>>1, 1, 1).data : null;
                       const isBlank = !px || (px[0]===0 && px[1]===0 && px[2]===0 && px[3]===0);
@@ -1743,28 +1804,23 @@
                       const room = getActiveRoom(); if (!room) return;
                       migrateCaptures(room);
                       const _snapName = window._lastLoadedSnap || null;
-                      if (!room.captureImages) room.captureImages = [];
-                      room.captureImages.push({ src: canvas.toDataURL('image/jpeg', 0.85), savedAt: Date.now(), snapName: _snapName });
-                      room.updatedAt = Date.now();
-                      saveRooms(); renderCaptureWidget(room);
-                      showToast('📸 캡처 저장됨' + (_snapName ? ' (📷 ' + _snapName + ')' : ''), 'ok');
-                    }).catch(() => showToast('캡처 실패. 직접 업로드를 이용하세요.', 'warn'));
+                      // canvas → Blob → Storage 업로드
+                      canvas.toBlob(async function(blob) {
+                        try {
+                          const { url, path } = await window._sbUploadImage(blob, 'captures');
+                          if (!room.captureImages) room.captureImages = [];
+                          room.captureImages.push({ src: url, storagePath: path, savedAt: Date.now(), snapName: _snapName });
+                          room.updatedAt = Date.now();
+                          saveRooms(); renderCaptureWidget(room);
+                          showToast('📸 캡처 저장됨' + (_snapName ? ' (📷 ' + _snapName + ')' : ''), 'ok');
+                        } catch(e) {
+                          console.error('[wr2CaptureMap upload]', e);
+                          showToast('캡처 업로드 실패: ' + (e.message || ''), 'error');
+                        }
+                      }, 'image/jpeg', 0.85);
+                    } catch(e) { showToast('캡처 실패. 직접 업로드를 이용하세요.', 'warn'); }
                   } else {
-                    // html2canvas 없으면 canvas로 직접 시도
-                    try {
-                      const canvas = document.createElement('canvas');
-                      canvas.width = mapEl.offsetWidth; canvas.height = mapEl.offsetHeight;
-                      const ctx = canvas.getContext('2d');
-                      ctx.fillStyle = '#1a1f2e'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-                      ctx.fillStyle = '#4f8eff'; ctx.font = '14px sans-serif';
-                      ctx.textAlign = 'center';
-                      ctx.fillText('지도 캡처 (html2canvas 없음)', canvas.width / 2, canvas.height / 2);
-                      const room = getActiveRoom(); if (!room) return;
-                      room.captureImage = canvas.toDataURL();
-                      room.updatedAt = Date.now();
-                      saveRooms(); renderCaptureWidget(room);
-                      showToast('지도 탭에서 직접 스크린샷 후 [직접 업로드]를 이용하세요', 'warn');
-                    } catch (e) { showToast('캡처 실패. 직접 업로드를 이용하세요.', 'warn'); }
+                    showToast('지도 탭에서 직접 스크린샷 후 [직접 업로드]를 이용하세요', 'warn');
                   }
                 };
 
@@ -4658,26 +4714,34 @@
       const _esc = e => { if (e.key === 'Escape') _close(); };
       document.addEventListener('keydown', _esc);
       pop.querySelector('#_sr_cancel').onclick = _close;
-      pop.querySelector('#_sr_ok').onclick = () => {
+      pop.querySelector('#_sr_ok').onclick = async () => {
         const selRoomId = pop.querySelector('#_sr_room').value;
-        const selChildOf = pop.querySelector('#_sr_child_of').value; // "roomId::snapName"
+        const selChildOf = pop.querySelector('#_sr_child_of').value;
         const newName = pop.querySelector('#_sr_new').value.trim();
         _close();
         const now = Date.now();
 
         if (newName) {
-          // ② 새 작업룸 생성
           _swMakeRoom(newName, scene);
         } else if (selRoomId) {
-          // ① 기존 작업룸에 추가
           const allRooms = (window.wr2State && window.wr2State.rooms) || [];
           const room = allRooms.find(r => r.id === selRoomId);
           if (!room) { showToast('작업룸을 찾을 수 없어요', 'warn'); return; }
           if (!room.mapScenes) room.mapScenes = room.mapScene ? [room.mapScene] : [];
           if (!room.captureImages) room.captureImages = [];
 
+          async function _uploadSnapThumb(dataUrl, snapName, parentSnapName) {
+            if (!dataUrl) return null;
+            try {
+              const { url, path } = await window._sbUploadImage(dataUrl, 'snapshots');
+              return { src: url, storagePath: path, savedAt: now, snapName, parentSnapName: parentSnapName || null };
+            } catch(e) {
+              console.warn('[swSaveToRoom] thumb upload fail', e);
+              return { src: dataUrl, savedAt: now, snapName, parentSnapName: parentSnapName || null };
+            }
+          }
+
           if (selChildOf) {
-            // 기존 스냅샷의 자식으로 추가
             const parentSnapName = selChildOf.split('::').slice(1).join('::');
             const parentEntry = room.mapScenes.find(ms => ms.sceneName === parentSnapName);
             if (!parentEntry) { showToast('부모 스냅샷을 찾을 수 없어요', 'warn'); return; }
@@ -4685,22 +4749,26 @@
             const already = parentEntry.children.find(ch => ch.name === scene.name);
             if (already) { showToast('이미 같은 이름의 자식 스냅샷이 있어요', 'warn'); return; }
             parentEntry.children.push({ name: scene.name, cards: scene.cards, mapCenter: scene.mapCenter, mapLevel: scene.mapLevel, savedAt: now });
-            if (scene.thumbnailSrc) room.captureImages.push({ src: scene.thumbnailSrc, savedAt: now, snapName: scene.name, parentSnapName });
+            if (scene.thumbnailSrc) {
+              const entry = await _uploadSnapThumb(scene.thumbnailSrc, scene.name, parentSnapName);
+              if (entry) room.captureImages.push(entry);
+            }
           } else {
-            // 독립 스냅샷으로 추가
             const allScenes2 = getWorkScenes();
             const children2 = allScenes2.filter(s => s.parentName === scene.name);
             const newEntry = { sceneName: scene.name, cards: scene.cards, mapCenter: scene.mapCenter, mapLevel: scene.mapLevel, savedAt: now, children: children2.map(ch => ({ name: ch.name, cards: ch.cards, mapCenter: ch.mapCenter, mapLevel: ch.mapLevel })) };
             const existIdx = room.mapScenes.findIndex(ms => ms.sceneName === scene.name);
             if (existIdx >= 0) room.mapScenes[existIdx] = newEntry; else room.mapScenes.push(newEntry);
-            if (scene.thumbnailSrc) {
-              if (!room.captureImages.find(i => i.snapName === scene.name && !i.parentSnapName))
-                room.captureImages.push({ src: scene.thumbnailSrc, savedAt: now, snapName: scene.name });
+            if (scene.thumbnailSrc && !room.captureImages.find(i => i.snapName === scene.name && !i.parentSnapName)) {
+              const entry = await _uploadSnapThumb(scene.thumbnailSrc, scene.name, null);
+              if (entry) room.captureImages.push(entry);
             }
-            children2.forEach(ch => {
-              if (ch.thumbnailSrc && !room.captureImages.find(i => i.snapName === ch.name))
-                room.captureImages.push({ src: ch.thumbnailSrc, savedAt: now, snapName: ch.name, parentSnapName: scene.name });
-            });
+            for (const ch of children2) {
+              if (ch.thumbnailSrc && !room.captureImages.find(i => i.snapName === ch.name)) {
+                const entry = await _uploadSnapThumb(ch.thumbnailSrc, ch.name, scene.name);
+                if (entry) room.captureImages.push(entry);
+              }
+            }
           }
           room.updatedAt = now;
           if (window.wr2State) {
@@ -4716,7 +4784,6 @@
           showToast('작업룸을 선택하거나 새 이름을 입력해주세요', 'warn');
         }
       };
-    };
 
     window.swNewRoomFromMap = function () {
       const cnt = (window.wr2State && window.wr2State.rooms ? window.wr2State.rooms.length : 0) + 1;
@@ -4738,24 +4805,38 @@
       _swMakeRoom(name.trim(), { name: name.trim(), cards, mapCenter, mapLevel });
     };
 
-    function _swMakeRoom(title, scene) {
+    async function _swMakeRoom(title, scene) {
       const now = Date.now();
-      // 자식 스냅샷도 함께 가져오기
       const allScenes = getWorkScenes();
       const children = scene ? allScenes.filter(function(s){ return s.parentName === scene.name; }) : [];
       const room = {
         id: 'room_' + now.toString(36), title, address: '', auctionId: null, listingId: null, linkedSavedId: null, linkedItems: [], status: 'review', phase: 'review', tags: [],
         mapScene: scene && !scene.parentName ? { sceneName: scene.name, cards: scene.cards, mapCenter: scene.mapCenter, mapLevel: scene.mapLevel, savedAt: now, children: children.map(function(c){ return { name: c.name, cards: c.cards, mapCenter: c.mapCenter, mapLevel: c.mapLevel }; }) } : null,
         mapScenes: scene && !scene.parentName ? [{ sceneName: scene.name, cards: scene.cards, mapCenter: scene.mapCenter, mapLevel: scene.mapLevel, savedAt: now, children: children.map(function(c){ return { name: c.name, cards: c.cards, mapCenter: c.mapCenter, mapLevel: c.mapLevel }; }) }] : [],
-        captureImages: (scene && scene.thumbnailSrc) ? [{ src: scene.thumbnailSrc, savedAt: now, snapName: scene.name }] : [],
+        captureImages: [],
         createdAt: now, updatedAt: now
       };
-      // 자식 스냅샷 thumbnailSrc도 captureImages에 추가
-      children.forEach(function(child) {
-        if (child.thumbnailSrc) {
-          room.captureImages.push({ src: child.thumbnailSrc, savedAt: now, snapName: child.name, parentSnapName: scene ? scene.name : null });
+
+      // 썸네일 Storage 업로드 (base64 dataURL → URL)
+      async function _uploadThumb(dataUrl, snapName, parentSnapName) {
+        if (!dataUrl) return;
+        try {
+          const { url, path } = await window._sbUploadImage(dataUrl, 'snapshots');
+          room.captureImages.push({ src: url, storagePath: path, savedAt: now, snapName, parentSnapName: parentSnapName || null });
+        } catch(e) {
+          // 업로드 실패 시 base64 그대로 보관 (데이터 유실 방지)
+          console.warn('[swMakeRoom] thumb upload fail', e);
+          room.captureImages.push({ src: dataUrl, savedAt: now, snapName, parentSnapName: parentSnapName || null });
         }
+      }
+
+      const uploadJobs = [];
+      if (scene && scene.thumbnailSrc) uploadJobs.push(_uploadThumb(scene.thumbnailSrc, scene.name, null));
+      children.forEach(function(child) {
+        if (child.thumbnailSrc) uploadJobs.push(_uploadThumb(child.thumbnailSrc, child.name, scene ? scene.name : null));
       });
+      if (uploadJobs.length) await Promise.all(uploadJobs);
+
       if (window.wr2State) {
         window.wr2State.rooms.unshift(room);
         if(window._idbCache)window._idbCache['wr2_rooms']=window.wr2State.rooms;if(window.idbSet)window.idbSet('wr2_rooms',window.wr2State.rooms).catch(()=>{});
@@ -4764,6 +4845,9 @@
       }
       swRefreshRoomSelect();
       const sel = document.getElementById('swRoomSelect');
+      if (sel) { sel.value = room.id; swOnRoomSelect(room.id); }
+      showToast('🗂 작업룸 \"' + title + '\" 생성됨', 'ok');
+    }
       if (sel) { sel.value = room.id; swOnRoomSelect(room.id); }
       showToast('🗂 작업룸 "' + title + '" 생성됨', 'ok');
     }
@@ -17504,6 +17588,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       if (dropzone) dropzone.style.display = 'flex';
       if (preview) { preview.style.display = 'none'; preview.querySelectorAll('img').forEach(e => e.remove()); }
       window._captureDataUrl = null;
+      window._capturePendingFile = null;
     };
 
     function _openCaptureModal() {
@@ -17637,9 +17722,10 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       _trySet(0);
     };
 
-    window.saveCapturedImage = function () {
-      if (!window._captureDataUrl) { showToast('📸 먼저 이미지를 드래그하거나 선택해주세요', 'warn'); return; }
-      // 저장 버튼 즉시 피드백
+    window.saveCapturedImage = async function () {
+      if (!window._captureDataUrl && !window._capturePendingFile) { showToast('📸 먼저 이미지를 드래그하거나 선택해주세요', 'warn'); return; }
+      // Storage 업로드 시 File 객체 우선 사용 (dataURL 변환 불필요)
+      const _uploadSource = window._capturePendingFile || window._captureDataUrl;
       try {
         var saveBtn = document.querySelector('#mapCaptureModal button[onclick*="saveCapturedImage"]') ||
                       document.querySelector('#mapCaptureModal .wr2-save-btn');
@@ -17704,32 +17790,27 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           const _roomTitle = room.title || room.name || '작업룸';
           const _allRooms = (window.wr2State && window.wr2State.rooms) ? window.wr2State.rooms : [room];
 
-          // 이미지 압축 후 저장 (quota 방지: 최대 900px, JPEG 0.55)
-          window._compressImageDataUrl(window._captureDataUrl, 900, 0.55, function(compressed) {
-            room.captureImages.push({ src: compressed, savedAt: Date.now(), snapName: _snapName });
+          // Storage 업로드 후 URL 저장
+          try {
+            const { url, path } = await window._sbUploadImage(_uploadSource, 'captures');
+            room.captureImages.push({ src: url, storagePath: path, savedAt: Date.now(), snapName: _snapName });
             room.updatedAt = Date.now();
-
-            window._safeSetRooms(_allRooms,
-              function() {
-                // 성공
-                if (typeof window.wr2Render === 'function') window.wr2Render();
-                setTimeout(function() {
-                  try {
-                    var ar = typeof getActiveRoom==='function' ? getActiveRoom() : null;
-                    if (ar && typeof renderCaptureWidget==='function') renderCaptureWidget(ar);
-                  } catch(e){}
-                }, 100);
-                showToast('📸 "' + _roomTitle + '"에 저장됨 ✅', 'ok');
-                _closeModal();
-              },
-              function(err) {
-                // quota 초과 - 공간 부족 안내
-                showToast('💾 저장 공간이 부족합니다. 오래된 캡처 이미지를 삭제해 주세요.', 'warn');
-                console.error('[saveCapturedImage quota]', err);
-                setTimeout(_closeModal, 2000);
-              }
-            );
-          });
+            if(window._idbCache)window._idbCache['wr2_rooms']=_allRooms;if(window.idbSet)window.idbSet('wr2_rooms',_allRooms).catch(()=>{});
+            if (typeof window._sbSaveRooms === 'function') window._sbSaveRooms(_allRooms).catch(()=>{});
+            if (typeof window.wr2Render === 'function') window.wr2Render();
+            setTimeout(function() {
+              try {
+                var ar = typeof getActiveRoom==='function' ? getActiveRoom() : null;
+                if (ar && typeof renderCaptureWidget==='function') renderCaptureWidget(ar);
+              } catch(e){}
+            }, 100);
+            showToast('📸 "' + _roomTitle + '"에 저장됨 ✅', 'ok');
+            _closeModal();
+          } catch(uploadErr) {
+            console.error('[saveCapturedImage upload]', uploadErr);
+            showToast('이미지 업로드 실패: ' + (uploadErr.message || ''), 'error');
+            _closeModal();
+          }
 
         } catch(err) {
           console.error('[saveCapturedImage]', err);
@@ -21089,13 +21170,12 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           const txt = line.replace(/^[•\-·]\s*/, '').replace(/^\d+[.)]\s*/, '');
           return `<div style="display:flex;align-items:flex-start;gap:6px;padding:5px 8px;background:${color}22;border-left:3px solid ${color};border-radius:0 5px 5px 0;font-size:11px;color:${_txColor};line-height:1.5;">${esc(txt)}</div>`;
         }).join('');
-        const summaryHtml = plainLines.slice(0, 2).map(l => `<div style="font-size:11px;color:${_muColor};line-height:1.5;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">${esc(l.slice(0,100))}</div>`).join('');
+        const summaryHtml = plainLines.slice(0, 2).map(l => `<div style="font-size:11px;color:${_muColor};line-height:1.6;">${esc(l)}</div>`).join('');
 
         const hasMore = bodyLines.length > 5;
 
         let _th='';
-        if(card.ytUrl){const _ym=card.ytUrl.match(/(?:v=|youtu\.be\/)([A-Za-z0-9_-]{11})/);if(_ym){const _ytTitle=esc((card.title||'').slice(0,60));const _ytBody=esc(((card.body||'').split('\n').filter(Boolean)[0]||'').replace(/^[•\-·\d.)]\s*/,'').slice(0,80));_th=`<div style="flex-shrink:0;"><div style="width:100%;height:180px;background:#000;overflow:hidden;position:relative;"><img src="https://img.youtube.com/vi/${_ym[1]}/mqdefault.jpg" style="max-width:100%;max-height:180px;width:auto;height:auto;object-fit:contain;display:block;"
- loading="lazy"><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;"><div style="width:40px;height:40px;background:rgba(255,0,0,.85);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;padding-left:3px;">▶</div></div></div>${(_ytTitle||_ytBody)?`<div style="padding:6px 10px 5px;border-bottom:1px solid var(--b1);">${_ytTitle?`<div style="font-size:12px;font-weight:700;color:var(--tx);line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${_ytTitle}</div>`:``}${_ytBody?`<div style="font-size:11px;color:var(--mu);line-height:1.45;margin-top:2px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">${_ytBody}</div>`:``}</div>`:``}</div>`;} }
+        if(card.ytUrl){const _ym=card.ytUrl.match(/(?:v=|youtu\.be\/)([A-Za-z0-9_-]{11})/);if(_ym){const _ytTitle=esc((card.title||'').slice(0,60));const _ytBody=esc(((card.body||'').split('\n').filter(Boolean)[0]||'').replace(/^[•\-·\d.)]\s*/,'').slice(0,80));_th=`<div style="flex-shrink:0;"><div style="width:100%;aspect-ratio:16/9;background:#000;overflow:hidden;position:relative;"><img src="https://img.youtube.com/vi/${_ym[1]}/mqdefault.jpg" style="width:100%;height:100%;object-fit:cover;display:block;" loading="lazy"><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;"><div style="width:40px;height:40px;background:rgba(255,0,0,.85);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;padding-left:3px;">▶</div></div></div>${(_ytTitle||_ytBody)?`<div style="padding:6px 10px 5px;border-bottom:1px solid var(--b1);">${_ytTitle?`<div style="font-size:12px;font-weight:700;color:var(--tx);line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${_ytTitle}</div>`:``}${_ytBody?`<div style="font-size:11px;color:var(--mu);line-height:1.45;margin-top:2px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">${_ytBody}</div>`:``}</div>`:``}</div>`;} }
         else if(card.imgs&&card.imgs.length)_th=`<div style="width:100%;height:180px;background:#111;overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center;"><img src="${card.imgs[0]}" style="max-width:100%;max-height:180px;width:auto;height:auto;object-fit:contain;display:block;" loading="lazy"></div>`;
         const _bg=(!card.ytUrl&&(!card.imgs||!card.imgs.length)&&card.bgColor)?card.bgColor:'var(--s1)';
         return `<div style="background:${_bg};border:1px solid var(--b1);border-top:3px solid ${color};border-radius:0 0 12px 12px;display:flex;flex-direction:column;transition:transform .15s,box-shadow .15s;cursor:pointer;" 
@@ -21115,7 +21195,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         </div>
         <div style="font-weight:800;color:var(--tx);line-height:1.3;margin-bottom:6px;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;word-break:break-all;${(()=>{const l=(card.title||'').length;if(l<=4)return 'font-size:18px;-webkit-line-clamp:1;';if(l<=10)return 'font-size:14px;-webkit-line-clamp:1;';if(l<=25)return 'font-size:12px;-webkit-line-clamp:2;';return 'font-size:10px;-webkit-line-clamp:2;';})()}">${esc((card.title||'제목 없음').slice(0,60)+(card.title&&card.title.length>60?'…':''))}</div>
         <!-- 핵심 포인트 -->
-        <div style="display:flex;flex-direction:column;gap:3px;max-height:110px;overflow:hidden;">
+        <div style="display:flex;flex-direction:column;gap:4px;">
           ${summaryHtml}
           ${keyHtml}
           ${hasMore ? `<div style="font-size:10px;color:var(--di);margin-top:2px;">+${bodyLines.length - 5}줄 더...</div>` : ''}
@@ -21355,38 +21435,116 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     window.saveKcard        = saveKcard;
 
     // ── PC 이미지 첨부 핸들러 (pcHandleImgSelect / pcHandleImgDrop) ──
+    // ── Supabase Storage 업로드 방식 (base64 DB 저장 제거) ──
     function _pcImgProcess(files) {
       const prev = document.getElementById('kcardImgPreview');
       if (!window._kcardPendingImgs) window._kcardPendingImgs = [];
-      Array.from(files).forEach(function(file) {
+      Array.from(files).forEach(async function(file) {
         if (!file.type.startsWith('image/')) return;
-        if (file.size > 5 * 1024 * 1024) { showToast('5MB 이하 이미지만 첨부 가능해요', 'warn'); return; }
-        var reader = new FileReader();
-        reader.onload = function(e) {
-          var src = e.target.result;
-          window._kcardPendingImgs.push(src);
-          if (!prev) return;
-          var wrap = document.createElement('div');
-          wrap.style.cssText = 'position:relative;display:inline-block;';
-          var img = document.createElement('img');
-          img.src = src;
-          img.style.cssText = 'width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--b1);display:block;';
-          var capturedSrc = src;
-          var del = document.createElement('button');
+        if (file.size > 10 * 1024 * 1024) { showToast('10MB 이하 이미지만 첨부 가능해요', 'warn'); return; }
+
+        // 로딩 썸네일 표시 (로컬 blob URL로 즉시 미리보기)
+        const wrap = document.createElement('div');
+        wrap.style.cssText = 'position:relative;display:inline-block;opacity:0.5;';
+        const img = document.createElement('img');
+        img.src = URL.createObjectURL(file);
+        img.style.cssText = 'width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--b1);display:block;';
+        wrap.appendChild(img);
+        if (prev) prev.appendChild(wrap);
+
+        try {
+          const uid = await _sbGetUserId();
+          if (!uid) throw new Error('로그인이 필요합니다');
+
+          const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+          const path = uid + '/' + Date.now() + '_' + Math.random().toString(36).slice(2) + '.' + ext;
+
+          const { data, error } = await window._sb.storage
+            .from('kcard-images')
+            .upload(path, file, { contentType: file.type, upsert: false });
+
+          if (error) throw error;
+
+          const { data: urlData } = window._sb.storage
+            .from('kcard-images')
+            .getPublicUrl(path);
+
+          const publicUrl = urlData.publicUrl;
+          window._kcardPendingImgs.push(publicUrl);
+
+          // 로딩 완료 표시
+          wrap.style.opacity = '1';
+          URL.revokeObjectURL(img.src);
+          img.src = publicUrl;
+
+          // 삭제 버튼 (Storage에서도 실제 삭제)
+          const del = document.createElement('button');
           del.textContent = '✕';
           del.style.cssText = 'position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;background:#ff6370;border:none;color:#fff;font-size:10px;cursor:pointer;line-height:1;padding:0;';
-          del.onclick = function() {
-            var idx = window._kcardPendingImgs.indexOf(capturedSrc);
+          del.onclick = async function() {
+            await window._sb.storage.from('kcard-images').remove([path]);
+            const idx = window._kcardPendingImgs.indexOf(publicUrl);
             if (idx > -1) window._kcardPendingImgs.splice(idx, 1);
             wrap.remove();
           };
-          wrap.appendChild(img);
           wrap.appendChild(del);
-          prev.appendChild(wrap);
-        };
-        reader.readAsDataURL(file);
+
+        } catch(e) {
+          console.error('[kcard img upload]', e);
+          showToast('이미지 업로드 실패: ' + (e.message || ''), 'error');
+          wrap.remove();
+        }
       });
     }
+
+    // ── 수정 모드: 기존 이미지(URL) 미리보기 렌더 ──────────
+    function pcRenderImgPreview() {
+      const prev = document.getElementById('kcardImgPreview');
+      if (!prev) return;
+      prev.innerHTML = '';
+      (window._kcardPendingImgs || []).forEach(function(url) {
+        if (!url) return;
+        const wrap = document.createElement('div');
+        wrap.style.cssText = 'position:relative;display:inline-block;';
+        const img = document.createElement('img');
+        img.src = url;
+        img.style.cssText = 'width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--b1);display:block;';
+        const capturedUrl = url;
+        const del = document.createElement('button');
+        del.textContent = '✕';
+        del.style.cssText = 'position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;background:#ff6370;border:none;color:#fff;font-size:10px;cursor:pointer;line-height:1;padding:0;';
+        del.onclick = async function() {
+          // Storage URL이면 path 추출 후 삭제 시도
+          try {
+            const match = capturedUrl.match(/kcard-images\/(.+)$/);
+            if (match) await window._sb.storage.from('kcard-images').remove([decodeURIComponent(match[1])]);
+          } catch(e) { console.warn('[kcard img del]', e); }
+          const idx = window._kcardPendingImgs.indexOf(capturedUrl);
+          if (idx > -1) window._kcardPendingImgs.splice(idx, 1);
+          wrap.remove();
+        };
+        wrap.appendChild(img);
+        wrap.appendChild(del);
+        prev.appendChild(wrap);
+      });
+    }
+
+    // ── 유튜브 미리보기 업데이트 (수정 모드에서 사용) ──────
+    function pcUpdateYtPreview() {
+      const inp = document.getElementById('kcardYtInput');
+      const prev = document.getElementById('kcardYtPreview');
+      if (!inp || !prev) return;
+      const url = inp.value.trim();
+      const match = url.match(/(?:v=|youtu\.be\/)([A-Za-z0-9_-]{11})/);
+      if (match) {
+        prev.style.display = '';
+        prev.innerHTML = '<img src="https://img.youtube.com/vi/' + match[1] + '/mqdefault.jpg" style="width:120px;height:68px;object-fit:cover;border-radius:6px;border:1px solid var(--b1);">';
+      } else {
+        prev.style.display = 'none';
+        prev.innerHTML = '';
+      }
+    }
+    window.pcUpdateYtPreview = pcUpdateYtPreview;
     window.pcHandleImgSelect = function(input) {
       if (input.files && input.files.length) { _pcImgProcess(input.files); input.value = ''; }
     };

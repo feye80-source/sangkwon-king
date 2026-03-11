@@ -3865,10 +3865,10 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
           style="width:100%;min-height:160px;background:#0a0c10;border:2px dashed #2a3045;border-radius:8px;margin-bottom:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;cursor:pointer;transition:border-color .2s,background .2s;"
           ondragover="event.preventDefault();this.style.borderColor='#4fc8ff';this.style.background='rgba(79,200,255,0.06)';"
           ondragleave="this.style.borderColor='#2a3045';this.style.background='#0a0c10';"
-          ondrop="(function(e){e.preventDefault();document.getElementById('mapCaptureDropzone').style.borderColor='#2a3045';document.getElementById('mapCaptureDropzone').style.background='#0a0c10';var f=e.dataTransfer.files[0];if(!f||!f.type.startsWith('image/'))return;var r=new FileReader();r.onload=function(ev){window._captureDataUrl=ev.target.result;_showCapturePreview(ev.target.result);};r.readAsDataURL(f);})(event)"
+          ondrop="(function(e){e.preventDefault();document.getElementById('mapCaptureDropzone').style.borderColor='#2a3045';document.getElementById('mapCaptureDropzone').style.background='#0a0c10';var f=e.dataTransfer.files[0];if(!f||!f.type.startsWith('image/'))return;window._capturePendingFile=f;var r=new FileReader();r.onload=function(ev){window._captureDataUrl=ev.target.result;_showCapturePreview(ev.target.result);};r.readAsDataURL(f);})(event)"
           onclick="document.getElementById('captureModalFileInput').click()">
           <input type="file" id="captureModalFileInput" accept="image/*" style="display:none"
-            onchange="(function(e){var f=e.target.files[0];if(!f)return;var r=new FileReader();r.onload=function(ev){window._captureDataUrl=ev.target.result;_showCapturePreview(ev.target.result);};r.readAsDataURL(f);e.target.value='';})(event)">
+            onchange="(function(e){var f=e.target.files[0];if(!f)return;window._capturePendingFile=f;var r=new FileReader();r.onload=function(ev){window._captureDataUrl=ev.target.result;_showCapturePreview(ev.target.result);};r.readAsDataURL(f);e.target.value='';})(event)">
           <div style="font-size:28px;opacity:.5;">🖼️</div>
           <div style="font-size:12px;color:#6b7590;text-align:center;line-height:1.6;">
             이미지를 <b style="color:#4fc8ff;">드래그앤드롭</b>하거나<br>
