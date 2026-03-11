@@ -21078,8 +21078,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         const keyLines = bodyLines.filter(l => l.startsWith('•') || l.startsWith('-') || l.startsWith('·') || l.match(/^\d+[.)]/));
         const plainLines = bodyLines.filter(l => !l.startsWith('•') && !l.startsWith('-') && !l.startsWith('·') && !l.match(/^\d+[.)]/));
 
-        // 밝은 배경 감지 (밝은 배경일 때 텍스트 어둡게)
-        const _brightBgs=['#fef08a','#86efac','#93c5fd','#f9a8d4','#c4b5fd','#fdba74','#fca5a5'];
+        // 밝은 배경 감지
+        const _brightBgs=['#fef08a','#86efac','#93c5fd','#f9a8d4','#c4b5fd','#fdba74','#fca5a5','#a7f3d0','#bfdbfe','#fde68a','#fbcfe8','#e9d5ff','#fed7aa','#fecaca','#d1fae5','#dbeafe','#ede9fe','#fff3cd'];
         const _isBright=card.bgColor&&_brightBgs.includes(card.bgColor);
         const _txColor=_isBright?'#1a1a2e':'var(--tx)';
         const _muColor=_isBright?'#333355':'var(--mu)';
@@ -21094,8 +21094,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         const hasMore = bodyLines.length > 5;
 
         let _th='';
-        if(card.ytUrl){const _ym=card.ytUrl.match(/(?:v=|youtu\.be\/)([A-Za-z0-9_-]{11})/);if(_ym)_th=`<div style="width:100%;position:relative;background:#000;flex-shrink:0;"><img src="https://img.youtube.com/vi/${_ym[1]}/hqdefault.jpg" style="width:100%;display:block;max-height:200px;object-fit:cover;" loading="lazy"><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;"><div style="width:40px;height:40px;background:rgba(255,0,0,.85);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;padding-left:3px;">▶</div></div></div>`;}
-        else if(card.imgs&&card.imgs.length)_th=`<div style="width:100%;background:#111;flex-shrink:0;"><img src="${card.imgs[0]}" style="width:100%;display:block;max-height:200px;object-fit:contain;background:#111;" loading="lazy"></div>`;
+        if(card.ytUrl){const _ym=card.ytUrl.match(/(?:v=|youtu\.be\/)([A-Za-z0-9_-]{11})/);if(_ym)_th=`<div style="width:100%;padding-top:56.25%;position:relative;background:#000;overflow:hidden;flex-shrink:0;"><img src="https://img.youtube.com/vi/${_ym[1]}/hqdefault.jpg" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;" loading="lazy"><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;"><div style="width:40px;height:40px;background:rgba(255,0,0,.85);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;padding-left:3px;">▶</div></div></div>`;}
+        else if(card.imgs&&card.imgs.length)_th=`<div style="width:100%;padding-top:56.25%;position:relative;background:#111;overflow:hidden;flex-shrink:0;"><img src="${card.imgs[0]}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#111;" loading="lazy"></div>`;
         const _bg=(!card.ytUrl&&(!card.imgs||!card.imgs.length)&&card.bgColor)?card.bgColor:'var(--s1)';
         return `<div style="background:${_bg};border:1px solid var(--b1);border-top:3px solid ${color};border-radius:0 0 12px 12px;overflow:hidden;display:flex;flex-direction:column;transition:transform .15s,box-shadow .15s;cursor:pointer;" 
       onclick="if(!event.target.closest('button'))showKcardDetail('${card.id}')"
@@ -21112,7 +21112,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             <button onclick="event.stopPropagation();deleteKcard('${card.id}')" title="삭제" style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:12px;padding:1px 4px;border-radius:3px;opacity:.6;" onmouseover="this.style.opacity='1';this.style.color='#ff6370'" onmouseout="this.style.opacity='.6';this.style.color='var(--mu)'">🗑</button>
           </div>
         </div>
-        <div style="font-size:13px;font-weight:800;color:${_txColor};line-height:1.35;margin-bottom:10px;">${esc(card.title || '제목 없음')}</div>
+        <div style="font-weight:800;color:var(--tx);line-height:1.35;margin-bottom:10px;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;word-break:break-all;${(()=>{const t=card.title||'';const l=t.length;if(l<=4)return '-webkit-line-clamp:1;font-size:22px;';if(l<=10)return '-webkit-line-clamp:1;font-size:16px;';if(l<=25)return '-webkit-line-clamp:2;font-size:13px;';return '-webkit-line-clamp:3;font-size:11px;';})()}">${esc((card.title||'제목 없음').slice(0,60)+(card.title&&card.title.length>60?'…':''))}</div>
         <!-- 핵심 포인트 -->
         <div style="display:flex;flex-direction:column;gap:4px;">
           ${summaryHtml}
