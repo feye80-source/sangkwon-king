@@ -21085,19 +21085,19 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         const _muColor=_isBright?'#333355':'var(--mu)';
         const _diColor=_isBright?'#445566':'var(--di)';
         // 핵심 포인트가 있으면 뱃지 스타일로, 없으면 텍스트
-        const keyHtml = keyLines.slice(0, 3).map(line => {
+        const keyHtml = keyLines.slice(0, 5).map(line => {
           const txt = line.replace(/^[•\-·]\s*/, '').replace(/^\d+[.)]\s*/, '');
-          return `<div style="display:flex;align-items:flex-start;gap:6px;padding:5px 8px;background:${color}22;border-left:3px solid ${color};border-radius:0 5px 5px 0;font-size:11px;color:${_txColor};line-height:1.4;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${esc(txt.slice(0,60))}</div>`;
+          return `<div style="display:flex;align-items:flex-start;gap:6px;padding:5px 8px;background:${color}22;border-left:3px solid ${color};border-radius:0 5px 5px 0;font-size:11px;color:${_txColor};line-height:1.5;">${esc(txt)}</div>`;
         }).join('');
-        const summaryHtml = plainLines.slice(0, 2).map(l => `<div style="font-size:11px;color:${_muColor};line-height:1.5;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">${esc(l.slice(0,80))}</div>`).join('');
+        const summaryHtml = plainLines.slice(0, 2).map(l => `<div style="font-size:11px;color:${_muColor};line-height:1.6;">${esc(l)}</div>`).join('');
 
         const hasMore = bodyLines.length > 5;
 
         let _th='';
-        if(card.ytUrl){const _ym=card.ytUrl.match(/(?:v=|youtu\.be\/)([A-Za-z0-9_-]{11})/);if(_ym){const _ytTitle=esc((card.title||'').slice(0,50));const _ytBody=esc((bodyLines[0]||'').slice(0,60));_th=`<div style="width:100%;min-height:185px;background:#000;overflow:hidden;flex-shrink:0;position:relative;"><img src="https://img.youtube.com/vi/${_ym[1]}/mqdefault.jpg" style="width:100%;height:185px;object-fit:cover;display:block;position:absolute;inset:0;" loading="lazy"><div style="position:absolute;inset:0;background:linear-gradient(to bottom,rgba(0,0,0,0.1) 30%,rgba(0,0,0,0.85) 100%);display:flex;flex-direction:column;justify-content:space-between;align-items:center;"><div style="display:flex;align-items:center;justify-content:center;flex:1;"><div style="width:44px;height:44px;background:rgba(255,0,0,.88);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px;padding-left:3px;">▶</div></div><div style="width:100%;padding:8px 10px 9px;">${_ytTitle?`<div style="font-size:12px;font-weight:700;color:#fff;line-height:1.3;margin-bottom:3px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;text-shadow:0 1px 3px rgba(0,0,0,.8);">${_ytTitle}</div>`:''}${_ytBody?`<div style="font-size:11px;color:rgba(255,255,255,.8);line-height:1.4;overflow:hidden;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;text-shadow:0 1px 2px rgba(0,0,0,.8);">${_ytBody}</div>`:''}</div></div></div>`;} }
-        else if(card.imgs&&card.imgs.length)_th=`<div style="width:100%;min-height:185px;background:#111;overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center;"><img src="${card.imgs[0]}" style="width:100%;height:185px;object-fit:contain;display:block;" loading="lazy"></div>`;
+        if(card.ytUrl){const _ym=card.ytUrl.match(/(?:v=|youtu\.be\/)([A-Za-z0-9_-]{11})/);if(_ym){const _ytTitle=esc((card.title||'').slice(0,60));const _ytBody=esc(((card.body||'').split('\n').filter(Boolean)[0]||'').replace(/^[•\-·\d.)]\s*/,'').slice(0,80));_th=`<div style="flex-shrink:0;"><div style="width:100%;aspect-ratio:16/9;background:#000;overflow:hidden;position:relative;"><img src="https://img.youtube.com/vi/${_ym[1]}/mqdefault.jpg" style="width:100%;height:100%;object-fit:cover;display:block;" loading="lazy"><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;"><div style="width:40px;height:40px;background:rgba(255,0,0,.85);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;padding-left:3px;">▶</div></div></div>${(_ytTitle||_ytBody)?`<div style="padding:6px 10px 5px;border-bottom:1px solid var(--b1);">${_ytTitle?`<div style="font-size:12px;font-weight:700;color:var(--tx);line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${_ytTitle}</div>`:``}${_ytBody?`<div style="font-size:11px;color:var(--mu);line-height:1.45;margin-top:2px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">${_ytBody}</div>`:``}</div>`:``}</div>`;} }
+        else if(card.imgs&&card.imgs.length)_th=`<div style="width:100%;aspect-ratio:16/9;background:#111;overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center;"><img src="${card.imgs[0]}" style="width:100%;height:100%;object-fit:contain;display:block;" loading="lazy"></div>`;
         const _bg=(!card.ytUrl&&(!card.imgs||!card.imgs.length)&&card.bgColor)?card.bgColor:'var(--s1)';
-        return `<div style="background:${_bg};border:1px solid var(--b1);border-top:3px solid ${color};border-radius:0 0 12px 12px;display:flex;flex-direction:column;transition:transform .15s,box-shadow .15s;cursor:pointer;max-height:480px;overflow:hidden;" 
+        return `<div style="background:${_bg};border:1px solid var(--b1);border-top:3px solid ${color};border-radius:0 0 12px 12px;display:flex;flex-direction:column;transition:transform .15s,box-shadow .15s;cursor:pointer;" 
       onclick="if(!event.target.closest('button'))showKcardDetail('${card.id}')"
       onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='0 8px 24px rgba(0,0,0,.35)'" 
       onmouseout="this.style.transform='';this.style.boxShadow=''">
@@ -21352,6 +21352,49 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     window.renderKcards     = renderKcards;
     window.renderKcatTabs   = renderKcatTabs;
     window.saveKcard        = saveKcard;
+
+    // ── PC 이미지 첨부 핸들러 (pcHandleImgSelect / pcHandleImgDrop) ──
+    function _pcImgProcess(files) {
+      const prev = document.getElementById('kcardImgPreview');
+      if (!window._kcardPendingImgs) window._kcardPendingImgs = [];
+      Array.from(files).forEach(function(file) {
+        if (!file.type.startsWith('image/')) return;
+        if (file.size > 5 * 1024 * 1024) { showToast('5MB 이하 이미지만 첨부 가능해요', 'warn'); return; }
+        var reader = new FileReader();
+        reader.onload = function(e) {
+          var src = e.target.result;
+          window._kcardPendingImgs.push(src);
+          if (!prev) return;
+          var wrap = document.createElement('div');
+          wrap.style.cssText = 'position:relative;display:inline-block;';
+          var img = document.createElement('img');
+          img.src = src;
+          img.style.cssText = 'width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--b1);display:block;';
+          var capturedSrc = src;
+          var del = document.createElement('button');
+          del.textContent = '✕';
+          del.style.cssText = 'position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;background:#ff6370;border:none;color:#fff;font-size:10px;cursor:pointer;line-height:1;padding:0;';
+          del.onclick = function() {
+            var idx = window._kcardPendingImgs.indexOf(capturedSrc);
+            if (idx > -1) window._kcardPendingImgs.splice(idx, 1);
+            wrap.remove();
+          };
+          wrap.appendChild(img);
+          wrap.appendChild(del);
+          prev.appendChild(wrap);
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+    window.pcHandleImgSelect = function(input) {
+      if (input.files && input.files.length) { _pcImgProcess(input.files); input.value = ''; }
+    };
+    window.pcHandleImgDrop = function(e) {
+      e.preventDefault();
+      var drop = document.getElementById('kcardImgDrop');
+      if (drop) { drop.style.borderColor = 'var(--b2)'; drop.style.background = 'var(--s2)'; }
+      if (e.dataTransfer && e.dataTransfer.files.length) _pcImgProcess(e.dataTransfer.files);
+    };
 
     // ── AI 카드 자동 생성 ─────────────────────────────
     // 현재 소스 타입 추적
