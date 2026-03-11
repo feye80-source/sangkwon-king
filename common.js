@@ -23656,6 +23656,79 @@ ${newsContext}
     function onNaverUrlInput() { }  // 하위호환
 
     // ══════════════════════════════════════════════════════
+    // 📊 지도 물건 CSV 내보내기
+    // pcMapExportCSV(allItems)
+    //   false → 현재 지도 화면에 보이는 마커만
+    //   true  → 전체 저장 목록
+    // ══════════════════════════════════════════════════════
+    function pcMapExportCSV(allItems) {
+      if (!mapMarkers || !mapMarkers.length) {
+        showToast('지도에 표시된 물건이 없습니다', 'warn'); return;
+      }
+
+      let targets;
+      if (allItems) {
+        targets = mapMarkers.filter(m => m.item && m.propertyType !== 'transaction');
+      } else {
+        // 현재 화면에 보이는 마커만
+        const bounds = map ? map.getBounds() : null;
+        targets = mapMarkers.filter(m => {
+          if (!m.item || m.propertyType === 'transaction') return false;
+          if (!bounds) return true;
+          try {
+            const pos = m.marker.getPosition();
+            return bounds.contain(pos);
+          } catch (e) { return false; }
+        });
+      }
+
+      if (!targets.length) {
+        showToast(allItems ? '저장된 물건이 없습니다' : '현재 화면에 표시된 물건이 없습니다', 'warn'); return;
+      }
+
+      // 헤더: 공통 + data 내 모든 키 수집
+      const baseHdrs = ['ID', '소재지', '유형', '출처', 'lat', 'lng'];
+      const dataKeySet = new Set();
+      targets.forEach(m => { if (m.item.data) Object.keys(m.item.data).forEach(k => dataKeySet.add(k)); });
+      // 소재지 중복 제외
+      dataKeySet.delete('소재지');
+      const dataHdrs = Array.from(dataKeySet);
+      const allHdrs = [...baseHdrs, ...dataHdrs];
+
+      const esc2 = v => {
+        const s = String(v ?? '').replace(/"/g, '""');
+        return (s.includes(',') || s.includes('"') || s.includes('
+')) ? `"${s}"` : s;
+      };
+
+      const rows = targets.map(m => {
+        const it = m.item;
+        const d = it.data || {};
+        return allHdrs.map(h => {
+          if (h === 'ID') return esc2(it.id || '');
+          if (h === '소재지') return esc2(d.소재지 || m.address || '');
+          if (h === '유형') return esc2(m.propertyType || '');
+          if (h === '출처') return esc2(it.source || d.출처 || '');
+          if (h === 'lat') return esc2(it.lat || '');
+          if (h === 'lng') return esc2(it.lng || '');
+          return esc2(d[h] ?? '');
+        }).join(',');
+      });
+
+      const csv = '﻿' + allHdrs.join(',') + '
+' + rows.join('
+');
+      const label = allItems ? '전체' : '현재화면';
+      const a = Object.assign(document.createElement('a'), {
+        href: URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' })),
+        download: `상권King_지도물건_${label}_${new Date().toISOString().slice(0,10)}.csv`
+      });
+      a.click();
+      showToast(`📊 CSV 다운로드 완료 (${targets.length}건)`, 'ok');
+    }
+    window.pcMapExportCSV = pcMapExportCSV;
+
+    // ══════════════════════════════════════════════════════
     // 🏢 3대 상가 매물 수집 (네이버/점포라인/점포거래소)
     // ══════════════════════════════════════════════════════
 
