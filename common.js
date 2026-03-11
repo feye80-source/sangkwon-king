@@ -21672,11 +21672,12 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         </div>
         <div style="font-weight:800;color:var(--tx);line-height:1.3;margin-bottom:6px;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;word-break:break-all;${(()=>{const l=(card.title||'').length;if(l<=4)return 'font-size:18px;-webkit-line-clamp:1;';if(l<=10)return 'font-size:14px;-webkit-line-clamp:1;';if(l<=25)return 'font-size:12px;-webkit-line-clamp:2;';return 'font-size:10px;-webkit-line-clamp:2;';})()}">${esc((card.title||'제목 없음').slice(0,60)+(card.title&&card.title.length>60?'…':''))}</div>
         <!-- 핵심 포인트 -->
-        <div style="display:flex;flex-direction:column;gap:4px;">
-          ${summaryHtml}
-          ${keyHtml}
-          ${hasMore ? `<div style="font-size:10px;color:var(--di);margin-top:2px;">+${bodyLines.length - 5}줄 더...</div>` : ''}
-        </div>
+<div style="display:flex;flex-direction:column;gap:4px;overflow:hidden;${_th ? '' : 'max-height:112px;position:relative;'}">
+  ${summaryHtml}
+  ${keyHtml}
+  ${(hasMore && !_th) ? `<div style="position:absolute;bottom:0;left:0;right:0;height:30px;background:linear-gradient(transparent,${_bg !== 'var(--s1)' ? _bg : '#1a1e2e'});pointer-events:none;"></div>` : ''}
+</div>
+${(hasMore && !_th) ? `<div style="font-size:10px;color:var(--di);margin-top:3px;">+${bodyLines.length - 5}줄 더...</div>` : ''}
       </div>
       <!-- 카드 푸터 -->
       <div style="padding:8px 14px;border-top:1px solid var(--b1);display:flex;align-items:center;gap:6px;margin-top:auto;flex-wrap:wrap;">
