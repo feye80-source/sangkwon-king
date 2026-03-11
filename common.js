@@ -21085,17 +21085,17 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         const _muColor=_isBright?'#333355':'var(--mu)';
         const _diColor=_isBright?'#445566':'var(--di)';
         // 핵심 포인트가 있으면 뱃지 스타일로, 없으면 텍스트
-        const keyHtml = keyLines.slice(0, 3).map(line => {
+        const keyHtml = keyLines.slice(0, 5).map(line => {
           const txt = line.replace(/^[•\-·]\s*/, '').replace(/^\d+[.)]\s*/, '');
-          return `<div style="padding:4px 8px;background:${color}22;border-left:3px solid ${color};border-radius:0 5px 5px 0;font-size:11px;color:${_txColor};line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(txt.slice(0,60))}</div>`;
+          return `<div style="display:flex;align-items:flex-start;gap:6px;padding:5px 8px;background:${color}22;border-left:3px solid ${color};border-radius:0 5px 5px 0;font-size:11px;color:${_txColor};line-height:1.5;">${esc(txt)}</div>`;
         }).join('');
-        const summaryHtml = plainLines.slice(0, 2).map(l => `<div style="font-size:11px;color:${_muColor};line-height:1.5;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">${esc(l.slice(0,100))}</div>`).join('');
+        const summaryHtml = plainLines.slice(0, 2).map(l => `<div style="font-size:11px;color:${_muColor};line-height:1.6;">${esc(l)}</div>`).join('');
 
         const hasMore = bodyLines.length > 5;
 
         let _th='';
         if(card.ytUrl){const _ym=card.ytUrl.match(/(?:v=|youtu\.be\/)([A-Za-z0-9_-]{11})/);if(_ym){const _ytTitle=esc((card.title||'').slice(0,60));const _ytBody=esc(((card.body||'').split('\n').filter(Boolean)[0]||'').replace(/^[•\-·\d.)]\s*/,'').slice(0,80));_th=`<div style="flex-shrink:0;"><div style="width:100%;aspect-ratio:16/9;background:#000;overflow:hidden;position:relative;"><img src="https://img.youtube.com/vi/${_ym[1]}/mqdefault.jpg" style="width:100%;height:100%;object-fit:cover;display:block;" loading="lazy"><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;"><div style="width:40px;height:40px;background:rgba(255,0,0,.85);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;padding-left:3px;">▶</div></div></div>${(_ytTitle||_ytBody)?`<div style="padding:6px 10px 5px;border-bottom:1px solid var(--b1);">${_ytTitle?`<div style="font-size:12px;font-weight:700;color:var(--tx);line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${_ytTitle}</div>`:``}${_ytBody?`<div style="font-size:11px;color:var(--mu);line-height:1.45;margin-top:2px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">${_ytBody}</div>`:``}</div>`:``}</div>`;} }
-        else if(card.imgs&&card.imgs.length)_th=`<div style="width:100%;aspect-ratio:16/9;background:#111;overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center;"><img src="${card.imgs[0]}" style="width:100%;height:100%;object-fit:contain;display:block;" loading="lazy"></div>`;
+        else if(card.imgs&&card.imgs.length)_th=`<div style="width:100%;height:180px;background:#111;overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center;"><img src="${card.imgs[0]}" style="max-width:100%;max-height:180px;width:auto;height:auto;object-fit:contain;display:block;" loading="lazy"></div>`;
         const _bg=(!card.ytUrl&&(!card.imgs||!card.imgs.length)&&card.bgColor)?card.bgColor:'var(--s1)';
         return `<div style="background:${_bg};border:1px solid var(--b1);border-top:3px solid ${color};border-radius:0 0 12px 12px;display:flex;flex-direction:column;transition:transform .15s,box-shadow .15s;cursor:pointer;" 
       onclick="if(!event.target.closest('button'))showKcardDetail('${card.id}')"
@@ -21114,7 +21114,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         </div>
         <div style="font-weight:800;color:var(--tx);line-height:1.3;margin-bottom:6px;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;word-break:break-all;${(()=>{const l=(card.title||'').length;if(l<=4)return 'font-size:18px;-webkit-line-clamp:1;';if(l<=10)return 'font-size:14px;-webkit-line-clamp:1;';if(l<=25)return 'font-size:12px;-webkit-line-clamp:2;';return 'font-size:10px;-webkit-line-clamp:2;';})()}">${esc((card.title||'제목 없음').slice(0,60)+(card.title&&card.title.length>60?'…':''))}</div>
         <!-- 핵심 포인트 -->
-        <div style="display:flex;flex-direction:column;gap:3px;max-height:110px;overflow:hidden;">
+        <div style="display:flex;flex-direction:column;gap:4px;">
           ${summaryHtml}
           ${keyHtml}
           ${hasMore ? `<div style="font-size:10px;color:var(--di);margin-top:2px;">+${bodyLines.length - 5}줄 더...</div>` : ''}
