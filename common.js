@@ -21085,26 +21085,26 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         const _muColor=_isBright?'#333355':'var(--mu)';
         const _diColor=_isBright?'#445566':'var(--di)';
         // 핵심 포인트가 있으면 뱃지 스타일로, 없으면 텍스트
-        const keyHtml = keyLines.slice(0, 5).map(line => {
+        const keyHtml = keyLines.slice(0, 3).map(line => {
           const txt = line.replace(/^[•\-·]\s*/, '').replace(/^\d+[.)]\s*/, '');
-          return `<div style="display:flex;align-items:flex-start;gap:6px;padding:5px 8px;background:${color}22;border-left:3px solid ${color};border-radius:0 5px 5px 0;font-size:11px;color:${_txColor};line-height:1.5;">${esc(txt)}</div>`;
+          return `<div style="display:flex;align-items:flex-start;gap:6px;padding:5px 8px;background:${color}22;border-left:3px solid ${color};border-radius:0 5px 5px 0;font-size:11px;color:${_txColor};line-height:1.4;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${esc(txt.slice(0,60))}</div>`;
         }).join('');
-        const summaryHtml = plainLines.slice(0, 2).map(l => `<div style="font-size:11px;color:${_muColor};line-height:1.6;">${esc(l)}</div>`).join('');
+        const summaryHtml = plainLines.slice(0, 2).map(l => `<div style="font-size:11px;color:${_muColor};line-height:1.5;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">${esc(l.slice(0,80))}</div>`).join('');
 
         const hasMore = bodyLines.length > 5;
 
         let _th='';
-        if(card.ytUrl){const _ym=card.ytUrl.match(/(?:v=|youtu\.be\/)([A-Za-z0-9_-]{11})/);if(_ym)_th=`<div style="width:100%;aspect-ratio:16/9;background:#000;overflow:hidden;flex-shrink:0;position:relative;"><img src="https://img.youtube.com/vi/${_ym[1]}/mqdefault.jpg" style="width:100%;height:100%;object-fit:cover;display:block;" loading="lazy"><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;"><div style="width:40px;height:40px;background:rgba(255,0,0,.85);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;padding-left:3px;">▶</div></div></div>`;}
-        else if(card.imgs&&card.imgs.length)_th=`<div style="width:100%;aspect-ratio:16/9;background:#111;overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center;"><img src="${card.imgs[0]}" style="width:100%;height:100%;object-fit:contain;display:block;" loading="lazy"></div>`;
+        if(card.ytUrl){const _ym=card.ytUrl.match(/(?:v=|youtu\.be\/)([A-Za-z0-9_-]{11})/);if(_ym){const _ytTitle=esc((card.title||'').slice(0,50));const _ytBody=esc((bodyLines[0]||'').slice(0,60));_th=`<div style="width:100%;min-height:185px;background:#000;overflow:hidden;flex-shrink:0;position:relative;"><img src="https://img.youtube.com/vi/${_ym[1]}/mqdefault.jpg" style="width:100%;height:185px;object-fit:cover;display:block;position:absolute;inset:0;" loading="lazy"><div style="position:absolute;inset:0;background:linear-gradient(to bottom,rgba(0,0,0,0.1) 30%,rgba(0,0,0,0.85) 100%);display:flex;flex-direction:column;justify-content:space-between;align-items:center;"><div style="display:flex;align-items:center;justify-content:center;flex:1;"><div style="width:44px;height:44px;background:rgba(255,0,0,.88);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px;padding-left:3px;">▶</div></div><div style="width:100%;padding:8px 10px 9px;">${_ytTitle?`<div style="font-size:12px;font-weight:700;color:#fff;line-height:1.3;margin-bottom:3px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;text-shadow:0 1px 3px rgba(0,0,0,.8);">${_ytTitle}</div>`:''}${_ytBody?`<div style="font-size:11px;color:rgba(255,255,255,.8);line-height:1.4;overflow:hidden;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;text-shadow:0 1px 2px rgba(0,0,0,.8);">${_ytBody}</div>`:''}</div></div></div>`;} }
+        else if(card.imgs&&card.imgs.length)_th=`<div style="width:100%;min-height:185px;background:#111;overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center;"><img src="${card.imgs[0]}" style="width:100%;height:185px;object-fit:contain;display:block;" loading="lazy"></div>`;
         const _bg=(!card.ytUrl&&(!card.imgs||!card.imgs.length)&&card.bgColor)?card.bgColor:'var(--s1)';
-        return `<div style="background:${_bg};border:1px solid var(--b1);border-top:3px solid ${color};border-radius:0 0 12px 12px;overflow:hidden;display:flex;flex-direction:column;transition:transform .15s,box-shadow .15s;cursor:pointer;" 
+        return `<div style="background:${_bg};border:1px solid var(--b1);border-top:3px solid ${color};border-radius:0 0 12px 12px;display:flex;flex-direction:column;transition:transform .15s,box-shadow .15s;cursor:pointer;max-height:480px;overflow:hidden;" 
       onclick="if(!event.target.closest('button'))showKcardDetail('${card.id}')"
       onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='0 8px 24px rgba(0,0,0,.35)'" 
       onmouseout="this.style.transform='';this.style.boxShadow=''">
       ${_th}
       <!-- 카드 헤더 -->
-      <div style="padding:12px 14px 10px;">
-        <div style="display:flex;align-items:flex-start;gap:7px;margin-bottom:8px;">
+      <div style="padding:8px 10px 6px;">
+        <div style="display:flex;align-items:flex-start;gap:7px;margin-bottom:5px;">
           <span style="font-size:10px;padding:2px 8px;border-radius:10px;font-weight:700;white-space:nowrap;flex-shrink:0;background:${color}33;color:${color};border:1px solid ${color}77;letter-spacing:.3px;">${esc(card.cat || '기타')}</span>
           <div style="display:flex;gap:3px;flex-shrink:0;margin-left:auto;">
             <button onclick="event.stopPropagation();ntCreateFromKcard('${card.id}')" title="이 카드로 노트 만들기" style="background:rgba(79,142,255,.1);border:1px solid rgba(79,142,255,.25);color:#4f8eff;cursor:pointer;font-size:11px;padding:2px 6px;border-radius:4px;font-weight:700;" onmouseover="this.style.background='rgba(79,142,255,.25)'" onmouseout="this.style.background='rgba(79,142,255,.1)'">📝</button>
@@ -21112,7 +21112,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             <button onclick="event.stopPropagation();deleteKcard('${card.id}')" title="삭제" style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:12px;padding:1px 4px;border-radius:3px;opacity:.6;" onmouseover="this.style.opacity='1';this.style.color='#ff6370'" onmouseout="this.style.opacity='.6';this.style.color='var(--mu)'">🗑</button>
           </div>
         </div>
-        <div style="font-weight:800;color:var(--tx);line-height:1.3;margin-bottom:10px;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;word-break:break-all;${(()=>{const l=(card.title||'').length;if(l<=4)return 'font-size:22px;-webkit-line-clamp:1;';if(l<=10)return 'font-size:16px;-webkit-line-clamp:1;';if(l<=25)return 'font-size:13px;-webkit-line-clamp:2;';return 'font-size:11px;-webkit-line-clamp:3;';})()}">${esc((card.title||'제목 없음').slice(0,60)+(card.title&&card.title.length>60?'…':''))}</div>
+        <div style="font-weight:800;color:var(--tx);line-height:1.3;margin-bottom:6px;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;word-break:break-all;${(()=>{const l=(card.title||'').length;if(l<=4)return 'font-size:18px;-webkit-line-clamp:1;';if(l<=10)return 'font-size:14px;-webkit-line-clamp:1;';if(l<=25)return 'font-size:12px;-webkit-line-clamp:2;';return 'font-size:10px;-webkit-line-clamp:2;';})()}">${esc((card.title||'제목 없음').slice(0,60)+(card.title&&card.title.length>60?'…':''))}</div>
         <!-- 핵심 포인트 -->
         <div style="display:flex;flex-direction:column;gap:4px;">
           ${summaryHtml}
