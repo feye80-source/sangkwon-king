@@ -21079,11 +21079,11 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         const plainLines = bodyLines.filter(l => !l.startsWith('•') && !l.startsWith('-') && !l.startsWith('·') && !l.match(/^\d+[.)]/));
 
         // 밝은 배경 감지
-        const _brightBgs=['#fef08a','#86efac','#93c5fd','#f9a8d4','#c4b5fd','#fdba74','#fca5a5','#a7f3d0','#bfdbfe','#fde68a','#fbcfe8','#e9d5ff','#fed7aa','#fecaca','#d1fae5','#dbeafe','#ede9fe','#fff3cd'];
+        const _brightBgs=['#ffffff','#e2e8f0','#94a3b8','#fecaca','#fca5a5','#f87171','#fff3cd','#fef08a','#fde68a','#fdba74','#d1fae5','#a7f3d0','#86efac','#dbeafe','#bfdbfe','#93c5fd','#ede9fe','#e9d5ff','#c4b5fd','#fce7f3','#fbcfe8','#f9a8d4'];
         const _isBright=card.bgColor&&_brightBgs.includes(card.bgColor);
         const _txColor=_isBright?'#1a1a2e':'var(--tx)';
         const _muColor=_isBright?'#333355':'var(--mu)';
-        const _diColor=_isBright?'#445':'var(--di)';
+        const _diColor=_isBright?'#445566':'var(--di)';
         // 핵심 포인트가 있으면 뱃지 스타일로, 없으면 텍스트
         const keyHtml = keyLines.slice(0, 5).map(line => {
           const txt = line.replace(/^[•\-·]\s*/, '').replace(/^\d+[.)]\s*/, '');
@@ -21112,7 +21112,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             <button onclick="event.stopPropagation();deleteKcard('${card.id}')" title="삭제" style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:12px;padding:1px 4px;border-radius:3px;opacity:.6;" onmouseover="this.style.opacity='1';this.style.color='#ff6370'" onmouseout="this.style.opacity='.6';this.style.color='var(--mu)'">🗑</button>
           </div>
         </div>
-        <div style="font-weight:800;color:var(--tx);line-height:1.35;margin-bottom:10px;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;word-break:break-all;${(()=>{const t=card.title||'';const l=t.length;if(l<=4)return '-webkit-line-clamp:1;font-size:22px;';if(l<=10)return '-webkit-line-clamp:1;font-size:16px;';if(l<=25)return '-webkit-line-clamp:2;font-size:13px;';return '-webkit-line-clamp:3;font-size:11px;';})()}">${esc((card.title||'제목 없음').slice(0,60)+(card.title&&card.title.length>60?'…':''))}</div>
+        <div style="font-weight:800;color:var(--tx);line-height:1.3;margin-bottom:10px;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;word-break:break-all;${(()=>{const l=(card.title||'').length;if(l<=4)return 'font-size:22px;-webkit-line-clamp:1;';if(l<=10)return 'font-size:16px;-webkit-line-clamp:1;';if(l<=25)return 'font-size:13px;-webkit-line-clamp:2;';return 'font-size:11px;-webkit-line-clamp:3;';})()}">${esc((card.title||'제목 없음').slice(0,60)+(card.title&&card.title.length>60?'…':''))}</div>
         <!-- 핵심 포인트 -->
         <div style="display:flex;flex-direction:column;gap:4px;">
           ${summaryHtml}
