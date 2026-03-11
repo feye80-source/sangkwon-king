@@ -19860,7 +19860,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const tagHtml = (note.tags || []).map(tg => `
     <span style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;background:rgba(167,139,250,.1);border:1px solid rgba(167,139,250,.25);border-radius:10px;font-size:11px;color:#a78bfa;">
       #${esc(tg)}
-      <span onclick="ntRemoveTag('${id}','${tg}')" style="cursor:pointer;opacity:.6;font-size:12px;line-height:1;">×</span>
+      <span onclick="ntRenameTag('${id}','${esc(tg)}')" style="cursor:pointer;opacity:.5;font-size:10px;line-height:1;" title="수정">✏️</span>
+      <span onclick="ntRemoveTag('${id}','${esc(tg)}')" style="cursor:pointer;opacity:.6;font-size:12px;line-height:1;" title="삭제">×</span>
     </span>`).join('');
 
       // 타입별 에디터 HTML
@@ -20146,6 +20147,16 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       if (!note) return;
       note.tags = (note.tags || []).filter(t => t !== tag);
       ntSave(); ntOpen(id); ntRender();
+    };
+    window.ntRenameTag = function (id, oldTag) {
+      const note = ntNotes.find(n => n.id === id);
+      if (!note) return;
+      const newTag = prompt(`태그 수정 (현재: #${oldTag})`, oldTag);
+      if (!newTag || newTag === oldTag) return;
+      note.tags = (note.tags || []).map(t => t === oldTag ? newTag.trim() : t);
+      note.updatedAt = new Date().toISOString();
+      ntSave(); ntOpen(id); ntRender();
+      showToast(`#${oldTag} → #${newTag.trim()}`, 'ok');
     };
 
     // ── 삭제 ───────────────────────────────────────────
@@ -21868,11 +21879,12 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         </div>
         <div style="font-weight:800;color:var(--tx);line-height:1.3;margin-bottom:6px;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;word-break:break-all;${(()=>{const l=(card.title||'').length;if(l<=4)return 'font-size:18px;-webkit-line-clamp:1;';if(l<=10)return 'font-size:14px;-webkit-line-clamp:1;';if(l<=25)return 'font-size:12px;-webkit-line-clamp:2;';return 'font-size:10px;-webkit-line-clamp:2;';})()}">${esc((card.title||'제목 없음').slice(0,60)+(card.title&&card.title.length>60?'…':''))}</div>
         <!-- 핵심 포인트 -->
-        <div style="display:flex;flex-direction:column;gap:4px;">
+        <div style="display:flex;flex-direction:column;gap:4px;overflow:hidden;${_th ? '' : 'max-height:112px;position:relative;'}">
           ${summaryHtml}
           ${keyHtml}
-          ${hasMore ? `<div style="font-size:10px;color:var(--di);margin-top:2px;">+${bodyLines.length - 5}줄 더...</div>` : ''}
+          ${(hasMore && !_th) ? `<div style="position:absolute;bottom:0;left:0;right:0;height:30px;background:linear-gradient(transparent,${_bg !== 'var(--s1)' ? _bg : '#1a1e2e'});pointer-events:none;"></div>` : ''}
         </div>
+        ${(hasMore && !_th) ? `<div style="font-size:10px;color:var(--di);margin-top:3px;">+${bodyLines.length - 5}줄 더...</div>` : ''}
       </div>
       <!-- 카드 푸터 -->
       <div style="padding:8px 14px;border-top:1px solid var(--b1);display:flex;align-items:center;gap:6px;margin-top:auto;flex-wrap:wrap;">
