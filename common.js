@@ -6289,6 +6289,76 @@
       }
     }
 
+    // ── 저장목록 현재 필터 적용된 배열 반환 ─────────────
+    function getFilteredSv() {
+      let sv = getSv();
+      const region = (document.getElementById('regionSearch') || {}).value || '';
+      if (region.trim()) sv = _svSearchFilter(sv, region);
+      if (window._lfActive) sv = sv.filter(item => checkListFilter(item));
+      if (svFilter === 'jumpo') sv = sv.filter(s => s.source === '점포라인');
+      else if (svFilter === 'assa') sv = sv.filter(s => s.source === '점포거래소');
+      else if (svFilter === 'disco') sv = sv.filter(s => s.source === '디스코');
+      else if (svFilter === 'bds') sv = sv.filter(s => s.source === '부동산플래닛');
+      else if (svFilter === 'transaction') sv = sv.filter(s => s.mode === 'transaction');
+      else if (svFilter === 'onbid') sv = sv.filter(s => s.source === '온비드');
+      else if (svFilter !== 'all') sv = sv.filter(s => s.mode === svFilter || s.isCSVFile);
+      const groupFilter = (document.getElementById('svGroupFilter') || {}).value || 'all';
+      if (groupFilter && groupFilter !== 'all') sv = sv.filter(s => (s.group || '기본') === groupFilter);
+      if (isGFilterActive()) sv = sv.filter(item => {
+        const d = item.data || {};
+        const f = window.gFilter;
+        if (f.floorMin !== null || f.floorMax !== null) { const v = parseFloat(d.해당층 ?? d.층 ?? d.floor ?? ''); if (isNaN(v)) return false; if (f.floorMin !== null && v < f.floorMin) return false; if (f.floorMax !== null && v > f.floorMax) return false; }
+        if (f.areaMin !== null || f.areaMax !== null) { const v = parseFloat(d.전용면적_m2 ?? d.건물면적_m2 ?? d.계약면적_m2 ?? d.면적 ?? ''); if (isNaN(v) || v <= 0) return false; if (f.areaMin !== null && v < f.areaMin) return false; if (f.areaMax !== null && v > f.areaMax) return false; }
+        if (f.priceMin !== null || f.priceMax !== null) { const v = parseFloat(d.매매가 ?? d.감정가 ?? d.최저가 ?? ''); if (isNaN(v) || v <= 0) return false; if (f.priceMin !== null && v < f.priceMin) return false; if (f.priceMax !== null && v > f.priceMax) return false; }
+        if (f.rentMin !== null || f.rentMax !== null) { const v = parseFloat(d.월세_만원 ?? d.임차인_월세 ?? d.월세 ?? ''); if (isNaN(v) || v <= 0) return false; if (f.rentMin !== null && v < f.rentMin) return false; if (f.rentMax !== null && v > f.rentMax) return false; }
+        if (f.yieldMin !== null || f.yieldMax !== null) { const v = parseFloat(d.수익률_퍼센트 ?? d.수익률 ?? ''); if (isNaN(v) || v <= 0) return false; if (f.yieldMin !== null && v < f.yieldMin) return false; if (f.yieldMax !== null && v > f.yieldMax) return false; }
+        if (f.dateMin !== null || f.dateMax !== null) { const v = parseInt(String(d.거래년월 ?? d.거래일 ?? '').replace(/[^0-9]/g, '')) || 0; if (!v) return false; if (f.dateMin !== null && v < f.dateMin) return false; if (f.dateMax !== null && v > f.dateMax) return false; }
+        return true;
+      });
+      return sv;
+    }
+
+    // ── 저장목록 CSV 내보내기 ─────────────────────────
+    window.pcExportCSV = function(allItems) {
+      const sv = allItems ? getSv() : getFilteredSv();
+      if (!sv.length) { showToast(allItems ? '저장된 항목이 없습니다' : '필터 결과가 없습니다', 'warn'); return; }
+
+      // 모든 data 키 수집
+      const keySet = new Set(['소재지', '출처', '유형']);
+      sv.forEach(item => { if (item.data) Object.keys(item.data).forEach(k => keySet.add(k)); });
+      keySet.delete('소재지'); keySet.delete('출처'); keySet.delete('유형');
+      const dataHdrs = Array.from(keySet);
+      const allHdrs = ['ID', '소재지', '출처', '유형', 'lat', 'lng', ...dataHdrs];
+
+      const esc2 = v => {
+        const s = String(v ?? '').replace(/"/g, '""');
+        return (s.includes(',') || s.includes('"') || s.includes('\n')) ? `"${s}"` : s;
+      };
+
+      const rows = sv.map(item => {
+        const d = item.data || {};
+        return allHdrs.map(h => {
+          if (h === 'ID') return esc2(item.id || '');
+          if (h === '소재지') return esc2(d.소재지 || item.title || '');
+          if (h === '출처') return esc2(item.source || d.출처 || '');
+          if (h === '유형') return esc2(item.mode || '');
+          if (h === 'lat') return esc2(item.lat || '');
+          if (h === 'lng') return esc2(item.lng || '');
+          return esc2(d[h] ?? '');
+        }).join(',');
+      });
+
+      const label = allItems ? '전체' : '필터';
+      const csv = '\uFEFF' + allHdrs.join(',') + '\n' + rows.join('\n');
+
+      const a = Object.assign(document.createElement('a'), {
+        href: URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' })),
+        download: `상권King_저장목록_${label}_${new Date().toISOString().slice(0,10)}.csv`
+      });
+      a.click();
+      showToast(`📊 CSV 다운로드 완료 (${sv.length}건)`, 'ok');
+    };
+
     function renderSaved() {
       let sv = getSv();
 
@@ -19570,16 +19640,10 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
       let list = [...ntNotes].sort(sortFn);
 
-      // ── 모드 필터 ──
-      if (_ntMode === 'study') {
-        list = list.filter(n => !n.linkedItemId);
-        if (_ntDomain !== 'all') list = list.filter(n => (n.domain || 'auction') === _ntDomain);
-      } else if (_ntMode === 'deal') {
-        list = list.filter(n => !!n.linkedItemId);
-        if (_ntPhase !== 'all') list = list.filter(n => n.phase === _ntPhase);
-      }
-
+      // 태그 필터
       if (ntTagFilter) list = list.filter(n => (n.tags || []).includes(ntTagFilter));
+      // 그룹 필터
+      if (window._ntGroupFilter && window._ntGroupFilter !== 'all') list = list.filter(n => (n.group || '') === window._ntGroupFilter);
       if (q) list = list.filter(n =>
         (n.title || '').toLowerCase().includes(q) ||
         (n.body || '').toLowerCase().includes(q) ||
@@ -19638,22 +19702,124 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     </div>`;
       }).join('');
 
-      // 태그 목록 갱신 (현재 모드 노트 기준)
-      const baseTags = _ntMode === 'study' ? ntNotes.filter(n => !n.linkedItemId)
-        : _ntMode === 'deal' ? ntNotes.filter(n => !!n.linkedItemId)
-          : ntNotes;
-      const allTags = [...new Set(baseTags.flatMap(n => n.tags || []))];
+      // 태그 목록 갱신
+      const allTags = [...new Set(ntNotes.flatMap(n => n.tags || []))];
       const tagFilter = document.getElementById('ntTagFilter');
       if (tagFilter) {
         tagFilter.innerHTML = allTags.length
           ? allTags.map(tg => `<span class="nt-tag-chip${ntTagFilter === tg ? ' on' : ''}" onclick="ntSetTagFilter('${esc(tg)}')">#${esc(tg)}</span>`).join('')
           : `<span style="font-size:10px;color:var(--di);">태그 없음</span>`;
       }
+      // 그룹 목록 갱신
+      if (typeof _ntRenderGroupFilter === 'function') _ntRenderGroupFilter();
     };
 
-    window.ntSetTagFilter = function (tag) {
+    window.ntSetNoteGroup = function(id, group) {
+      const note = ntNotes.find(n => n.id === id);
+      if (!note) return;
+      note.group = group || '';
+      note.updatedAt = new Date().toISOString();
+      saveNotes();
+      ntOpen(id);
+      _ntRenderGroupFilter && _ntRenderGroupFilter();
+    };
+
+        window.ntSetTagFilter = function (tag) {
       ntTagFilter = ntTagFilter === tag ? null : tag;
       ntRender();
+    };
+
+    // ── 그룹 필터 ──────────────────────────────────────
+    window._ntGroupFilter = 'all';
+
+    window.ntSetGroupFilter = function(g) {
+      window._ntGroupFilter = g;
+      document.querySelectorAll('#ntGroupFilter .nt-domain-chip').forEach(el =>
+        el.classList.toggle('on', el.dataset.g === g)
+      );
+      ntRender();
+    };
+
+    function _ntRenderGroupFilter() {
+      const groups = [...new Set(ntNotes.map(n => n.group || '').filter(Boolean))];
+      const el = document.getElementById('ntGroupFilter');
+      if (!el) return;
+      const cur = window._ntGroupFilter || 'all';
+      el.innerHTML = `<span class="nt-domain-chip${cur==='all'?' on':''}" data-g="all" onclick="ntSetGroupFilter('all')">전체</span>`
+        + groups.map(g => `<span class="nt-domain-chip${cur===g?' on':''}" data-g="${esc(g)}" onclick="ntSetGroupFilter('${esc(g)}')">${esc(g)}</span>`).join('');
+    }
+
+    // 그룹 관리 모달
+    window.ntOpenGroupManager = function() {
+      const groups = [...new Set(ntNotes.map(n => n.group || '').filter(Boolean))];
+      const existingModal = document.getElementById('ntGroupModal');
+      if (existingModal) existingModal.remove();
+
+      const modal = document.createElement('div');
+      modal.id = 'ntGroupModal';
+      modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;';
+      modal.innerHTML = `
+        <div style="background:var(--s1);border:1px solid var(--b1);border-radius:14px;padding:20px;width:340px;max-width:90vw;max-height:80vh;overflow-y:auto;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+            <span style="font-size:14px;font-weight:800;color:var(--tx);">🗂 그룹 관리</span>
+            <button onclick="document.getElementById('ntGroupModal').remove()" style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:16px;">✕</button>
+          </div>
+          <div style="display:flex;gap:6px;margin-bottom:12px;">
+            <input id="ntGroupNewInput" placeholder="새 그룹 이름" style="flex:1;padding:7px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:7px;color:var(--tx);font-size:12px;outline:none;"
+              onkeydown="if(event.key==='Enter')ntAddGroup()">
+            <button onclick="ntAddGroup()" style="padding:7px 12px;background:var(--ac);color:#111;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">추가</button>
+          </div>
+          <div id="ntGroupList" style="display:flex;flex-direction:column;gap:4px;">
+            ${groups.length ? groups.map(g => `
+              <div style="display:flex;align-items:center;gap:6px;padding:7px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;">
+                <span style="flex:1;font-size:12px;color:var(--tx);">${esc(g)}</span>
+                <button onclick="ntRenameGroup('${esc(g)}')" style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:11px;padding:2px 6px;border-radius:4px;" onmouseover="this.style.color='var(--tx)'" onmouseout="this.style.color='var(--mu)'">✏️ 수정</button>
+                <button onclick="ntDeleteGroup('${esc(g)}')" style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:11px;padding:2px 6px;border-radius:4px;" onmouseover="this.style.color='#ff6370'" onmouseout="this.style.color='var(--mu)'">🗑 삭제</button>
+              </div>`) .join('') : '<div style="font-size:11px;color:var(--di);text-align:center;padding:12px;">그룹이 없습니다</div>'}
+          </div>
+        </div>`;
+      document.body.appendChild(modal);
+      modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+    };
+
+    window.ntAddGroup = function() {
+      const input = document.getElementById('ntGroupNewInput');
+      const name = input?.value?.trim();
+      if (!name) return;
+      // 이미 있으면 스킵
+      const exists = ntNotes.some(n => n.group === name);
+      if (exists) { showToast('이미 있는 그룹입니다', 'warn'); return; }
+      // 빈 그룹은 노트에 저장할 게 없으므로 그냥 필터에만 추가
+      showToast(`그룹 "${name}" 추가됨`, 'ok');
+      if (input) input.value = '';
+      // 모달 갱신
+      ntOpenGroupManager();
+      _ntRenderGroupFilter();
+    };
+
+    window.ntRenameGroup = function(oldName) {
+      const newName = prompt(`그룹 이름 변경
+현재: "${oldName}"`, oldName);
+      if (!newName || newName === oldName) return;
+      ntNotes.forEach(n => { if (n.group === oldName) n.group = newName; });
+      saveNotes();
+      ntOpenGroupManager();
+      _ntRenderGroupFilter();
+      if (window._ntGroupFilter === oldName) { window._ntGroupFilter = newName; }
+      ntRender();
+      showToast(`"${oldName}" → "${newName}" 변경 완료`, 'ok');
+    };
+
+    window.ntDeleteGroup = function(name) {
+      const count = ntNotes.filter(n => n.group === name).length;
+      if (!confirm(`그룹 "${name}" 삭제\n(${count}개 노트의 그룹이 해제됩니다)`)) return;
+      ntNotes.forEach(n => { if (n.group === name) delete n.group; });
+      saveNotes();
+      ntOpenGroupManager();
+      _ntRenderGroupFilter();
+      if (window._ntGroupFilter === name) window._ntGroupFilter = 'all';
+      ntRender();
+      showToast(`그룹 "${name}" 삭제 완료`, 'ok');
     };
 
     // ── 노트 열기 ──────────────────────────────────────
@@ -19881,19 +20047,17 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         <input id="ntTagInput" placeholder="+ 태그" onkeydown="if(event.key==='Enter'&&this.value.trim()){ntAddTag('${id}',this.value.trim());this.value='';}"
           style="padding:2px 7px;background:var(--s2);border:1px dashed var(--b1);border-radius:8px;color:var(--mu);font-size:11px;width:70px;outline:none;">
       </div>
-      <!-- domain/phase 선택 -->
-      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-        ${note.linkedItemId ? `
-          <span style="font-size:10px;color:var(--mu);">단계:</span>
-          ${['legal', 'field', 'profit', 'bid', 'review'].map(p => `<span onclick="ntSetNotePhase('${id}','${p}')"
-            style="padding:2px 8px;border-radius:8px;font-size:10px;cursor:pointer;border:1px solid ${note.phase === p ? '#a78bfa' : 'var(--b1)'};background:${note.phase === p ? 'rgba(167,139,250,.15)' : 'var(--s2)'};color:${note.phase === p ? '#a78bfa' : 'var(--mu)'};">
-            ${NT_PHASE_LABELS[p]}</span>`).join('')}
-        ` : `
-          <span style="font-size:10px;color:var(--mu);">주제:</span>
-          ${['auction', 'tax', 'legal', 'market', 'operation', 'etc'].map(d => `<span onclick="ntSetNoteDomain('${id}','${d}')"
-            style="padding:2px 8px;border-radius:8px;font-size:10px;cursor:pointer;border:1px solid ${(note.domain || 'auction') === d ? '#4f8eff' : 'var(--b1)'};background:${(note.domain || 'auction') === d ? 'rgba(79,142,255,.15)' : 'var(--s2)'};color:${(note.domain || 'auction') === d ? '#4f8eff' : 'var(--mu)'};">
-            ${NT_DOMAIN_LABELS[d]}</span>`).join('')}
-        `}
+      <!-- 그룹 선택 -->
+      <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
+        <span style="font-size:10px;color:var(--mu);flex-shrink:0;">그룹:</span>
+        ${(() => {
+          const groups = [...new Set((window.ntNotes||[]).map(n=>n.group||'').filter(Boolean))];
+          const cur = note.group || '';
+          const chips = groups.map(g => `<span onclick="ntSetNoteGroup('${id}','${esc(g)}')"
+            style="padding:2px 8px;border-radius:8px;font-size:10px;cursor:pointer;border:1px solid ${cur===g?'#ffd166':'var(--b1)'};background:${cur===g?'rgba(255,209,102,.15)':'var(--s2)'};color:${cur===g?'#ffd166':'var(--mu)'};">${esc(g)}</span>`).join('');
+          return chips + `<input id="ntGroupInlineInput_${id}" placeholder="+ 그룹" onkeydown="if(event.key==='Enter'&&this.value.trim()){ntSetNoteGroup('${id}',this.value.trim());this.value='';}"
+            style="padding:2px 7px;background:var(--s2);border:1px dashed var(--b1);border-radius:8px;color:var(--mu);font-size:11px;width:65px;outline:none;">`;
+        })()}
       </div>
     </div>
     <!-- 에디터 본문 -->
@@ -23670,15 +23834,13 @@ ${newsContext}
       if (allItems) {
         targets = mapMarkers.filter(m => m.item && m.propertyType !== 'transaction');
       } else {
-        // 현재 화면에 보이는 마커만
+        // 필터CSV: bounds 안에 있는 마커만 (setMap null인 것 제외)
         const bounds = map ? map.getBounds() : null;
         targets = mapMarkers.filter(m => {
           if (!m.item || m.propertyType === 'transaction') return false;
+          try { if (m.marker.getMap() === null) return false; } catch(e) {}
           if (!bounds) return true;
-          try {
-            const pos = m.marker.getPosition();
-            return bounds.contain(pos);
-          } catch (e) { return false; }
+          try { return bounds.contain(m.marker.getPosition()); } catch(e) { return false; }
         });
       }
 
