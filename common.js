@@ -21103,8 +21103,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       onmouseout="this.style.transform='';this.style.boxShadow=''">
       ${_th}
       <!-- 카드 헤더 -->
-      <div style="padding:12px 14px 10px;">
-        <div style="display:flex;align-items:flex-start;gap:7px;margin-bottom:8px;">
+      <div style="padding:8px 10px 6px;">
+        <div style="display:flex;align-items:flex-start;gap:7px;margin-bottom:5px;">
           <span style="font-size:10px;padding:2px 8px;border-radius:10px;font-weight:700;white-space:nowrap;flex-shrink:0;background:${color}33;color:${color};border:1px solid ${color}77;letter-spacing:.3px;">${esc(card.cat || '기타')}</span>
           <div style="display:flex;gap:3px;flex-shrink:0;margin-left:auto;">
             <button onclick="event.stopPropagation();ntCreateFromKcard('${card.id}')" title="이 카드로 노트 만들기" style="background:rgba(79,142,255,.1);border:1px solid rgba(79,142,255,.25);color:#4f8eff;cursor:pointer;font-size:11px;padding:2px 6px;border-radius:4px;font-weight:700;" onmouseover="this.style.background='rgba(79,142,255,.25)'" onmouseout="this.style.background='rgba(79,142,255,.1)'">📝</button>
@@ -21112,7 +21112,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             <button onclick="event.stopPropagation();deleteKcard('${card.id}')" title="삭제" style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:12px;padding:1px 4px;border-radius:3px;opacity:.6;" onmouseover="this.style.opacity='1';this.style.color='#ff6370'" onmouseout="this.style.opacity='.6';this.style.color='var(--mu)'">🗑</button>
           </div>
         </div>
-        <div style="font-weight:800;color:var(--tx);line-height:1.3;margin-bottom:10px;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;word-break:break-all;${(()=>{const l=(card.title||'').length;if(l<=4)return 'font-size:22px;-webkit-line-clamp:1;';if(l<=10)return 'font-size:16px;-webkit-line-clamp:1;';if(l<=25)return 'font-size:13px;-webkit-line-clamp:2;';return 'font-size:11px;-webkit-line-clamp:3;';})()}">${esc((card.title||'제목 없음').slice(0,60)+(card.title&&card.title.length>60?'…':''))}</div>
+        <div style="font-weight:800;color:var(--tx);line-height:1.3;margin-bottom:6px;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;word-break:break-all;${(()=>{const l=(card.title||'').length;if(l<=4)return 'font-size:18px;-webkit-line-clamp:1;';if(l<=10)return 'font-size:14px;-webkit-line-clamp:1;';if(l<=25)return 'font-size:12px;-webkit-line-clamp:2;';return 'font-size:10px;-webkit-line-clamp:2;';})()}">${esc((card.title||'제목 없음').slice(0,60)+(card.title&&card.title.length>60?'…':''))}</div>
         <!-- 핵심 포인트 -->
         <div style="display:flex;flex-direction:column;gap:4px;">
           ${summaryHtml}
