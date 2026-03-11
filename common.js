@@ -3448,58 +3448,84 @@
     // ===================================================
     // API 키
     // ===================================================
-    function gk() { return document.getElementById('apiKey').value.trim(); }
-    (() => {
-      const s = localStorage.getItem('g_api') || 'AIzaSyAuRNnEVnbP-1W14BofIN9br0JYhDG7xPY';
-      if (s) {
-        document.getElementById('apiKey').value = s;
-        document.getElementById('apiDot').classList.add('on');
-        chk();
-      }
-      const k = localStorage.getItem('kakao_api');
-      if (k) {
-        document.getElementById('kakaoApiKey').value = k;
-        document.getElementById('kakaoApiDot').classList.add('on');
-      }
-    })();
-    ['input', 'change', 'keyup', 'paste'].forEach(ev => document.getElementById('apiKey').addEventListener(ev, () => { const v = gk(), ok = v.length > 10; document.getElementById('apiDot').classList.toggle('on', ok); if (ok) { localStorage.setItem('g_api', v); if(window._sbSaveApiKeys) window._sbSaveApiKeys(); } chk(); }));
-    ['input', 'change', 'keyup', 'paste'].forEach(ev => document.getElementById('kakaoApiKey').addEventListener(ev, () => {
-      const v = document.getElementById('kakaoApiKey').value.trim(), ok = v.length > 10;
-      document.getElementById('kakaoApiDot').classList.toggle('on', ok);
-      if (ok) {
-        localStorage.setItem('kakao_api', v);
-        // ★ [FIX] 새로고침 없이 카카오맵 SDK 즉시 로드
-        if (!window.kakao || !window.kakao.maps) {
+    function gk() { return (document.getElementById('apiKey_cfg')?.value || document.getElementById('apiKey')?.value || '').trim(); }
+    // ─── 설정탭 ↔ hidden input 동기화 유틸 ─────────────────────────
+    function _syncCfgInputs() {
+      const pairs = [
+        ['apiKey_cfg', 'apiKey'], ['kakaoApiKey_cfg', 'kakaoApiKey'],
+        ['kakaoRestKey_cfg', 'kakaoRestKey'], ['naverClientId_cfg', 'naverClientId'],
+        ['naverClientSecret_cfg', 'naverClientSecret'], ['onbidApiKey_cfg', 'onbidApiKey'],
+        ['sbizApiKey_cfg', 'sbizApiKey'],
+      ];
+      pairs.forEach(([cfgId, topId]) => {
+        const cfgEl = document.getElementById(cfgId);
+        const topEl = document.getElementById(topId);
+        if (cfgEl && topEl) {
+          if (!cfgEl.value && topEl.value) cfgEl.value = topEl.value;
+          // dot 상태 복원
+          const dotId = cfgId.replace('_cfg', 'Dot_cfg').replace('KeyDot', 'Dot').replace('ClientIdDot', 'Dot').replace('ClientSecretDot', 'Dot');
+          const dot = document.getElementById(dotId) || document.getElementById(cfgId.replace('Key_cfg','Dot_cfg').replace('Id_cfg','Dot_cfg').replace('Secret_cfg','Dot_cfg'));
+          if (dot && cfgEl.value.length > 5) dot.classList.add('on');
+        }
+      });
+    }
+
+    function _bindCfgInput(cfgId, topId, lsKey, dotCfgId, onUpdate) {
+      const el = document.getElementById(cfgId);
+      if (!el || el._cfgBound) return;
+      el._cfgBound = true;
+      ['input', 'change', 'keyup', 'paste'].forEach(ev => el.addEventListener(ev, () => {
+        const v = el.value.trim();
+        const topEl = document.getElementById(topId); if (topEl) topEl.value = v;
+        const ok = v.length > 10;
+        const dot = document.getElementById(dotCfgId); if (dot) dot.classList.toggle('on', ok);
+        if (ok && lsKey) { localStorage.setItem(lsKey, v); if (window._sbSaveApiKeys) window._sbSaveApiKeys(); }
+        if (onUpdate) onUpdate(v, ok);
+      }));
+    }
+
+    window._initCfgBindings = function() {
+      _bindCfgInput('apiKey_cfg', 'apiKey', 'g_api', 'apiDot_cfg', (v, ok) => { if (ok) chk(); });
+      _bindCfgInput('kakaoApiKey_cfg', 'kakaoApiKey', 'kakao_api', 'kakaoApiDot_cfg', (v, ok) => {
+        if (ok && (!window.kakao || !window.kakao.maps)) {
           const s = document.createElement('script');
-          s.type = 'text/javascript';
           s.src = 'https://dapi.kakao.com/v2/maps/sdk.js?appkey=' + v + '&libraries=services,drawing&autoload=false';
-          s.onload = () => {
-            if (window.kakao && window.kakao.maps) {
-              kakao.maps.load(() => {
-                console.log('카카오맵 로드 완료 (키 입력 즉시)');
-                if (currentPage === 2) initMap();
-                showToast('✅ 카카오맵 API 키가 적용되었습니다! 지도 탭을 열어보세요.', 'ok');
-              });
-            }
-          };
-          s.onerror = () => { showToast('❌ 카카오맵 API 키가 올바르지 않습니다. 키를 확인해주세요.', 'error'); };
+          s.onload = () => { if (window.kakao?.maps) { kakao.maps.load(() => { if (currentPage === 2) initMap(); showToast('✅ 카카오맵 API 키가 적용되었습니다!', 'ok'); }); } };
+          s.onerror = () => showToast('❌ 카카오맵 API 키가 올바르지 않습니다.', 'error');
           document.head.appendChild(s);
         }
-      }
-    }));
-    ['input', 'change', 'keyup', 'paste'].forEach(ev => document.getElementById('kakaoRestKey').addEventListener(ev, () => { const v = document.getElementById('kakaoRestKey').value.trim(), ok = v.length > 10; document.getElementById('kakaoRestDot').classList.toggle('on', ok); if (ok) { localStorage.setItem('kakao_rest_key', v); if(window._sbSaveApiKeys) window._sbSaveApiKeys(); } }));
-    const _kr = localStorage.getItem('kakao_rest_key'); if (_kr) { document.getElementById('kakaoRestKey').value = _kr; document.getElementById('kakaoRestDot').classList.toggle('on', _kr.length > 10); }
+      });
+      _bindCfgInput('kakaoRestKey_cfg', 'kakaoRestKey', 'kakao_rest_key', 'kakaoRestDot_cfg', () => {});
+      _bindCfgInput('naverClientId_cfg', 'naverClientId', 'naver_id', 'naverDot_cfg', () => {});
+      _bindCfgInput('naverClientSecret_cfg', 'naverClientSecret', 'naver_sec', 'naverDot_cfg', () => {});
+      _bindCfgInput('onbidApiKey_cfg', 'onbidApiKey', 'onbid_key', 'onbidDot_cfg', (v) => {
+        ['onbidKeyLocal', 'onbidKey2', 'onbidKeyCollect'].forEach(id => { const e = document.getElementById(id); if (e && !e.value) e.value = v; });
+      });
+      _bindCfgInput('sbizApiKey_cfg', 'sbizApiKey', 'sbiz_api', 'sbizDot_cfg', () => {});
+    };
 
-    // 소상공인 API 키 초기화
+    // 페이지 로드시 localStorage → hidden input + _cfg 입력란 복원
     (() => {
-      const sk = localStorage.getItem('sbiz_api');
-      if (sk) {
-        document.getElementById('sbizApiKey').value = sk;
-        document.getElementById('sbizDot').classList.add('on');
-      }
+      const load = (lsKey, elId, dotId, extra) => {
+        const v = localStorage.getItem(lsKey);
+        if (!v) return;
+        const el = document.getElementById(elId); if (el) el.value = v;
+        const cfgEl = document.getElementById(elId + '_cfg'); if (cfgEl && !cfgEl.value) cfgEl.value = v;
+        const dot = document.getElementById(dotId); if (dot && v.length > 5) dot.classList.add('on');
+        const dotCfg = document.getElementById(dotId.replace('Dot','Dot_cfg')); if (dotCfg && v.length > 5) dotCfg.classList.add('on');
+        if (extra) extra(v);
+      };
+      const gApiVal = localStorage.getItem('g_api') || 'AIzaSyAuRNnEVnbP-1W14BofIN9br0JYhDG7xPY';
+      if (gApiVal) { const el = document.getElementById('apiKey'); if (el) el.value = gApiVal; const cfgEl = document.getElementById('apiKey_cfg'); if (cfgEl) cfgEl.value = gApiVal; document.getElementById('apiDot')?.classList.add('on'); document.getElementById('apiDot_cfg')?.classList.add('on'); chk(); }
+      load('kakao_api', 'kakaoApiKey', 'kakaoApiDot');
+      load('kakao_rest_key', 'kakaoRestKey', 'kakaoRestDot');
+      load('naver_id', 'naverClientId', 'naverDot');
+      load('naver_sec', 'naverClientSecret', 'naverDot');
+      load('onbid_key', 'onbidApiKey', 'onbidDot');
+      load('sbiz_api', 'sbizApiKey', 'sbizDot');
     })();
-    ['input', 'change', 'keyup', 'paste'].forEach(ev => document.getElementById('sbizApiKey').addEventListener(ev, () => { const v = document.getElementById('sbizApiKey').value.trim(), ok = v.length > 10; document.getElementById('sbizDot').classList.toggle('on', ok); if (ok) { localStorage.setItem('sbiz_api', v); if(window._sbSaveApiKeys) window._sbSaveApiKeys(); } }));
-    function getSbizKey() { return document.getElementById('sbizApiKey').value.trim() || localStorage.getItem('sbiz_api') || '3TPJC0Q7lPb72GcvHBdm'; }
+
+    function getSbizKey() { return (document.getElementById('sbizApiKey_cfg')?.value || document.getElementById('sbizApiKey')?.value || '').trim() || localStorage.getItem('sbiz_api') || ''; }
 
     // ===================================================
     // 파일
@@ -19323,7 +19349,13 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         if (p) p.style.display = (i === n) ? '' : 'none';
         if (t) t.classList.toggle('on', i === n);
       });
-      const labels = { 0: '노트', 1: '계산기', 3: '뉴스 클리핑', 4: '알짜정보', 5: '파이프라인', 6: '사이트', 8: '작업룸', 9: '소상공인 상권', 10: '경매 AtoZ' };
+      // 설정 탭(ipage_cfg)은 id가 달라 별도 처리
+      const cfgEl = document.getElementById('ipage_cfg');
+      if (cfgEl) cfgEl.style.display = (n === 7) ? '' : 'none';
+      const itab7 = document.getElementById('itab7');
+      if (itab7) itab7.classList.toggle('on', n === 7);
+      if (n === 7) { _syncCfgInputs(); _initCfgBindings(); }
+      const labels = { 0: '노트', 1: '계산기', 3: '뉴스 클리핑', 4: '알짜정보', 5: '파이프라인', 6: '사이트', 7: '설정', 8: '작업룸', 9: '소상공인 상권', 10: '경매 AtoZ' };
       const lbl = document.getElementById('insTabLabel');
       if (lbl) lbl.textContent = labels[n] || '';
 
@@ -20989,8 +21021,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
     // ── 네이버 API 키 헬퍼 ─────────────────────────────
     function getNaverKeys() {
-      const id = document.getElementById('naverClientId')?.value?.trim() || localStorage.getItem('naver_id') || '';
-      const sec = document.getElementById('naverClientSecret')?.value?.trim() || localStorage.getItem('naver_sec') || '';
+      const id = (document.getElementById('naverClientId_cfg')?.value || document.getElementById('naverClientId')?.value || '').trim() || localStorage.getItem('naver_id') || '';
+      const sec = (document.getElementById('naverClientSecret_cfg')?.value || document.getElementById('naverClientSecret')?.value || '').trim() || localStorage.getItem('naver_sec') || '';
       return { id, sec };
     }
 
@@ -21672,12 +21704,11 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         </div>
         <div style="font-weight:800;color:var(--tx);line-height:1.3;margin-bottom:6px;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;word-break:break-all;${(()=>{const l=(card.title||'').length;if(l<=4)return 'font-size:18px;-webkit-line-clamp:1;';if(l<=10)return 'font-size:14px;-webkit-line-clamp:1;';if(l<=25)return 'font-size:12px;-webkit-line-clamp:2;';return 'font-size:10px;-webkit-line-clamp:2;';})()}">${esc((card.title||'제목 없음').slice(0,60)+(card.title&&card.title.length>60?'…':''))}</div>
         <!-- 핵심 포인트 -->
-<div style="display:flex;flex-direction:column;gap:4px;overflow:hidden;${_th ? '' : 'max-height:112px;position:relative;'}">
-  ${summaryHtml}
-  ${keyHtml}
-  ${(hasMore && !_th) ? `<div style="position:absolute;bottom:0;left:0;right:0;height:30px;background:linear-gradient(transparent,${_bg !== 'var(--s1)' ? _bg : '#1a1e2e'});pointer-events:none;"></div>` : ''}
-</div>
-${(hasMore && !_th) ? `<div style="font-size:10px;color:var(--di);margin-top:3px;">+${bodyLines.length - 5}줄 더...</div>` : ''}
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          ${summaryHtml}
+          ${keyHtml}
+          ${hasMore ? `<div style="font-size:10px;color:var(--di);margin-top:2px;">+${bodyLines.length - 5}줄 더...</div>` : ''}
+        </div>
       </div>
       <!-- 카드 푸터 -->
       <div style="padding:8px 14px;border-top:1px solid var(--b1);display:flex;align-items:center;gap:6px;margin-top:auto;flex-wrap:wrap;">

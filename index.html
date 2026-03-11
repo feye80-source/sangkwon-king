@@ -360,53 +360,20 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
         </div>
         <h1 style="font-size:14px;font-weight:800;letter-spacing:-0.3px;">상권<span style="color:#f59e0b;">King</span></h1>
       </div>
-      <button class="api-toggle-btn"
-        onclick="(function(btn){
-          var row = btn.closest('.topbar').querySelector('.api-row');
-          row.classList.toggle('api-row-open');
-          var open = row.classList.contains('api-row-open');
-          btn.textContent = open ? '✕ 접기' : '🔑 API';
-          /* 지도 검색창 겹침 방지: API 패널 열리면 map-search-wrap top 보정 */
-          var msw = document.querySelector('.map-search-wrap');
-          if (msw) {
-            var topbarH = btn.closest('.topbar').getBoundingClientRect().height;
-            msw.style.top = open ? (topbarH + 8) + 'px' : '';
-          }
-        })(this)">🔑
-        API</button>
-      <div class="api-row">
-        <div class="api-group">
-          <label class="api-lbl">Gemini</label>
-            <div class="api-dot" id="apiDot"></div>
-            <input type="text" class="api-in api-in-gemini" id="apiKey" placeholder="AIza..." autocomplete="off" title="Gemini API 키" />
-        </div>
-        <div class="api-group">
-          <label class="api-lbl">Kakao JS</label>
-            <div class="api-dot" id="kakaoApiDot"></div>
-            <input type="text" class="api-in api-in-kakao" id="kakaoApiKey" placeholder="Kakao JS" autocomplete="off" title="Kakao Map API 키" />
-        </div>
-        <div class="api-group">
-          <label class="api-lbl">Kakao REST</label>
-            <div class="api-dot" id="kakaoRestDot"></div>
-            <input type="password" class="api-in api-in-rest" id="kakaoRestKey" placeholder="Kakao REST" autocomplete="off" title="Kakao REST API 키" />
-        </div>
-        <div class="api-group">
-          <label class="api-lbl">Naver</label>
-            <div class="api-dot" id="naverDot"></div>
-            <input type="text" class="api-in api-in-naver-id" id="naverClientId" placeholder="Naver ID" autocomplete="off" title="Naver Client ID" style="width:90px;" />
-            <input type="password" class="api-in api-in-naver-sec" id="naverClientSecret" placeholder="Secret" autocomplete="off" title="Naver Secret" style="width:80px;" />
-        </div>
-        <div class="api-group">
-          <label class="api-lbl">온비드</label>
-            <div class="api-dot" id="onbidDot"></div>
-            <input type="password" class="api-in api-in-onbid" id="onbidApiKey" placeholder="온비드 인증키" autocomplete="off" title="온비드 공공데이터 Decoding 인증키" />
-        </div>
-        <div class="api-group">
-          <label class="api-lbl">소상공인</label>
-            <div class="api-dot" id="sbizDot"></div>
-            <input type="password" class="api-in api-in-sbiz" id="sbizApiKey" placeholder="소상공인 인증키" autocomplete="off" title="소상공인 상권 API Decoding 인증키" />
-        </div>
-      </div>
+      <!-- API 키 hidden inputs (topbar에서 설정탭으로 이동) -->
+      <input type="hidden" id="apiKey" />
+      <input type="hidden" id="kakaoApiKey" />
+      <input type="hidden" id="kakaoRestKey" />
+      <input type="hidden" id="naverClientId" />
+      <input type="hidden" id="naverClientSecret" />
+      <input type="hidden" id="onbidApiKey" />
+      <input type="hidden" id="sbizApiKey" />
+      <div style="display:none" id="apiDot"></div>
+      <div style="display:none" id="kakaoApiDot"></div>
+      <div style="display:none" id="kakaoRestDot"></div>
+      <div style="display:none" id="naverDot"></div>
+      <div style="display:none" id="onbidDot"></div>
+      <div style="display:none" id="sbizDot"></div>
     </div>
 
     <div class="main-nav">
