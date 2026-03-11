@@ -3018,30 +3018,69 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
                     <label style="font-size:11px;color:var(--mu);display:block;margin-bottom:6px;">🎨 카드 배경색 <span style="opacity:.5;">(이미지·유튜브 없는 텍스트 카드만 적용)</span></label>
                     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
                       <input type="color" id="kcardBgColor" value="#2a2d3a" style="width:36px;height:36px;border:none;border-radius:6px;cursor:pointer;padding:2px;background:none;">
-                      <div style="display:flex;gap:5px;flex-wrap:wrap;">
-                        <!-- 다크 계열 -->
-                        <button onclick="document.getElementById('kcardBgColor').value='#2a2d3a'" style="width:24px;height:24px;background:#2a2d3a;border:2px solid var(--b2);border-radius:4px;cursor:pointer;" title="기본"></button>
-                        <button onclick="document.getElementById('kcardBgColor').value='#1a2744'" style="width:24px;height:24px;background:#1a2744;border:2px solid var(--b2);border-radius:4px;cursor:pointer;" title="네이비"></button>
-                        <button onclick="document.getElementById('kcardBgColor').value='#2a1f3d'" style="width:24px;height:24px;background:#2a1f3d;border:2px solid var(--b2);border-radius:4px;cursor:pointer;" title="퍼플다크"></button>
-                        <button onclick="document.getElementById('kcardBgColor').value='#1f3328'" style="width:24px;height:24px;background:#1f3328;border:2px solid var(--b2);border-radius:4px;cursor:pointer;" title="그린다크"></button>
-                        <button onclick="document.getElementById('kcardBgColor').value='#3a2010'" style="width:24px;height:24px;background:#3a2010;border:2px solid var(--b2);border-radius:4px;cursor:pointer;" title="브라운"></button>
-                        <button onclick="document.getElementById('kcardBgColor').value='#332800'" style="width:24px;height:24px;background:#332800;border:2px solid #ffd166;border-radius:4px;cursor:pointer;" title="골드다크"></button>
-                        <button onclick="document.getElementById('kcardBgColor').value='#330a0e'" style="width:24px;height:24px;background:#330a0e;border:2px solid #ff6370;border-radius:4px;cursor:pointer;" title="레드다크"></button>
-                        <button onclick="document.getElementById('kcardBgColor').value='#0f2922'" style="width:24px;height:24px;background:#0f2922;border:2px solid var(--b2);border-radius:4px;cursor:pointer;" title="틸다크"></button>
-                        <!-- 밝은 계열 -->
-                        <button onclick="document.getElementById('kcardBgColor').value='#fef08a'" style="width:24px;height:24px;background:#fef08a;border:2px solid var(--b2);border-radius:4px;cursor:pointer;" title="노랑"></button>
-                        <button onclick="document.getElementById('kcardBgColor').value='#86efac'" style="width:24px;height:24px;background:#86efac;border:2px solid var(--b2);border-radius:4px;cursor:pointer;" title="민트"></button>
-                        <button onclick="document.getElementById('kcardBgColor').value='#93c5fd'" style="width:24px;height:24px;background:#93c5fd;border:2px solid var(--b2);border-radius:4px;cursor:pointer;" title="하늘"></button>
-                        <button onclick="document.getElementById('kcardBgColor').value='#f9a8d4'" style="width:24px;height:24px;background:#f9a8d4;border:2px solid var(--b2);border-radius:4px;cursor:pointer;" title="핑크"></button>
-                        <button onclick="document.getElementById('kcardBgColor').value='#c4b5fd'" style="width:24px;height:24px;background:#c4b5fd;border:2px solid var(--b2);border-radius:4px;cursor:pointer;" title="라벤더"></button>
-                        <button onclick="document.getElementById('kcardBgColor').value='#fdba74'" style="width:24px;height:24px;background:#fdba74;border:2px solid var(--b2);border-radius:4px;cursor:pointer;" title="오렌지"></button>
-                        <button onclick="document.getElementById('kcardBgColor').value='#fca5a5'" style="width:24px;height:24px;background:#fca5a5;border:2px solid var(--b2);border-radius:4px;cursor:pointer;" title="살몬"></button>
-                        <button onclick="document.getElementById('kcardBgColor').value='#a7f3d0'" style="width:24px;height:24px;background:#a7f3d0;border:2px solid var(--b2);border-radius:4px;cursor:pointer;" title="에메랄드"></button>
-                        <button onclick="document.getElementById('kcardBgColor').value='#bfdbfe'" style="width:24px;height:24px;background:#bfdbfe;border:2px solid var(--b2);border-radius:4px;cursor:pointer;" title="블루"></button>
-                        <button onclick="document.getElementById('kcardBgColor').value='#fde68a'" style="width:24px;height:24px;background:#fde68a;border:2px solid var(--b2);border-radius:4px;cursor:pointer;" title="골드"></button>
-                        <button onclick="document.getElementById('kcardBgColor').value='#e9d5ff'" style="width:24px;height:24px;background:#e9d5ff;border:2px solid var(--b2);border-radius:4px;cursor:pointer;" title="퍼플"></button>
-                        <button onclick="document.getElementById('kcardBgColor').value='#fff3cd'" style="width:24px;height:24px;background:#fff3cd;border:2px solid var(--b2);border-radius:4px;cursor:pointer;" title="크림"></button>
-                        <button onclick="document.getElementById('kcardBgColor').value='#d1fae5'" style="width:24px;height:24px;background:#d1fae5;border:2px solid var(--b2);border-radius:4px;cursor:pointer;" title="라이트그린"></button>
+                      <div style="display:flex;flex-direction:column;gap:4px;">
+                        <!-- 흑백 -->
+                        <div style="display:flex;gap:3px;">
+                          <button onclick="document.getElementById('kcardBgColor').value='#2a2d3a'" style="width:20px;height:20px;background:#2a2d3a;border:2px solid var(--ac);border-radius:3px;cursor:pointer;" title="기본"></button>
+                          <button onclick="document.getElementById('kcardBgColor').value='#ffffff'" style="width:20px;height:20px;background:#ffffff;border:1px solid #555;border-radius:3px;cursor:pointer;" title="흰색"></button>
+                          <button onclick="document.getElementById('kcardBgColor').value='#e2e8f0'" style="width:20px;height:20px;background:#e2e8f0;border:1px solid #555;border-radius:3px;cursor:pointer;" title="연회색"></button>
+                          <button onclick="document.getElementById('kcardBgColor').value='#94a3b8'" style="width:20px;height:20px;background:#94a3b8;border:1px solid #555;border-radius:3px;cursor:pointer;" title="회색"></button>
+                          <button onclick="document.getElementById('kcardBgColor').value='#475569'" style="width:20px;height:20px;background:#475569;border:1px solid #555;border-radius:3px;cursor:pointer;" title="진회색"></button>
+                          <button onclick="document.getElementById('kcardBgColor').value='#1e293b'" style="width:20px;height:20px;background:#1e293b;border:1px solid #555;border-radius:3px;cursor:pointer;" title="다크"></button>
+                        </div>
+                        <!-- 빨강 -->
+                        <div style="display:flex;gap:3px;">
+                          <button onclick="document.getElementById('kcardBgColor').value='#fecaca'" style="width:20px;height:20px;background:#fecaca;border:1px solid #555;border-radius:3px;cursor:pointer;" title="연빨강"></button>
+                          <button onclick="document.getElementById('kcardBgColor').value='#fca5a5'" style="width:20px;height:20px;background:#fca5a5;border:1px solid #555;border-radius:3px;cursor:pointer;" title="살몬"></button>
+                          <button onclick="document.getElementById('kcardBgColor').value='#f87171'" style="width:20px;height:20px;background:#f87171;border:1px solid #555;border-radius:3px;cursor:pointer;" title="빨강"></button>
+                          <button onclick="document.getElementById('kcardBgColor').value='#dc2626'" style="width:20px;height:20px;background:#dc2626;border:1px solid #555;border-radius:3px;cursor:pointer;" title="진빨강"></button>
+                          <button onclick="document.getElementById('kcardBgColor').value='#7f1d1d'" style="width:20px;height:20px;background:#7f1d1d;border:1px solid #555;border-radius:3px;cursor:pointer;" title="다크레드"></button>
+                          <button onclick="document.getElementById('kcardBgColor').value='#330a0e'" style="width:20px;height:20px;background:#330a0e;border:1px solid #555;border-radius:3px;cursor:pointer;" title="버건디"></button>
+                        </div>
+                        <!-- 주황/노랑 -->
+                        <div style="display:flex;gap:3px;">
+                          <button onclick="document.getElementById('kcardBgColor').value='#fff3cd'" style="width:20px;height:20px;background:#fff3cd;border:1px solid #555;border-radius:3px;cursor:pointer;" title="크림"></button>
+                          <button onclick="document.getElementById('kcardBgColor').value='#fef08a'" style="width:20px;height:20px;background:#fef08a;border:1px solid #555;border-radius:3px;cursor:pointer;" title="노랑"></button>
+                          <button onclick="document.getElementById('kcardBgColor').value='#fde68a'" style="width:20px;height:20px;background:#fde68a;border:1px solid #555;border-radius:3px;cursor:pointer;" title="골드"></button>
+                          <button onclick="document.getElementById('kcardBgColor').value='#fdba74'" style="width:20px;height:20px;background:#fdba74;border:1px solid #555;border-radius:3px;cursor:pointer;" title="오렌지"></button>
+                          <button onclick="document.getElementById('kcardBgColor').value='#f97316'" style="width:20px;height:20px;background:#f97316;border:1px solid #555;border-radius:3px;cursor:pointer;" title="진오렌지"></button>
+                          <button onclick="document.getElementById('kcardBgColor').value='#3a2010'" style="width:20px;height:20px;background:#3a2010;border:1px solid #555;border-radius:3px;cursor:pointer;" title="다크브라운"></button>
+                        </div>
+                        <!-- 초록 -->
+                        <div style="display:flex;gap:3px;">
+                          <button onclick="document.getElementById('kcardBgColor').value='#d1fae5'" style="width:20px;height:20px;background:#d1fae5;border:1px solid #555;border-radius:3px;cursor:pointer;" title="연초록"></button>
+                          <button onclick="document.getElementById('kcardBgColor').value='#a7f3d0'" style="width:20px;height:20px;background:#a7f3d0;border:1px solid #555;border-radius:3px;cursor:pointer;" title="에메랄드"></button>
+                          <button onclick="document.getElementById('kcardBgColor').value='#86efac'" style="width:20px;height:20px;background:#86efac;border:1px solid #555;border-radius:3px;cursor:pointer;" title="민트"></button>
+                          <button onclick="document.getElementById('kcardBgColor').value='#22c55e'" style="width:20px;height:20px;background:#22c55e;border:1px solid #555;border-radius:3px;cursor:pointer;" title="초록"></button>
+                          <button onclick="document.getElementById('kcardBgColor').value='#15803d'" style="width:20px;height:20px;background:#15803d;border:1px solid #555;border-radius:3px;cursor:pointer;" title="진초록"></button>
+                          <button onclick="document.getElementById('kcardBgColor').value='#1f3328'" style="width:20px;height:20px;background:#1f3328;border:1px solid #555;border-radius:3px;cursor:pointer;" title="다크그린"></button>
+                        </div>
+                        <!-- 파랑 -->
+                        <div style="display:flex;gap:3px;">
+                          <button onclick="document.getElementById('kcardBgColor').value='#dbeafe'" style="width:20px;height:20px;background:#dbeafe;border:1px solid #555;border-radius:3px;cursor:pointer;" title="연하늘"></button>
+                          <button onclick="document.getElementById('kcardBgColor').value='#bfdbfe'" style="width:20px;height:20px;background:#bfdbfe;border:1px solid #555;border-radius:3px;cursor:pointer;" title="하늘"></button>
+                          <button onclick="document.getElementById('kcardBgColor').value='#93c5fd'" style="width:20px;height:20px;background:#93c5fd;border:1px solid #555;border-radius:3px;cursor:pointer;" title="블루"></button>
+                          <button onclick="document.getElementById('kcardBgColor').value='#3b82f6'" style="width:20px;height:20px;background:#3b82f6;border:1px solid #555;border-radius:3px;cursor:pointer;" title="진블루"></button>
+                          <button onclick="document.getElementById('kcardBgColor').value='#1d4ed8'" style="width:20px;height:20px;background:#1d4ed8;border:1px solid #555;border-radius:3px;cursor:pointer;" title="로얄블루"></button>
+                          <button onclick="document.getElementById('kcardBgColor').value='#1a2744'" style="width:20px;height:20px;background:#1a2744;border:1px solid #555;border-radius:3px;cursor:pointer;" title="다크네이비"></button>
+                        </div>
+                        <!-- 보라 -->
+                        <div style="display:flex;gap:3px;">
+                          <button onclick="document.getElementById('kcardBgColor').value='#ede9fe'" style="width:20px;height:20px;background:#ede9fe;border:1px solid #555;border-radius:3px;cursor:pointer;" title="연보라"></button>
+                          <button onclick="document.getElementById('kcardBgColor').value='#e9d5ff'" style="width:20px;height:20px;background:#e9d5ff;border:1px solid #555;border-radius:3px;cursor:pointer;" title="라벤더"></button>
+                          <button onclick="document.getElementById('kcardBgColor').value='#c4b5fd'" style="width:20px;height:20px;background:#c4b5fd;border:1px solid #555;border-radius:3px;cursor:pointer;" title="보라"></button>
+                          <button onclick="document.getElementById('kcardBgColor').value='#a855f7'" style="width:20px;height:20px;background:#a855f7;border:1px solid #555;border-radius:3px;cursor:pointer;" title="퍼플"></button>
+                          <button onclick="document.getElementById('kcardBgColor').value='#7c3aed'" style="width:20px;height:20px;background:#7c3aed;border:1px solid #555;border-radius:3px;cursor:pointer;" title="진보라"></button>
+                          <button onclick="document.getElementById('kcardBgColor').value='#2a1f3d'" style="width:20px;height:20px;background:#2a1f3d;border:1px solid #555;border-radius:3px;cursor:pointer;" title="다크퍼플"></button>
+                        </div>
+                        <!-- 핑크 -->
+                        <div style="display:flex;gap:3px;">
+                          <button onclick="document.getElementById('kcardBgColor').value='#fce7f3'" style="width:20px;height:20px;background:#fce7f3;border:1px solid #555;border-radius:3px;cursor:pointer;" title="연핑크"></button>
+                          <button onclick="document.getElementById('kcardBgColor').value='#fbcfe8'" style="width:20px;height:20px;background:#fbcfe8;border:1px solid #555;border-radius:3px;cursor:pointer;" title="핑크"></button>
+                          <button onclick="document.getElementById('kcardBgColor').value='#f9a8d4'" style="width:20px;height:20px;background:#f9a8d4;border:1px solid #555;border-radius:3px;cursor:pointer;" title="로즈"></button>
+                          <button onclick="document.getElementById('kcardBgColor').value='#ec4899'" style="width:20px;height:20px;background:#ec4899;border:1px solid #555;border-radius:3px;cursor:pointer;" title="핫핑크"></button>
+                          <button onclick="document.getElementById('kcardBgColor').value='#9d174d'" style="width:20px;height:20px;background:#9d174d;border:1px solid #555;border-radius:3px;cursor:pointer;" title="다크핑크"></button>
+                        </div>
                       </div>
                     </div>
                   </div>
