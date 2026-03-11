@@ -21095,7 +21095,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
         let _th='';
         if(card.ytUrl){const _ym=card.ytUrl.match(/(?:v=|youtu\.be\/)([A-Za-z0-9_-]{11})/);if(_ym)_th=`<div style="width:100%;background:#000;flex-shrink:0;position:relative;"><img src="https://img.youtube.com/vi/${_ym[1]}/mqdefault.jpg" style="width:100%;height:auto;display:block;" loading="lazy"><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;"><div style="width:40px;height:40px;background:rgba(255,0,0,.85);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;padding-left:3px;">▶</div></div></div>`;}
-        else if(card.imgs&&card.imgs.length)_th=`<div style="width:100%;background:#111;flex-shrink:0;"><img src="${card.imgs[0]}" style="width:100%;height:auto;display:block;" loading="lazy"></div>`;
+        else if(card.imgs&&card.imgs.length)_th=`<div style="width:100%;position:relative;padding-top:56.25%;background:#111;flex-shrink:0;"><img src="${card.imgs[0]}" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:contain;" loading="lazy"></div>`;
         const _bg=(!card.ytUrl&&(!card.imgs||!card.imgs.length)&&card.bgColor)?card.bgColor:'var(--s1)';
         return `<div style="background:${_bg};border:1px solid var(--b1);border-top:3px solid ${color};border-radius:0 0 12px 12px;display:flex;flex-direction:column;transition:transform .15s,box-shadow .15s;cursor:pointer;" 
       onclick="if(!event.target.closest('button'))showKcardDetail('${card.id}')"
