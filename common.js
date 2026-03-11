@@ -9939,7 +9939,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       if (map) return; // 이미 초기화됨
 
       if (!window.kakao || !window.kakao.maps) {
-        showToast('⚠️ 상단 Kakao JS Key 입력창에 API 키를 붙여넣으세요. 새로고침 없이 자동 적용됩니다.', 'warn');
+        showToast('⚠️ 인사이트탭 ⚙️ 설정에서 Kakao JS Key를 입력하세요. 새로고침 없이 자동 적용됩니다.', 'warn');
         return;
       }
 
@@ -19375,6 +19375,21 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
     // ── 서브탭 전환 ─────────────────────────────────────
     function showInsTab(n) {
+      // cfg(API 설정) 특수 처리
+      const cfgPanel = document.getElementById('ipage_cfg');
+      if (n === 'cfg') {
+        [0, 1, 3, 4, 5, 6, 7, 8, 9, 10].forEach(i => {
+          const p = document.getElementById('ipage' + i);
+          if (p) p.style.display = 'none';
+          const t = document.getElementById('itab' + i);
+          if (t) t.classList.remove('on');
+        });
+        if (cfgPanel) cfgPanel.style.display = '';
+        const t7 = document.getElementById('itab7');
+        if (t7) t7.classList.add('on');
+        return;
+      }
+      if (cfgPanel) cfgPanel.style.display = 'none';
       [0, 1, 3, 4, 5, 6, 8, 9, 10].forEach(i => {
         const p = document.getElementById('ipage' + i);
         const t = document.getElementById('itab' + i);
@@ -20008,6 +20023,14 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       </div>
       <!-- domain/phase 선택 -->
       <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+        <!-- 그룹 지정 드롭다운 -->
+        <select onchange="ntSetNoteGroup('${id}',this.value)"
+          style="padding:2px 7px;background:var(--s2);border:1px solid var(--b1);border-radius:7px;color:var(--mu);font-size:10px;outline:none;cursor:pointer;max-width:110px;">
+          <option value="">📁 그룹 없음</option>
+          ${[...new Set(ntNotes.map(n => n.group || '').filter(Boolean))].map(g =>
+            `<option value="${esc(g)}"${note.group === g ? ' selected' : ''}>${esc(g)}</option>`
+          ).join('')}
+        </select>
         ${note.linkedItemId ? `
           <span style="font-size:10px;color:var(--mu);">단계:</span>
           ${['legal', 'field', 'profit', 'bid', 'review'].map(p => `<span onclick="ntSetNotePhase('${id}','${p}')"
@@ -21261,7 +21284,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     async function fetchNaverNews() {
       if (!newsKeywords.length) { showToast('키워드를 먼저 추가해주세요', 'warn'); return; }
       const { id, sec } = getNaverKeys();
-      if (!id || !sec) { showToast('상단에 Naver API 키를 입력해주세요', 'warn'); return; }
+      if (!id || !sec) { showToast('인사이트탭 ⚙️ 설정에서 Naver API 키를 입력해주세요', 'warn'); return; }
 
       const btn = document.getElementById('newsFetchBtn');
       const status = document.getElementById('newsFeedStatus');
@@ -21546,7 +21569,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const txt = document.getElementById('newsInput')?.value?.trim();
       if (!txt) { showToast('분석할 뉴스 내용을 입력하세요', 'warn'); return; }
       const apiKey = gk();
-      if (!apiKey) { showToast('Gemini API 키가 필요합니다 (상단에 입력)', 'warn'); return; }
+      if (!apiKey) { showToast('Gemini API 키가 필요합니다 (⚙️ 설정탭에 입력)', 'warn'); return; }
       const box = document.getElementById('newsResultBox'); const res = document.getElementById('newsResult');
       box.style.display = ''; res.textContent = '⏳ AI 분석 중...';
       try {
@@ -21816,7 +21839,10 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         }).join('');
         const summaryHtml = plainLines.slice(0, 2).map(l => `<div style="font-size:11px;color:${_muColor};line-height:1.6;">${esc(l)}</div>`).join('');
 
-        const hasMore = bodyLines.length > 5;
+        // 5줄 기준: keyLines + plainLines 합산 실제 표시줄
+        const _shownLines = Math.min(keyLines.length, 5) + Math.min(plainLines.length, 2);
+        const _totalLines = bodyLines.length;
+        const hasMore = _totalLines > 5;
 
         let _th='';
         if(card.ytUrl){const _ym=card.ytUrl.match(/(?:v=|youtu\.be\/)([A-Za-z0-9_-]{11})/);if(_ym){const _ytTitle=esc((card.title||'').slice(0,60));const _ytBody=esc(((card.body||'').split('\n').filter(Boolean)[0]||'').replace(/^[•\-·\d.)]\s*/,'').slice(0,80));_th=`<div style="flex-shrink:0;"><div style="width:100%;aspect-ratio:16/9;background:#000;overflow:hidden;position:relative;"><img src="https://img.youtube.com/vi/${_ym[1]}/mqdefault.jpg" style="width:100%;height:100%;object-fit:cover;display:block;" loading="lazy"><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;"><div style="width:40px;height:40px;background:rgba(255,0,0,.85);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;padding-left:3px;">▶</div></div></div>${(_ytTitle||_ytBody)?`<div style="padding:6px 10px 5px;border-bottom:1px solid var(--b1);">${_ytTitle?`<div style="font-size:12px;font-weight:700;color:var(--tx);line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${_ytTitle}</div>`:``}${_ytBody?`<div style="font-size:11px;color:var(--mu);line-height:1.45;margin-top:2px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">${_ytBody}</div>`:``}</div>`:``}</div>`;} }
@@ -21839,12 +21865,12 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         </div>
         <div style="font-weight:800;color:var(--tx);line-height:1.3;margin-bottom:6px;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;word-break:break-all;${(()=>{const l=(card.title||'').length;if(l<=4)return 'font-size:18px;-webkit-line-clamp:1;';if(l<=10)return 'font-size:14px;-webkit-line-clamp:1;';if(l<=25)return 'font-size:12px;-webkit-line-clamp:2;';return 'font-size:10px;-webkit-line-clamp:2;';})()}">${esc((card.title||'제목 없음').slice(0,60)+(card.title&&card.title.length>60?'…':''))}</div>
         <!-- 핵심 포인트 -->
-        <div style="display:flex;flex-direction:column;gap:4px;overflow:hidden;${_th ? '' : 'max-height:112px;position:relative;'}">
+        <div style="display:flex;flex-direction:column;gap:4px;${_th ? '' : 'max-height:100px;overflow:hidden;position:relative;'}">
           ${summaryHtml}
           ${keyHtml}
-          ${(hasMore && !_th) ? `<div style="position:absolute;bottom:0;left:0;right:0;height:30px;background:linear-gradient(transparent,${_bg !== 'var(--s1)' ? _bg : '#1a1e2e'});pointer-events:none;"></div>` : ''}
+          ${(hasMore && !_th) ? `<div style="position:absolute;bottom:0;left:0;right:0;height:36px;background:linear-gradient(transparent,${_bg !== 'var(--s1)' ? _bg : '#1a1e2e'});pointer-events:none;"></div>` : ''}
         </div>
-        ${(hasMore && !_th) ? `<div style="font-size:10px;color:var(--di);margin-top:3px;">+${bodyLines.length - 5}줄 더...</div>` : ''}
+        ${(hasMore && !_th) ? `<div style="font-size:10px;color:var(--ac);margin-top:4px;font-weight:600;">+${_totalLines - 5}줄 더...</div>` : ''}
       </div>
       <!-- 카드 푸터 -->
       <div style="padding:8px 14px;border-top:1px solid var(--b1);display:flex;align-items:center;gap:6px;margin-top:auto;flex-wrap:wrap;">
@@ -25035,7 +25061,7 @@ ${newsContext}
           const hasKey = (typeof getSbizKey === 'function') ? getSbizKey() : (localStorage.getItem('sbiz_api') || '');
           sec.innerHTML = hasKey
             ? `<div style="font-size:11px;color:#ff8c42;">⚠️ 소상공인 API 응답 없음<br><span style="color:rgba(255,255,255,.35);font-size:10px;">F12 콘솔에서 오류 확인 / data.go.kr에서 sdsc2 서비스 신청 필요</span></div>`
-            : `<div style="font-size:11px;color:rgba(255,255,255,0.35);">소상공인 API 키 미설정 (상단 입력)</div>`;
+            : `<div style="font-size:11px;color:rgba(255,255,255,0.35);">소상공인 API 키 미설정 (⚙️ 설정탭에서 입력)</div>`;
           return;
         }
 
@@ -26717,7 +26743,7 @@ ${newsContext}
         if (sbizPanelAnalyzing) return;
         var key = (typeof getSbizKey === 'function') ? getSbizKey() : (localStorage.getItem('sbiz_api') || '');
         var noKeyEl = document.getElementById('sbizPanelNoKey');
-        if (!key) { if (noKeyEl) noKeyEl.style.display = ''; if (typeof showToast === 'function') showToast('소상공인 API 키를 상단 API 설정에서 입력해주세요', 'warn', 3000); return; }
+        if (!key) { if (noKeyEl) noKeyEl.style.display = ''; if (typeof showToast === 'function') showToast('소상공인 API 키를 인사이트탭 ⚙️ 설정에서 입력해주세요', 'warn', 3000); return; }
         if (noKeyEl) noKeyEl.style.display = 'none';
         if (!window.map) { if (typeof showToast === 'function') showToast('지도 탭에서 실행해주세요', 'warn'); return; }
         if (!window.kakao || !kakao.maps) { if (typeof showToast === 'function') showToast('카카오맵 로딩 중입니다', 'warn'); return; }
