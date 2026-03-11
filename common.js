@@ -3448,84 +3448,58 @@
     // ===================================================
     // API 키
     // ===================================================
-    function gk() { return (document.getElementById('apiKey_cfg')?.value || document.getElementById('apiKey')?.value || '').trim(); }
-    // ─── 설정탭 ↔ hidden input 동기화 유틸 ─────────────────────────
-    function _syncCfgInputs() {
-      const pairs = [
-        ['apiKey_cfg', 'apiKey'], ['kakaoApiKey_cfg', 'kakaoApiKey'],
-        ['kakaoRestKey_cfg', 'kakaoRestKey'], ['naverClientId_cfg', 'naverClientId'],
-        ['naverClientSecret_cfg', 'naverClientSecret'], ['onbidApiKey_cfg', 'onbidApiKey'],
-        ['sbizApiKey_cfg', 'sbizApiKey'],
-      ];
-      pairs.forEach(([cfgId, topId]) => {
-        const cfgEl = document.getElementById(cfgId);
-        const topEl = document.getElementById(topId);
-        if (cfgEl && topEl) {
-          if (!cfgEl.value && topEl.value) cfgEl.value = topEl.value;
-          // dot 상태 복원
-          const dotId = cfgId.replace('_cfg', 'Dot_cfg').replace('KeyDot', 'Dot').replace('ClientIdDot', 'Dot').replace('ClientSecretDot', 'Dot');
-          const dot = document.getElementById(dotId) || document.getElementById(cfgId.replace('Key_cfg','Dot_cfg').replace('Id_cfg','Dot_cfg').replace('Secret_cfg','Dot_cfg'));
-          if (dot && cfgEl.value.length > 5) dot.classList.add('on');
-        }
-      });
-    }
-
-    function _bindCfgInput(cfgId, topId, lsKey, dotCfgId, onUpdate) {
-      const el = document.getElementById(cfgId);
-      if (!el || el._cfgBound) return;
-      el._cfgBound = true;
-      ['input', 'change', 'keyup', 'paste'].forEach(ev => el.addEventListener(ev, () => {
-        const v = el.value.trim();
-        const topEl = document.getElementById(topId); if (topEl) topEl.value = v;
-        const ok = v.length > 10;
-        const dot = document.getElementById(dotCfgId); if (dot) dot.classList.toggle('on', ok);
-        if (ok && lsKey) { localStorage.setItem(lsKey, v); if (window._sbSaveApiKeys) window._sbSaveApiKeys(); }
-        if (onUpdate) onUpdate(v, ok);
-      }));
-    }
-
-    window._initCfgBindings = function() {
-      _bindCfgInput('apiKey_cfg', 'apiKey', 'g_api', 'apiDot_cfg', (v, ok) => { if (ok) chk(); });
-      _bindCfgInput('kakaoApiKey_cfg', 'kakaoApiKey', 'kakao_api', 'kakaoApiDot_cfg', (v, ok) => {
-        if (ok && (!window.kakao || !window.kakao.maps)) {
+    function gk() { return document.getElementById('apiKey').value.trim(); }
+    (() => {
+      const s = localStorage.getItem('g_api') || 'AIzaSyAuRNnEVnbP-1W14BofIN9br0JYhDG7xPY';
+      if (s) {
+        document.getElementById('apiKey').value = s;
+        document.getElementById('apiDot').classList.add('on');
+        chk();
+      }
+      const k = localStorage.getItem('kakao_api');
+      if (k) {
+        document.getElementById('kakaoApiKey').value = k;
+        document.getElementById('kakaoApiDot').classList.add('on');
+      }
+    })();
+    ['input', 'change', 'keyup', 'paste'].forEach(ev => document.getElementById('apiKey').addEventListener(ev, () => { const v = gk(), ok = v.length > 10; document.getElementById('apiDot').classList.toggle('on', ok); if (ok) { localStorage.setItem('g_api', v); if(window._sbSaveApiKeys) window._sbSaveApiKeys(); } chk(); }));
+    ['input', 'change', 'keyup', 'paste'].forEach(ev => document.getElementById('kakaoApiKey').addEventListener(ev, () => {
+      const v = document.getElementById('kakaoApiKey').value.trim(), ok = v.length > 10;
+      document.getElementById('kakaoApiDot').classList.toggle('on', ok);
+      if (ok) {
+        localStorage.setItem('kakao_api', v);
+        // ★ [FIX] 새로고침 없이 카카오맵 SDK 즉시 로드
+        if (!window.kakao || !window.kakao.maps) {
           const s = document.createElement('script');
+          s.type = 'text/javascript';
           s.src = 'https://dapi.kakao.com/v2/maps/sdk.js?appkey=' + v + '&libraries=services,drawing&autoload=false';
-          s.onload = () => { if (window.kakao?.maps) { kakao.maps.load(() => { if (currentPage === 2) initMap(); showToast('✅ 카카오맵 API 키가 적용되었습니다!', 'ok'); }); } };
-          s.onerror = () => showToast('❌ 카카오맵 API 키가 올바르지 않습니다.', 'error');
+          s.onload = () => {
+            if (window.kakao && window.kakao.maps) {
+              kakao.maps.load(() => {
+                console.log('카카오맵 로드 완료 (키 입력 즉시)');
+                if (currentPage === 2) initMap();
+                showToast('✅ 카카오맵 API 키가 적용되었습니다! 지도 탭을 열어보세요.', 'ok');
+              });
+            }
+          };
+          s.onerror = () => { showToast('❌ 카카오맵 API 키가 올바르지 않습니다. 키를 확인해주세요.', 'error'); };
           document.head.appendChild(s);
         }
-      });
-      _bindCfgInput('kakaoRestKey_cfg', 'kakaoRestKey', 'kakao_rest_key', 'kakaoRestDot_cfg', () => {});
-      _bindCfgInput('naverClientId_cfg', 'naverClientId', 'naver_id', 'naverDot_cfg', () => {});
-      _bindCfgInput('naverClientSecret_cfg', 'naverClientSecret', 'naver_sec', 'naverDot_cfg', () => {});
-      _bindCfgInput('onbidApiKey_cfg', 'onbidApiKey', 'onbid_key', 'onbidDot_cfg', (v) => {
-        ['onbidKeyLocal', 'onbidKey2', 'onbidKeyCollect'].forEach(id => { const e = document.getElementById(id); if (e && !e.value) e.value = v; });
-      });
-      _bindCfgInput('sbizApiKey_cfg', 'sbizApiKey', 'sbiz_api', 'sbizDot_cfg', () => {});
-    };
+      }
+    }));
+    ['input', 'change', 'keyup', 'paste'].forEach(ev => document.getElementById('kakaoRestKey').addEventListener(ev, () => { const v = document.getElementById('kakaoRestKey').value.trim(), ok = v.length > 10; document.getElementById('kakaoRestDot').classList.toggle('on', ok); if (ok) { localStorage.setItem('kakao_rest_key', v); if(window._sbSaveApiKeys) window._sbSaveApiKeys(); } }));
+    const _kr = localStorage.getItem('kakao_rest_key'); if (_kr) { document.getElementById('kakaoRestKey').value = _kr; document.getElementById('kakaoRestDot').classList.toggle('on', _kr.length > 10); }
 
-    // 페이지 로드시 localStorage → hidden input + _cfg 입력란 복원
+    // 소상공인 API 키 초기화
     (() => {
-      const load = (lsKey, elId, dotId, extra) => {
-        const v = localStorage.getItem(lsKey);
-        if (!v) return;
-        const el = document.getElementById(elId); if (el) el.value = v;
-        const cfgEl = document.getElementById(elId + '_cfg'); if (cfgEl && !cfgEl.value) cfgEl.value = v;
-        const dot = document.getElementById(dotId); if (dot && v.length > 5) dot.classList.add('on');
-        const dotCfg = document.getElementById(dotId.replace('Dot','Dot_cfg')); if (dotCfg && v.length > 5) dotCfg.classList.add('on');
-        if (extra) extra(v);
-      };
-      const gApiVal = localStorage.getItem('g_api') || 'AIzaSyAuRNnEVnbP-1W14BofIN9br0JYhDG7xPY';
-      if (gApiVal) { const el = document.getElementById('apiKey'); if (el) el.value = gApiVal; const cfgEl = document.getElementById('apiKey_cfg'); if (cfgEl) cfgEl.value = gApiVal; document.getElementById('apiDot')?.classList.add('on'); document.getElementById('apiDot_cfg')?.classList.add('on'); chk(); }
-      load('kakao_api', 'kakaoApiKey', 'kakaoApiDot');
-      load('kakao_rest_key', 'kakaoRestKey', 'kakaoRestDot');
-      load('naver_id', 'naverClientId', 'naverDot');
-      load('naver_sec', 'naverClientSecret', 'naverDot');
-      load('onbid_key', 'onbidApiKey', 'onbidDot');
-      load('sbiz_api', 'sbizApiKey', 'sbizDot');
+      const sk = localStorage.getItem('sbiz_api');
+      if (sk) {
+        document.getElementById('sbizApiKey').value = sk;
+        document.getElementById('sbizDot').classList.add('on');
+      }
     })();
-
-    function getSbizKey() { return (document.getElementById('sbizApiKey_cfg')?.value || document.getElementById('sbizApiKey')?.value || '').trim() || localStorage.getItem('sbiz_api') || ''; }
+    ['input', 'change', 'keyup', 'paste'].forEach(ev => document.getElementById('sbizApiKey').addEventListener(ev, () => { const v = document.getElementById('sbizApiKey').value.trim(), ok = v.length > 10; document.getElementById('sbizDot').classList.toggle('on', ok); if (ok) { localStorage.setItem('sbiz_api', v); if(window._sbSaveApiKeys) window._sbSaveApiKeys(); } }));
+    function getSbizKey() { return document.getElementById('sbizApiKey').value.trim() || localStorage.getItem('sbiz_api') || '3TPJC0Q7lPb72GcvHBdm'; }
 
     // ===================================================
     // 파일
@@ -6289,7 +6263,7 @@
       }
     }
 
-    // ── 저장목록 현재 필터 적용된 배열 반환 ─────────────
+    // ── 저장목록 현재 필터 결과 반환 ─────────────────────
     function getFilteredSv() {
       let sv = getSv();
       const region = (document.getElementById('regionSearch') || {}).value || '';
@@ -6304,7 +6278,7 @@
       else if (svFilter !== 'all') sv = sv.filter(s => s.mode === svFilter || s.isCSVFile);
       const groupFilter = (document.getElementById('svGroupFilter') || {}).value || 'all';
       if (groupFilter && groupFilter !== 'all') sv = sv.filter(s => (s.group || '기본') === groupFilter);
-      if (isGFilterActive()) sv = sv.filter(item => {
+      if (typeof isGFilterActive === 'function' && isGFilterActive()) sv = sv.filter(item => {
         const d = item.data || {};
         const f = window.gFilter;
         if (f.floorMin !== null || f.floorMax !== null) { const v = parseFloat(d.해당층 ?? d.층 ?? d.floor ?? ''); if (isNaN(v)) return false; if (f.floorMin !== null && v < f.floorMin) return false; if (f.floorMax !== null && v > f.floorMax) return false; }
@@ -6318,23 +6292,13 @@
       return sv;
     }
 
-    // ── 저장목록 CSV 내보내기 ─────────────────────────
     window.pcExportCSV = function(allItems) {
       const sv = allItems ? getSv() : getFilteredSv();
       if (!sv.length) { showToast(allItems ? '저장된 항목이 없습니다' : '필터 결과가 없습니다', 'warn'); return; }
-
-      // 모든 data 키 수집
-      const keySet = new Set(['소재지', '출처', '유형']);
+      const keySet = new Set();
       sv.forEach(item => { if (item.data) Object.keys(item.data).forEach(k => keySet.add(k)); });
-      keySet.delete('소재지'); keySet.delete('출처'); keySet.delete('유형');
-      const dataHdrs = Array.from(keySet);
-      const allHdrs = ['ID', '소재지', '출처', '유형', 'lat', 'lng', ...dataHdrs];
-
-      const esc2 = v => {
-        const s = String(v ?? '').replace(/"/g, '""');
-        return (s.includes(',') || s.includes('"') || s.includes('\n')) ? `"${s}"` : s;
-      };
-
+      const allHdrs = ['ID', '소재지', '출처', '유형', 'lat', 'lng', ...Array.from(keySet)];
+      const esc2 = v => { const s = String(v ?? '').replace(/"/g, '""'); return (s.includes(',') || s.includes('"') || s.includes('\n')) ? `"${s}"` : s; };
       const rows = sv.map(item => {
         const d = item.data || {};
         return allHdrs.map(h => {
@@ -6347,16 +6311,14 @@
           return esc2(d[h] ?? '');
         }).join(',');
       });
-
       const label = allItems ? '전체' : '필터';
-      const csv = '\uFEFF' + allHdrs.join(',') + '\n' + rows.join('\n');
-
+      const csvStr = '\uFEFF' + allHdrs.join(',') + '\n' + rows.join('\n');
       const a = Object.assign(document.createElement('a'), {
-        href: URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' })),
+        href: URL.createObjectURL(new Blob([csvStr], { type: 'text/csv;charset=utf-8;' })),
         download: `상권King_저장목록_${label}_${new Date().toISOString().slice(0,10)}.csv`
       });
       a.click();
-      showToast(`📊 CSV 다운로드 완료 (${sv.length}건)`, 'ok');
+      showToast(`📊 CSV ${sv.length}건 다운로드 완료`, 'ok');
     };
 
     function renderSaved() {
@@ -19419,13 +19381,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         if (p) p.style.display = (i === n) ? '' : 'none';
         if (t) t.classList.toggle('on', i === n);
       });
-      // 설정 탭(ipage_cfg)은 id가 달라 별도 처리
-      const cfgEl = document.getElementById('ipage_cfg');
-      if (cfgEl) cfgEl.style.display = (n === 7) ? '' : 'none';
-      const itab7 = document.getElementById('itab7');
-      if (itab7) itab7.classList.toggle('on', n === 7);
-      if (n === 7) { _syncCfgInputs(); _initCfgBindings(); }
-      const labels = { 0: '노트', 1: '계산기', 3: '뉴스 클리핑', 4: '알짜정보', 5: '파이프라인', 6: '사이트', 7: '설정', 8: '작업룸', 9: '소상공인 상권', 10: '경매 AtoZ' };
+      const labels = { 0: '노트', 1: '계산기', 3: '뉴스 클리핑', 4: '알짜정보', 5: '파이프라인', 6: '사이트', 8: '작업룸', 9: '소상공인 상권', 10: '경매 AtoZ' };
       const lbl = document.getElementById('insTabLabel');
       if (lbl) lbl.textContent = labels[n] || '';
 
@@ -19640,9 +19596,16 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
       let list = [...ntNotes].sort(sortFn);
 
-      // 태그 필터
+      // ── 모드 필터 ──
+      if (_ntMode === 'study') {
+        list = list.filter(n => !n.linkedItemId);
+        if (_ntDomain !== 'all') list = list.filter(n => (n.domain || 'auction') === _ntDomain);
+      } else if (_ntMode === 'deal') {
+        list = list.filter(n => !!n.linkedItemId);
+        if (_ntPhase !== 'all') list = list.filter(n => n.phase === _ntPhase);
+      }
+
       if (ntTagFilter) list = list.filter(n => (n.tags || []).includes(ntTagFilter));
-      // 그룹 필터
       if (window._ntGroupFilter && window._ntGroupFilter !== 'all') list = list.filter(n => (n.group || '') === window._ntGroupFilter);
       if (q) list = list.filter(n =>
         (n.title || '').toLowerCase().includes(q) ||
@@ -19702,34 +19665,26 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     </div>`;
       }).join('');
 
-      // 태그 목록 갱신
-      const allTags = [...new Set(ntNotes.flatMap(n => n.tags || []))];
+      // 태그 목록 갱신 (현재 모드 노트 기준)
+      const baseTags = _ntMode === 'study' ? ntNotes.filter(n => !n.linkedItemId)
+        : _ntMode === 'deal' ? ntNotes.filter(n => !!n.linkedItemId)
+          : ntNotes;
+      const allTags = [...new Set(baseTags.flatMap(n => n.tags || []))];
       const tagFilter = document.getElementById('ntTagFilter');
       if (tagFilter) {
         tagFilter.innerHTML = allTags.length
           ? allTags.map(tg => `<span class="nt-tag-chip${ntTagFilter === tg ? ' on' : ''}" onclick="ntSetTagFilter('${esc(tg)}')">#${esc(tg)}</span>`).join('')
           : `<span style="font-size:10px;color:var(--di);">태그 없음</span>`;
       }
-      // 그룹 목록 갱신
       if (typeof _ntRenderGroupFilter === 'function') _ntRenderGroupFilter();
     };
 
-    window.ntSetNoteGroup = function(id, group) {
-      const note = ntNotes.find(n => n.id === id);
-      if (!note) return;
-      note.group = group || '';
-      note.updatedAt = new Date().toISOString();
-      saveNotes();
-      ntOpen(id);
-      _ntRenderGroupFilter && _ntRenderGroupFilter();
-    };
-
-        window.ntSetTagFilter = function (tag) {
+    window.ntSetTagFilter = function (tag) {
       ntTagFilter = ntTagFilter === tag ? null : tag;
       ntRender();
     };
 
-    // ── 그룹 필터 ──────────────────────────────────────
+    // ── 노트 그룹 기능 ─────────────────────────────────
     window._ntGroupFilter = 'all';
 
     window.ntSetGroupFilter = function(g) {
@@ -19745,37 +19700,47 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const el = document.getElementById('ntGroupFilter');
       if (!el) return;
       const cur = window._ntGroupFilter || 'all';
-      el.innerHTML = `<span class="nt-domain-chip${cur==='all'?' on':''}" data-g="all" onclick="ntSetGroupFilter('all')">전체</span>`
-        + groups.map(g => `<span class="nt-domain-chip${cur===g?' on':''}" data-g="${esc(g)}" onclick="ntSetGroupFilter('${esc(g)}')">${esc(g)}</span>`).join('');
+      el.innerHTML =
+        `<span class="nt-domain-chip${cur==='all'?' on':''}" data-g="all" onclick="ntSetGroupFilter('all')">전체</span>` +
+        groups.map(g => `<span class="nt-domain-chip${cur===g?' on':''}" data-g="${esc(g)}" onclick="ntSetGroupFilter('${esc(g)}')">${esc(g)}</span>`).join('');
     }
 
-    // 그룹 관리 모달
-    window.ntOpenGroupManager = function() {
-      const groups = [...new Set(ntNotes.map(n => n.group || '').filter(Boolean))];
-      const existingModal = document.getElementById('ntGroupModal');
-      if (existingModal) existingModal.remove();
+    window.ntSetNoteGroup = function(id, group) {
+      const note = ntNotes.find(n => n.id === id);
+      if (!note) return;
+      note.group = group.trim() || '';
+      note.updatedAt = new Date().toISOString();
+      ntSave(); ntOpen(id); _ntRenderGroupFilter();
+    };
 
+    window.ntOpenGroupManager = function() {
+      const existing = document.getElementById('ntGroupModal');
+      if (existing) existing.remove();
+      const groups = [...new Set(ntNotes.map(n => n.group || '').filter(Boolean))];
       const modal = document.createElement('div');
       modal.id = 'ntGroupModal';
       modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;';
       modal.innerHTML = `
-        <div style="background:var(--s1);border:1px solid var(--b1);border-radius:14px;padding:20px;width:340px;max-width:90vw;max-height:80vh;overflow-y:auto;">
+        <div style="background:var(--s1);border:1px solid var(--b1);border-radius:14px;padding:20px;width:320px;max-width:90vw;max-height:80vh;overflow-y:auto;">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
             <span style="font-size:14px;font-weight:800;color:var(--tx);">🗂 그룹 관리</span>
             <button onclick="document.getElementById('ntGroupModal').remove()" style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:16px;">✕</button>
           </div>
           <div style="display:flex;gap:6px;margin-bottom:12px;">
-            <input id="ntGroupNewInput" placeholder="새 그룹 이름" style="flex:1;padding:7px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:7px;color:var(--tx);font-size:12px;outline:none;"
+            <input id="ntGroupNewInput" placeholder="새 그룹 이름"
+              style="flex:1;padding:7px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:7px;color:var(--tx);font-size:12px;outline:none;"
               onkeydown="if(event.key==='Enter')ntAddGroup()">
             <button onclick="ntAddGroup()" style="padding:7px 12px;background:var(--ac);color:#111;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">추가</button>
           </div>
-          <div id="ntGroupList" style="display:flex;flex-direction:column;gap:4px;">
-            ${groups.length ? groups.map(g => `
-              <div style="display:flex;align-items:center;gap:6px;padding:7px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;">
-                <span style="flex:1;font-size:12px;color:var(--tx);">${esc(g)}</span>
-                <button onclick="ntRenameGroup('${esc(g)}')" style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:11px;padding:2px 6px;border-radius:4px;" onmouseover="this.style.color='var(--tx)'" onmouseout="this.style.color='var(--mu)'">✏️ 수정</button>
-                <button onclick="ntDeleteGroup('${esc(g)}')" style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:11px;padding:2px 6px;border-radius:4px;" onmouseover="this.style.color='#ff6370'" onmouseout="this.style.color='var(--mu)'">🗑 삭제</button>
-              </div>`) .join('') : '<div style="font-size:11px;color:var(--di);text-align:center;padding:12px;">그룹이 없습니다</div>'}
+          <div id="ntGroupList">
+            ${groups.length ? groups.map(g => {
+              const cnt = ntNotes.filter(n => n.group === g).length;
+              return `<div style="display:flex;align-items:center;gap:6px;padding:7px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;margin-bottom:4px;">
+                <span style="flex:1;font-size:12px;color:var(--tx);">${esc(g)} <span style="color:var(--di);font-size:10px;">(${cnt}개)</span></span>
+                <button onclick="ntRenameGroup('${esc(g)}')" style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:11px;padding:2px 6px;" onmouseover="this.style.color='var(--tx)'" onmouseout="this.style.color='var(--mu)'">✏️</button>
+                <button onclick="ntDeleteGroup('${esc(g)}')" style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:11px;padding:2px 6px;" onmouseover="this.style.color='#ff6370'" onmouseout="this.style.color='var(--mu)'">🗑</button>
+              </div>`;
+            }).join('') : '<div style="font-size:11px;color:var(--di);text-align:center;padding:12px;">그룹이 없습니다<br><span style="font-size:10px;">노트 작성 시 그룹을 지정하면 여기 표시돼요</span></div>'}
           </div>
         </div>`;
       document.body.appendChild(modal);
@@ -19786,40 +19751,33 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const input = document.getElementById('ntGroupNewInput');
       const name = input?.value?.trim();
       if (!name) return;
-      // 이미 있으면 스킵
-      const exists = ntNotes.some(n => n.group === name);
-      if (exists) { showToast('이미 있는 그룹입니다', 'warn'); return; }
-      // 빈 그룹은 노트에 저장할 게 없으므로 그냥 필터에만 추가
-      showToast(`그룹 "${name}" 추가됨`, 'ok');
+      if (ntNotes.some(n => n.group === name)) { showToast('이미 있는 그룹입니다', 'warn'); return; }
+      showToast('"' + name + '" 그룹 추가됨 (노트에 지정하면 활성화됩니다)', 'ok');
       if (input) input.value = '';
-      // 모달 갱신
-      ntOpenGroupManager();
-      _ntRenderGroupFilter();
     };
 
     window.ntRenameGroup = function(oldName) {
-      const newName = prompt(`그룹 이름 변경
-현재: "${oldName}"`, oldName);
-      if (!newName || newName === oldName) return;
-      ntNotes.forEach(n => { if (n.group === oldName) n.group = newName; });
-      saveNotes();
+      const newName = prompt('그룹 이름 변경', oldName);
+      if (!newName || !newName.trim() || newName.trim() === oldName) return;
+      ntNotes.forEach(n => { if (n.group === oldName) n.group = newName.trim(); });
+      ntSave();
+      if (window._ntGroupFilter === oldName) window._ntGroupFilter = newName.trim();
       ntOpenGroupManager();
       _ntRenderGroupFilter();
-      if (window._ntGroupFilter === oldName) { window._ntGroupFilter = newName; }
       ntRender();
-      showToast(`"${oldName}" → "${newName}" 변경 완료`, 'ok');
+      showToast('"' + oldName + '" → "' + newName.trim() + '"', 'ok');
     };
 
     window.ntDeleteGroup = function(name) {
-      const count = ntNotes.filter(n => n.group === name).length;
-      if (!confirm(`그룹 "${name}" 삭제\n(${count}개 노트의 그룹이 해제됩니다)`)) return;
+      const cnt = ntNotes.filter(n => n.group === name).length;
+      if (!confirm('"' + name + '" 그룹 삭제\n(' + cnt + '개 노트의 그룹이 해제됩니다)')) return;
       ntNotes.forEach(n => { if (n.group === name) delete n.group; });
-      saveNotes();
+      ntSave();
+      if (window._ntGroupFilter === name) window._ntGroupFilter = 'all';
       ntOpenGroupManager();
       _ntRenderGroupFilter();
-      if (window._ntGroupFilter === name) window._ntGroupFilter = 'all';
       ntRender();
-      showToast(`그룹 "${name}" 삭제 완료`, 'ok');
+      showToast('"' + name + '" 삭제 완료', 'ok');
     };
 
     // ── 노트 열기 ──────────────────────────────────────
@@ -20048,17 +20006,19 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         <input id="ntTagInput" placeholder="+ 태그" onkeydown="if(event.key==='Enter'&&this.value.trim()){ntAddTag('${id}',this.value.trim());this.value='';}"
           style="padding:2px 7px;background:var(--s2);border:1px dashed var(--b1);border-radius:8px;color:var(--mu);font-size:11px;width:70px;outline:none;">
       </div>
-      <!-- 그룹 선택 -->
-      <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
-        <span style="font-size:10px;color:var(--mu);flex-shrink:0;">그룹:</span>
-        ${(() => {
-          const groups = [...new Set((window.ntNotes||[]).map(n=>n.group||'').filter(Boolean))];
-          const cur = note.group || '';
-          const chips = groups.map(g => `<span onclick="ntSetNoteGroup('${id}','${esc(g)}')"
-            style="padding:2px 8px;border-radius:8px;font-size:10px;cursor:pointer;border:1px solid ${cur===g?'#ffd166':'var(--b1)'};background:${cur===g?'rgba(255,209,102,.15)':'var(--s2)'};color:${cur===g?'#ffd166':'var(--mu)'};">${esc(g)}</span>`).join('');
-          return chips + `<input id="ntGroupInlineInput_${id}" placeholder="+ 그룹" onkeydown="if(event.key==='Enter'&&this.value.trim()){ntSetNoteGroup('${id}',this.value.trim());this.value='';}"
-            style="padding:2px 7px;background:var(--s2);border:1px dashed var(--b1);border-radius:8px;color:var(--mu);font-size:11px;width:65px;outline:none;">`;
-        })()}
+      <!-- domain/phase 선택 -->
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+        ${note.linkedItemId ? `
+          <span style="font-size:10px;color:var(--mu);">단계:</span>
+          ${['legal', 'field', 'profit', 'bid', 'review'].map(p => `<span onclick="ntSetNotePhase('${id}','${p}')"
+            style="padding:2px 8px;border-radius:8px;font-size:10px;cursor:pointer;border:1px solid ${note.phase === p ? '#a78bfa' : 'var(--b1)'};background:${note.phase === p ? 'rgba(167,139,250,.15)' : 'var(--s2)'};color:${note.phase === p ? '#a78bfa' : 'var(--mu)'};">
+            ${NT_PHASE_LABELS[p]}</span>`).join('')}
+        ` : `
+          <span style="font-size:10px;color:var(--mu);">주제:</span>
+          ${['auction', 'tax', 'legal', 'market', 'operation', 'etc'].map(d => `<span onclick="ntSetNoteDomain('${id}','${d}')"
+            style="padding:2px 8px;border-radius:8px;font-size:10px;cursor:pointer;border:1px solid ${(note.domain || 'auction') === d ? '#4f8eff' : 'var(--b1)'};background:${(note.domain || 'auction') === d ? 'rgba(79,142,255,.15)' : 'var(--s2)'};color:${(note.domain || 'auction') === d ? '#4f8eff' : 'var(--mu)'};">
+            ${NT_DOMAIN_LABELS[d]}</span>`).join('')}
+        `}
       </div>
     </div>
     <!-- 에디터 본문 -->
@@ -20151,12 +20111,12 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     window.ntRenameTag = function (id, oldTag) {
       const note = ntNotes.find(n => n.id === id);
       if (!note) return;
-      const newTag = prompt(`태그 수정 (현재: #${oldTag})`, oldTag);
-      if (!newTag || newTag === oldTag) return;
+      const newTag = prompt('태그 수정', oldTag);
+      if (!newTag || !newTag.trim() || newTag.trim() === oldTag) return;
       note.tags = (note.tags || []).map(t => t === oldTag ? newTag.trim() : t);
       note.updatedAt = new Date().toISOString();
       ntSave(); ntOpen(id); ntRender();
-      showToast(`#${oldTag} → #${newTag.trim()}`, 'ok');
+      showToast('#' + oldTag + ' → #' + newTag.trim(), 'ok');
     };
 
     // ── 삭제 ───────────────────────────────────────────
@@ -21196,8 +21156,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
     // ── 네이버 API 키 헬퍼 ─────────────────────────────
     function getNaverKeys() {
-      const id = (document.getElementById('naverClientId_cfg')?.value || document.getElementById('naverClientId')?.value || '').trim() || localStorage.getItem('naver_id') || '';
-      const sec = (document.getElementById('naverClientSecret_cfg')?.value || document.getElementById('naverClientSecret')?.value || '').trim() || localStorage.getItem('naver_sec') || '';
+      const id = document.getElementById('naverClientId')?.value?.trim() || localStorage.getItem('naver_id') || '';
+      const sec = document.getElementById('naverClientSecret')?.value?.trim() || localStorage.getItem('naver_sec') || '';
       return { id, sec };
     }
 
@@ -23830,74 +23790,6 @@ ${newsContext}
     }
 
     function onNaverUrlInput() { }  // 하위호환
-
-    // ══════════════════════════════════════════════════════
-    // 📊 지도 물건 CSV 내보내기
-    // pcMapExportCSV(allItems)
-    //   false → 현재 지도 화면에 보이는 마커만
-    //   true  → 전체 저장 목록
-    // ══════════════════════════════════════════════════════
-    function pcMapExportCSV(allItems) {
-      if (!mapMarkers || !mapMarkers.length) {
-        showToast('지도에 표시된 물건이 없습니다', 'warn'); return;
-      }
-
-      let targets;
-      if (allItems) {
-        targets = mapMarkers.filter(m => m.item && m.propertyType !== 'transaction');
-      } else {
-        // 필터CSV: bounds 안에 있는 마커만 (setMap null인 것 제외)
-        const bounds = map ? map.getBounds() : null;
-        targets = mapMarkers.filter(m => {
-          if (!m.item || m.propertyType === 'transaction') return false;
-          try { if (m.marker.getMap() === null) return false; } catch(e) {}
-          if (!bounds) return true;
-          try { return bounds.contain(m.marker.getPosition()); } catch(e) { return false; }
-        });
-      }
-
-      if (!targets.length) {
-        showToast(allItems ? '저장된 물건이 없습니다' : '현재 화면에 표시된 물건이 없습니다', 'warn'); return;
-      }
-
-      // 헤더: 공통 + data 내 모든 키 수집
-      const baseHdrs = ['ID', '소재지', '유형', '출처', 'lat', 'lng'];
-      const dataKeySet = new Set();
-      targets.forEach(m => { if (m.item.data) Object.keys(m.item.data).forEach(k => dataKeySet.add(k)); });
-      // 소재지 중복 제외
-      dataKeySet.delete('소재지');
-      const dataHdrs = Array.from(dataKeySet);
-      const allHdrs = [...baseHdrs, ...dataHdrs];
-
-      const esc2 = v => {
-        const s = String(v ?? '').replace(/"/g, '""');
-        return (s.includes(',') || s.includes('"') || s.includes('\n')) ? `"${s}"` : s;
-      };
-
-      const rows = targets.map(m => {
-        const it = m.item;
-        const d = it.data || {};
-        return allHdrs.map(h => {
-          if (h === 'ID') return esc2(it.id || '');
-          if (h === '소재지') return esc2(d.소재지 || m.address || '');
-          if (h === '유형') return esc2(m.propertyType || '');
-          if (h === '출처') return esc2(it.source || d.출처 || '');
-          if (h === 'lat') return esc2(it.lat || '');
-          if (h === 'lng') return esc2(it.lng || '');
-          return esc2(d[h] ?? '');
-        }).join(',');
-      });
-
-      const csv = '\uFEFF' + allHdrs.join(',') + '\n' + rows.join('\n');
-      const label = allItems ? '전체' : '현재화면';
-      const a = Object.assign(document.createElement('a'), {
-        href: URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' })),
-        download: `상권King_지도물건_${label}_${new Date().toISOString().slice(0,10)}.csv`
-      });
-      a.click();
-      showToast(`📊 CSV 다운로드 완료 (${targets.length}건)`, 'ok');
-    }
-    window.pcMapExportCSV = pcMapExportCSV;
 
     // ══════════════════════════════════════════════════════
     // 🏢 3대 상가 매물 수집 (네이버/점포라인/점포거래소)
