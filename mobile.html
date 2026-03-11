@@ -3777,32 +3777,64 @@ body {
   };
 
   // 이미지 선택
-  window.mbKcardImgPick = function(input) {
+  window.mbKcardImgPick = async function(input) {
     if (!input.files || !input.files[0]) return;
     var file = input.files[0];
-    if (file.size > 5*1024*1024) { alert('5MB 이하 이미지만 첨부 가능해요'); return; }
-    var reader = new FileReader();
-    reader.onload = function(e) {
-      window._mbKcardPendingImgs = [e.target.result];
-      var prev = document.getElementById('mbKcardImgPreview');
-      if (prev) {
-        var wrap = document.createElement('div');
-        wrap.style.cssText = 'position:relative;display:inline-block;';
-        var img = document.createElement('img');
-        img.src = e.target.result;
-        img.style.cssText = 'width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--b1);';
-        var delBtn = document.createElement('button');
-        delBtn.textContent = '✕';
-        delBtn.style.cssText = 'position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;background:#ff6370;border:none;color:#fff;font-size:10px;cursor:pointer;';
-        delBtn.onclick = function() { window.mbKcardImgClear(); };
-        wrap.appendChild(img);
-        wrap.appendChild(delBtn);
-        prev.innerHTML = '';
-        prev.appendChild(wrap);
-      }
-      input.value = '';
-    };
-    reader.readAsDataURL(file);
+    if (file.size > 10*1024*1024) { alert('10MB 이하 이미지만 첨부 가능해요'); return; }
+    input.value = '';
+
+    if (!window._mbKcardPendingImgs) window._mbKcardPendingImgs = [];
+
+    // 즉시 로컬 미리보기 (blob URL)
+    var blobUrl = URL.createObjectURL(file);
+    var prev = document.getElementById('mbKcardImgPreview');
+    var wrap = document.createElement('div');
+    wrap.style.cssText = 'position:relative;display:inline-block;opacity:0.5;';
+    var img = document.createElement('img');
+    img.src = blobUrl;
+    img.style.cssText = 'width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--b1);';
+    wrap.appendChild(img);
+    if (prev) { prev.innerHTML = ''; prev.appendChild(wrap); }
+
+    var sb = window._sb;
+    try {
+      if (!sb) throw new Error('Supabase 미초기화');
+      var uidData = await sb.auth.getUser();
+      var userId = uidData && uidData.data && uidData.data.user && uidData.data.user.id;
+      if (!userId) throw new Error('로그인이 필요합니다');
+
+      var ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+      var path = userId + '/' + Date.now() + '_' + Math.random().toString(36).slice(2) + '.' + ext;
+
+      var uploadRes = await sb.storage.from('kcard-images').upload(path, file, { contentType: file.type, upsert: false });
+      if (uploadRes.error) throw uploadRes.error;
+
+      var urlData = sb.storage.from('kcard-images').getPublicUrl(path);
+      var publicUrl = urlData.data.publicUrl;
+
+      window._mbKcardPendingImgs.push(publicUrl);
+
+      // 미리보기 업데이트
+      wrap.style.opacity = '1';
+      URL.revokeObjectURL(img.src);
+      img.src = publicUrl;
+
+      var delBtn = document.createElement('button');
+      delBtn.textContent = '✕';
+      delBtn.style.cssText = 'position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;background:#ff6370;border:none;color:#fff;font-size:10px;cursor:pointer;';
+      delBtn.onclick = async function() {
+        await sb.storage.from('kcard-images').remove([path]);
+        var idx = window._mbKcardPendingImgs.indexOf(publicUrl);
+        if (idx > -1) window._mbKcardPendingImgs.splice(idx, 1);
+        wrap.remove();
+      };
+      wrap.appendChild(delBtn);
+
+    } catch(e) {
+      console.error('[mb kcard img upload]', e);
+      if (typeof showToast === 'function') showToast('이미지 업로드 실패: ' + (e.message || ''), 'warn');
+      wrap.remove();
+    }
   };
   window.mbKcardImgClear = function() {
     window._mbKcardPendingImgs = [];
@@ -4739,33 +4771,69 @@ body {
       <!-- 배경색 -->
       <div>
         <div style="font-size:11px;color:var(--mu);margin-bottom:6px;font-weight:600;">카드 배경색</div>
-        <div style="display:flex;gap:7px;flex-wrap:wrap;" id="mbKcardBgPicker">
-          <div onclick="window.mbKcardSelectBg('')" id="mbKcardBg_default"
-            style="width:28px;height:28px;border-radius:50%;background:#2a2d3a;border:2px solid var(--ac);cursor:pointer;position:relative;" title="기본">
-            <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;">✓</div>
+        <div id="mbKcardBgPicker" style="display:flex;flex-direction:column;gap:5px;">
+          <!-- 기본+흑백 -->
+          <div style="display:flex;gap:5px;flex-wrap:wrap;">
+            <div onclick="window.mbKcardSelectBg('')" id="mbKcardBg_default" style="width:26px;height:26px;border-radius:50%;background:#2a2d3a;border:2px solid var(--ac);cursor:pointer;position:relative;" title="기본"><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;">✓</div></div>
+            <div onclick="window.mbKcardSelectBg('#ffffff')" id="mbKcardBg_ffffff" style="width:26px;height:26px;border-radius:50%;background:#ffffff;border:1px solid #555;cursor:pointer;" title="흰색"></div>
+            <div onclick="window.mbKcardSelectBg('#e2e8f0')" id="mbKcardBg_e2e8f0" style="width:26px;height:26px;border-radius:50%;background:#e2e8f0;border:1px solid #555;cursor:pointer;" title="연회색"></div>
+            <div onclick="window.mbKcardSelectBg('#94a3b8')" id="mbKcardBg_94a3b8" style="width:26px;height:26px;border-radius:50%;background:#94a3b8;border:1px solid #555;cursor:pointer;" title="회색"></div>
+            <div onclick="window.mbKcardSelectBg('#475569')" id="mbKcardBg_475569" style="width:26px;height:26px;border-radius:50%;background:#475569;border:1px solid #555;cursor:pointer;" title="진회색"></div>
+            <div onclick="window.mbKcardSelectBg('#1e293b')" id="mbKcardBg_1e293b" style="width:26px;height:26px;border-radius:50%;background:#1e293b;border:1px solid #555;cursor:pointer;" title="다크"></div>
           </div>
-          <!-- 다크 계열 -->
-          <div onclick="window.mbKcardSelectBg('#1a2744')" id="mbKcardBg_1a2744" style="width:28px;height:28px;border-radius:50%;background:#1a2744;border:2px solid transparent;cursor:pointer;" title="네이비"></div>
-          <div onclick="window.mbKcardSelectBg('#2a1f3d')" id="mbKcardBg_2a1f3d" style="width:28px;height:28px;border-radius:50%;background:#2a1f3d;border:2px solid transparent;cursor:pointer;" title="퍼플다크"></div>
-          <div onclick="window.mbKcardSelectBg('#1f3328')" id="mbKcardBg_1f3328" style="width:28px;height:28px;border-radius:50%;background:#1f3328;border:2px solid transparent;cursor:pointer;" title="그린다크"></div>
-          <div onclick="window.mbKcardSelectBg('#3a2010')" id="mbKcardBg_3a2010" style="width:28px;height:28px;border-radius:50%;background:#3a2010;border:2px solid transparent;cursor:pointer;" title="브라운"></div>
-          <div onclick="window.mbKcardSelectBg('#332800')" id="mbKcardBg_332800" style="width:28px;height:28px;border-radius:50%;background:#332800;border:2px solid transparent;cursor:pointer;" title="골드다크"></div>
-          <div onclick="window.mbKcardSelectBg('#330a0e')" id="mbKcardBg_330a0e" style="width:28px;height:28px;border-radius:50%;background:#330a0e;border:2px solid transparent;cursor:pointer;" title="레드다크"></div>
-          <div onclick="window.mbKcardSelectBg('#0f2922')" id="mbKcardBg_0f2922" style="width:28px;height:28px;border-radius:50%;background:#0f2922;border:2px solid transparent;cursor:pointer;" title="틸다크"></div>
-          <!-- 밝은 계열 -->
-          <div onclick="window.mbKcardSelectBg('#fef08a')" id="mbKcardBg_fef08a" style="width:28px;height:28px;border-radius:50%;background:#fef08a;border:2px solid transparent;cursor:pointer;" title="노랑"></div>
-          <div onclick="window.mbKcardSelectBg('#86efac')" id="mbKcardBg_86efac" style="width:28px;height:28px;border-radius:50%;background:#86efac;border:2px solid transparent;cursor:pointer;" title="민트"></div>
-          <div onclick="window.mbKcardSelectBg('#93c5fd')" id="mbKcardBg_93c5fd" style="width:28px;height:28px;border-radius:50%;background:#93c5fd;border:2px solid transparent;cursor:pointer;" title="하늘"></div>
-          <div onclick="window.mbKcardSelectBg('#f9a8d4')" id="mbKcardBg_f9a8d4" style="width:28px;height:28px;border-radius:50%;background:#f9a8d4;border:2px solid transparent;cursor:pointer;" title="핑크"></div>
-          <div onclick="window.mbKcardSelectBg('#c4b5fd')" id="mbKcardBg_c4b5fd" style="width:28px;height:28px;border-radius:50%;background:#c4b5fd;border:2px solid transparent;cursor:pointer;" title="라벤더"></div>
-          <div onclick="window.mbKcardSelectBg('#fdba74')" id="mbKcardBg_fdba74" style="width:28px;height:28px;border-radius:50%;background:#fdba74;border:2px solid transparent;cursor:pointer;" title="오렌지"></div>
-          <div onclick="window.mbKcardSelectBg('#fca5a5')" id="mbKcardBg_fca5a5" style="width:28px;height:28px;border-radius:50%;background:#fca5a5;border:2px solid transparent;cursor:pointer;" title="살몬"></div>
-          <div onclick="window.mbKcardSelectBg('#a7f3d0')" id="mbKcardBg_a7f3d0" style="width:28px;height:28px;border-radius:50%;background:#a7f3d0;border:2px solid transparent;cursor:pointer;" title="에메랄드"></div>
-          <div onclick="window.mbKcardSelectBg('#bfdbfe')" id="mbKcardBg_bfdbfe" style="width:28px;height:28px;border-radius:50%;background:#bfdbfe;border:2px solid transparent;cursor:pointer;" title="블루"></div>
-          <div onclick="window.mbKcardSelectBg('#fde68a')" id="mbKcardBg_fde68a" style="width:28px;height:28px;border-radius:50%;background:#fde68a;border:2px solid transparent;cursor:pointer;" title="골드"></div>
-          <div onclick="window.mbKcardSelectBg('#e9d5ff')" id="mbKcardBg_e9d5ff" style="width:28px;height:28px;border-radius:50%;background:#e9d5ff;border:2px solid transparent;cursor:pointer;" title="퍼플"></div>
-          <div onclick="window.mbKcardSelectBg('#fff3cd')" id="mbKcardBg_fff3cd" style="width:28px;height:28px;border-radius:50%;background:#fff3cd;border:2px solid transparent;cursor:pointer;" title="크림"></div>
-          <div onclick="window.mbKcardSelectBg('#d1fae5')" id="mbKcardBg_d1fae5" style="width:28px;height:28px;border-radius:50%;background:#d1fae5;border:2px solid transparent;cursor:pointer;" title="라이트그린"></div>
+          <!-- 빨강 계열 -->
+          <div style="display:flex;gap:5px;flex-wrap:wrap;">
+            <div onclick="window.mbKcardSelectBg('#fecaca')" id="mbKcardBg_fecaca" style="width:26px;height:26px;border-radius:50%;background:#fecaca;border:1px solid #555;cursor:pointer;" title="연빨강"></div>
+            <div onclick="window.mbKcardSelectBg('#fca5a5')" id="mbKcardBg_fca5a5" style="width:26px;height:26px;border-radius:50%;background:#fca5a5;border:1px solid #555;cursor:pointer;" title="살몬"></div>
+            <div onclick="window.mbKcardSelectBg('#f87171')" id="mbKcardBg_f87171" style="width:26px;height:26px;border-radius:50%;background:#f87171;border:1px solid #555;cursor:pointer;" title="빨강"></div>
+            <div onclick="window.mbKcardSelectBg('#dc2626')" id="mbKcardBg_dc2626" style="width:26px;height:26px;border-radius:50%;background:#dc2626;border:1px solid #555;cursor:pointer;" title="진빨강"></div>
+            <div onclick="window.mbKcardSelectBg('#7f1d1d')" id="mbKcardBg_7f1d1d" style="width:26px;height:26px;border-radius:50%;background:#7f1d1d;border:1px solid #555;cursor:pointer;" title="다크레드"></div>
+            <div onclick="window.mbKcardSelectBg('#330a0e')" id="mbKcardBg_330a0e" style="width:26px;height:26px;border-radius:50%;background:#330a0e;border:1px solid #555;cursor:pointer;" title="버건디"></div>
+          </div>
+          <!-- 주황/노랑 계열 -->
+          <div style="display:flex;gap:5px;flex-wrap:wrap;">
+            <div onclick="window.mbKcardSelectBg('#fff3cd')" id="mbKcardBg_fff3cd" style="width:26px;height:26px;border-radius:50%;background:#fff3cd;border:1px solid #555;cursor:pointer;" title="크림"></div>
+            <div onclick="window.mbKcardSelectBg('#fef08a')" id="mbKcardBg_fef08a" style="width:26px;height:26px;border-radius:50%;background:#fef08a;border:1px solid #555;cursor:pointer;" title="노랑"></div>
+            <div onclick="window.mbKcardSelectBg('#fde68a')" id="mbKcardBg_fde68a" style="width:26px;height:26px;border-radius:50%;background:#fde68a;border:1px solid #555;cursor:pointer;" title="골드"></div>
+            <div onclick="window.mbKcardSelectBg('#fdba74')" id="mbKcardBg_fdba74" style="width:26px;height:26px;border-radius:50%;background:#fdba74;border:1px solid #555;cursor:pointer;" title="오렌지"></div>
+            <div onclick="window.mbKcardSelectBg('#f97316')" id="mbKcardBg_f97316" style="width:26px;height:26px;border-radius:50%;background:#f97316;border:1px solid #555;cursor:pointer;" title="진오렌지"></div>
+            <div onclick="window.mbKcardSelectBg('#3a2010')" id="mbKcardBg_3a2010" style="width:26px;height:26px;border-radius:50%;background:#3a2010;border:1px solid #555;cursor:pointer;" title="다크브라운"></div>
+          </div>
+          <!-- 초록 계열 -->
+          <div style="display:flex;gap:5px;flex-wrap:wrap;">
+            <div onclick="window.mbKcardSelectBg('#d1fae5')" id="mbKcardBg_d1fae5" style="width:26px;height:26px;border-radius:50%;background:#d1fae5;border:1px solid #555;cursor:pointer;" title="연초록"></div>
+            <div onclick="window.mbKcardSelectBg('#a7f3d0')" id="mbKcardBg_a7f3d0" style="width:26px;height:26px;border-radius:50%;background:#a7f3d0;border:1px solid #555;cursor:pointer;" title="에메랄드"></div>
+            <div onclick="window.mbKcardSelectBg('#86efac')" id="mbKcardBg_86efac" style="width:26px;height:26px;border-radius:50%;background:#86efac;border:1px solid #555;cursor:pointer;" title="민트"></div>
+            <div onclick="window.mbKcardSelectBg('#22c55e')" id="mbKcardBg_22c55e" style="width:26px;height:26px;border-radius:50%;background:#22c55e;border:1px solid #555;cursor:pointer;" title="초록"></div>
+            <div onclick="window.mbKcardSelectBg('#15803d')" id="mbKcardBg_15803d" style="width:26px;height:26px;border-radius:50%;background:#15803d;border:1px solid #555;cursor:pointer;" title="진초록"></div>
+            <div onclick="window.mbKcardSelectBg('#1f3328')" id="mbKcardBg_1f3328" style="width:26px;height:26px;border-radius:50%;background:#1f3328;border:1px solid #555;cursor:pointer;" title="다크그린"></div>
+          </div>
+          <!-- 파랑 계열 -->
+          <div style="display:flex;gap:5px;flex-wrap:wrap;">
+            <div onclick="window.mbKcardSelectBg('#dbeafe')" id="mbKcardBg_dbeafe" style="width:26px;height:26px;border-radius:50%;background:#dbeafe;border:1px solid #555;cursor:pointer;" title="연하늘"></div>
+            <div onclick="window.mbKcardSelectBg('#bfdbfe')" id="mbKcardBg_bfdbfe" style="width:26px;height:26px;border-radius:50%;background:#bfdbfe;border:1px solid #555;cursor:pointer;" title="하늘"></div>
+            <div onclick="window.mbKcardSelectBg('#93c5fd')" id="mbKcardBg_93c5fd" style="width:26px;height:26px;border-radius:50%;background:#93c5fd;border:1px solid #555;cursor:pointer;" title="블루"></div>
+            <div onclick="window.mbKcardSelectBg('#3b82f6')" id="mbKcardBg_3b82f6" style="width:26px;height:26px;border-radius:50%;background:#3b82f6;border:1px solid #555;cursor:pointer;" title="진블루"></div>
+            <div onclick="window.mbKcardSelectBg('#1d4ed8')" id="mbKcardBg_1d4ed8" style="width:26px;height:26px;border-radius:50%;background:#1d4ed8;border:1px solid #555;cursor:pointer;" title="로얄블루"></div>
+            <div onclick="window.mbKcardSelectBg('#1a2744')" id="mbKcardBg_1a2744" style="width:26px;height:26px;border-radius:50%;background:#1a2744;border:1px solid #555;cursor:pointer;" title="다크네이비"></div>
+          </div>
+          <!-- 보라 계열 -->
+          <div style="display:flex;gap:5px;flex-wrap:wrap;">
+            <div onclick="window.mbKcardSelectBg('#ede9fe')" id="mbKcardBg_ede9fe" style="width:26px;height:26px;border-radius:50%;background:#ede9fe;border:1px solid #555;cursor:pointer;" title="연보라"></div>
+            <div onclick="window.mbKcardSelectBg('#e9d5ff')" id="mbKcardBg_e9d5ff" style="width:26px;height:26px;border-radius:50%;background:#e9d5ff;border:1px solid #555;cursor:pointer;" title="라벤더"></div>
+            <div onclick="window.mbKcardSelectBg('#c4b5fd')" id="mbKcardBg_c4b5fd" style="width:26px;height:26px;border-radius:50%;background:#c4b5fd;border:1px solid #555;cursor:pointer;" title="보라"></div>
+            <div onclick="window.mbKcardSelectBg('#a855f7')" id="mbKcardBg_a855f7" style="width:26px;height:26px;border-radius:50%;background:#a855f7;border:1px solid #555;cursor:pointer;" title="퍼플"></div>
+            <div onclick="window.mbKcardSelectBg('#7c3aed')" id="mbKcardBg_7c3aed" style="width:26px;height:26px;border-radius:50%;background:#7c3aed;border:1px solid #555;cursor:pointer;" title="진보라"></div>
+            <div onclick="window.mbKcardSelectBg('#2a1f3d')" id="mbKcardBg_2a1f3d" style="width:26px;height:26px;border-radius:50%;background:#2a1f3d;border:1px solid #555;cursor:pointer;" title="다크퍼플"></div>
+          </div>
+          <!-- 핑크 계열 -->
+          <div style="display:flex;gap:5px;flex-wrap:wrap;">
+            <div onclick="window.mbKcardSelectBg('#fce7f3')" id="mbKcardBg_fce7f3" style="width:26px;height:26px;border-radius:50%;background:#fce7f3;border:1px solid #555;cursor:pointer;" title="연핑크"></div>
+            <div onclick="window.mbKcardSelectBg('#fbcfe8')" id="mbKcardBg_fbcfe8" style="width:26px;height:26px;border-radius:50%;background:#fbcfe8;border:1px solid #555;cursor:pointer;" title="핑크"></div>
+            <div onclick="window.mbKcardSelectBg('#f9a8d4')" id="mbKcardBg_f9a8d4" style="width:26px;height:26px;border-radius:50%;background:#f9a8d4;border:1px solid #555;cursor:pointer;" title="로즈"></div>
+            <div onclick="window.mbKcardSelectBg('#ec4899')" id="mbKcardBg_ec4899" style="width:26px;height:26px;border-radius:50%;background:#ec4899;border:1px solid #555;cursor:pointer;" title="핫핑크"></div>
+            <div onclick="window.mbKcardSelectBg('#9d174d')" id="mbKcardBg_9d174d" style="width:26px;height:26px;border-radius:50%;background:#9d174d;border:1px solid #555;cursor:pointer;" title="다크핑크"></div>
+          </div>
         </div>
       </div>
     </div>

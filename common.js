@@ -217,6 +217,8 @@
       await Promise.all(loadPromises);
       window._idbPreloadDone = true;
       console.log('[IDB] 프리로드 완료. 캐시 키:', Object.keys(window._idbCache).join(', '));
+      // 검색 인덱스 초기 빌드
+      try { if (typeof _svBuildIndex === 'function') _svBuildIndex(window._idbCache['re_sv']); } catch(e) {}
     } catch(e) {
       console.warn('[IDB] 프리로드 실패, localStorage fallback으로 동작:', e);
       window._idbPreloadDone = true; // 실패해도 앱은 계속 동작
@@ -360,7 +362,7 @@
           data: item,
           updated_at: new Date(item.updatedAt || item.timestamp || Date.now()).toISOString()
         }));
-        // 50개씩 나눠서 upsert (Supabase 요청 크기 제한 대비)
+        // 50개씩 나눠서 upsert
         for (let i = 0; i < rows.length; i += 50) {
           const chunk = rows.slice(i, i + 50);
           const { error } = await window._sb.from(table).upsert(chunk, { onConflict: 'id' });
@@ -368,17 +370,60 @@
         }
       } catch(e) { console.warn('[SB] tblSaveArr error', table, e); }
     }
-    // 테이블 → 배열 로드 (본인 데이터만, RLS가 자동 필터)
+
+    // ── dirty tracking: 변경된 item_id만 추적 ──────────────────
+    const _dirtyItems = {};
+    function _markDirty(table, itemId) {
+      if (!_dirtyItems[table]) _dirtyItems[table] = new Set();
+      _dirtyItems[table].add(itemId);
+    }
+    function _clearDirty(table) { _dirtyItems[table] = new Set(); }
+
+    // 변경된 항목만 upsert (dirty tracking 기반)
+    async function tblSaveDirty(table, arr) {
+      try {
+        const uid = await _sbGetUserId();
+        if (!uid || !arr || !arr.length) return;
+        const dirty = _dirtyItems[table];
+        const toSave = (dirty && dirty.size > 0)
+          ? arr.filter(item => dirty.has(item.id || item.item_id))
+          : arr; // dirty 목록 없으면 전체 (초기 동기화)
+        if (!toSave.length) return;
+        const rows = toSave.map(item => ({
+          id: uid + '_' + (item.id || item.item_id || Math.random().toString(36).slice(2)),
+          user_id: uid,
+          item_id: item.id || item.item_id || '',
+          data: item,
+          updated_at: new Date(item.updatedAt || item.timestamp || Date.now()).toISOString()
+        }));
+        for (let i = 0; i < rows.length; i += 50) {
+          const chunk = rows.slice(i, i + 50);
+          const { error } = await window._sb.from(table).upsert(chunk, { onConflict: 'id' });
+          if (error) throw error;
+        }
+        _clearDirty(table);
+      } catch(e) { console.warn('[SB] tblSaveDirty error', table, e); }
+    }
+
+    // ── 테이블 로드: 페이지네이션 루프 (1000개 제한 해제) ────────
     async function tblLoadArr(table) {
       try {
         const uid = await _sbGetUserId();
         if (!uid) return null;
-        const { data, error } = await window._sb.from(table)
-          .select('data, updated_at')
-          .eq('user_id', uid)
-          .order('updated_at', { ascending: false });
-        if (error) throw error;
-        return (data || []).map(r => r.data).filter(Boolean);
+        const PAGE = 1000;
+        let all = [], from = 0, done = false;
+        while (!done) {
+          const { data, error } = await window._sb.from(table)
+            .select('data, updated_at')
+            .eq('user_id', uid)
+            .order('updated_at', { ascending: false })
+            .range(from, from + PAGE - 1);
+          if (error) throw error;
+          all = all.concat((data || []).map(r => r.data).filter(Boolean));
+          if (!data || data.length < PAGE) done = true;
+          else from += PAGE;
+        }
+        return all;
       } catch(e) { console.warn('[SB] tblLoadArr error', table, e); return null; }
     }
     // 삭제된 항목 클라우드에서 제거 (deletedAt 있는 item_id 삭제)
@@ -422,7 +467,28 @@
 
     // ─── re_sv (저장목록) 동기화 ─────────────────────────────
     window._sbSaveSv = async function(arr) {
-      await tblSaveArr('items', arr);
+      // DB 저장 전 대용량 필드 제거 (items 테이블 경량화)
+      const clean = (arr || []).map(item => {
+        const cleaned = { ...item };
+        // pdfFullText 제거
+        delete cleaned.pdfFullText;
+        // AI분석은 ai_analysis 테이블로 분리 → items에서 제거
+        if (cleaned.data) {
+          cleaned.data = { ...cleaned.data };
+          delete cleaned.data.AI기본분석;
+          delete cleaned.data.AI추가분석;
+        }
+        // additionalDocs 안의 text/base64 제거
+        if (cleaned.additionalDocs && cleaned.additionalDocs.length) {
+          cleaned.additionalDocs = cleaned.additionalDocs.map(d => ({
+            name: d.name, size: d.size, type: d.type,
+            url: d.url || null, storagePath: d.storagePath || null
+          }));
+        }
+        return cleaned;
+      });
+      // dirty tracking: 변경분만 upsert
+      await tblSaveDirty('items', clean);
       // 소프트삭제 항목 클라우드에서도 제거
       const deleted = (arr || []).filter(i => i.deletedAt).map(i => i.id);
       if (deleted.length) await tblDeleteItems('items', deleted);
@@ -432,14 +498,117 @@
       return await tblLoadArr('items');
     };
 
+    // ─── AI분석 동기화 (별도 테이블 ai_analysis) ──────────────
+    // items 테이블 경량화: AI기본분석/AI추가분석은 여기서만 저장
+    window._sbSaveAi = async function(itemId, aiData) {
+      try {
+        const uid = await _sbGetUserId();
+        if (!uid || !itemId) return;
+        const row = {
+          id: uid + '_' + itemId,
+          user_id: uid,
+          item_id: itemId,
+          ai_basic:    aiData.AI기본분석    || null,
+          ai_extra:    aiData.AI추가분석    || null,
+          updated_at:  new Date().toISOString()
+        };
+        const { error } = await window._sb.from('ai_analysis').upsert(row, { onConflict: 'id' });
+        if (error) throw error;
+      } catch(e) { console.warn('[SB] saveAi error', e); }
+    };
+    window._sbLoadAi = async function(itemId) {
+      try {
+        // 1) IDB 캐시 확인
+        const cacheKey = 'ai_' + itemId;
+        if (window._idbCache && window._idbCache[cacheKey] !== undefined) {
+          return window._idbCache[cacheKey];
+        }
+        const uid = await _sbGetUserId();
+        if (!uid) return null;
+        // 2) DB 단건 조회
+        const rowId = uid + '_' + itemId;
+        const { data, error } = await window._sb.from('ai_analysis')
+          .select('ai_basic, ai_extra')
+          .eq('id', rowId)
+          .maybeSingle();
+        if (error) throw error;
+        const result = data || null;
+        // 3) IDB 캐시 저장 (null도 저장 → 재조회 방지)
+        if (!window._idbCache) window._idbCache = {};
+        window._idbCache[cacheKey] = result;
+        return result;
+      } catch(e) { console.warn('[SB] loadAi error', itemId, e); return null; }
+    };
+    // AI분석 전체 로드 (마이그레이션 전용)
+    window._sbLoadAiAll = async function() {
+      try {
+        const uid = await _sbGetUserId();
+        if (!uid) return null;
+        const PAGE = 1000;
+        let all = [], from = 0, done = false;
+        while (!done) {
+          const { data, error } = await window._sb.from('ai_analysis')
+            .select('item_id, ai_basic, ai_extra')
+            .eq('user_id', uid)
+            .range(from, from + PAGE - 1);
+          if (error) throw error;
+          all = all.concat(data || []);
+          if (!data || data.length < PAGE) done = true;
+          else from += PAGE;
+        }
+        return all;
+      } catch(e) { console.warn('[SB] loadAiAll error', e); return null; }
+    };
+    // AI분석 IDB 캐시에 병합
+    window._sbMergeAiToCache = function(aiRows) {
+      if (!aiRows || !aiRows.length) return;
+      const sv = (window._idbCache && window._idbCache['re_sv']) || [];
+      aiRows.forEach(row => {
+        const item = sv.find(s => s.id === row.item_id);
+        if (!item) return;
+        item.data = item.data || {};
+        if (row.ai_basic) item.data.AI기본분석 = row.ai_basic;
+        if (row.ai_extra) item.data.AI추가분석 = row.ai_extra;
+      });
+      if (window._idbCache) window._idbCache['re_sv'] = sv;
+      window.idbSet('re_sv', sv).catch(() => {});
+    };
+    // 기존 items에 박힌 AI분석 → ai_analysis 테이블로 마이그레이션 (1회 실행)
+    window._sbMigrateAi = async function() {
+      const sv = (window._idbCache && window._idbCache['re_sv']) || [];
+      const toMigrate = sv.filter(item => item.data && (item.data.AI기본분석 || item.data.AI추가분석));
+      if (!toMigrate.length) { console.log('[migrateAi] 없음'); return; }
+      let ok = 0, fail = 0;
+      for (const item of toMigrate) {
+        try {
+          await window._sbSaveAi(item.id, item.data);
+          // items에서 AI분석 제거
+          delete item.data.AI기본분석;
+          delete item.data.AI추가분석;
+          ok++;
+        } catch(e) { fail++; console.warn('[migrateAi] 실패', item.id, e); }
+      }
+      // items 클라우드 업데이트 (AI분석 제거된 버전)
+      if (ok > 0) {
+        if (window._idbCache) window._idbCache['re_sv'] = sv;
+        await window.idbSet('re_sv', sv).catch(() => {});
+        await window._sbSaveSv(sv).catch(() => {});
+      }
+      const msg = `AI분석 마이그레이션: ${ok}개 성공, ${fail}개 실패`;
+      console.log('[migrateAi]', msg);
+      if (typeof showToast === 'function') showToast(msg, ok > 0 ? 'ok' : 'warn');
+      return { ok, fail };
+    };
+
     // ─── 노트 동기화 ─────────────────────────────────────────
     window._sbSaveNotes = async function(key, arr) {
       await kvSet('notes_' + key, arr);
     };
     window._sbSaveNtNotes = async function(arr) {
-      await tblSaveArr('notes', arr);
+      await tblSaveDirty('notes', arr);
       window._sbSyncStatus('☁️ 노트 동기화 완료', true);
     };
+    window._sbMarkNtDirty = function(noteId) { _markDirty('notes', noteId); };
     window._sbLoadNtNotes = async function() { return await tblLoadArr('notes'); };
 
     // ─── 작업룸 동기화 ────────────────────────────────────────
@@ -447,7 +616,7 @@
       try {
         const active = (arr || []).filter(r => !r.deletedAt);
         const deleted = (arr || []).filter(r => r.deletedAt).map(r => r.id);
-        await tblSaveArr('workrooms', active);
+        await tblSaveDirty('workrooms', active);
         if (deleted.length) await tblDeleteItems('workrooms', deleted);
         // 로컬 동기화 (IDB)
         if (window._idbCache) window._idbCache['wr2_rooms'] = active;
@@ -456,6 +625,7 @@
       } catch(e) { console.warn('[SB] saveRooms error', e); }
       window._sbSyncStatus('☁️ 작업룸 동기화 완료', true);
     };
+    window._sbMarkRoomDirty = function(roomId) { _markDirty('workrooms', roomId); };
     window._sbLoadRooms = async function() { return await tblLoadArr('workrooms'); };
 
     // 섹션은 kv_store에 통째로 저장 (섹션은 roomId 참조 구조라 개별 행 관리 복잡)
@@ -489,40 +659,77 @@
       } else if (source instanceof File || source instanceof Blob) {
         blob = source;
         mimeType = source.type || 'image/jpeg';
-        ext = mimeType.split('/')[1].replace('jpeg', 'jpg').split('+')[0];
+        // PDF 등 확장자 처리
+        if (source instanceof File && source.name) {
+          ext = source.name.split('.').pop().toLowerCase();
+        } else {
+          ext = mimeType.split('/')[1].replace('jpeg', 'jpg').split('+')[0];
+        }
       } else {
-        throw new Error('지원하지 않는 이미지 형식');
+        throw new Error('지원하지 않는 파일 형식');
       }
 
+      // 폴더에 따라 버킷 분기
+      const bucket = (folder === 'attachments') ? 'attachments' : 'room-images';
       const path = uid + '/' + folder + '/' + Date.now() + '_' + Math.random().toString(36).slice(2) + '.' + ext;
       const { error } = await window._sb.storage
-        .from('room-images')
-        .upload(path, blob, { contentType: mimeType, upsert: false });
+        .from(bucket)
+        .upload(path, blob, { contentType: mimeType, upsert: false, cacheControl: '31536000' });
       if (error) throw error;
 
-      const { data: urlData } = window._sb.storage.from('room-images').getPublicUrl(path);
-      return { url: urlData.publicUrl, path };
+      const { data: urlData } = window._sb.storage.from(bucket).getPublicUrl(path);
+      return { url: urlData.publicUrl, path, bucket };
     };
 
-    // Storage에서 이미지 삭제 (path 배열)
-    window._sbDeleteImages = async function(paths) {
+    // Storage에서 이미지/파일 삭제 (path 배열, bucket 옵션)
+    window._sbDeleteImages = async function(paths, bucket) {
       if (!paths || !paths.length) return;
+      // bucket 미지정 시 path에서 추론 (attachments 폴더면 attachments 버킷)
+      const resolveBucket = (p) => {
+        if (bucket) return bucket;
+        // path 형식: uid/folder/filename
+        const folder = (p || '').split('/')[1];
+        return folder === 'attachments' ? 'attachments' : 'room-images';
+      };
+      // 버킷별로 그룹화하여 삭제
+      const groups = {};
+      paths.forEach(p => {
+        const b = resolveBucket(p);
+        if (!groups[b]) groups[b] = [];
+        groups[b].push(p);
+      });
       try {
-        await window._sb.storage.from('room-images').remove(paths);
+        for (const [b, ps] of Object.entries(groups)) {
+          await window._sb.storage.from(b).remove(ps);
+        }
       } catch(e) { console.warn('[SB] deleteImages error', e); }
     };
 
-    // ─── 알짜정보(kcards) 동기화 ─────────────────────────────
+    // ─── Storage 이미지 URL → CDN 캐시 URL 변환 ──────────────
+    // Supabase Storage public URL에 transform 파라미터 추가 → CDN 캐싱 활성화
+    // width 지정 시 리사이즈도 겸함 (Egress 절감)
+    window._sbImgUrl = function(url, width) {
+      if (!url || !url.includes('supabase.co/storage')) return url;
+      try {
+        const u = new URL(url);
+        // /object/public/ → /render/v1/public/ (Transform API)
+        u.pathname = u.pathname.replace('/object/public/', '/render/v1/public/');
+        if (width) u.searchParams.set('width', width);
+        u.searchParams.set('quality', '80');
+        return u.toString();
+      } catch(e) { return url; }
+    };
     // 카드 1개 = kcards 테이블 1행으로 저장 (kv_store 단일 row 저장 방식 제거)
     window._sbSaveKcards = async function(arr) {
       try {
         const active = (arr || []).filter(k => !k.deletedAt);
         const deleted = (arr || []).filter(k => k.deletedAt).map(k => k.id);
-        await tblSaveArr('kcards', active);
+        await tblSaveDirty('kcards', active);
         if (deleted.length) await tblDeleteItems('kcards', deleted);
         window._sbSyncStatus('☁️ 알짜정보 동기화 완료', true);
       } catch(e) { console.warn('[SB] saveKcards error', e); }
     };
+    window._sbMarkKcardDirty = function(kcardId) { _markDirty('kcards', kcardId); };
     window._sbLoadKcards = async function() {
       return await tblLoadArr('kcards');
     };
@@ -536,7 +743,7 @@
 
     // ─── 작업씬(WorkScene) 동기화 ────────────────────────────
     window._sbSaveWorkScenes = async function(arr) {
-      await tblSaveArr('snapshots', arr);
+      await tblSaveDirty('snapshots', arr);
       window._sbSyncStatus('☁️ 작업씬 동기화 완료', true);
     };
     window._sbLoadWorkScenes = async function() { return await tblLoadArr('snapshots'); };
@@ -589,6 +796,9 @@
           const svLocal = window._idbCache['re_sv'] || [];
           if (svLocal.length) window._sbSaveSv(svLocal).catch(()=>{});
         }
+
+        // ── AI분석: 지연 로딩으로 전환 (openPopup 시 단건 조회) ──
+        // 로그인 시 전체 로드 제거 → 카드 열 때 _sbLoadAi(itemId) 단건 조회
 
         // ── 노트 ──
         const ntCloud = await window._sbLoadNtNotes();
@@ -701,6 +911,7 @@
               window._ntSetNotes(freshNotes);
             }
           } catch(e) {}
+          try { if (typeof _svBuildIndex === 'function') _svBuildIndex(window._idbCache && window._idbCache['re_sv']); } catch(e) {}
           try { if (typeof renderSaved === 'function') renderSaved(); } catch(e) {}
           try { if (typeof mbRenderSaved === 'function') mbRenderSaved(); } catch(e) {}
           try { if (typeof updSvCnt === 'function') updSvCnt(); } catch(e) {}
@@ -719,6 +930,7 @@
         // QuotaExceededError는 네트워크 문제가 아니므로 오프라인 모드 표시 안 함
         if (e && e.name === 'QuotaExceededError') {
           window._sbSyncStatus('✅ 클라우드 로드 완료 (로컬저장 일부 생략)', true);
+          try { if (typeof _svBuildIndex === 'function') _svBuildIndex(window._idbCache && window._idbCache['re_sv']); } catch(e2) {}
           try { if (typeof renderSaved === 'function') renderSaved(); } catch(e2) {}
           try { if (typeof ntRender === 'function') ntRender(); } catch(e2) {}
           try { if (typeof wr2Render === 'function') wr2Render(); } catch(e2) {}
@@ -726,6 +938,56 @@
           window._sbSyncStatus('⚠️ 오프라인 모드', false);
         }
       }
+    };
+
+    // ─── 기존 base64 데이터 마이그레이션 헬퍼 ──────────────────
+    // 콘솔에서 window._sbMigrateBase64() 로 수동 실행
+    // IDB/메모리에 남아있는 구형 base64 additionalDocs를 Storage로 올리고 url/storagePath로 교체
+    window._sbMigrateBase64 = async function() {
+      const sv = (window._idbCache && window._idbCache['re_sv']) || [];
+      let migratedCount = 0, errorCount = 0;
+
+      for (const item of sv) {
+        if (!item.additionalDocs || !item.additionalDocs.length) continue;
+        let changed = false;
+        for (const doc of item.additionalDocs) {
+          if (!doc.base64 || doc.url) continue; // 이미 마이그레이션된 것 스킵
+          try {
+            const mime = doc.type || (doc.name.endsWith('.pdf') ? 'application/pdf' : 'image/jpeg');
+            const byteStr = atob(doc.base64);
+            const arr = new Uint8Array(byteStr.length);
+            for (let i = 0; i < byteStr.length; i++) arr[i] = byteStr.charCodeAt(i);
+            const blob = new Blob([arr], { type: mime });
+            const ext = doc.name.split('.').pop().toLowerCase() || 'bin';
+            const fakeFile = new File([blob], doc.name, { type: mime });
+            const { url, path } = await window._sbUploadImage(fakeFile, 'attachments');
+            doc.url = url;
+            doc.storagePath = path;
+            delete doc.base64;
+            changed = true;
+            migratedCount++;
+            console.log('[migrate] ✅', item.title || item.id, '→', doc.name);
+          } catch(e) {
+            errorCount++;
+            console.warn('[migrate] ❌', doc.name, e.message);
+          }
+        }
+        if (changed) {
+          // IDB 즉시 반영
+          if (window._idbCache) window._idbCache['re_sv'] = sv;
+          if (window.idbSet) await window.idbSet('re_sv', sv).catch(()=>{});
+        }
+      }
+
+      // 변경사항 클라우드 동기화
+      if (migratedCount > 0 && window._sbSaveSv) {
+        await window._sbSaveSv(sv).catch(()=>{});
+      }
+
+      const msg = `마이그레이션 완료: ${migratedCount}개 성공, ${errorCount}개 실패`;
+      console.log('[migrate]', msg);
+      if (typeof showToast === 'function') showToast(msg, migratedCount > 0 ? 'ok' : 'warn');
+      return { migratedCount, errorCount };
     };
 
     // API 키 변경 시 Supabase 자동 저장
@@ -884,6 +1146,95 @@
       btn.onclick = window._sbLogout;
       btn.style.cssText = 'position:fixed;top:8px;right:8px;z-index:99998;background:rgba(30,35,55,0.85);color:#94a3b8;border:1px solid #334;border-radius:8px;padding:4px 10px;font-size:11px;cursor:pointer;';
       document.body.appendChild(btn);
+
+      // DB 관리 버튼
+      const dbBtn = document.createElement('button');
+      dbBtn.id = '_sbDbAdminBtn';
+      dbBtn.textContent = '🛠 DB';
+      dbBtn.onclick = window._sbShowDbAdmin;
+      dbBtn.style.cssText = 'position:fixed;top:8px;right:90px;z-index:99998;background:rgba(30,35,55,0.85);color:#94a3b8;border:1px solid #334;border-radius:8px;padding:4px 10px;font-size:11px;cursor:pointer;';
+      document.body.appendChild(dbBtn);
+    };
+
+    window._sbShowDbAdmin = function() {
+      let modal = document.getElementById('_sbDbAdminModal');
+      if (modal) { modal.remove(); return; }
+      modal = document.createElement('div');
+      modal.id = '_sbDbAdminModal';
+      modal.style.cssText = 'position:fixed;top:40px;right:8px;z-index:99999;background:#12151e;border:1px solid #2a2f45;border-radius:14px;padding:20px;width:300px;box-shadow:0 8px 32px rgba(0,0,0,.6);font-size:13px;color:#c8d0e0;';
+      modal.innerHTML = `
+        <div style="font-weight:700;font-size:14px;margin-bottom:14px;color:#e2e8f0;">🛠 DB 관리</div>
+        <div id="_sbDbAdminLog" style="background:#0d0f17;border-radius:8px;padding:10px;font-size:11px;color:#64748b;min-height:40px;max-height:120px;overflow-y:auto;margin-bottom:14px;font-family:monospace;">대기 중...</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <button onclick="window._sbRunDbAction('migrateAi')" style="padding:8px 12px;background:rgba(79,142,255,.15);border:1px solid rgba(79,142,255,.35);border-radius:8px;color:#4f8eff;font-size:12px;font-weight:600;cursor:pointer;">🤖 AI분석 마이그레이션</button>
+          <button onclick="window._sbRunDbAction('migrateBase64')" style="padding:8px 12px;background:rgba(79,142,255,.15);border:1px solid rgba(79,142,255,.35);border-radius:8px;color:#4f8eff;font-size:12px;font-weight:600;cursor:pointer;">📎 Base64→Storage 이전</button>
+          <button onclick="window._sbRunDbAction('checkOrphan')" style="padding:8px 12px;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);border-radius:8px;color:#fbbf24;font-size:12px;font-weight:600;cursor:pointer;">🔍 Storage 고아파일 검사</button>
+          <button onclick="window._sbRunDbAction('forceSync')" style="padding:8px 12px;background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.3);border-radius:8px;color:#10b981;font-size:12px;font-weight:600;cursor:pointer;">🔄 강제 재동기화</button>
+          <button onclick="window._sbRunDbAction('dbStats')" style="padding:8px 12px;background:rgba(148,163,184,.1);border:1px solid rgba(148,163,184,.2);border-radius:8px;color:#94a3b8;font-size:12px;font-weight:600;cursor:pointer;">📊 동기화 상태 확인</button>
+        </div>
+        <button onclick="document.getElementById('_sbDbAdminModal').remove()" style="position:absolute;top:12px;right:12px;background:none;border:none;color:#64748b;font-size:16px;cursor:pointer;">✕</button>
+      `;
+      document.body.appendChild(modal);
+      setTimeout(() => {
+        document.addEventListener('click', function _closeDbAdmin(e) {
+          if (!modal.contains(e.target) && e.target.id !== '_sbDbAdminBtn') {
+            modal.remove();
+            document.removeEventListener('click', _closeDbAdmin);
+          }
+        });
+      }, 100);
+    };
+
+    window._sbRunDbAction = async function(action) {
+      const log = document.getElementById('_sbDbAdminLog');
+      const print = (msg, color) => {
+        if (log) { log.innerHTML += `<div style="color:${color||'#94a3b8'}">${msg}</div>`; log.scrollTop = log.scrollHeight; }
+        console.log('[DbAdmin]', msg);
+      };
+      if (log) log.innerHTML = '';
+      try {
+        if (action === 'migrateAi') {
+          print('AI분석 마이그레이션 시작...', '#4f8eff');
+          if (!window._sbMigrateAi) { print('함수 없음', '#f87171'); return; }
+          const r = await window._sbMigrateAi();
+          print(`완료: 성공 ${r?.ok||0}개, 실패 ${r?.fail||0}개`, r?.fail ? '#fbbf24' : '#10b981');
+        } else if (action === 'migrateBase64') {
+          print('Base64→Storage 이전 시작...', '#4f8eff');
+          if (!window._sbMigrateBase64) { print('함수 없음', '#f87171'); return; }
+          const r = await window._sbMigrateBase64();
+          print(`완료: 성공 ${r?.ok||0}개, 실패 ${r?.fail||0}개`, r?.fail ? '#fbbf24' : '#10b981');
+        } else if (action === 'checkOrphan') {
+          print('고아파일 검사 시작...', '#fbbf24');
+          const uid = await window._sbGetUserId?.();
+          if (!uid || !window._sb) { print('로그인 필요', '#f87171'); return; }
+          const { data, error } = await window._sb.storage.from('attachments').list(uid + '/');
+          if (error) { print('검사 실패: ' + error.message, '#f87171'); return; }
+          const sv = (window._idbCache && window._idbCache['re_sv']) || [];
+          const usedUrls = new Set();
+          sv.forEach(item => { (item.data?.additionalDocs || []).forEach(d => { if (d.url) usedUrls.add(d.url.split('/').pop()); }); });
+          const orphans = (data || []).filter(f => !usedUrls.has(f.name));
+          print(`파일 ${(data||[]).length}개 중 고아 ${orphans.length}개`, orphans.length ? '#fbbf24' : '#10b981');
+          orphans.slice(0, 5).forEach(f => print(`  → ${f.name}`, '#64748b'));
+          if (orphans.length > 5) print(`  ... 외 ${orphans.length - 5}개`, '#64748b');
+        } else if (action === 'forceSync') {
+          print('강제 재동기화 시작...', '#10b981');
+          if (!window._sbInitLoad) { print('함수 없음', '#f87171'); return; }
+          await window._sbInitLoad();
+          print('완료', '#10b981');
+        } else if (action === 'dbStats') {
+          print('동기화 상태 확인 중...', '#94a3b8');
+          const sv = (window._idbCache && window._idbCache['re_sv']) || [];
+          const notes = (window._idbCache && window._idbCache['nt_notes']) || [];
+          const rooms = (window._idbCache && window._idbCache['wr2_rooms']) || [];
+          const kcards = (window._idbCache && window._idbCache['ins_kcards']) || [];
+          print(`저장목록: ${sv.length}개`, '#94a3b8');
+          print(`노트: ${notes.length}개`, '#94a3b8');
+          print(`작업룸: ${rooms.length}개`, '#94a3b8');
+          print(`알짜카드: ${kcards.length}개`, '#94a3b8');
+          const aiCached = Object.keys(window._idbCache||{}).filter(k=>k.startsWith('ai_')).length;
+          print(`AI분석 캐시: ${aiCached}개`, '#94a3b8');
+        }
+      } catch(e) { print('오류: ' + (e.message || e), '#f87171'); }
     };
 
     // DOM 로드 후 초기화 (IDB 프리로드 완료 후 실행)
@@ -937,6 +1288,8 @@
                   const toSave = wr2State.rooms.filter(r => !r.deletedAt);
                   if (window._idbCache) window._idbCache[LS_KEY_ROOMS] = toSave;
                   if (window.idbSet) window.idbSet(LS_KEY_ROOMS, toSave).catch(()=>{});
+                  // dirty marking: 현재 활성 룸만
+                  if (wr2State.activeRoomId && window._sbMarkRoomDirty) window._sbMarkRoomDirty(wr2State.activeRoomId);
                   // 소프트삭제 정보는 Supabase에만 전달 (deletedAt 포함 전달해야 다기기 삭제 동기화)
                   if (window._sbSaveRooms) window._sbSaveRooms(wr2State.rooms).catch(e => {});
                 }
@@ -1566,7 +1919,7 @@
                       var snapLabel = img.snapName ? '<div class="wr2-img-snap-label">📷 ' + img.snapName + '</div>' : '';
                       var goBtn = img.snapName ? '<button class="wr2-img-go-map" onclick="event.stopPropagation();wr2GoToSnap(this.dataset.snap)" data-snap="' + img.snapName.replace(/"/g,'&quot;') + '" title="이 스냅샷으로 지도 이동">🗺 지도로</button>' : '';
                       gridHtml += '<div class="wr2-img-thumb" onclick="wr2Lightbox(' + i + ')">'
-                        + '<img src="' + img.src + '" alt="캡처 ' + (i+1) + '">'
+                        + '<img src="' + (window._sbImgUrl ? window._sbImgUrl(img.src, 400) : img.src) + '" alt="캡처 ' + (i+1) + '">'
                         + '<div class="wr2-img-overlay"><span class="wr2-img-zoom">🔍</span>' + snapLabel + '</div>'
                         + goBtn
                         + '<button class="wr2-img-del" onclick="event.stopPropagation();wr2DeleteCaptureAt(' + i + ')">✕</button>'
@@ -1604,7 +1957,7 @@
                     var prevBtn = imgs.length > 1 ? '<button id="wr2LbPrevBtn" style="position:absolute;left:-44px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.1);border:none;color:#fff;font-size:22px;padding:8px 12px;border-radius:8px;cursor:pointer;">&#8249;</button>' : '';
                     var nextBtn = imgs.length > 1 ? '<button id="wr2LbNextBtn" style="position:absolute;right:-44px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.1);border:none;color:#fff;font-size:22px;padding:8px 12px;border-radius:8px;cursor:pointer;">&#8250;</button>' : '';
                     overlay.innerHTML = '<div style="position:relative;max-width:90vw;max-height:75vh;">'
-                      + '<img src="' + img.src + '" style="max-width:90vw;max-height:75vh;border-radius:10px;object-fit:contain;display:block;">'
+                      + '<img src="' + (window._sbImgUrl ? window._sbImgUrl(img.src) : img.src) + '" style="max-width:90vw;max-height:75vh;border-radius:10px;object-fit:contain;display:block;">'
                       + prevBtn + nextBtn
                       + '</div>'
                       + '<div style="display:flex;gap:8px;align-items:center;">'
@@ -2459,6 +2812,8 @@
                   const handle = document.getElementById('wr2ResizeHandle');
                   const panel = document.getElementById('wr2ListPanel');
                   if (!handle || !panel) return;
+                  if (handle._resizeBound) return; // 중복 등록 방지
+                  handle._resizeBound = true;
                   let dragging = false, startX = 0, startW = 0;
                   handle.addEventListener('mousedown', function (e) {
                     dragging = true;
@@ -4736,8 +5091,8 @@
               const { url, path } = await window._sbUploadImage(dataUrl, 'snapshots');
               return { src: url, storagePath: path, savedAt: now, snapName, parentSnapName: parentSnapName || null };
             } catch(e) {
-              console.warn('[swSaveToRoom] thumb upload fail', e);
-              return { src: dataUrl, savedAt: now, snapName, parentSnapName: parentSnapName || null };
+              console.warn('[swSaveToRoom] thumb upload fail — 썸네일 저장 생략', e);
+              return null; // base64 저장 안 함. 썸네일 없는 상태로 진행
             }
           }
 
@@ -4824,9 +5179,8 @@
           const { url, path } = await window._sbUploadImage(dataUrl, 'snapshots');
           room.captureImages.push({ src: url, storagePath: path, savedAt: now, snapName, parentSnapName: parentSnapName || null });
         } catch(e) {
-          // 업로드 실패 시 base64 그대로 보관 (데이터 유실 방지)
-          console.warn('[swMakeRoom] thumb upload fail', e);
-          room.captureImages.push({ src: dataUrl, savedAt: now, snapName, parentSnapName: parentSnapName || null });
+          // 업로드 실패 시 썸네일 저장 생략 (base64 DB 저장 금지)
+          console.warn('[swMakeRoom] thumb upload fail — 썸네일 저장 생략', e);
         }
       }
 
@@ -5388,7 +5742,60 @@
 
       return arr;
     }
+    // item 변경 감지용 경량 해시
+    function _itemHash(item) {
+      if (!item) return '';
+      return (item.updatedAt || item.timestamp || 0) + '|' + (item.title || '') + '|' + (item.memo || '') + '|' + JSON.stringify(item.data || {});
+    }
+    // ── 검색 인덱스 (id → 검색토큰 문자열) ────────────────────
+    let _svSearchIndex = {}; // { [id]: '소재지 title memo group source...' }
+
+    function _svBuildIndex(arr) {
+      _svSearchIndex = {};
+      (arr || []).forEach(item => _svIndexOne(item));
+    }
+
+    function _svIndexOne(item) {
+      if (!item || !item.id) return;
+      const d = item.data || {};
+      const tokens = [
+        item.title, item.memo, item.group, item.source, item.csvFileName,
+        d.소재지, d.단지명, d.건물명, d.상품명, d.물건종류, d.용도, d.매물특징,
+        d.경매번호, d.사건번호, d.임차인, d.소유자, d.주소
+      ].filter(Boolean).join(' ').toLowerCase();
+      _svSearchIndex[item.id] = tokens;
+    }
+
+    function _svSearchFilter(arr, query) {
+      if (!query) return arr;
+      const q = query.toLowerCase().trim();
+      if (!q) return arr;
+      // 공백 분리 → 모든 키워드 AND 매칭
+      const keywords = q.split(/\s+/);
+      return arr.filter(item => {
+        const tokens = _svSearchIndex[item.id] || '';
+        return keywords.every(kw => tokens.includes(kw));
+      });
+    }
+
     function setSv(arr) {
+      // dirty tracking: 이전 상태와 비교해 변경된 item만 marking
+      const now = Date.now();
+      const prev = (window._idbCache && window._idbCache['re_sv']) || [];
+      const prevMap = {};
+      prev.forEach(item => { if (item && item.id) prevMap[item.id] = _itemHash(item); });
+      (arr || []).forEach(item => {
+        if (!item || !item.id) return;
+        const prevHash = prevMap[item.id];
+        const curHash = _itemHash(item);
+        if (prevHash === undefined || prevHash !== curHash) {
+          item.updatedAt = now;
+          _markDirty('items', item.id);
+          _svIndexOne(item); // 변경된 항목만 인덱스 갱신
+        }
+      });
+      // 항목 수가 바뀌면 (추가/삭제) 전체 인덱스 재빌드
+      if ((arr || []).length !== prev.length) _svBuildIndex(arr);
       if(window._idbCache)window._idbCache['re_sv']=arr;if(window.idbSet)window.idbSet('re_sv',arr).catch(()=>{});
       if (window._sbSaveSv) window._sbSaveSv(arr).catch(e => console.warn("[SB] setSv sync fail", e));
     }
@@ -5537,9 +5944,7 @@
             id: oldId,
             originalFile: item.originalFile ? { name: item.originalFile.name, type: item.originalFile.type } : null,
             additionalDocs: item.additionalDocs ? item.additionalDocs.map(doc => (
-              item.mode === 'auction'
-                ? { ...doc }
-                : { name: doc.name, size: doc.size, type: doc.type }
+              { name: doc.name, size: doc.size, type: doc.type, url: doc.url || null, storagePath: doc.storagePath || null }
             )) : []
           };
           normalizeAreaFields(itemToSave);
@@ -5555,14 +5960,12 @@
         return;
       }
 
-      // base64 제외한 복사본 생성 (경매는 additionalDocs base64 유지)
+      // base64 제외한 복사본 생성
       const itemToSave = {
         ...item,
         originalFile: item.originalFile ? { name: item.originalFile.name, type: item.originalFile.type } : null,
         additionalDocs: item.additionalDocs ? item.additionalDocs.map(doc => (
-          item.mode === 'auction'
-            ? { ...doc } // 경매: base64 포함 전체 유지
-            : { name: doc.name, size: doc.size, type: doc.type } // 매물: 메타만
+          { name: doc.name, size: doc.size, type: doc.type, url: doc.url || null, storagePath: doc.storagePath || null }
         )) : []
       };
 
@@ -5809,6 +6212,57 @@
       if (item) { item.group = groupName; saveSv(sv); renderSaved(); }
     }
 
+    // ── 가상스크롤 상태 ────────────────────────────────────────
+    const _vs = {
+      items: [],       // 필터/정렬 완료된 전체 배열
+      rendered: 0,     // 현재 렌더된 개수
+      PAGE: 50,        // 한 번에 렌더할 개수
+      observer: null,  // IntersectionObserver
+      sentinel: null,  // 감시 sentinel 엘리먼트
+    };
+
+    function _vsReset(filteredItems) {
+      _vs.items = filteredItems;
+      _vs.rendered = 0;
+      if (_vs.observer) { _vs.observer.disconnect(); _vs.observer = null; }
+      _vs.sentinel = null;
+    }
+
+    function _vsRenderNext(grid) {
+      const batch = _vs.items.slice(_vs.rendered, _vs.rendered + _vs.PAGE);
+      if (!batch.length) return;
+
+      if (_vs.sentinel && _vs.sentinel.parentNode) _vs.sentinel.remove();
+
+      const frag = document.createDocumentFragment();
+      const tmp = document.createElement('div');
+      tmp.innerHTML = batch.map(renderSavedItem).join('');
+      while (tmp.firstChild) frag.appendChild(tmp.firstChild);
+      _vs.rendered += batch.length;
+
+      if (_vs.rendered < _vs.items.length) {
+        _vs.sentinel = document.createElement('div');
+        _vs.sentinel.id = '_vsSentinel';
+        _vs.sentinel.style.cssText = 'height:1px;';
+        frag.appendChild(_vs.sentinel);
+      }
+
+      grid.appendChild(frag);
+      fixManwonDupInDOM(grid);
+
+      if (_vs.sentinel) {
+        const scrollEl = document.getElementById('page1');
+        _vs.observer = new IntersectionObserver((entries) => {
+          if (entries[0].isIntersecting) {
+            _vs.observer.disconnect();
+            _vs.observer = null;
+            _vsRenderNext(grid);
+          }
+        }, { root: scrollEl, rootMargin: '200px' });
+        _vs.observer.observe(_vs.sentinel);
+      }
+    }
+
     function renderSaved() {
       let sv = getSv();
 
@@ -5845,8 +6299,7 @@
       }
 
       const region = (document.getElementById('regionSearch') || {}).value || '';
-      if (region.trim()) sv = sv.filter(s => (s.data?.소재지 || '').includes(region.trim()) || (s.title || '').includes(region.trim()) || s.csvFileName?.includes(region.trim()));
-      // ★ 목록 조건 필터 적용
+      if (region.trim()) sv = _svSearchFilter(sv, region);
       if (window._lfActive) sv = sv.filter(item => checkListFilter(item));
       if (svFilter === 'jumpo') sv = sv.filter(s => s.source === '점포라인');
       else if (svFilter === 'assa') sv = sv.filter(s => s.source === '점포거래소');
@@ -5855,10 +6308,8 @@
       else if (svFilter === 'transaction') sv = sv.filter(s => s.mode === 'transaction');
       else if (svFilter === 'onbid') sv = sv.filter(s => s.source === '온비드');
       else if (svFilter !== 'all') sv = sv.filter(s => s.mode === svFilter || s.isCSVFile);
-      // 그룹 필터
       const groupFilter = (document.getElementById('svGroupFilter') || {}).value || 'all';
       if (groupFilter && groupFilter !== 'all') sv = sv.filter(s => (s.group || '기본') === groupFilter);
-      // ★ 전역 조건 필터 (보기용 - applyOnCollect 무관하게 isGFilterActive 시 항상 적용)
       if (isGFilterActive()) sv = sv.filter(item => {
         const d = item.data || {};
         const f = window.gFilter;
@@ -5872,54 +6323,27 @@
       });
       const key = document.getElementById('sortKey').value;
       sv.sort((a, b) => { const av = getSortVal(a, key), bv = getSortVal(b, key); const cmp = typeof av === 'string' ? av.localeCompare(bv, undefined, { sensitivity: 'base' }) : av - bv; return sortAsc ? cmp : -cmp; });
-      const grid = document.getElementById('svGrid');
-      if (!sv.length) { grid.innerHTML = `<div class="empty-sv">${region ? `'${esc(region)}' 검색 결과 없음` : '저장된 항목이 없습니다.'}</div>`; return; }
 
-      // ★ v127: 청크 렌더링 (50개씩 비동기) - 대용량 저장목록 성능 개선
-      const CHUNK = 50;
-      if (sv.length > CHUNK) {
-        grid.innerHTML = '<div class="empty-sv" style="color:var(--mu);font-size:12px;">⏳ 로딩 중...</div>';
-        let i = 0;
-        const frag = document.createDocumentFragment();
-        function renderChunk() {
-          const slice = sv.slice(i, i + CHUNK);
-          const tmp = document.createElement('div');
-          tmp.innerHTML = slice.map(renderSavedItem).join('');
-          while (tmp.firstChild) frag.appendChild(tmp.firstChild);
-          i += CHUNK;
-          if (i < sv.length) {
-            requestAnimationFrame(renderChunk);
-          } else {
-            grid.innerHTML = '';
-            grid.appendChild(frag);
-            fixManwonDupInDOM(document);
-            const badge = document.getElementById('svCountBadge');
-            if (badge) badge.textContent = sv.length ? `(${sv.length}개)` : '';
-            updateGroupDropdown();
-            // ★ 표시/전체 개수 업데이트
-            const dcEl = document.getElementById('svDisplayCount');
-            if (dcEl) { const total = getSv().length; dcEl.textContent = (sv.length < total) ? `${sv.length}/${total}개` : `전체 ${total}개`; }
-          }
-        }
-        requestAnimationFrame(renderChunk);
+      const grid = document.getElementById('svGrid');
+      if (!sv.length) {
+        _vsReset([]);
+        grid.innerHTML = `<div class="empty-sv">${region ? `'${esc(region)}' 검색 결과 없음` : '저장된 항목이 없습니다.'}</div>`;
         return;
       }
 
-      grid.innerHTML = sv.map(renderSavedItem).join('');
-
-      // 단위 중복(만원만원) 안전 정리
-      fixManwonDupInDOM(document);
-      // 카운트 배지 업데이트
+      // 카운트 배지/그룹 드롭다운 먼저 업데이트
       const badge = document.getElementById('svCountBadge');
       if (badge) badge.textContent = sv.length ? `(${sv.length}개)` : '';
-      // ★ 표시/전체 개수 업데이트
       const dcEl = document.getElementById('svDisplayCount');
       if (dcEl) { const total = getSv().length; dcEl.textContent = (sv.length < total) ? `${sv.length}/${total}개` : `전체 ${total}개`; }
-      // 그룹 드롭다운 업데이트
       updateGroupDropdown();
+
+      // ★ 가상스크롤: 첫 50개만 렌더, 스크롤 하단 근접 시 50개씩 추가
+      _vsReset(sv);
+      grid.innerHTML = '';
+      _vsRenderNext(grid);
     }
 
-    // ── 개별 아이템 렌더 함수 (renderSaved에서 분리) ────────────────
     function renderSavedItem(item) {
       // CSV 파일 카드
       if (item.isCSVFile) {
@@ -7640,6 +8064,22 @@ ${inputDesc.substring(0, 3000)}
       if (item.isCSVFile) return;
 
       popupId = id; popupEditMode = false;
+
+      // ── AI분석 지연 로딩: 캐시에 없으면 DB 단건 조회 후 병합 ──
+      if (item.mode === 'auction' && window._sbLoadAi) {
+        const cacheKey = 'ai_' + id;
+        const alreadyCached = window._idbCache && window._idbCache[cacheKey] !== undefined;
+        const hasAiInItem = !!(item.data && (item.data.AI기본분석 || item.data.AI추가분석));
+        if (!alreadyCached && !hasAiInItem) {
+          window._sbLoadAi(id).then(row => {
+            if (!row) return;
+            item.data = item.data || {};
+            if (row.ai_basic) item.data.AI기본분석 = row.ai_basic;
+            if (row.ai_extra) item.data.AI추가분석 = row.ai_extra;
+            if (popupId === id) renderPopup(id);
+          }).catch(() => {});
+        }
+      }
       // 팝업 맨위로 버튼 리셋
       setTimeout(() => {
         const pb = document.getElementById('popBody');
@@ -8118,7 +8558,7 @@ ${inputDesc.substring(0, 3000)}
             <span style="font-size:16px;">${doc.type === 'application/pdf' || doc.name.endsWith('.pdf') ? '📄' : '🖼️'}</span>
             <span style="flex:1;font-size:11px;color:var(--tx);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(doc.name)}">${esc(doc.name)}</span>
             <span style="font-size:10px;color:var(--mu);white-space:nowrap;">${doc.size ? (doc.size/1024).toFixed(0)+'KB' : ''}</span>
-            ${doc.base64 ? `<button onclick="event.stopPropagation();popupAttachView('${id}',${i})" style="padding:2px 8px;font-size:10px;background:rgba(79,142,255,.15);color:#7aa8ff;border:1px solid rgba(79,142,255,.3);border-radius:4px;cursor:pointer;">보기</button>` : ''}
+            ${(doc.url || doc.base64) ? `<button onclick="event.stopPropagation();popupAttachView('${id}',${i})" style="padding:2px 8px;font-size:10px;background:rgba(79,142,255,.15);color:#7aa8ff;border:1px solid rgba(79,142,255,.3);border-radius:4px;cursor:pointer;">보기</button>` : ''}
             <button onclick="event.stopPropagation();popupAttachDelete('${id}',${i})" style="padding:2px 8px;font-size:10px;background:rgba(255,80,80,.12);color:#ff6b6b;border:1px solid rgba(255,80,80,.3);border-radius:4px;cursor:pointer;">삭제</button>
           </div>`).join('');
 
@@ -8136,34 +8576,40 @@ ${inputDesc.substring(0, 3000)}
         </div>`;
     }
 
-    function popupAttachUpload(id, files) {
+    async function popupAttachUpload(id, files) {
       if (!files || !files.length) return;
       const sv = getSv();
       const item = sv.find(s => s.id === id);
       if (!item) return;
       if (!item.additionalDocs) item.additionalDocs = [];
-      let pending = files.length;
-      Array.from(files).forEach(file => {
-        const reader = new FileReader();
-        reader.onload = e => {
-          const b64 = e.target.result.split(',')[1];
-          item.additionalDocs.push({ name: file.name, size: file.size, type: file.type, base64: b64 });
-          pending--;
-          if (pending === 0) {
-            setSv(sv);
-            renderPopup(id);
-            showToast(`✅ ${files.length}개 파일 첨부됨`, 'ok');
-          }
-        };
-        reader.readAsDataURL(file);
-      });
+      showToast('📤 업로드 중...', 'info');
+      let successCount = 0;
+      for (const file of Array.from(files)) {
+        try {
+          const { url, path } = await window._sbUploadImage(file, 'attachments');
+          item.additionalDocs.push({ name: file.name, size: file.size, type: file.type, url, storagePath: path });
+          successCount++;
+        } catch (e) {
+          console.error('첨부파일 업로드 실패:', e);
+          showToast(`⚠️ ${file.name} 업로드 실패`, 'warn');
+        }
+      }
+      if (successCount > 0) {
+        setSv(sv);
+        renderPopup(id);
+        showToast(`✅ ${successCount}개 파일 첨부됨`, 'ok');
+      }
     }
 
-    function popupAttachDelete(id, idx) {
+    async function popupAttachDelete(id, idx) {
       if (!confirm('이 파일을 삭제할까요?')) return;
       const sv = getSv();
       const item = sv.find(s => s.id === id);
       if (!item || !item.additionalDocs) return;
+      const doc = item.additionalDocs[idx];
+      if (doc && doc.storagePath) {
+        try { await window._sbDeleteImages([doc.storagePath]); } catch (e) { console.error('Storage 삭제 실패:', e); }
+      }
       item.additionalDocs.splice(idx, 1);
       setSv(sv);
       renderPopup(id);
@@ -8175,14 +8621,23 @@ ${inputDesc.substring(0, 3000)}
       const item = sv.find(s => s.id === id);
       if (!item || !item.additionalDocs) return;
       const doc = item.additionalDocs[idx];
-      if (!doc || !doc.base64) { showToast('파일 데이터 없음', 'warn'); return; }
-      const mime = doc.type || (doc.name.endsWith('.pdf') ? 'application/pdf' : 'image/jpeg');
-      const byteStr = atob(doc.base64);
-      const arr = new Uint8Array(byteStr.length);
-      for (let i = 0; i < byteStr.length; i++) arr[i] = byteStr.charCodeAt(i);
-      const blob = new Blob([arr], { type: mime });
-      const url = URL.createObjectURL(blob);
-      window.open(url, '_blank');
+      if (!doc) { showToast('파일 데이터 없음', 'warn'); return; }
+      // Storage URL 방식 (신규)
+      if (doc.url) {
+        window.open(doc.url, '_blank');
+        return;
+      }
+      // 레거시 base64 방식 (구형 데이터 호환)
+      if (doc.base64) {
+        const mime = doc.type || (doc.name.endsWith('.pdf') ? 'application/pdf' : 'image/jpeg');
+        const byteStr = atob(doc.base64);
+        const arr = new Uint8Array(byteStr.length);
+        for (let i = 0; i < byteStr.length; i++) arr[i] = byteStr.charCodeAt(i);
+        const blob = new Blob([arr], { type: mime });
+        window.open(URL.createObjectURL(blob), '_blank');
+        return;
+      }
+      showToast('파일 데이터 없음', 'warn');
     }
 
     // ── 경매 계산기 (주택/상가) ────────────────────────────────
@@ -8441,21 +8896,22 @@ ${inputDesc.substring(0, 3000)}
     // ===================================================
     // 추가 문서 처리
     // ===================================================
-    function handleAdditionalDocs(idx, files) {
+    async function handleAdditionalDocs(idx, files) {
       if (!files || files.length === 0) return;
-
       if (!results[idx].additionalDocs) results[idx].additionalDocs = [];
+      showToast('📤 업로드 중...', 'info');
 
-      Array.from(files).forEach(file => {
-        const reader = new FileReader();
-        reader.onload = async function (e) {
-          const base64 = e.target.result.split(',')[1];
+      for (const file of Array.from(files)) {
+        try {
+          // Storage 업로드
+          const { url, path } = await window._sbUploadImage(file, 'attachments');
+
+          // PDF 텍스트 추출 (로컬에서 처리, base64 저장 안 함)
           let text = '';
-
-          // PDF 텍스트 추출
           if (file.type === 'application/pdf' && window.pdfjsLib) {
             try {
-              const pdf = await pdfjsLib.getDocument({ data: atob(base64) }).promise;
+              const arrayBuf = await file.arrayBuffer();
+              const pdf = await pdfjsLib.getDocument({ data: arrayBuf }).promise;
               for (let p = 1; p <= pdf.numPages; p++) {
                 const page = await pdf.getPage(p);
                 const content = await page.getTextContent();
@@ -8464,21 +8920,21 @@ ${inputDesc.substring(0, 3000)}
             } catch (e) { console.error('PDF 텍스트 추출 실패', e); }
           }
 
-          results[idx].additionalDocs.push({
-            name: file.name,
-            size: file.size,
-            type: file.type,
-            base64: base64,
-            text: text
-          });
-
+          results[idx].additionalDocs.push({ name: file.name, size: file.size, type: file.type, url, storagePath: path, text });
           renderTab(idx);
-        };
-        reader.readAsDataURL(file);
-      });
+        } catch (e) {
+          console.error('추가 문서 업로드 실패:', e);
+          showToast(`⚠️ ${file.name} 업로드 실패`, 'warn');
+        }
+      }
+      showToast('✅ 업로드 완료', 'ok');
     }
 
-    function removeAdditionalDoc(idx, docIdx) {
+    async function removeAdditionalDoc(idx, docIdx) {
+      const doc = results[idx].additionalDocs?.[docIdx];
+      if (doc && doc.storagePath) {
+        try { await window._sbDeleteImages([doc.storagePath]); } catch (e) { console.error('Storage 삭제 실패:', e); }
+      }
       results[idx].additionalDocs.splice(docIdx, 1);
       renderTab(idx);
     }
@@ -8624,8 +9080,16 @@ ${combinedText}
         const analysis = out.text || '';
         if (!analysis) throw new Error('AI 응답이 비어있습니다');
 
-        // 결과 저장
+        // 결과 저장 (로컬 + ai_analysis 테이블)
         item.data['AI추가분석'] = analysis;
+        // sv item에도 반영 후 ai_analysis 별도 저장
+        const sv2 = getSv(); const svItem2 = sv2.find(s => s.id === item.id);
+        if (svItem2) {
+          svItem2.data = svItem2.data || {};
+          svItem2.data['AI추가분석'] = analysis;
+          setSv(sv2);
+        }
+        if (window._sbSaveAi) window._sbSaveAi(item.id, item.data).catch(() => {});
 
         renderTab(idx);
         ss('');
@@ -8641,34 +9105,35 @@ ${combinedText}
     // 파일 다운로드 (DB 연결 준비됨)
     // ===================================================
     function downloadFile(idx, type, docIdx = null) {
-      // type: 'original' (원본 파일) 또는 'additional' (추가 문서)
-      // docIdx: 추가 문서의 인덱스 (type='additional'인 경우)
-
       let fileData = null;
 
       if (type === 'original') {
         fileData = results[idx].originalFile;
-        if (!fileData || !fileData.base64) {
+        if (!fileData || (!fileData.url && !fileData.base64)) {
           alert('원본 파일이 없거나 현재 세션에서만 다운로드 가능합니다.\n\n저장된 항목은 추후 데이터베이스 연결 시 다운로드 가능합니다.');
           return;
         }
       } else if (type === 'additional') {
         fileData = results[idx].additionalDocs?.[docIdx];
-        if (!fileData || !fileData.base64) {
+        if (!fileData || (!fileData.url && !fileData.base64)) {
           alert('파일이 없거나 현재 세션에서만 다운로드 가능합니다.\n\n저장된 항목은 추후 데이터베이스 연결 시 다운로드 가능합니다.');
           return;
         }
       }
 
-      // TODO: 추후 데이터베이스 연결 시 여기에 DB 조회 로직 추가
-      // if(!fileData.base64 && fileData.fileId){
-      //   fetchFileFromDB(fileData.fileId).then(base64 => {
-      //     downloadFileWithBase64(base64, fileData.name, fileData.type);
-      //   });
-      //   return;
-      // }
-
-      downloadFileWithBase64(fileData.base64, fileData.name, fileData.type);
+      // Storage URL 방식 (신규)
+      if (fileData.url) {
+        const a = document.createElement('a');
+        a.href = fileData.url;
+        a.download = fileData.name || 'download';
+        a.target = '_blank';
+        a.click();
+        return;
+      }
+      // 레거시 base64 방식 (구형 데이터 호환)
+      if (fileData.base64) {
+        downloadFileWithBase64(fileData.base64, fileData.name, fileData.type);
+      }
     }
 
     function downloadFileWithBase64(base64, filename, mimeType) {
@@ -8765,6 +9230,8 @@ ${combinedText}
         item.data = item.data || {};
         item.data.AI기본분석 = analysis;
         setSv(sv);
+        // ai_analysis 테이블에 별도 저장 (items 테이블 경량화)
+        if (window._sbSaveAi) window._sbSaveAi(item.id, item.data).catch(() => {});
 
         // 팝업 갱신
         renderPopup(itemId);
@@ -8833,7 +9300,7 @@ ${combinedText}
             ...item,
             id: oldId,
             originalFile: item.originalFile ? { name: item.originalFile.name, type: item.originalFile.type } : null,
-            additionalDocs: item.additionalDocs ? item.additionalDocs.map(d => ({ name: d.name, size: d.size, type: d.type })) : []
+            additionalDocs: item.additionalDocs ? item.additionalDocs.map(d => ({ name: d.name, size: d.size, type: d.type, url: d.url || null, storagePath: d.storagePath || null })) : []
           };
           normalizeAreaFields(itemToSave);
           Object.assign(dup, itemToSave);
@@ -8844,7 +9311,7 @@ ${combinedText}
         const itemToSave = {
           ...item,
           originalFile: item.originalFile ? { name: item.originalFile.name, type: item.originalFile.type } : null,
-          additionalDocs: item.additionalDocs ? item.additionalDocs.map(d => ({ name: d.name, size: d.size, type: d.type })) : []
+          additionalDocs: item.additionalDocs ? item.additionalDocs.map(d => ({ name: d.name, size: d.size, type: d.type, url: d.url || null, storagePath: d.storagePath || null })) : []
         };
         normalizeAreaFields(itemToSave); normalizeAreaFields(item);
         const exists = sv.find(s => s.id === item.id);
@@ -18916,7 +19383,12 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     const NT_DOMAIN_LABELS = { auction: '⚖️ 경매', tax: '💰 세금', legal: '📋 권리', market: '🏘️ 상권', operation: '🔧 운영', etc: '기타' };
     const NT_PHASE_LABELS = { legal: '⚖️ 권리', field: '📍 임장', profit: '📈 수익', bid: '🎯 입찰', review: '📝 회고' };
 
-    function ntSave() { if(window._idbCache)window._idbCache['nt_notes']=ntNotes;if(window.idbSet)window.idbSet('nt_notes',ntNotes).catch(()=>{}); if (window._sbSaveNtNotes) window._sbSaveNtNotes(ntNotes).catch(e=>{}); }
+    function ntSave() {
+      if(window._idbCache)window._idbCache['nt_notes']=ntNotes;
+      if(window.idbSet)window.idbSet('nt_notes',ntNotes).catch(()=>{});
+      if (ntActiveId && window._sbMarkNtDirty) window._sbMarkNtDirty(ntActiveId);
+      if (window._sbSaveNtNotes) window._sbSaveNtNotes(ntNotes).catch(e=>{});
+    }
 
     // v236: 모드 전환
     window.ntSetMode = function (mode) {
@@ -21111,7 +21583,12 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       return 'auction';
     }
 
-    function saveKcards() { if(window._idbCache)window._idbCache['ins_kcards']=kcards;if(window.idbSet)window.idbSet('ins_kcards',kcards).catch(()=>{});if(window._sbSaveKcards)window._sbSaveKcards(kcards).catch(()=>{}); }
+    function saveKcards() {
+      if(window._idbCache)window._idbCache['ins_kcards']=kcards;
+      if(window.idbSet)window.idbSet('ins_kcards',kcards).catch(()=>{});
+      if (kcardEditId && window._sbMarkKcardDirty) window._sbMarkKcardDirty(kcardEditId);
+      if(window._sbSaveKcards)window._sbSaveKcards(kcards).catch(()=>{});
+    }
     function saveKcardCats() { if(window._idbCache)window._idbCache['ins_kcat']=kcardCats;if(window.idbSet)window.idbSet('ins_kcat',kcardCats).catch(()=>{});if(window._sbSaveKcat)window._sbSaveKcat(kcardCats).catch(()=>{}); }
 
     // ── 카테고리 탭 렌더 ───────────────────────────────
@@ -21176,7 +21653,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
         let _th='';
         if(card.ytUrl){const _ym=card.ytUrl.match(/(?:v=|youtu\.be\/)([A-Za-z0-9_-]{11})/);if(_ym){const _ytTitle=esc((card.title||'').slice(0,60));const _ytBody=esc(((card.body||'').split('\n').filter(Boolean)[0]||'').replace(/^[•\-·\d.)]\s*/,'').slice(0,80));_th=`<div style="flex-shrink:0;"><div style="width:100%;aspect-ratio:16/9;background:#000;overflow:hidden;position:relative;"><img src="https://img.youtube.com/vi/${_ym[1]}/mqdefault.jpg" style="width:100%;height:100%;object-fit:cover;display:block;" loading="lazy"><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;"><div style="width:40px;height:40px;background:rgba(255,0,0,.85);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;padding-left:3px;">▶</div></div></div>${(_ytTitle||_ytBody)?`<div style="padding:6px 10px 5px;border-bottom:1px solid var(--b1);">${_ytTitle?`<div style="font-size:12px;font-weight:700;color:var(--tx);line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${_ytTitle}</div>`:``}${_ytBody?`<div style="font-size:11px;color:var(--mu);line-height:1.45;margin-top:2px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">${_ytBody}</div>`:``}</div>`:``}</div>`;} }
-        else if(card.imgs&&card.imgs.length)_th=`<div style="width:100%;height:180px;background:#111;overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center;"><img src="${card.imgs[0]}" style="max-width:100%;max-height:180px;width:auto;height:auto;object-fit:contain;display:block;" loading="lazy"></div>`;
+        else if(card.imgs&&card.imgs.length)_th=`<div style="width:100%;height:180px;background:#111;overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center;"><img src="${window._sbImgUrl ? window._sbImgUrl(card.imgs[0], 400) : card.imgs[0]}" style="max-width:100%;max-height:180px;width:auto;height:auto;object-fit:contain;display:block;" loading="lazy"></div>`;
         const _bg=(!card.ytUrl&&(!card.imgs||!card.imgs.length)&&card.bgColor)?card.bgColor:'var(--s1)';
         return `<div style="background:${_bg};border:1px solid var(--b1);border-top:3px solid ${color};border-radius:0 0 12px 12px;display:flex;flex-direction:column;transition:transform .15s,box-shadow .15s;cursor:pointer;" 
       onclick="if(!event.target.closest('button'))showKcardDetail('${card.id}')"
@@ -21239,7 +21716,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           <a href="${card.ytUrl}" target="_blank" onclick="window.open(this.href,'_blank');return false;" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-decoration:none;">
             <div style="width:52px;height:52px;background:rgba(255,0,0,.9);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:22px;margin-left:4px;">▶</div></a></div>`;
       } else if (card.imgs && card.imgs.length) {
-        thHtml = `<div style="border-radius:10px;overflow:hidden;margin-bottom:16px;background:#111;"><img src="${card.imgs[0]}" style="width:100%;height:auto;display:block;object-fit:contain;max-height:320px;"></div>`;
+        thHtml = `<div style="border-radius:10px;overflow:hidden;margin-bottom:16px;background:#111;"><img src="${window._sbImgUrl ? window._sbImgUrl(card.imgs[0]) : card.imgs[0]}" style="width:100%;height:auto;display:block;object-fit:contain;max-height:320px;"></div>`;
       }
 
       // 본문 파싱
@@ -21461,7 +21938,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
           const { data, error } = await window._sb.storage
             .from('kcard-images')
-            .upload(path, file, { contentType: file.type, upsert: false });
+            .upload(path, file, { contentType: file.type, upsert: false, cacheControl: '31536000' });
 
           if (error) throw error;
 
@@ -26354,6 +26831,7 @@ ${newsContext}
 
         window._sbizModalCache = { items: items, lat: lat, lng: lng, radius: radius, label: label };
         sbizModalTab('overview');
+        document.removeEventListener('keydown', _sbizEscHandler); // 혹시 남아있는 리스너 정리
         document.addEventListener('keydown', _sbizEscHandler);
       };
 
