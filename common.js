@@ -23697,8 +23697,7 @@ ${newsContext}
 
       const esc2 = v => {
         const s = String(v ?? '').replace(/"/g, '""');
-        return (s.includes(',') || s.includes('"') || s.includes('
-')) ? `"${s}"` : s;
+        return (s.includes(',') || s.includes('"') || s.includes('\n')) ? `"${s}"` : s;
       };
 
       const rows = targets.map(m => {
@@ -23715,9 +23714,7 @@ ${newsContext}
         }).join(',');
       });
 
-      const csv = '﻿' + allHdrs.join(',') + '
-' + rows.join('
-');
+      const csv = '\uFEFF' + allHdrs.join(',') + '\n' + rows.join('\n');
       const label = allItems ? '전체' : '현재화면';
       const a = Object.assign(document.createElement('a'), {
         href: URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' })),
