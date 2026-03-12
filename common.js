@@ -20010,7 +20010,6 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     }
 
     // ── 서브탭 전환 ─────────────────────────────────────
-    window.showInsTab = function(n) { return showInsTab(n); };
     function showInsTab(n) {
       // cfg(API 설정) 특수 처리
       const cfgPanel = document.getElementById('ipage_cfg');
@@ -20059,6 +20058,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         }
       }
     }
+    window.showInsTab = showInsTab;
 
     function showCalcTab(n) {
       [0, 1, 2, 3, 4].forEach(i => {

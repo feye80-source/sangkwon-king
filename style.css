@@ -2066,6 +2066,30 @@
       background: #3d7ae8;
     }
 
+    /* 필터 버튼 전용 스타일 */
+    .map-search button#gfMapToggleBtn {
+      background: rgba(255,255,255,0.12);
+      color: #e8edf5;
+      border: 1px solid rgba(232,237,245,0.35);
+      padding: 6px 12px;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .map-search button#gfMapToggleBtn:hover {
+      background: rgba(255,255,255,0.22);
+      color: #fff;
+      border-color: rgba(232,237,245,0.6);
+    }
+
+    .map-search button#gfMapToggleBtn.active {
+      background: rgba(79,142,255,0.25);
+      border-color: rgba(79,142,255,0.6);
+      color: #cfe9ff;
+    }
+
     /* 지도 도구 버튼 */
     .map-tools {
       display: flex;
