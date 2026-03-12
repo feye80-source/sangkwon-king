@@ -711,6 +711,8 @@
     // width 지정 시 리사이즈도 겸함 (Egress 절감)
     window._sbImgUrl = function(url, width) {
       if (!url || !url.includes('supabase.co/storage')) return url;
+      // ★ kcard-images 버킷은 Transform API 미지원 → 원본 URL 그대로 반환
+      if (url.includes('/kcard-images/')) return url;
       try {
         const u = new URL(url);
         // /object/public/ → /render/v1/public/ (Transform API)
@@ -6040,7 +6042,7 @@
       const mbBody = document.getElementById('mbGfBody');
       if (mbBody) mbBody.style.display = 'none';
       const btn = document.getElementById('gfMapToggleBtn');
-      if (btn) { btn.style.color='#4f8eff'; btn.style.borderColor='rgba(79,142,255,.5)'; btn.style.background='rgba(79,142,255,.12)'; }
+      if (btn) { btn.classList.add('active'); btn.removeAttribute('style'); }
       showToast('✅ 지도 필터 적용됨', 'ok');
       renderGFilterPanels();
     };
@@ -6063,7 +6065,7 @@
       if(r)r.checked=true;
       window._gfActive=false;
       const btn=document.getElementById('gfMapToggleBtn');
-      if(btn){btn.style.color='rgba(232,237,245,.6)';btn.style.borderColor='rgba(232,237,245,.15)';btn.style.background='rgba(255,255,255,.04)';}
+      if(btn){ btn.classList.remove('active'); btn.removeAttribute('style'); }
       // ★ 즉시 필터 해제 반영 (refreshMapView)
       try { if (typeof refreshMapView === 'function') refreshMapView(); } catch(e) {}
       // 마커 재로드
@@ -6095,11 +6097,10 @@
         panel.style.display = isOpen ? 'none' : 'block';
         if (btn) {
           const active = isGFilterActive() || window._gfActive;
-          // ★ 패널이 열릴 때 OR 필터가 활성화된 상태이면 파란색 유지
+          // ★ 패널 열림 OR 필터 활성화 상태면 active 클래스, 아니면 CSS 기본값으로 복원
           const highlight = !isOpen || active;
-          btn.style.color = highlight ? '#4f8eff' : 'rgba(232,237,245,.6)';
-          btn.style.borderColor = highlight ? 'rgba(79,142,255,.5)' : 'rgba(232,237,245,.15)';
-          btn.style.background = highlight ? 'rgba(79,142,255,.12)' : 'rgba(255,255,255,.04)';
+          btn.classList.toggle('active', highlight);
+          btn.removeAttribute('style'); // 인라인 스타일 완전 제거해서 CSS가 적용되도록
         }
         if (!isOpen) renderGFilterPanels();
       }
@@ -22820,7 +22821,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         if (prev) prev.appendChild(wrap);
 
         try {
-          const uid = await _sbGetUserId();
+          const uid = await window._sbGetUserId();
           if (!uid) throw new Error('로그인이 필요합니다');
 
           const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
