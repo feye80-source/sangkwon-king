@@ -2786,7 +2786,7 @@
       position: relative;
       z-index: 25;
       width: 56px;
-      height: 210px;
+      height: 160px;
       background: rgba(13, 17, 30, 0.92);
       backdrop-filter: blur(10px);
       border: 1px solid rgba(255, 255, 255, 0.10);
@@ -2821,7 +2821,7 @@
 
     #mapZoomSlider #zoomRange {
       width: 10px;
-      height: 130px;
+      height: 80px;
       -webkit-appearance: slider-vertical;
       writing-mode: bt-lr;
       background: rgba(255, 255, 255, 0.10);
