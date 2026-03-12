@@ -5964,12 +5964,29 @@
 
     // ── 지도탭 CSV ─────────────────────────────────────────────────
     // pcMapExportCSV(false) = 필터CSV: 현재 화면/반경 범위 + gf 조건필터 적용
-    // pcMapExportCSV(true)  = 화면CSV: 현재 지도에 표시된 마커 전부 (필터 무관)
+    // pcMapExportCSV(true)  = 화면CSV: 현재 지도 화면(bounds) 안에 보이는 마커만
     window.pcMapExportCSV = function (screenOnly) {
       let sv;
       if (screenOnly) {
-        // 화면 CSV: mapOverlays에 올라간 item 전부
+        // 화면 CSV: 현재 지도 bounds 안에 있는 마커만
+        let boundsFilter = null;
+        try {
+          if (map && map.getBounds) {
+            const bounds = map.getBounds();
+            boundsFilter = bounds;
+          }
+        } catch(e) {}
         sv = (mapOverlays || []).map(o => o.item).filter(Boolean);
+        // bounds 필터링
+        if (boundsFilter) {
+          sv = sv.filter(item => {
+            if (!item.lat || !item.lng) return false;
+            try {
+              const pos = new kakao.maps.LatLng(item.lat, item.lng);
+              return boundsFilter.contain(pos);
+            } catch(e) { return true; }
+          });
+        }
         // 중복 제거 (id 기준)
         const seen = new Set();
         sv = sv.filter(item => { if (!item.id || seen.has(item.id)) return false; seen.add(item.id); return true; });
@@ -7297,8 +7314,8 @@
       const c = map.getCenter();
       const lat = c.getLat().toFixed(6);
       const lng = c.getLng().toFixed(6);
-      // 오픈업 상권분석 (소상공인마당) - 좌표 기반 직접 이동
-      window.open(`https://www.openup.kr/infoStatistics/rsrchReport/tradeAreaAnalysis.do`, '_blank');
+      // 오픈업 상권분석 — 좌표 기반 이동 (lat/lng 파라미터)
+      window.open(`https://www.openup.kr/infoStatistics/rsrchReport/tradeAreaAnalysis.do?lat=${lat}&lng=${lng}`, '_blank');
       showToast('오픈업 상권분석으로 이동합니다', 'ok');
     }
     window.openOpenub = openOpenub;
@@ -7327,6 +7344,20 @@
       showToast('마이프랜차이즈로 이동합니다', 'ok');
     }
     window.openMyFranchise = openMyFranchise;
+
+    function openKwonrigum() {
+      if (typeof map === 'undefined' || !map) {
+        showToast('지도 탭을 먼저 열어주세요', 'warn'); return;
+      }
+      const c = map.getCenter();
+      const lat = c.getLat().toFixed(6);
+      const lng = c.getLng().toFixed(6);
+      const level = map.getLevel ? map.getLevel() : 4;
+      // 권리금닷컴 — 좌표 파라미터로 현재 위치 전달
+      window.open(`https://kwonrigum.com/reports?lat=${lat}&lng=${lng}&zoom=${level}`, '_blank');
+      showToast('권리금닷컴으로 이동합니다', 'ok');
+    }
+    window.openKwonrigum = openKwonrigum;
 
     // ── 디스코/BDS 지도 위치로 열기 ──────────────────────────
     function openDiscoAtMapCenter() {
@@ -20802,8 +20833,10 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
     // ── 삭제 ───────────────────────────────────────────
     window.ntDelete = function (id) {
-      ntNotes = ntNotes.filter(n => n.id !== id);
-      // IDB + 클라우드 동시 삭제
+      // soft-delete: deletedAt 마킹 후 IDB/클라우드에 저장 → 재동기화 시 살아나지 않음
+      const idx = ntNotes.findIndex(n => n.id === id);
+      if (idx !== -1) ntNotes[idx].deletedAt = new Date().toISOString();
+      ntNotes = ntNotes.filter(n => n.id !== id); // 로컬 UI에서 제거
       if (window._idbCache) window._idbCache['nt_notes'] = ntNotes;
       if (window.idbSet) window.idbSet('nt_notes', ntNotes).catch(()=>{});
       if (window._sb && window._sbGetUserId) {
@@ -20821,6 +20854,9 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       if (!note) return;
       const title = note.title || '제목 없음';
       if (!confirm('「' + title + '」 노트를 삭제할까요?')) return;
+      // soft-delete + 클라우드 삭제
+      const idx = ntNotes.findIndex(n => n.id === id);
+      if (idx !== -1) ntNotes[idx].deletedAt = new Date().toISOString();
       ntNotes = ntNotes.filter(n => n.id !== id);
       if (window._idbCache) window._idbCache['nt_notes'] = ntNotes;
       if (window.idbSet) window.idbSet('nt_notes', ntNotes).catch(()=>{});
