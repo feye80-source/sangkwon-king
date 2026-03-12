@@ -325,6 +325,7 @@
         return _sbCachedUserId;
       } catch(e) { return null; }
     }
+    window._sbGetUserId = _sbGetUserId; // ★ 전역 노출 (외부 함수에서 접근 가능하도록)
 
     // ── kv_store 헬퍼 (섹션/API키 등 키-값 단건 저장) ──────
     async function kvGet(key) {
@@ -906,9 +907,11 @@
         } catch(e) { console.warn('[SB] API key sync error', e); }
 
         window._sbSyncStatus('✅ 클라우드 로드 완료', true);
+        window._sbCloudLoaded = true; // ★ 클라우드 로드 완료 플래그
 
         // ── 클라우드 로드 완료 후 로컬 변수 동기화 + 화면 갱신 ──
-        setTimeout(function() {
+        // ★ requestAnimationFrame으로 브라우저 렌더 사이클에 맞춰 깜빡임 최소화
+        requestAnimationFrame(function() {
           try {
             // ntNotes 동기화: 모듈 초기화 시점에 IDB 캐시가 비어있었을 수 있음
             const freshNotes = window._idbCache && window._idbCache['nt_notes'];
@@ -928,7 +931,7 @@
             if (typeof renderKcatTabs === 'function') renderKcatTabs();
             if (typeof window.mbRenderKcards === 'function') window.mbRenderKcards();
           } catch(e) {}
-        }, 300);
+        });
 
       } catch(e) {
         console.warn('[SB] initLoad error', e);
@@ -6092,9 +6095,11 @@
         panel.style.display = isOpen ? 'none' : 'block';
         if (btn) {
           const active = isGFilterActive() || window._gfActive;
-          btn.style.color = (!isOpen || active) ? '#4f8eff' : 'rgba(232,237,245,.6)';
-          btn.style.borderColor = (!isOpen || active) ? 'rgba(79,142,255,.5)' : 'rgba(232,237,245,.15)';
-          btn.style.background = (!isOpen || active) ? 'rgba(79,142,255,.12)' : 'rgba(255,255,255,.04)';
+          // ★ 패널이 열릴 때 OR 필터가 활성화된 상태이면 파란색 유지
+          const highlight = !isOpen || active;
+          btn.style.color = highlight ? '#4f8eff' : 'rgba(232,237,245,.6)';
+          btn.style.borderColor = highlight ? 'rgba(79,142,255,.5)' : 'rgba(232,237,245,.15)';
+          btn.style.background = highlight ? 'rgba(79,142,255,.12)' : 'rgba(255,255,255,.04)';
         }
         if (!isOpen) renderGFilterPanels();
       }
@@ -20038,7 +20043,15 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
       if (n === 0) { try { if (typeof window.ntInit === 'function') window.ntInit(); } catch (e) { console.error('[ntInit]', e); } }
       if (n === 1) { try { populateItemSelects(); } catch (e) { console.error('[populateItemSelects]', e); } }
-      if (n === 4) { try { renderKcatTabs(); renderKcards(); } catch (e) { console.error('[kcards]', e); } }
+      if (n === 4) {
+        try {
+          // ★ 클라우드 로드 완료 후 첫 진입이면 캐시 동기화 먼저
+          if (window._sbCloudLoaded && typeof window._kcardsSyncFromCache === 'function') {
+            window._kcardsSyncFromCache();
+          }
+          renderKcatTabs(); renderKcards();
+        } catch (e) { console.error('[kcards]', e); }
+      }
 
       if (n === 3) { try { clipTabInit(); } catch (e) { console.error('[clipTabInit]', e); } }
       if (n === 5) { try { renderWatchBoard(); } catch (e) { console.error('[renderWatchBoard]', e); } }
