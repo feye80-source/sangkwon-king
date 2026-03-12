@@ -1168,7 +1168,7 @@
         <div style="display:flex;flex-direction:column;gap:8px;">
           <button onclick="window._sbRunDbAction('migrateAi')" style="padding:8px 12px;background:rgba(79,142,255,.15);border:1px solid rgba(79,142,255,.35);border-radius:8px;color:#4f8eff;font-size:12px;font-weight:600;cursor:pointer;">🤖 AI분석 마이그레이션</button>
           <button onclick="window._sbRunDbAction('migrateBase64')" style="padding:8px 12px;background:rgba(79,142,255,.15);border:1px solid rgba(79,142,255,.35);border-radius:8px;color:#4f8eff;font-size:12px;font-weight:600;cursor:pointer;">📎 Base64→Storage 이전</button>
-          <button onclick="window._sbRunDbAction('checkOrphan')" style="padding:8px 12px;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);border-radius:8px;color:#fbbf24;font-size:12px;font-weight:600;cursor:pointer;">🔍 Storage 고아파일 검사</button>
+          <button onclick="window._sbRunDbAction('checkOrphan')" style="padding:8px 12px;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);border-radius:8px;color:#fbbf24;font-size:12px;font-weight:600;cursor:pointer;">🔍 Storage 미사용 파일 검사</button>
           <button onclick="window._sbRunDbAction('forceSync')" style="padding:8px 12px;background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.3);border-radius:8px;color:#10b981;font-size:12px;font-weight:600;cursor:pointer;">🔄 강제 재동기화</button>
           <button onclick="window._sbRunDbAction('dbStats')" style="padding:8px 12px;background:rgba(148,163,184,.1);border:1px solid rgba(148,163,184,.2);border-radius:8px;color:#94a3b8;font-size:12px;font-weight:600;cursor:pointer;">📊 동기화 상태 확인</button>
         </div>
@@ -1204,7 +1204,7 @@
           const r = await window._sbMigrateBase64();
           print(`완료: 성공 ${r?.ok||0}개, 실패 ${r?.fail||0}개`, r?.fail ? '#fbbf24' : '#10b981');
         } else if (action === 'checkOrphan') {
-          print('고아파일 검사 시작...', '#fbbf24');
+          print('미사용 파일 검사 시작...', '#fbbf24');
           const uid = await window._sbGetUserId?.();
           if (!uid || !window._sb) { print('로그인 필요', '#f87171'); return; }
           const { data, error } = await window._sb.storage.from('attachments').list(uid + '/');
@@ -1213,7 +1213,7 @@
           const usedUrls = new Set();
           sv.forEach(item => { (item.data?.additionalDocs || []).forEach(d => { if (d.url) usedUrls.add(d.url.split('/').pop()); }); });
           const orphans = (data || []).filter(f => !usedUrls.has(f.name));
-          print(`파일 ${(data||[]).length}개 중 고아 ${orphans.length}개`, orphans.length ? '#fbbf24' : '#10b981');
+          print(`파일 ${(data||[]).length}개 중 미사용 ${orphans.length}개`, orphans.length ? '#fbbf24' : '#10b981');
           orphans.slice(0, 5).forEach(f => print(`  → ${f.name}`, '#64748b'));
           if (orphans.length > 5) print(`  ... 외 ${orphans.length - 5}개`, '#64748b');
         } else if (action === 'forceSync') {
@@ -5876,10 +5876,9 @@
         const sv = getFilteredSv ? getFilteredSv() : getSv();
         const cntEl = document.getElementById('lfResultCount');
         if (cntEl) cntEl.textContent = sv.length + '건';
-        // 활성 필터 칩 업데이트
         _updateFilterChips('lf', 'lfChips');
       } catch(e) {}
-      // 지도탭 결과 건수 업데이트
+      // 지도탭 결과 건수 + 필터 버튼 배지 업데이트
       try {
         const svAll = getSv ? getSv() : [];
         const filtered = svAll.filter(item => {
@@ -5890,6 +5889,32 @@
         const cntEl2 = document.getElementById('gfResultCount');
         if (cntEl2) cntEl2.textContent = filtered.length + '건';
         _updateFilterChips('gf', 'gfChips');
+        // 필터 버튼 배지 — 활성 필터 개수 표시
+        const badge = document.getElementById('gfActiveBadge');
+        if (badge) {
+          const active = isGFilterActive() || window._gfActive;
+          if (active) {
+            const numIds = ['gfFloorMin','gfFloorMax','gfAreaMin','gfAreaMax',
+              'gfPriceMin','gfPriceMax','gfTxPriceMin','gfTxPriceMax',
+              'gfAppraisalMin','gfAppraisalMax','gfMinBidMin','gfMinBidMax',
+              'gfDepositMin','gfDepositMax','gfJeonseMin','gfJeonseMax',
+              'gfRentMin','gfRentMax','gfYieldMin','gfYieldMax',
+              'gfPpMin','gfPpMax','gfFailCntMin','gfFailCntMax',
+              'gfDateMin','gfDateMax','gfPropType','gfAddrKeyword','gfTitleKeyword','gfMemoKeyword'];
+            const chkIds = ['gfFloorIncludeEmpty','gfAreaIncludeEmpty','gfHasArea','gfHasPrice',
+              'gfHasDeposit','gfHasRent','gfHasTxPrice','gfHasYield','gfExclEstArea',
+              'gfSrc_경매','gfSrc_네이버','gfSrc_점포라인','gfSrc_아싸','gfSrc_디스코','gfSrc_플래닛','gfSrc_온비드'];
+            let cnt = 0;
+            numIds.forEach(id => { const el = document.getElementById(id); if (el && el.value.trim()) cnt++; });
+            chkIds.forEach(id => { const el = document.getElementById(id); if (el && el.checked) cnt++; });
+            const deal = document.querySelector('input[name="gfDealKind"]:checked');
+            if (deal && deal.value !== 'all') cnt++;
+            badge.textContent = cnt;
+            badge.style.display = cnt > 0 ? 'inline-block' : 'none';
+          } else {
+            badge.style.display = 'none';
+          }
+        }
       } catch(e) {}
     }
     function isGFilterActive() {
@@ -5966,7 +5991,7 @@
         // 필터 CSV: gf 조건필터 적용
         if (isGFilterActive() || window._gfActive) {
           sv = getSv().filter(item => {
-            if (!item) return false;
+            if (!item || !item.data) return false;
             if (!item._norm && typeof normalizeItem === 'function') normalizeItem(item);
             return _checkFilter(item.data || {}, 'gf', item);
           });
@@ -5987,12 +6012,11 @@
       const esc2 = v => { const s = String(v ?? '').replace(/"/g, '""'); return (s.includes(',')||s.includes('"')||s.includes('\n'))?`"${s}"`:s; };
       const rows = sv.map(item => {
         const d = item.data || {};
-        const isTx = item.type === 'transaction';
         return allHdrs.map(h => {
           if (h==='ID') return esc2(item.id||'');
-          if (h==='소재지') return esc2(d.소재지 || (isTx ? item.address : '') || item.title || '');
-          if (h==='출처') return esc2(item.source || d.출처 || (isTx ? '실거래' : '') || '');
-          if (h==='유형') return esc2(item.mode || (isTx ? 'transaction' : '') || '');
+          if (h==='소재지') return esc2(d.소재지||item.title||'');
+          if (h==='출처') return esc2(item.source||d.출처||'');
+          if (h==='유형') return esc2(item.mode||'');
           if (h==='lat') return esc2(item.lat||'');
           if (h==='lng') return esc2(item.lng||'');
           if (h.startsWith('_') && item._norm) { const nk=h.slice(1); return esc2(item._norm[nk]??''); }
@@ -11633,7 +11657,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           toLoad.sort((a, b) => _getSortVal(a) - _getSortVal(b));
         }
 
-        // ★ 조건 필터 적용 — gf 단일 필터만 사용 (전체화면/반경 모드 공통)
+        // ★ 조건 필터 적용 — gf 단일 필터 (전체화면/반경 모드 공통)
         const _gfHasFilter = (typeof isGFilterActive === 'function') && isGFilterActive();
 
         // ★ [v159 FIX] 복사본 생성으로 참조 버그 방지
@@ -18918,10 +18942,9 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     // 부동산 계산기 (v146 - v123 스타일 기반)
     // ===================================================
     // ★ [v179] resetMapFilter 함수 (조건 필터 초기화 버튼용)
-    // ★ resetMapFilter → gf 단일 필터 통합으로 resetMapGFilter에 위임
     window.resetMapFilter = function () {
       if (typeof resetMapGFilter === 'function') resetMapGFilter();
-    };
+    };;
 
     // ★ [v182] AI 지도 분석 패널
     // ===================================================
