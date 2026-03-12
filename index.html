@@ -1451,8 +1451,8 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
             </div>
             <!-- CSV 다운로드 버튼 -->
             <div style="display:flex;gap:4px;margin-top:7px;padding-top:6px;border-top:1px solid rgba(232,237,245,.08);">
-              <button onclick="pcMapExportCSV(false)" title="조건 필터에 맞는 매물 CSV 다운로드" style="flex:1;padding:5px 0;background:rgba(79,142,255,.14);border:1px solid rgba(79,142,255,.4);border-radius:5px;color:#7db3ff;font-size:10px;cursor:pointer;font-weight:700;font-family:'Noto Sans KR',sans-serif;">📊 필터 CSV</button>
-              <button onclick="pcMapExportCSV(true)" title="현재 지도 화면에 표시된 매물 전체 CSV 다운로드" style="flex:1;padding:5px 0;background:rgba(0,212,130,.08);border:1px solid rgba(0,212,130,.3);border-radius:5px;color:#00d482;font-size:10px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">🗺️ 화면 CSV</button>
+              <button onclick="pcMapExportCSV(false)" style="flex:1;padding:5px 0;background:rgba(0,212,130,.14);border:1px solid rgba(0,212,130,.4);border-radius:5px;color:#00d482;font-size:10px;cursor:pointer;font-weight:700;font-family:'Noto Sans KR',sans-serif;">📊 필터 CSV</button>
+              <button onclick="pcMapExportCSV(true)" style="flex:1;padding:5px 0;background:rgba(0,212,130,.06);border:1px solid rgba(0,212,130,.2);border-radius:5px;color:#00d482;font-size:10px;cursor:pointer;opacity:.8;font-family:'Noto Sans KR',sans-serif;">📊 전체 CSV</button>
             </div>
           </div>
 
@@ -1658,40 +1658,28 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
 
             <div class="mfr-divider"></div>
 
-            <!-- 측정 도구 그룹 — 접이식 -->
+            <!-- 측정 도구 그룹 -->
             <div class="mfr-group">
               <div class="mfr-label">측정</div>
-              <button class="mfr-btn" id="measureToggleBtn"
-                onclick="(()=>{const b=document.getElementById('measureSubBtns');const open=b.style.display!=='none';b.style.display=open?'none':'flex';document.getElementById('measureToggleBtn').classList.toggle('active',!open);})()"
-                title="측정 도구">
+              <button class="mfr-btn" id="distanceBtn" onclick="toggleMeasureTool('distance')" title="거리재기">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M3 12h18M9 6l-6 6 6 6M15 6l6 6-6 6"/>
+                  <path d="M3 12h18M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3" />
                 </svg>
-                <span>측정</span>
+                <span>거리</span>
               </button>
-              <!-- 펼쳐지는 하위 버튼들 -->
-              <div id="measureSubBtns" style="display:none;flex-direction:column;gap:2px;width:100%;">
-                <button class="mfr-btn" id="distanceBtn" onclick="toggleMeasureTool('distance')" title="거리재기">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M3 12h18M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3" />
-                  </svg>
-                  <span>거리</span>
-                </button>
-                <button class="mfr-btn" id="areaBtn" onclick="toggleMeasureTool('area')" title="면적재기">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <rect x="4" y="4" width="16" height="16" rx="1" />
-                  </svg>
-                  <span>면적</span>
-                </button>
-                <button class="mfr-btn" id="radiusBtn" onclick="toggleMeasureTool('radius')" title="반경재기">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="8" />
-                    <path d="M12 12l5-5" />
-                  </svg>
-                  <span>반경</span>
-                </button>
-              </div>
-            </div>
+              <button class="mfr-btn" id="areaBtn" onclick="toggleMeasureTool('area')" title="면적재기">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="4" y="4" width="16" height="16" rx="1" />
+                </svg>
+                <span>면적</span>
+              </button>
+              <button class="mfr-btn" id="radiusBtn" onclick="toggleMeasureTool('radius')" title="반경재기">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="8" />
+                  <path d="M12 12l5-5" />
+                </svg>
+                <span>반경</span>
+              </button>
               <button class="mfr-btn" onclick="createMemoMarker()" title="메모 추가">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
@@ -1993,6 +1981,11 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
               <button class="map-btn" onclick="openCSVLoader()"
                 style="background:#5b21b6;color:#fff;width:100%;margin-bottom:5px;">📂 지역/연도 선택해서 불러오기</button>
               <input type="file" id="trade-csv-upload" accept=".csv" style="display:none" onchange="handleMapCSV(this)">
+              <!-- 저장목록 CSV 다운로드 -->
+              <div style="display:flex;gap:4px;margin-bottom:5px;">
+                <button class="map-btn" onclick="pcMapExportCSV(false)" style="flex:1;background:rgba(0,212,130,.12);border:1px solid rgba(0,212,130,.4);color:#00d482;font-weight:700;">📊 필터CSV</button>
+                <button class="map-btn" onclick="pcMapExportCSV(true)" style="flex:1;background:rgba(0,212,130,.06);border:1px solid rgba(0,212,130,.25);color:#00d482;opacity:.85;">📊 전체CSV</button>
+              </div>
               <!-- 로드된 목록 -->
               <div id="csvSourceList"
                 style="display:flex;flex-direction:column;gap:2px;max-height:200px;overflow-y:auto;">
