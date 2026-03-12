@@ -1590,125 +1590,145 @@ body {
           <div id="mapStatus" style="font-size:11px;color:#39ff14;margin-top:2px;font-weight:700;">화면 내: 0건</div>
         </div>
 
-        <!-- 불러오기 · 카드 제어 (핵심) -->
+        <!-- 레이어 & 불러오기 -->
         <div class="mb-panel-section">
-          <div class="mb-panel-section-title">불러오기 · 카드 제어</div>
+          <div class="mb-panel-section-title">🗂️ 레이어 &amp; 불러오기</div>
 
-          <!-- 타입별 행: [불러오기] [표시] [카드] [삭제] -->
-          <div style="display:grid;grid-template-columns:1fr 32px 32px 32px;gap:4px;align-items:center;margin-bottom:6px;">
-            <span style="font-size:9px;color:var(--di);">소스</span>
+          <!-- 헤더 -->
+          <div style="display:grid;grid-template-columns:28px 1fr 32px 28px 28px;gap:4px;align-items:center;margin-bottom:5px;">
             <span style="font-size:9px;color:var(--di);text-align:center;">표시</span>
+            <span style="font-size:9px;color:var(--di);">소스</span>
+            <span style="font-size:9px;color:var(--di);text-align:center;">건수</span>
             <span style="font-size:9px;color:var(--di);text-align:center;">카드</span>
             <span style="font-size:9px;color:var(--di);text-align:center;">삭제</span>
           </div>
 
           <!-- 경매 -->
-          <div style="display:grid;grid-template-columns:1fr 32px 32px 32px;gap:4px;align-items:center;margin-bottom:4px;">
-            <button onclick="loadCurrentAreaByType('auction')" style="height:32px;font-size:11px;font-weight:700;border:none;border-radius:7px;background:var(--auction-c);color:#fff;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:4px;padding:0 8px;overflow:hidden;">
-              ⚖️<span>경매</span><b id="auctionCount" style="margin-left:auto;background:rgba(0,0,0,.25);padding:1px 5px;border-radius:4px;font-size:10px;">0</b>
-            </button>
+          <div style="display:grid;grid-template-columns:28px 1fr 32px 28px 28px;gap:4px;align-items:center;margin-bottom:4px;">
             <label style="display:flex;align-items:center;justify-content:center;cursor:pointer;">
               <input type="checkbox" id="filterAuction" checked onchange="toggleMapFilter('auction')" style="accent-color:var(--auction-c);width:16px;height:16px;">
             </label>
+            <button onclick="loadCurrentAreaByType('auction')" style="height:32px;font-size:11px;font-weight:700;border:none;border-radius:7px;background:var(--auction-c);color:#fff;cursor:pointer;font-family:inherit;padding:0 8px;text-align:left;">
+              ⚖️ 경매
+            </button>
+            <span id="auctionCount" style="font-size:11px;font-weight:700;color:var(--auction-c);text-align:center;">0</span>
             <button id="typeToggleBtn_auction" onclick="uiToggleCardType('auction')" title="카드 열기/닫기"
-              style="height:32px;font-size:13px;background:rgba(255,140,66,.1);border:1px solid rgba(255,140,66,.3);border-radius:7px;color:var(--auction-c);cursor:pointer;">📂</button>
-            <button onclick="clearMarkersByType('auction')" title="삭제"
-              style="height:32px;font-size:13px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:7px;color:var(--di);cursor:pointer;">🗑</button>
+              style="height:28px;font-size:13px;background:rgba(255,140,66,.1);border:1px solid rgba(255,140,66,.3);border-radius:7px;color:var(--auction-c);cursor:pointer;">📂</button>
+            <button onclick="clearMarkersByType('auction')"
+              style="height:28px;font-size:13px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:7px;color:var(--di);cursor:pointer;">🗑</button>
           </div>
 
           <!-- 네이버 -->
-          <div style="display:grid;grid-template-columns:1fr 32px 32px 32px;gap:4px;align-items:center;margin-bottom:4px;">
-            <button onclick="loadCurrentAreaByType('listing')" style="height:32px;font-size:11px;font-weight:700;border:none;border-radius:7px;background:var(--naver-c);color:#fff;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:4px;padding:0 8px;overflow:hidden;">
-              🏠<span>네이버</span><b id="naverCount" style="margin-left:auto;background:rgba(0,0,0,.25);padding:1px 5px;border-radius:4px;font-size:10px;">0</b>
-            </button>
+          <div style="display:grid;grid-template-columns:28px 1fr 32px 28px 28px;gap:4px;align-items:center;margin-bottom:4px;">
             <label style="display:flex;align-items:center;justify-content:center;cursor:pointer;">
               <input type="checkbox" id="filterNaver" checked onchange="toggleMapFilter('naver')" style="accent-color:var(--naver-c);width:16px;height:16px;">
             </label>
+            <button onclick="loadCurrentAreaByType('listing')" style="height:32px;font-size:11px;font-weight:700;border:none;border-radius:7px;background:var(--naver-c);color:#fff;cursor:pointer;font-family:inherit;padding:0 8px;text-align:left;">
+              🏠 네이버
+            </button>
+            <span id="naverCount" style="font-size:11px;font-weight:700;color:var(--naver-c);text-align:center;">0</span>
             <button id="typeToggleBtn_naver" onclick="uiToggleCardType('naver')"
-              style="height:32px;font-size:13px;background:rgba(3,199,90,.1);border:1px solid rgba(3,199,90,.3);border-radius:7px;color:var(--naver-c);cursor:pointer;">📂</button>
+              style="height:28px;font-size:13px;background:rgba(3,199,90,.1);border:1px solid rgba(3,199,90,.3);border-radius:7px;color:var(--naver-c);cursor:pointer;">📂</button>
             <button onclick="clearMarkersByType('naver')"
-              style="height:32px;font-size:13px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:7px;color:var(--di);cursor:pointer;">🗑</button>
+              style="height:28px;font-size:13px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:7px;color:var(--di);cursor:pointer;">🗑</button>
           </div>
 
           <!-- 점포라인 -->
-          <div style="display:grid;grid-template-columns:1fr 32px 32px 32px;gap:4px;align-items:center;margin-bottom:4px;">
-            <button onclick="loadCurrentAreaByType('jumpo')" style="height:32px;font-size:11px;font-weight:700;border:none;border-radius:7px;background:var(--jumpo-c);color:#111;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:4px;padding:0 8px;overflow:hidden;">
-              🏪<span>점포라인</span><b id="jumpoCount" style="margin-left:auto;background:rgba(0,0,0,.2);padding:1px 5px;border-radius:4px;font-size:10px;">0</b>
-            </button>
+          <div style="display:grid;grid-template-columns:28px 1fr 32px 28px 28px;gap:4px;align-items:center;margin-bottom:4px;">
             <label style="display:flex;align-items:center;justify-content:center;cursor:pointer;">
               <input type="checkbox" id="filterJumpo" checked onchange="toggleMapFilter('jumpo')" style="accent-color:var(--jumpo-c);width:16px;height:16px;">
             </label>
+            <button onclick="loadCurrentAreaByType('jumpo')" style="height:32px;font-size:11px;font-weight:700;border:none;border-radius:7px;background:var(--jumpo-c);color:#111;cursor:pointer;font-family:inherit;padding:0 8px;text-align:left;">
+              🏪 점포라인
+            </button>
+            <span id="jumpoCount" style="font-size:11px;font-weight:700;color:var(--jumpo-c);text-align:center;">0</span>
             <button id="typeToggleBtn_jumpo" onclick="uiToggleCardType('jumpo')"
-              style="height:32px;font-size:13px;background:rgba(103,198,232,.1);border:1px solid rgba(103,198,232,.3);border-radius:7px;color:var(--jumpo-c);cursor:pointer;">📂</button>
+              style="height:28px;font-size:13px;background:rgba(103,198,232,.1);border:1px solid rgba(103,198,232,.3);border-radius:7px;color:var(--jumpo-c);cursor:pointer;">📂</button>
             <button onclick="clearMarkersByType('jumpo')"
-              style="height:32px;font-size:13px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:7px;color:var(--di);cursor:pointer;">🗑</button>
+              style="height:28px;font-size:13px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:7px;color:var(--di);cursor:pointer;">🗑</button>
           </div>
 
           <!-- 아싸점포 -->
-          <div style="display:grid;grid-template-columns:1fr 32px 32px 32px;gap:4px;align-items:center;margin-bottom:4px;">
-            <button onclick="loadCurrentAreaByType('assa')" style="height:32px;font-size:11px;font-weight:700;border:none;border-radius:7px;background:var(--assa-c);color:#fff;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:4px;padding:0 8px;overflow:hidden;">
-              🏬<span>아싸점포</span><b id="assaCount" style="margin-left:auto;background:rgba(0,0,0,.25);padding:1px 5px;border-radius:4px;font-size:10px;">0</b>
-            </button>
+          <div style="display:grid;grid-template-columns:28px 1fr 32px 28px 28px;gap:4px;align-items:center;margin-bottom:4px;">
             <label style="display:flex;align-items:center;justify-content:center;cursor:pointer;">
               <input type="checkbox" id="filterAssa" checked onchange="toggleMapFilter('assa')" style="accent-color:var(--assa-c);width:16px;height:16px;">
             </label>
+            <button onclick="loadCurrentAreaByType('assa')" style="height:32px;font-size:11px;font-weight:700;border:none;border-radius:7px;background:var(--assa-c);color:#fff;cursor:pointer;font-family:inherit;padding:0 8px;text-align:left;">
+              🏬 아싸점포
+            </button>
+            <span id="assaCount" style="font-size:11px;font-weight:700;color:var(--assa-c);text-align:center;">0</span>
             <button id="typeToggleBtn_assa" onclick="uiToggleCardType('assa')"
-              style="height:32px;font-size:13px;background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.3);border-radius:7px;color:var(--assa-c);cursor:pointer;">📂</button>
+              style="height:28px;font-size:13px;background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.3);border-radius:7px;color:var(--assa-c);cursor:pointer;">📂</button>
             <button onclick="clearMarkersByType('assa')"
-              style="height:32px;font-size:13px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:7px;color:var(--di);cursor:pointer;">🗑</button>
+              style="height:28px;font-size:13px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:7px;color:var(--di);cursor:pointer;">🗑</button>
           </div>
 
           <!-- 디스코 -->
-          <div style="display:grid;grid-template-columns:1fr 32px 32px 32px;gap:4px;align-items:center;margin-bottom:4px;">
-            <button onclick="loadCurrentAreaByType('disco')" style="height:32px;font-size:11px;font-weight:700;border:none;border-radius:7px;background:var(--disco-c);color:#fff;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:4px;padding:0 8px;overflow:hidden;">
-              🔴<span>디스코</span><b id="discoCount" style="margin-left:auto;background:rgba(0,0,0,.25);padding:1px 5px;border-radius:4px;font-size:10px;">0</b>
-            </button>
+          <div style="display:grid;grid-template-columns:28px 1fr 32px 28px 28px;gap:4px;align-items:center;margin-bottom:4px;">
             <label style="display:flex;align-items:center;justify-content:center;cursor:pointer;">
               <input type="checkbox" id="filterDisco" checked onchange="toggleMapFilter('disco')" style="accent-color:var(--disco-c);width:16px;height:16px;">
             </label>
+            <button onclick="loadCurrentAreaByType('disco')" style="height:32px;font-size:11px;font-weight:700;border:none;border-radius:7px;background:var(--disco-c);color:#fff;cursor:pointer;font-family:inherit;padding:0 8px;text-align:left;">
+              🔴 디스코
+            </button>
+            <span id="discoCount" style="font-size:11px;font-weight:700;color:var(--disco-c);text-align:center;">0</span>
             <button id="typeToggleBtn_disco" onclick="uiToggleCardType('disco')"
-              style="height:32px;font-size:13px;background:rgba(232,54,93,.1);border:1px solid rgba(232,54,93,.3);border-radius:7px;color:var(--disco-c);cursor:pointer;">📂</button>
+              style="height:28px;font-size:13px;background:rgba(232,54,93,.1);border:1px solid rgba(232,54,93,.3);border-radius:7px;color:var(--disco-c);cursor:pointer;">📂</button>
             <button onclick="clearMarkersByType('disco')"
-              style="height:32px;font-size:13px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:7px;color:var(--di);cursor:pointer;">🗑</button>
+              style="height:28px;font-size:13px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:7px;color:var(--di);cursor:pointer;">🗑</button>
           </div>
 
           <!-- 플래닛 -->
-          <div style="display:grid;grid-template-columns:1fr 32px 32px 32px;gap:4px;align-items:center;margin-bottom:4px;">
-            <button onclick="loadCurrentAreaByType('bds')" style="height:32px;font-size:11px;font-weight:700;border:none;border-radius:7px;background:var(--bds-c);color:#fff;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:4px;padding:0 8px;overflow:hidden;">
-              🌍<span>플래닛</span><b id="bdsCount" style="margin-left:auto;background:rgba(0,0,0,.25);padding:1px 5px;border-radius:4px;font-size:10px;">0</b>
-            </button>
+          <div style="display:grid;grid-template-columns:28px 1fr 32px 28px 28px;gap:4px;align-items:center;margin-bottom:4px;">
             <label style="display:flex;align-items:center;justify-content:center;cursor:pointer;">
               <input type="checkbox" id="filterBds" checked onchange="toggleMapFilter('bds')" style="accent-color:var(--bds-c);width:16px;height:16px;">
             </label>
+            <button onclick="loadCurrentAreaByType('bds')" style="height:32px;font-size:11px;font-weight:700;border:none;border-radius:7px;background:var(--bds-c);color:#fff;cursor:pointer;font-family:inherit;padding:0 8px;text-align:left;">
+              🌍 플래닛
+            </button>
+            <span id="bdsCount" style="font-size:11px;font-weight:700;color:var(--bds-c);text-align:center;">0</span>
             <button id="typeToggleBtn_bds" onclick="uiToggleCardType('bds')"
-              style="height:32px;font-size:13px;background:rgba(147,51,234,.1);border:1px solid rgba(147,51,234,.3);border-radius:7px;color:var(--bds-c);cursor:pointer;">📂</button>
+              style="height:28px;font-size:13px;background:rgba(147,51,234,.1);border:1px solid rgba(147,51,234,.3);border-radius:7px;color:var(--bds-c);cursor:pointer;">📂</button>
             <button onclick="clearMarkersByType('bds')"
-              style="height:32px;font-size:13px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:7px;color:var(--di);cursor:pointer;">🗑</button>
+              style="height:28px;font-size:13px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:7px;color:var(--di);cursor:pointer;">🗑</button>
           </div>
 
           <!-- 실거래 -->
-          <div style="display:grid;grid-template-columns:1fr 32px 32px 32px;gap:4px;align-items:center;margin-bottom:4px;">
-            <button id="showTransactionBtn" onclick="loadCurrentAreaTransactions()" style="height:32px;font-size:11px;font-weight:700;border:none;border-radius:7px;background:var(--transaction-c);color:#111;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:4px;padding:0 8px;overflow:hidden;">
-              📍<span>실거래</span><b id="transactionCount" style="margin-left:auto;background:rgba(0,0,0,.2);padding:1px 5px;border-radius:4px;font-size:10px;">0</b>
-            </button>
+          <div style="display:grid;grid-template-columns:28px 1fr 32px 28px 28px;gap:4px;align-items:center;margin-bottom:4px;">
             <label style="display:flex;align-items:center;justify-content:center;cursor:pointer;">
               <input type="checkbox" id="filterTransaction" onchange="toggleMapFilter('transaction')" style="accent-color:var(--transaction-c);width:16px;height:16px;">
             </label>
+            <button id="showTransactionBtn" onclick="loadCurrentAreaTransactions()" style="height:32px;font-size:11px;font-weight:700;border:none;border-radius:7px;background:var(--transaction-c);color:#111;cursor:pointer;font-family:inherit;padding:0 8px;text-align:left;">
+              📍 실거래
+            </button>
+            <span id="transactionCount" style="font-size:11px;font-weight:700;color:var(--transaction-c);text-align:center;">0</span>
             <button id="typeToggleBtn_transaction" onclick="uiToggleCardType('transaction')"
-              style="height:32px;font-size:13px;background:rgba(234,179,8,.1);border:1px solid rgba(234,179,8,.3);border-radius:7px;color:var(--transaction-c);cursor:pointer;">📂</button>
+              style="height:28px;font-size:13px;background:rgba(234,179,8,.1);border:1px solid rgba(234,179,8,.3);border-radius:7px;color:var(--transaction-c);cursor:pointer;">📂</button>
             <button onclick="clearMarkersByType('transaction')"
-              style="height:32px;font-size:13px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:7px;color:var(--di);cursor:pointer;">🗑</button>
+              style="height:28px;font-size:13px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:7px;color:var(--di);cursor:pointer;">🗑</button>
           </div>
 
-          <!-- 실거래 추가 버튼 -->
+          <!-- 실거래 부가 -->
           <div id="trade-status" style="font-size:10px;color:var(--mu);margin-top:2px;"></div>
           <button id="arrangeTransactionBtn" onclick="arrangeTransactionCards()"
             style="display:none;width:100%;margin-top:6px;height:32px;background:#1e2a40;border:1px solid #3d5080;border-radius:8px;color:#80aaff;font-size:11px;cursor:pointer;font-family:inherit;">
             🗂️ 실거래 카드 정렬
           </button>
 
-          <!-- 전체 열기/접기/일괄삭제 -->
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:10px;padding-top:10px;border-top:1px solid var(--b1);">
+          <!-- 📍 이 지역 전체 불러오기 -->
+          <button onclick="loadCurrentAreaProperties()"
+            style="width:100%;margin-top:10px;height:40px;font-size:12px;font-weight:700;background:rgba(79,142,255,.15);border:1px solid rgba(79,142,255,.4);border-radius:9px;color:#7db3ff;cursor:pointer;font-family:inherit;">
+            📍 이 지역 전체 불러오기
+          </button>
+
+          <!-- CSV -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px;">
+            <button onclick="pcMapExportCSV(false)" style="height:36px;font-size:11px;font-weight:700;background:rgba(79,142,255,.12);border:1px solid rgba(79,142,255,.3);border-radius:8px;color:#7db3ff;cursor:pointer;font-family:inherit;">📊 필터 CSV</button>
+            <button onclick="pcMapExportCSV(true)" style="height:36px;font-size:11px;background:rgba(0,212,130,.08);border:1px solid rgba(0,212,130,.25);border-radius:8px;color:#00d482;cursor:pointer;font-family:inherit;">🗺️ 화면 CSV</button>
+          </div>
+
+          <!-- 전체 열기/접기 -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px;padding-top:10px;border-top:1px solid var(--b1);">
             <button id="toggleAllCardsBtn" onclick="toggleAllCards()"
               style="height:36px;background:rgba(0,212,170,.12);border:1px solid rgba(0,212,170,.3);border-radius:8px;color:var(--g);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">
               📂 모두열기
@@ -1716,10 +1736,6 @@ body {
             <button id="closeAllCardsBtn" onclick="closeAllCards()"
               style="height:36px;background:rgba(79,142,255,.1);border:1px solid rgba(79,142,255,.3);border-radius:8px;color:var(--ac);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">
               📁 모두접기
-            </button>
-            <button onclick="clearAllMarkersAndCards()"
-              style="height:36px;background:rgba(255,80,80,.08);border:1px solid rgba(255,80,80,.3);border-radius:8px;color:var(--red);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">
-              🗑 일괄삭제
             </button>
           </div>
 
@@ -1738,13 +1754,163 @@ body {
           </div>
         </div>
 
+        <!-- 조건 필터 -->
+        <div class="mb-panel-section">
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <div class="mb-panel-section-title" style="margin-bottom:0;">🔍 조건 필터
+              <span id="gfResultCount" style="font-size:10px;color:var(--ac);font-weight:400;margin-left:5px;"></span>
+            </div>
+            <button onclick="(()=>{const b=document.getElementById('mbGfBody');const open=b.style.display!=='none';b.style.display=open?'none':'block';this.textContent=open?'펼치기':'접기';})()"
+              style="font-size:10px;color:var(--mu);background:none;border:none;cursor:pointer;padding:2px 6px;">펼치기</button>
+          </div>
+          <div id="mbGfBody" style="display:none;margin-top:8px;">
+            <!-- 활성 칩 -->
+            <div id="gfChips" style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:6px;"></div>
+            <!-- 소스 -->
+            <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px;">
+              <span style="font-size:10px;color:var(--mu);width:100%;">소스</span>
+              <label style="font-size:11px;cursor:pointer;display:inline-flex;align-items:center;gap:3px;"><input type="checkbox" id="gfSrc_경매" style="accent-color:#ff8c42;"> ⚖️경매</label>
+              <label style="font-size:11px;cursor:pointer;display:inline-flex;align-items:center;gap:3px;"><input type="checkbox" id="gfSrc_네이버" style="accent-color:#03c75a;"> 🏠네이버</label>
+              <label style="font-size:11px;cursor:pointer;display:inline-flex;align-items:center;gap:3px;"><input type="checkbox" id="gfSrc_점포라인" style="accent-color:#67c6e8;"> 점포라인</label>
+              <label style="font-size:11px;cursor:pointer;display:inline-flex;align-items:center;gap:3px;"><input type="checkbox" id="gfSrc_아싸" style="accent-color:#3b82f6;"> 아싸</label>
+              <label style="font-size:11px;cursor:pointer;display:inline-flex;align-items:center;gap:3px;"><input type="checkbox" id="gfSrc_디스코" style="accent-color:#e8365d;"> 디스코</label>
+              <label style="font-size:11px;cursor:pointer;display:inline-flex;align-items:center;gap:3px;"><input type="checkbox" id="gfSrc_플래닛" style="accent-color:#a78bfa;"> 플래닛</label>
+              <label style="font-size:11px;cursor:pointer;display:inline-flex;align-items:center;gap:3px;"><input type="checkbox" id="gfSrc_온비드" style="accent-color:#fbbf24;"> 온비드</label>
+            </div>
+            <!-- 거래유형 -->
+            <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;">
+              <span style="font-size:10px;color:var(--mu);width:100%;">거래유형</span>
+              <label style="font-size:11px;cursor:pointer;display:inline-flex;align-items:center;gap:3px;"><input type="radio" name="gfDealKind" value="all" checked style="accent-color:var(--ac);"> 전체</label>
+              <label style="font-size:11px;cursor:pointer;display:inline-flex;align-items:center;gap:3px;"><input type="radio" name="gfDealKind" value="sale" style="accent-color:#4f8eff;"> 💙매매</label>
+              <label style="font-size:11px;cursor:pointer;display:inline-flex;align-items:center;gap:3px;"><input type="radio" name="gfDealKind" value="rent" style="accent-color:#ff8c42;"> 🧡임대</label>
+              <label style="font-size:11px;cursor:pointer;display:inline-flex;align-items:center;gap:3px;"><input type="radio" name="gfDealKind" value="unknown" style="accent-color:#888;"> ❓기타</label>
+            </div>
+            <!-- 매물유형 -->
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+              <span style="font-size:10px;color:var(--mu);min-width:40px;">매물유형</span>
+              <input id="gfPropType" type="text" placeholder="상가,사무실" style="flex:1;height:32px;padding:0 8px;background:var(--s3);border:1px solid var(--b1);border-radius:6px;color:var(--tx);font-size:11px;">
+            </div>
+            <!-- 층수 / 면적 -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px;">
+              <div style="display:flex;align-items:center;gap:4px;">
+                <span style="font-size:10px;color:var(--mu);min-width:22px;">층</span>
+                <input id="gfFloorMin" type="number" placeholder="최소" style="flex:1;height:30px;padding:0 5px;background:var(--s3);border:1px solid var(--b1);border-radius:5px;color:var(--tx);font-size:10px;">
+                <span style="font-size:9px;color:var(--mu);">~</span>
+                <input id="gfFloorMax" type="number" placeholder="최대" style="flex:1;height:30px;padding:0 5px;background:var(--s3);border:1px solid var(--b1);border-radius:5px;color:var(--tx);font-size:10px;">
+              </div>
+              <div style="display:flex;align-items:center;gap:4px;">
+                <span style="font-size:10px;color:var(--mu);min-width:22px;">㎡</span>
+                <input id="gfAreaMin" type="number" placeholder="최소" style="flex:1;height:30px;padding:0 5px;background:var(--s3);border:1px solid var(--b1);border-radius:5px;color:var(--tx);font-size:10px;">
+                <span style="font-size:9px;color:var(--mu);">~</span>
+                <input id="gfAreaMax" type="number" placeholder="최대" style="flex:1;height:30px;padding:0 5px;background:var(--s3);border:1px solid var(--b1);border-radius:5px;color:var(--tx);font-size:10px;">
+              </div>
+            </div>
+            <!-- 가격 필터들 -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px;">
+              <div style="display:flex;align-items:center;gap:3px;">
+                <span style="font-size:9px;color:var(--mu);min-width:28px;flex-shrink:0;">매매가</span>
+                <input id="gfPriceMin" type="number" placeholder="최소" style="flex:1;height:28px;padding:0 4px;background:var(--s3);border:1px solid var(--b1);border-radius:4px;color:var(--tx);font-size:9px;">
+                <span style="font-size:9px;color:var(--mu);">~</span>
+                <input id="gfPriceMax" type="number" placeholder="최대" style="flex:1;height:28px;padding:0 4px;background:var(--s3);border:1px solid var(--b1);border-radius:4px;color:var(--tx);font-size:9px;">
+              </div>
+              <div style="display:flex;align-items:center;gap:3px;">
+                <span style="font-size:9px;color:var(--mu);min-width:28px;flex-shrink:0;">월세</span>
+                <input id="gfRentMin" type="number" placeholder="최소" style="flex:1;height:28px;padding:0 4px;background:var(--s3);border:1px solid var(--b1);border-radius:4px;color:var(--tx);font-size:9px;">
+                <span style="font-size:9px;color:var(--mu);">~</span>
+                <input id="gfRentMax" type="number" placeholder="최대" style="flex:1;height:28px;padding:0 4px;background:var(--s3);border:1px solid var(--b1);border-radius:4px;color:var(--tx);font-size:9px;">
+              </div>
+              <div style="display:flex;align-items:center;gap:3px;">
+                <span style="font-size:9px;color:var(--mu);min-width:28px;flex-shrink:0;">수익률%</span>
+                <input id="gfYieldMin" type="number" placeholder="최소" step="0.1" style="flex:1;height:28px;padding:0 4px;background:var(--s3);border:1px solid var(--b1);border-radius:4px;color:var(--tx);font-size:9px;">
+                <span style="font-size:9px;color:var(--mu);">~</span>
+                <input id="gfYieldMax" type="number" placeholder="최대" step="0.1" style="flex:1;height:28px;padding:0 4px;background:var(--s3);border:1px solid var(--b1);border-radius:4px;color:var(--tx);font-size:9px;">
+              </div>
+              <div style="display:flex;align-items:center;gap:3px;">
+                <span style="font-size:9px;color:var(--mu);min-width:28px;flex-shrink:0;">보증금</span>
+                <input id="gfDepositMin" type="number" placeholder="최소" style="flex:1;height:28px;padding:0 4px;background:var(--s3);border:1px solid var(--b1);border-radius:4px;color:var(--tx);font-size:9px;">
+                <span style="font-size:9px;color:var(--mu);">~</span>
+                <input id="gfDepositMax" type="number" placeholder="최대" style="flex:1;height:28px;padding:0 4px;background:var(--s3);border:1px solid var(--b1);border-radius:4px;color:var(--tx);font-size:9px;">
+              </div>
+              <div style="display:flex;align-items:center;gap:3px;">
+                <span style="font-size:9px;color:var(--mu);min-width:28px;flex-shrink:0;">실거래가</span>
+                <input id="gfTxPriceMin" type="number" placeholder="최소" style="flex:1;height:28px;padding:0 4px;background:var(--s3);border:1px solid var(--b1);border-radius:4px;color:var(--tx);font-size:9px;">
+                <span style="font-size:9px;color:var(--mu);">~</span>
+                <input id="gfTxPriceMax" type="number" placeholder="최대" style="flex:1;height:28px;padding:0 4px;background:var(--s3);border:1px solid var(--b1);border-radius:4px;color:var(--tx);font-size:9px;">
+              </div>
+              <div style="display:flex;align-items:center;gap:3px;">
+                <span style="font-size:9px;color:var(--mu);min-width:28px;flex-shrink:0;">평당가</span>
+                <input id="gfPpMin" type="number" placeholder="최소" style="flex:1;height:28px;padding:0 4px;background:var(--s3);border:1px solid var(--b1);border-radius:4px;color:var(--tx);font-size:9px;">
+                <span style="font-size:9px;color:var(--mu);">~</span>
+                <input id="gfPpMax" type="number" placeholder="최대" style="flex:1;height:28px;padding:0 4px;background:var(--s3);border:1px solid var(--b1);border-radius:4px;color:var(--tx);font-size:9px;">
+              </div>
+              <div style="display:flex;align-items:center;gap:3px;grid-column:1/-1;">
+                <span style="font-size:9px;color:var(--mu);min-width:28px;flex-shrink:0;">거래년월</span>
+                <input id="gfDateMin" type="text" placeholder="202401" style="flex:1;height:28px;padding:0 4px;background:var(--s3);border:1px solid var(--b1);border-radius:4px;color:var(--tx);font-size:9px;">
+                <span style="font-size:9px;color:var(--mu);">~</span>
+                <input id="gfDateMax" type="text" placeholder="202412" style="flex:1;height:28px;padding:0 4px;background:var(--s3);border:1px solid var(--b1);border-radius:4px;color:var(--tx);font-size:9px;">
+              </div>
+            </div>
+            <!-- 고급 필터 -->
+            <div onclick="const b=this.nextElementSibling;const o=b.style.display!=='none';b.style.display=o?'none':'block';this.querySelector('span').textContent=o?'▼ 고급':'▲ 고급'"
+              style="cursor:pointer;display:flex;align-items:center;gap:4px;padding:4px 0;border-top:1px solid var(--b1);">
+              <span style="font-size:10px;color:var(--mu);">▼ 고급</span>
+            </div>
+            <div style="display:none;margin-top:4px;">
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">
+                <span style="font-size:10px;color:var(--mu);min-width:40px;">소재지</span>
+                <input id="gfAddrKeyword" type="text" placeholder="예: 강남 역삼" style="flex:1;height:30px;padding:0 8px;background:var(--s3);border:1px solid var(--b1);border-radius:5px;color:var(--tx);font-size:10px;">
+              </div>
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">
+                <span style="font-size:10px;color:var(--mu);min-width:40px;">제목</span>
+                <input id="gfTitleKeyword" type="text" placeholder="제목 키워드" style="flex:1;height:30px;padding:0 8px;background:var(--s3);border:1px solid var(--b1);border-radius:5px;color:var(--tx);font-size:10px;">
+              </div>
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
+                <span style="font-size:10px;color:var(--mu);min-width:40px;">메모</span>
+                <input id="gfMemoKeyword" type="text" placeholder="메모 키워드" style="flex:1;height:30px;padding:0 8px;background:var(--s3);border:1px solid var(--b1);border-radius:5px;color:var(--tx);font-size:10px;">
+              </div>
+              <!-- 나머지 고급필터 (감정가, 최저가 등) - ID들은 desktop과 공유 불가하므로 모바일 전용 없이 gf prefix 유지 -->
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:5px;">
+                <div style="display:flex;align-items:center;gap:3px;">
+                  <span style="font-size:9px;color:var(--mu);min-width:28px;flex-shrink:0;">감정가</span>
+                  <input id="gfAppraisalMin" type="number" placeholder="최소" style="flex:1;height:28px;padding:0 4px;background:var(--s3);border:1px solid var(--b1);border-radius:4px;color:var(--tx);font-size:9px;">
+                  <span style="font-size:9px;color:var(--mu);">~</span>
+                  <input id="gfAppraisalMax" type="number" placeholder="최대" style="flex:1;height:28px;padding:0 4px;background:var(--s3);border:1px solid var(--b1);border-radius:4px;color:var(--tx);font-size:9px;">
+                </div>
+                <div style="display:flex;align-items:center;gap:3px;">
+                  <span style="font-size:9px;color:var(--mu);min-width:28px;flex-shrink:0;">유찰횟수</span>
+                  <input id="gfFailCntMin" type="number" placeholder="최소" style="flex:1;height:28px;padding:0 4px;background:var(--s3);border:1px solid var(--b1);border-radius:4px;color:var(--tx);font-size:9px;">
+                  <span style="font-size:9px;color:var(--mu);">~</span>
+                  <input id="gfFailCntMax" type="number" placeholder="최대" style="flex:1;height:28px;padding:0 4px;background:var(--s3);border:1px solid var(--b1);border-radius:4px;color:var(--tx);font-size:9px;">
+                </div>
+              </div>
+              <div style="display:flex;flex-wrap:wrap;gap:5px;padding:4px 0;">
+                <label style="font-size:11px;cursor:pointer;display:inline-flex;align-items:center;gap:3px;"><input type="checkbox" id="gfHasArea" style="accent-color:var(--ac);"> 면적있음</label>
+                <label style="font-size:11px;cursor:pointer;display:inline-flex;align-items:center;gap:3px;"><input type="checkbox" id="gfHasPrice" style="accent-color:var(--ac);"> 매매가있음</label>
+                <label style="font-size:11px;cursor:pointer;display:inline-flex;align-items:center;gap:3px;"><input type="checkbox" id="gfHasRent" style="accent-color:var(--ac);"> 월세있음</label>
+                <label style="font-size:11px;cursor:pointer;display:inline-flex;align-items:center;gap:3px;"><input type="checkbox" id="gfHasYield" style="accent-color:var(--ac);"> 수익률있음</label>
+                <label style="font-size:11px;cursor:pointer;display:inline-flex;align-items:center;gap:3px;"><input type="checkbox" id="gfHasDeposit" style="accent-color:var(--ac);"> 보증금있음</label>
+                <label style="font-size:11px;cursor:pointer;display:inline-flex;align-items:center;gap:3px;"><input type="checkbox" id="gfHasTxPrice" style="accent-color:var(--ac);"> 실거래가있음</label>
+                <label style="font-size:11px;cursor:pointer;display:inline-flex;align-items:center;gap:3px;"><input type="checkbox" id="gfExclEstArea" style="accent-color:#ff8c42;"> 전용추정제외</label>
+                <input type="hidden" id="gfMinBidMin"><input type="hidden" id="gfMinBidMax">
+                <input type="hidden" id="gfJeonseMin"><input type="hidden" id="gfJeonseMax">
+                <input type="hidden" id="gfFloorIncludeEmpty" type="checkbox">
+                <input type="hidden" id="gfAreaIncludeEmpty" type="checkbox">
+              </div>
+            </div>
+            <!-- 적용/초기화/CSV 버튼 -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px;">
+              <button onclick="applyMapFilter()" style="height:38px;background:rgba(79,142,255,.2);border:1px solid rgba(79,142,255,.5);border-radius:8px;color:#4f8eff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">✅ 적용</button>
+              <button onclick="resetMapGFilter()" style="height:38px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;color:var(--mu);font-size:12px;cursor:pointer;font-family:inherit;">🔄 초기화</button>
+              <button onclick="pcMapExportCSV(false)" style="height:36px;background:rgba(79,142,255,.12);border:1px solid rgba(79,142,255,.3);border-radius:8px;color:#7db3ff;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">📊 필터 CSV</button>
+              <button onclick="pcMapExportCSV(true)" style="height:36px;background:rgba(0,212,130,.08);border:1px solid rgba(0,212,130,.25);border-radius:8px;color:#00d482;font-size:11px;cursor:pointer;font-family:inherit;">🗺️ 화면 CSV</button>
+            </div>
+          </div>
+        </div>
+
         <!-- 빠른 액션 -->
         <div class="mb-panel-section">
           <div class="mb-panel-section-title">빠른 액션</div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
-            <button class="mb-btn" onclick="loadCurrentAreaProperties()" style="justify-content:center;height:38px;">
-              📍 이 화면 전체 불러오기
-            </button>
             <button class="mb-btn" onclick="spreadAllCards()" style="justify-content:center;height:38px;color:var(--g);border-color:rgba(0,212,170,.3);">
               💠 카드 펼치기
             </button>
@@ -1753,6 +1919,9 @@ body {
             </button>
             <button class="mb-btn" onclick="openMapNotePanel()" style="justify-content:center;height:38px;color:#a78bfa;border-color:rgba(167,139,250,.3);">
               📝 지도 노트
+            </button>
+            <button class="mb-btn" onclick="clearAllMarkersAndCards()" style="justify-content:center;height:38px;color:var(--red);border-color:rgba(255,80,80,.3);">
+              🗑 일괄삭제
             </button>
           </div>
         </div>
