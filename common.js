@@ -618,10 +618,10 @@
         const deleted = (arr || []).filter(r => r.deletedAt).map(r => r.id);
         await tblSaveDirty('workrooms', active);
         if (deleted.length) await tblDeleteItems('workrooms', deleted);
-        // 로컬 동기화 (IDB)
+        // IDB에만 active 저장 (wr2State.rooms는 덮어쓰지 않음 - deleteRoom 흐름 유지)
         if (window._idbCache) window._idbCache['wr2_rooms'] = active;
         window.idbSet('wr2_rooms', active).catch(e => console.warn('[IDB] saveRooms 로컬 저장 실패', e));
-        if (window.wr2State) window.wr2State.rooms = active;
+        // wr2State.rooms는 deletedAt 포함 상태 유지 (렌더링 시 filter로 처리)
       } catch(e) { console.warn('[SB] saveRooms error', e); }
       window._sbSyncStatus('☁️ 작업룸 동기화 완료', true);
     };
@@ -751,17 +751,22 @@
     // ─── ID 기반 merge: 두 배열을 id로 합치고 최신 updatedAt 우선 ───
     function _sbMergeById(cloud, local) {
       const map = new Map();
+      // 로컬 먼저 넣기
       (local || []).forEach(item => { if (item && item.id) map.set(item.id, item); });
+      // 클라우드 항목: updatedAt 기준으로 더 최신이면 덮어씀
       (cloud || []).forEach(item => {
         if (!item || !item.id) return;
         const existing = map.get(item.id);
         if (!existing) {
+          // 로컬에 없는 항목은 클라우드에서 가져옴 (deletedAt 없는 것만)
           if (!item.deletedAt) map.set(item.id, item);
           return;
         }
         const cTime = new Date(item.updatedAt || item.timestamp || 0).getTime();
         const lTime = new Date(existing.updatedAt || existing.timestamp || 0).getTime();
-        if (cTime >= lTime) map.set(item.id, item);
+        // 클라우드가 더 최신이면 클라우드 버전 사용
+        if (cTime > lTime) map.set(item.id, item);
+        // 동시각이면 로컬 우선 (삭제된 항목 보호)
       });
       return Array.from(map.values()).filter(item => !item.deletedAt);
     }
@@ -5876,45 +5881,20 @@
         const sv = getFilteredSv ? getFilteredSv() : getSv();
         const cntEl = document.getElementById('lfResultCount');
         if (cntEl) cntEl.textContent = sv.length + '건';
+        // 활성 필터 칩 업데이트
         _updateFilterChips('lf', 'lfChips');
       } catch(e) {}
-      // 지도탭 결과 건수 + 필터 버튼 배지 업데이트
+      // 지도탭 결과 건수 업데이트
       try {
         const svAll = getSv ? getSv() : [];
         const filtered = svAll.filter(item => {
-          if (!item) return false;
+          if (!item || !item.data) return false;
           if (!item._norm && typeof normalizeItem === 'function') normalizeItem(item);
           return _checkFilter(item.data || {}, 'gf', item);
         });
         const cntEl2 = document.getElementById('gfResultCount');
         if (cntEl2) cntEl2.textContent = filtered.length + '건';
         _updateFilterChips('gf', 'gfChips');
-        // 필터 버튼 배지 — 활성 필터 개수 표시
-        const badge = document.getElementById('gfActiveBadge');
-        if (badge) {
-          const active = isGFilterActive() || window._gfActive;
-          if (active) {
-            const numIds = ['gfFloorMin','gfFloorMax','gfAreaMin','gfAreaMax',
-              'gfPriceMin','gfPriceMax','gfTxPriceMin','gfTxPriceMax',
-              'gfAppraisalMin','gfAppraisalMax','gfMinBidMin','gfMinBidMax',
-              'gfDepositMin','gfDepositMax','gfJeonseMin','gfJeonseMax',
-              'gfRentMin','gfRentMax','gfYieldMin','gfYieldMax',
-              'gfPpMin','gfPpMax','gfFailCntMin','gfFailCntMax',
-              'gfDateMin','gfDateMax','gfPropType','gfAddrKeyword','gfTitleKeyword','gfMemoKeyword'];
-            const chkIds = ['gfFloorIncludeEmpty','gfAreaIncludeEmpty','gfHasArea','gfHasPrice',
-              'gfHasDeposit','gfHasRent','gfHasTxPrice','gfHasYield','gfExclEstArea',
-              'gfSrc_경매','gfSrc_네이버','gfSrc_점포라인','gfSrc_아싸','gfSrc_디스코','gfSrc_플래닛','gfSrc_온비드'];
-            let cnt = 0;
-            numIds.forEach(id => { const el = document.getElementById(id); if (el && el.value.trim()) cnt++; });
-            chkIds.forEach(id => { const el = document.getElementById(id); if (el && el.checked) cnt++; });
-            const deal = document.querySelector('input[name="gfDealKind"]:checked');
-            if (deal && deal.value !== 'all') cnt++;
-            badge.textContent = cnt;
-            badge.style.display = cnt > 0 ? 'inline-block' : 'none';
-          } else {
-            badge.style.display = 'none';
-          }
-        }
       } catch(e) {}
     }
     function isGFilterActive() {
@@ -11657,12 +11637,21 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           toLoad.sort((a, b) => _getSortVal(a) - _getSortVal(b));
         }
 
-        // ★ 조건 필터 적용 — gf 단일 필터 (전체화면/반경 모드 공통)
+        // ★ 조건 필터 적용 — gf(전체화면 공통필터) 우선, 없으면 rf(반경전용필터)
         const _gfHasFilter = (typeof isGFilterActive === 'function') && isGFilterActive();
+        const _rfHasFilter = !_gfHasFilter && (
+          ['rfFloorMin','rfFloorMax','rfAreaMin','rfAreaMax',
+           'rfPriceMin','rfPriceMax','rfRentMin','rfRentMax',
+           'rfYieldMin','rfYieldMax','rfDateMin','rfDateMax'
+          ].some(id => { const el = document.getElementById(id); return el && el.value.trim() !== ''; }) ||
+          (['rfFloorIncludeEmpty','rfAreaIncludeEmpty'].some(id => { const el = document.getElementById(id); return el && el.checked; })) ||
+          ((() => { const el = document.querySelector('input[name="rfDealKind"]:checked'); return el && el.value !== 'all'; })())
+        );
 
         // ★ [v159 FIX] 복사본 생성으로 참조 버그 방지
-        const _filteredLoad = _gfHasFilter
-          ? toLoad.filter(item => { if (!item._norm && typeof normalizeItem==='function') normalizeItem(item); return _checkFilter(item.data || {}, 'gf', item); })
+        const _activePrefix = _gfHasFilter ? 'gf' : (_rfHasFilter ? 'rf' : null);
+        const _filteredLoad = _activePrefix
+          ? toLoad.filter(item => { if (!item._norm && typeof normalizeItem==='function') normalizeItem(item); return _checkFilter(item.data || {}, _activePrefix, item); })
           : toLoad.slice();
 
         // 필터 적용된 배열로 교체
@@ -18943,8 +18932,30 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     // ===================================================
     // ★ [v179] resetMapFilter 함수 (조건 필터 초기화 버튼용)
     window.resetMapFilter = function () {
-      if (typeof resetMapGFilter === 'function') resetMapGFilter();
-    };;
+      ['rfFloorMin', 'rfFloorMax', 'rfAreaMin', 'rfAreaMax', 'rfPriceMin', 'rfPriceMax',
+        'rfRentMin', 'rfRentMax', 'rfYieldMin', 'rfYieldMax', 'rfDateMin', 'rfDateMax'].forEach(id => {
+          const el = document.getElementById(id); if (el) el.value = '';
+        });
+      ['rfFloorIncludeEmpty', 'rfAreaIncludeEmpty'].forEach(id => {
+        const el = document.getElementById(id); if (el) el.checked = false;
+      });
+      const r = document.querySelector('input[name="rfDealKind"][value="all"]');
+      if (r) r.checked = true;
+      const loaded = [...new Set((mapOverlays || []).map(o => o.item && o.item.source).filter(Boolean))];
+      const typesToLoad = [];
+      if (loaded.some(s => s === '디스코')) typesToLoad.push('disco');
+      if (loaded.some(s => s === '부동산플래닛')) typesToLoad.push('bds');
+      if (loaded.some(s => s === '점포라인')) typesToLoad.push('jumpo');
+      if (loaded.some(s => s === '점포거래소')) typesToLoad.push('assa');
+      if (loaded.some(s => s === '네이버부동산' || s === '네이버')) typesToLoad.push('listing');
+      if ((mapOverlays || []).some(o => o.item && o.item.mode === 'auction')) typesToLoad.push('auction');
+      if (typesToLoad.length) {
+        typesToLoad.forEach((t, i) => setTimeout(() => loadCurrentAreaByType(t), i * 300));
+      } else {
+        loadCurrentAreaProperties && loadCurrentAreaProperties();
+      }
+      showToast('🔄 조건 필터 초기화됨', 'ok');
+    };
 
     // ★ [v182] AI 지도 분석 패널
     // ===================================================
@@ -20011,10 +20022,11 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     const NT_DOMAIN_LABELS = { auction: '⚖️ 경매', tax: '💰 세금', legal: '📋 권리', market: '🏘️ 상권', operation: '🔧 운영', etc: '기타' };
     const NT_PHASE_LABELS = { legal: '⚖️ 권리', field: '📍 임장', profit: '📈 수익', bid: '🎯 입찰', review: '📝 회고' };
 
-    function ntSave() {
+    function ntSave(forceId) {
       if(window._idbCache)window._idbCache['nt_notes']=ntNotes;
       if(window.idbSet)window.idbSet('nt_notes',ntNotes).catch(()=>{});
-      if (ntActiveId && window._sbMarkNtDirty) window._sbMarkNtDirty(ntActiveId);
+      const dirtyId = forceId || ntActiveId;
+      if (dirtyId && window._sbMarkNtDirty) window._sbMarkNtDirty(dirtyId);
       if (window._sbSaveNtNotes) window._sbSaveNtNotes(ntNotes).catch(e=>{});
     }
 
@@ -20089,7 +20101,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         attachments: [], youtubeUrls: [], articleUrls: [],
       };
       ntNotes.unshift(note);
-      ntSave();
+      ntSave(note.id);
       setTimeout(() => { ntRender(); ntOpen(note.id); }, 100);
     };
 
@@ -20116,6 +20128,11 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     window.ntCreate = function (type) {
       const m = document.getElementById('ntTypeMenu');
       if (m) m.classList.remove('open');
+      // 노트탭이 열려있지 않으면 강제 이동
+      const ipage0 = document.getElementById('ipage0');
+      if (ipage0 && ipage0.style.display === 'none') {
+        if (typeof showInsTab === 'function') showInsTab(0);
+      }
       const note = {
         id: 'nt_' + Date.now(),
         type,
@@ -20140,7 +20157,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         articleUrls: [],
       };
       ntNotes.unshift(note);
-      ntSave();
+      ntSave(note.id);
       ntRender();
       ntOpen(note.id);
     };
@@ -20700,7 +20717,15 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     // ── 삭제 ───────────────────────────────────────────
     window.ntDelete = function (id) {
       ntNotes = ntNotes.filter(n => n.id !== id);
-      ntSave(); ntActiveId = null; ntRender(); ntShowEmpty();
+      // IDB + 클라우드 동시 삭제
+      if (window._idbCache) window._idbCache['nt_notes'] = ntNotes;
+      if (window.idbSet) window.idbSet('nt_notes', ntNotes).catch(()=>{});
+      if (window._sb && window._sbGetUserId) {
+        window._sbGetUserId().then(uid => {
+          if (uid) window._sb.from('notes').delete().eq('id', uid + '_' + id).catch(()=>{});
+        });
+      }
+      ntActiveId = null; ntRender(); ntShowEmpty();
       showToast('삭제되었습니다', 'ok');
     };
 
@@ -20711,7 +20736,13 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const title = note.title || '제목 없음';
       if (!confirm('「' + title + '」 노트를 삭제할까요?')) return;
       ntNotes = ntNotes.filter(n => n.id !== id);
-      ntSave();
+      if (window._idbCache) window._idbCache['nt_notes'] = ntNotes;
+      if (window.idbSet) window.idbSet('nt_notes', ntNotes).catch(()=>{});
+      if (window._sb && window._sbGetUserId) {
+        window._sbGetUserId().then(uid => {
+          if (uid) window._sb.from('notes').delete().eq('id', uid + '_' + id).catch(()=>{});
+        });
+      }
       if (ntActiveId === id) { ntActiveId = null; ntShowEmpty(); }
       ntRender();
       showToast('삭제됐어요', 'ok');
@@ -22328,10 +22359,11 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       return 'auction';
     }
 
-    function saveKcards() {
+    function saveKcards(forceId) {
       if(window._idbCache)window._idbCache['ins_kcards']=kcards;
       if(window.idbSet)window.idbSet('ins_kcards',kcards).catch(()=>{});
-      if (kcardEditId && window._sbMarkKcardDirty) window._sbMarkKcardDirty(kcardEditId);
+      const dirtyId = forceId || kcardEditId;
+      if (dirtyId && window._sbMarkKcardDirty) window._sbMarkKcardDirty(dirtyId);
       if(window._sbSaveKcards)window._sbSaveKcards(kcards).catch(()=>{});
     }
     function saveKcardCats() { if(window._idbCache)window._idbCache['ins_kcat']=kcardCats;if(window.idbSet)window.idbSet('ins_kcat',kcardCats).catch(()=>{});if(window._sbSaveKcat)window._sbSaveKcat(kcardCats).catch(()=>{}); }
@@ -22647,7 +22679,14 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     function deleteKcard(id) {
       if (!confirm('이 카드를 삭제할까요?')) return;
       kcards = kcards.filter(k => k.id !== id);
-      saveKcards(); renderKcatTabs(); renderKcards();
+      if (window._idbCache) window._idbCache['ins_kcards'] = kcards;
+      if (window.idbSet) window.idbSet('ins_kcards', kcards).catch(()=>{});
+      if (window._sb && window._sbGetUserId) {
+        window._sbGetUserId().then(uid => {
+          if (uid) window._sb.from('kcards').delete().eq('id', uid + '_' + id).catch(()=>{});
+        });
+      }
+      renderKcatTabs(); renderKcards();
       showToast('카드 삭제됨', 'ok');
     }
 
