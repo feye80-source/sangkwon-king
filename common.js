@@ -725,10 +725,21 @@
     // 카드 1개 = kcards 테이블 1행으로 저장 (kv_store 단일 row 저장 방식 제거)
     window._sbSaveKcards = async function(arr) {
       try {
-        const active = (arr || []).filter(k => !k.deletedAt);
-        const deleted = (arr || []).filter(k => k.deletedAt).map(k => k.id);
-        await tblSaveDirty('kcards', active);
-        if (deleted.length) await tblDeleteItems('kcards', deleted);
+        // ★ deletedAt 있는 항목 포함 전부 upsert (완전삭제 제거)
+        //   → 재동기화 시 _sbMergeById가 deletedAt 보고 필터링
+        const uid = await _sbGetUserId();
+        if (!uid || !arr || !arr.length) return;
+        const rows = arr.map(item => ({
+          id: uid + '_' + item.id,
+          user_id: uid,
+          item_id: item.id,
+          data: item,
+          updated_at: new Date(item.updatedAt || item.deletedAt || Date.now()).toISOString()
+        }));
+        for (let i = 0; i < rows.length; i += 50) {
+          const { error } = await window._sb.from('kcards').upsert(rows.slice(i, i+50), { onConflict: 'id' });
+          if (error) throw error;
+        }
         window._sbSyncStatus('☁️ 알짜정보 동기화 완료', true);
       } catch(e) { console.warn('[SB] saveKcards error', e); }
     };
@@ -867,13 +878,16 @@
         // ── 알짜정보 카드 ──
         try {
           const kcCloud = await window._sbLoadKcards();
-          if (kcCloud !== null && kcCloud.length > 0) {
+          if (kcCloud !== null) {
+            // ★ length > 0 조건 제거: 클라우드 빈 배열도 정상 응답으로 처리
             const kcLocal = window._idbCache['ins_kcards'] || [];
             const merged = _sbMergeById(kcCloud, kcLocal);
             const mergedActive = merged.filter(k => !k.deletedAt);
             window._idbCache['ins_kcards'] = mergedActive;
             await window.idbSet('ins_kcards', mergedActive);
-            if (merged.length > kcCloud.length) window._sbSaveKcards(merged).catch(()=>{});
+            // 로컬에만 있는 것(신규) 클라우드에 업로드
+            const localOnly = merged.filter(k => !kcCloud.find(c => c.id === k.id));
+            if (localOnly.length) window._sbSaveKcards(localOnly).catch(()=>{});
           } else {
             const kcLocal = window._idbCache['ins_kcards'] || [];
             if (kcLocal.length) window._sbSaveKcards(kcLocal).catch(()=>{});
@@ -1704,8 +1718,7 @@
                       }
                       (r.tags || []).slice(0, 3).forEach(t => {
                         const ts = document.createElement('span');
-                        const c = window.getTagColor ? window.getTagColor(t) : { bg:'rgba(167,139,250,.12)', border:'rgba(167,139,250,.25)', text:'#a78bfa' };
-                        ts.style.cssText = `padding:1px 6px;background:${c.bg};border:1px solid ${c.border};border-radius:7px;font-size:9px;color:${c.text};`;
+                        ts.style.cssText = 'padding:1px 6px;background:rgba(167,139,250,.12);border:1px solid rgba(167,139,250,.25);border-radius:7px;font-size:9px;color:#a78bfa;';
                         ts.textContent = '#' + t;
                         tagRow.appendChild(ts);
                       });
@@ -3137,8 +3150,11 @@
                   const chips = document.getElementById('wr2TagChips');
                   if (!chips || !room) return;
                   chips.innerHTML = (room.tags || []).map(t =>
-                    window.tagChipHtml(t, `wr2RemoveTag('${room.id}','${t}')`)
-                  ).join(' ');
+                    `<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;background:rgba(167,139,250,.15);border:1px solid rgba(167,139,250,.35);border-radius:10px;font-size:10px;color:#a78bfa;">
+                      #${t}
+                      <span onclick="wr2RemoveTag('${room.id}','${t}')" style="cursor:pointer;opacity:.6;font-size:11px;line-height:1;" title="삭제">×</span>
+                    </span>`
+                  ).join('');
                   // 그룹 표시
                   const row = document.getElementById('wr2TagRow');
                   if (row) {
@@ -3206,7 +3222,11 @@
                           style="padding:7px 12px;background:var(--ac);color:#111;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">추가</button>
                       </div>
                       <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px;">
-                        ${(room.tags||[]).map(t => window.tagChipHtml(t, `wr2RemoveTag('${room.id}','${t}');document.getElementById('wr2TagEditorModal').remove();wr2OpenRoomTagEditor();`)).join(' ')}
+                        ${(room.tags||[]).map(t => `
+                          <span style="display:inline-flex;align-items:center;gap:3px;padding:3px 9px;background:rgba(167,139,250,.15);border:1px solid rgba(167,139,250,.35);border-radius:10px;font-size:11px;color:#a78bfa;">
+                            #${t}
+                            <span onclick="wr2RemoveTag('${room.id}','${t}');document.getElementById('wr2TagEditorModal').remove();wr2OpenRoomTagEditor();" style="cursor:pointer;opacity:.6;">×</span>
+                          </span>`).join('')}
                         ${!(room.tags||[]).length ? '<span style="font-size:11px;color:var(--di);">태그 없음</span>' : ''}
                       </div>
                       ${allTags.length ? `<div style="font-size:10px;color:var(--mu);margin-bottom:5px;">기존 태그 클릭으로 추가:</div>
@@ -3389,40 +3409,6 @@
         setTimeout(initScrollTopButtons, 500);
       }
     })();
-
-
-    // ══ 태그 자동 색상 유틸 ═══════════════════════════════
-    // 태그 텍스트를 해시해서 미리 정의된 팔레트에서 색상을 자동 배정
-    // 동일한 태그는 항상 동일한 색상 → 일관성 유지
-    window._tagColorPalette = [
-      { bg: 'rgba(79,142,255,.15)',  border: 'rgba(79,142,255,.4)',  text: '#4f8eff'  }, // 파랑
-      { bg: 'rgba(0,212,170,.13)',   border: 'rgba(0,212,170,.38)',  text: '#00d4aa'  }, // 민트
-      { bg: 'rgba(255,209,102,.13)', border: 'rgba(255,209,102,.38)',text: '#ffd166'  }, // 노랑
-      { bg: 'rgba(255,99,112,.13)',  border: 'rgba(255,99,112,.38)', text: '#ff6370'  }, // 빨강
-      { bg: 'rgba(167,139,250,.15)', border: 'rgba(167,139,250,.4)', text: '#a78bfa'  }, // 보라
-      { bg: 'rgba(251,146,60,.13)',  border: 'rgba(251,146,60,.38)', text: '#fb923c'  }, // 주황
-      { bg: 'rgba(52,211,153,.13)',  border: 'rgba(52,211,153,.38)', text: '#34d399'  }, // 초록
-      { bg: 'rgba(232,121,249,.13)', border: 'rgba(232,121,249,.38)',text: '#e879f9'  }, // 핑크
-      { bg: 'rgba(96,165,250,.13)',  border: 'rgba(96,165,250,.38)', text: '#60a5fa'  }, // 하늘
-      { bg: 'rgba(250,204,21,.13)',  border: 'rgba(250,204,21,.38)', text: '#facc15'  }, // 금색
-    ];
-    window._tagColorCache = {};
-    window.getTagColor = function(tag) {
-      if (window._tagColorCache[tag]) return window._tagColorCache[tag];
-      let hash = 0;
-      for (let i = 0; i < tag.length; i++) hash = ((hash << 5) - hash + tag.charCodeAt(i)) | 0;
-      const idx = Math.abs(hash) % window._tagColorPalette.length;
-      window._tagColorCache[tag] = window._tagColorPalette[idx];
-      return window._tagColorCache[tag];
-    };
-    window.tagChipHtml = function(tag, onRemove) {
-      const c = window.getTagColor(tag);
-      const removeBtn = onRemove
-        ? `<span onclick="${onRemove}" style="cursor:pointer;opacity:.55;font-size:11px;line-height:1;margin-left:1px;" title="삭제">×</span>`
-        : '';
-      return `<span style="display:inline-flex;align-items:center;gap:2px;padding:2px 8px;background:${c.bg};border:1px solid ${c.border};border-radius:10px;font-size:10px;color:${c.text};white-space:nowrap;">#${tag}${removeBtn}</span>`;
-    };
-    // ═══════════════════════════════════════════════════════
 
     function showToast(msg, type, duration) {
       const c = document.getElementById('toast-container');
@@ -6989,26 +6975,6 @@
       }
     }
     window.bulkMoveGroup = bulkMoveGroup;
-
-    // ── 선택 항목 삭제 ─────────────────────────────────
-    window.deleteCheckedItems = function() {
-      if (_selectedIds.size === 0) { showToast('선택된 항목이 없습니다.', 'warn'); return; }
-      if (!confirm(_selectedIds.size + '개 항목을 삭제할까요?')) return;
-      const sv = getSv().filter(s => !_selectedIds.has(s.id));
-      saveSv(sv);
-      _selectedIds.clear();
-      const allChk = document.getElementById('selectAllChk');
-      if (allChk) allChk.checked = false;
-      renderSaved();
-      showToast('삭제됐어요', 'ok');
-    };
-
-    // ── 삭제 드롭다운 외부 클릭 닫기 ──────────────────
-    document.addEventListener('click', function(e) {
-      const wrap = document.getElementById('svDelDropWrap');
-      const menu = document.getElementById('svDelMenu');
-      if (menu && wrap && !wrap.contains(e.target)) menu.style.display = 'none';
-    });
     // ═══════════════════════════════════════════════════════════
 
     function toggleDir() { sortAsc = !sortAsc; document.getElementById('sortDir').textContent = sortAsc ? '↑ 오름차순' : '↓ 내림차순'; renderSaved(); }
@@ -20925,14 +20891,12 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
       const t = NT_TYPE[note.type] || NT_TYPE.note;
       const badgeCls = t.badge;
-      const tagHtml = (note.tags || []).map(tg => {
-        const c = window.getTagColor ? window.getTagColor(tg) : { bg:'rgba(167,139,250,.1)', border:'rgba(167,139,250,.25)', text:'#a78bfa' };
-        return `<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;background:${c.bg};border:1px solid ${c.border};border-radius:10px;font-size:11px;color:${c.text};">
+      const tagHtml = (note.tags || []).map(tg => `
+    <span style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;background:rgba(167,139,250,.1);border:1px solid rgba(167,139,250,.25);border-radius:10px;font-size:11px;color:#a78bfa;">
       #${esc(tg)}
       <span onclick="ntRenameTag('${id}','${esc(tg)}')" style="cursor:pointer;opacity:.5;font-size:10px;line-height:1;" title="수정">✏️</span>
       <span onclick="ntRemoveTag('${id}','${esc(tg)}')" style="cursor:pointer;opacity:.6;font-size:12px;line-height:1;" title="삭제">×</span>
-    </span>`;
-      }).join('');
+    </span>`).join('');
 
       // 타입별 에디터 HTML
       let editorBody = '';
@@ -21241,17 +21205,18 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
     // ── 삭제 ───────────────────────────────────────────
     window.ntDelete = function (id) {
-      // soft-delete: deletedAt 마킹 후 IDB/클라우드에 저장 → 재동기화 시 살아나지 않음
+      // ★ 올바른 순서: 1)deletedAt 마킹 → 2)클라우드 upsert → 3)로컬 배열에서 제거
       const idx = ntNotes.findIndex(n => n.id === id);
-      if (idx !== -1) ntNotes[idx].deletedAt = new Date().toISOString();
-      ntNotes = ntNotes.filter(n => n.id !== id); // 로컬 UI에서 제거
+      if (idx !== -1) {
+        ntNotes[idx].deletedAt = new Date().toISOString();
+        ntNotes[idx].updatedAt = ntNotes[idx].deletedAt;
+        // deletedAt 포함 상태로 클라우드에 upsert (완전삭제 X → merge 시 필터링됨)
+        if (window._sbSaveNtNotes) window._sbSaveNtNotes([ntNotes[idx]]).catch(()=>{});
+      }
+      // 로컬 배열/캐시에서 제거
+      ntNotes = ntNotes.filter(n => n.id !== id);
       if (window._idbCache) window._idbCache['nt_notes'] = ntNotes;
       if (window.idbSet) window.idbSet('nt_notes', ntNotes).catch(()=>{});
-      if (window._sb && window._sbGetUserId) {
-        window._sbGetUserId().then(uid => {
-          if (uid) window._sb.from('notes').delete().eq('id', uid + '_' + id).catch(()=>{});
-        });
-      }
       ntActiveId = null; ntRender(); ntShowEmpty();
       showToast('삭제되었습니다', 'ok');
     };
@@ -21262,17 +21227,16 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       if (!note) return;
       const title = note.title || '제목 없음';
       if (!confirm('「' + title + '」 노트를 삭제할까요?')) return;
-      // soft-delete + 클라우드 삭제
+      // ★ 올바른 순서: 1)deletedAt 마킹 → 2)클라우드 upsert → 3)로컬 제거
       const idx = ntNotes.findIndex(n => n.id === id);
-      if (idx !== -1) ntNotes[idx].deletedAt = new Date().toISOString();
+      if (idx !== -1) {
+        ntNotes[idx].deletedAt = new Date().toISOString();
+        ntNotes[idx].updatedAt = ntNotes[idx].deletedAt;
+        if (window._sbSaveNtNotes) window._sbSaveNtNotes([ntNotes[idx]]).catch(()=>{});
+      }
       ntNotes = ntNotes.filter(n => n.id !== id);
       if (window._idbCache) window._idbCache['nt_notes'] = ntNotes;
       if (window.idbSet) window.idbSet('nt_notes', ntNotes).catch(()=>{});
-      if (window._sb && window._sbGetUserId) {
-        window._sbGetUserId().then(uid => {
-          if (uid) window._sb.from('notes').delete().eq('id', uid + '_' + id).catch(()=>{});
-        });
-      }
       if (ntActiveId === id) { ntActiveId = null; ntShowEmpty(); }
       ntRender();
       showToast('삭제됐어요', 'ok');
@@ -21348,15 +21312,16 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         if (window.idbSet) window.idbSet('wr2_sections', sections).catch(()=>{});
       }
 
-      // 노트탭에서 삭제 (이동이므로)
+      // ★ 노트탭에서 삭제 (이동이므로) - deletedAt upsert 후 로컬 제거
+      const _mvIdx = ntNotes.findIndex(n => n.id === noteId);
+      if (_mvIdx !== -1) {
+        ntNotes[_mvIdx].deletedAt = new Date().toISOString();
+        ntNotes[_mvIdx].updatedAt = ntNotes[_mvIdx].deletedAt;
+        if (window._sbSaveNtNotes) window._sbSaveNtNotes([ntNotes[_mvIdx]]).catch(()=>{});
+      }
       ntNotes = ntNotes.filter(n => n.id !== noteId);
       if (window._idbCache) window._idbCache['nt_notes'] = ntNotes;
       if (window.idbSet) window.idbSet('nt_notes', ntNotes).catch(()=>{});
-      if (window._sb && window._sbGetUserId) {
-        window._sbGetUserId().then(uid => {
-          if (uid) window._sb.from('notes').delete().eq('id', uid + '_' + noteId).catch(()=>{});
-        });
-      }
       if (ntActiveId === noteId) { ntActiveId = null; ntShowEmpty(); }
       ntRender();
       const roomName = ((window.wr2State && window.wr2State.rooms) || (window._idbCache && window._idbCache['wr2_rooms']) || []).find(r => r.id === roomId)?.title || '작업룸';
@@ -23111,7 +23076,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
       el.innerHTML = filtered.map(card => {
         const d = new Date(card.createdAt).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
-        const tags = (card.tags || []).map(t => { const c = window.getTagColor ? window.getTagColor(t) : {bg:'rgba(255,209,102,.1)',border:'rgba(255,209,102,.25)',text:'#ffd166'}; return `<span style="font-size:10px;padding:2px 6px;background:${c.bg};color:${c.text};border-radius:8px;border:1px solid ${c.border};">#${esc(t)}</span>`; }).join('');
+        const tags = (card.tags || []).map(t => `<span style="font-size:10px;padding:2px 6px;background:rgba(255,209,102,0.1);color:#ffd166;border-radius:8px;border:1px solid rgba(255,209,102,0.25);">#${esc(t)}</span>`).join('');
         const color = catColor(card.cat);
         // 내용 파싱: 불릿/번호 목록 → 핵심 포인트 카드
         const bodyLines = (card.body || '').split('\n').filter(Boolean);
@@ -23215,7 +23180,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           : `<div style="font-size:13px;color:var(--mu);line-height:1.7;margin-bottom:6px;">${esc(line)}</div>`;
       }).join('');
 
-      const tagsHtml = (card.tags || []).map(t => { const c = window.getTagColor ? window.getTagColor(t) : {bg:'rgba(255,209,102,.12)',border:'rgba(255,209,102,.3)',text:'#ffd166'}; return `<span style="font-size:11px;padding:3px 9px;background:${c.bg};color:${c.text};border-radius:8px;border:1px solid ${c.border};">#${esc(t)}</span>`; }).join('');
+      const tagsHtml = (card.tags || []).map(t => `<span style="font-size:11px;padding:3px 9px;background:rgba(255,209,102,.12);color:#ffd166;border-radius:8px;border:1px solid rgba(255,209,102,.3);">#${esc(t)}</span>`).join('');
 
       modal.innerHTML = `
         <div style="background:var(--s1);border-radius:16px;width:560px;max-width:calc(100vw - 40px);max-height:85vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.7);">
@@ -23396,14 +23361,16 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     // ── 카드 삭제 ──────────────────────────────────────
     function deleteKcard(id) {
       if (!confirm('이 카드를 삭제할까요?')) return;
+      // ★ 올바른 순서: 1)deletedAt 마킹 → 2)클라우드 upsert → 3)로컬 제거
+      const _kcIdx = kcards.findIndex(k => k.id === id);
+      if (_kcIdx !== -1) {
+        kcards[_kcIdx].deletedAt = new Date().toISOString();
+        kcards[_kcIdx].updatedAt = kcards[_kcIdx].deletedAt;
+        if (window._sbSaveKcards) window._sbSaveKcards([kcards[_kcIdx]]).catch(()=>{});
+      }
       kcards = kcards.filter(k => k.id !== id);
       if (window._idbCache) window._idbCache['ins_kcards'] = kcards;
       if (window.idbSet) window.idbSet('ins_kcards', kcards).catch(()=>{});
-      if (window._sb && window._sbGetUserId) {
-        window._sbGetUserId().then(uid => {
-          if (uid) window._sb.from('kcards').delete().eq('id', uid + '_' + id).catch(()=>{});
-        });
-      }
       renderKcatTabs(); renderKcards();
       showToast('카드 삭제됨', 'ok');
     }
