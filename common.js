@@ -21264,10 +21264,10 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           })();
         }
       }
-      // 로컬 배열/캐시에서 제거
-      ntNotes = ntNotes.filter(n => n.id !== id);
+      // tombstone 포함 상태로 먼저 저장, 그 다음 렌더용으로만 filter
       if (window._idbCache) window._idbCache['nt_notes'] = ntNotes;
       if (window.idbSet) window.idbSet('nt_notes', ntNotes).catch(()=>{});
+      ntNotes = ntNotes.filter(n => n.id !== id);
       ntActiveId = null; ntRender(); ntShowEmpty();
       showToast('삭제되었습니다', 'ok');
     };
@@ -21295,9 +21295,10 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           })();
         }
       }
-      ntNotes = ntNotes.filter(n => n.id !== id);
+      // tombstone 포함 상태로 먼저 저장, 그 다음 렌더용으로만 filter
       if (window._idbCache) window._idbCache['nt_notes'] = ntNotes;
       if (window.idbSet) window.idbSet('nt_notes', ntNotes).catch(()=>{});
+      ntNotes = ntNotes.filter(n => n.id !== id);
       if (ntActiveId === id) { ntActiveId = null; ntShowEmpty(); }
       ntRender();
       showToast('삭제됐어요', 'ok');
@@ -23443,9 +23444,10 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         kcards[_kcIdx].updatedAt = kcards[_kcIdx].deletedAt;
         if (window._sbSaveKcards) window._sbSaveKcards([kcards[_kcIdx]]).catch(()=>{});
       }
-      kcards = kcards.filter(k => k.id !== id);
+      // tombstone 포함 상태로 먼저 저장, 그 다음 렌더용으로만 filter
       if (window._idbCache) window._idbCache['ins_kcards'] = kcards;
       if (window.idbSet) window.idbSet('ins_kcards', kcards).catch(()=>{});
+      kcards = kcards.filter(k => k.id !== id);
       // ★ PC + 카테고리 탭 + 모바일 전 경로 동시 갱신
       renderKcatTabs();
       renderKcards();
