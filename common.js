@@ -21207,17 +21207,27 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
     // ── 삭제 ───────────────────────────────────────────
     window.ntDelete = function (id) {
-      // soft-delete: deletedAt 마킹 후 IDB/클라우드에 저장 → 재동기화 시 살아나지 않음
+      // ① deletedAt 마킹 (배열 제거 전 클라우드에 먼저 기록 → 재동기화 시 부활 방지)
       const idx = ntNotes.findIndex(n => n.id === id);
-      if (idx !== -1) ntNotes[idx].deletedAt = new Date().toISOString();
-      ntNotes = ntNotes.filter(n => n.id !== id); // 로컬 UI에서 제거
-      if (window._idbCache) window._idbCache['nt_notes'] = ntNotes;
-      if (window.idbSet) window.idbSet('nt_notes', ntNotes).catch(()=>{});
-      if (window._sb && window._sbGetUserId) {
+      const deletedNote = idx !== -1 ? ntNotes[idx] : null;
+      if (deletedNote) deletedNote.deletedAt = new Date().toISOString();
+      // ② 클라우드에 deletedAt upsert (row 완전삭제 X → MergeById가 deletedAt으로 필터링)
+      if (deletedNote && window._sb && window._sbGetUserId) {
         window._sbGetUserId().then(uid => {
-          if (uid) window._sb.from('notes').delete().eq('id', uid + '_' + id).catch(()=>{});
+          if (!uid) return;
+          window._sb.from('notes').upsert({
+            id: uid + '_' + id,
+            user_id: uid,
+            item_id: id,
+            data: deletedNote,
+            updated_at: deletedNote.deletedAt
+          }, { onConflict: 'id' }).catch(()=>{});
         });
       }
+      // ③ 로컬 배열/캐시에서 제거
+      ntNotes = ntNotes.filter(n => n.id !== id);
+      if (window._idbCache) window._idbCache['nt_notes'] = ntNotes;
+      if (window.idbSet) window.idbSet('nt_notes', ntNotes).catch(()=>{});
       ntActiveId = null; ntRender(); ntShowEmpty();
       showToast('삭제되었습니다', 'ok');
     };
@@ -21228,17 +21238,25 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       if (!note) return;
       const title = note.title || '제목 없음';
       if (!confirm('「' + title + '」 노트를 삭제할까요?')) return;
-      // soft-delete + 클라우드 삭제
-      const idx = ntNotes.findIndex(n => n.id === id);
-      if (idx !== -1) ntNotes[idx].deletedAt = new Date().toISOString();
+      // ① deletedAt 마킹 (배열 제거 전 클라우드에 먼저 기록 → 재동기화 시 부활 방지)
+      note.deletedAt = new Date().toISOString();
+      // ② 클라우드에 deletedAt upsert
+      if (window._sb && window._sbGetUserId) {
+        window._sbGetUserId().then(uid => {
+          if (!uid) return;
+          window._sb.from('notes').upsert({
+            id: uid + '_' + id,
+            user_id: uid,
+            item_id: id,
+            data: note,
+            updated_at: note.deletedAt
+          }, { onConflict: 'id' }).catch(()=>{});
+        });
+      }
+      // ③ 로컬 배열/캐시에서 제거
       ntNotes = ntNotes.filter(n => n.id !== id);
       if (window._idbCache) window._idbCache['nt_notes'] = ntNotes;
       if (window.idbSet) window.idbSet('nt_notes', ntNotes).catch(()=>{});
-      if (window._sb && window._sbGetUserId) {
-        window._sbGetUserId().then(uid => {
-          if (uid) window._sb.from('notes').delete().eq('id', uid + '_' + id).catch(()=>{});
-        });
-      }
       if (ntActiveId === id) { ntActiveId = null; ntShowEmpty(); }
       ntRender();
       showToast('삭제됐어요', 'ok');
@@ -21314,15 +21332,26 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         if (window.idbSet) window.idbSet('wr2_sections', sections).catch(()=>{});
       }
 
-      // 노트탭에서 삭제 (이동이므로)
+      // 노트탭에서 삭제 (이동이므로) - deletedAt upsert로 재동기화 시 부활 방지
+      const movedNote = ntNotes.find(n => n.id === noteId);
+      if (movedNote) {
+        movedNote.deletedAt = new Date().toISOString();
+        if (window._sb && window._sbGetUserId) {
+          window._sbGetUserId().then(uid => {
+            if (!uid) return;
+            window._sb.from('notes').upsert({
+              id: uid + '_' + noteId,
+              user_id: uid,
+              item_id: noteId,
+              data: movedNote,
+              updated_at: movedNote.deletedAt
+            }, { onConflict: 'id' }).catch(()=>{});
+          });
+        }
+      }
       ntNotes = ntNotes.filter(n => n.id !== noteId);
       if (window._idbCache) window._idbCache['nt_notes'] = ntNotes;
       if (window.idbSet) window.idbSet('nt_notes', ntNotes).catch(()=>{});
-      if (window._sb && window._sbGetUserId) {
-        window._sbGetUserId().then(uid => {
-          if (uid) window._sb.from('notes').delete().eq('id', uid + '_' + noteId).catch(()=>{});
-        });
-      }
       if (ntActiveId === noteId) { ntActiveId = null; ntShowEmpty(); }
       ntRender();
       const roomName = ((window.wr2State && window.wr2State.rooms) || (window._idbCache && window._idbCache['wr2_rooms']) || []).find(r => r.id === roomId)?.title || '작업룸';
