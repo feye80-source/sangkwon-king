@@ -19940,7 +19940,9 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     }
 
     // ── 서브탭 전환 ─────────────────────────────────────
-    function showInsTab(n) {
+    window.showInsTab = function(n) { return _showInsTabImpl(n); };
+    function showInsTab(n) { return _showInsTabImpl(n); }
+    function _showInsTabImpl(n) {
       // cfg(API 설정) 특수 처리
       const cfgPanel = document.getElementById('ipage_cfg');
       if (n === 'cfg') {
@@ -19968,7 +19970,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
       if (n === 0) { try { ntInit(); } catch (e) { console.error('[ntInit]', e); } }
       if (n === 1) { try { populateItemSelects(); } catch (e) { console.error('[populateItemSelects]', e); } }
-      if (n === 4) { try { renderKcatTabs(); renderKcards(); } catch (e) { console.error('[kcards]', e); } }
+      if (n === 4) { try { if (typeof window._kcardsSyncFromCache === 'function') window._kcardsSyncFromCache(); renderKcatTabs(); renderKcards(); } catch (e) { console.error('[kcards]', e); } }
 
       if (n === 3) { try { clipTabInit(); } catch (e) { console.error('[clipTabInit]', e); } }
       if (n === 5) { try { renderWatchBoard(); } catch (e) { console.error('[renderWatchBoard]', e); } }
@@ -20128,11 +20130,19 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     window.ntCreate = function (type) {
       const m = document.getElementById('ntTypeMenu');
       if (m) m.classList.remove('open');
-      // 노트탭이 열려있지 않으면 강제 이동
+      // ntNotes 최신 상태로 동기화
+      try {
+        const _fresh = window._idbCache && window._idbCache['nt_notes'];
+        if (_fresh && _fresh.length > 0 && typeof window._ntSetNotes === 'function') window._ntSetNotes(_fresh);
+      } catch(e) {}
+      // 노트탭이 열려있지 않으면 강제 이동 + 초기화
       const ipage0 = document.getElementById('ipage0');
       if (ipage0 && ipage0.style.display === 'none') {
-        if (typeof showInsTab === 'function') showInsTab(0);
+        if (typeof window.showInsTab === 'function') window.showInsTab(0);
+        else if (typeof showInsTab === 'function') showInsTab(0);
       }
+      // ntInit이 아직 실행되지 않았을 경우 실행
+      try { if (typeof window.ntInit === 'function' && !window.__ntInited) { window.__ntInited = true; window.ntInit(); } } catch(e) {}
       const note = {
         id: 'nt_' + Date.now(),
         type,
@@ -22540,6 +22550,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
     // ── 에디터 열기/닫기 ───────────────────────────────
     function openKcardEditor(id) {
+      // kcards/kcardCats 최신 상태로 동기화
+      try { if (typeof window._kcardsSyncFromCache === 'function') window._kcardsSyncFromCache(); } catch(e) {}
       kcardEditId = id;
       const modal = document.getElementById('kcardModal');
       if (!modal) return;
