@@ -1651,6 +1651,7 @@
                     (r.tags || []).some(t => (t || '').toLowerCase().includes(q))
                   );
                   if (wr2State.statusFilter !== 'all') rooms = rooms.filter(r => r.status === wr2State.statusFilter);
+                  if (wr2State.groupFilter && wr2State.groupFilter !== 'all') rooms = rooms.filter(r => r.group === wr2State.groupFilter);
                   rooms.sort((a, b) => wr2State.sort === 'created' ? (b.createdAt || 0) - (a.createdAt || 0) : (b.updatedAt || 0) - (a.updatedAt || 0));
 
                   listEl.innerHTML = '';
@@ -1691,6 +1692,30 @@
                     meta.appendChild(updated);
                     content.appendChild(title);
                     content.appendChild(meta);
+                    // 그룹 + 태그 표시
+                    if (r.group || (r.tags && r.tags.length)) {
+                      const tagRow = document.createElement('div');
+                      tagRow.style.cssText = 'display:flex;flex-wrap:wrap;gap:2px;margin-top:3px;';
+                      if (r.group) {
+                        const gs = document.createElement('span');
+                        gs.style.cssText = 'padding:1px 6px;background:rgba(79,142,255,.15);border:1px solid rgba(79,142,255,.3);border-radius:7px;font-size:9px;color:#4f8eff;';
+                        gs.textContent = '🗂 ' + r.group;
+                        tagRow.appendChild(gs);
+                      }
+                      (r.tags || []).slice(0, 3).forEach(t => {
+                        const ts = document.createElement('span');
+                        ts.style.cssText = 'padding:1px 6px;background:rgba(167,139,250,.12);border:1px solid rgba(167,139,250,.25);border-radius:7px;font-size:9px;color:#a78bfa;';
+                        ts.textContent = '#' + t;
+                        tagRow.appendChild(ts);
+                      });
+                      if ((r.tags || []).length > 3) {
+                        const more = document.createElement('span');
+                        more.style.cssText = 'padding:1px 4px;font-size:9px;color:var(--di);';
+                        more.textContent = '+' + ((r.tags||[]).length - 3);
+                        tagRow.appendChild(more);
+                      }
+                      content.appendChild(tagRow);
+                    }
 
                     // 액션 버튼
                     const actions = document.createElement('div');
@@ -1794,6 +1819,8 @@
                   renderDashboard(room);
                   renderSections(room);
                   renderTimeline(room);
+                  wr2RenderTagRow(room);
+                  wr2RenderGroupSelect();
                 }
 
                 // ── 단계 탭 + 개요 탭 렌더 ──────────────────────────
@@ -3078,6 +3105,239 @@
                   try { if (typeof showToast === 'function') showToast('✅ 작업룸을 생성했습니다 (자동 연결)', 'ok'); } catch (e) { }
                 };
 
+
+
+                // ── 작업룸 그룹/태그 관리 함수들 ─────────────────────────
+
+                // 모든 그룹 목록 반환
+                function wr2GetGroups() {
+                  return [...new Set(wr2State.rooms.filter(r => !r.deletedAt && r.group).map(r => r.group))];
+                }
+                // 모든 태그 목록 반환
+                function wr2GetAllTags() {
+                  const tags = new Set();
+                  wr2State.rooms.filter(r => !r.deletedAt).forEach(r => (r.tags || []).forEach(t => tags.add(t)));
+                  return [...tags];
+                }
+
+                // 그룹 셀렉트 드롭다운 갱신
+                function wr2RenderGroupSelect() {
+                  const sel = document.getElementById('wr2GroupFilter');
+                  if (!sel) return;
+                  const groups = wr2GetGroups();
+                  const cur = wr2State.groupFilter || 'all';
+                  sel.innerHTML = '<option value="all">🗂 전체 그룹</option>' +
+                    groups.map(g => `<option value="${g}"${cur === g ? ' selected' : ''}>${g}</option>`).join('');
+                  if (!wr2State.groupFilter) wr2State.groupFilter = 'all';
+                }
+
+                // 현재 작업룸 태그 행 렌더
+                function wr2RenderTagRow(room) {
+                  const chips = document.getElementById('wr2TagChips');
+                  if (!chips || !room) return;
+                  chips.innerHTML = (room.tags || []).map(t =>
+                    `<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;background:rgba(167,139,250,.15);border:1px solid rgba(167,139,250,.35);border-radius:10px;font-size:10px;color:#a78bfa;">
+                      #${t}
+                      <span onclick="wr2RemoveTag('${room.id}','${t}')" style="cursor:pointer;opacity:.6;font-size:11px;line-height:1;" title="삭제">×</span>
+                    </span>`
+                  ).join('');
+                  // 그룹 표시
+                  const row = document.getElementById('wr2TagRow');
+                  if (row) {
+                    const grpSpan = row.querySelector('.wr2-group-chip');
+                    if (grpSpan) grpSpan.remove();
+                    if (room.group) {
+                      const gs = document.createElement('span');
+                      gs.className = 'wr2-group-chip';
+                      gs.style.cssText = 'display:inline-flex;align-items:center;gap:3px;padding:2px 9px;background:rgba(79,142,255,.15);border:1px solid rgba(79,142,255,.35);border-radius:10px;font-size:10px;color:#4f8eff;';
+                      gs.innerHTML = `🗂 ${room.group}`;
+                      chips.insertBefore(gs, chips.firstChild);
+                    }
+                  }
+                }
+
+                // renderList에 그룹 필터 적용
+                const _origRenderList = renderList;
+                function renderListWithGroup() {
+                  // 그룹 필터 주입 (wr2State.groupFilter)
+                  _origRenderList();
+                  wr2RenderGroupSelect();
+                }
+                // renderList를 확장 버전으로 교체
+                // (직접 wr2State.groupFilter 를 renderList 안에서 체크)
+                wr2State.groupFilter = wr2State.groupFilter || 'all';
+
+                // 작업룸 태그 추가/삭제
+                window.wr2AddTag = function(id, tag) {
+                  const room = wr2State.rooms.find(r => r.id === id);
+                  if (!room || !tag) return;
+                  if ((room.tags || []).includes(tag)) return;
+                  room.tags = [...(room.tags || []), tag];
+                  saveRooms();
+                  wr2Render();
+                };
+                window.wr2RemoveTag = function(id, tag) {
+                  const room = wr2State.rooms.find(r => r.id === id);
+                  if (!room) return;
+                  room.tags = (room.tags || []).filter(t => t !== tag);
+                  saveRooms();
+                  wr2Render();
+                };
+
+                // 현재 작업룸 태그 편집 팝업
+                window.wr2OpenRoomTagEditor = function() {
+                  const room = getActiveRoom();
+                  if (!room) return;
+                  const allTags = wr2GetAllTags();
+                  const existing = document.getElementById('wr2TagEditorModal');
+                  if (existing) { existing.remove(); return; }
+                  const modal = document.createElement('div');
+                  modal.id = 'wr2TagEditorModal';
+                  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;';
+                  modal.innerHTML = `
+                    <div style="background:var(--s1);border:1px solid var(--b1);border-radius:14px;padding:20px;width:320px;max-width:90vw;">
+                      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+                        <span style="font-size:14px;font-weight:800;color:var(--tx);"># 태그 편집</span>
+                        <button onclick="document.getElementById('wr2TagEditorModal').remove()" style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:16px;">✕</button>
+                      </div>
+                      <div style="display:flex;gap:6px;margin-bottom:12px;">
+                        <input id="wr2TagNewInput" placeholder="새 태그 입력"
+                          style="flex:1;padding:7px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:7px;color:var(--tx);font-size:12px;outline:none;"
+                          onkeydown="if(event.key==='Enter'){wr2AddTag('${room.id}',this.value.trim());this.value='';document.getElementById('wr2TagEditorModal').remove();wr2OpenRoomTagEditor();}">
+                        <button onclick="const v=document.getElementById('wr2TagNewInput').value.trim();if(v){wr2AddTag('${room.id}',v);document.getElementById('wr2TagEditorModal').remove();wr2OpenRoomTagEditor();}"
+                          style="padding:7px 12px;background:var(--ac);color:#111;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">추가</button>
+                      </div>
+                      <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px;">
+                        ${(room.tags||[]).map(t => `
+                          <span style="display:inline-flex;align-items:center;gap:3px;padding:3px 9px;background:rgba(167,139,250,.15);border:1px solid rgba(167,139,250,.35);border-radius:10px;font-size:11px;color:#a78bfa;">
+                            #${t}
+                            <span onclick="wr2RemoveTag('${room.id}','${t}');document.getElementById('wr2TagEditorModal').remove();wr2OpenRoomTagEditor();" style="cursor:pointer;opacity:.6;">×</span>
+                          </span>`).join('')}
+                        ${!(room.tags||[]).length ? '<span style="font-size:11px;color:var(--di);">태그 없음</span>' : ''}
+                      </div>
+                      ${allTags.length ? `<div style="font-size:10px;color:var(--mu);margin-bottom:5px;">기존 태그 클릭으로 추가:</div>
+                      <div style="display:flex;flex-wrap:wrap;gap:3px;">
+                        ${allTags.filter(t=>!(room.tags||[]).includes(t)).map(t => `
+                          <span onclick="wr2AddTag('${room.id}','${t}');document.getElementById('wr2TagEditorModal').remove();wr2OpenRoomTagEditor();"
+                            style="padding:2px 8px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;font-size:11px;color:var(--mu);cursor:pointer;">#${t}</span>`).join('')}
+                      </div>` : ''}
+                    </div>`;
+                  document.body.appendChild(modal);
+                  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+                  setTimeout(() => { const inp = document.getElementById('wr2TagNewInput'); if (inp) inp.focus(); }, 50);
+                };
+
+                // 현재 작업룸 그룹 편집 팝업
+                window.wr2OpenRoomGroupEditor = function() {
+                  const room = getActiveRoom();
+                  if (!room) return;
+                  const groups = wr2GetGroups();
+                  const existing = document.getElementById('wr2RoomGroupModal');
+                  if (existing) { existing.remove(); return; }
+                  const modal = document.createElement('div');
+                  modal.id = 'wr2RoomGroupModal';
+                  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;';
+                  modal.innerHTML = `
+                    <div style="background:var(--s1);border:1px solid var(--b1);border-radius:14px;padding:20px;width:300px;max-width:90vw;">
+                      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+                        <span style="font-size:14px;font-weight:800;color:var(--tx);">🗂 그룹 지정</span>
+                        <button onclick="document.getElementById('wr2RoomGroupModal').remove()" style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:16px;">✕</button>
+                      </div>
+                      <div style="font-size:11px;color:var(--mu);margin-bottom:10px;">현재: <b style="color:var(--tx);">${room.group || '그룹 없음'}</b></div>
+                      <div style="display:flex;gap:6px;margin-bottom:12px;">
+                        <input id="wr2RoomGroupInput" placeholder="그룹명 입력 또는 선택"
+                          style="flex:1;padding:7px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:7px;color:var(--tx);font-size:12px;outline:none;"
+                          value="${room.group || ''}"
+                          onkeydown="if(event.key==='Enter'){window._wr2SetRoomGroup('${room.id}',this.value.trim());document.getElementById('wr2RoomGroupModal').remove();}">
+                        <button onclick="window._wr2SetRoomGroup('${room.id}',document.getElementById('wr2RoomGroupInput').value.trim());document.getElementById('wr2RoomGroupModal').remove();"
+                          style="padding:7px 12px;background:var(--ac);color:#111;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">설정</button>
+                      </div>
+                      ${groups.length ? `<div style="font-size:10px;color:var(--mu);margin-bottom:5px;">기존 그룹 클릭으로 선택:</div>
+                      <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px;">
+                        ${groups.map(g => `
+                          <span onclick="window._wr2SetRoomGroup('${room.id}','${g}');document.getElementById('wr2RoomGroupModal').remove();"
+                            style="padding:3px 10px;background:${room.group===g?'rgba(79,142,255,.2)':'var(--s2)'};border:1px solid ${room.group===g?'var(--ac)':'var(--b1)'};border-radius:8px;font-size:11px;color:${room.group===g?'var(--ac)':'var(--mu)'};cursor:pointer;">${g}</span>`).join('')}
+                      </div>` : ''}
+                      <button onclick="window._wr2SetRoomGroup('${room.id}','');document.getElementById('wr2RoomGroupModal').remove();"
+                        style="padding:5px 12px;background:rgba(255,68,68,.1);border:1px solid #ff4444;border-radius:7px;font-size:11px;color:#ff6370;cursor:pointer;">그룹 제거</button>
+                    </div>`;
+                  document.body.appendChild(modal);
+                  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+                  setTimeout(() => { const inp = document.getElementById('wr2RoomGroupInput'); if (inp) inp.focus(); }, 50);
+                };
+                window._wr2SetRoomGroup = function(id, group) {
+                  const room = wr2State.rooms.find(r => r.id === id);
+                  if (!room) return;
+                  room.group = group || undefined;
+                  saveRooms();
+                  wr2RenderGroupSelect();
+                  wr2Render();
+                };
+
+                // 그룹 전체 관리 모달 (생성/이름변경/삭제)
+                window.wr2OpenGroupManager = function() {
+                  const existing = document.getElementById('wr2GroupManagerModal');
+                  if (existing) { existing.remove(); return; }
+                  const groups = wr2GetGroups();
+                  const modal = document.createElement('div');
+                  modal.id = 'wr2GroupManagerModal';
+                  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;';
+                  function renderBody() {
+                    const gs = wr2GetGroups();
+                    modal.querySelector('#wr2GmList').innerHTML = gs.length
+                      ? gs.map(g => {
+                          const cnt = wr2State.rooms.filter(r => !r.deletedAt && r.group === g).length;
+                          return `<div style="display:flex;align-items:center;gap:6px;padding:7px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;margin-bottom:4px;">
+                            <span style="flex:1;font-size:12px;color:var(--tx);">${g} <span style="color:var(--di);font-size:10px;">(${cnt}개)</span></span>
+                            <button onclick="(function(){const n=prompt('이름 변경','${g}');if(n&&n.trim()&&n.trim()!=='${g}'){wr2State.rooms.forEach(r=>{if(r.group==='${g}')r.group=n.trim();});saveRooms();wr2RenderGroupSelect();wr2Render();document.getElementById('wr2GroupManagerModal').remove();window.wr2OpenGroupManager();}})();" style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:12px;padding:2px 6px;" title="이름 변경">✏️</button>
+                            <button onclick="(function(){if(!confirm('\"${g}\" 그룹을 삭제할까요?\\n(${cnt}개 작업룸의 그룹이 해제됩니다)'))return;wr2State.rooms.forEach(r=>{if(r.group==='${g}')delete r.group;});saveRooms();if(wr2State.groupFilter==='${g}')wr2State.groupFilter='all';wr2RenderGroupSelect();wr2Render();document.getElementById('wr2GroupManagerModal').remove();window.wr2OpenGroupManager();})();" style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:12px;padding:2px 6px;" title="삭제" onmouseover="this.style.color='#ff6370'" onmouseout="this.style.color='var(--mu)'">🗑</button>
+                          </div>`;}).join('')
+                      : '<div style="font-size:11px;color:var(--di);text-align:center;padding:16px;">그룹이 없습니다<br><span style="font-size:10px;">작업룸 상세에서 그룹을 지정하면 나타납니다</span></div>';
+                  }
+                  modal.innerHTML = `
+                    <div style="background:var(--s1);border:1px solid var(--b1);border-radius:14px;padding:20px;width:320px;max-width:90vw;max-height:80vh;overflow-y:auto;">
+                      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+                        <span style="font-size:14px;font-weight:800;color:var(--tx);">🗂 그룹 관리</span>
+                        <button onclick="document.getElementById('wr2GroupManagerModal').remove()" style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:16px;">✕</button>
+                      </div>
+                      <div id="wr2GmList"></div>
+                    </div>`;
+                  document.body.appendChild(modal);
+                  renderBody();
+                  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+                };
+
+                // 전체 태그 관리 모달
+                window.wr2OpenTagManager = function() {
+                  const existing = document.getElementById('wr2TagManagerModal');
+                  if (existing) { existing.remove(); return; }
+                  const modal = document.createElement('div');
+                  modal.id = 'wr2TagManagerModal';
+                  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;';
+                  function renderBody() {
+                    const allTags = wr2GetAllTags();
+                    modal.querySelector('#wr2TmList').innerHTML = allTags.length
+                      ? allTags.map(t => {
+                          const cnt = wr2State.rooms.filter(r => !r.deletedAt && (r.tags||[]).includes(t)).length;
+                          return `<div style="display:flex;align-items:center;gap:6px;padding:7px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;margin-bottom:4px;">
+                            <span style="flex:1;font-size:12px;color:var(--tx);">#${t} <span style="color:var(--di);font-size:10px;">(${cnt}개)</span></span>
+                            <button onclick="(function(){const n=prompt('태그 이름 변경','${t}');if(n&&n.trim()&&n.trim()!=='${t}'){wr2State.rooms.forEach(r=>{if(r.tags)r.tags=r.tags.map(x=>x==='${t}'?n.trim():x);});saveRooms();wr2Render();document.getElementById('wr2TagManagerModal').remove();window.wr2OpenTagManager();})();" style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:12px;padding:2px 6px;" title="이름 변경">✏️</button>
+                            <button onclick="(function(){if(!confirm('\"${t}\" 태그를 모든 작업룸에서 삭제할까요?'))return;wr2State.rooms.forEach(r=>{if(r.tags)r.tags=r.tags.filter(x=>x!=='${t}');});saveRooms();wr2Render();document.getElementById('wr2TagManagerModal').remove();window.wr2OpenTagManager();})();" style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:12px;padding:2px 6px;" title="삭제" onmouseover="this.style.color='#ff6370'" onmouseout="this.style.color='var(--mu)'">🗑</button>
+                          </div>`;}).join('')
+                      : '<div style="font-size:11px;color:var(--di);text-align:center;padding:16px;">태그가 없습니다</div>';
+                  }
+                  modal.innerHTML = `
+                    <div style="background:var(--s1);border:1px solid var(--b1);border-radius:14px;padding:20px;width:320px;max-width:90vw;max-height:80vh;overflow-y:auto;">
+                      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+                        <span style="font-size:14px;font-weight:800;color:var(--tx);"># 전체 태그 관리</span>
+                        <button onclick="document.getElementById('wr2TagManagerModal').remove()" style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:16px;">✕</button>
+                      </div>
+                      <div id="wr2TmList"></div>
+                    </div>`;
+                  document.body.appendChild(modal);
+                  renderBody();
+                  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+                };
 
                 window.wr2Init = function () {
                   if (typeof window._wr2MigrateOld === 'function') window._wr2MigrateOld();
@@ -4670,7 +4930,7 @@
       // _norm이 있으면 우선 사용, 없으면 raw fallback
       const n = item?._norm || null;
       function v(sfx) { return ((document.getElementById(prefix + sfx) || {}).value || ''); }
-      function num(sfx) { const x = parseFloat(v(sfx)); return isNaN(x) ? null : x; }
+      function num(sfx) { const x = parseFloat(v(sfx).replace(/,/g, "")); return isNaN(x) ? null : x; }
       function chk(sfx) { const el = document.getElementById(prefix + sfx); return el ? el.checked : false; }
       function radio(name) { const el = document.querySelector(`input[name="${name}"]:checked`); return el ? el.value : 'all'; }
 
@@ -20523,6 +20783,64 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       showToast('"' + name + '" 삭제 완료', 'ok');
     };
 
+    // ── 노트탭 전체 태그 관리 모달 ─────────────────────────────
+    window.ntOpenTagManager = function() {
+      const existing = document.getElementById('ntTagManagerModal');
+      if (existing) { existing.remove(); return; }
+      const modal = document.createElement('div');
+      modal.id = 'ntTagManagerModal';
+      modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;';
+      function renderBody() {
+        const allTags = [...new Set(ntNotes.flatMap(n => n.tags || []))];
+        modal.querySelector('#ntTmList').innerHTML = allTags.length
+          ? allTags.map(t => {
+              const cnt = ntNotes.filter(n => (n.tags||[]).includes(t)).length;
+              return '<div style="display:flex;align-items:center;gap:6px;padding:7px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;margin-bottom:4px;">' +
+                '<span style="flex:1;font-size:12px;color:var(--tx);">#' + t + ' <span style="color:var(--di);font-size:10px;">(' + cnt + '개)</span></span>' +
+                '<button onclick="ntRenameTag(null,\'' + t + \'')" style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:12px;padding:2px 6px;" title="이름 변경">✏️</button>' +
+                '<button onclick="ntDeleteTagGlobal(\'' + t + \'')" style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:12px;padding:2px 6px;" title="전체 삭제" onmouseover="this.style.color='#ff6370'" onmouseout="this.style.color='var(--mu)'">🗑</button>' +
+                '</div>';
+            }).join('')
+          : '<div style="font-size:11px;color:var(--di);text-align:center;padding:16px;">태그가 없습니다</div>';
+      }
+      modal.innerHTML = '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:14px;padding:20px;width:320px;max-width:90vw;max-height:80vh;overflow-y:auto;">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">' +
+        '<span style="font-size:14px;font-weight:800;color:var(--tx);"># 태그 전체 관리</span>' +
+        '<button onclick="document.getElementById('ntTagManagerModal').remove()" style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:16px;">✕</button></div>' +
+        '<div id="ntTmList"></div></div>';
+      document.body.appendChild(modal);
+      renderBody();
+      modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+    };
+
+    // ntRenameTag 확장: id=null이면 전체 노트 일괄 변경
+    const _ntOrigRenameTag = window.ntRenameTag;
+    window.ntRenameTag = function(id, oldTag) {
+      if (id === null) {
+        // 전체 일괄 이름 변경
+        const newTag = prompt('태그 이름 변경', oldTag);
+        if (!newTag || !newTag.trim() || newTag.trim() === oldTag) return;
+        ntNotes.forEach(n => { if (n.tags) n.tags = n.tags.map(t => t === oldTag ? newTag.trim() : t); });
+        ntSave();
+        if (ntTagFilter === oldTag) ntTagFilter = newTag.trim();
+        ntRender();
+        document.getElementById('ntTagManagerModal') && window.ntOpenTagManager();
+        showToast('"' + oldTag + '" → "' + newTag.trim() + '"', 'ok');
+      } else if (typeof _ntOrigRenameTag === 'function') {
+        _ntOrigRenameTag(id, oldTag);
+      }
+    };
+
+    window.ntDeleteTagGlobal = function(tag) {
+      if (!confirm('"' + tag + '" 태그를 모든 노트에서 삭제할까요?')) return;
+      ntNotes.forEach(n => { if (n.tags) n.tags = n.tags.filter(t => t !== tag); });
+      ntSave();
+      if (ntTagFilter === tag) ntTagFilter = null;
+      ntRender();
+      document.getElementById('ntTagManagerModal') && window.ntOpenTagManager();
+      showToast('"' + tag + '" 태그 전체 삭제됨', 'ok');
+    };
+
     // ── 노트 열기 ──────────────────────────────────────
     window.ntOpen = function (id) {
       ntActiveId = id;
@@ -21535,6 +21853,46 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       }
     }
     window.formatCalcInput = formatCalcInput;
+
+    // ── 필터 금액 입력란 콤마 포맷 적용 ─────────────────────────────
+    // 금액성 필드(Price, Deposit, Rent, TxPrice, Pp, Appraisal, MinBid, Jeonse)에 oninput 이벤트로 콤마 자동 삽입
+    function _attachFilterComma() {
+      const moneySuffixes = ['PriceMin','PriceMax','DepositMin','DepositMax','RentMin','RentMax',
+        'TxPriceMin','TxPriceMax','PpMin','PpMax','AppraisalMin','AppraisalMax',
+        'MinBidMin','MinBidMax','JeonseMin','JeonseMax'];
+      const prefixes = ['lf','gf','ef'];
+      prefixes.forEach(pf => {
+        moneySuffixes.forEach(sfx => {
+          const el = document.getElementById(pf + sfx);
+          if (!el || el.dataset.commaAttached) return;
+          el.dataset.commaAttached = '1';
+          // type=number → text 로 변경해야 콤마 표시 가능
+          el.type = 'text';
+          el.inputMode = 'numeric';
+          el.addEventListener('input', function() {
+            const raw = this.value.replace(/[^0-9]/g, '');
+            if (raw === '') { this.value = ''; return; }
+            const pos = this.selectionStart;
+            const oldLen = this.value.length;
+            this.value = Number(raw).toLocaleString('ko-KR');
+            const newLen = this.value.length;
+            try { this.setSelectionRange(pos + (newLen - oldLen), pos + (newLen - oldLen)); } catch(e){}
+          });
+          // 포커스 아웃 시 정리
+          el.addEventListener('blur', function() {
+            const raw = this.value.replace(/[^0-9]/g, '');
+            this.value = raw ? Number(raw).toLocaleString('ko-KR') : '';
+          });
+        });
+      });
+    }
+    window._attachFilterComma = _attachFilterComma;
+    // DOM 로드 후 자동 적용 + 패널 열릴 때도 재호출
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', _attachFilterComma);
+    } else {
+      setTimeout(_attachFilterComma, 300);
+    }
 
     function calcNPL() {
       const 감 = gv('npl_a'), 입 = gv('npl_bid'), d1 = gv('npl_d1'), d2max = gv('npl_d2'), 매입 = gv('npl_bp');
@@ -22644,9 +23002,46 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     function setKcardCat(c) { kcardActiveCat = c; renderKcatTabs(); renderKcards(); }
 
     // ── 카드 그리드 렌더 ───────────────────────────────
+    // kcardFilter 상태 (검색/그룹/태그)
+    if (typeof window.kcardFilter === 'undefined') window.kcardFilter = { search: '', group: 'all', tag: 'all' };
+
+    function kcardRefreshFilterDropdowns() {
+      // 그룹 드롭다운 갱신
+      const gSel = document.getElementById('kcardGroupFilter');
+      if (gSel) {
+        const groups = [...new Set(kcards.filter(k => k.group).map(k => k.group))];
+        const cur = window.kcardFilter.group || 'all';
+        gSel.innerHTML = '<option value="all">🗂 전체 그룹</option>' +
+          groups.map(g => `<option value="${g}"${cur===g?' selected':''}>${g}</option>`).join('');
+      }
+      // 태그 드롭다운 갱신
+      const tSel = document.getElementById('kcardTagFilter');
+      if (tSel) {
+        const tags = [...new Set(kcards.flatMap(k => k.tags || []))];
+        const cur = window.kcardFilter.tag || 'all';
+        tSel.innerHTML = '<option value="all"># 전체 태그</option>' +
+          tags.map(t => `<option value="${t}"${cur===t?' selected':''}>#${t}</option>`).join('');
+      }
+    }
+    window.kcardRefreshFilterDropdowns = kcardRefreshFilterDropdowns;
+
     function renderKcards() {
       const el = document.getElementById('kcardGrid'); if (!el) return;
-      const filtered = kcardActiveCat === '전체' ? kcards : kcards.filter(k => k.cat === kcardActiveCat);
+      kcardRefreshFilterDropdowns();
+      let filtered = kcardActiveCat === '전체' ? kcards : kcards.filter(k => k.cat === kcardActiveCat);
+      // 검색 필터
+      const q = (window.kcardFilter.search || '').trim().toLowerCase();
+      if (q) filtered = filtered.filter(k =>
+        (k.title||'').toLowerCase().includes(q) ||
+        (k.body||'').toLowerCase().includes(q) ||
+        (k.tags||[]).some(t => t.toLowerCase().includes(q))
+      );
+      // 그룹 필터
+      if (window.kcardFilter.group && window.kcardFilter.group !== 'all')
+        filtered = filtered.filter(k => k.group === window.kcardFilter.group);
+      // 태그 필터
+      if (window.kcardFilter.tag && window.kcardFilter.tag !== 'all')
+        filtered = filtered.filter(k => (k.tags||[]).includes(window.kcardFilter.tag));
 
       if (!filtered.length) {
         el.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:60px 0;color:var(--mu);">
@@ -22813,6 +23208,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         document.getElementById('kcardTitle').value = card.title || '';
         document.getElementById('kcardBody').value = card.body || '';
         document.getElementById('kcardTags').value = (card.tags || []).join(', ');
+        const _gEl=document.getElementById('kcardGroup');if(_gEl)_gEl.value=card.group||'';
         const _ytEl=document.getElementById('kcardYtInput'); if(_ytEl){_ytEl.value=card.ytUrl||''; if(card.ytUrl&&typeof pcUpdateYtPreview==='function')pcUpdateYtPreview();}
         const _bgEl=document.getElementById('kcardBgColor'); if(_bgEl)_bgEl.value=card.bgColor||'#2a2d3a';
         window._kcardPendingImgs=card.imgs?[...card.imgs]:[];
@@ -22823,6 +23219,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         document.getElementById('kcardTitle').value = '';
         document.getElementById('kcardBody').value = '';
         document.getElementById('kcardTags').value = '';
+        const _gEl2=document.getElementById('kcardGroup');if(_gEl2)_gEl2.value='';
         const _ytEl2=document.getElementById('kcardYtInput');if(_ytEl2)_ytEl2.value='';
         const _bgEl2=document.getElementById('kcardBgColor');if(_bgEl2)_bgEl2.value='#2a2d3a';
         const _ytPrev=document.getElementById('kcardYtPreview');if(_ytPrev){_ytPrev.style.display='none';_ytPrev.innerHTML='';}
@@ -22831,6 +23228,12 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         const _ai2=document.getElementById('kcardAiInput');if(_ai2)_ai2.value='';
       }
 
+      // datalist에 기존 그룹 목록 채우기
+      const dl = document.getElementById('kcardGroupList');
+      if (dl) {
+        const groups = [...new Set(kcards.filter(k => k.group).map(k => k.group))];
+        dl.innerHTML = groups.map(g => '<option value="' + g + '">').join('');
+      }
       modal.style.display = 'flex';
     }
 
@@ -22918,6 +23321,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       if (!title) { showToast('제목을 입력해주세요', 'warn'); return; }
 
       const tags = tagsRaw ? tagsRaw.split(/[,，]+/).map(t => t.trim()).filter(Boolean) : [];
+      const group = document.getElementById('kcardGroup')?.value?.trim() || '';
       const now = new Date().toISOString();
 
       const _ytUrl = document.getElementById('kcardYtInput')?.value?.trim() || '';
@@ -22925,9 +23329,9 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const _imgs = window._kcardPendingImgs || [];
       if (kcardEditId) {
         const card = kcards.find(k => k.id === kcardEditId);
-        if (card) { card.title=title; card.body=body; card.tags=tags; card.cat=kcardSelectedCat; card.updatedAt=now; card.ytUrl=_ytUrl; if(_imgs.length) card.imgs=_imgs; if(_bgColor) card.bgColor=_bgColor; }
+        if (card) { card.title=title; card.body=body; card.tags=tags; card.group=group||undefined; card.cat=kcardSelectedCat; card.updatedAt=now; card.ytUrl=_ytUrl; if(_imgs.length) card.imgs=_imgs; if(_bgColor) card.bgColor=_bgColor; }
       } else {
-        kcards.unshift({ id:'kc_'+Date.now(), title, body, tags, cat:kcardSelectedCat, createdAt:now, updatedAt:now, ytUrl:_ytUrl, imgs:_imgs, bgColor:_bgColor });
+        kcards.unshift({ id:'kc_'+Date.now(), title, body, tags, group:group||undefined, cat:kcardSelectedCat, createdAt:now, updatedAt:now, ytUrl:_ytUrl, imgs:_imgs, bgColor:_bgColor });
       }
       window._kcardPendingImgs = [];
 
@@ -22961,6 +23365,77 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     window.renderKcards     = renderKcards;
     window.renderKcatTabs   = renderKcatTabs;
     window.saveKcard        = saveKcard;
+
+    // ── 알짜탭 그룹 관리 ─────────────────────────────────────────
+    window.openKcardGroupManager = function() {
+      const existing = document.getElementById('kcardGroupMgrModal');
+      if (existing) { existing.remove(); return; }
+      const modal = document.createElement('div');
+      modal.id = 'kcardGroupMgrModal';
+      modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;';
+      function renderBody() {
+        const groups = [...new Set(kcards.filter(k => k.group).map(k => k.group))];
+        modal.querySelector('#kcardGmList').innerHTML = groups.length
+          ? groups.map(g => {
+              const cnt = kcards.filter(k => k.group === g).length;
+              return `<div style="display:flex;align-items:center;gap:6px;padding:7px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;margin-bottom:4px;">
+                <span style="flex:1;font-size:12px;color:var(--tx);">${g} <span style="color:var(--di);font-size:10px;">(${cnt}개)</span></span>
+                <button onclick="(function(){const n=prompt('이름 변경','${g}');if(n&&n.trim()&&n.trim()!=='${g}'){kcards.forEach(k=>{if(k.group==='${g}')k.group=n.trim();});saveKcards();renderKcards();document.getElementById('kcardGroupMgrModal').remove();window.openKcardGroupManager();}})();" style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:12px;padding:2px 6px;" title="이름 변경">✏️</button>
+                <button onclick="(function(){if(!confirm('"${g}" 그룹을 삭제할까요?\n카드들의 그룹이 해제됩니다'))return;kcards.forEach(k=>{if(k.group==='${g}')delete k.group;});saveKcards();if(window.kcardFilter.group==='${g}')window.kcardFilter.group='all';renderKcards();document.getElementById('kcardGroupMgrModal').remove();window.openKcardGroupManager();})();" style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:12px;padding:2px 6px;" title="삭제" onmouseover="this.style.color='#ff6370'" onmouseout="this.style.color='var(--mu)'">🗑</button>
+              </div>`;}).join('')
+          : '<div style="font-size:11px;color:var(--di);text-align:center;padding:16px;">그룹이 없습니다<br><span style="font-size:10px;">카드 편집에서 그룹을 지정하면 나타납니다</span></div>';
+      }
+      modal.innerHTML = `
+        <div style="background:var(--s1);border:1px solid var(--b1);border-radius:14px;padding:20px;width:320px;max-width:90vw;max-height:80vh;overflow-y:auto;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+            <span style="font-size:14px;font-weight:800;color:var(--tx);">🗂 그룹 관리</span>
+            <button onclick="document.getElementById('kcardGroupMgrModal').remove()" style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:16px;">✕</button>
+          </div>
+          <div style="display:flex;gap:6px;margin-bottom:12px;">
+            <input id="kcardGmNewInput" placeholder="새 그룹 이름"
+              style="flex:1;padding:7px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:7px;color:var(--tx);font-size:12px;outline:none;"
+              onkeydown="if(event.key==='Enter'){const v=this.value.trim();if(v&&!kcards.some(k=>k.group===v)){showToast('\"'+v+'\" 그룹 생성됨','ok');}this.value='';}">
+            <button onclick="const v=document.getElementById('kcardGmNewInput').value.trim();if(v){showToast('\"'+v+'\" 그룹 추가됨 (카드 편집에서 지정하세요)','ok');document.getElementById('kcardGmNewInput').value='';}"
+              style="padding:7px 12px;background:var(--ac);color:#111;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">추가</button>
+          </div>
+          <div id="kcardGmList"></div>
+        </div>`;
+      document.body.appendChild(modal);
+      renderBody();
+      modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+    };
+
+    // ── 알짜탭 태그 관리 ─────────────────────────────────────────
+    window.openKcardTagManager = function() {
+      const existing = document.getElementById('kcardTagMgrModal');
+      if (existing) { existing.remove(); return; }
+      const modal = document.createElement('div');
+      modal.id = 'kcardTagMgrModal';
+      modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;';
+      function renderBody() {
+        const allTags = [...new Set(kcards.flatMap(k => k.tags || []))];
+        modal.querySelector('#kcardTmList').innerHTML = allTags.length
+          ? allTags.map(t => {
+              const cnt = kcards.filter(k => (k.tags||[]).includes(t)).length;
+              return `<div style="display:flex;align-items:center;gap:6px;padding:7px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;margin-bottom:4px;">
+                <span style="flex:1;font-size:12px;color:var(--tx);">#${t} <span style="color:var(--di);font-size:10px;">(${cnt}개)</span></span>
+                <button onclick="(function(){const n=prompt('태그 이름 변경','${t}');if(n&&n.trim()&&n.trim()!=='${t}'){kcards.forEach(k=>{if(k.tags)k.tags=k.tags.map(x=>x==='${t}'?n.trim():x);});saveKcards();renderKcards();document.getElementById('kcardTagMgrModal').remove();window.openKcardTagManager();}})();" style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:12px;padding:2px 6px;" title="이름 변경">✏️</button>
+                <button onclick="(function(){if(!confirm('"${t}" 태그를 모든 카드에서 삭제할까요?'))return;kcards.forEach(k=>{if(k.tags)k.tags=k.tags.filter(x=>x!=='${t}');});saveKcards();if(window.kcardFilter.tag==='${t}')window.kcardFilter.tag='all';renderKcards();document.getElementById('kcardTagMgrModal').remove();window.openKcardTagManager();})();" style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:12px;padding:2px 6px;" title="삭제" onmouseover="this.style.color='#ff6370'" onmouseout="this.style.color='var(--mu)'">🗑</button>
+              </div>`;}).join('')
+          : '<div style="font-size:11px;color:var(--di);text-align:center;padding:16px;">태그가 없습니다</div>';
+      }
+      modal.innerHTML = `
+        <div style="background:var(--s1);border:1px solid var(--b1);border-radius:14px;padding:20px;width:320px;max-width:90vw;max-height:80vh;overflow-y:auto;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+            <span style="font-size:14px;font-weight:800;color:var(--tx);"># 전체 태그 관리</span>
+            <button onclick="document.getElementById('kcardTagMgrModal').remove()" style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:16px;">✕</button>
+          </div>
+          <div id="kcardTmList"></div>
+        </div>`;
+      document.body.appendChild(modal);
+      renderBody();
+      modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+    };
 
     // ── PC 이미지 첨부 핸들러 (pcHandleImgSelect / pcHandleImgDrop) ──
     // ── Supabase Storage 업로드 방식 (base64 DB 저장 제거) ──
