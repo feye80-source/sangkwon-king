@@ -1164,6 +1164,15 @@
       dbBtn.onclick = window._sbShowDbAdmin;
       dbBtn.style.cssText = 'position:fixed;top:8px;right:90px;z-index:99998;background:rgba(30,35,55,0.85);color:#94a3b8;border:1px solid #334;border-radius:8px;padding:4px 10px;font-size:11px;cursor:pointer;';
       document.body.appendChild(dbBtn);
+
+      // MONODOT 로고
+      if (!document.getElementById('_monoLogo')) {
+        const logo = document.createElement('img');
+        logo.id = '_monoLogo';
+        logo.src = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAUDBAQEAwUEBAQFBQUGBwwIBwcHBw8LCwkMEQ8SEhEPERETFhwXExQaFRERGCEYGh0dHx8fExciJCIeJBweHx7/2wBDAQUFBQcGBw4ICA4eFBEUHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh7/wAARCAAcADMDASIAAhEBAxEB/8QAGwAAAQUBAQAAAAAAAAAAAAAAAwACBAUHAQb/xAAvEAACAQMBBgQEBwAAAAAAAAABAgMABBESBQYhIjFRBxNBYRQVQoEWM1JUYnHB/8QAFgEBAQEAAAAAAAAAAAAAAAAAAAEC/8QAFxEBAQEBAAAAAAAAAAAAAAAAAAERAv/aAAwDAQACEQMRAD8Ax55OPWgO/vXIj5s8cQOC7hR9zj/a1Pa3g4tlLNGN6YrgIjyK0dtkaQ7hC3PyhlQH2Z1X3rbDJZJKiyvWuT+Dqx3EkX4mS4VZgiyWtr5iyKUVhp5xzsGGlfXS2cYqo214ZWmyrCS7u94ZnCwXso8myUq5t1ZtKkyDOQhDfpYgcetNGYStUSU176Xw9bQXO+O6nDd/53gX3p+26fn/AMa8bvBs75XLbIb6zu/Pt0nzbSagmr6W7MPUVL1JcXLmq3VSoZbj1pVUX7S0xpmOeY8fegEnPWmsT3oCNKw6ORxz19aA8pxjUcDOBnv1pjk0Fye9ApGHYd/vUd2pzk0FuI6mg4W40qbM/wARIZtKRavoiGlR/QpUH//Z';
+        logo.style.cssText = 'position:fixed;top:10px;right:155px;z-index:99998;height:22px;width:auto;opacity:0.85;pointer-events:none;border-radius:3px;';
+        document.body.appendChild(logo);
+      }
     };
 
     window._sbShowDbAdmin = function() {
@@ -5991,16 +6000,18 @@
         const seen = new Set();
         sv = sv.filter(item => { if (!item.id || seen.has(item.id)) return false; seen.add(item.id); return true; });
       } else {
-        // 필터 CSV: gf 조건필터 적용
-        if (isGFilterActive() || window._gfActive) {
+        // 필터 CSV: 적용 버튼 여부 무관하게 현재 입력값으로 바로 필터링
+        // isGFilterActive()는 입력값 유무를 실시간 체크하므로 _gfActive 불필요
+        if (isGFilterActive()) {
           sv = getSv().filter(item => {
             if (!item || !item.data) return false;
             if (!item._norm && typeof normalizeItem === 'function') normalizeItem(item);
             return _checkFilter(item.data || {}, 'gf', item);
           });
+          if (!sv.length) { showToast('필터 조건에 맞는 항목이 없습니다', 'warn'); return; }
         } else {
-          // gf 필터 없으면 현재 화면 마커 전부 (화면CSV와 동일)
-          sv = (mapOverlays || []).map(o => o.item).filter(Boolean);
+          // 필터 조건 없으면 전체 저장목록
+          sv = getSv().filter(item => item && item.data);
           const seen = new Set();
           sv = sv.filter(item => { if (!item.id || seen.has(item.id)) return false; seen.add(item.id); return true; });
         }
@@ -20359,6 +20370,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         <div class="nt-card-actions" onclick="event.stopPropagation()">
           <button class="nt-act-btn" title="위로" onclick="ntMoveNote('${n.id}',-1)">▲</button>
           <button class="nt-act-btn" title="아래로" onclick="ntMoveNote('${n.id}',1)">▼</button>
+          <button class="nt-act-btn" title="작업룸으로 이동" onclick="ntMoveToRoom('${n.id}')">📁</button>
           <button class="nt-act-btn" title="이름 변경" onclick="ntRenameNote('${n.id}')">✏️</button>
           <button class="nt-act-btn nt-act-del" title="삭제" onclick="ntDeleteConfirm('${n.id}')">✕</button>
         </div>
@@ -20868,6 +20880,91 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       if (ntActiveId === id) { ntActiveId = null; ntShowEmpty(); }
       ntRender();
       showToast('삭제됐어요', 'ok');
+    };
+
+    // ── 노트 → 작업룸 이동 ─────────────────────────────
+    window.ntMoveToRoom = function(id) {
+      const note = ntNotes.find(n => n.id === id);
+      if (!note) return;
+      // 작업룸 목록 가져오기
+      const rooms = (window.wr2State && window.wr2State.rooms)
+        ? window.wr2State.rooms.filter(r => !r.deletedAt)
+        : ((window._idbCache && window._idbCache['wr2_rooms']) || []).filter(r => !r.deletedAt);
+      if (!rooms.length) { showToast('작업룸이 없습니다. 먼저 작업룸을 만들어주세요.', 'warn'); return; }
+
+      // 모달 생성
+      const existing = document.getElementById('_ntMoveRoomModal');
+      if (existing) existing.remove();
+      const modal = document.createElement('div');
+      modal.id = '_ntMoveRoomModal';
+      modal.style.cssText = 'position:fixed;inset:0;z-index:999990;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.6);';
+      modal.innerHTML = `
+        <div style="background:#12151e;border:1px solid #2a2f45;border-radius:14px;padding:20px;width:300px;max-width:90vw;box-shadow:0 8px 32px rgba(0,0,0,.7);">
+          <div style="font-size:14px;font-weight:700;color:#e2e8f0;margin-bottom:4px;">📁 작업룸으로 이동</div>
+          <div style="font-size:11px;color:#64748b;margin-bottom:14px;">「${(note.title||'제목없음').replace(/`/g,"'")}」</div>
+          <div style="display:flex;flex-direction:column;gap:6px;max-height:220px;overflow-y:auto;margin-bottom:14px;">
+            ${rooms.map(r => `
+              <button onclick="window._ntDoMoveToRoom('${id}','${r.id}')" style="padding:9px 12px;background:rgba(79,142,255,.1);border:1px solid rgba(79,142,255,.25);border-radius:8px;color:#c8d0e0;font-size:12px;text-align:left;cursor:pointer;font-family:'Noto Sans KR',sans-serif;" onmouseover="this.style.background='rgba(79,142,255,.25)'" onmouseout="this.style.background='rgba(79,142,255,.1)'">
+                <span style="font-weight:700;color:#7db3ff;">${r.title||'제목없음'}</span>
+              </button>`).join('')}
+          </div>
+          <button onclick="document.getElementById('_ntMoveRoomModal').remove()" style="width:100%;padding:8px;background:rgba(255,255,255,.05);border:1px solid #2a2f45;border-radius:8px;color:#64748b;font-size:12px;cursor:pointer;">취소</button>
+        </div>`;
+      document.body.appendChild(modal);
+      modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+    };
+
+    window._ntDoMoveToRoom = function(noteId, roomId) {
+      const modal = document.getElementById('_ntMoveRoomModal');
+      if (modal) modal.remove();
+      const note = ntNotes.find(n => n.id === noteId);
+      if (!note) return;
+
+      // 작업룸 sections에 memo 섹션으로 추가
+      const sections = (window.wr2State && window.wr2State.sections)
+        ? window.wr2State.sections
+        : ((window._idbCache && window._idbCache['wr2_sections']) || []);
+
+      // 해당 room의 최대 order 계산 (interest 페이즈에 추가)
+      const roomSecs = sections.filter(s => s.roomId === roomId && s.phase === 'interest');
+      const maxOrder = roomSecs.length ? Math.max(...roomSecs.map(s => s.order || 1)) + 1 : 1;
+
+      const newSec = {
+        id: 'sec_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
+        roomId: roomId,
+        type: 'memo',
+        phase: 'interest',
+        title: note.title || '제목 없음',
+        order: maxOrder,
+        data: { content: (note.body || note.excerpt || '') }
+      };
+
+      // wr2State에 직접 추가 (작업룸 모듈이 살아있는 경우)
+      if (window.wr2State && window.wr2State.sections) {
+        window.wr2State.sections.push(newSec);
+        // saveSections는 wr2State scope 내부 함수이므로 IDB에 직접 저장
+        const updSecs = window.wr2State.sections;
+        if (window._idbCache) window._idbCache['wr2_sections'] = updSecs;
+        if (window.idbSet) window.idbSet('wr2_sections', updSecs).catch(()=>{});
+      } else {
+        sections.push(newSec);
+        if (window._idbCache) window._idbCache['wr2_sections'] = sections;
+        if (window.idbSet) window.idbSet('wr2_sections', sections).catch(()=>{});
+      }
+
+      // 노트탭에서 삭제 (이동이므로)
+      ntNotes = ntNotes.filter(n => n.id !== noteId);
+      if (window._idbCache) window._idbCache['nt_notes'] = ntNotes;
+      if (window.idbSet) window.idbSet('nt_notes', ntNotes).catch(()=>{});
+      if (window._sb && window._sbGetUserId) {
+        window._sbGetUserId().then(uid => {
+          if (uid) window._sb.from('notes').delete().eq('id', uid + '_' + noteId).catch(()=>{});
+        });
+      }
+      if (ntActiveId === noteId) { ntActiveId = null; ntShowEmpty(); }
+      ntRender();
+      const roomName = ((window.wr2State && window.wr2State.rooms) || (window._idbCache && window._idbCache['wr2_rooms']) || []).find(r => r.id === roomId)?.title || '작업룸';
+      showToast('「' + roomName + '」으로 이동했어요', 'ok');
     };
 
     // ── 노트 카드 이름 변경 ──────────────────────────────
