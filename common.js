@@ -916,27 +916,15 @@
         requestAnimationFrame(function() {
           try {
             // ntNotes 동기화: 모듈 초기화 시점에 IDB 캐시가 비어있었을 수 있음
-            // ★ 클라우드 로드 완료 후 ntNotes 항상 동기화 (length > 0 조건 제거)
             const freshNotes = window._idbCache && window._idbCache['nt_notes'];
-            if (freshNotes !== undefined && typeof window._ntSetNotes === 'function') {
-              window._ntSetNotes(freshNotes || []);
+            if (freshNotes && freshNotes.length > 0 && typeof window._ntSetNotes === 'function') {
+              window._ntSetNotes(freshNotes);
             }
           } catch(e) {}
           try { if (typeof _svBuildIndex === 'function') _svBuildIndex(window._idbCache && window._idbCache['re_sv']); } catch(e) {}
           try { if (typeof renderSaved === 'function') renderSaved(); } catch(e) {}
           try { if (typeof mbRenderSaved === 'function') mbRenderSaved(); } catch(e) {}
           try { if (typeof updSvCnt === 'function') updSvCnt(); } catch(e) {}
-          // ★ ins_notes 구버전 키 정리: nt_notes에 없는 항목은 ins_notes에서도 제거
-          try {
-            const ntArr = window._idbCache['nt_notes'] || [];
-            const ntIds = new Set(ntArr.map(n => n.id));
-            const insArr = window._idbCache['ins_notes'] || [];
-            const insFiltered = insArr.filter(n => ntIds.has(n.id));
-            if (insFiltered.length !== insArr.length) {
-              window._idbCache['ins_notes'] = insFiltered;
-              window.idbSet('ins_notes', insFiltered).catch(()=>{});
-            }
-          } catch(e) {}
           try { if (typeof ntRender === 'function') ntRender(); } catch(e) {}
           try { if (typeof wr2Render === 'function') wr2Render(); } catch(e) {}
           try {
@@ -1716,7 +1704,8 @@
                       }
                       (r.tags || []).slice(0, 3).forEach(t => {
                         const ts = document.createElement('span');
-                        ts.style.cssText = 'padding:1px 6px;background:rgba(167,139,250,.12);border:1px solid rgba(167,139,250,.25);border-radius:7px;font-size:9px;color:#a78bfa;';
+                        const c = window.getTagColor ? window.getTagColor(t) : { bg:'rgba(167,139,250,.12)', border:'rgba(167,139,250,.25)', text:'#a78bfa' };
+                        ts.style.cssText = `padding:1px 6px;background:${c.bg};border:1px solid ${c.border};border-radius:7px;font-size:9px;color:${c.text};`;
                         ts.textContent = '#' + t;
                         tagRow.appendChild(ts);
                       });
@@ -3148,11 +3137,8 @@
                   const chips = document.getElementById('wr2TagChips');
                   if (!chips || !room) return;
                   chips.innerHTML = (room.tags || []).map(t =>
-                    `<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;background:rgba(167,139,250,.15);border:1px solid rgba(167,139,250,.35);border-radius:10px;font-size:10px;color:#a78bfa;">
-                      #${t}
-                      <span onclick="wr2RemoveTag('${room.id}','${t}')" style="cursor:pointer;opacity:.6;font-size:11px;line-height:1;" title="삭제">×</span>
-                    </span>`
-                  ).join('');
+                    window.tagChipHtml(t, `wr2RemoveTag('${room.id}','${t}')`)
+                  ).join(' ');
                   // 그룹 표시
                   const row = document.getElementById('wr2TagRow');
                   if (row) {
@@ -3220,11 +3206,7 @@
                           style="padding:7px 12px;background:var(--ac);color:#111;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">추가</button>
                       </div>
                       <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px;">
-                        ${(room.tags||[]).map(t => `
-                          <span style="display:inline-flex;align-items:center;gap:3px;padding:3px 9px;background:rgba(167,139,250,.15);border:1px solid rgba(167,139,250,.35);border-radius:10px;font-size:11px;color:#a78bfa;">
-                            #${t}
-                            <span onclick="wr2RemoveTag('${room.id}','${t}');document.getElementById('wr2TagEditorModal').remove();wr2OpenRoomTagEditor();" style="cursor:pointer;opacity:.6;">×</span>
-                          </span>`).join('')}
+                        ${(room.tags||[]).map(t => window.tagChipHtml(t, `wr2RemoveTag('${room.id}','${t}');document.getElementById('wr2TagEditorModal').remove();wr2OpenRoomTagEditor();`)).join(' ')}
                         ${!(room.tags||[]).length ? '<span style="font-size:11px;color:var(--di);">태그 없음</span>' : ''}
                       </div>
                       ${allTags.length ? `<div style="font-size:10px;color:var(--mu);margin-bottom:5px;">기존 태그 클릭으로 추가:</div>
@@ -3312,26 +3294,11 @@
                         <span style="font-size:14px;font-weight:800;color:var(--tx);">🗂 그룹 관리</span>
                         <button onclick="document.getElementById('wr2GroupManagerModal').remove()" style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:16px;">✕</button>
                       </div>
-                      <div style="display:flex;gap:6px;margin-bottom:12px;">
-                        <input id="wr2GmNewInput" placeholder="새 그룹 이름"
-                          style="flex:1;padding:7px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:7px;color:var(--tx);font-size:12px;outline:none;"
-                          onkeydown="if(event.key==='Enter')window.wr2AddGroupFromManager()">
-                        <button onclick="window.wr2AddGroupFromManager()" style="padding:7px 12px;background:var(--ac);color:#111;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">추가</button>
-                      </div>
                       <div id="wr2GmList"></div>
                     </div>`;
                   document.body.appendChild(modal);
                   renderBody();
                   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
-                  setTimeout(() => { const inp = document.getElementById('wr2GmNewInput'); if (inp) inp.focus(); }, 50);
-                };
-                window.wr2AddGroupFromManager = function() {
-                  const input = document.getElementById('wr2GmNewInput');
-                  const name = input?.value?.trim();
-                  if (!name) return;
-                  if (wr2GetGroups().includes(name)) { showToast('이미 있는 그룹입니다', 'warn'); return; }
-                  showToast('"' + name + '" 그룹 추가됨 (작업룸 상세에서 지정하면 활성화됩니다)', 'ok');
-                  if (input) input.value = '';
                 };
 
                 // 전체 태그 관리 모달
@@ -3359,7 +3326,6 @@
                         <span style="font-size:14px;font-weight:800;color:var(--tx);"># 전체 태그 관리</span>
                         <button onclick="document.getElementById('wr2TagManagerModal').remove()" style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:16px;">✕</button>
                       </div>
-                      <div style="font-size:10px;color:var(--di);margin-bottom:10px;">태그는 작업룸 상세에서 직접 추가할 수 있습니다. 여기서는 전체 일괄 수정/삭제를 관리합니다.</div>
                       <div id="wr2TmList"></div>
                     </div>`;
                   document.body.appendChild(modal);
@@ -3423,6 +3389,40 @@
         setTimeout(initScrollTopButtons, 500);
       }
     })();
+
+
+    // ══ 태그 자동 색상 유틸 ═══════════════════════════════
+    // 태그 텍스트를 해시해서 미리 정의된 팔레트에서 색상을 자동 배정
+    // 동일한 태그는 항상 동일한 색상 → 일관성 유지
+    window._tagColorPalette = [
+      { bg: 'rgba(79,142,255,.15)',  border: 'rgba(79,142,255,.4)',  text: '#4f8eff'  }, // 파랑
+      { bg: 'rgba(0,212,170,.13)',   border: 'rgba(0,212,170,.38)',  text: '#00d4aa'  }, // 민트
+      { bg: 'rgba(255,209,102,.13)', border: 'rgba(255,209,102,.38)',text: '#ffd166'  }, // 노랑
+      { bg: 'rgba(255,99,112,.13)',  border: 'rgba(255,99,112,.38)', text: '#ff6370'  }, // 빨강
+      { bg: 'rgba(167,139,250,.15)', border: 'rgba(167,139,250,.4)', text: '#a78bfa'  }, // 보라
+      { bg: 'rgba(251,146,60,.13)',  border: 'rgba(251,146,60,.38)', text: '#fb923c'  }, // 주황
+      { bg: 'rgba(52,211,153,.13)',  border: 'rgba(52,211,153,.38)', text: '#34d399'  }, // 초록
+      { bg: 'rgba(232,121,249,.13)', border: 'rgba(232,121,249,.38)',text: '#e879f9'  }, // 핑크
+      { bg: 'rgba(96,165,250,.13)',  border: 'rgba(96,165,250,.38)', text: '#60a5fa'  }, // 하늘
+      { bg: 'rgba(250,204,21,.13)',  border: 'rgba(250,204,21,.38)', text: '#facc15'  }, // 금색
+    ];
+    window._tagColorCache = {};
+    window.getTagColor = function(tag) {
+      if (window._tagColorCache[tag]) return window._tagColorCache[tag];
+      let hash = 0;
+      for (let i = 0; i < tag.length; i++) hash = ((hash << 5) - hash + tag.charCodeAt(i)) | 0;
+      const idx = Math.abs(hash) % window._tagColorPalette.length;
+      window._tagColorCache[tag] = window._tagColorPalette[idx];
+      return window._tagColorCache[tag];
+    };
+    window.tagChipHtml = function(tag, onRemove) {
+      const c = window.getTagColor(tag);
+      const removeBtn = onRemove
+        ? `<span onclick="${onRemove}" style="cursor:pointer;opacity:.55;font-size:11px;line-height:1;margin-left:1px;" title="삭제">×</span>`
+        : '';
+      return `<span style="display:inline-flex;align-items:center;gap:2px;padding:2px 8px;background:${c.bg};border:1px solid ${c.border};border-radius:10px;font-size:10px;color:${c.text};white-space:nowrap;">#${tag}${removeBtn}</span>`;
+    };
+    // ═══════════════════════════════════════════════════════
 
     function showToast(msg, type, duration) {
       const c = document.getElementById('toast-container');
@@ -6989,6 +6989,26 @@
       }
     }
     window.bulkMoveGroup = bulkMoveGroup;
+
+    // ── 선택 항목 삭제 ─────────────────────────────────
+    window.deleteCheckedItems = function() {
+      if (_selectedIds.size === 0) { showToast('선택된 항목이 없습니다.', 'warn'); return; }
+      if (!confirm(_selectedIds.size + '개 항목을 삭제할까요?')) return;
+      const sv = getSv().filter(s => !_selectedIds.has(s.id));
+      saveSv(sv);
+      _selectedIds.clear();
+      const allChk = document.getElementById('selectAllChk');
+      if (allChk) allChk.checked = false;
+      renderSaved();
+      showToast('삭제됐어요', 'ok');
+    };
+
+    // ── 삭제 드롭다운 외부 클릭 닫기 ──────────────────
+    document.addEventListener('click', function(e) {
+      const wrap = document.getElementById('svDelDropWrap');
+      const menu = document.getElementById('svDelMenu');
+      if (menu && wrap && !wrap.contains(e.target)) menu.style.display = 'none';
+    });
     // ═══════════════════════════════════════════════════════════
 
     function toggleDir() { sortAsc = !sortAsc; document.getElementById('sortDir').textContent = sortAsc ? '↑ 오름차순' : '↓ 내림차순'; renderSaved(); }
@@ -20384,8 +20404,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       if (n === 1) { try { populateItemSelects(); } catch (e) { console.error('[populateItemSelects]', e); } }
       if (n === 4) {
         try {
-          // ★ 탭 진입마다 IDB 캐시에서 최신값으로 동기화 (클라우드 로드 완료 여부 무관)
-          if (typeof window._kcardsSyncFromCache === 'function') {
+          // ★ 클라우드 로드 완료 후 첫 진입이면 캐시 동기화 먼저
+          if (window._sbCloudLoaded && typeof window._kcardsSyncFromCache === 'function') {
             window._kcardsSyncFromCache();
           }
           renderKcatTabs(); renderKcards();
@@ -20905,12 +20925,14 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
       const t = NT_TYPE[note.type] || NT_TYPE.note;
       const badgeCls = t.badge;
-      const tagHtml = (note.tags || []).map(tg => `
-    <span style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;background:rgba(167,139,250,.1);border:1px solid rgba(167,139,250,.25);border-radius:10px;font-size:11px;color:#a78bfa;">
+      const tagHtml = (note.tags || []).map(tg => {
+        const c = window.getTagColor ? window.getTagColor(tg) : { bg:'rgba(167,139,250,.1)', border:'rgba(167,139,250,.25)', text:'#a78bfa' };
+        return `<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;background:${c.bg};border:1px solid ${c.border};border-radius:10px;font-size:11px;color:${c.text};">
       #${esc(tg)}
       <span onclick="ntRenameTag('${id}','${esc(tg)}')" style="cursor:pointer;opacity:.5;font-size:10px;line-height:1;" title="수정">✏️</span>
       <span onclick="ntRemoveTag('${id}','${esc(tg)}')" style="cursor:pointer;opacity:.6;font-size:12px;line-height:1;" title="삭제">×</span>
-    </span>`).join('');
+    </span>`;
+      }).join('');
 
       // 타입별 에디터 HTML
       let editorBody = '';
@@ -21219,27 +21241,17 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
     // ── 삭제 ───────────────────────────────────────────
     window.ntDelete = function (id) {
-      // ① deletedAt 마킹 (배열 제거 전 클라우드에 먼저 기록 → 재동기화 시 부활 방지)
+      // soft-delete: deletedAt 마킹 후 IDB/클라우드에 저장 → 재동기화 시 살아나지 않음
       const idx = ntNotes.findIndex(n => n.id === id);
-      const deletedNote = idx !== -1 ? ntNotes[idx] : null;
-      if (deletedNote) deletedNote.deletedAt = new Date().toISOString();
-      // ② 클라우드에 deletedAt upsert (row 완전삭제 X → MergeById가 deletedAt으로 필터링)
-      if (deletedNote && window._sb && window._sbGetUserId) {
-        window._sbGetUserId().then(uid => {
-          if (!uid) return;
-          window._sb.from('notes').upsert({
-            id: uid + '_' + id,
-            user_id: uid,
-            item_id: id,
-            data: deletedNote,
-            updated_at: deletedNote.deletedAt
-          }, { onConflict: 'id' }).catch(()=>{});
-        });
-      }
-      // ③ 로컬 배열/캐시에서 제거
-      ntNotes = ntNotes.filter(n => n.id !== id);
+      if (idx !== -1) ntNotes[idx].deletedAt = new Date().toISOString();
+      ntNotes = ntNotes.filter(n => n.id !== id); // 로컬 UI에서 제거
       if (window._idbCache) window._idbCache['nt_notes'] = ntNotes;
       if (window.idbSet) window.idbSet('nt_notes', ntNotes).catch(()=>{});
+      if (window._sb && window._sbGetUserId) {
+        window._sbGetUserId().then(uid => {
+          if (uid) window._sb.from('notes').delete().eq('id', uid + '_' + id).catch(()=>{});
+        });
+      }
       ntActiveId = null; ntRender(); ntShowEmpty();
       showToast('삭제되었습니다', 'ok');
     };
@@ -21250,25 +21262,17 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       if (!note) return;
       const title = note.title || '제목 없음';
       if (!confirm('「' + title + '」 노트를 삭제할까요?')) return;
-      // ① deletedAt 마킹 (배열 제거 전 클라우드에 먼저 기록 → 재동기화 시 부활 방지)
-      note.deletedAt = new Date().toISOString();
-      // ② 클라우드에 deletedAt upsert
-      if (window._sb && window._sbGetUserId) {
-        window._sbGetUserId().then(uid => {
-          if (!uid) return;
-          window._sb.from('notes').upsert({
-            id: uid + '_' + id,
-            user_id: uid,
-            item_id: id,
-            data: note,
-            updated_at: note.deletedAt
-          }, { onConflict: 'id' }).catch(()=>{});
-        });
-      }
-      // ③ 로컬 배열/캐시에서 제거
+      // soft-delete + 클라우드 삭제
+      const idx = ntNotes.findIndex(n => n.id === id);
+      if (idx !== -1) ntNotes[idx].deletedAt = new Date().toISOString();
       ntNotes = ntNotes.filter(n => n.id !== id);
       if (window._idbCache) window._idbCache['nt_notes'] = ntNotes;
       if (window.idbSet) window.idbSet('nt_notes', ntNotes).catch(()=>{});
+      if (window._sb && window._sbGetUserId) {
+        window._sbGetUserId().then(uid => {
+          if (uid) window._sb.from('notes').delete().eq('id', uid + '_' + id).catch(()=>{});
+        });
+      }
       if (ntActiveId === id) { ntActiveId = null; ntShowEmpty(); }
       ntRender();
       showToast('삭제됐어요', 'ok');
@@ -21344,26 +21348,15 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         if (window.idbSet) window.idbSet('wr2_sections', sections).catch(()=>{});
       }
 
-      // 노트탭에서 삭제 (이동이므로) - deletedAt upsert로 재동기화 시 부활 방지
-      const movedNote = ntNotes.find(n => n.id === noteId);
-      if (movedNote) {
-        movedNote.deletedAt = new Date().toISOString();
-        if (window._sb && window._sbGetUserId) {
-          window._sbGetUserId().then(uid => {
-            if (!uid) return;
-            window._sb.from('notes').upsert({
-              id: uid + '_' + noteId,
-              user_id: uid,
-              item_id: noteId,
-              data: movedNote,
-              updated_at: movedNote.deletedAt
-            }, { onConflict: 'id' }).catch(()=>{});
-          });
-        }
-      }
+      // 노트탭에서 삭제 (이동이므로)
       ntNotes = ntNotes.filter(n => n.id !== noteId);
       if (window._idbCache) window._idbCache['nt_notes'] = ntNotes;
       if (window.idbSet) window.idbSet('nt_notes', ntNotes).catch(()=>{});
+      if (window._sb && window._sbGetUserId) {
+        window._sbGetUserId().then(uid => {
+          if (uid) window._sb.from('notes').delete().eq('id', uid + '_' + noteId).catch(()=>{});
+        });
+      }
       if (ntActiveId === noteId) { ntActiveId = null; ntShowEmpty(); }
       ntRender();
       const roomName = ((window.wr2State && window.wr2State.rooms) || (window._idbCache && window._idbCache['wr2_rooms']) || []).find(r => r.id === roomId)?.title || '작업룸';
@@ -21447,9 +21440,6 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
     // ── 초기화 ─────────────────────────────────────────
     window.ntInit = function () {
-      // ★ 탭 열 때마다 IDB 캐시에서 최신값으로 동기화 (초기화 시점 타이밍 문제 해결)
-      const cached = window._idbCache && window._idbCache['nt_notes'];
-      if (cached && cached.length > 0) ntNotes = cached;
       // v236: 저장된 모드 복원
       _ntMode = localStorage.getItem('nt_mode') || 'all';
       const modeMap = { all: 'All', study: 'Study', deal: 'Deal' };
@@ -22980,9 +22970,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     var kcards = (window._idbCache && window._idbCache['ins_kcards'] || []);
     var kcardCats = (window._idbCache && window._idbCache['ins_kcat'] || ["📐 면적/건축", "⚖️ 권리분석", "📋 경매 절차", "💰 세금/비용", "🏘️ 상권/지역"]);
     window._kcardsSyncFromCache = function() {
-      // ★ length > 0 조건 제거: IDB에 저장된 최신값으로 항상 동기화
       const _c = window._idbCache && window._idbCache['ins_kcards'];
-      if (_c !== undefined) kcards = _c || [];
+      if (_c && _c.length > 0) kcards = _c;
       const _cc = window._idbCache && window._idbCache['ins_kcat'];
       if (_cc && _cc.length > 0) kcardCats = _cc;
     };
@@ -23122,7 +23111,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
       el.innerHTML = filtered.map(card => {
         const d = new Date(card.createdAt).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
-        const tags = (card.tags || []).map(t => `<span style="font-size:10px;padding:2px 6px;background:rgba(255,209,102,0.1);color:#ffd166;border-radius:8px;border:1px solid rgba(255,209,102,0.25);">#${esc(t)}</span>`).join('');
+        const tags = (card.tags || []).map(t => { const c = window.getTagColor ? window.getTagColor(t) : {bg:'rgba(255,209,102,.1)',border:'rgba(255,209,102,.25)',text:'#ffd166'}; return `<span style="font-size:10px;padding:2px 6px;background:${c.bg};color:${c.text};border-radius:8px;border:1px solid ${c.border};">#${esc(t)}</span>`; }).join('');
         const color = catColor(card.cat);
         // 내용 파싱: 불릿/번호 목록 → 핵심 포인트 카드
         const bodyLines = (card.body || '').split('\n').filter(Boolean);
@@ -23226,7 +23215,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           : `<div style="font-size:13px;color:var(--mu);line-height:1.7;margin-bottom:6px;">${esc(line)}</div>`;
       }).join('');
 
-      const tagsHtml = (card.tags || []).map(t => `<span style="font-size:11px;padding:3px 9px;background:rgba(255,209,102,.12);color:#ffd166;border-radius:8px;border:1px solid rgba(255,209,102,.3);">#${esc(t)}</span>`).join('');
+      const tagsHtml = (card.tags || []).map(t => { const c = window.getTagColor ? window.getTagColor(t) : {bg:'rgba(255,209,102,.12)',border:'rgba(255,209,102,.3)',text:'#ffd166'}; return `<span style="font-size:11px;padding:3px 9px;background:${c.bg};color:${c.text};border-radius:8px;border:1px solid ${c.border};">#${esc(t)}</span>`; }).join('');
 
       modal.innerHTML = `
         <div style="background:var(--s1);border-radius:16px;width:560px;max-width:calc(100vw - 40px);max-height:85vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.7);">
