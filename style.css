@@ -2012,6 +2012,7 @@
       position: absolute;
       top: 15px;
       left: 270px;
+      right: 260px; /* map-ext-bar + mapRightDock 공간 확보 */
       z-index: 22;
       display: flex;
       flex-direction: row;
@@ -2782,7 +2783,9 @@
 
     /* ═══ 커스텀 줌 슬라이더 (카카오 기본 줌과 겹치지 않게 분리) ═══ */
     #mapZoomSlider {
-      position: relative;
+      position: absolute;
+      bottom: 15px;
+      right: 15px;
       z-index: 25;
       width: 56px;
       height: 210px;
@@ -2903,9 +2906,7 @@
       right: auto;
     }
 
-    #mapRightDock #mapZoomSlider {
-      position: relative;
-    }
+    /* mapZoomSlider is now outside mapRightDock - bottom-right absolute */
 
     .mfr-group {
       display: flex;
