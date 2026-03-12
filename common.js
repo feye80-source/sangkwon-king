@@ -1165,14 +1165,6 @@
       dbBtn.style.cssText = 'position:fixed;top:8px;right:90px;z-index:99998;background:rgba(30,35,55,0.85);color:#94a3b8;border:1px solid #334;border-radius:8px;padding:4px 10px;font-size:11px;cursor:pointer;';
       document.body.appendChild(dbBtn);
 
-      // MONODOT 로고
-      if (!document.getElementById('_monoLogo')) {
-        const logo = document.createElement('img');
-        logo.id = '_monoLogo';
-        logo.src = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAUDBAQEAwUEBAQFBQUGBwwIBwcHBw8LCwkMEQ8SEhEPERETFhwXExQaFRERGCEYGh0dHx8fExciJCIeJBweHx7/2wBDAQUFBQcGBw4ICA4eFBEUHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh7/wAARCAAcADMDASIAAhEBAxEB/8QAGwAAAQUBAQAAAAAAAAAAAAAAAwACBAUHAQb/xAAvEAACAQMBBgQEBwAAAAAAAAABAgMABBESBQYhIjFRBxNBYRQVQoEWM1JUYnHB/8QAFgEBAQEAAAAAAAAAAAAAAAAAAAEC/8QAFxEBAQEBAAAAAAAAAAAAAAAAAAERAv/aAAwDAQACEQMRAD8Ax55OPWgO/vXIj5s8cQOC7hR9zj/a1Pa3g4tlLNGN6YrgIjyK0dtkaQ7hC3PyhlQH2Z1X3rbDJZJKiyvWuT+Dqx3EkX4mS4VZgiyWtr5iyKUVhp5xzsGGlfXS2cYqo214ZWmyrCS7u94ZnCwXso8myUq5t1ZtKkyDOQhDfpYgcetNGYStUSU176Xw9bQXO+O6nDd/53gX3p+26fn/AMa8bvBs75XLbIb6zu/Pt0nzbSagmr6W7MPUVL1JcXLmq3VSoZbj1pVUX7S0xpmOeY8fegEnPWmsT3oCNKw6ORxz19aA8pxjUcDOBnv1pjk0Fye9ApGHYd/vUd2pzk0FuI6mg4W40qbM/wARIZtKRavoiGlR/QpUH//Z';
-        logo.style.cssText = 'position:fixed;top:10px;right:155px;z-index:99998;height:22px;width:auto;opacity:0.85;pointer-events:none;border-radius:3px;';
-        document.body.appendChild(logo);
-      }
     };
 
     window._sbShowDbAdmin = function() {

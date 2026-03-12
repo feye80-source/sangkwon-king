@@ -1143,12 +1143,7 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
               title="조건 필터">🔍 필터</button>
             <button onclick="openGroupManager()"
               style="padding:3px 8px;font-size:11px;border-radius:6px;border:1px solid var(--b1);color:var(--mu);background:var(--s2);cursor:pointer;white-space:nowrap;flex-shrink:0;">🏷️</button>
-            <div style="position:relative;display:inline-flex;flex-shrink:0;">
-              <button onclick="pcExportCSV(false)" title="현재 필터 조건으로 CSV 다운로드"
-                style="padding:3px 8px;font-size:11px;border-radius:6px 0 0 6px;border:1px solid rgba(0,212,130,.4);border-right:none;color:#00d482;background:rgba(0,212,130,.08);cursor:pointer;white-space:nowrap;font-family:'Noto Sans KR',sans-serif;font-weight:700;">📊 필터CSV</button>
-              <button onclick="pcExportCSV(true)" title="전체 저장목록 CSV 다운로드"
-                style="padding:3px 8px;font-size:11px;border-radius:0 6px 6px 0;border:1px solid rgba(0,212,130,.4);color:#00d482;background:rgba(0,212,130,.04);cursor:pointer;white-space:nowrap;font-family:'Noto Sans KR',sans-serif;">전체</button>
-            </div>
+
           </div>
         </div>
         <!-- 전역 조건 필터 패널 (저장목록탭) - 접기/펼치기 -->
@@ -1165,6 +1160,19 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
                 style="padding:2px 9px;font-size:11px;background:var(--s1);border:1px solid var(--b1);border-radius:5px;color:var(--mu);cursor:pointer;font-family:'Noto Sans KR',sans-serif;">초기화</button>
               <button onclick="deleteByListFilter()"
                 style="padding:2px 9px;font-size:11px;background:rgba(255,68,68,.1);border:1px solid #ff4444;border-radius:5px;color:#ff4444;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">🗑 조건외삭제</button>
+            </div>
+            <!-- CSV 내보내기 버튼 (필터 패널 하단) -->
+            <div style="display:flex;gap:5px;margin-top:7px;padding-top:7px;border-top:1px solid rgba(255,255,255,.06);">
+              <button onclick="pcExportCSV(false)" title="현재 필터 조건에 맞는 항목 CSV 다운로드"
+                style="flex:1;padding:5px 0;font-size:11px;font-weight:700;border-radius:6px;border:1px solid rgba(0,212,130,.4);color:#00d482;background:rgba(0,212,130,.08);cursor:pointer;font-family:'Noto Sans KR',sans-serif;display:flex;align-items:center;justify-content:center;gap:4px;">
+                <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor"><path d="M8 12L3 7h3V2h4v5h3L8 12zm-5 2h10v1.5H3V14z"/></svg>
+                필터CSV저장
+              </button>
+              <button onclick="pcExportCSV(true)" title="전체 저장목록 CSV 다운로드"
+                style="flex:1;padding:5px 0;font-size:11px;border-radius:6px;border:1px solid rgba(0,212,130,.28);color:#00d48290;background:rgba(0,212,130,.04);cursor:pointer;font-family:'Noto Sans KR',sans-serif;display:flex;align-items:center;justify-content:center;gap:4px;">
+                <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor"><path d="M8 12L3 7h3V2h4v5h3L8 12zm-5 2h10v1.5H3V14z"/></svg>
+                전체CSV저장
+              </button>
             </div>
           </div>
           <!-- 활성 필터 칩 -->
@@ -3908,6 +3916,19 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
                 </div>
                 <input type="password" class="api-in api-in-sbiz" id="sbizApiKey_cfg" placeholder="소상공인 상권 API Decoding 인증키" autocomplete="off" style="width:100%;box-sizing:border-box;" />
                 <div style="font-size:10px;color:var(--di);margin-top:6px;"><a href="https://www.data.go.kr" target="_blank" style="color:var(--ac);">data.go.kr</a>에서 "소상공인 상권정보" 검색 후 발급</div>
+              </div>
+
+              <!-- ── 만든 이 ── -->
+              <div style="margin-top:32px;padding-top:24px;border-top:1px solid rgba(255,255,255,.07);">
+                <div style="font-size:15px;font-weight:800;color:var(--tx);margin-bottom:16px;">👤 만든 이</div>
+                <div style="display:flex;align-items:center;gap:18px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:18px 20px;">
+                  <img src="data:image/jpeg;base64,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" style="height:46px;width:auto;border-radius:6px;flex-shrink:0;" alt="MONODOT" />
+                  <div>
+                    <div style="font-size:14px;font-weight:700;color:var(--tx);margin-bottom:4px;">김성식</div>
+                    <div style="font-size:12px;color:var(--mu);margin-bottom:3px;">MONODOT</div>
+                    <a href="mailto:feye80@naver.com" style="font-size:11px;color:var(--ac);text-decoration:none;">feye80@naver.com</a>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
