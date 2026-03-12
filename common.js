@@ -15916,7 +15916,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     // 초기화
     // ===================================================
     updSvCnt();
-    try { renderSaved(); } catch(e) { console.warn('[renderSaved init]', e); }
+    try { renderSaved(); } catch(e) { console.warn('[renderSaved]', e); }
     initExternalCSVDatasets(); // 외부 CSV 소스 등록(지연 로드)
 
     // 계산기 초기값 콤마 포맷 적용
@@ -18566,7 +18566,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     // ★ 커스텀 마우스 휠 줌 (아래=줌인, 위=줌아웃 - 직관적 방향)
     // ===================================================
     updSvCnt();
-    renderSaved();
+    try { renderSaved(); } catch(e) { console.warn('[renderSaved2]', e); }
 
     // ===================================================
     // v52: 🧲 결합 픽 모드 (마커 클릭으로 결합)
@@ -22184,8 +22184,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     function filterSavedByRegion(r) { showPage(1); setTimeout(() => { const el = document.getElementById('regionSearch'); if (el) { el.value = r; renderSaved(); } }, 100); }
 
     // ── 초기 렌더 ──────────────────────────────────────
-    renderKeywords();
-    renderFeedList();
+    try { renderKeywords(); } catch(e) { console.warn('[renderKeywords]', e); }
+    try { renderFeedList(); } catch(e) { console.warn('[renderFeedList]', e); }
 
     // ═══════════════════════════════════════════════════
     // 📊 나의 기준 & 체크리스트
