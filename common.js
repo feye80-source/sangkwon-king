@@ -6970,7 +6970,8 @@
       const grid = document.getElementById('svGrid');
       if (!sv.length) {
         _vsReset([]);
-        grid.innerHTML = `<div class="empty-sv">${region ? `'${esc(region)}' 검색 결과 없음` : '저장된 항목이 없습니다.'}</div>`;
+        const _region = (document.getElementById('regionSearch') || {}).value || '';
+        grid.innerHTML = `<div class="empty-sv">${_region ? `'${esc(_region)}' 검색 결과 없음` : '저장된 항목이 없습니다.'}</div>`;
         return;
       }
 
@@ -15915,7 +15916,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     // 초기화
     // ===================================================
     updSvCnt();
-    renderSaved();
+    try { renderSaved(); } catch(e) { console.warn('[renderSaved init]', e); }
     initExternalCSVDatasets(); // 외부 CSV 소스 등록(지연 로드)
 
     // 계산기 초기값 콤마 포맷 적용
@@ -19928,7 +19929,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
     // ── 인사이트 탭 열릴 때 초기화 ─────────────────────
     function onInsightOpen() {
-      try { ntInit(); } catch (e) { }
+      try { if (typeof window.ntInit === 'function') window.ntInit(); } catch (e) { }
       try { populateItemSelects(); } catch (e) { }
       try { renderKcatTabs(); renderKcards(); } catch (e) { }
       // ★ wr2State가 아직 초기화 안 됐으면 여기서 강제 초기화
@@ -19940,9 +19941,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     }
 
     // ── 서브탭 전환 ─────────────────────────────────────
-    window.showInsTab = function(n) { return _showInsTabImpl(n); };
-    function showInsTab(n) { return _showInsTabImpl(n); }
-    function _showInsTabImpl(n) {
+    window.showInsTab = function(n) { return showInsTab(n); };
+    function showInsTab(n) {
       // cfg(API 설정) 특수 처리
       const cfgPanel = document.getElementById('ipage_cfg');
       if (n === 'cfg') {
@@ -19968,9 +19968,9 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const lbl = document.getElementById('insTabLabel');
       if (lbl) lbl.textContent = labels[n] || '';
 
-      if (n === 0) { try { ntInit(); } catch (e) { console.error('[ntInit]', e); } }
+      if (n === 0) { try { if (typeof window.ntInit === 'function') window.ntInit(); } catch (e) { console.error('[ntInit]', e); } }
       if (n === 1) { try { populateItemSelects(); } catch (e) { console.error('[populateItemSelects]', e); } }
-      if (n === 4) { try { if (typeof window._kcardsSyncFromCache === 'function') window._kcardsSyncFromCache(); renderKcatTabs(); renderKcards(); } catch (e) { console.error('[kcards]', e); } }
+      if (n === 4) { try { renderKcatTabs(); renderKcards(); } catch (e) { console.error('[kcards]', e); } }
 
       if (n === 3) { try { clipTabInit(); } catch (e) { console.error('[clipTabInit]', e); } }
       if (n === 5) { try { renderWatchBoard(); } catch (e) { console.error('[renderWatchBoard]', e); } }
@@ -20004,10 +20004,10 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     // ═══════════════════════════════════════════════════
     // 📓 노트 탭 (통합: 노트·유튜브·기사·리포트)
     // ═══════════════════════════════════════════════════
-    let ntNotes = (window._idbCache && window._idbCache['nt_notes'] || []);
-    let ntActiveId = null;
-    let ntTypeFilter = 'all';
-    let ntTagFilter = null;
+    var ntNotes = (window._idbCache && window._idbCache['nt_notes'] || []);
+    var ntActiveId = null;
+    var ntTypeFilter = 'all';
+    var ntTagFilter = null;
     let ntAutoSaveTimer = null;
 
     // ★ _sbInitLoad 완료 후 ntNotes 동기화를 위한 window 훅
@@ -20130,19 +20130,11 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     window.ntCreate = function (type) {
       const m = document.getElementById('ntTypeMenu');
       if (m) m.classList.remove('open');
-      // ntNotes 최신 상태로 동기화
-      try {
-        const _fresh = window._idbCache && window._idbCache['nt_notes'];
-        if (_fresh && _fresh.length > 0 && typeof window._ntSetNotes === 'function') window._ntSetNotes(_fresh);
-      } catch(e) {}
-      // 노트탭이 열려있지 않으면 강제 이동 + 초기화
+      // 노트탭이 열려있지 않으면 강제 이동
       const ipage0 = document.getElementById('ipage0');
       if (ipage0 && ipage0.style.display === 'none') {
-        if (typeof window.showInsTab === 'function') window.showInsTab(0);
-        else if (typeof showInsTab === 'function') showInsTab(0);
+        if (typeof showInsTab === 'function') showInsTab(0);
       }
-      // ntInit이 아직 실행되지 않았을 경우 실행
-      try { if (typeof window.ntInit === 'function' && !window.__ntInited) { window.__ntInited = true; window.ntInit(); } } catch(e) {}
       const note = {
         id: 'nt_' + Date.now(),
         type,
@@ -22309,16 +22301,16 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     // 📚 지식 카드 시스템
     // ═══════════════════════════════════════════════════
 
-    let kcards = (window._idbCache && window._idbCache['ins_kcards'] || []);
-    let kcardCats = (window._idbCache && window._idbCache['ins_kcat'] || ["📐 면적/건축", "⚖️ 권리분석", "📋 경매 절차", "💰 세금/비용", "🏘️ 상권/지역"]);
+    var kcards = (window._idbCache && window._idbCache['ins_kcards'] || []);
+    var kcardCats = (window._idbCache && window._idbCache['ins_kcat'] || ["📐 면적/건축", "⚖️ 권리분석", "📋 경매 절차", "💰 세금/비용", "🏘️ 상권/지역"]);
     window._kcardsSyncFromCache = function() {
       const _c = window._idbCache && window._idbCache['ins_kcards'];
       if (_c && _c.length > 0) kcards = _c;
       const _cc = window._idbCache && window._idbCache['ins_kcat'];
       if (_cc && _cc.length > 0) kcardCats = _cc;
     };
-    let kcardEditId = null; // 수정 중인 카드 ID (null=새 카드)
-    let kcardActiveCat = '전체'; // 현재 필터 카테고리
+    var kcardEditId = null; // 수정 중인 카드 ID (null=새 카드)
+    var kcardActiveCat = '전체'; // 현재 필터 카테고리
 
 
     // ── v236: 알짜정보 → 노트 만들기 ──────────────────────
@@ -22550,8 +22542,6 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
     // ── 에디터 열기/닫기 ───────────────────────────────
     function openKcardEditor(id) {
-      // kcards/kcardCats 최신 상태로 동기화
-      try { if (typeof window._kcardsSyncFromCache === 'function') window._kcardsSyncFromCache(); } catch(e) {}
       kcardEditId = id;
       const modal = document.getElementById('kcardModal');
       if (!modal) return;
