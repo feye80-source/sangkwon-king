@@ -3420,6 +3420,20 @@
       // 지도탭은 overflow:hidden 필요
       const mc = document.querySelector('.main-content');
       if (mc) mc.classList.toggle('map-active', n === 2);
+
+      // 지도 관련 floating UI — 지도탭(2)일 때만 표시
+      const _mapOnlyIds = ['mapPanel','mapRightDock','measureResult'];
+      const _mapOnlyClasses = ['map-search-wrap','map-ext-bar'];
+      _mapOnlyIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.visibility = n === 2 ? '' : 'hidden';
+      });
+      _mapOnlyClasses.forEach(cls => {
+        document.querySelectorAll('.' + cls).forEach(el => {
+          el.style.visibility = n === 2 ? '' : 'hidden';
+        });
+      });
+
       if (n === 1) renderSaved();
       if (n === 2) initMap();
       if (n === 3) onInsightOpen();
@@ -5951,7 +5965,62 @@
       ).join('');
     }
 
-    // ── 지도탭 조건필터 적용/초기화 ───────────────────────────────
+    // ── 지도탭 CSV ─────────────────────────────────────────────────
+    // pcMapExportCSV(false) = 필터CSV: 현재 화면/반경 범위 + gf 조건필터 적용
+    // pcMapExportCSV(true)  = 화면CSV: 현재 지도에 표시된 마커 전부 (필터 무관)
+    window.pcMapExportCSV = function (screenOnly) {
+      let sv;
+      if (screenOnly) {
+        // 화면 CSV: mapOverlays에 올라간 item 전부
+        sv = (mapOverlays || []).map(o => o.item).filter(Boolean);
+        // 중복 제거 (id 기준)
+        const seen = new Set();
+        sv = sv.filter(item => { if (!item.id || seen.has(item.id)) return false; seen.add(item.id); return true; });
+      } else {
+        // 필터 CSV: gf 조건필터 적용
+        if (isGFilterActive() || window._gfActive) {
+          sv = getSv().filter(item => {
+            if (!item || !item.data) return false;
+            if (!item._norm && typeof normalizeItem === 'function') normalizeItem(item);
+            return _checkFilter(item.data || {}, 'gf', item);
+          });
+        } else {
+          // gf 필터 없으면 현재 화면 마커 전부 (화면CSV와 동일)
+          sv = (mapOverlays || []).map(o => o.item).filter(Boolean);
+          const seen = new Set();
+          sv = sv.filter(item => { if (!item.id || seen.has(item.id)) return false; seen.add(item.id); return true; });
+        }
+      }
+      if (!sv.length) { showToast('내보낼 항목이 없습니다', 'warn'); return; }
+      const keySet = new Set();
+      sv.forEach(item => { if (item.data) Object.keys(item.data).forEach(k => keySet.add(k)); });
+      const normHdrs = ['_거래유형','_매물유형','_면적_m2','_면적기준','_면적_평','_층',
+        '_매매가_만원','_실거래가_만원','_감정가_만원','_최저가_만원','_보증금_만원','_전세가_만원','_월세_만원',
+        '_평당가_만원','_수익률','_수익률_산출방식','_표시가격기준','_거래년월','_유찰횟수'];
+      const allHdrs = ['ID','소재지','출처','유형','lat','lng',...normHdrs,...Array.from(keySet)];
+      const esc2 = v => { const s = String(v ?? '').replace(/"/g, '""'); return (s.includes(',')||s.includes('"')||s.includes('\n'))?`"${s}"`:s; };
+      const rows = sv.map(item => {
+        const d = item.data || {};
+        return allHdrs.map(h => {
+          if (h==='ID') return esc2(item.id||'');
+          if (h==='소재지') return esc2(d.소재지||item.title||'');
+          if (h==='출처') return esc2(item.source||d.출처||'');
+          if (h==='유형') return esc2(item.mode||'');
+          if (h==='lat') return esc2(item.lat||'');
+          if (h==='lng') return esc2(item.lng||'');
+          if (h.startsWith('_') && item._norm) { const nk=h.slice(1); return esc2(item._norm[nk]??''); }
+          return esc2(d[h]??'');
+        }).join(',');
+      });
+      const label = screenOnly ? '화면' : '필터';
+      const csvStr = '\uFEFF' + allHdrs.join(',') + '\n' + rows.join('\n');
+      const a = Object.assign(document.createElement('a'), {
+        href: URL.createObjectURL(new Blob([csvStr], {type:'text/csv;charset=utf-8;'})),
+        download: `상권King_지도_${label}_${new Date().toISOString().slice(0,10)}.csv`
+      });
+      a.click();
+      showToast(`📊 ${label}CSV ${sv.length}건 다운로드 완료`, 'ok');
+    };
     window.applyMapFilter = function () {
       window._gfActive = true;
       // 지도 마커 재로드
@@ -6040,51 +6109,6 @@
     };
 
     // ── pcMapExportCSV: 지도탭 CSV 내보내기 (gf 필터 기준) ────────
-    window.pcMapExportCSV = function (allItems) {
-      // gf 필터를 lf 필터와 동일한 결과셋으로 내보내기
-      // gf 필터가 활성이면 gf 기준, 아니면 저장목록(lf) 기준 사용
-      let sv;
-      if (allItems) {
-        sv = getSv();
-      } else if (isGFilterActive() || window._gfActive) {
-        sv = getSv().filter(item => {
-          if (!item || !item.data) return false;
-          if (!item._norm && typeof normalizeItem === 'function') normalizeItem(item);
-          return _checkFilter(item.data || {}, 'gf', item);
-        });
-      } else {
-        sv = getFilteredSv(); // lf 필터 결과 재사용
-      }
-      if (!sv.length) { showToast(allItems ? '저장된 항목이 없습니다' : '필터 결과가 없습니다', 'warn'); return; }
-      const keySet = new Set();
-      sv.forEach(item => { if (item.data) Object.keys(item.data).forEach(k => keySet.add(k)); });
-      const normHdrs = ['_거래유형','_매물유형','_면적_m2','_면적기준','_면적_평','_층',
-        '_매매가_만원','_실거래가_만원','_감정가_만원','_최저가_만원','_보증금_만원','_전세가_만원','_월세_만원',
-        '_평당가_만원','_수익률','_수익률_산출방식','_표시가격기준','_거래년월','_유찰횟수'];
-      const allHdrs = ['ID','소재지','출처','유형','lat','lng',...normHdrs,...Array.from(keySet)];
-      const esc2 = v => { const s = String(v ?? '').replace(/"/g, '""'); return (s.includes(',')||s.includes('"')||s.includes('\n'))?`"${s}"`:s; };
-      const rows = sv.map(item => {
-        const d = item.data || {};
-        return allHdrs.map(h => {
-          if (h==='ID') return esc2(item.id||'');
-          if (h==='소재지') return esc2(d.소재지||item.title||'');
-          if (h==='출처') return esc2(item.source||d.출처||'');
-          if (h==='유형') return esc2(item.mode||'');
-          if (h==='lat') return esc2(item.lat||'');
-          if (h==='lng') return esc2(item.lng||'');
-          if (h.startsWith('_') && item._norm) { const nk=h.slice(1); return esc2(item._norm[nk]??''); }
-          return esc2(d[h]??'');
-        }).join(',');
-      });
-      const label = allItems ? '전체' : '지도필터';
-      const csvStr = '\uFEFF' + allHdrs.join(',') + '\n' + rows.join('\n');
-      const a = Object.assign(document.createElement('a'), {
-        href: URL.createObjectURL(new Blob([csvStr], {type:'text/csv;charset=utf-8;'})),
-        download: `상권King_지도_${label}_${new Date().toISOString().slice(0,10)}.csv`
-      });
-      a.click();
-      showToast(`📊 CSV ${sv.length}건 다운로드 완료`, 'ok');
-    };
 
     function getSv() {
       const arr = (window._idbCache && window._idbCache['re_sv'] || []);
@@ -16073,6 +16097,11 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       ['distanceBtn', 'areaBtn', 'radiusBtn'].forEach(b => {
         const el = document.getElementById(b); if (el) el.classList.remove('active');
       });
+      // 측정 도구 하위 버튼 패널 펼치기
+      const _subBtns = document.getElementById('measureSubBtns');
+      if (_subBtns) _subBtns.style.display = 'flex';
+      const _mToggle = document.getElementById('measureToggleBtn');
+      if (_mToggle) _mToggle.classList.add('active');
 
       const mapEl = document.getElementById('map');
       if (tool === 'distance') {
@@ -16538,6 +16567,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       if (measureAreaLiveLabel) { try { measureAreaLiveLabel.setMap(null); } catch (e) { } measureAreaLiveLabel = null; }
       const mapEl = document.getElementById('map'); if (mapEl) mapEl.style.cursor = '';
       ['distanceBtn', 'areaBtn', 'radiusBtn'].forEach(b => { const el = document.getElementById(b); if (el) el.classList.remove('active'); });
+      const _mToggle = document.getElementById('measureToggleBtn'); if (_mToggle) _mToggle.classList.remove('active');
       const rp = document.getElementById('measureResult'); if (rp) rp.classList.remove('on');
       try { kakao.maps.event.removeListener(map, 'click', onMeasureClick); } catch (e) { }
       try { kakao.maps.event.removeListener(map, 'rightclick', onMeasureRightClick); } catch (e) { }
