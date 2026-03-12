@@ -3700,6 +3700,7 @@
       // ★ 탭 전환 시 전역 필터 패널 갱신
       if (n === 0 || n === 1) setTimeout(renderGFilterPanels, 0);
     }
+    window.showPage = showPage;
 
     // ===================================================
     // 모드
@@ -20795,18 +20796,18 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         modal.querySelector('#ntTmList').innerHTML = allTags.length
           ? allTags.map(t => {
               const cnt = ntNotes.filter(n => (n.tags||[]).includes(t)).length;
-              return '<div style="display:flex;align-items:center;gap:6px;padding:7px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;margin-bottom:4px;">' +
-                '<span style="flex:1;font-size:12px;color:var(--tx);">#' + t + ' <span style="color:var(--di);font-size:10px;">(' + cnt + '개)</span></span>' +
-                '<button onclick="ntRenameTag(null,\'' + t + \'')" style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:12px;padding:2px 6px;" title="이름 변경">✏️</button>' +
-                '<button onclick="ntDeleteTagGlobal(\'' + t + \'')" style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:12px;padding:2px 6px;" title="전체 삭제" onmouseover="this.style.color='#ff6370'" onmouseout="this.style.color='var(--mu)'">🗑</button>' +
-                '</div>';
+              return `<div style="display:flex;align-items:center;gap:6px;padding:7px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;margin-bottom:4px;">` +
+                `<span style="flex:1;font-size:12px;color:var(--tx);">#${t} <span style="color:var(--di);font-size:10px;">(${cnt}개)</span></span>` +
+                `<button onclick="ntRenameTag(null,'${t}')" style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:12px;padding:2px 6px;" title="이름 변경">✏️</button>` +
+                `<button onclick="ntDeleteTagGlobal('${t}')" style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:12px;padding:2px 6px;" title="전체 삭제" onmouseover="this.style.color='#ff6370'" onmouseout="this.style.color='var(--mu)'">🗑</button>` +
+                `</div>`;
             }).join('')
           : '<div style="font-size:11px;color:var(--di);text-align:center;padding:16px;">태그가 없습니다</div>';
       }
       modal.innerHTML = '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:14px;padding:20px;width:320px;max-width:90vw;max-height:80vh;overflow-y:auto;">' +
         '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">' +
         '<span style="font-size:14px;font-weight:800;color:var(--tx);"># 태그 전체 관리</span>' +
-        '<button onclick="document.getElementById('ntTagManagerModal').remove()" style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:16px;">✕</button></div>' +
+        '<button onclick="document.getElementById(&apos;ntTagManagerModal&apos;).remove()" style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:16px;">✕</button></div>' +
         '<div id="ntTmList"></div></div>';
       document.body.appendChild(modal);
       renderBody();
