@@ -801,7 +801,8 @@
         // (동시각 로컬 우선 제거 → 삭제 경합에서 tombstone이 살아남도록)
         if (cTime >= lTime) map.set(item.id, item);
       });
-      return Array.from(map.values()).filter(item => !item.deletedAt);
+      // tombstone 포함 전체 반환 — 호출부에서 각자 filter(!deletedAt) 처리
+      return Array.from(map.values());
     }
 
     // localStorage 안전 쓰기 (QuotaExceeded 시 해당 키만 skip)
@@ -844,8 +845,8 @@
           const ntLocal = window._idbCache['nt_notes'] || [];
           const merged = _sbMergeById(ntCloud, ntLocal);
           const mergedActive = merged.filter(n => !n.deletedAt);
-          window._idbCache['nt_notes'] = mergedActive;
-          await window.idbSet('nt_notes', mergedActive);
+          window._idbCache['nt_notes'] = merged;          // tombstone 포함 상태로 IDB 저장
+          await window.idbSet('nt_notes', merged);
           if (merged.length > ntCloud.length) window._sbSaveNtNotes(merged).catch(()=>{});
         } else {
           const ntLocal = window._idbCache['nt_notes'] || [];
@@ -858,8 +859,8 @@
           const roomsLocal = window._idbCache['wr2_rooms'] || [];
           const merged = _sbMergeById(roomsCloud, roomsLocal);
           const mergedActive = merged.filter(r => !r.deletedAt);
-          window._idbCache['wr2_rooms'] = mergedActive;
-          await window.idbSet('wr2_rooms', mergedActive);
+          window._idbCache['wr2_rooms'] = merged;          // tombstone 포함 상태로 IDB 저장
+          await window.idbSet('wr2_rooms', merged);
           if (window.wr2State) window.wr2State.rooms = mergedActive;
           if (mergedActive.length > roomsCloud.filter(r=>!r.deletedAt).length)
             window._sbSaveRooms(merged).catch(()=>{});
@@ -903,8 +904,8 @@
             const kcLocal = window._idbCache['ins_kcards'] || [];
             const merged = _sbMergeById(kcCloud, kcLocal);
             const mergedActive = merged.filter(k => !k.deletedAt);
-            window._idbCache['ins_kcards'] = mergedActive;
-            await window.idbSet('ins_kcards', mergedActive);
+            window._idbCache['ins_kcards'] = merged;          // tombstone 포함 상태로 IDB 저장
+            await window.idbSet('ins_kcards', merged);
             // 로컬에만 있는 것(신규) 클라우드에 업로드
             const localOnly = merged.filter(k => !kcCloud.find(c => c.id === k.id));
             if (localOnly.length) window._sbSaveKcards(localOnly).catch(()=>{});
@@ -958,7 +959,7 @@
           try {
             const freshNotes = window._idbCache && window._idbCache['nt_notes'];
             if (freshNotes !== undefined && typeof window._ntSetNotes === 'function') {
-              window._ntSetNotes(freshNotes || []);
+              window._ntSetNotes((freshNotes || []).filter(n => !n.deletedAt));
               // 현재 노트탭이 열려있을 때만 re-render
               const p0 = document.getElementById('ipage0');
               if (p0 && p0.style.display !== 'none' && typeof ntRender === 'function') ntRender();
@@ -21265,7 +21266,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           })();
         }
       }
-      // tombstone 포함 상태로 먼저 저장, 그 다음 렌더용으로만 filter
+      // tombstone 포함 배열을 IDB에 먼저 저장, 그 다음 렌더용으로만 filter
       if (window._idbCache) window._idbCache['nt_notes'] = ntNotes;
       if (window.idbSet) window.idbSet('nt_notes', ntNotes).catch(()=>{});
       ntNotes = ntNotes.filter(n => n.id !== id);
@@ -21296,7 +21297,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           })();
         }
       }
-      // tombstone 포함 상태로 먼저 저장, 그 다음 렌더용으로만 filter
+      // tombstone 포함 배열을 IDB에 먼저 저장, 그 다음 렌더용으로만 filter
       if (window._idbCache) window._idbCache['nt_notes'] = ntNotes;
       if (window.idbSet) window.idbSet('nt_notes', ntNotes).catch(()=>{});
       ntNotes = ntNotes.filter(n => n.id !== id);
@@ -21392,9 +21393,10 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           })();
         }
       }
-      ntNotes = ntNotes.filter(n => n.id !== noteId);
+      // tombstone 포함 배열을 IDB에 먼저 저장, 그 다음 렌더용으로만 filter
       if (window._idbCache) window._idbCache['nt_notes'] = ntNotes;
       if (window.idbSet) window.idbSet('nt_notes', ntNotes).catch(()=>{});
+      ntNotes = ntNotes.filter(n => n.id !== noteId);
       if (ntActiveId === noteId) { ntActiveId = null; ntShowEmpty(); }
       ntRender();
       const roomName = ((window.wr2State && window.wr2State.rooms) || (window._idbCache && window._idbCache['wr2_rooms']) || []).find(r => r.id === roomId)?.title || '작업룸';
@@ -23445,7 +23447,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         kcards[_kcIdx].updatedAt = kcards[_kcIdx].deletedAt;
         if (window._sbSaveKcards) window._sbSaveKcards([kcards[_kcIdx]]).catch(()=>{});
       }
-      // tombstone 포함 상태로 먼저 저장, 그 다음 렌더용으로만 filter
+      // tombstone 포함 배열을 IDB에 먼저 저장, 그 다음 렌더용으로만 filter
       if (window._idbCache) window._idbCache['ins_kcards'] = kcards;
       if (window.idbSet) window.idbSet('ins_kcards', kcards).catch(()=>{});
       kcards = kcards.filter(k => k.id !== id);
