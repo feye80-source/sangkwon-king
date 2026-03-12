@@ -1510,93 +1510,7 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
                   <option value="saved_desc">저장일 최신순</option>
                 </select>
               </div>
-              <!-- 반경 조건 필터 -->
-              <div style="margin-top:4px;">
-                <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:3px 0;"
-                  onclick="(()=>{const p=document.getElementById('radiusFilterPanel');const open=p.style.display==='block';p.style.display=open?'none':'block';document.getElementById('rfToggleLabel').textContent=open?'▼ 펼치기':'▲ 접기';})()">
-                  <span style="font-size:11px;color:rgba(232,237,245,.7);">🔍 조건 필터</span>
-                  <span id="rfToggleLabel" style="font-size:10px;color:rgba(232,237,245,.5);">▼ 펼치기</span>
-                </div>
-                <div id="radiusFilterPanel"
-                  style="display:none;background:rgba(0,0,0,.18);border-radius:6px;padding:7px 8px;margin-top:3px;">
-                  <!-- 거래유형 -->
-                  <div class="rf-row" style="flex-wrap:wrap;gap:5px;">
-                    <span class="rf-lbl">거래유형</span>
-                    <label
-                      style="display:inline-flex;align-items:center;gap:2px;font-size:10px;cursor:pointer;color:rgba(232,237,245,.8);"><input
-                        type="radio" name="rfDealKind" value="all" checked style="accent-color:#4f8eff;"> 전체</label>
-                    <label
-                      style="display:inline-flex;align-items:center;gap:2px;font-size:10px;cursor:pointer;color:rgba(232,237,245,.8);"><input
-                        type="radio" name="rfDealKind" value="sale" style="accent-color:#4f8eff;"> 💙매매</label>
-                    <label
-                      style="display:inline-flex;align-items:center;gap:2px;font-size:10px;cursor:pointer;color:rgba(232,237,245,.8);"><input
-                        type="radio" name="rfDealKind" value="rent" style="accent-color:#ff8c42;"> 🧡임대</label>
-                    <label
-                      style="display:inline-flex;align-items:center;gap:2px;font-size:10px;cursor:pointer;color:rgba(232,237,245,.8);"><input
-                        type="radio" name="rfDealKind" value="unknown" style="accent-color:#888;"> ❓기타</label>
-                  </div>
-                  <!-- 층 -->
-                  <div class="rf-row">
-                    <span class="rf-lbl">층수</span>
-                    <input class="rf-inp" id="rfFloorMin" type="number" placeholder="최소" style="width:38%;">
-                    <span class="rf-sep">~</span>
-                    <input class="rf-inp" id="rfFloorMax" type="number" placeholder="최대" style="width:38%;">
-                  </div>
-                  <div class="rf-row">
-                    <span class="rf-lbl" style="font-size:9px;">층없음포함</span>
-                    <label
-                      style="display:inline-flex;align-items:center;gap:3px;font-size:10px;color:rgba(232,237,245,.6);cursor:pointer;">
-                      <input type="checkbox" id="rfFloorIncludeEmpty" style="accent-color:#4f8eff;"> 층정보 없는 것도 포함
-                    </label>
-                  </div>
-                  <div class="rf-row">
-                    <span class="rf-lbl">면적㎡</span>
-                    <input class="rf-inp" id="rfAreaMin" type="number" placeholder="최소" style="width:38%;">
-                    <span class="rf-sep">~</span>
-                    <input class="rf-inp" id="rfAreaMax" type="number" placeholder="최대" style="width:38%;">
-                  </div>
-                  <div class="rf-row">
-                    <span class="rf-lbl" style="font-size:9px;">면적없음포함</span>
-                    <label
-                      style="display:inline-flex;align-items:center;gap:3px;font-size:10px;color:rgba(232,237,245,.6);cursor:pointer;">
-                      <input type="checkbox" id="rfAreaIncludeEmpty" style="accent-color:#4f8eff;"> 면적 없는 것도 포함
-                    </label>
-                  </div>
-                  <div class="rf-row">
-                    <span class="rf-lbl">매매가</span>
-                    <input class="rf-inp" id="rfPriceMin" type="number" placeholder="최소(만)" style="width:48%;">
-                    <span class="rf-sep">~</span>
-                    <input class="rf-inp" id="rfPriceMax" type="number" placeholder="최대(만)" style="width:48%;">
-                  </div>
-                  <div class="rf-row">
-                    <span class="rf-lbl">월세</span>
-                    <input class="rf-inp" id="rfRentMin" type="number" placeholder="최소(만)" style="width:48%;">
-                    <span class="rf-sep">~</span>
-                    <input class="rf-inp" id="rfRentMax" type="number" placeholder="최대(만)" style="width:48%;">
-                  </div>
-                  <div class="rf-row">
-                    <span class="rf-lbl">수익률%</span>
-                    <input class="rf-inp" id="rfYieldMin" type="number" placeholder="최소" style="width:48%;" step="0.1">
-                    <span class="rf-sep">~</span>
-                    <input class="rf-inp" id="rfYieldMax" type="number" placeholder="최대" style="width:48%;" step="0.1">
-                  </div>
-                  <div class="rf-row">
-                    <span class="rf-lbl">거래년월</span>
-                    <input class="rf-inp" id="rfDateMin" type="text" placeholder="예: 202401" style="width:48%;">
-                    <span class="rf-sep">~</span>
-                    <input class="rf-inp" id="rfDateMax" type="text" placeholder="예: 202412" style="width:48%;">
-                  </div>
-                  <!-- 버튼 행 -->
-                  <div style="display:flex;gap:5px;margin-top:2px;">
-                    <button onclick="resetMapFilter()"
-                      style="flex:1;padding:5px 0;background:rgba(255,255,255,.06);border:1px solid rgba(232,237,245,.15);border-radius:5px;color:rgba(232,237,245,.5);font-size:10px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">초기화</button>
-                    <button
-                      onclick="(()=>{const p=document.getElementById('radiusFilterPanel');p.style.display='none';document.getElementById('rfToggleLabel').textContent='▼ 펼치기';showToast('✅ 조건 필터 저장됨','ok');})()"
-                      style="flex:1;padding:5px 0;background:rgba(79,142,255,.18);border:1px solid rgba(79,142,255,.4);border-radius:5px;color:#4f8eff;font-size:10px;cursor:pointer;font-weight:700;font-family:'Noto Sans KR',sans-serif;">✓
-                      확인</button>
-                  </div>
-                </div>
-              </div>
+              <!-- 반경 조건 필터 → gfPanel_map 통합으로 제거됨 -->
             </div>
           </div>
         </div><!-- /map-search-wrap -->
@@ -1748,12 +1662,7 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
             </div>
 
 
-          <!-- ★ 커스텀 줌 슬라이더 (카카오 기본줌 UI와 중복 없이 사용) -->
-          <div id="mapZoomSlider" aria-label="지도 줌 슬라이더">
-            <button type="button" class="mz-btn" id="mzPlus" title="줌인">+</button>
-            <input id="zoomRange" type="range" min="5" max="14" step="1" value="7" />
-            <button type="button" class="mz-btn" id="mzMinus" title="줌아웃">−</button>
-          </div>
+
 
         </div>
 

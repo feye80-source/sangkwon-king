@@ -5883,7 +5883,7 @@
       try {
         const svAll = getSv ? getSv() : [];
         const filtered = svAll.filter(item => {
-          if (!item || !item.data) return false;
+          if (!item) return false;
           if (!item._norm && typeof normalizeItem === 'function') normalizeItem(item);
           return _checkFilter(item.data || {}, 'gf', item);
         });
@@ -5966,7 +5966,7 @@
         // 필터 CSV: gf 조건필터 적용
         if (isGFilterActive() || window._gfActive) {
           sv = getSv().filter(item => {
-            if (!item || !item.data) return false;
+            if (!item) return false;
             if (!item._norm && typeof normalizeItem === 'function') normalizeItem(item);
             return _checkFilter(item.data || {}, 'gf', item);
           });
@@ -5987,11 +5987,12 @@
       const esc2 = v => { const s = String(v ?? '').replace(/"/g, '""'); return (s.includes(',')||s.includes('"')||s.includes('\n'))?`"${s}"`:s; };
       const rows = sv.map(item => {
         const d = item.data || {};
+        const isTx = item.type === 'transaction';
         return allHdrs.map(h => {
           if (h==='ID') return esc2(item.id||'');
-          if (h==='소재지') return esc2(d.소재지||item.title||'');
-          if (h==='출처') return esc2(item.source||d.출처||'');
-          if (h==='유형') return esc2(item.mode||'');
+          if (h==='소재지') return esc2(d.소재지 || (isTx ? item.address : '') || item.title || '');
+          if (h==='출처') return esc2(item.source || d.출처 || (isTx ? '실거래' : '') || '');
+          if (h==='유형') return esc2(item.mode || (isTx ? 'transaction' : '') || '');
           if (h==='lat') return esc2(item.lat||'');
           if (h==='lng') return esc2(item.lng||'');
           if (h.startsWith('_') && item._norm) { const nk=h.slice(1); return esc2(item._norm[nk]??''); }
@@ -11632,21 +11633,12 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           toLoad.sort((a, b) => _getSortVal(a) - _getSortVal(b));
         }
 
-        // ★ 조건 필터 적용 — gf(전체화면 공통필터) 우선, 없으면 rf(반경전용필터)
+        // ★ 조건 필터 적용 — gf 단일 필터만 사용 (전체화면/반경 모드 공통)
         const _gfHasFilter = (typeof isGFilterActive === 'function') && isGFilterActive();
-        const _rfHasFilter = !_gfHasFilter && (
-          ['rfFloorMin','rfFloorMax','rfAreaMin','rfAreaMax',
-           'rfPriceMin','rfPriceMax','rfRentMin','rfRentMax',
-           'rfYieldMin','rfYieldMax','rfDateMin','rfDateMax'
-          ].some(id => { const el = document.getElementById(id); return el && el.value.trim() !== ''; }) ||
-          (['rfFloorIncludeEmpty','rfAreaIncludeEmpty'].some(id => { const el = document.getElementById(id); return el && el.checked; })) ||
-          ((() => { const el = document.querySelector('input[name="rfDealKind"]:checked'); return el && el.value !== 'all'; })())
-        );
 
         // ★ [v159 FIX] 복사본 생성으로 참조 버그 방지
-        const _activePrefix = _gfHasFilter ? 'gf' : (_rfHasFilter ? 'rf' : null);
-        const _filteredLoad = _activePrefix
-          ? toLoad.filter(item => { if (!item._norm && typeof normalizeItem==='function') normalizeItem(item); return _checkFilter(item.data || {}, _activePrefix, item); })
+        const _filteredLoad = _gfHasFilter
+          ? toLoad.filter(item => { if (!item._norm && typeof normalizeItem==='function') normalizeItem(item); return _checkFilter(item.data || {}, 'gf', item); })
           : toLoad.slice();
 
         // 필터 적용된 배열로 교체
@@ -18926,30 +18918,9 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     // 부동산 계산기 (v146 - v123 스타일 기반)
     // ===================================================
     // ★ [v179] resetMapFilter 함수 (조건 필터 초기화 버튼용)
+    // ★ resetMapFilter → gf 단일 필터 통합으로 resetMapGFilter에 위임
     window.resetMapFilter = function () {
-      ['rfFloorMin', 'rfFloorMax', 'rfAreaMin', 'rfAreaMax', 'rfPriceMin', 'rfPriceMax',
-        'rfRentMin', 'rfRentMax', 'rfYieldMin', 'rfYieldMax', 'rfDateMin', 'rfDateMax'].forEach(id => {
-          const el = document.getElementById(id); if (el) el.value = '';
-        });
-      ['rfFloorIncludeEmpty', 'rfAreaIncludeEmpty'].forEach(id => {
-        const el = document.getElementById(id); if (el) el.checked = false;
-      });
-      const r = document.querySelector('input[name="rfDealKind"][value="all"]');
-      if (r) r.checked = true;
-      const loaded = [...new Set((mapOverlays || []).map(o => o.item && o.item.source).filter(Boolean))];
-      const typesToLoad = [];
-      if (loaded.some(s => s === '디스코')) typesToLoad.push('disco');
-      if (loaded.some(s => s === '부동산플래닛')) typesToLoad.push('bds');
-      if (loaded.some(s => s === '점포라인')) typesToLoad.push('jumpo');
-      if (loaded.some(s => s === '점포거래소')) typesToLoad.push('assa');
-      if (loaded.some(s => s === '네이버부동산' || s === '네이버')) typesToLoad.push('listing');
-      if ((mapOverlays || []).some(o => o.item && o.item.mode === 'auction')) typesToLoad.push('auction');
-      if (typesToLoad.length) {
-        typesToLoad.forEach((t, i) => setTimeout(() => loadCurrentAreaByType(t), i * 300));
-      } else {
-        loadCurrentAreaProperties && loadCurrentAreaProperties();
-      }
-      showToast('🔄 조건 필터 초기화됨', 'ok');
+      if (typeof resetMapGFilter === 'function') resetMapGFilter();
     };
 
     // ★ [v182] AI 지도 분석 패널
