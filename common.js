@@ -3300,11 +3300,26 @@
                         <span style="font-size:14px;font-weight:800;color:var(--tx);">🗂 그룹 관리</span>
                         <button onclick="document.getElementById('wr2GroupManagerModal').remove()" style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:16px;">✕</button>
                       </div>
+                      <div style="display:flex;gap:6px;margin-bottom:12px;">
+                        <input id="wr2GmNewInput" placeholder="새 그룹 이름"
+                          style="flex:1;padding:7px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:7px;color:var(--tx);font-size:12px;outline:none;"
+                          onkeydown="if(event.key==='Enter')window.wr2AddGroupFromManager()">
+                        <button onclick="window.wr2AddGroupFromManager()" style="padding:7px 12px;background:var(--ac);color:#111;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">추가</button>
+                      </div>
                       <div id="wr2GmList"></div>
                     </div>`;
                   document.body.appendChild(modal);
                   renderBody();
                   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+                  setTimeout(() => { const inp = document.getElementById('wr2GmNewInput'); if (inp) inp.focus(); }, 50);
+                };
+                window.wr2AddGroupFromManager = function() {
+                  const input = document.getElementById('wr2GmNewInput');
+                  const name = input?.value?.trim();
+                  if (!name) return;
+                  if (wr2GetGroups().includes(name)) { showToast('이미 있는 그룹입니다', 'warn'); return; }
+                  showToast('"' + name + '" 그룹 추가됨 (작업룸 상세에서 지정하면 활성화됩니다)', 'ok');
+                  if (input) input.value = '';
                 };
 
                 // 전체 태그 관리 모달
@@ -3332,6 +3347,7 @@
                         <span style="font-size:14px;font-weight:800;color:var(--tx);"># 전체 태그 관리</span>
                         <button onclick="document.getElementById('wr2TagManagerModal').remove()" style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:16px;">✕</button>
                       </div>
+                      <div style="font-size:10px;color:var(--di);margin-bottom:10px;">태그는 작업룸 상세에서 직접 추가할 수 있습니다. 여기서는 전체 일괄 수정/삭제를 관리합니다.</div>
                       <div id="wr2TmList"></div>
                     </div>`;
                   document.body.appendChild(modal);

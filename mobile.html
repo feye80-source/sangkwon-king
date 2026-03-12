@@ -1175,6 +1175,8 @@ body {
       <div class="mb-note-toolbar">
         <input type="text" id="ntSearchInput" placeholder="🔍 노트 검색" inputmode="search" enterkeyhint="search" oninput="if(typeof ntRender==='function')ntRender()">
         <button class="mb-btn mb-btn-gold" onclick="ntCreate('unified')">＋ 새 노트</button>
+        <button class="mb-btn" onclick="if(typeof ntOpenGroupManager==='function')ntOpenGroupManager()" title="그룹 관리" style="padding:6px 8px;flex-shrink:0;">🗂</button>
+        <button class="mb-btn" onclick="if(typeof ntOpenTagManager==='function')ntOpenTagManager()" title="태그 관리" style="padding:6px 8px;flex-shrink:0;">#</button>
       </div>
       <!-- 모드 버튼 -->
       <div class="mb-filter-scroll" style="margin-bottom:6px;">
@@ -1199,6 +1201,12 @@ body {
         <button class="mb-ftab" onclick="mbNtPhase('bid',this)">입찰</button>
         <button class="mb-ftab" onclick="mbNtPhase('done',this)">완료</button>
       </div>
+      <!-- 그룹 필터 (ntRender/_ntRenderGroupFilter가 렌더링) -->
+      <div id="ntGroupFilter" class="mb-filter-scroll" style="margin-bottom:4px;display:flex;gap:4px;flex-wrap:nowrap;overflow-x:auto;">
+        <span class="nt-domain-chip on" data-g="all" onclick="ntSetGroupFilter('all')">전체</span>
+      </div>
+      <!-- 태그 필터 -->
+      <div id="ntTagFilter" class="mb-filter-scroll" style="margin-bottom:6px;display:flex;gap:4px;flex-wrap:nowrap;overflow-x:auto;min-height:0;"></div>
       <!-- 노트 목록 (ntRender가 여기에 렌더링) -->
       <div id="ntList"></div>
       <div id="ntEmpty" style="display:none;text-align:center;color:var(--di);padding:30px 10px;">
@@ -1211,10 +1219,14 @@ body {
 
     <!-- ⭐ 알짜정보 패널 -->
     <div id="mb-ins-kcard" class="mb-ins-panel">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-shrink:0;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-shrink:0;gap:6px;">
         <span style="font-size:13px;font-weight:700;color:var(--tx);">⭐ 알짜정보</span>
-        <button onclick="window.mbOpenKcardModal(null)"
-          style="padding:6px 14px;background:var(--ac);color:#111;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">+ 새 카드</button>
+        <div style="display:flex;gap:4px;align-items:center;">
+          <button class="mb-btn" onclick="if(typeof openKcardGroupManager==='function')openKcardGroupManager()" title="그룹 관리" style="padding:5px 8px;font-size:11px;">🗂</button>
+          <button class="mb-btn" onclick="if(typeof openKcardTagManager==='function')openKcardTagManager()" title="태그 관리" style="padding:5px 8px;font-size:11px;">#</button>
+          <button onclick="window.mbOpenKcardModal(null)"
+            style="padding:6px 14px;background:var(--ac);color:#111;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">+ 새 카드</button>
+        </div>
       </div>
       <div id="mb-kcat-tabs" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;flex-shrink:0;"></div>
       <div id="mb-kcard-grid" style="flex:1;overflow-y:auto;display:grid;grid-template-columns:1fr 1fr;gap:10px;padding-bottom:20px;align-content:start;"></div>
@@ -1431,7 +1443,7 @@ body {
     <!-- 작업룸 패널 -->
     <div id="mb-ins-room" class="mb-ins-panel">
       <!-- 룸 선택 + 새 룸 버튼 -->
-      <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
         <div id="mb-room-sel-wrap" style="flex:1;min-width:0;position:relative;">
           <div id="mb-room-sel-btn" onclick="mbRoomDropToggle()"
             style="height:38px;padding:0 36px 0 10px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;color:var(--tx);font-size:13px;display:flex;align-items:center;cursor:pointer;user-select:none;overflow:hidden;">
@@ -1442,6 +1454,15 @@ body {
         </div>
         <select id="mb-room-sel" style="display:none;" onchange="mbRoomLoad(this.value)"><option value="">-- 작업룸 선택 --</option></select>
         <button class="mb-btn mb-btn-gold" onclick="mbRoomNew()">＋ 새 룸</button>
+      </div>
+      <!-- 그룹 필터 + 관리 버튼 -->
+      <div style="display:flex;gap:4px;align-items:center;margin-bottom:8px;">
+        <select id="wr2GroupFilter" onchange="if(window.wr2State)wr2State.groupFilter=this.value;if(typeof wr2Render==='function')wr2Render();"
+          style="flex:1;padding:5px 8px;background:var(--s2);border:1px solid var(--b1);border-radius:7px;color:var(--tx);font-size:12px;outline:none;min-width:0;">
+          <option value="all">🗂 전체 그룹</option>
+        </select>
+        <button class="mb-btn" onclick="if(typeof wr2OpenGroupManager==='function')wr2OpenGroupManager()" title="그룹 관리" style="padding:5px 9px;flex-shrink:0;font-size:12px;">🗂</button>
+        <button class="mb-btn" onclick="if(typeof wr2OpenTagManager==='function')wr2OpenTagManager()" title="태그 관리" style="padding:5px 9px;flex-shrink:0;font-size:12px;">#</button>
       </div>
 
       <!-- 룸 헤더: 이름 + 단계뱃지 + 삭제 -->
@@ -2203,6 +2224,8 @@ body {
   <div id="wr2ResizeHandle"></div>
   <button id="wr2RestoreMapBtn"></button>
   <div id="wr2PhaseHint"></div>
+  <!-- 작업룸 태그/그룹 표시용 더미 DOM -->
+  <div id="wr2TagRow" style="display:none;"><div id="wr2TagChips"></div></div>
 </div>
 
 <!-- ════════════════════════════════════════════════════════
@@ -2955,12 +2978,6 @@ body {
     var q = (document.getElementById('mb-nt-search') || {}).value || '';
     // common.js의 ntRender 재활용 (검색어 반영)
     if (typeof ntRender === 'function') ntRender();
-  };
-
-  window.mbNtDomain = function(domain, btn) {
-    document.querySelectorAll('.mb-ins-note .mb-ftab').forEach(function(b) { b.classList.remove('active'); });
-    if (btn) btn.classList.add('active');
-    if (typeof ntSetDomain === 'function') ntSetDomain(domain);
   };
 
   /* ── 상권분석 (지도 패널) ── */
