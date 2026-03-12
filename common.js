@@ -1165,6 +1165,7 @@
       dbBtn.style.cssText = 'position:fixed;top:8px;right:90px;z-index:99998;background:rgba(30,35,55,0.85);color:#94a3b8;border:1px solid #334;border-radius:8px;padding:4px 10px;font-size:11px;cursor:pointer;';
       document.body.appendChild(dbBtn);
 
+      // MONODOT 로고 제거됨
     };
 
     window._sbShowDbAdmin = function() {
@@ -20107,6 +20108,26 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       }
     }
     window.showInsTab = showInsTab;
+
+    function cfgSwitchTab(tab) {
+      const apiPane = document.getElementById('cfgPane_api');
+      const aboutPane = document.getElementById('cfgPane_about');
+      const apiBtn = document.getElementById('cfgTab_api');
+      const aboutBtn = document.getElementById('cfgTab_about');
+      if (!apiPane || !aboutPane) return;
+      if (tab === 'api') {
+        apiPane.style.display = '';
+        aboutPane.style.display = 'none';
+        if (apiBtn) { apiBtn.style.borderBottomColor = 'var(--ac)'; apiBtn.style.color = 'var(--ac)'; }
+        if (aboutBtn) { aboutBtn.style.borderBottomColor = 'transparent'; aboutBtn.style.color = 'var(--mu)'; }
+      } else {
+        apiPane.style.display = 'none';
+        aboutPane.style.display = '';
+        if (aboutBtn) { aboutBtn.style.borderBottomColor = 'var(--ac)'; aboutBtn.style.color = 'var(--ac)'; }
+        if (apiBtn) { apiBtn.style.borderBottomColor = 'transparent'; apiBtn.style.color = 'var(--mu)'; }
+      }
+    }
+    window.cfgSwitchTab = cfgSwitchTab;
 
     function showCalcTab(n) {
       [0, 1, 2, 3, 4].forEach(i => {
