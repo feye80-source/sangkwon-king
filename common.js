@@ -6003,10 +6003,11 @@
           });
           if (!sv.length) { showToast('필터 조건에 맞는 항목이 없습니다', 'warn'); return; }
         } else {
-          // 필터 조건 없으면 전체 저장목록
-          sv = getSv().filter(item => item && item.data);
+          // 필터 조건 없으면 현재 지도에 표시된 마커 기준
+          sv = (mapOverlays || []).map(o => o.item).filter(Boolean);
           const seen = new Set();
           sv = sv.filter(item => { if (!item.id || seen.has(item.id)) return false; seen.add(item.id); return true; });
+          if (!sv.length) { showToast("지도에 표시된 매물이 없습니다", "warn"); return; };
         }
       }
       if (!sv.length) { showToast('내보낼 항목이 없습니다', 'warn'); return; }
@@ -6897,15 +6898,28 @@
       const region = (document.getElementById('regionSearch') || {}).value || '';
       if (region.trim()) sv = _svSearchFilter(sv, region);
 
-      // 2) 조건 필터 패널 (_lfActive 또는 소스 체크박스가 켜져 있으면 적용)
-      if (window._lfActive) {
-        sv = sv.filter(item => checkListFilter(item));
-      } else {
-        // _lfActive=false여도 소스 체크박스만 켜진 경우 처리
-        const _srcBoxIds = ['lfSrc_경매','lfSrc_네이버','lfSrc_점포라인','lfSrc_아싸','lfSrc_디스코','lfSrc_플래닛','lfSrc_온비드'];
-        const _anyChecked = _srcBoxIds.some(id => document.getElementById(id)?.checked) ||
-          ['경매','네이버','점포라인','아싸','디스코','플래닛','온비드'].some(k => document.getElementById('lfSrc_' + k)?.checked);
-        if (_anyChecked) sv = sv.filter(item => checkListFilter(item));
+      // 2) 조건 필터 패널 — _lfActive(적용 버튼) OR 입력값이 있으면 즉시 필터 적용
+      const _lfHasInput = (function() {
+        const textIds = ['lfFloorMin','lfFloorMax','lfAreaMin','lfAreaMax',
+          'lfPriceMin','lfPriceMax','lfDepositMin','lfDepositMax','lfRentMin','lfRentMax',
+          'lfTxPriceMin','lfTxPriceMax','lfYieldMin','lfYieldMax','lfPpMin','lfPpMax',
+          'lfAppraisalMin','lfAppraisalMax','lfMinBidMin','lfMinBidMax',
+          'lfJeonseMin','lfJeonseMax','lfFailCntMin','lfFailCntMax',
+          'lfDateMin','lfDateMax','lfPropType','lfAddrKeyword','lfTitleKeyword','lfMemoKeyword'];
+        if (textIds.some(id => (document.getElementById(id)||{}).value?.trim())) return true;
+        const dkEl = document.querySelector('input[name="lfDealKind"]:checked');
+        if (dkEl && dkEl.value !== 'all') return true;
+        const cbIds = ['lfFloorIncludeEmpty','lfAreaIncludeEmpty',
+          'lfHasArea','lfHasPrice','lfHasDeposit','lfHasRent','lfHasTxPrice','lfHasYield','lfExclEstArea',
+          'lfSrc_경매','lfSrc_네이버','lfSrc_점포라인','lfSrc_아싸','lfSrc_디스코','lfSrc_플래닛','lfSrc_온비드'];
+        if (cbIds.some(id => document.getElementById(id)?.checked)) return true;
+        return false;
+      })();
+      if (window._lfActive || _lfHasInput) {
+        sv = sv.filter(item => {
+          if (!item._norm && typeof normalizeItem === 'function') normalizeItem(item);
+          return _checkFilter(item.data || {}, 'lf', item);
+        });
       }
 
       // 3) 소스 탭 버튼 필터 (소스 체크박스와 충돌 없음 — 탭은 빠른 단일 소스 필터)
