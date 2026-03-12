@@ -2068,9 +2068,9 @@
 
     /* 필터 버튼 전용 스타일 */
     .map-search button#gfMapToggleBtn {
-      background: rgba(255,255,255,0.12);
-      color: #e8edf5;
-      border: 1px solid rgba(232,237,245,0.35);
+      background: #4f6a8a;
+      color: #fff;
+      border: 1px solid #6a8faf;
       padding: 6px 12px;
       font-size: 12px;
       display: flex;
@@ -2079,9 +2079,9 @@
     }
 
     .map-search button#gfMapToggleBtn:hover {
-      background: rgba(255,255,255,0.22);
+      background: #5a7a9a;
       color: #fff;
-      border-color: rgba(232,237,245,0.6);
+      border-color: #8ab0d0;
     }
 
     .map-search button#gfMapToggleBtn.active {
