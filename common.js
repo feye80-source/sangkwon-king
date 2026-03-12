@@ -219,6 +219,19 @@
       console.log('[IDB] 프리로드 완료. 캐시 키:', Object.keys(window._idbCache).join(', '));
       // 검색 인덱스 초기 빌드
       try { if (typeof _svBuildIndex === 'function') _svBuildIndex(window._idbCache['re_sv']); } catch(e) {}
+      // ★ IDB 완료 즉시 노트/알짜 선렌더 (작업룸처럼 클라우드 기다리지 않음)
+      try {
+        const _cachedNotes = window._idbCache && window._idbCache['nt_notes'];
+        if (typeof window._ntSetNotes === 'function' && _cachedNotes !== undefined) {
+          window._ntSetNotes(_cachedNotes || []);
+          if (typeof window.ntRender === 'function') window.ntRender();
+        }
+        if (typeof window._kcardsSyncFromCache === 'function') {
+          window._kcardsSyncFromCache();
+          if (typeof window.renderKcatTabs === 'function') window.renderKcatTabs();
+          if (typeof window.renderKcards === 'function') window.renderKcards();
+        }
+      } catch(e) {}
     } catch(e) {
       console.warn('[IDB] 프리로드 실패, localStorage fallback으로 동작:', e);
       window._idbPreloadDone = true; // 실패해도 앱은 계속 동작
@@ -899,9 +912,11 @@
             if (kcLocal.length) window._sbSaveKcards(kcLocal).catch(()=>{});
           }
           const kcatCloud = await window._sbLoadKcat();
-          if (kcatCloud !== null && kcatCloud.length > 0) {
-            window._idbCache['ins_kcat'] = kcatCloud;
-            await window.idbSet('ins_kcat', kcatCloud);
+          if (kcatCloud !== null) {
+            // ★ 빈 배열도 정상 상태로 반영 (length>0 조건 제거)
+            const kcatArr = Array.isArray(kcatCloud) ? kcatCloud : [];
+            window._idbCache['ins_kcat'] = kcatArr;
+            await window.idbSet('ins_kcat', kcatArr);
           } else {
             const kcatLocal = window._idbCache['ins_kcat'] || [];
             if (kcatLocal.length) window._sbSaveKcat(kcatLocal).catch(()=>{});
@@ -931,28 +946,39 @@
         window._sbSyncStatus('✅ 클라우드 로드 완료', true);
         window._sbCloudLoaded = true; // ★ 클라우드 로드 완료 플래그
 
-        // ── 클라우드 로드 완료 후 로컬 변수 동기화 + 화면 갱신 ──
-        // ★ requestAnimationFrame으로 브라우저 렌더 사이클에 맞춰 깜빡임 최소화
+        // ── 클라우드 동기화 완료 후 diff 반영 (현재 보이는 탭만 갱신) ──
         requestAnimationFrame(function() {
-          try {
-            // ntNotes 동기화: 모듈 초기화 시점에 IDB 캐시가 비어있었을 수 있음
-            // ★ length > 0 조건 제거: 빈 배열도 정상 상태로 반영 (전체 삭제 케이스 포함)
-            const freshNotes = window._idbCache && window._idbCache['nt_notes'];
-            if (freshNotes !== undefined && typeof window._ntSetNotes === 'function') {
-              window._ntSetNotes(freshNotes || []);
-            }
-          } catch(e) {}
           try { if (typeof _svBuildIndex === 'function') _svBuildIndex(window._idbCache && window._idbCache['re_sv']); } catch(e) {}
           try { if (typeof renderSaved === 'function') renderSaved(); } catch(e) {}
           try { if (typeof mbRenderSaved === 'function') mbRenderSaved(); } catch(e) {}
           try { if (typeof updSvCnt === 'function') updSvCnt(); } catch(e) {}
-          try { if (typeof ntRender === 'function') ntRender(); } catch(e) {}
-          try { if (typeof wr2Render === 'function') wr2Render(); } catch(e) {}
+
+          // 노트: 클라우드 merge 결과 반영 (이미 로컬 캐시로 선렌더됐으므로 diff만)
+          try {
+            const freshNotes = window._idbCache && window._idbCache['nt_notes'];
+            if (freshNotes !== undefined && typeof window._ntSetNotes === 'function') {
+              window._ntSetNotes(freshNotes || []);
+              // 현재 노트탭이 열려있을 때만 re-render
+              const p0 = document.getElementById('ipage0');
+              if (p0 && p0.style.display !== 'none' && typeof ntRender === 'function') ntRender();
+            }
+          } catch(e) {}
+
+          // 알짜: 클라우드 merge 결과 반영 (현재 알짜탭 열려있을 때만)
           try {
             if (typeof window._kcardsSyncFromCache === 'function') window._kcardsSyncFromCache();
-            if (typeof renderKcards === 'function') renderKcards();
-            if (typeof renderKcatTabs === 'function') renderKcatTabs();
-            if (typeof window.mbRenderKcards === 'function') window.mbRenderKcards();
+            const p4 = document.getElementById('ipage4');
+            if (p4 && p4.style.display !== 'none') {
+              if (typeof renderKcatTabs === 'function') renderKcatTabs();
+              if (typeof renderKcards === 'function') renderKcards();
+              if (typeof window.mbRenderKcards === 'function') window.mbRenderKcards();
+            }
+          } catch(e) {}
+
+          // 작업룸: 열려있을 때만 갱신
+          try {
+            const p8 = document.getElementById('ipage8');
+            if (p8 && p8.style.display !== 'none' && typeof wr2Render === 'function') wr2Render();
           } catch(e) {}
         });
 
@@ -20373,15 +20399,22 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const lbl = document.getElementById('insTabLabel');
       if (lbl) lbl.textContent = labels[n] || '';
 
-      if (n === 0) { try { if (typeof window.ntInit === 'function') window.ntInit(); } catch (e) { console.error('[ntInit]', e); } }
+      if (n === 0) {
+        try {
+          // ★ 로컬 캐시 우선 즉시 렌더 (작업룸과 동일 방식)
+          const _nc = window._idbCache && window._idbCache['nt_notes'];
+          if (typeof window._ntSetNotes === 'function') window._ntSetNotes(_nc || []);
+          if (typeof window.ntInit === 'function') window.ntInit();
+        } catch (e) { console.error('[ntInit]', e); }
+      }
       if (n === 1) { try { populateItemSelects(); } catch (e) { console.error('[populateItemSelects]', e); } }
       if (n === 4) {
         try {
-          // ★ 클라우드 로드 완료 후 첫 진입이면 캐시 동기화 먼저
-          if (window._sbCloudLoaded && typeof window._kcardsSyncFromCache === 'function') {
-            window._kcardsSyncFromCache();
-          }
-          renderKcatTabs(); renderKcards();
+          // ★ 로컬 캐시 우선 즉시 렌더 (클라우드 완료 여부 무관)
+          if (typeof window._kcardsSyncFromCache === 'function') window._kcardsSyncFromCache();
+          if (typeof renderKcatTabs === 'function') renderKcatTabs();
+          if (typeof renderKcards === 'function') renderKcards();
+          if (typeof window.mbRenderKcards === 'function') window.mbRenderKcards();
         } catch (e) { console.error('[kcards]', e); }
       }
 
