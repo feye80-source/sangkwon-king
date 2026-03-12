@@ -2783,9 +2783,7 @@
 
     /* ═══ 커스텀 줌 슬라이더 (카카오 기본 줌과 겹치지 않게 분리) ═══ */
     #mapZoomSlider {
-      position: absolute;
-      bottom: 15px;
-      right: 15px;
+      position: relative;
       z-index: 25;
       width: 56px;
       height: 210px;
