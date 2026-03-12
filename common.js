@@ -767,20 +767,26 @@
       const map = new Map();
       // 로컬 먼저 넣기
       (local || []).forEach(item => { if (item && item.id) map.set(item.id, item); });
-      // 클라우드 항목: updatedAt 기준으로 더 최신이면 덮어씀
+      // 클라우드 항목 병합
       (cloud || []).forEach(item => {
         if (!item || !item.id) return;
         const existing = map.get(item.id);
         if (!existing) {
-          // 로컬에 없는 항목은 클라우드에서 가져옴 (deletedAt 없는 것만)
+          // 로컬에 없는 항목: deletedAt 없는 것만 추가
           if (!item.deletedAt) map.set(item.id, item);
           return;
         }
         const cTime = new Date(item.updatedAt || item.timestamp || 0).getTime();
         const lTime = new Date(existing.updatedAt || existing.timestamp || 0).getTime();
-        // 클라우드가 더 최신이면 클라우드 버전 사용
-        if (cTime > lTime) map.set(item.id, item);
-        // 동시각이면 로컬 우선 (삭제된 항목 보호)
+        // ★ tombstone 우선 규칙: 클라우드가 deletedAt tombstone이면 무조건 우선
+        //   (로컬이 active + 클라우드가 deleted → 삭제가 맞으므로 tombstone 존중)
+        if (item.deletedAt && !existing.deletedAt) {
+          map.set(item.id, item);
+          return;
+        }
+        // 클라우드가 더 최신이거나 동시각이면 클라우드 우선
+        // (동시각 로컬 우선 제거 → 삭제 경합에서 tombstone이 살아남도록)
+        if (cTime >= lTime) map.set(item.id, item);
       });
       return Array.from(map.values()).filter(item => !item.deletedAt);
     }
@@ -930,9 +936,10 @@
         requestAnimationFrame(function() {
           try {
             // ntNotes 동기화: 모듈 초기화 시점에 IDB 캐시가 비어있었을 수 있음
+            // ★ length > 0 조건 제거: 빈 배열도 정상 상태로 반영 (전체 삭제 케이스 포함)
             const freshNotes = window._idbCache && window._idbCache['nt_notes'];
-            if (freshNotes && freshNotes.length > 0 && typeof window._ntSetNotes === 'function') {
-              window._ntSetNotes(freshNotes);
+            if (freshNotes !== undefined && typeof window._ntSetNotes === 'function') {
+              window._ntSetNotes(freshNotes || []);
             }
           } catch(e) {}
           try { if (typeof _svBuildIndex === 'function') _svBuildIndex(window._idbCache && window._idbCache['re_sv']); } catch(e) {}
@@ -20440,7 +20447,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
     // ★ _sbInitLoad 완료 후 ntNotes 동기화를 위한 window 훅
     window._ntSetNotes = function(arr) {
-      ntNotes = arr || [];
+      // ★ deletedAt 항목은 메모리에도 올라오지 않도록
+      ntNotes = (arr || []).filter(n => !n.deletedAt);
     };
     window._ntGetNotes = function() { return ntNotes; };
 
@@ -21210,8 +21218,18 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       if (idx !== -1) {
         ntNotes[idx].deletedAt = new Date().toISOString();
         ntNotes[idx].updatedAt = ntNotes[idx].deletedAt;
-        // deletedAt 포함 상태로 클라우드에 upsert (완전삭제 X → merge 시 필터링됨)
-        if (window._sbSaveNtNotes) window._sbSaveNtNotes([ntNotes[idx]]).catch(()=>{});
+        // deletedAt 포함 상태로 클라우드에 직접 upsert (dirty 체크 우회, merge 시 필터링됨)
+        if (window._sb && window._sbGetUserId) {
+          (async () => {
+            const uid = await window._sbGetUserId();
+            if (!uid) return;
+            const item = ntNotes[idx];
+            await window._sb.from('notes').upsert({
+              id: uid + '_' + item.id, user_id: uid, item_id: item.id,
+              data: item, updated_at: item.updatedAt
+            }, { onConflict: 'id' }).catch(()=>{});
+          })();
+        }
       }
       // 로컬 배열/캐시에서 제거
       ntNotes = ntNotes.filter(n => n.id !== id);
@@ -21232,7 +21250,17 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       if (idx !== -1) {
         ntNotes[idx].deletedAt = new Date().toISOString();
         ntNotes[idx].updatedAt = ntNotes[idx].deletedAt;
-        if (window._sbSaveNtNotes) window._sbSaveNtNotes([ntNotes[idx]]).catch(()=>{});
+        if (window._sb && window._sbGetUserId) {
+          (async () => {
+            const uid = await window._sbGetUserId();
+            if (!uid) return;
+            const item = ntNotes[idx];
+            await window._sb.from('notes').upsert({
+              id: uid + '_' + item.id, user_id: uid, item_id: item.id,
+              data: item, updated_at: item.updatedAt
+            }, { onConflict: 'id' }).catch(()=>{});
+          })();
+        }
       }
       ntNotes = ntNotes.filter(n => n.id !== id);
       if (window._idbCache) window._idbCache['nt_notes'] = ntNotes;
@@ -21317,7 +21345,17 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       if (_mvIdx !== -1) {
         ntNotes[_mvIdx].deletedAt = new Date().toISOString();
         ntNotes[_mvIdx].updatedAt = ntNotes[_mvIdx].deletedAt;
-        if (window._sbSaveNtNotes) window._sbSaveNtNotes([ntNotes[_mvIdx]]).catch(()=>{});
+        if (window._sb && window._sbGetUserId) {
+          (async () => {
+            const uid = await window._sbGetUserId();
+            if (!uid) return;
+            const item = ntNotes[_mvIdx];
+            await window._sb.from('notes').upsert({
+              id: uid + '_' + item.id, user_id: uid, item_id: item.id,
+              data: item, updated_at: item.updatedAt
+            }, { onConflict: 'id' }).catch(()=>{});
+          })();
+        }
       }
       ntNotes = ntNotes.filter(n => n.id !== noteId);
       if (window._idbCache) window._idbCache['nt_notes'] = ntNotes;
@@ -21405,6 +21443,9 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
     // ── 초기화 ─────────────────────────────────────────
     window.ntInit = function () {
+      // ★ 탭 진입마다 IDB 캐시에서 최신값으로 동기화 + deletedAt 필터 보장
+      const _ntCached = window._idbCache && window._idbCache['nt_notes'];
+      if (_ntCached && _ntCached.length > 0) ntNotes = _ntCached.filter(n => !n.deletedAt);
       // v236: 저장된 모드 복원
       _ntMode = localStorage.getItem('nt_mode') || 'all';
       const modeMap = { all: 'All', study: 'Study', deal: 'Deal' };
@@ -22935,8 +22976,9 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     var kcards = (window._idbCache && window._idbCache['ins_kcards'] || []);
     var kcardCats = (window._idbCache && window._idbCache['ins_kcat'] || ["📐 면적/건축", "⚖️ 권리분석", "📋 경매 절차", "💰 세금/비용", "🏘️ 상권/지역"]);
     window._kcardsSyncFromCache = function() {
+      // ★ deletedAt 필터 + 빈 배열도 반영
       const _c = window._idbCache && window._idbCache['ins_kcards'];
-      if (_c && _c.length > 0) kcards = _c;
+      if (_c !== undefined) kcards = (_c || []).filter(k => !k.deletedAt);
       const _cc = window._idbCache && window._idbCache['ins_kcat'];
       if (_cc && _cc.length > 0) kcardCats = _cc;
     };
@@ -23371,7 +23413,10 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       kcards = kcards.filter(k => k.id !== id);
       if (window._idbCache) window._idbCache['ins_kcards'] = kcards;
       if (window.idbSet) window.idbSet('ins_kcards', kcards).catch(()=>{});
-      renderKcatTabs(); renderKcards();
+      // ★ PC + 카테고리 탭 + 모바일 전 경로 동시 갱신
+      renderKcatTabs();
+      renderKcards();
+      if (typeof window.mbRenderKcards === 'function') window.mbRenderKcards();
       showToast('카드 삭제됨', 'ok');
     }
 
