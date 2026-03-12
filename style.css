@@ -2068,27 +2068,26 @@
 
     /* 필터 버튼 전용 스타일 */
     .map-search button#gfMapToggleBtn {
-      background: rgba(255,255,255,.04);
-      color: rgba(232,237,245,.6);
-      border: 1px solid rgba(232,237,245,.15);
+      background: #4370c8;
+      color: #fff;
+      border: none;
       padding: 6px 12px;
       font-size: 12px;
       display: flex;
       align-items: center;
       gap: 4px;
-      transition: background 0.15s, color 0.15s, border-color 0.15s;
     }
 
     .map-search button#gfMapToggleBtn:hover {
-      background: rgba(255,255,255,.08);
-      color: rgba(232,237,245,.85);
-      border-color: rgba(232,237,245,.3);
+      background: #3560b8;
+      color: #fff;
+      border-color: transparent;
     }
 
     .map-search button#gfMapToggleBtn.active {
-      background: rgba(79,142,255,.12);
-      border-color: rgba(79,142,255,.5);
-      color: #4f8eff;
+      background: #2a50a8;
+      border: none;
+      color: #fff;
     }
 
     /* 지도 도구 버튼 */
