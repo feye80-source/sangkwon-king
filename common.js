@@ -843,8 +843,9 @@
         if (ntCloud !== null) {
           const ntLocal = window._idbCache['nt_notes'] || [];
           const merged = _sbMergeById(ntCloud, ntLocal);
-          window._idbCache['nt_notes'] = merged;
-          await window.idbSet('nt_notes', merged);
+          const mergedActive = merged.filter(n => !n.deletedAt);
+          window._idbCache['nt_notes'] = mergedActive;
+          await window.idbSet('nt_notes', mergedActive);
           if (merged.length > ntCloud.length) window._sbSaveNtNotes(merged).catch(()=>{});
         } else {
           const ntLocal = window._idbCache['nt_notes'] || [];
