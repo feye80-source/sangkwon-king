@@ -916,15 +916,27 @@
         requestAnimationFrame(function() {
           try {
             // ntNotes 동기화: 모듈 초기화 시점에 IDB 캐시가 비어있었을 수 있음
+            // ★ 클라우드 로드 완료 후 ntNotes 항상 동기화 (length > 0 조건 제거)
             const freshNotes = window._idbCache && window._idbCache['nt_notes'];
-            if (freshNotes && freshNotes.length > 0 && typeof window._ntSetNotes === 'function') {
-              window._ntSetNotes(freshNotes);
+            if (freshNotes !== undefined && typeof window._ntSetNotes === 'function') {
+              window._ntSetNotes(freshNotes || []);
             }
           } catch(e) {}
           try { if (typeof _svBuildIndex === 'function') _svBuildIndex(window._idbCache && window._idbCache['re_sv']); } catch(e) {}
           try { if (typeof renderSaved === 'function') renderSaved(); } catch(e) {}
           try { if (typeof mbRenderSaved === 'function') mbRenderSaved(); } catch(e) {}
           try { if (typeof updSvCnt === 'function') updSvCnt(); } catch(e) {}
+          // ★ ins_notes 구버전 키 정리: nt_notes에 없는 항목은 ins_notes에서도 제거
+          try {
+            const ntArr = window._idbCache['nt_notes'] || [];
+            const ntIds = new Set(ntArr.map(n => n.id));
+            const insArr = window._idbCache['ins_notes'] || [];
+            const insFiltered = insArr.filter(n => ntIds.has(n.id));
+            if (insFiltered.length !== insArr.length) {
+              window._idbCache['ins_notes'] = insFiltered;
+              window.idbSet('ins_notes', insFiltered).catch(()=>{});
+            }
+          } catch(e) {}
           try { if (typeof ntRender === 'function') ntRender(); } catch(e) {}
           try { if (typeof wr2Render === 'function') wr2Render(); } catch(e) {}
           try {
@@ -20372,8 +20384,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       if (n === 1) { try { populateItemSelects(); } catch (e) { console.error('[populateItemSelects]', e); } }
       if (n === 4) {
         try {
-          // ★ 클라우드 로드 완료 후 첫 진입이면 캐시 동기화 먼저
-          if (window._sbCloudLoaded && typeof window._kcardsSyncFromCache === 'function') {
+          // ★ 탭 진입마다 IDB 캐시에서 최신값으로 동기화 (클라우드 로드 완료 여부 무관)
+          if (typeof window._kcardsSyncFromCache === 'function') {
             window._kcardsSyncFromCache();
           }
           renderKcatTabs(); renderKcards();
@@ -21435,6 +21447,9 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
     // ── 초기화 ─────────────────────────────────────────
     window.ntInit = function () {
+      // ★ 탭 열 때마다 IDB 캐시에서 최신값으로 동기화 (초기화 시점 타이밍 문제 해결)
+      const cached = window._idbCache && window._idbCache['nt_notes'];
+      if (cached && cached.length > 0) ntNotes = cached;
       // v236: 저장된 모드 복원
       _ntMode = localStorage.getItem('nt_mode') || 'all';
       const modeMap = { all: 'All', study: 'Study', deal: 'Deal' };
@@ -22965,8 +22980,9 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     var kcards = (window._idbCache && window._idbCache['ins_kcards'] || []);
     var kcardCats = (window._idbCache && window._idbCache['ins_kcat'] || ["📐 면적/건축", "⚖️ 권리분석", "📋 경매 절차", "💰 세금/비용", "🏘️ 상권/지역"]);
     window._kcardsSyncFromCache = function() {
+      // ★ length > 0 조건 제거: IDB에 저장된 최신값으로 항상 동기화
       const _c = window._idbCache && window._idbCache['ins_kcards'];
-      if (_c && _c.length > 0) kcards = _c;
+      if (_c !== undefined) kcards = _c || [];
       const _cc = window._idbCache && window._idbCache['ins_kcat'];
       if (_cc && _cc.length > 0) kcardCats = _cc;
     };
