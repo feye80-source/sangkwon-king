@@ -3420,20 +3420,6 @@
       // 지도탭은 overflow:hidden 필요
       const mc = document.querySelector('.main-content');
       if (mc) mc.classList.toggle('map-active', n === 2);
-
-      // 지도 관련 floating UI — 지도탭(2)일 때만 표시
-      const _mapOnlyIds = ['mapPanel','mapRightDock','measureResult'];
-      const _mapOnlyClasses = ['map-search-wrap','map-ext-bar'];
-      _mapOnlyIds.forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.style.visibility = n === 2 ? '' : 'hidden';
-      });
-      _mapOnlyClasses.forEach(cls => {
-        document.querySelectorAll('.' + cls).forEach(el => {
-          el.style.visibility = n === 2 ? '' : 'hidden';
-        });
-      });
-
       if (n === 1) renderSaved();
       if (n === 2) initMap();
       if (n === 3) onInsightOpen();
@@ -6037,8 +6023,13 @@
         if (types.length) types.forEach((t,i)=>setTimeout(()=>loadCurrentAreaByType(t),i*200));
         else if (typeof loadCurrentAreaProperties==='function') loadCurrentAreaProperties();
       } catch(e){}
+      // ★ 즉시 현재 마커도 gf 필터 적용 (재로드 전 화면 반영)
+      try { if (typeof refreshMapView === 'function') refreshMapView(); } catch(e) {}
       const panel = document.getElementById('gfPanel_map');
       if (panel) panel.style.display = 'none';
+      // 모바일 패널도 닫기
+      const mbBody = document.getElementById('mbGfBody');
+      if (mbBody) mbBody.style.display = 'none';
       const btn = document.getElementById('gfMapToggleBtn');
       if (btn) { btn.style.color='#4f8eff'; btn.style.borderColor='rgba(79,142,255,.5)'; btn.style.background='rgba(79,142,255,.12)'; }
       showToast('✅ 지도 필터 적용됨', 'ok');
@@ -6064,6 +6055,8 @@
       window._gfActive=false;
       const btn=document.getElementById('gfMapToggleBtn');
       if(btn){btn.style.color='rgba(232,237,245,.6)';btn.style.borderColor='rgba(232,237,245,.15)';btn.style.background='rgba(255,255,255,.04)';}
+      // ★ 즉시 필터 해제 반영 (refreshMapView)
+      try { if (typeof refreshMapView === 'function') refreshMapView(); } catch(e) {}
       // 마커 재로드
       try{
         const loaded=[...new Set((mapOverlays||[]).map(o=>o.item&&o.item.source).filter(Boolean))];
@@ -6085,17 +6078,26 @@
     // ── 지도탭 필터 패널 토글 ──────────────────────────────────────
     window.toggleMapGFilterPanel = function () {
       const panel = document.getElementById('gfPanel_map');
+      const mbBody = document.getElementById('mbGfBody'); // 모바일 전용
       const btn = document.getElementById('gfMapToggleBtn');
-      if (!panel) return;
-      const isOpen = panel.style.display !== 'none';
-      panel.style.display = isOpen ? 'none' : 'block';
-      if (btn) {
-        const active = isGFilterActive() || window._gfActive;
-        btn.style.color = (!isOpen || active) ? '#4f8eff' : 'rgba(232,237,245,.6)';
-        btn.style.borderColor = (!isOpen || active) ? 'rgba(79,142,255,.5)' : 'rgba(232,237,245,.15)';
-        btn.style.background = (!isOpen || active) ? 'rgba(79,142,255,.12)' : 'rgba(255,255,255,.04)';
+      // PC: gfPanel_map 토글
+      if (panel) {
+        const isOpen = panel.style.display !== 'none';
+        panel.style.display = isOpen ? 'none' : 'block';
+        if (btn) {
+          const active = isGFilterActive() || window._gfActive;
+          btn.style.color = (!isOpen || active) ? '#4f8eff' : 'rgba(232,237,245,.6)';
+          btn.style.borderColor = (!isOpen || active) ? 'rgba(79,142,255,.5)' : 'rgba(232,237,245,.15)';
+          btn.style.background = (!isOpen || active) ? 'rgba(79,142,255,.12)' : 'rgba(255,255,255,.04)';
+        }
+        if (!isOpen) renderGFilterPanels();
       }
-      if (!isOpen) renderGFilterPanels();
+      // 모바일: mbGfBody 토글 (gfPanel_map 없을 때)
+      if (!panel && mbBody) {
+        const isOpen = mbBody.style.display !== 'none';
+        mbBody.style.display = isOpen ? 'none' : 'block';
+        if (!isOpen) renderGFilterPanels();
+      }
     };
 
     // ── 지도탭 고급 필터 토글 ──────────────────────────────────────
@@ -14023,7 +14025,13 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         const yearOk = obj.propertyType === 'transaction' && _selYears.size > 0
           ? _selYears.has(String(obj.item && obj.item.year || '').replace(/[^0-9]/g, '').substring(0, 4))
           : true;
-        if (bounds.contain(pos) && typeOk && yearOk) {
+        // ★ [gf 필터] 조건 필터 적용 (applyMapFilter 또는 isGFilterActive 시)
+        let gfOk = true;
+        if ((window._gfActive || isGFilterActive()) && obj.item) {
+          if (!obj.item._norm && typeof normalizeItem === 'function') normalizeItem(obj.item);
+          gfOk = _checkFilter(obj.item.data || {}, 'gf', obj.item);
+        }
+        if (bounds.contain(pos) && typeOk && yearOk && gfOk) {
           obj.marker.setMap(map);
           if (obj.isOpen && window.innerWidth > 768) {  // 📱 모바일: overlay 표시 안 함
             obj.overlay.setMap(map);
@@ -14034,7 +14042,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         } else if (window._skipBoundsHide) {
           // ★ [v162] 불러오기 직후 bounds 재체크로 마커 숨김 방지
           // (loadCurrentAreaProperties bounds와 refreshMapView bounds가 미세하게 다를 수 있음)
-          if (typeOk && yearOk && obj.marker.getMap()) {
+          if (typeOk && yearOk && gfOk && obj.marker.getMap()) {
             count++; // 이미 표시 중인 마커는 유지
           }
         } else {
@@ -14072,7 +14080,13 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         else if (m.propertyType === 'assa' || src === '점포거래소') typeOk = mapFilters.assa !== false;
         else if (mode === 'listing' || mode === 'general' || src === '네이버부동산' || src === '네이버') typeOk = mapFilters.naver !== false;
 
-        if (inArea && typeOk) {
+        // ★ [gf 필터] mapMarkers에도 조건 필터 적용
+        let gfOkM = true;
+        if ((window._gfActive || isGFilterActive()) && m.item) {
+          if (!m.item._norm && typeof normalizeItem === 'function') normalizeItem(m.item);
+          gfOkM = _checkFilter(m.item.data || {}, 'gf', m.item);
+        }
+        if (inArea && typeOk && gfOkM) {
           m.marker.setMap(map); // 표시
         } else if (!window._skipBoundsHide) {
           m.marker.setMap(null); // 영역 밖 숨김

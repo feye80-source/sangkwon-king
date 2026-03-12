@@ -2058,6 +2058,8 @@ body {
   <div id="svOverloadWarn"></div>
   <div id="gfPanel_saved"></div>
   <div id="gfPanel_extract"></div>
+  <!-- ★ common.js 호환: gfPanel_map (PC용 ID - 모바일은 mbGfBody가 실제 UI) -->
+  <div id="gfPanel_map" style="display:none;"></div>
 
   <!-- 지도 PC용 요소들 -->
   <div id="kakaoKeyBanner"></div>
@@ -2211,7 +2213,7 @@ body {
 <script>if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
 
 <!-- 공통 로직 -->
-<script src="common.js?v=11"></script>
+<script src="common.js?v=12"></script>
 
 <!-- ════════════════════════════════════════════════════════
      mobile.js — 모바일 전용 초기화 및 UI 제어
@@ -4877,6 +4879,29 @@ body {
     if (bd) { bd.style.display = 'block'; bd.classList.add('open'); }
     mbBsTab('list');
   };
+
+  // ★ 모바일 전용: toggleMapGFilterPanel 오버라이드
+  // common.js의 gfPanel_map 기반 토글 대신 mbGfBody를 열고 지도 패널로 이동
+  (function() {
+    var _origToggle = window.toggleMapGFilterPanel;
+    window.toggleMapGFilterPanel = function() {
+      var mbBody = document.getElementById('mbGfBody');
+      if (mbBody) {
+        var isOpen = mbBody.style.display !== 'none';
+        mbBody.style.display = isOpen ? 'none' : 'block';
+        if (!isOpen && typeof renderGFilterPanels === 'function') {
+          try { renderGFilterPanels(); } catch(e) {}
+        }
+        // 지도 패널이 닫혀있으면 열기
+        var panel = document.getElementById('mb-map-panel');
+        if (panel && !panel.classList.contains('open')) {
+          if (typeof window.mbToggleMapPanel === 'function') window.mbToggleMapPanel();
+        }
+      } else if (typeof _origToggle === 'function') {
+        _origToggle();
+      }
+    };
+  })();
 
 })();
 </script>
