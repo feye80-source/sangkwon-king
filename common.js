@@ -807,12 +807,46 @@
     window._sbSaveNotes = async function(key, arr) {
       await kvSet('notes_' + key, arr);
     };
+    // 노트는 "클라우드 원본(source of truth)" 방식으로 운영
+    // - 기기별 로컬 병합 금지
+    // - 삭제 tombstone이 다시 살아나지 않도록 전체 스냅샷 기준 동기화
     window._sbSaveNtNotes = async function(arr) {
-      await tblSaveDirty('notes', arr);
+      await tblSaveArr('notes', arr || []);
       window._sbSyncStatus('☁️ 노트 동기화 완료', true);
     };
     window._sbMarkNtDirty = function(noteId) { return (window._markDirty || _markDirty)('notes', noteId); };
     window._sbLoadNtNotes = async function() { return await tblLoadArr('notes'); };
+    window._sbNoteSig = function(arr) {
+      return JSON.stringify((arr || []).map(n => [n.id, n.updatedAt || n.createdAt || '', n.deletedAt || '']));
+    };
+    window._sbApplyCloudNotes = async function(arr) {
+      const cloudAll = Array.isArray(arr) ? arr.slice() : [];
+      const cloudActive = cloudAll.filter(n => !n.deletedAt);
+      if (window._idbCache) window._idbCache['nt_notes'] = cloudAll;
+      try { await window.idbSet('nt_notes', cloudAll); } catch(e) {}
+      window._sbLastNoteSig = window._sbNoteSig(cloudAll);
+      try {
+        if (typeof window._ntSetNotes === 'function') window._ntSetNotes(cloudAll);
+        if (typeof ntRender === 'function') ntRender();
+        if (typeof ntOpen === 'function') {
+          const activeId = (typeof ntActiveId !== 'undefined') ? ntActiveId : window.ntActiveId;
+          if (activeId && cloudActive.find(n => n.id === activeId)) ntOpen(activeId);
+        }
+      } catch(e) { console.warn('[SB] applyCloudNotes render error', e); }
+      return cloudAll;
+    };
+    window._sbRefreshNotesFromCloud = async function() {
+      try {
+        const cloud = await window._sbLoadNtNotes();
+        if (cloud === null) return null;
+        const sig = window._sbNoteSig(cloud);
+        if (sig !== window._sbLastNoteSig) {
+          await window._sbApplyCloudNotes(cloud);
+          window._sbSyncStatus('☁️ 노트 동기화 반영', true);
+        }
+        return cloud;
+      } catch(e) { console.warn('[SB] refreshNotesFromCloud error', e); return null; }
+    };
 
     // ─── 작업룸 동기화 ────────────────────────────────────────
     window._sbSaveRooms = async function(arr) {
@@ -1029,17 +1063,10 @@
         // 로그인 시 전체 로드 제거 → 카드 열 때 _sbLoadAi(itemId) 단건 조회
 
         // ── 노트 ──
+        // 노트는 클라우드 원본 우선: 로컬과 merge 하지 않음
         const ntCloud = await window._sbLoadNtNotes();
         if (ntCloud !== null) {
-          const ntLocal = window._idbCache['nt_notes'] || [];
-          const merged = _sbMergeById(ntCloud, ntLocal);
-          const mergedActive = merged.filter(n => !n.deletedAt);
-          window._idbCache['nt_notes'] = merged;          // tombstone 포함 상태로 IDB 저장
-          await window.idbSet('nt_notes', merged);
-          if (merged.length > ntCloud.length) window._sbSaveNtNotes(merged).catch(()=>{});
-        } else {
-          const ntLocal = window._idbCache['nt_notes'] || [];
-          if (ntLocal.length) window._sbSaveNtNotes(ntLocal).catch(()=>{});
+          await window._sbApplyCloudNotes(ntCloud);
         }
 
         // ── 작업룸 ──
@@ -1135,6 +1162,21 @@
         } catch(e) { console.warn('[SB] API key sync error', e); }
 
         window._sbSyncStatus('✅ 클라우드 로드 완료', true);
+
+        // 노트는 실시간 리스너 대신 안전한 주기 refresh 사용
+        try {
+          if (!window._sbNotesPollStarted) {
+            window._sbNotesPollStarted = true;
+            window._sbNotesPollTimer = setInterval(() => {
+              if (document.visibilityState === 'visible') window._sbRefreshNotesFromCloud().catch(()=>{});
+            }, 5000);
+            window.addEventListener('pageshow', () => { window._sbRefreshNotesFromCloud().catch(()=>{}); });
+            document.addEventListener('visibilitychange', () => {
+              if (document.visibilityState === 'visible') window._sbRefreshNotesFromCloud().catch(()=>{});
+            });
+            setTimeout(() => { window._sbRefreshNotesFromCloud().catch(()=>{}); }, 1200);
+          }
+        } catch(e) { console.warn('[SB] note poll setup error', e); }
         window._sbCloudLoaded = true; // ★ 클라우드 로드 완료 플래그
 
         // ── 클라우드 동기화 완료 후 diff 반영 (현재 보이는 탭만 갱신) ──
@@ -20689,7 +20731,11 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       if(window.idbSet)window.idbSet('nt_notes',ntNotes).catch(()=>{});
       const dirtyId = forceId || ntActiveId;
       if (dirtyId && window._sbMarkNtDirty) window._sbMarkNtDirty(dirtyId);
-      if (window._sbSaveNtNotes) window._sbSaveNtNotes(ntNotes).catch(e=>{});
+      if (window._sbSaveNtNotes) {
+        window._sbSaveNtNotes(ntNotes).then(() => {
+          if (window._sbRefreshNotesFromCloud) setTimeout(() => window._sbRefreshNotesFromCloud().catch(()=>{}), 250);
+        }).catch(e=>{});
+      }
     }
 
     // v236: 모드 전환
@@ -21464,6 +21510,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       ntNotes = ntNotes.filter(n => n.id !== id);
       ntActiveId = null; ntRender(); ntShowEmpty();
       showToast('삭제되었습니다', 'ok');
+      if (window._sbRefreshNotesFromCloud) setTimeout(() => window._sbRefreshNotesFromCloud().catch(()=>{}), 300);
     };
 
     // ── 노트 카드 빠른 삭제 (확인 팝업) ─────────────────
@@ -21496,6 +21543,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       if (ntActiveId === id) { ntActiveId = null; ntShowEmpty(); }
       ntRender();
       showToast('삭제됐어요', 'ok');
+      if (window._sbRefreshNotesFromCloud) setTimeout(() => window._sbRefreshNotesFromCloud().catch(()=>{}), 300);
     };
 
     // ── 노트 → 작업룸 이동 ─────────────────────────────
@@ -24402,6 +24450,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       saveSites(sites);
       renderSiteBookmarks();
       showToast('삭제되었습니다', 'ok');
+      if (window._sbRefreshNotesFromCloud) setTimeout(() => window._sbRefreshNotesFromCloud().catch(()=>{}), 300);
     };
 
     // onInsightOpen: updateWatchCnt는 원본 함수에 통합됨
