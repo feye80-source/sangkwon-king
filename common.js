@@ -811,7 +811,10 @@
     // - 기기별 로컬 병합 금지
     // - 삭제 tombstone이 다시 살아나지 않도록 전체 스냅샷 기준 동기화
     window._sbSaveNtNotes = async function(arr) {
-      await tblSaveArr('notes', arr || []);
+      // 노트는 전체 배열 upsert 금지.
+      // stale local 배열이 삭제 tombstone을 active로 덮어써서 부활시키는 문제를 막기 위해
+      // dirty note만 저장한다. 삭제는 ntDelete/ntDeleteConfirm에서 tombstone 개별 upsert 처리.
+      await tblSaveDirty('notes', arr || []);
       window._sbSyncStatus('☁️ 노트 동기화 완료', true);
     };
     window._sbMarkNtDirty = function(noteId) { return (window._markDirty || _markDirty)('notes', noteId); };
