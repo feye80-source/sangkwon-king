@@ -2250,7 +2250,7 @@ window.__FIREBASE_CONFIG = {
 <script>if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
 
 <!-- 공통 로직 -->
-<script src="common.js"></script>
+<script src="common.js?v=18"></script>
 
 <!-- ════════════════════════════════════════════════════════
      mobile.js — 모바일 전용 초기화 및 UI 제어
@@ -4232,7 +4232,7 @@ window.__FIREBASE_CONFIG = {
 
   window.mbRenderKcards = function() {
     if (typeof window._kcardsSyncFromCache === 'function') window._kcardsSyncFromCache();
-    var kcards = (window._idbCache && window._idbCache['ins_kcards']) || [];
+    var kcards = ((window._idbCache && window._idbCache['ins_kcards']) || []).filter(function(k){ return !k.deletedAt; });
     var kcardCats = (window._idbCache && window._idbCache['ins_kcat']) || [];
     var catEl = document.getElementById('mb-kcat-tabs');
     var gridEl = document.getElementById('mb-kcard-grid');
