@@ -30523,6 +30523,8 @@ ${newsText}
     const db = firebase.firestore();
     window.firebaseAuth = auth;
     window.firebaseDB = db;
+    // 방문기록 삭제해도 Firebase 세션 유지
+    auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(e => console.warn("[FB] setPersistence 실패:", e));
 
     // ── 구독 핸들 ──
     let unsubs = {};
@@ -30668,8 +30670,11 @@ ${newsText}
     function applyKcards(rows){
       try {
         const all = rows || [];
+        // deletedAt 포함 전체를 캐시/IDB에 저장 (tombstone 보존)
         if (window._idbCache) window._idbCache['ins_kcards'] = all;
         if (window.idbSet) window.idbSet('ins_kcards', all).catch(()=>{});
+        // 렌더 전 _kcardsSyncFromCache로 deletedAt 필터 적용
+        if (typeof window._kcardsSyncFromCache === 'function') window._kcardsSyncFromCache();
         // PC: insRender/renderKcards, 모바일: mbRenderKcards
         if (typeof window.insRender === 'function') window.insRender();
         else if (typeof window.renderKcards === 'function') window.renderKcards();
