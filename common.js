@@ -9,7 +9,7 @@
    블록1: 프록시/설정
 ════════════════════════════════════════════════════════ */
     /* ★ 프록시 서버 파일명 — 여기서 한 번만 수정하면 전체 적용 */
-    window.PROXY_FILENAME = 'proxy_server_floor_v4.py';
+    window.PROXY_FILENAME = 'proxy_server.py';
     /* ★ 프록시 서버 주소 (포트 변경 시 여기만 수정) */
     window.PROXY_URL = 'http://127.0.0.1:8080'; // 로컬 py 서버 (항상 고정)
     window.EDGE_URL = 'https://qgfkhbcpidmraxxjtetl.supabase.co/functions/v1/proxy';
@@ -24378,7 +24378,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       <b>체크리스트:</b><br>
       1️⃣ API 키: 공공데이터포털 <b>Decoding 인증키</b> 사용 여부 확인<br>
       2️⃣ 공공데이터포털에서 <b>온비드(getBidPblancListInfo)</b> 서비스 활용 신청 완료 여부 확인<br>
-      3️⃣ 프록시 필요시: <code id="proxyFileNameDisplay">python3 proxy_server_floor_v10.py</code> (포트 8080)
+      3️⃣ 프록시 필요시: <code id="proxyFileNameDisplay">python3 proxy_server.py</code> (포트 8080)
     </div>`;
         showToast('온비드 API 오류', 'err');
       }
@@ -28623,7 +28623,7 @@ ${newsContext}
             })
             .catch(function (e) {
               body.innerHTML = '<div class="sbiz-card" style="color:#ff8c42;">⚠️ 프록시 서버 연결 실패<br>'
-                + '<small style="color:rgba(200,210,230,.4);">python3 proxy_server_floor_v8.py 실행 확인</small></div>';
+                + '<small style="color:rgba(200,210,230,.4);">python3 proxy_server.py 실행 확인</small></div>';
             });
         }
 
@@ -30335,7 +30335,7 @@ ${newsContext}
 
           if (allNews.length === 0) {
             const proxyMsg = fetchFail === keywords.length
-              ? '프록시 서버(8080)가 실행 중인지 확인하세요. <code>python3 proxy_server_floor_v16.py</code>'
+              ? '프록시 서버(8080)가 실행 중인지 확인하세요. <code>python3 proxy_server.py</code>'
               : '수집된 뉴스가 없습니다. 키워드나 API 키를 확인하세요.';
             _el('clipSentimentBanner').innerHTML = `
               \x3cdiv style="background:rgba(255,77,77,.08);border:1px solid rgba(255,77,77,.25);border-radius:9px;padding:14px;text-align:center;">
