@@ -30506,8 +30506,8 @@ ${newsText}
 
 /* ===== Firebase auth/firestore shim + realtime sync (v18) ===== */
 (function(){
-  if (window.__SK_FB_PATCH_V19__) return;
-  window.__SK_FB_PATCH_V19__ = true;
+  if (window.__SK_FB_PATCH__) return;
+  window.__SK_FB_PATCH__ = true;
 
   function boot(){
     if (!window.firebase || !window.__FIREBASE_CONFIG) {
@@ -30546,31 +30546,18 @@ ${newsText}
     // ── 공통: 배열을 Firestore 컬렉션에 batch upsert ──
     async function saveCol(col, uid, rows){
       if (!uid || !rows || !rows.length) return;
-      // Firestore는 undefined 값을 허용하지 않으므로 제거
-      function stripUndefined(obj) {
-        if (Array.isArray(obj)) return obj.map(stripUndefined);
-        if (obj !== null && typeof obj === 'object') {
-          const out = {};
-          Object.keys(obj).forEach(k => {
-            if (obj[k] !== undefined) out[k] = stripUndefined(obj[k]);
-          });
-          return out;
-        }
-        return obj;
-      }
       const chunks = [];
       for (let i = 0; i < rows.length; i += 400) chunks.push(rows.slice(i, i+400));
       for (const chunk of chunks) {
         const batch = db.batch();
         chunk.forEach(row => {
           const docId = uid + '_' + (row.id || Math.random().toString(36).slice(2));
-          const data = stripUndefined({
+          batch.set(db.collection(col).doc(docId), {
             ...row,
             user_id: uid,
             _docId: docId,
             updated_at: row.updatedAt || row.updated_at || new Date().toISOString()
-          });
-          batch.set(db.collection(col).doc(docId), data, { merge: true });
+          }, { merge: true });
         });
         await batch.commit();
       }
