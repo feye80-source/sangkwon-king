@@ -30546,18 +30546,31 @@ ${newsText}
     // ── 공통: 배열을 Firestore 컬렉션에 batch upsert ──
     async function saveCol(col, uid, rows){
       if (!uid || !rows || !rows.length) return;
+      // Firestore는 undefined 값을 허용하지 않으므로 재귀적으로 제거
+      function stripUndefined(obj) {
+        if (Array.isArray(obj)) return obj.map(stripUndefined);
+        if (obj !== null && typeof obj === 'object') {
+          const out = {};
+          Object.keys(obj).forEach(k => {
+            if (obj[k] !== undefined) out[k] = stripUndefined(obj[k]);
+          });
+          return out;
+        }
+        return obj;
+      }
       const chunks = [];
       for (let i = 0; i < rows.length; i += 400) chunks.push(rows.slice(i, i+400));
       for (const chunk of chunks) {
         const batch = db.batch();
         chunk.forEach(row => {
           const docId = uid + '_' + (row.id || Math.random().toString(36).slice(2));
-          batch.set(db.collection(col).doc(docId), {
+          const data = stripUndefined({
             ...row,
             user_id: uid,
             _docId: docId,
             updated_at: row.updatedAt || row.updated_at || new Date().toISOString()
-          }, { merge: true });
+          });
+          batch.set(db.collection(col).doc(docId), data, { merge: true });
         });
         await batch.commit();
       }
