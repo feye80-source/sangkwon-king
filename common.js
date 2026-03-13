@@ -30614,7 +30614,20 @@ ${newsText}
         if (window._idbCache) window._idbCache['wr2_rooms'] = all;
         if (window.idbSet) window.idbSet('wr2_rooms', all).catch(()=>{});
         if (window.wr2State) window.wr2State.rooms = active;
-        if (window.wr2Render) window.wr2Render();
+        // PC: wr2Render, 모바일: mbRoomLoad(현재 열린 룸) + 룸 선택박스 갱신
+        if (typeof window.wr2Render === 'function') window.wr2Render();
+        if (typeof window.mbRoomLoad === 'function') {
+          // 룸 선택 드롭다운 갱신
+          const sel = document.getElementById('mb-room-sel');
+          if (sel) {
+            const prev = sel.value;
+            sel.innerHTML = '<option value="">-- 작업룸 선택 --</option>' +
+              active.map(r => '<option value="' + r.id + '">' + (r.name || '작업룸') + '</option>').join('');
+            if (prev) sel.value = prev;
+          }
+          const activeId = window._mbActiveRoomId || (active[0] && active[0].id) || '';
+          if (activeId) window.mbRoomLoad(activeId);
+        }
       } catch(e){ console.warn('[FB] applyRooms', e); }
     }
 
@@ -30631,22 +30644,24 @@ ${newsText}
     function applySv(rows){
       try {
         const all = rows || [];
-        const active = all.filter(r => !r.deletedAt);
         if (window._idbCache) window._idbCache['re_sv'] = all;
         if (window.idbSet) window.idbSet('re_sv', all).catch(()=>{});
         if (typeof _svBuildIndex === 'function') _svBuildIndex(all);
+        // PC: renderSvList, 모바일: mbRenderSaved
         if (typeof window.renderSvList === 'function') window.renderSvList();
+        if (typeof window.mbRenderSaved === 'function') window.mbRenderSaved();
       } catch(e){ console.warn('[FB] applySv', e); }
     }
 
     function applyKcards(rows){
       try {
         const all = rows || [];
-        const active = all.filter(k => !k.deletedAt);
         if (window._idbCache) window._idbCache['ins_kcards'] = all;
         if (window.idbSet) window.idbSet('ins_kcards', all).catch(()=>{});
+        // PC: insRender/renderKcards, 모바일: mbRenderKcards
         if (typeof window.insRender === 'function') window.insRender();
         else if (typeof window.renderKcards === 'function') window.renderKcards();
+        if (typeof window.mbRenderKcards === 'function') window.mbRenderKcards();
       } catch(e){ console.warn('[FB] applyKcards', e); }
     }
 
