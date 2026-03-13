@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>LensFlow</title>
+<link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+<div class="header">
+  <div class="header-top">
+    <div class="logo">
+      <div class="logo-icon">
+        <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="16" cy="16" r="15" fill="#080B14" stroke="url(#ring)" stroke-width="1.2"/>
+          <defs>
+            <linearGradient id="ring" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#00D2B4"/>
+              <stop offset="100%" stop-color="#6C63FF"/>
+            </linearGradient>
+            <linearGradient id="topFill" x1="16" y1="5" x2="16" y2="16" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#4DFFE6"/>
+              <stop offset="100%" stop-color="#00D2B4"/>
+            </linearGradient>
+            <linearGradient id="botFill" x1="16" y1="16" x2="16" y2="27" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#6C63FF"/>
+              <stop offset="100%" stop-color="#4A3FA0"/>
+            </linearGradient>
+          </defs>
+          <!-- 상단 삼각형 -->
+          <polygon points="16,5 24,16 8,16" fill="url(#topFill)" opacity="0.92"/>
+          <!-- 하단 삼각형 -->
+          <polygon points="8,16 24,16 16,27" fill="url(#botFill)" opacity="0.88"/>
+          <!-- 중앙 하이라이트 -->
+          <polygon points="16,10 19.5,15.5 12.5,15.5" fill="white" opacity="0.30"/>
+        </svg>
+      </div>
+      <div>
+        <div class="logo-name">LensFlow</div>
+        <div class="logo-sub">네이버 부동산 AI 분석</div>
+      </div>
+    </div>
+    <div class="status-dot" id="statusDot"></div>
+  </div>
+</div>
+
+<div class="tab-nav">
+  <button class="tab-btn active" data-tab="market"><span class="tab-icon">📊</span>시장 분석</button>
+  <button class="tab-btn" data-tab="auction"><span class="tab-icon">🔨</span>경매계산</button>
+  <button class="tab-btn" data-tab="calc"><span class="tab-icon">🧮</span>계산기</button>
+</div>
+
+<div class="main">
+
+<!-- ══════════════════════════════════════ -->
+<!-- 1. 시장분석 탭                         -->
+<!-- ══════════════════════════════════════ -->
+<div class="tab-panel active" id="tab-market">
+  <div class="collect-bar">
+    <div class="collect-count-badge"><span id="marketCount">0</span>건</div>
+    <button id="toggleCollectBtn" class="collect-btn-main">▶ 수집 시작</button>
+    <button id="refreshListBtn" class="collect-btn-sub">🔄</button>
+    <button id="clearListBtn" class="collect-btn-danger">🗑</button>
+  </div>
+  <div id="collectProgressWrap" style="display:none;padding:0 10px 6px;box-sizing:border-box;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;">
+      <span id="collectProgressLabel" style="font-size:10px;color:var(--text3)">수집 중...</span>
+      <span id="collectProgressPct" style="font-size:10px;color:var(--primary-light);font-weight:600">0%</span>
+    </div>
+    <div style="height:5px;background:var(--bg3);border-radius:3px;overflow:hidden;">
+      <div id="collectProgressBar" style="height:100%;width:0%;background:linear-gradient(90deg,var(--accent),var(--primary-light));border-radius:3px;transition:width 0.4s ease;"></div>
+    </div>
+  </div>
+  <div class="sub-tab-nav">
+    <button class="sub-tab-btn active" data-sub="summary">📊 요약</button>
+    <button class="sub-tab-btn" data-sub="yield">📈 수익률</button>
+    <button class="sub-tab-btn" data-sub="listview">📋 목록</button>
+  </div>
+  <div class="sub-tab-panel active" id="sub-summary">
+    <div id="marketContent">
+      <div class="no-listing"><div class="icon">🗺️</div><p>▶ 수집 시작 후 스크롤하거나 매물을 클릭하세요</p></div>
+    </div>
+    <div class="tab-download-area">
+      <button id="downloadMarketBtn" class="download-btn-full">⬇️ 수익률 CSV</button>
+      <div style="display:flex;gap:6px;margin-top:6px">
+        <button id="marketImgBtn" class="download-btn-full" style="font-size:10px">🖼️ 이미지</button>
+        <button id="marketPdfBtn" class="download-btn-full" style="font-size:10px">📄 PDF</button>
+      </div>
+      <!-- 작업 1: 중개업소 TOP3 -->
+      <div id="realtor-rank-container" style="margin-top:12px;padding:0 2px;"></div>
+    </div>
+  </div>
+  <div class="sub-tab-panel" id="sub-yield">
+    <div id="yi_apiKeyBar" style="margin-bottom:8px;padding:7px 10px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;display:flex;align-items:center;gap:6px;">
+      <span style="font-size:11px;color:var(--text3);flex-shrink:0">🤖 Gemini</span>
+      <input type="password" id="yi_apiKey" placeholder="AIzaSy..." style="flex:1;padding:4px 7px;background:var(--bg3);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:11px;outline:none;">
+      <button id="yi_apiKeySaveBtn" style="padding:4px 9px;background:var(--accent);border:none;border-radius:5px;color:var(--bg);font-size:11px;cursor:pointer;flex-shrink:0;font-weight:600">저장</button>
+    </div>
+    <div id="yi_dropZone" style="margin-bottom:8px;padding:14px;background:var(--bg2);border:2px dashed var(--border);border-radius:10px;text-align:center;cursor:pointer;">
+      <div style="font-size:20px;margin-bottom:4px">🖼️</div>
+      <div style="font-size:12px;color:var(--text2);font-weight:600">스크린샷 드래그 or 클릭</div>
+      <div style="font-size:10px;color:var(--text3);margin-top:2px">매물 캡처 → 자동 입력</div>
+      <input type="file" id="yi_imgInput" accept="image/*" style="display:none">
+    </div>
+    <div id="yi_parseStatus" style="display:none;margin-bottom:8px;padding:8px 10px;border-radius:8px;font-size:11px;"></div>
+    <div id="yi_groupTabs" style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px;overflow-x:auto;padding-bottom:2px;"></div>
+    <div class="calc-section" style="margin-bottom:8px">
+      <div class="calc-title">📈 수익률 입력</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px;">
+        <div class="input-group" style="margin:0"><div class="input-label">매물명</div><input type="text" class="calc-input" id="yi_name" placeholder="예) 스타벅스 1층" style="width:100%"></div>
+        <div class="input-group" style="margin:0"><div class="input-label">층</div><input type="text" class="calc-input" id="yi_floor" placeholder="예) 1" style="width:100%"></div>
+        <div class="input-group" style="margin:0"><div class="input-label">매매가 <span style="color:var(--text3);font-size:9px">(만원)</span></div><input type="text" class="calc-input" id="yi_sale" placeholder="예) 19000" style="width:100%"></div>
+        <div class="input-group" style="margin:0"><div class="input-label">보증금 <span style="color:var(--text3);font-size:9px">(만원)</span></div><input type="text" class="calc-input" id="yi_deposit" placeholder="예) 1200" style="width:100%"></div>
+        <div class="input-group" style="margin:0"><div class="input-label">월세 <span style="color:var(--text3);font-size:9px">(만원)</span></div><input type="text" class="calc-input" id="yi_monthly" placeholder="예) 95" style="width:100%"></div>
+        <div class="input-group" style="margin:0;grid-column:1/-1">
+          <div class="input-label">전용면적</div>
+          <div class="area-dual-row">
+            <div class="input-row" style="flex:1"><input type="number" class="calc-input area-sqm" id="yi_area" placeholder="㎡" step="0.1"><span class="input-unit">㎡</span></div>
+            <span class="area-eq">＝</span>
+            <div class="input-row" style="flex:1"><input type="number" class="calc-input area-py" id="yi_area_py" placeholder="평" step="0.01"><span class="input-unit">평</span></div>
+          </div>
+        </div>
+        <div class="input-group" style="margin:0"><div class="input-label">방향</div><input type="text" class="calc-input" id="yi_direction" placeholder="예) 남향" style="width:100%"></div>
+        <div class="input-group" style="margin:0"><div class="input-label">그룹</div><select class="calc-input" id="yi_groupSelect" style="width:100%"><option value="">그룹 없음</option></select></div>
+        <div class="input-group" style="grid-column:1/-1;margin:0"><div class="input-label">비고</div><input type="text" class="calc-input" id="yi_memo" placeholder="메모" style="width:100%"></div>
+      </div>
+      <div id="yi_preview" style="display:none;padding:8px;background:rgba(0,210,190,0.1);border:1px solid rgba(0,210,190,0.3);border-radius:8px;margin-bottom:8px;font-size:12px;">
+        <span style="color:var(--text3)">수익률</span>
+        <span id="yi_yr" style="font-size:16px;font-weight:700;color:var(--accent);margin:0 8px">-</span>
+        <span style="color:var(--text3);font-size:10px">| 실투자수익률</span>
+        <span id="yi_yr2" style="font-weight:700;color:var(--orange);margin-left:4px">-</span>
+      </div>
+      <button id="yi_addBtn" class="calc-btn" style="width:100%">+ 목록에 추가</button>
+    </div>
+    <div class="calc-section" style="margin-bottom:8px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+        <div class="calc-title" style="margin:0">📋 수익률 목록 <span id="yi_count" style="font-size:10px;color:var(--text3);font-weight:400"></span></div>
+        <div style="display:flex;gap:4px;">
+          <button id="yi_importBtn" style="font-size:10px;padding:2px 7px;background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:5px;cursor:pointer">⬆️</button>
+          <button id="yi_exportBtn" style="font-size:10px;padding:2px 7px;background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:5px;cursor:pointer">⬇️ CSV</button>
+          <button id="yi_clearBtn" style="font-size:10px;padding:2px 7px;background:rgba(255,100,100,0.1);border:1px solid rgba(255,100,100,0.25);color:#ff6b6b;border-radius:5px;cursor:pointer">삭제</button>
+        </div>
+      </div>
+      <input type="file" id="yi_fileInput" accept=".csv" style="display:none">
+      <div id="yi_list" style="max-height:300px;overflow-y:auto;">
+        <div class="no-listing" style="padding:20px 0"><div class="icon" style="font-size:24px">📈</div><p style="font-size:11px">입력된 매물이 없습니다</p></div>
+      </div>
+    </div>
+    <div id="yi_summary" style="display:none" class="calc-section">
+      <div class="calc-title">📊 수익률 분석 요약</div>
+      <div id="yi_summaryGrid"></div>
+    </div>
+    <div class="tab-download-area">
+      <button id="yi_csvDownloadBtn" class="download-btn-full">⬇️ CSV</button>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px;">
+        <button id="yi_pngDownloadBtn" class="download-btn-full" style="font-size:10px">🖼️ 이미지</button>
+        <button id="yi_pdfDownloadBtn" class="download-btn-full" style="font-size:10px">📄 PDF</button>
+      </div>
+    </div>
+  </div>
+  <div class="sub-tab-panel" id="sub-listview">
+    <div id="listviewContent"><div class="no-listing"><div class="icon">📋</div><p>수집된 매물이 없습니다</p></div></div>
+    <div class="tab-download-area"><button id="downloadListBtn" class="download-btn-full">⬇️ 목록 CSV</button></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════ -->
+<!-- 2. 통합 계산기 탭                      -->
+<!-- ══════════════════════════════════════ -->
+<div class="tab-panel" id="tab-calc">
+  <div class="sub-tab-nav">
+    <button class="sub-tab-btn active" data-ctab="yield">📈 수익률</button>
+    <button class="sub-tab-btn" data-ctab="tax">📋 세금</button>
+    <button class="sub-tab-btn" data-ctab="loan">🏦 대출</button>
+    <button class="sub-tab-btn" data-ctab="area">📐 면적</button>
+    <button class="sub-tab-btn" data-ctab="saved">📝 저장</button>
+  </div>
+
+  <!-- ── 수익률 계산기 (스마트 역산) ── -->
+  <div class="sub-tab-panel active" id="ctab-yield">
+    <div class="calc-section">
+      <div class="calc-title">📈 수익률 계산기</div>
+      <div class="smart-desc">🎯 버튼으로 계산할 항목 고정 → 나머지 입력하면 자동계산</div>
+      <div class="smart-row">
+        <div class="smart-label-col"><div class="smart-badge">매매가</div><span class="input-unit" style="font-size:10px">원</span></div>
+        <input type="text" class="calc-input smart-input" id="sm_price" placeholder="0">
+        <button class="smart-pin-btn" id="sm_pin_price" data-field="price" title="계산 대상으로 고정">🎯</button>
+      </div>
+      <div class="smart-row">
+        <div class="smart-label-col"><div class="smart-badge">보증금</div><span class="input-unit" style="font-size:10px">원</span></div>
+        <input type="text" class="calc-input smart-input" id="sm_deposit" placeholder="0">
+        <button class="smart-pin-btn" id="sm_pin_deposit" data-field="deposit" title="계산 대상으로 고정">🎯</button>
+      </div>
+      <div class="smart-row">
+        <div class="smart-label-col"><div class="smart-badge">월세</div><span class="input-unit" style="font-size:10px">원/월</span></div>
+        <input type="text" class="calc-input smart-input" id="sm_monthly" placeholder="0">
+        <button class="smart-pin-btn" id="sm_pin_monthly" data-field="monthly" title="계산 대상으로 고정">🎯</button>
+      </div>
+      <div class="smart-row">
+        <div class="smart-label-col"><div class="smart-badge" style="background:var(--accent);color:var(--bg)">수익률</div><span class="input-unit" style="font-size:10px">%</span></div>
+        <input type="number" class="calc-input smart-input" id="sm_yield" placeholder="0.00" step="0.01">
+        <button class="smart-pin-btn active" id="sm_pin_yield" data-field="yield" title="계산 대상으로 고정">🎯</button>
+      </div>
+      <div class="smart-row">
+        <div class="smart-label-col"><div class="smart-badge" style="background:var(--bg3)">연비용</div><span class="input-unit" style="font-size:10px">원/년</span></div>
+        <input type="text" class="calc-input smart-input" id="sm_expense" placeholder="공실·관리비 등 (선택)">
+        <div style="width:28px"></div>
+      </div>
+    </div>
+    <div id="sm_result" class="calc-section" style="display:none">
+      <div class="calc-title">📊 계산 결과</div>
+      <div class="result-grid" id="sm_resultGrid"></div>
+      <div class="divider"></div>
+      <div id="sm_resultDetail" style="font-size:11px;color:var(--text2);line-height:1.8;"></div>
+      <div id="sm_noi_wrap" style="display:none;margin-top:8px;">
+        <div class="divider"></div>
+        <div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:6px;">📊 NOI 순수익률</div>
+        <div class="yc-result-box">
+          <div class="yc-result-row"><span class="yc-result-label">순수익률 (NOI)</span><span class="yc-result-val highlight" id="yc_r_noi">-</span></div>
+          <div class="yc-result-row"><span class="yc-result-label">연 순수익 (비용차감)</span><span class="yc-result-val" id="yc_r_noi_amt">-</span></div>
+          <div class="yc-result-row"><span class="yc-result-label">실투자 수익률</span><span class="yc-result-val green" id="yc_r_realyield">-</span></div>
+        </div>
+      </div>
+      <div style="margin-top:8px;">
+        <div class="divider"></div>
+        <div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:6px;">🔄 목표수익률별 필요 월세</div>
+        <div id="sm_reverse_table"></div>
+      </div>
+    </div>
+    <div style="padding:10px;background:var(--bg2);border-radius:8px;font-size:10px;color:var(--text3);line-height:1.7;margin-top:8px;">
+      💡 수익률 = (월세×12) ÷ (매매가-보증금) × 100<br>
+      🟢 우수 6%↑ &nbsp; 🟡 양호 4~6% &nbsp; 🔴 주의 4%↓
+    </div>
+  </div>
+
+  <!-- ── 세금 계산기 ── -->
+  <div class="sub-tab-panel" id="ctab-tax">
+    <div class="calc-section">
+      <div class="calc-title">📋 세금 계산</div>
+      <div style="margin-bottom:10px;">
+        <div class="input-label" style="margin-bottom:4px">투자자 유형</div>
+        <div class="toggle-group">
+          <button class="toggle-btn active" id="taxTypePersonal" data-tax-type="personal">👤 개인</button>
+          <button class="toggle-btn" id="taxTypeBusiness" data-tax-type="business">🏪 개인사업자</button>
+          <button class="toggle-btn" id="taxTypeCorp" data-tax-type="corp">🏢 법인</button>
+        </div>
+      </div>
+      <div class="sub-tab-nav" style="margin-bottom:8px;">
+        <button class="sub-tab-btn active" data-tax-sub="acquire">취득세</button>
+        <button class="sub-tab-btn" data-tax-sub="income">임대소득세</button>
+        <button class="sub-tab-btn" data-tax-sub="transfer">양도세</button>
+        <button class="sub-tab-btn" data-tax-sub="hold">보유세</button>
+      </div>
+      <!-- 취득세 -->
+      <div id="tax-acquire" class="sub-tax-panel">
+        <div class="input-group"><div class="input-label">취득가액</div><div class="input-row"><input type="text" class="calc-input" id="tax_acq_price" placeholder="0"><span class="input-unit">원</span></div></div>
+        <div class="input-group"><div class="input-label">물건 종류</div>
+          <select class="calc-input" id="tax_acq_type">
+            <option value="4.6">상가/오피스텔 (4.6%)</option>
+            <option value="4.0">주택 85㎡이하 (4.0%)</option>
+            <option value="1.1">주택 6억이하 1주택 (1.1%)</option>
+          </select>
+        </div>
+        <div class="yc-info-box" id="tax_acq_type_note" style="margin-top:6px;font-size:10px">법인은 취득세 중과(최대 9.4%) 별도 검토 필요</div>
+        <div id="taxAcqResult" style="display:none;margin-top:8px;"></div>
+      </div>
+      <!-- 임대소득세 -->
+      <div id="tax-income" class="sub-tax-panel" style="display:none">
+        <div class="yc-info-box" id="tax_income_guide" style="font-size:10px;margin-bottom:8px">개인: 종합소득세 누진세율(6~45%) / 개인사업자: 동일 / 법인: 법인세(9~24%)</div>
+        <div class="input-group"><div class="input-label">연 임대수입 (월세×12)</div><div class="input-row"><input type="text" class="calc-input" id="tax_inc_revenue" placeholder="0"><span class="input-unit">원</span></div></div>
+        <div class="input-group"><div class="input-label">필요경비 (감가상각·관리비 등)</div><div class="input-row"><input type="text" class="calc-input" id="tax_inc_expense" placeholder="0"><span class="input-unit">원</span></div></div>
+        <div class="input-group" id="tax_inc_deduct_wrap"><div class="input-label">소득공제 (기본공제 등)</div><div class="input-row"><input type="text" class="calc-input" id="tax_inc_deduct" placeholder="0"><span class="input-unit">원</span></div></div>
+        <div class="input-group" id="tax_inc_other_wrap"><div class="input-label">타 소득 합산 (개인·사업자)</div><div class="input-row"><input type="text" class="calc-input" id="tax_inc_other" placeholder="0"><span class="input-unit">원</span></div></div>
+        <div id="taxIncResult" style="display:none;margin-top:8px;"></div>
+      </div>
+      <!-- 양도세 -->
+      <div id="tax-transfer" class="sub-tax-panel" style="display:none">
+        <div class="yc-info-box" id="tax_tr_guide" style="font-size:10px;margin-bottom:8px">개인: 양도소득세(6~45%+지방세10%) / 개인사업자: 사업소득세 / 법인: 법인세</div>
+        <div class="input-group"><div class="input-label">취득가 (필요경비 포함)</div><div class="input-row"><input type="text" class="calc-input" id="tax_tr_buy" placeholder="0"><span class="input-unit">원</span></div></div>
+        <div class="input-group"><div class="input-label">양도가</div><div class="input-row"><input type="text" class="calc-input" id="tax_tr_sell" placeholder="0"><span class="input-unit">원</span></div></div>
+        <div class="input-group"><div class="input-label">보유 기간</div><div class="input-row"><input type="number" class="calc-input" id="tax_tr_years" placeholder="5" value="5"><span class="input-unit">년</span></div></div>
+        <div class="input-group"><div class="input-label">기본공제</div><div class="input-row"><input type="text" class="calc-input" id="tax_tr_deduct" placeholder="0" value="2,500,000"><span class="input-unit">원</span></div></div>
+        <div id="taxTrResult" style="display:none;margin-top:8px;"></div>
+      </div>
+      <!-- 보유세 -->
+      <div id="tax-hold" class="sub-tax-panel" style="display:none">
+        <div class="input-group"><div class="input-label">공시가격</div><div class="input-row"><input type="text" class="calc-input" id="tax_hold_price" placeholder="0"><span class="input-unit">원</span></div></div>
+        <div class="input-group"><div class="input-label">공정시장가액비율</div><div class="input-row"><input type="number" class="calc-input" id="tax_hold_ratio" placeholder="70" value="70"><span class="input-unit">%</span></div></div>
+        <div id="taxHoldResult" style="display:none;margin-top:8px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 대출 상환 계획 ── -->
+  <div class="sub-tab-panel" id="ctab-loan">
+    <div class="calc-section">
+      <div class="calc-title">🏦 대출 상환 계획</div>
+      <div class="input-group"><div class="input-label">대출 금액</div><div class="input-row"><input type="text" class="calc-input" id="l_amount" placeholder="0"><span class="input-unit">원</span></div></div>
+      <div class="input-group"><div class="input-label">연 이자율</div><div class="input-row"><input type="number" class="calc-input" id="l_rate" placeholder="4.5" value="4.5" step="0.1"><span class="input-unit">%</span></div></div>
+      <div class="input-group"><div class="input-label">대출 기간</div><div class="input-row"><input type="number" class="calc-input" id="l_years" placeholder="10" value="10"><span class="input-unit">년</span></div></div>
+      <div class="toggle-group" style="margin-top:6px;">
+        <button class="toggle-btn active" id="loanTypeEqual">원리금균등</button>
+        <button class="toggle-btn" id="loanTypePrincipal">원금균등</button>
+        <button class="toggle-btn" id="loanTypeInterest">만기일시</button>
+      </div>
+    </div>
+    <div class="calc-section" id="loanResults" style="display:none">
+      <div class="calc-title">📊 상환 결과</div>
+      <div class="result-grid" id="loanSummary"></div>
+      <div class="divider"></div>
+      <div style="font-size:11px;color:var(--text2);font-weight:600;margin-bottom:5px;">연도별 상환 현황</div>
+      <div style="max-height:200px;overflow-y:auto;">
+        <table class="cashflow-table"><thead><tr><th>연차</th><th style="text-align:right">월납입</th><th style="text-align:right">원금</th><th style="text-align:right">이자</th><th style="text-align:right">잔액</th></tr></thead><tbody id="loanScheduleBody"></tbody></table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 면적·평당가 ── -->
+  <div class="sub-tab-panel" id="ctab-area">
+    <!-- ㎡↔평 변환기 -->
+    <div class="calc-section">
+      <div class="calc-title">📐 면적 단위 변환</div>
+      <div class="input-group">
+        <div class="input-label">㎡ → 평</div>
+        <div class="area-dual-row">
+          <div class="input-row" style="flex:1"><input type="number" class="calc-input" id="conv_sqm" placeholder="㎡ 입력" step="0.01"><span class="input-unit">㎡</span></div>
+          <span class="area-eq">＝</span>
+          <div class="input-row" style="flex:1"><input type="number" class="calc-input" id="conv_py" placeholder="평" step="0.01" readonly style="background:var(--bg4)"><span class="input-unit">평</span></div>
+        </div>
+      </div>
+      <div class="input-group">
+        <div class="input-label">평 → ㎡</div>
+        <div class="area-dual-row">
+          <div class="input-row" style="flex:1"><input type="number" class="calc-input" id="conv_py2" placeholder="평 입력" step="0.01"><span class="input-unit">평</span></div>
+          <span class="area-eq">＝</span>
+          <div class="input-row" style="flex:1"><input type="number" class="calc-input" id="conv_sqm2" placeholder="㎡" step="0.01" readonly style="background:var(--bg4)"><span class="input-unit">㎡</span></div>
+        </div>
+      </div>
+      <div class="yc-formula-box" style="margin-top:8px">
+        <div class="yc-formula-title">변환 공식</div>
+        <div class="yc-formula">1평 = 3.3058㎡ &nbsp;|&nbsp; 1㎡ = 0.3025평</div>
+        <div class="yc-tip">💡 공급면적·계약면적은 전용+공용 포함 / 전용면적은 실사용 면적</div>
+      </div>
+    </div>
+    <!-- 평당가 빠른계산 -->
+    <div class="calc-section">
+      <div class="calc-title">💰 평당가 빠른 계산</div>
+      <div class="input-group"><div class="input-label">가격</div><div class="input-row"><input type="text" class="calc-input" id="qp_price" placeholder="0"><span class="input-unit">원</span></div></div>
+      <div class="input-group">
+        <div class="input-label">면적</div>
+        <div class="area-dual-row">
+          <div class="input-row" style="flex:1"><input type="number" class="calc-input area-sqm" id="qp_sqm" placeholder="㎡" step="0.1"><span class="input-unit">㎡</span></div>
+          <span class="area-eq">＝</span>
+          <div class="input-row" style="flex:1"><input type="number" class="calc-input area-py" id="qp_py" placeholder="평" step="0.01"><span class="input-unit">평</span></div>
+        </div>
+      </div>
+      <div id="qp_result" class="yc-result-box" style="display:none">
+        <div class="yc-result-row"><span class="yc-result-label">평당가</span><span class="yc-result-val highlight" id="qp_r_pp">-</span></div>
+        <div class="yc-result-row"><span class="yc-result-label">㎡당가</span><span class="yc-result-val" id="qp_r_pm">-</span></div>
+      </div>
+    </div>
+    <!-- 층별 평당가 분석 -->
+    <div class="calc-section">
+      <div class="calc-title">📋 층별 매물 평당가 분석</div>
+      <div class="floor-input-area">
+        <div style="display:grid;grid-template-columns:35px 36px 1fr 1fr 1fr 1fr;gap:3px;margin-bottom:4px;font-size:10px;color:var(--text2);text-align:center;padding:0 2px">
+          <div>유형</div><div>층</div><div>면적(㎡)</div><div>면적(평)</div><div>가격(만)</div><div>평단(만)</div>
+        </div>
+        <div id="floorRows"></div>
+        <button class="add-row-btn" id="addFloorRowBtn">+ 행 추가</button>
+        <button class="calc-btn" style="margin-top:8px" id="analyzeFloorBtn">📊 평당가 분석</button>
+      </div>
+      <div id="floorAnalysisResult" style="display:none;margin-top:8px;">
+        <div class="result-grid" id="floorSummary"></div>
+        <div class="divider"></div>
+        <div class="section-title">층별 상세</div>
+        <table class="floor-table">
+          <thead><tr><th>구분</th><th>층</th><th>면적</th><th>평당가</th><th>가격</th></tr></thead>
+          <tbody id="floorTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+    <!-- 매매가 분석 -->
+    <div class="calc-section">
+      <div class="calc-title">🏷️ 매매가 분석</div>
+      <div class="input-group">
+        <div class="input-label">전용면적</div>
+        <div class="area-dual-row">
+          <div class="input-row" style="flex:1"><input type="number" class="calc-input area-sqm" id="s_excArea" placeholder="0" step="0.1"><span class="input-unit">㎡</span></div>
+          <span class="area-eq">＝</span>
+          <div class="input-row" style="flex:1"><input type="number" class="calc-input area-py" id="s_excArea_py" placeholder="0" step="0.01"><span class="input-unit">평</span></div>
+        </div>
+      </div>
+      <div class="input-group"><div class="input-label">매매가</div><div class="input-row"><input type="text" class="calc-input" id="c_salePrice" placeholder="0"><span class="input-unit">원</span></div></div>
+      <div class="input-group"><div class="input-label">취득세율</div><div class="input-row"><input type="number" class="calc-input" id="s_taxRate" placeholder="4.6" value="4.6" step="0.1"><span class="input-unit">%</span></div></div>
+      <div class="input-group"><div class="input-label">기타 비용 (법무비 등)</div><div class="input-row"><input type="text" class="calc-input" id="s_etc" placeholder="0"><span class="input-unit">원</span></div></div>
+      <div class="calc-section" id="saleResults" style="display:none;margin-top:8px;">
+        <div class="calc-title">📊 분석 결과</div>
+        <div class="result-grid">
+          <div class="result-card highlight"><div class="result-label">전용 평당가</div><div class="result-value" id="sr_excPyeong">0만</div><div class="result-sub">만원/평</div></div>
+          <div class="result-card"><div class="result-label">전용면적</div><div class="result-value orange" id="sr_excArea_display">-</div><div class="result-sub">㎡ / 평</div></div>
+          <div class="result-card"><div class="result-label">취득세</div><div class="result-value" id="sr_tax">0만</div></div>
+          <div class="result-card"><div class="result-label">총 투자비용</div><div class="result-value red" id="sr_total">0만</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 저장 매물 (구 메모탭) ── -->
+  <div class="sub-tab-panel" id="ctab-saved">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+      <div class="section-title" style="margin:0">📝 저장된 매물 (<span id="memoCount">0</span>건)</div>
+      <button id="clearAllMemoBtn" style="background:none;border:none;color:var(--text3);font-size:11px;cursor:pointer;">전체삭제</button>
+    </div>
+    <div id="memoList"><div class="empty-memo">📦 저장된 매물이 없습니다.</div></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════ -->
+<!-- 3. 경매 탭                            -->
+<!-- ══════════════════════════════════════ -->
+<div class="tab-panel" id="tab-auction">
+  <div class="sub-tab-nav">
+    <button class="sub-tab-btn active" data-atab="flip">🏠 주택 경매</button>
+    <button class="sub-tab-btn" data-atab="rent">🏢 상가 경매</button>
+  </div>
+
+  <!-- ── 주택 경매 ── -->
+  <div class="sub-tab-panel active" id="atab-flip">
+    <div class="xl-title">🏠 주택 경매 수익분석 <span class="xl-sub">(단기매도 · 개인매매사업자)</span></div>
+    <div class="xl-case-row">
+      <span class="xl-case-label">사건번호</span>
+      <input type="text" class="xl-case-input" id="fl_case" placeholder="예) 2024타경45137">
+    </div>
+    <table class="xl-table">
+      <colgroup><col style="width:auto"><col style="width:68px"><col style="width:105px"></colgroup>
+      <thead>
+        <tr class="xl-head"><th>항목</th><th>요율</th><th>금액 (원)</th></tr>
+      </thead>
+      <tbody>
+        <!-- 입찰가 섹션 -->
+        <tr class="xl-section"><td colspan="3">📌 입찰가</td></tr>
+        <tr>
+          <td class="xl-item">감정가</td>
+          <td class="xl-rate"></td>
+          <td class="xl-amt"><input type="text" class="xl-input" id="fl_appraisal" placeholder="0"></td>
+        </tr>
+        <tr class="xl-highlight-row">
+          <td class="xl-item xl-bold">입찰가</td>
+          <td class="xl-rate"><input type="number" class="xl-rate-input" id="fl_bid_rate" value="64.5" step="0.1"><span class="xl-pct">%</span></td>
+          <td class="xl-amt"><input type="text" class="xl-input xl-yellow" id="fl_bid" placeholder="자동계산"></td>
+        </tr>
+        <tr>
+          <td class="xl-item">대출금 (사업자)</td>
+          <td class="xl-rate"><input type="number" class="xl-rate-input" id="fl_loan_rate" value="80" step="1"><span class="xl-pct">%</span></td>
+          <td class="xl-amt xl-calc" id="fl_r_loan">-</td>
+        </tr>
+
+        <!-- 비용 섹션 -->
+        <tr class="xl-section"><td colspan="3">💸 비용</td></tr>
+        <tr>
+          <td class="xl-item">취득세</td>
+          <td class="xl-rate"><input type="number" class="xl-rate-input" id="fl_acq_tax" value="1.1" step="0.1"><span class="xl-pct">%</span></td>
+          <td class="xl-amt xl-calc" id="fl_r_acq">-</td>
+        </tr>
+        <tr>
+          <td class="xl-item">법무비/채권</td>
+          <td class="xl-rate"><input type="number" class="xl-rate-input" id="fl_legal_rate" value="0.9" step="0.1"><span class="xl-pct">%</span></td>
+          <td class="xl-amt xl-calc" id="fl_r_legal">-</td>
+        </tr>
+        <tr>
+          <td class="xl-item">중도상환수수료</td>
+          <td class="xl-rate"><input type="number" class="xl-rate-input" id="fl_prepay_rate" value="0.5" step="0.1"><span class="xl-pct">%</span></td>
+          <td class="xl-amt xl-calc" id="fl_r_prepay">-</td>
+        </tr>
+        <tr>
+          <td class="xl-item">대출이자 (3개월)</td>
+          <td class="xl-rate"><input type="number" class="xl-rate-input" id="fl_interest_rate" value="4.5" step="0.1"><span class="xl-pct">%</span></td>
+          <td class="xl-amt xl-calc" id="fl_r_interest">-</td>
+        </tr>
+        <tr>
+          <td class="xl-item">중개료</td>
+          <td class="xl-rate"><input type="number" class="xl-rate-input" id="fl_agent_rate" value="0.5" step="0.1"><span class="xl-pct">%</span></td>
+          <td class="xl-amt xl-calc" id="fl_r_agent">-</td>
+        </tr>
+        <tr>
+          <td class="xl-item">미납관리비</td>
+          <td class="xl-rate"><textarea class="xl-memo-inline" id="fl_mgmt_memo" placeholder="메모" rows="1"></textarea></td>
+          <td class="xl-amt"><input type="text" class="xl-input" id="fl_mgmt" placeholder="0"></td>
+        </tr>
+        <tr>
+          <td class="xl-item">수리비</td>
+          <td class="xl-rate"><textarea class="xl-memo-inline" id="fl_repair_memo" placeholder="메모" rows="1"></textarea></td>
+          <td class="xl-amt"><input type="text" class="xl-input" id="fl_repair" placeholder="0"></td>
+        </tr>
+        <tr>
+          <td class="xl-item">명도비</td>
+          <td class="xl-rate"><textarea class="xl-memo-inline" id="fl_evict_memo" placeholder="메모" rows="1"></textarea></td>
+          <td class="xl-amt"><input type="text" class="xl-input" id="fl_evict" placeholder="0"></td>
+        </tr>
+        <tr>
+          <td class="xl-item">기타비용</td>
+          <td class="xl-rate"><textarea class="xl-memo-inline" id="fl_memo_label" placeholder="메모" rows="1"></textarea></td>
+          <td class="xl-amt"><input type="text" class="xl-input" id="fl_memo_amt" placeholder="0"></td>
+        </tr>
+        <tr class="xl-subtotal xl-subtotal-cost">
+          <td class="xl-item xl-bold" colspan="2">💸 총 비용</td>
+          <td class="xl-amt xl-calc xl-bold" id="fl_r_total_cost">-</td>
+        </tr>
+
+        <!-- 수익 섹션 -->
+        <tr class="xl-section"><td colspan="3">💰 수익</td></tr>
+        <tr class="xl-highlight-row">
+          <td class="xl-item xl-bold">매도가</td>
+          <td class="xl-rate"></td>
+          <td class="xl-amt"><input type="text" class="xl-input xl-yellow" id="fl_sellprice" placeholder="0"></td>
+        </tr>
+        <tr>
+          <td class="xl-item">총투자금 (입찰가+비용)</td>
+          <td class="xl-rate"></td>
+          <td class="xl-amt xl-calc" id="fl_r_total_invest">-</td>
+        </tr>
+        <tr>
+          <td class="xl-item">실투자금 (입찰가-대출+비용)</td>
+          <td class="xl-rate"></td>
+          <td class="xl-amt xl-calc" id="fl_r_real_invest">-</td>
+        </tr>
+        <tr>
+          <td class="xl-item">양도차익 (매도가-입찰가-비용)</td>
+          <td class="xl-rate"></td>
+          <td class="xl-amt xl-calc" id="fl_r_gain">-</td>
+        </tr>
+        <tr>
+          <td class="xl-item">종합소득세</td>
+          <td class="xl-rate"><input type="number" class="xl-rate-input" id="fl_transfer_tax" value="16.5" step="0.5"><span class="xl-pct">%</span></td>
+          <td class="xl-amt xl-calc" id="fl_r_income_tax" style="color:var(--red)">-</td>
+        </tr>
+        <tr class="xl-subtotal xl-subtotal-profit">
+          <td class="xl-item xl-bold" colspan="2">✨ 세후이익 (매도가-총투자금-소득세)</td>
+          <td class="xl-amt xl-calc xl-bold" id="fl_r_net_profit">-</td>
+        </tr>
+        <tr class="xl-subtotal xl-subtotal-profit">
+          <td class="xl-item xl-bold" colspan="2">📈 순투자수익률 (세후이익/실투자금)</td>
+          <td class="xl-amt xl-calc xl-bold xl-pct-val" id="fl_r_roi">-</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- 적정 매도가 테이블 -->
+    <div class="xl-yield-wrap">
+      <table class="xl-table" style="margin-top:6px">
+        <colgroup><col style="width:auto"><col style="width:90px"><col style="width:100px"></colgroup>
+        <thead>
+          <tr class="xl-head"><th>수익률 목표</th><th style="text-align:right">적정 매도가</th><th style="text-align:right">세후이익</th></tr>
+        </thead>
+        <tbody id="fl_yield_body"></tbody>
+      </table>
+    </div>
+
+    <div class="auction-save-bar" style="margin-top:10px;display:flex;flex-direction:column;gap:6px;">
+      <div style="display:flex;gap:6px;">
+        <input type="text" id="fl_save_name" placeholder="저장 이름 (예: 마포 빌라 102호)" class="calc-input" style="flex:1;font-size:11px">
+        <button id="fl_saveBtn" style="padding:5px 10px;background:linear-gradient(135deg,#8A6A28,#C9A84C);border:none;border-radius:6px;color:#0A0E18;font-size:11px;cursor:pointer;white-space:nowrap;font-weight:700;box-shadow:0 2px 8px rgba(201,168,76,0.3)">💾 저장</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;">
+        <button id="fl_pngBtn" class="download-btn-full" style="font-size:10px">🖼️ 이미지</button>
+        <button id="fl_pdfBtn" class="download-btn-full" style="font-size:10px">📄 PDF</button>
+        <button id="fl_csvBtn" class="download-btn-full" style="font-size:10px">📊 CSV</button>
+      </div>
+      <div id="fl_saved_list" style="display:none;max-height:150px;overflow-y:auto;background:var(--bg2);border-radius:8px;padding:6px;"></div>
+    </div>
+  </div>
+
+  <!-- ── 상가 경매 ── -->
+  <div class="sub-tab-panel" id="atab-rent">
+    <div class="xl-title">🏢 상가 경매 수익분석 <span class="xl-sub">(임대수익 · 매도차익)</span></div>
+    <div class="xl-case-row">
+      <span class="xl-case-label">사건번호</span>
+      <input type="text" class="xl-case-input" id="rt_case" placeholder="예) 2024타경12345">
+    </div>
+    <table class="xl-table">
+      <colgroup><col style="width:28px"><col style="width:auto"><col style="width:72px"><col style="width:108px"></colgroup>
+      <thead>
+        <tr class="xl-head"><th></th><th>항목</th><th>요율</th><th>금액 (원)</th></tr>
+      </thead>
+      <tbody>
+        <tr class="xl-section"><td colspan="4">📌 입찰가</td></tr>
+        <tr>
+          <td class="xl-no"></td>
+          <td class="xl-item">감정가</td>
+          <td class="xl-rate"></td>
+          <td class="xl-amt"><input type="text" class="xl-input" id="rt_appraisal" placeholder="0"></td>
+        </tr>
+        <tr class="xl-highlight-row">
+          <td class="xl-no"></td>
+          <td class="xl-item xl-bold">입찰가</td>
+          <td class="xl-rate"><input type="number" class="xl-rate-input" id="rt_bid_rate" value="70.0" step="0.1"><span class="xl-pct">%</span></td>
+          <td class="xl-amt"><input type="text" class="xl-input xl-yellow" id="rt_bid" placeholder="자동계산"></td>
+        </tr>
+        <tr class="xl-section"><td colspan="4">💸 비용</td></tr>
+        <tr>
+          <td class="xl-no">1</td>
+          <td class="xl-item">등록세 및 법무사</td>
+          <td class="xl-rate"><input type="number" class="xl-rate-input" id="rt_reg_rate" value="5" step="0.1"><span class="xl-pct">%</span></td>
+          <td class="xl-amt xl-calc" id="rt_r_reg">-</td>
+        </tr>
+        <tr>
+          <td class="xl-no">2</td>
+          <td class="xl-item">대출</td>
+          <td class="xl-rate"><input type="number" class="xl-rate-input" id="rt_loan_rate" value="70" step="1"><span class="xl-pct">%</span></td>
+          <td class="xl-amt xl-calc" id="rt_r_loan">-</td>
+        </tr>
+        <tr>
+          <td class="xl-no">3</td>
+          <td class="xl-item">대출금리 (연이자)</td>
+          <td class="xl-rate"><input type="number" class="xl-rate-input" id="rt_interest" value="4.3" step="0.1"><span class="xl-pct">%</span></td>
+          <td class="xl-amt xl-calc" id="rt_r_interest">-</td>
+        </tr>
+        <tr>
+          <td class="xl-no">4</td>
+          <td class="xl-item">명도비</td>
+          <td class="xl-rate"><textarea class="xl-memo-inline" id="rt_evict_memo" placeholder="메모" rows="1"></textarea></td>
+          <td class="xl-amt"><input type="text" class="xl-input" id="rt_evict" placeholder="0"></td>
+        </tr>
+        <tr>
+          <td class="xl-no">5</td>
+          <td class="xl-item">철거비</td>
+          <td class="xl-rate"><textarea class="xl-memo-inline" id="rt_demolish_memo" placeholder="메모" rows="1"></textarea></td>
+          <td class="xl-amt"><input type="text" class="xl-input" id="rt_demolish" placeholder="0"></td>
+        </tr>
+        <tr>
+          <td class="xl-no">6</td>
+          <td class="xl-item">미납관리비</td>
+          <td class="xl-rate"><input type="number" class="xl-rate-input" id="rt_mgmt_months" value="0" step="1" min="0"><span class="xl-pct">개월</span></td>
+          <td class="xl-amt"><input type="text" class="xl-input" id="rt_mgmt_monthly" placeholder="월관리비"></td>
+        </tr>
+        <tr>
+          <td class="xl-no">7</td>
+          <td class="xl-item">예비비</td>
+          <td class="xl-rate"><textarea class="xl-memo-inline" id="rt_reserve_memo" placeholder="메모" rows="1"></textarea></td>
+          <td class="xl-amt"><input type="text" class="xl-input" id="rt_reserve" placeholder="0"></td>
+        </tr>
+        <tr>
+          <td class="xl-no"></td>
+          <td class="xl-item">기타비</td>
+          <td class="xl-rate"><textarea class="xl-memo-inline" id="rt_memo_label" placeholder="메모" rows="1"></textarea></td>
+          <td class="xl-amt"><input type="text" class="xl-input" id="rt_memo_amt" placeholder="0"></td>
+        </tr>
+        <tr>
+          <td class="xl-no">8</td>
+          <td class="xl-item">보증금</td>
+          <td class="xl-rate"></td>
+          <td class="xl-amt"><input type="text" class="xl-input" id="rt_deposit" placeholder="0"></td>
+        </tr>
+        <tr>
+          <td class="xl-no">9</td>
+          <td class="xl-item">월세</td>
+          <td class="xl-rate"></td>
+          <td class="xl-amt"><input type="text" class="xl-input" id="rt_monthly" placeholder="0"></td>
+        </tr>
+        <tr class="xl-subtotal">
+          <td class="xl-no xl-bold">10</td>
+          <td class="xl-item xl-bold" colspan="2">실투자금 (1+2-3+4+5+6+7-8)</td>
+          <td class="xl-amt xl-calc xl-bold" id="rt_r_real">-</td>
+        </tr>
+        <tr class="xl-subtotal">
+          <td class="xl-no xl-bold">11</td>
+          <td class="xl-item xl-bold" colspan="2">순현금흐름 (월 기준)</td>
+          <td class="xl-amt xl-calc xl-bold" id="rt_r_cashflow">-</td>
+        </tr>
+        <tr class="xl-subtotal">
+          <td class="xl-no xl-bold">12</td>
+          <td class="xl-item xl-bold" colspan="2">매매수익률 (1,8,9 기준)</td>
+          <td class="xl-amt xl-calc xl-bold xl-pct-val" id="rt_r_yield">-</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="xl-yield-wrap">
+      <table class="xl-table" style="margin-top:10px">
+        <colgroup><col style="width:auto"><col style="width:90px"><col style="width:100px"></colgroup>
+        <thead>
+          <tr class="xl-head"><th>수익률</th><th style="text-align:right">적정 매도가</th><th style="text-align:right">투자수익</th></tr>
+        </thead>
+        <tbody id="rt_yield_body"></tbody>
+      </table>
+    </div>
+    <div class="xl-yield-wrap" id="rt_sell_summary_wrap" style="display:none">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-bottom:4px;">
+        <div style="display:flex;align-items:center;gap:2px;background:var(--bg3);border-radius:5px;padding:3px 5px;">
+          <input type="number" id="rt_cust_rate1" value="4.0" step="0.1" min="0" max="20" class="xl-rate-input" style="width:36px;text-align:right">
+          <span style="font-size:10px;color:var(--text3)">%</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:2px;background:var(--bg3);border-radius:5px;padding:3px 5px;">
+          <input type="number" id="rt_cust_rate2" value="4.3" step="0.1" min="0" max="20" class="xl-rate-input" style="width:36px;text-align:right">
+          <span style="font-size:10px;color:var(--text3)">%</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:2px;background:var(--bg3);border-radius:5px;padding:3px 5px;">
+          <input type="number" id="rt_cust_rate3" value="5.0" step="0.1" min="0" max="20" class="xl-rate-input" style="width:36px;text-align:right">
+          <span style="font-size:10px;color:var(--text3)">%</span>
+        </div>
+      </div>
+      <table class="xl-table" style="margin-top:2px">
+        <colgroup><col style="width:auto"><col style="width:130px"></colgroup>
+        <thead>
+          <tr class="xl-head"><th></th><th style="text-align:right">투자 수익(기타비용 포함)</th></tr>
+        </thead>
+        <tbody id="rt_sell_summary_body"></tbody>
+      </table>
+    </div>
+    <div class="auction-save-bar" style="margin-top:10px;display:flex;flex-direction:column;gap:6px;">
+      <div style="display:flex;gap:6px;">
+        <input type="text" id="rt_save_name" placeholder="저장 이름 (예: 강남 1층 상가)" class="calc-input" style="flex:1;font-size:11px">
+        <button id="rt_saveBtn" style="padding:5px 10px;background:linear-gradient(135deg,#8A6A28,#C9A84C);border:none;border-radius:6px;color:#0A0E18;font-size:11px;cursor:pointer;white-space:nowrap;font-weight:700;box-shadow:0 2px 8px rgba(201,168,76,0.3)">💾 저장</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;">
+        <button id="rt_pngBtn" class="download-btn-full" style="font-size:10px">🖼️ 이미지</button>
+        <button id="rt_pdfBtn" class="download-btn-full" style="font-size:10px">📄 PDF</button>
+        <button id="rt_csvBtn" class="download-btn-full" style="font-size:10px">📊 CSV</button>
+      </div>
+      <div id="rt_saved_list" style="display:none;max-height:150px;overflow-y:auto;background:var(--bg2);border-radius:8px;padding:6px;"></div>
+    </div>
+  </div>
+</div>
+
+</div><!-- end .main -->
+
+<div class="summary-bar">
+  <div class="summary-stat"><div class="summary-stat-label">저장매물</div><div class="summary-stat-val" id="sb_saved">0건</div></div>
+  <div class="summary-stat"><div class="summary-stat-label">수집매물</div><div class="summary-stat-val" id="sb_collected">0건</div></div>
+  <div class="summary-stat"><div class="summary-stat-label">평균평단가</div><div class="summary-stat-val" id="sb_avgPyeong">-</div></div>
+</div>
+<script src="sidepanel.js"></script>
+</body>
+</html>
