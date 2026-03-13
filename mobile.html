@@ -4935,6 +4935,9 @@ window.__FIREBASE_CONFIG = {
   })();
 
 })();
+
+// ★ 모바일 렌더 함수 초기화 완료 신호 — Firebase shim이 이 이벤트를 기다렸다가 구독 시작
+window.dispatchEvent(new Event('mbReady'));
 </script>
 
 <!-- ════ 노트 에디터 전체화면 오버레이 ════ -->

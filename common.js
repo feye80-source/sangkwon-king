@@ -30614,10 +30614,10 @@ ${newsText}
         if (window._idbCache) window._idbCache['wr2_rooms'] = all;
         if (window.idbSet) window.idbSet('wr2_rooms', all).catch(()=>{});
         if (window.wr2State) window.wr2State.rooms = active;
-        // PC: wr2Render, 모바일: mbRoomLoad(현재 열린 룸) + 룸 선택박스 갱신
+        // PC
         if (typeof window.wr2Render === 'function') window.wr2Render();
+        // 모바일: mbReady 이후에 subscribeAll이 실행되므로 mbRoomLoad는 반드시 존재
         if (typeof window.mbRoomLoad === 'function') {
-          // 룸 선택 드롭다운 갱신
           const sel = document.getElementById('mb-room-sel');
           if (sel) {
             const prev = sel.value;
@@ -30647,7 +30647,6 @@ ${newsText}
         if (window._idbCache) window._idbCache['re_sv'] = all;
         if (window.idbSet) window.idbSet('re_sv', all).catch(()=>{});
         if (typeof _svBuildIndex === 'function') _svBuildIndex(all);
-        // PC: renderSvList, 모바일: mbRenderSaved
         if (typeof window.renderSvList === 'function') window.renderSvList();
         if (typeof window.mbRenderSaved === 'function') window.mbRenderSaved();
       } catch(e){ console.warn('[FB] applySv', e); }
@@ -30862,11 +30861,33 @@ ${newsText}
       }; } }
     };
 
-    // ── _sbInitLoad: 구독만 시작 (로컬 캐시 초기화 안 함) ──
+    // ── _sbInitLoad: 모바일은 mbReady 이벤트 후 구독 시작, PC는 즉시 시작 ──
     window._sbInitLoad = async function(){
       const user = auth.currentUser;
       if (!user) { window._sbShowLogin && window._sbShowLogin(); return; }
-      subscribeAll(user.uid);
+      const isMobile = !!document.getElementById('ntEditorMain'); // mobile.html에만 있는 요소
+      if (isMobile) {
+        // 모바일: mbReady 이벤트 대기 (이미 발생했으면 즉시 실행)
+        if (window.__mbReady) {
+          subscribeAll(user.uid);
+        } else {
+          window.addEventListener('mbReady', function onMbReady() {
+            window.__mbReady = true;
+            window.removeEventListener('mbReady', onMbReady);
+            subscribeAll(user.uid);
+          }, { once: true });
+          // 최대 10초 대기 후 강제 실행 (안전장치)
+          setTimeout(() => {
+            if (!window.__mbReady) {
+              console.warn('[FB] mbReady 이벤트 미수신 → 강제 구독 시작');
+              subscribeAll(user.uid);
+            }
+          }, 10000);
+        }
+      } else {
+        // PC: 즉시 구독 시작
+        subscribeAll(user.uid);
+      }
     };
 
     // ── ntDelete 래핑 ──
