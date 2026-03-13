@@ -30511,6 +30511,11 @@ ${newsText}
     let initRan = false;
     const dirtyNotes = new Set();
     let noteSaveTimer = null;
+    // ★ BUG FIX(버그3): 로컬에서 방금 생성/저장한 노트 ID 추적
+    // ntCreate → ntSave → Firebase 저장 → onSnapshot 수신 순서에서
+    // onSnapshot이 전체 목록을 덮어씌울 때 pendingNoteIds에 있는 노트는
+    // 로컬 버전을 우선 유지하여 깜빡임 및 중복 생성 방지
+    const pendingNoteIds = new Set();
 
     function mapUser(user){ return user ? { id: user.uid, email: user.email || '' } : null; }
     async function getSession(){
@@ -30634,6 +30639,9 @@ ${newsText}
       const notes = Array.isArray(arr) ? arr : [];
       const changed = dirtyNotes.size ? notes.filter(n => dirtyNotes.has(n.id)) : notes;
       if (!changed.length) return;
+      // ★ BUG FIX(버그3): 저장 시작 시 pendingNoteIds에 등록
+      // onSnapshot이 돌아오기 전까지 이 ID들은 로컬 버전을 우선 유지
+      changed.forEach(n => pendingNoteIds.add(n.id));
       const batch = db.batch();
       changed.forEach((note) => {
         const docId = uid + '_' + note.id;
@@ -30647,6 +30655,8 @@ ${newsText}
       });
       await batch.commit();
       changed.forEach(n => dirtyNotes.delete(n.id));
+      // 저장 완료 후 5초 뒤 pending 해제 (onSnapshot이 충분히 처리할 시간)
+      setTimeout(() => { changed.forEach(n => pendingNoteIds.delete(n.id)); }, 5000);
     }
     window._sbMarkNtDirty = function(noteId){ if (noteId) dirtyNotes.add(noteId); };
     window._sbSaveNtNotes = async function(arr){
@@ -30674,7 +30684,25 @@ ${newsText}
         const visible = (cloudNotes || []).filter(n => n && !n.deletedAt);
         if (window._idbCache) window._idbCache['nt_notes'] = cloudNotes || [];
         if (window.idbSet) window.idbSet('nt_notes', cloudNotes || []).catch(()=>{});
-        if (window._ntSetNotes) window._ntSetNotes(cloudNotes || []);
+
+        // ★ BUG FIX(버그3): pendingNoteIds merge
+        // 로컬에서 방금 생성/저장한 노트가 아직 Firestore에서 돌아오지 않았을 때
+        // 클라우드 결과로 전체 덮어씌우면 로컬 노트가 순간 사라졌다 나타나며 깜빡임 발생.
+        // → 로컬 메모리에 있는 pending 노트를 클라우드 목록에 merge하여 유지.
+        let finalNotes = visible;
+        if (pendingNoteIds.size > 0 && window._ntGetNotes) {
+          const localNotes = window._ntGetNotes() || [];
+          const cloudIds = new Set(visible.map(n => n.id));
+          const missingLocals = localNotes.filter(n => pendingNoteIds.has(n.id) && !cloudIds.has(n.id));
+          if (missingLocals.length > 0) {
+            finalNotes = [...missingLocals, ...visible];
+            finalNotes.sort((a,b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
+          }
+        }
+
+        // ★ BUG FIX(버그1): visible(deletedAt 제거된 것)만 _ntSetNotes에 전달해야
+        //   _ntSetNotes 내부에서 filter를 다시 해도 tombstone이 메모리에 올라오지 않음
+        if (window._ntSetNotes) window._ntSetNotes(finalNotes);
         if (window.ntRender) window.ntRender();
         // if current open note deleted, clear editor area gracefully
         const openId = window.ntActiveId || window._mbNtOpenId || null;
@@ -30704,29 +30732,41 @@ ${newsText}
     window._sbInitLoad = async function(){
       const s = await getSession();
       if (!s.data.session) { window._sbShowLogin && window._sbShowLogin(); return; }
-      // user accepted losing old local notes -> cloud source of truth
-      try {
-        if (window._idbCache) window._idbCache['nt_notes'] = [];
-        if (window.idbSet) await window.idbSet('nt_notes', []);
-      } catch(e){}
-      try {
-        if (oldInitLoad) await oldInitLoad();
-      } catch(e) { console.warn('[FB] old init load', e); }
+      // ★ BUG FIX(버그4): 로컬 캐시를 초기화하지 않음
+      // 기존 코드가 nt_notes를 []로 비운 뒤 Firestore onSnapshot 연결 전까지 노트 목록이
+      // 비어있다가 뒤늦게 나타나는 지연 현상 유발. 캐시는 그대로 두고 구독만 시작.
+      // oldInitLoad(Supabase 기반 merge 로직)도 Firebase 환경에서는 건너뜀.
       try { subscribeNotes(s.data.session.user.id); } catch(e) { console.warn('[FB] subscribeNotes', e); }
     };
 
+    // ★ BUG FIX: 이중 삭제 경합 제거
+    // oldDelete(로컬 Supabase 로직)를 호출하면 로컬 배열에서 노트가 사라진 뒤
+    // hardDeleteNote(Firebase tombstone)가 저장되고, 이후 onSnapshot으로 돌아온
+    // applyCloudNotes가 deletedAt 노트를 다시 _ntSetNotes에 넘겨 부활하는 현상 발생.
+    // Firebase 환경에서는 hardDeleteNote → onSnapshot → applyCloudNotes 흐름만으로 충분.
     const oldDelete = window.ntDelete;
     window.ntDelete = async function(id){
+      // 1) 즉시 로컬 메모리에서 제거 (UI 즉각 반응)
+      if (window._ntSetNotes && window._ntGetNotes) {
+        window._ntSetNotes((window._ntGetNotes() || []).filter(n => n.id !== id));
+        if (window.ntRender) window.ntRender();
+      }
+      // 2) Firebase에 tombstone 저장 → onSnapshot이 다른 기기에 전파
       try { await hardDeleteNote(id); } catch(e){ console.warn('[FB] ntDelete tombstone', e); }
-      if (oldDelete) return oldDelete(id);
+      // oldDelete는 호출하지 않음 — Supabase 이중 처리 방지
     };
     const oldDeleteConfirm = window.ntDeleteConfirm;
     window.ntDeleteConfirm = async function(id){
       const notes = window._ntGetNotes ? window._ntGetNotes() : [];
       const note = (notes || []).find(n => n.id === id);
-      if (note && !confirm('「' + (note.title || '제목 없음') + '」 노트를 삭제할까요?')) return;
+      if (!note) return;
+      if (!confirm('「' + (note.title || '제목 없음') + '」 노트를 삭제할까요?')) return;
+      // 1) 즉시 로컬 메모리에서 제거 (UI 즉각 반응)
+      window._ntSetNotes((notes || []).filter(n => n.id !== id));
+      if (window.ntRender) window.ntRender();
+      // 2) Firebase에 tombstone 저장
       try { await hardDeleteNote(id); } catch(e){ console.warn('[FB] ntDeleteConfirm tombstone', e); }
-      if (oldDeleteConfirm) return oldDeleteConfirm(id);
+      // oldDeleteConfirm 호출하지 않음 — Supabase 이중 처리 방지
     };
 
     auth.onAuthStateChanged((user) => {
