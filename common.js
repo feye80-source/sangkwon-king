@@ -21108,8 +21108,19 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const _mbScroll = document.getElementById('ntEditorScroll');
       if (_mbScroll) {
         _mbScroll.innerHTML = editorBody;
+        // ★ 모바일: 헤더의 ntEditorTitle을 탭하면 제목 편집 가능하게 처리
         const _t = document.getElementById('ntEditorTitle');
-        if (_t) _t.textContent = note.title || '노트 편집';
+        if (_t) {
+          _t.textContent = note.title || '노트 편집';
+          _t.style.cursor = 'pointer';
+          _t.title = '탭하여 제목 편집';
+          _t.onclick = function() {
+            const newTitle = prompt('노트 제목을 입력하세요:', _t.textContent);
+            if (newTitle === null) return;
+            _t.textContent = newTitle || '제목 없음';
+            if (typeof ntAutoSave === 'function') ntAutoSave(id, 'title', newTitle);
+          };
+        }
         window._mbNtOpenId = id;
         return;
       }
@@ -30493,10 +30504,10 @@ ${newsText}
   };
 
 
-/* ===== Firebase auth/firestore shim + realtime notes sync (v16) ===== */
+/* ===== Firebase auth/firestore shim + realtime sync (v18) ===== */
 (function(){
-  if (window.__SK_FB_PATCH_V16__) return;
-  window.__SK_FB_PATCH_V16__ = true;
+  if (window.__SK_FB_PATCH_V18__) return;
+  window.__SK_FB_PATCH_V18__ = true;
 
   function boot(){
     if (!window.firebase || !window.__FIREBASE_CONFIG) {
@@ -30513,204 +30524,79 @@ ${newsText}
     window.firebaseAuth = auth;
     window.firebaseDB = db;
 
-    let noteUnsub = null;
+    // ── 구독 핸들 ──
+    let unsubs = {};
     let initRan = false;
     const dirtyNotes = new Set();
     let noteSaveTimer = null;
-    // ★ BUG FIX(버그3): 로컬에서 방금 생성/저장한 노트 ID 추적
-    // ntCreate → ntSave → Firebase 저장 → onSnapshot 수신 순서에서
-    // onSnapshot이 전체 목록을 덮어씌울 때 pendingNoteIds에 있는 노트는
-    // 로컬 버전을 우선 유지하여 깜빡임 및 중복 생성 방지
     const pendingNoteIds = new Set();
 
-    function mapUser(user){ return user ? { id: user.uid, email: user.email || '' } : null; }
-    async function getSession(){
-      const user = auth.currentUser;
-      return { data: { session: user ? { user: mapUser(user) } : null } };
-    }
-
-    function topCollection(name){ return db.collection(name); }
-
-    function makeQuery(table){
-      const state = { filters: [], order: null, range: null };
-      const api = {
-        select(){ return api; },
-        eq(field, value){ state.filters.push([field, value]); return api; },
-        order(field, opts){ state.order = [field, !!(opts && opts.ascending)]; return api; },
-        range(from, to){ state.range = [from, to]; return execMany(); },
-        maybeSingle(){ return execSingle(); },
-        async upsert(rows){
-          const arr = Array.isArray(rows) ? rows : [rows];
-          try {
-            const batch = db.batch();
-            arr.forEach((row) => {
-              const id = row.id || (Math.random().toString(36).slice(2));
-              batch.set(topCollection(table).doc(id), row, { merge: true });
-            });
-            await batch.commit();
-            return { data: arr, error: null };
-          } catch (e) { return { data: null, error: e }; }
-        },
-        delete(){
-          return {
-            in: async function(field, ids){
-              try {
-                const batch = db.batch();
-                ids.forEach((id) => batch.delete(topCollection(table).doc(id)));
-                await batch.commit();
-                return { error: null };
-              } catch(e){ return { error: e }; }
-            }
-          };
-        }
-      };
-      async function loadDocs(){
-        try {
-          let snap = await topCollection(table).get();
-          let docs = snap.docs.map(d => ({ ...d.data(), id: d.id }));
-          state.filters.forEach(([f,v]) => { docs = docs.filter(x => x && x[f] === v); });
-          if (state.order) {
-            const [field, asc] = state.order;
-            docs.sort((a,b) => {
-              const av = a && a[field] ? a[field] : '';
-              const bv = b && b[field] ? b[field] : '';
-              return asc ? (av > bv ? 1 : av < bv ? -1 : 0) : (av < bv ? 1 : av > bv ? -1 : 0);
-            });
-          }
-          if (state.range) docs = docs.slice(state.range[0], state.range[1] + 1);
-          return { data: docs, error: null };
-        } catch(e) { return { data: null, error: e }; }
-      }
-      async function execMany(){ return loadDocs(); }
-      async function execSingle(){
-        const { data, error } = await loadDocs();
-        if (error) return { data: null, error };
-        return { data: data && data.length ? data[0] : null, error: null };
-      }
-      return api;
-    }
-
-    const storageShim = {
-      from: function(){
-        return {
-          async upload(){ return { data: null, error: new Error('Storage not configured in this build') }; },
-          getPublicUrl(path){ return { data: { publicUrl: path || '' } }; },
-          async remove(){ return { data: [], error: null }; },
-          async list(){ return { data: [], error: null }; }
-        };
-      }
-    };
-
-    window._sb = {
-      auth: {
-        async getSession(){ return getSession(); },
-        async signInWithPassword({email, password}){
-          try {
-            const cred = await auth.signInWithEmailAndPassword(email, password);
-            return { data: { session: { user: mapUser(cred.user) } }, error: null };
-          } catch(e){ return { data: { session: null }, error: e }; }
-        },
-        async resetPasswordForEmail(email){
-          try { await auth.sendPasswordResetEmail(email); return { error: null }; }
-          catch(e){ return { error: e }; }
-        },
-        async updateUser({password}){
-          try {
-            if (!auth.currentUser) throw new Error('No user');
-            await auth.currentUser.updatePassword(password);
-            return { error: null };
-          } catch(e){ return { error: e }; }
-        },
-        async signOut(){ try { await auth.signOut(); return { error: null }; } catch(e){ return { error: e }; } },
-        onAuthStateChange(cb){
-          let first = true;
-          return auth.onAuthStateChanged((user) => {
-            try {
-              cb(first ? 'INITIAL_SESSION' : (user ? 'SIGNED_IN' : 'SIGNED_OUT'), user ? { user: mapUser(user) } : null);
-            } catch(e){}
-            first = false;
-          });
-        }
-      },
-      from: function(table){ return makeQuery(table); },
-      storage: storageShim
-    };
-
-    async function fbUid(){ const user = auth.currentUser; return user ? user.uid : null; }
+    function mapUser(u){ return u ? { id: u.uid, email: u.email || '' } : null; }
+    async function fbUid(){ return auth.currentUser ? auth.currentUser.uid : null; }
     window._sbGetUserId = fbUid;
 
-    async function saveDirtyNotes(arr){
-      const uid = await fbUid();
-      if (!uid) return;
-      const notes = Array.isArray(arr) ? arr : [];
-      const changed = dirtyNotes.size ? notes.filter(n => dirtyNotes.has(n.id)) : notes;
-      if (!changed.length) return;
-      // ★ BUG FIX(버그3): 저장 시작 시 pendingNoteIds에 등록
-      // onSnapshot이 돌아오기 전까지 이 ID들은 로컬 버전을 우선 유지
-      changed.forEach(n => pendingNoteIds.add(n.id));
-      const batch = db.batch();
-      changed.forEach((note) => {
-        const docId = uid + '_' + note.id;
-        batch.set(db.collection('notes').doc(docId), {
-          id: docId,
-          user_id: uid,
-          item_id: note.id,
-          data: note,
-          updated_at: note.updatedAt || note.createdAt || new Date().toISOString()
-        }, { merge: true });
-      });
-      await batch.commit();
-      changed.forEach(n => dirtyNotes.delete(n.id));
-      // 저장 완료 후 5초 뒤 pending 해제 (onSnapshot이 충분히 처리할 시간)
-      setTimeout(() => { changed.forEach(n => pendingNoteIds.delete(n.id)); }, 5000);
-    }
-    window._sbMarkNtDirty = function(noteId){ if (noteId) dirtyNotes.add(noteId); };
-    window._sbSaveNtNotes = async function(arr){
-      clearTimeout(noteSaveTimer);
-      noteSaveTimer = setTimeout(() => { saveDirtyNotes(arr).catch(e => console.warn('[FB] saveDirtyNotes', e)); }, 80);
-      return { error: null };
-    };
-
-    async function hardDeleteNote(id){
-      const uid = await fbUid();
-      if (!uid || !id) return;
-      const docId = uid + '_' + id;
-      const stamp = new Date().toISOString();
-      await db.collection('notes').doc(docId).set({
-        id: docId,
-        user_id: uid,
-        item_id: id,
-        data: { id, deletedAt: stamp, updatedAt: stamp },
-        updated_at: stamp
-      }, { merge: true });
-    }
-
-    function applyCloudNotes(cloudNotes){
+    // ── 공통: Firestore 컬렉션에서 uid 기준 전체 로드 ──
+    async function loadCol(col, uid){
       try {
-        const visible = (cloudNotes || []).filter(n => n && !n.deletedAt);
-        if (window._idbCache) window._idbCache['nt_notes'] = cloudNotes || [];
-        if (window.idbSet) window.idbSet('nt_notes', cloudNotes || []).catch(()=>{});
+        const snap = await db.collection(col).where('user_id','==',uid).get();
+        return snap.docs.map(d => d.data());
+      } catch(e){ console.warn('[FB] loadCol', col, e); return []; }
+    }
 
-        // ★ BUG FIX(버그3): pendingNoteIds merge
-        // 로컬에서 방금 생성/저장한 노트가 아직 Firestore에서 돌아오지 않았을 때
-        // 클라우드 결과로 전체 덮어씌우면 로컬 노트가 순간 사라졌다 나타나며 깜빡임 발생.
-        // → 로컬 메모리에 있는 pending 노트를 클라우드 목록에 merge하여 유지.
-        let finalNotes = visible;
+    // ── 공통: 배열을 Firestore 컬렉션에 batch upsert ──
+    async function saveCol(col, uid, rows){
+      if (!uid || !rows || !rows.length) return;
+      const chunks = [];
+      for (let i = 0; i < rows.length; i += 400) chunks.push(rows.slice(i, i+400));
+      for (const chunk of chunks) {
+        const batch = db.batch();
+        chunk.forEach(row => {
+          const docId = uid + '_' + (row.id || Math.random().toString(36).slice(2));
+          batch.set(db.collection(col).doc(docId), {
+            ...row,
+            user_id: uid,
+            _docId: docId,
+            updated_at: row.updatedAt || row.updated_at || new Date().toISOString()
+          }, { merge: true });
+        });
+        await batch.commit();
+      }
+    }
+
+    // ── 공통: onSnapshot 구독 ──
+    function subscribeCol(col, uid, onData){
+      if (unsubs[col]) { try { unsubs[col](); } catch(e){} }
+      unsubs[col] = db.collection(col).where('user_id','==',uid).onSnapshot(snap => {
+        const rows = snap.docs.map(d => {
+          const data = d.data();
+          // notes 컬렉션은 data.data 구조, 나머지는 직접 저장
+          return data.data !== undefined ? data.data : data;
+        }).filter(Boolean);
+        onData(rows);
+      }, e => console.warn('[FB] onSnapshot', col, e));
+    }
+
+    // ── applyData: 각 컬렉션별 로컬 반영 ──
+    function applyNotes(rows){
+      try {
+        const all = rows || [];
+        if (window._idbCache) window._idbCache['nt_notes'] = all;
+        if (window.idbSet) window.idbSet('nt_notes', all).catch(()=>{});
+        const visible = all.filter(n => n && !n.deletedAt);
+        // pendingNoteIds merge
+        let final = visible;
         if (pendingNoteIds.size > 0 && window._ntGetNotes) {
           const localNotes = window._ntGetNotes() || [];
           const cloudIds = new Set(visible.map(n => n.id));
-          const missingLocals = localNotes.filter(n => pendingNoteIds.has(n.id) && !cloudIds.has(n.id));
-          if (missingLocals.length > 0) {
-            finalNotes = [...missingLocals, ...visible];
-            finalNotes.sort((a,b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
+          const missing = localNotes.filter(n => pendingNoteIds.has(n.id) && !cloudIds.has(n.id));
+          if (missing.length) {
+            final = [...missing, ...visible];
+            final.sort((a,b) => new Date(b.updatedAt||b.createdAt||0) - new Date(a.updatedAt||a.createdAt||0));
           }
         }
-
-        // ★ BUG FIX(버그1): visible(deletedAt 제거된 것)만 _ntSetNotes에 전달해야
-        //   _ntSetNotes 내부에서 filter를 다시 해도 tombstone이 메모리에 올라오지 않음
-        if (window._ntSetNotes) window._ntSetNotes(finalNotes);
+        if (window._ntSetNotes) window._ntSetNotes(final);
         if (window.ntRender) window.ntRender();
-        // if current open note deleted, clear editor area gracefully
+        // 열린 노트가 삭제됐으면 에디터 닫기
         const openId = window.ntActiveId || window._mbNtOpenId || null;
         if (openId && !visible.find(n => n.id === openId)) {
           const empty = document.getElementById('ntEmpty');
@@ -30718,64 +30604,276 @@ ${newsText}
           if (empty) empty.style.display = 'flex';
           if (editor) editor.style.display = 'none';
         }
-      } catch(e){ console.warn('[FB] applyCloudNotes', e); }
+      } catch(e){ console.warn('[FB] applyNotes', e); }
     }
 
-    function subscribeNotes(uid){
-      if (noteUnsub) { try { noteUnsub(); } catch(e){} noteUnsub = null; }
-      noteUnsub = db.collection('notes').where('user_id','==',uid).onSnapshot((snap) => {
+    function applyRooms(rows){
+      try {
+        const all = rows || [];
+        const active = all.filter(r => !r.deletedAt);
+        if (window._idbCache) window._idbCache['wr2_rooms'] = all;
+        if (window.idbSet) window.idbSet('wr2_rooms', all).catch(()=>{});
+        if (window.wr2State) window.wr2State.rooms = active;
+        if (window.wr2Render) window.wr2Render();
+      } catch(e){ console.warn('[FB] applyRooms', e); }
+    }
+
+    function applySections(rows){
+      try {
+        const all = rows || [];
+        if (window._idbCache) window._idbCache['wr2_sections'] = all;
+        if (window.idbSet) window.idbSet('wr2_sections', all).catch(()=>{});
+        if (window.wr2State) window.wr2State.sections = all;
+        if (window.wr2Render) window.wr2Render();
+      } catch(e){ console.warn('[FB] applySections', e); }
+    }
+
+    function applySv(rows){
+      try {
+        const all = rows || [];
+        const active = all.filter(r => !r.deletedAt);
+        if (window._idbCache) window._idbCache['re_sv'] = all;
+        if (window.idbSet) window.idbSet('re_sv', all).catch(()=>{});
+        if (typeof _svBuildIndex === 'function') _svBuildIndex(all);
+        if (typeof window.renderSvList === 'function') window.renderSvList();
+      } catch(e){ console.warn('[FB] applySv', e); }
+    }
+
+    function applyKcards(rows){
+      try {
+        const all = rows || [];
+        const active = all.filter(k => !k.deletedAt);
+        if (window._idbCache) window._idbCache['ins_kcards'] = all;
+        if (window.idbSet) window.idbSet('ins_kcards', all).catch(()=>{});
+        if (typeof window.insRender === 'function') window.insRender();
+        else if (typeof window.renderKcards === 'function') window.renderKcards();
+      } catch(e){ console.warn('[FB] applyKcards', e); }
+    }
+
+    function applyKcat(rows){
+      try {
+        const arr = Array.isArray(rows) ? rows : [];
+        if (window._idbCache) window._idbCache['ins_kcat'] = arr;
+        if (window.idbSet) window.idbSet('ins_kcat', arr).catch(()=>{});
+      } catch(e){ console.warn('[FB] applyKcat', e); }
+    }
+
+    function applyWorkScenes(rows){
+      try {
+        const all = rows || [];
+        if (window._idbCache) window._idbCache['re_ws'] = all;
+        if (window.idbSet) window.idbSet('re_ws', all).catch(()=>{});
+      } catch(e){ console.warn('[FB] applyWorkScenes', e); }
+    }
+
+    // ── 모든 컬렉션 구독 시작 ──
+    function subscribeAll(uid){
+      console.log('[FB] 전체 실시간 구독 시작:', uid);
+
+      // notes 컬렉션은 data.data 구조라 별도 처리
+      if (unsubs['notes']) { try { unsubs['notes'](); } catch(e){} }
+      unsubs['notes'] = db.collection('notes').where('user_id','==',uid).onSnapshot(snap => {
         const rows = [];
-        snap.forEach((doc) => {
-          const row = doc.data() || {};
-          if (row && row.data) rows.push(row.data);
-        });
-        rows.sort((a,b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
-        applyCloudNotes(rows);
-      }, (err) => console.warn('[FB] notes onSnapshot', err));
+        snap.forEach(doc => { const d = doc.data(); if (d && d.data) rows.push(d.data); });
+        rows.sort((a,b) => new Date(b.updatedAt||b.createdAt||0) - new Date(a.updatedAt||a.createdAt||0));
+        applyNotes(rows);
+      }, e => console.warn('[FB] notes onSnapshot', e));
+
+      subscribeCol('workrooms',  uid, applyRooms);
+      subscribeCol('sections',   uid, applySections);
+      subscribeCol('items',      uid, applySv);
+      subscribeCol('kcards',     uid, applyKcards);
+      subscribeCol('kcat',       uid, applyKcat);
+      subscribeCol('snapshots',  uid, applyWorkScenes);
     }
 
-    const oldInitLoad = window._sbInitLoad;
-    window._sbInitLoad = async function(){
-      const s = await getSession();
-      if (!s.data.session) { window._sbShowLogin && window._sbShowLogin(); return; }
-      // ★ BUG FIX(버그4): 로컬 캐시를 초기화하지 않음
-      // 기존 코드가 nt_notes를 []로 비운 뒤 Firestore onSnapshot 연결 전까지 노트 목록이
-      // 비어있다가 뒤늦게 나타나는 지연 현상 유발. 캐시는 그대로 두고 구독만 시작.
-      // oldInitLoad(Supabase 기반 merge 로직)도 Firebase 환경에서는 건너뜀.
-      try { subscribeNotes(s.data.session.user.id); } catch(e) { console.warn('[FB] subscribeNotes', e); }
+    // ── 모든 구독 해제 ──
+    function unsubAll(){
+      Object.values(unsubs).forEach(fn => { try { fn(); } catch(e){} });
+      unsubs = {};
+    }
+
+    // ── 노트 저장 ──
+    async function saveDirtyNotes(arr){
+      const uid = await fbUid();
+      if (!uid) return;
+      const notes = Array.isArray(arr) ? arr : [];
+      const changed = dirtyNotes.size ? notes.filter(n => dirtyNotes.has(n.id)) : notes;
+      if (!changed.length) return;
+      changed.forEach(n => pendingNoteIds.add(n.id));
+      const batch = db.batch();
+      changed.forEach(note => {
+        const docId = uid + '_' + note.id;
+        batch.set(db.collection('notes').doc(docId), {
+          id: docId, user_id: uid, item_id: note.id,
+          data: note,
+          updated_at: note.updatedAt || note.createdAt || new Date().toISOString()
+        }, { merge: true });
+      });
+      await batch.commit();
+      changed.forEach(n => dirtyNotes.delete(n.id));
+      setTimeout(() => { changed.forEach(n => pendingNoteIds.delete(n.id)); }, 5000);
+    }
+
+    window._sbMarkNtDirty = function(id){ if (id) dirtyNotes.add(id); };
+    window._sbSaveNtNotes = async function(arr){
+      clearTimeout(noteSaveTimer);
+      noteSaveTimer = setTimeout(() => saveDirtyNotes(arr).catch(e => console.warn('[FB] saveDirtyNotes', e)), 80);
+      return { error: null };
     };
 
-    // ★ BUG FIX: 이중 삭제 경합 제거
-    // oldDelete(로컬 Supabase 로직)를 호출하면 로컬 배열에서 노트가 사라진 뒤
-    // hardDeleteNote(Firebase tombstone)가 저장되고, 이후 onSnapshot으로 돌아온
-    // applyCloudNotes가 deletedAt 노트를 다시 _ntSetNotes에 넘겨 부활하는 현상 발생.
-    // Firebase 환경에서는 hardDeleteNote → onSnapshot → applyCloudNotes 흐름만으로 충분.
-    const oldDelete = window.ntDelete;
+    // ── 작업룸 저장 ──
+    window._sbSaveRooms = async function(arr){
+      const uid = await fbUid(); if (!uid) return { error: null };
+      try { await saveCol('workrooms', uid, arr || []); } catch(e){ console.warn('[FB] saveRooms', e); }
+      return { error: null };
+    };
+    window._sbSaveSections = async function(arr){
+      const uid = await fbUid(); if (!uid) return { error: null };
+      try { await saveCol('sections', uid, arr || []); } catch(e){ console.warn('[FB] saveSections', e); }
+      return { error: null };
+    };
+
+    // ── 저장목록 저장 ──
+    window._sbSaveSv = async function(arr){
+      const uid = await fbUid(); if (!uid) return { error: null };
+      try { await saveCol('items', uid, arr || []); } catch(e){ console.warn('[FB] saveSv', e); }
+      return { error: null };
+    };
+
+    // ── 알짜카드 저장 ──
+    window._sbSaveKcards = async function(arr){
+      const uid = await fbUid(); if (!uid) return { error: null };
+      try { await saveCol('kcards', uid, arr || []); } catch(e){ console.warn('[FB] saveKcards', e); }
+      return { error: null };
+    };
+    window._sbSaveKcat = async function(arr){
+      const uid = await fbUid(); if (!uid) return { error: null };
+      try { await saveCol('kcat', uid, arr || []); } catch(e){ console.warn('[FB] saveKcat', e); }
+      return { error: null };
+    };
+
+    // ── 작업씬 저장 ──
+    window._sbSaveWorkScenes = async function(arr){
+      const uid = await fbUid(); if (!uid) return { error: null };
+      try { await saveCol('snapshots', uid, arr || []); } catch(e){ console.warn('[FB] saveWorkScenes', e); }
+      return { error: null };
+    };
+
+    // ── 노트 삭제 ──
+    async function hardDeleteNote(id){
+      const uid = await fbUid(); if (!uid || !id) return;
+      const docId = uid + '_' + id;
+      const stamp = new Date().toISOString();
+      await db.collection('notes').doc(docId).set({
+        id: docId, user_id: uid, item_id: id,
+        data: { id, deletedAt: stamp, updatedAt: stamp },
+        updated_at: stamp
+      }, { merge: true });
+    }
+
+    // ── _sb shim (Auth 인터페이스 유지) ──
+    function makeQuery(table){
+      const state = { filters: [], order: null };
+      const api = {
+        select(){ return api; },
+        eq(f,v){ state.filters.push([f,v]); return api; },
+        order(f,opts){ state.order = [f, !!(opts&&opts.ascending)]; return api; },
+        async maybeSingle(){
+          const {data,error} = await execMany();
+          if (error) return {data:null,error};
+          return {data: data&&data.length?data[0]:null, error:null};
+        },
+        range(){ return execMany(); },
+        async upsert(rows){
+          const uid = auth.currentUser ? auth.currentUser.uid : null;
+          if (!uid) return {data:null,error:new Error('no user')};
+          const arr = Array.isArray(rows)?rows:[rows];
+          try { await saveCol(table, uid, arr); return {data:arr,error:null}; }
+          catch(e){ return {data:null,error:e}; }
+        },
+        delete(){ return { in: async function(){ return {error:null}; } }; }
+      };
+      async function execMany(){
+        try {
+          const uid = auth.currentUser ? auth.currentUser.uid : null;
+          if (!uid) return {data:[],error:null};
+          let snap = await db.collection(table).where('user_id','==',uid).get();
+          let docs = snap.docs.map(d=>{const r=d.data();return r.data!==undefined?r.data:r;}).filter(Boolean);
+          state.filters.forEach(([f,v])=>{ docs=docs.filter(x=>x&&x[f]===v); });
+          return {data:docs,error:null};
+        } catch(e){ return {data:null,error:e}; }
+      }
+      return api;
+    }
+
+    window._sb = {
+      auth: {
+        async getSession(){
+          const user = auth.currentUser;
+          return {data:{session: user?{user:mapUser(user)}:null}};
+        },
+        async signInWithPassword({email,password}){
+          try {
+            const cred = await auth.signInWithEmailAndPassword(email,password);
+            try { localStorage.setItem('_sb_saved_email',email); localStorage.setItem('_sb_saved_pw',password); } catch(e){}
+            return {data:{session:{user:mapUser(cred.user)}},error:null};
+          } catch(e){ return {data:{session:null},error:e}; }
+        },
+        async resetPasswordForEmail(email){
+          try { await auth.sendPasswordResetEmail(email); return {error:null}; }
+          catch(e){ return {error:e}; }
+        },
+        async updateUser({password}){
+          try {
+            if (!auth.currentUser) throw new Error('No user');
+            await auth.currentUser.updatePassword(password);
+            return {error:null};
+          } catch(e){ return {error:e}; }
+        },
+        async signOut(){ try { await auth.signOut(); return {error:null}; } catch(e){ return {error:e}; } },
+        onAuthStateChange(cb){
+          return auth.onAuthStateChanged(user => {
+            try { cb(user?'SIGNED_IN':'SIGNED_OUT', user?{user:mapUser(user)}:null); } catch(e){}
+          });
+        }
+      },
+      from: function(table){ return makeQuery(table); },
+      storage: { from(){ return {
+        async upload(){ return {data:null,error:new Error('Storage not configured')}; },
+        getPublicUrl(p){ return {data:{publicUrl:p||''}}; },
+        async remove(){ return {data:[],error:null}; },
+        async list(){ return {data:[],error:null}; }
+      }; } }
+    };
+
+    // ── _sbInitLoad: 구독만 시작 (로컬 캐시 초기화 안 함) ──
+    window._sbInitLoad = async function(){
+      const user = auth.currentUser;
+      if (!user) { window._sbShowLogin && window._sbShowLogin(); return; }
+      subscribeAll(user.uid);
+    };
+
+    // ── ntDelete 래핑 ──
     window.ntDelete = async function(id){
-      // 1) 즉시 로컬 메모리에서 제거 (UI 즉각 반응)
       if (window._ntSetNotes && window._ntGetNotes) {
-        window._ntSetNotes((window._ntGetNotes() || []).filter(n => n.id !== id));
+        window._ntSetNotes((window._ntGetNotes()||[]).filter(n=>n.id!==id));
         if (window.ntRender) window.ntRender();
       }
-      // 2) Firebase에 tombstone 저장 → onSnapshot이 다른 기기에 전파
-      try { await hardDeleteNote(id); } catch(e){ console.warn('[FB] ntDelete tombstone', e); }
-      // oldDelete는 호출하지 않음 — Supabase 이중 처리 방지
+      try { await hardDeleteNote(id); } catch(e){ console.warn('[FB] ntDelete', e); }
     };
-    const oldDeleteConfirm = window.ntDeleteConfirm;
     window.ntDeleteConfirm = async function(id){
       const notes = window._ntGetNotes ? window._ntGetNotes() : [];
-      const note = (notes || []).find(n => n.id === id);
+      const note = (notes||[]).find(n=>n.id===id);
       if (!note) return;
-      if (!confirm('「' + (note.title || '제목 없음') + '」 노트를 삭제할까요?')) return;
-      // 1) 즉시 로컬 메모리에서 제거 (UI 즉각 반응)
-      window._ntSetNotes((notes || []).filter(n => n.id !== id));
+      if (!confirm('「'+(note.title||'제목 없음')+'」 노트를 삭제할까요?')) return;
+      window._ntSetNotes((notes||[]).filter(n=>n.id!==id));
       if (window.ntRender) window.ntRender();
-      // 2) Firebase에 tombstone 저장
-      try { await hardDeleteNote(id); } catch(e){ console.warn('[FB] ntDeleteConfirm tombstone', e); }
-      // oldDeleteConfirm 호출하지 않음 — Supabase 이중 처리 방지
+      try { await hardDeleteNote(id); } catch(e){ console.warn('[FB] ntDeleteConfirm', e); }
     };
 
-    auth.onAuthStateChanged((user) => {
+    // ── 인증 상태 감지 ──
+    auth.onAuthStateChanged(user => {
       if (user) {
         window._sbHideLogin && window._sbHideLogin();
         window._sbHideRecovery && window._sbHideRecovery();
@@ -30784,26 +30882,25 @@ ${newsText}
           initRan = true;
           setTimeout(() => { window._sbInitLoad && window._sbInitLoad(); }, 100);
         } else {
-          subscribeNotes(user.uid);
+          subscribeAll(user.uid);
         }
       } else {
-        // ★ Firebase 세션 없음 → 저장된 이메일/비밀번호로 자동 로그인 시도
-        // 아이폰처럼 Firebase 세션은 없지만 저장된 계정 정보가 있는 경우 자동 처리
+        // Firebase 세션 없음 → 저장된 계정으로 자동 로그인 시도
         const savedEmail = localStorage.getItem('_sb_saved_email');
         const savedPw    = localStorage.getItem('_sb_saved_pw');
         if (savedEmail && savedPw) {
-          console.log('[FB] Firebase 세션 없음 → 저장된 계정으로 자동 로그인 시도:', savedEmail);
+          console.log('[FB] 저장된 계정으로 자동 로그인 시도:', savedEmail);
           auth.signInWithEmailAndPassword(savedEmail, savedPw)
             .then(() => console.log('[FB] 자동 로그인 성공'))
             .catch(e => {
               console.warn('[FB] 자동 로그인 실패:', e.message);
               initRan = false;
-              if (noteUnsub) { try { noteUnsub(); } catch(e2){} noteUnsub = null; }
+              unsubAll();
               window._sbShowLogin && window._sbShowLogin();
             });
         } else {
           initRan = false;
-          if (noteUnsub) { try { noteUnsub(); } catch(e){} noteUnsub = null; }
+          unsubAll();
           window._sbShowLogin && window._sbShowLogin();
         }
       }
