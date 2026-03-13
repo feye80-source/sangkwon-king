@@ -30787,9 +30787,25 @@ ${newsText}
           subscribeNotes(user.uid);
         }
       } else {
-        initRan = false;
-        if (noteUnsub) { try { noteUnsub(); } catch(e){} noteUnsub = null; }
-        window._sbShowLogin && window._sbShowLogin();
+        // ★ Firebase 세션 없음 → 저장된 이메일/비밀번호로 자동 로그인 시도
+        // 아이폰처럼 Firebase 세션은 없지만 저장된 계정 정보가 있는 경우 자동 처리
+        const savedEmail = localStorage.getItem('_sb_saved_email');
+        const savedPw    = localStorage.getItem('_sb_saved_pw');
+        if (savedEmail && savedPw) {
+          console.log('[FB] Firebase 세션 없음 → 저장된 계정으로 자동 로그인 시도:', savedEmail);
+          auth.signInWithEmailAndPassword(savedEmail, savedPw)
+            .then(() => console.log('[FB] 자동 로그인 성공'))
+            .catch(e => {
+              console.warn('[FB] 자동 로그인 실패:', e.message);
+              initRan = false;
+              if (noteUnsub) { try { noteUnsub(); } catch(e2){} noteUnsub = null; }
+              window._sbShowLogin && window._sbShowLogin();
+            });
+        } else {
+          initRan = false;
+          if (noteUnsub) { try { noteUnsub(); } catch(e){} noteUnsub = null; }
+          window._sbShowLogin && window._sbShowLogin();
+        }
       }
     });
   }
