@@ -246,6 +246,12 @@
    블록2: Supabase
 ════════════════════════════════════════════════════════ */
   (function() {
+    // ★ Firebase 환경: supabase SDK가 없으면 블록 전체 skip
+    // Firebase shim이 window._sb를 나중에 덮어씌우므로 여기서 크래시 나면 안 됨
+    if (typeof supabase === 'undefined') {
+      console.log('[SB] supabase SDK 없음 → Firebase 모드, 블록2 skip');
+      return;
+    }
     const SUPABASE_URL = 'https://pjwxjnsvvgbicuqnphkr.supabase.co';
     const SUPABASE_KEY = 'sb_publishable_WyWdFsQNlyrfEDY5qRWYGw_3Vs_9C6n';
 
@@ -3503,7 +3509,7 @@
         const s = document.createElement('script');
         s.type = 'text/javascript';
         s.src = 'https://dapi.kakao.com/v2/maps/sdk.js?appkey=' + k + '&libraries=services,drawing&autoload=false';
-        s.onload = () => { if (window.kakao && window.kakao.maps) kakao.maps.load(() => { console.log('카카오맵 로드 완료'); if (currentPage === 2) initMap(); }); };
+        s.onload = () => { if (window.kakao && window.kakao.maps) kakao.maps.load(() => { console.log('카카오맵 로드 완료'); if (typeof currentPage !== 'undefined' && currentPage === 2) initMap(); }); };
         document.head.appendChild(s);
       };
       if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', loadKakaoMap);
