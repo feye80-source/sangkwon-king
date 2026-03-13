@@ -249,189 +249,6 @@
     const SUPABASE_URL = 'https://pjwxjnsvvgbicuqnphkr.supabase.co';
     const SUPABASE_KEY = 'sb_publishable_WyWdFsQNlyrfEDY5qRWYGw_3Vs_9C6n';
 
-
-    // Firebase로 동작시키기 위한 Supabase 호환 shim
-    if (!window.supabase && window.firebase) {
-      window.supabase = {
-        createClient: function(_url, _key, _opts) {
-          const fbApp = firebase.apps.length
-            ? firebase.app()
-            : firebase.initializeApp(window.__FIREBASE_CONFIG__ || {
-                apiKey: "AIzaSyCaB4S7YUaosRKMZNp2npYmfSh32Xh5dPk",
-                authDomain: "sk-king-70f30.firebaseapp.com",
-                projectId: "sk-king-70f30",
-                storageBucket: "sk-king-70f30.firebasestorage.app",
-                messagingSenderId: "401913540182",
-                appId: "1:401913540182:web:ad45df6807101eac3195f7"
-              });
-          const auth = firebase.auth();
-          const db = firebase.firestore();
-          let storage = null;
-          try { storage = firebase.storage(); } catch (e) { storage = null; }
-
-          function mapUser(user) {
-            return user ? { id: user.uid, email: user.email || '' } : null;
-          }
-          function ok(data) { return { data: data || null, error: null }; }
-          function fail(error) { return { data: null, error: error || new Error('unknown') }; }
-
-          function makeStorage(bucket) {
-            return {
-              async upload(path, fileOrBlob, options) {
-                try {
-                  if (!storage) throw new Error('Firebase Storage가 아직 활성화되지 않았습니다.');
-                  const ref = storage.ref().child(bucket + '/' + path);
-                  const meta = {};
-                  if (options && options.contentType) meta.contentType = options.contentType;
-                  await ref.put(fileOrBlob, meta);
-                  return ok({ path: path });
-                } catch (e) { return fail(e); }
-              },
-              getPublicUrl(path) {
-                const b = (fbApp.options && fbApp.options.storageBucket) || '';
-                const publicUrl = 'https://firebasestorage.googleapis.com/v0/b/' + b + '/o/' + encodeURIComponent(bucket + '/' + path) + '?alt=media';
-                return { data: { publicUrl } };
-              },
-              async remove(paths) {
-                try {
-                  if (!storage) throw new Error('Firebase Storage가 아직 활성화되지 않았습니다.');
-                  for (const p of (paths || [])) {
-                    try { await storage.ref().child(bucket + '/' + p).delete(); } catch (e) {}
-                  }
-                  return ok({});
-                } catch (e) { return fail(e); }
-              },
-              async list(prefix) {
-                try {
-                  if (!storage) throw new Error('Firebase Storage가 아직 활성화되지 않았습니다.');
-                  const base = storage.ref().child(bucket + '/' + (prefix || ''));
-                  const res = await base.listAll();
-                  return ok((res.items || []).map(it => ({ name: it.name, id: it.name, fullPath: it.fullPath })));
-                } catch (e) { return fail(e); }
-              }
-            };
-          }
-
-          function makeQuery(table) {
-            const state = { table, fields: null, filters: [], order: null, range: null, mode: 'select' };
-            const api = {
-              select(fields) { state.fields = fields || null; return api; },
-              eq(field, value) { state.filters.push({ op: 'eq', field, value }); return api; },
-              order(field, opts) { state.order = { field, asc: !(opts && opts.ascending === false) }; return api; },
-              range(from, to) { state.range = { from, to }; return executeSelect(false); },
-              maybeSingle() { return executeSelect(true); },
-              async upsert(rows, _opts) {
-                try {
-                  const list = Array.isArray(rows) ? rows : [rows];
-                  const batch = db.batch();
-                  list.forEach(row => {
-                    if (!row || !row.id) return;
-                    batch.set(db.collection(table).doc(String(row.id)), row, { merge: true });
-                  });
-                  await batch.commit();
-                  return ok(list);
-                } catch (e) { return fail(e); }
-              },
-              delete() { state.mode = 'delete'; return api; },
-              async in(field, values) {
-                if (state.mode !== 'delete') return fail(new Error('delete().in(...) 만 지원됩니다.'));
-                try {
-                  const ids = Array.isArray(values) ? values : [];
-                  const batch = db.batch();
-                  ids.forEach(id => batch.delete(db.collection(table).doc(String(id))));
-                  await batch.commit();
-                  return ok({});
-                } catch (e) { return fail(e); }
-              }
-            };
-
-            function project(row) {
-              if (!state.fields) return row;
-              const names = state.fields.split(',').map(v => v.trim()).filter(Boolean);
-              if (!names.length || names[0] === '*') return row;
-              const out = {};
-              names.forEach(k => { if (row && Object.prototype.hasOwnProperty.call(row, k)) out[k] = row[k]; });
-              return out;
-            }
-
-            async function executeSelect(single) {
-              try {
-                let rows = [];
-                const snap = await db.collection(table).get();
-                rows = snap.docs.map(d => d.data());
-                for (const f of state.filters) {
-                  if (f.op === 'eq') rows = rows.filter(r => (r ? r[f.field] : undefined) === f.value);
-                }
-                if (state.order && state.order.field) {
-                  const key = state.order.field;
-                  rows.sort((a, b) => {
-                    const av = a ? a[key] : undefined;
-                    const bv = b ? b[key] : undefined;
-                    if (av === bv) return 0;
-                    if (av == null) return state.order.asc ? -1 : 1;
-                    if (bv == null) return state.order.asc ? 1 : -1;
-                    return av < bv ? (state.order.asc ? -1 : 1) : (state.order.asc ? 1 : -1);
-                  });
-                }
-                if (state.range) rows = rows.slice(state.range.from, state.range.to + 1);
-                const projected = rows.map(project);
-                if (single) return ok(projected[0] || null);
-                return ok(projected);
-              } catch (e) { return fail(e); }
-            }
-            return api;
-          }
-
-          let authSeenFirst = false;
-          return {
-            auth: {
-              onAuthStateChange(cb) {
-                setTimeout(async function() {
-                  const user = auth.currentUser;
-                  cb('INITIAL_SESSION', user ? { user: mapUser(user) } : null);
-                }, 0);
-                return auth.onAuthStateChanged(function(user) {
-                  if (!authSeenFirst) { authSeenFirst = true; return; }
-                  cb(user ? 'SIGNED_IN' : 'SIGNED_OUT', user ? { user: mapUser(user) } : null);
-                });
-              },
-              async getSession() {
-                const user = auth.currentUser;
-                return { data: { session: user ? { user: mapUser(user) } : null } };
-              },
-              async signInWithPassword({ email, password }) {
-                try {
-                  const cred = await auth.signInWithEmailAndPassword(email, password);
-                  return { data: { session: { user: mapUser(cred.user) } }, error: null };
-                } catch (e) { return { data: { session: null }, error: e }; }
-              },
-              async resetPasswordForEmail(email, opts) {
-                try {
-                  const settings = opts && opts.redirectTo ? { url: opts.redirectTo, handleCodeInApp: false } : undefined;
-                  await auth.sendPasswordResetEmail(email, settings);
-                  return ok({});
-                } catch (e) { return fail(e); }
-              },
-              async updateUser({ password }) {
-                try {
-                  const user = auth.currentUser;
-                  if (!user) throw new Error('로그인 세션이 없습니다.');
-                  await user.updatePassword(password);
-                  return ok({ user: mapUser(user) });
-                } catch (e) { return fail(e); }
-              },
-              async signOut() {
-                try { await auth.signOut(); return { error: null }; } catch (e) { return { error: e }; }
-              }
-            },
-            from(table) { return makeQuery(table); },
-            storage: { from(bucket) { return makeStorage(bucket); } },
-            _firebase: { app: fbApp, auth, db, storage }
-          };
-        }
-      };
-    }
-
     // Supabase 클라이언트 초기화
     window._sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
       auth: {
@@ -575,22 +392,13 @@
       _dirtyItems[table].add(itemId);
     }
     function _clearDirty(table) { _dirtyItems[table] = new Set(); }
-    // hotfix: 일부 레거시 코드가 전역 markDirty / _markDirty / dirtyItems 이름을 직접 참조함
-    // Firebase 전환 과정에서 스코프가 갈리면 버튼 클릭 후 생성만 되고 UI 오픈이 중단될 수 있어 전역 alias를 둔다.
-    try {
-      window._dirtyItems = _dirtyItems;
-      window.dirtyItems = _dirtyItems;
-      window._markDirty = _markDirty;
-      window.markDirty = _markDirty;
-      window._clearDirty = _clearDirty;
-    } catch(e) {}
 
     // 변경된 항목만 upsert (dirty tracking 기반)
     async function tblSaveDirty(table, arr) {
       try {
         const uid = await _sbGetUserId();
         if (!uid || !arr || !arr.length) return;
-        const dirty = _dirtyItems[table] || window._dirtyItems?.[table] || window.dirtyItems?.[table];
+        const dirty = _dirtyItems[table];
         const toSave = (dirty && dirty.size > 0)
           ? arr.filter(item => dirty.has(item.id || item.item_id))
           : arr; // dirty 목록 없으면 전체 (초기 동기화)
@@ -634,9 +442,12 @@
     }
     // 삭제된 항목 클라우드에서 제거 (deletedAt 있는 item_id 삭제)
     async function tblDeleteItems(table, itemIds) {
-      // Firebase 전환 후에는 즉시 하드삭제하지 않고 tombstone(deletedAt)을 클라우드에 유지한다.
-      // 다른 기기의 오래된 캐시가 다시 살아나는 문제를 막기 위함.
-      return;
+      try {
+        const uid = await _sbGetUserId();
+        if (!uid || !itemIds.length) return;
+        const ids = itemIds.map(iid => uid + '_' + iid);
+        await window._sb.from(table).delete().in('id', ids);
+      } catch(e) { console.warn('[SB] tblDeleteItems error', table, e); }
     }
 
     // ─── 동기화 상태 표시 ─────────────────────────────────────
@@ -807,49 +618,12 @@
     window._sbSaveNotes = async function(key, arr) {
       await kvSet('notes_' + key, arr);
     };
-    // 노트는 "클라우드 원본(source of truth)" 방식으로 운영
-    // - 기기별 로컬 병합 금지
-    // - 삭제 tombstone이 다시 살아나지 않도록 전체 스냅샷 기준 동기화
     window._sbSaveNtNotes = async function(arr) {
-      // 노트는 전체 배열 upsert 금지.
-      // stale local 배열이 삭제 tombstone을 active로 덮어써서 부활시키는 문제를 막기 위해
-      // dirty note만 저장한다. 삭제는 ntDelete/ntDeleteConfirm에서 tombstone 개별 upsert 처리.
-      await tblSaveDirty('notes', arr || []);
+      await tblSaveDirty('notes', arr);
       window._sbSyncStatus('☁️ 노트 동기화 완료', true);
     };
-    window._sbMarkNtDirty = function(noteId) { return (window._markDirty || _markDirty)('notes', noteId); };
+    window._sbMarkNtDirty = function(noteId) { _markDirty('notes', noteId); };
     window._sbLoadNtNotes = async function() { return await tblLoadArr('notes'); };
-    window._sbNoteSig = function(arr) {
-      return JSON.stringify((arr || []).map(n => [n.id, n.updatedAt || n.createdAt || '', n.deletedAt || '']));
-    };
-    window._sbApplyCloudNotes = async function(arr) {
-      const cloudAll = Array.isArray(arr) ? arr.slice() : [];
-      const cloudActive = cloudAll.filter(n => !n.deletedAt);
-      if (window._idbCache) window._idbCache['nt_notes'] = cloudAll;
-      try { await window.idbSet('nt_notes', cloudAll); } catch(e) {}
-      window._sbLastNoteSig = window._sbNoteSig(cloudAll);
-      try {
-        if (typeof window._ntSetNotes === 'function') window._ntSetNotes(cloudAll);
-        if (typeof ntRender === 'function') ntRender();
-        if (typeof ntOpen === 'function') {
-          const activeId = (typeof ntActiveId !== 'undefined') ? ntActiveId : window.ntActiveId;
-          if (activeId && cloudActive.find(n => n.id === activeId)) ntOpen(activeId);
-        }
-      } catch(e) { console.warn('[SB] applyCloudNotes render error', e); }
-      return cloudAll;
-    };
-    window._sbRefreshNotesFromCloud = async function() {
-      try {
-        const cloud = await window._sbLoadNtNotes();
-        if (cloud === null) return null;
-        const sig = window._sbNoteSig(cloud);
-        if (sig !== window._sbLastNoteSig) {
-          await window._sbApplyCloudNotes(cloud);
-          window._sbSyncStatus('☁️ 노트 동기화 반영', true);
-        }
-        return cloud;
-      } catch(e) { console.warn('[SB] refreshNotesFromCloud error', e); return null; }
-    };
 
     // ─── 작업룸 동기화 ────────────────────────────────────────
     window._sbSaveRooms = async function(arr) {
@@ -865,7 +639,7 @@
       } catch(e) { console.warn('[SB] saveRooms error', e); }
       window._sbSyncStatus('☁️ 작업룸 동기화 완료', true);
     };
-    window._sbMarkRoomDirty = function(roomId) { return (window._markDirty || _markDirty)('workrooms', roomId); };
+    window._sbMarkRoomDirty = function(roomId) { _markDirty('workrooms', roomId); };
     window._sbLoadRooms = async function() { return await tblLoadArr('workrooms'); };
 
     // 섹션은 kv_store에 통째로 저장 (섹션은 roomId 참조 구조라 개별 행 관리 복잡)
@@ -982,7 +756,7 @@
         window._sbSyncStatus('☁️ 알짜정보 동기화 완료', true);
       } catch(e) { console.warn('[SB] saveKcards error', e); }
     };
-    window._sbMarkKcardDirty = function(kcardId) { return (window._markDirty || _markDirty)('kcards', kcardId); };
+    window._sbMarkKcardDirty = function(kcardId) { _markDirty('kcards', kcardId); };
     window._sbLoadKcards = async function() {
       return await tblLoadArr('kcards');
     };
@@ -1066,10 +840,17 @@
         // 로그인 시 전체 로드 제거 → 카드 열 때 _sbLoadAi(itemId) 단건 조회
 
         // ── 노트 ──
-        // 노트는 클라우드 원본 우선: 로컬과 merge 하지 않음
         const ntCloud = await window._sbLoadNtNotes();
         if (ntCloud !== null) {
-          await window._sbApplyCloudNotes(ntCloud);
+          const ntLocal = window._idbCache['nt_notes'] || [];
+          const merged = _sbMergeById(ntCloud, ntLocal);
+          const mergedActive = merged.filter(n => !n.deletedAt);
+          window._idbCache['nt_notes'] = merged;          // tombstone 포함 상태로 IDB 저장
+          await window.idbSet('nt_notes', merged);
+          if (merged.length > ntCloud.length) window._sbSaveNtNotes(merged).catch(()=>{});
+        } else {
+          const ntLocal = window._idbCache['nt_notes'] || [];
+          if (ntLocal.length) window._sbSaveNtNotes(ntLocal).catch(()=>{});
         }
 
         // ── 작업룸 ──
@@ -1165,21 +946,6 @@
         } catch(e) { console.warn('[SB] API key sync error', e); }
 
         window._sbSyncStatus('✅ 클라우드 로드 완료', true);
-
-        // 노트는 실시간 리스너 대신 안전한 주기 refresh 사용
-        try {
-          if (!window._sbNotesPollStarted) {
-            window._sbNotesPollStarted = true;
-            window._sbNotesPollTimer = setInterval(() => {
-              if (document.visibilityState === 'visible') window._sbRefreshNotesFromCloud().catch(()=>{});
-            }, 5000);
-            window.addEventListener('pageshow', () => { window._sbRefreshNotesFromCloud().catch(()=>{}); });
-            document.addEventListener('visibilitychange', () => {
-              if (document.visibilityState === 'visible') window._sbRefreshNotesFromCloud().catch(()=>{});
-            });
-            setTimeout(() => { window._sbRefreshNotesFromCloud().catch(()=>{}); }, 1200);
-          }
-        } catch(e) { console.warn('[SB] note poll setup error', e); }
         window._sbCloudLoaded = true; // ★ 클라우드 로드 완료 플래그
 
         // ── 클라우드 동기화 완료 후 diff 반영 (현재 보이는 탭만 갱신) ──
@@ -6779,7 +6545,7 @@
         const curHash = _itemHash(item);
         if (prevHash === undefined || prevHash !== curHash) {
           item.updatedAt = now;
-          (window._markDirty || _markDirty)('items', item.id);
+          _markDirty('items', item.id);
           _svIndexOne(item); // 변경된 항목만 인덱스 갱신
         }
       });
@@ -20734,11 +20500,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       if(window.idbSet)window.idbSet('nt_notes',ntNotes).catch(()=>{});
       const dirtyId = forceId || ntActiveId;
       if (dirtyId && window._sbMarkNtDirty) window._sbMarkNtDirty(dirtyId);
-      if (window._sbSaveNtNotes) {
-        window._sbSaveNtNotes(ntNotes).then(() => {
-          if (window._sbRefreshNotesFromCloud) setTimeout(() => window._sbRefreshNotesFromCloud().catch(()=>{}), 250);
-        }).catch(e=>{});
-      }
+      if (window._sbSaveNtNotes) window._sbSaveNtNotes(ntNotes).catch(e=>{});
     }
 
     // v236: 모드 전환
@@ -20870,10 +20632,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       ntNotes.unshift(note);
       ntSave(note.id);
       ntRender();
-      try { ntOpen(note.id); } catch (e) {
-        console.warn('[ntCreate] open fallback', e);
-        try { ntActiveId = note.id; ntRender(); } catch(_) {}
-      }
+      ntOpen(note.id);
     };
 
     // ── 필터 ───────────────────────────────────────────
@@ -21513,7 +21272,6 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       ntNotes = ntNotes.filter(n => n.id !== id);
       ntActiveId = null; ntRender(); ntShowEmpty();
       showToast('삭제되었습니다', 'ok');
-      if (window._sbRefreshNotesFromCloud) setTimeout(() => window._sbRefreshNotesFromCloud().catch(()=>{}), 300);
     };
 
     // ── 노트 카드 빠른 삭제 (확인 팝업) ─────────────────
@@ -21546,7 +21304,6 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       if (ntActiveId === id) { ntActiveId = null; ntShowEmpty(); }
       ntRender();
       showToast('삭제됐어요', 'ok');
-      if (window._sbRefreshNotesFromCloud) setTimeout(() => window._sbRefreshNotesFromCloud().catch(()=>{}), 300);
     };
 
     // ── 노트 → 작업룸 이동 ─────────────────────────────
@@ -24453,7 +24210,6 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       saveSites(sites);
       renderSiteBookmarks();
       showToast('삭제되었습니다', 'ok');
-      if (window._sbRefreshNotesFromCloud) setTimeout(() => window._sbRefreshNotesFromCloud().catch(()=>{}), 300);
     };
 
     // onInsightOpen: updateWatchCnt는 원본 함수에 통합됨
@@ -30729,3 +30485,267 @@ ${newsText}
   window.calcNpl = function() {
     if (typeof window.calcNPL === 'function') window.calcNPL();
   };
+
+
+/* ===== Firebase auth/firestore shim + realtime notes sync (v16) ===== */
+(function(){
+  if (window.__SK_FB_PATCH_V16__) return;
+  window.__SK_FB_PATCH_V16__ = true;
+
+  function boot(){
+    if (!window.firebase || !window.__FIREBASE_CONFIG) {
+      setTimeout(boot, 100);
+      return;
+    }
+    try {
+      if (!firebase.apps || !firebase.apps.length) firebase.initializeApp(window.__FIREBASE_CONFIG);
+    } catch(e) {
+      try { firebase.app(); } catch(_) {}
+    }
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+    window.firebaseAuth = auth;
+    window.firebaseDB = db;
+
+    let noteUnsub = null;
+    let initRan = false;
+    const dirtyNotes = new Set();
+    let noteSaveTimer = null;
+
+    function mapUser(user){ return user ? { id: user.uid, email: user.email || '' } : null; }
+    async function getSession(){
+      const user = auth.currentUser;
+      return { data: { session: user ? { user: mapUser(user) } : null } };
+    }
+
+    function topCollection(name){ return db.collection(name); }
+
+    function makeQuery(table){
+      const state = { filters: [], order: null, range: null };
+      const api = {
+        select(){ return api; },
+        eq(field, value){ state.filters.push([field, value]); return api; },
+        order(field, opts){ state.order = [field, !!(opts && opts.ascending)]; return api; },
+        range(from, to){ state.range = [from, to]; return execMany(); },
+        maybeSingle(){ return execSingle(); },
+        async upsert(rows){
+          const arr = Array.isArray(rows) ? rows : [rows];
+          try {
+            const batch = db.batch();
+            arr.forEach((row) => {
+              const id = row.id || (Math.random().toString(36).slice(2));
+              batch.set(topCollection(table).doc(id), row, { merge: true });
+            });
+            await batch.commit();
+            return { data: arr, error: null };
+          } catch (e) { return { data: null, error: e }; }
+        },
+        delete(){
+          return {
+            in: async function(field, ids){
+              try {
+                const batch = db.batch();
+                ids.forEach((id) => batch.delete(topCollection(table).doc(id)));
+                await batch.commit();
+                return { error: null };
+              } catch(e){ return { error: e }; }
+            }
+          };
+        }
+      };
+      async function loadDocs(){
+        try {
+          let snap = await topCollection(table).get();
+          let docs = snap.docs.map(d => ({ ...d.data(), id: d.id }));
+          state.filters.forEach(([f,v]) => { docs = docs.filter(x => x && x[f] === v); });
+          if (state.order) {
+            const [field, asc] = state.order;
+            docs.sort((a,b) => {
+              const av = a && a[field] ? a[field] : '';
+              const bv = b && b[field] ? b[field] : '';
+              return asc ? (av > bv ? 1 : av < bv ? -1 : 0) : (av < bv ? 1 : av > bv ? -1 : 0);
+            });
+          }
+          if (state.range) docs = docs.slice(state.range[0], state.range[1] + 1);
+          return { data: docs, error: null };
+        } catch(e) { return { data: null, error: e }; }
+      }
+      async function execMany(){ return loadDocs(); }
+      async function execSingle(){
+        const { data, error } = await loadDocs();
+        if (error) return { data: null, error };
+        return { data: data && data.length ? data[0] : null, error: null };
+      }
+      return api;
+    }
+
+    const storageShim = {
+      from: function(){
+        return {
+          async upload(){ return { data: null, error: new Error('Storage not configured in this build') }; },
+          getPublicUrl(path){ return { data: { publicUrl: path || '' } }; },
+          async remove(){ return { data: [], error: null }; },
+          async list(){ return { data: [], error: null }; }
+        };
+      }
+    };
+
+    window._sb = {
+      auth: {
+        async getSession(){ return getSession(); },
+        async signInWithPassword({email, password}){
+          try {
+            const cred = await auth.signInWithEmailAndPassword(email, password);
+            return { data: { session: { user: mapUser(cred.user) } }, error: null };
+          } catch(e){ return { data: { session: null }, error: e }; }
+        },
+        async resetPasswordForEmail(email){
+          try { await auth.sendPasswordResetEmail(email); return { error: null }; }
+          catch(e){ return { error: e }; }
+        },
+        async updateUser({password}){
+          try {
+            if (!auth.currentUser) throw new Error('No user');
+            await auth.currentUser.updatePassword(password);
+            return { error: null };
+          } catch(e){ return { error: e }; }
+        },
+        async signOut(){ try { await auth.signOut(); return { error: null }; } catch(e){ return { error: e }; } },
+        onAuthStateChange(cb){
+          let first = true;
+          return auth.onAuthStateChanged((user) => {
+            try {
+              cb(first ? 'INITIAL_SESSION' : (user ? 'SIGNED_IN' : 'SIGNED_OUT'), user ? { user: mapUser(user) } : null);
+            } catch(e){}
+            first = false;
+          });
+        }
+      },
+      from: function(table){ return makeQuery(table); },
+      storage: storageShim
+    };
+
+    async function fbUid(){ const user = auth.currentUser; return user ? user.uid : null; }
+    window._sbGetUserId = fbUid;
+
+    async function saveDirtyNotes(arr){
+      const uid = await fbUid();
+      if (!uid) return;
+      const notes = Array.isArray(arr) ? arr : [];
+      const changed = dirtyNotes.size ? notes.filter(n => dirtyNotes.has(n.id)) : notes;
+      if (!changed.length) return;
+      const batch = db.batch();
+      changed.forEach((note) => {
+        const docId = uid + '_' + note.id;
+        batch.set(db.collection('notes').doc(docId), {
+          id: docId,
+          user_id: uid,
+          item_id: note.id,
+          data: note,
+          updated_at: note.updatedAt || note.createdAt || new Date().toISOString()
+        }, { merge: true });
+      });
+      await batch.commit();
+      changed.forEach(n => dirtyNotes.delete(n.id));
+    }
+    window._sbMarkNtDirty = function(noteId){ if (noteId) dirtyNotes.add(noteId); };
+    window._sbSaveNtNotes = async function(arr){
+      clearTimeout(noteSaveTimer);
+      noteSaveTimer = setTimeout(() => { saveDirtyNotes(arr).catch(e => console.warn('[FB] saveDirtyNotes', e)); }, 80);
+      return { error: null };
+    };
+
+    async function hardDeleteNote(id){
+      const uid = await fbUid();
+      if (!uid || !id) return;
+      const docId = uid + '_' + id;
+      const stamp = new Date().toISOString();
+      await db.collection('notes').doc(docId).set({
+        id: docId,
+        user_id: uid,
+        item_id: id,
+        data: { id, deletedAt: stamp, updatedAt: stamp },
+        updated_at: stamp
+      }, { merge: true });
+    }
+
+    function applyCloudNotes(cloudNotes){
+      try {
+        const visible = (cloudNotes || []).filter(n => n && !n.deletedAt);
+        if (window._idbCache) window._idbCache['nt_notes'] = cloudNotes || [];
+        if (window.idbSet) window.idbSet('nt_notes', cloudNotes || []).catch(()=>{});
+        if (window._ntSetNotes) window._ntSetNotes(cloudNotes || []);
+        if (window.ntRender) window.ntRender();
+        // if current open note deleted, clear editor area gracefully
+        const openId = window.ntActiveId || window._mbNtOpenId || null;
+        if (openId && !visible.find(n => n.id === openId)) {
+          const empty = document.getElementById('ntEmpty');
+          const editor = document.getElementById('ntEditorMain');
+          if (empty) empty.style.display = 'flex';
+          if (editor) editor.style.display = 'none';
+        }
+      } catch(e){ console.warn('[FB] applyCloudNotes', e); }
+    }
+
+    function subscribeNotes(uid){
+      if (noteUnsub) { try { noteUnsub(); } catch(e){} noteUnsub = null; }
+      noteUnsub = db.collection('notes').where('user_id','==',uid).onSnapshot((snap) => {
+        const rows = [];
+        snap.forEach((doc) => {
+          const row = doc.data() || {};
+          if (row && row.data) rows.push(row.data);
+        });
+        rows.sort((a,b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
+        applyCloudNotes(rows);
+      }, (err) => console.warn('[FB] notes onSnapshot', err));
+    }
+
+    const oldInitLoad = window._sbInitLoad;
+    window._sbInitLoad = async function(){
+      const s = await getSession();
+      if (!s.data.session) { window._sbShowLogin && window._sbShowLogin(); return; }
+      // user accepted losing old local notes -> cloud source of truth
+      try {
+        if (window._idbCache) window._idbCache['nt_notes'] = [];
+        if (window.idbSet) await window.idbSet('nt_notes', []);
+      } catch(e){}
+      try {
+        if (oldInitLoad) await oldInitLoad();
+      } catch(e) { console.warn('[FB] old init load', e); }
+      try { subscribeNotes(s.data.session.user.id); } catch(e) { console.warn('[FB] subscribeNotes', e); }
+    };
+
+    const oldDelete = window.ntDelete;
+    window.ntDelete = async function(id){
+      try { await hardDeleteNote(id); } catch(e){ console.warn('[FB] ntDelete tombstone', e); }
+      if (oldDelete) return oldDelete(id);
+    };
+    const oldDeleteConfirm = window.ntDeleteConfirm;
+    window.ntDeleteConfirm = async function(id){
+      const notes = window._ntGetNotes ? window._ntGetNotes() : [];
+      const note = (notes || []).find(n => n.id === id);
+      if (note && !confirm('「' + (note.title || '제목 없음') + '」 노트를 삭제할까요?')) return;
+      try { await hardDeleteNote(id); } catch(e){ console.warn('[FB] ntDeleteConfirm tombstone', e); }
+      if (oldDeleteConfirm) return oldDeleteConfirm(id);
+    };
+
+    auth.onAuthStateChanged((user) => {
+      if (user) {
+        window._sbHideLogin && window._sbHideLogin();
+        window._sbHideRecovery && window._sbHideRecovery();
+        window._sbAddLogoutBtn && window._sbAddLogoutBtn();
+        if (!initRan) {
+          initRan = true;
+          setTimeout(() => { window._sbInitLoad && window._sbInitLoad(); }, 100);
+        } else {
+          subscribeNotes(user.uid);
+        }
+      } else {
+        initRan = false;
+        if (noteUnsub) { try { noteUnsub(); } catch(e){} noteUnsub = null; }
+        window._sbShowLogin && window._sbShowLogin();
+      }
+    });
+  }
+  boot();
+})();

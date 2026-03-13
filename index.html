@@ -304,7 +304,21 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
 
 
   <!-- ★ Supabase 연동 (v289) -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  
+<!-- Firebase compat SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script>
+window.__FIREBASE_CONFIG = {
+  apiKey: "AIzaSyCaB4S7YUaosRKMZNp2npYmfSh32Xh5dPk",
+  authDomain: "sk-king-70f30.firebaseapp.com",
+  projectId: "sk-king-70f30",
+  storageBucket: "sk-king-70f30.firebasestorage.app",
+  messagingSenderId: "401913540182",
+  appId: "1:401913540182:web:ad45df6807101eac3195f7"
+};
+</script>
 </head>
 
 <body>
@@ -4460,7 +4474,7 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
   </div>
 
   <!-- 공통 로직 -->
-  <script src="common.js?v=15"></script>
+  <script src="common.js?v=16"></script>
 
   <!-- 측정 서브패널 (fixed - overflow 영향 없음) -->
   <div id="measureSubBtns" style="display:none;position:fixed;transform:translateY(-50%);background:rgba(13,18,32,0.96);border:1px solid rgba(79,142,255,.35);border-radius:12px;padding:8px 6px;flex-direction:column;gap:4px;z-index:9999;box-shadow:0 8px 32px rgba(0,0,0,.7);min-width:72px;backdrop-filter:blur(12px);">
