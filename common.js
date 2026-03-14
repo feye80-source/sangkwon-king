@@ -6540,7 +6540,7 @@
       const d = itemOrData && itemOrData.data ? itemOrData.data : (itemOrData || {});
       const key = getNaverDedupKey(itemOrData);
       const title = getNaverDisplayTitle(itemOrData);
-      const { hasLocation } = hasNaverLocation(itemOrData);
+      const { hasAddr, hasLocation } = hasNaverLocation(itemOrData);
       const hasNumber = (vals) => vals.some(v => {
         const n = parseFloat(String(v ?? '').replace(/[^0-9.]/g, ''));
         return !isNaN(n) && n > 0;
