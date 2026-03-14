@@ -6490,15 +6490,21 @@
       return String(key || '').trim();
     }
 
+    function getNaverDisplayTitle(itemOrData) {
+      const d = itemOrData && itemOrData.data ? itemOrData.data : (itemOrData || {});
+      return String(
+        itemOrData?.title ||
+        d.매물명 || d.articleName || d.atclNm ||
+        d.단지명 || d.상품명 || d.건물명 || ''
+      ).trim();
+    }
+
     function hasMeaningfulNaverData(itemOrData) {
       const d = itemOrData && itemOrData.data ? itemOrData.data : (itemOrData || {});
-      const title = String(itemOrData?.title || d.매물명 || d.단지명 || '').trim();
-      const hasAddr = !!String(d.소재지 || d.address || d.exposureAddress || d.detailAddress || d.단지명 || d.매물명 || '').trim();
-      const hasCoords = (() => {
-        const lat = parseFloat(itemOrData?.lat ?? d.lat ?? '');
-        const lng = parseFloat(itemOrData?.lng ?? d.lng ?? '');
-        return !isNaN(lat) && !isNaN(lng);
-      })();
+      const title = getNaverDisplayTitle(itemOrData);
+      const hasAddr = !!String(
+        d.소재지 || d.address || d.exposureAddress || d.detailAddress || d.주소 || d.단지명 || ''
+      ).trim();
       const hasNumber = (vals) => vals.some(v => {
         const n = parseFloat(String(v ?? '').replace(/[^0-9.]/g, ''));
         return !isNaN(n) && n > 0;
@@ -6513,7 +6519,7 @@
         d.spc1, d.spc2, d.exclusiveArea, d.supplyArea
       ]);
       const hasUsableTitle = !!title && title !== '네이버 매물';
-      return hasAddr || hasCoords || hasPrice || hasArea || hasUsableTitle;
+      return hasAddr || hasPrice || hasArea || hasUsableTitle;
     }
 
     function shouldKeepNaverCollectedItem(itemOrData) {
@@ -6525,21 +6531,56 @@
     function isBrokenNaverSavedItem(item) {
       if (!item || item.source !== '네이버부동산') return false;
       const key = getNaverDedupKey(item);
-      if (key) return false;
+      if (!key) return true;
       return !hasMeaningfulNaverData(item);
+    }
+
+    function sanitizeSavedItems(arr) {
+      const src = Array.isArray(arr) ? arr : [];
+      const cleaned = [];
+      const removed = [];
+      src.forEach(item => {
+        if (isBrokenNaverSavedItem(item)) {
+          removed.push(item);
+          return;
+        }
+        cleaned.push(item);
+      });
+      return { cleaned, removed };
+    }
+
+    let _svCloudDeleteTimer = null;
+    const _svCloudDeleteKeys = new Set();
+    let _svCloudDeleteRows = [];
+    function scheduleSvCloudDelete(rows) {
+      if (!window._sbDeleteSvRows || !Array.isArray(rows) || !rows.length) return;
+      rows.forEach(row => {
+        const key = String(row?._docId || row?.id || '').trim();
+        if (!key || _svCloudDeleteKeys.has(key)) return;
+        _svCloudDeleteKeys.add(key);
+        _svCloudDeleteRows.push(row);
+      });
+      if (_svCloudDeleteTimer) return;
+      _svCloudDeleteTimer = setTimeout(() => {
+        const targets = _svCloudDeleteRows.slice();
+        _svCloudDeleteRows = [];
+        _svCloudDeleteKeys.clear();
+        _svCloudDeleteTimer = null;
+        if (!targets.length || !window._sbDeleteSvRows) return;
+        window._sbDeleteSvRows(targets).catch(e => console.warn('[FB] 저장목록 삭제 동기화 실패', e));
+      }, 300);
     }
 
     function getSv() {
       let arr = (window._idbCache && window._idbCache['re_sv'] || []);
       let needSave0 = false;
       let removedBrokenNaver = 0;
+      let removedBrokenRows = [];
       if (Array.isArray(arr) && arr.length) {
-        const cleaned = [];
-        arr.forEach(item => {
-          if (isBrokenNaverSavedItem(item)) { removedBrokenNaver++; return; }
-          cleaned.push(item);
-        });
+        const { cleaned, removed } = sanitizeSavedItems(arr);
+        removedBrokenNaver = removed.length;
         if (removedBrokenNaver > 0) {
+          removedBrokenRows = removed;
           arr = cleaned;
           needSave0 = true;
           console.warn(`[re_sv] 정보 없는 네이버 항목 ${removedBrokenNaver}개 자동 정리`);
@@ -6573,6 +6614,7 @@
       if (needSave0 || needSave || needSave2) {
         if(window._idbCache)window._idbCache['re_sv']=arr;
         if(window.idbSet)window.idbSet('re_sv',arr).catch(()=>{});
+        if (removedBrokenRows.length) scheduleSvCloudDelete(removedBrokenRows);
       }
 
       // ★ 마이그레이션: _norm 없는 기존 데이터 자동 정규화
@@ -6622,6 +6664,8 @@
     }
 
     function setSv(arr) {
+      const { cleaned, removed: removedInvalidRows } = sanitizeSavedItems(arr);
+      arr = cleaned;
       // dirty tracking: 이전 상태와 비교해 변경된 item만 marking
       const now = Date.now();
       const prev = (window._idbCache && window._idbCache['re_sv']) || [];
@@ -6639,8 +6683,11 @@
       });
       // 항목 수가 바뀌면 (추가/삭제) 전체 인덱스 재빌드
       if ((arr || []).length !== prev.length) _svBuildIndex(arr);
+      const nextIdSet = new Set((arr || []).map(item => item && item.id).filter(Boolean));
+      const removedRows = prev.filter(item => item && item.id && !nextIdSet.has(item.id));
       if(window._idbCache)window._idbCache['re_sv']=arr;if(window.idbSet)window.idbSet('re_sv',arr).catch(()=>{});
       if (window._sbSaveSv) window._sbSaveSv(arr).catch(e => console.warn("[SB] setSv sync fail", e));
+      scheduleSvCloudDelete(removedRows.concat(removedInvalidRows.filter(item => item && item.id && !nextIdSet.has(item.id))));
     }
 
     // ===================================================
@@ -30699,6 +30746,30 @@ ${newsText}
       }
     }
 
+    async function deleteColRows(col, uid, rows){
+      if (!uid || !Array.isArray(rows) || !rows.length) return 0;
+      const docIds = [];
+      const seen = new Set();
+      rows.forEach(row => {
+        let docId = String(row?._docId || '').trim();
+        if (!docId) {
+          const itemId = String(row?.id || '').trim();
+          if (itemId) docId = uid + '_' + itemId;
+        }
+        if (!docId || seen.has(docId)) return;
+        seen.add(docId);
+        docIds.push(docId);
+      });
+      for (let i = 0; i < docIds.length; i += 400) {
+        const batch = db.batch();
+        docIds.slice(i, i + 400).forEach(docId => {
+          batch.delete(db.collection(col).doc(docId));
+        });
+        await batch.commit();
+      }
+      return docIds.length;
+    }
+
     // ── 공통: onSnapshot 구독 ──
     function subscribeCol(col, uid, onData){
       if (unsubs[col]) { try { unsubs[col](); } catch(e){} }
@@ -30779,7 +30850,12 @@ ${newsText}
 
     function applySv(rows){
       try {
-        const all = rows || [];
+        const sanitized = sanitizeSavedItems(rows || []);
+        const all = sanitized.cleaned;
+        if (sanitized.removed.length) {
+          console.warn(`[FB] 정보 없는 네이버 저장항목 ${sanitized.removed.length}개 자동 삭제 예약`);
+          scheduleSvCloudDelete(sanitized.removed);
+        }
         if (window._idbCache) window._idbCache['re_sv'] = all;
         if (window.idbSet) window.idbSet('re_sv', all).catch(()=>{});
         if (typeof _svBuildIndex === 'function') _svBuildIndex(all);
@@ -30892,6 +30968,29 @@ ${newsText}
       const uid = await fbUid(); if (!uid) return { error: null };
       try { await saveCol('items', uid, arr || []); } catch(e){ console.warn('[FB] saveSv', e); }
       return { error: null };
+    };
+    window._sbDeleteSvRows = async function(rows){
+      const uid = await fbUid(); if (!uid || !rows || !rows.length) return { error: null, deleted: 0 };
+      try {
+        const deleted = await deleteColRows('items', uid, rows);
+        return { error: null, deleted };
+      } catch(e){
+        console.warn('[FB] deleteSvRows', e);
+        return { error: e, deleted: 0 };
+      }
+    };
+    window._sbPurgeBrokenNaverItems = async function(){
+      const uid = await fbUid();
+      if (!uid) throw new Error('Firebase 로그인이 필요합니다.');
+      const rows = await loadCol('items', uid);
+      const sanitized = sanitizeSavedItems(rows || []);
+      const deleted = sanitized.removed.length
+        ? await deleteColRows('items', uid, sanitized.removed)
+        : 0;
+      applySv(sanitized.cleaned);
+      const summary = { deleted, kept: sanitized.cleaned.length };
+      console.log('[FB] broken naver purge', summary);
+      return summary;
     };
 
     // ── 알짜카드 저장 ──
