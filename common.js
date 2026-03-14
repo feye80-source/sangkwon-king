@@ -6565,7 +6565,7 @@
     }
 
     function isBrokenNaverSavedItem(item) {
-      if (!item || item.source !== '네이버부동산') return false;
+      if (!item || !['네이버부동산', '네이버', 'naver'].includes(String(item.source || '').trim())) return false;
       const key = getNaverDedupKey(item);
       const d = item.data || {};
       const title = getNaverDisplayTitle(item);
@@ -6583,6 +6583,10 @@
       if (!hasAddr && !hasArea && isGenericNaverPropertyTitle(title)) return true;
       if (!hasAddr && !hasCoords && !hasPrice && !hasArea && isGenericNaverTitle(title, key)) return true;
       return !hasMeaningfulNaverData(item);
+    }
+
+    function isAnyNaverSavedItem(item) {
+      return !!item && ['네이버부동산', '네이버', 'naver'].includes(String(item.source || '').trim());
     }
 
     function sanitizeSavedItems(arr) {
@@ -31048,6 +31052,28 @@ ${newsText}
       }
       const summary = { deleted, kept: sanitized.cleaned.length };
       console.log('[FB] broken naver purge', summary);
+      return summary;
+    };
+    window._sbDeleteAllNaverItems = async function(){
+      const uid = await fbUid();
+      if (!uid) throw new Error('Firebase 로그인이 필요합니다.');
+      let rows = Array.isArray(window._idbCache && window._idbCache['re_sv']) ? window._idbCache['re_sv'] : [];
+      if (!rows.length) rows = await loadCol('items', uid);
+      const targets = (rows || []).filter(isAnyNaverSavedItem);
+      const kept = (rows || []).filter(row => !isAnyNaverSavedItem(row));
+      applySv(kept);
+      console.log('[FB] delete all naver start', { target: targets.length, total: rows.length });
+      let deleted = 0;
+      if (targets.length) {
+        for (let i = 0; i < targets.length; i += 200) {
+          const chunk = targets.slice(i, i + 200);
+          deleted += await deleteColRows('items', uid, chunk);
+          console.log('[FB] delete all naver progress', { deleted, total: targets.length });
+          await new Promise(resolve => setTimeout(resolve, 0));
+        }
+      }
+      const summary = { deleted, kept: kept.length };
+      console.log('[FB] delete all naver', summary);
       return summary;
     };
 
