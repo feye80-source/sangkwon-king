@@ -6868,6 +6868,50 @@
     }
 
     // ═══════════════════════════════════════════════════════════════
+    function _trimAddr(v) {
+      return String(v || '').trim();
+    }
+
+    function _setDualAddressFields(target, roadAddr, jibunAddr) {
+      if (!target || typeof target !== 'object') return target;
+      const road = _trimAddr(roadAddr);
+      const jibun = _trimAddr(jibunAddr);
+      if (road) target['도로명주소'] = road;
+      if (jibun) target['지번주소'] = jibun;
+      const primary = road || jibun || _trimAddr(target['소재지']) || _trimAddr(target['주소']) || _trimAddr(target['address']);
+      if (primary) target['소재지'] = primary;
+      return target;
+    }
+
+    function _normalizeDualAddressFields(d) {
+      if (!d || typeof d !== 'object') return d;
+      const road = _trimAddr(
+        d['도로명주소'] ||
+        d.roadAddress ||
+        d.road_address ||
+        d.address_name_road ||
+        d.roadAddr ||
+        d.address_user
+      );
+      const jibun = _trimAddr(
+        d['지번주소'] ||
+        d.jibunAddress ||
+        d.jibun_address ||
+        d.address_name
+      );
+      _setDualAddressFields(d, road, jibun);
+      if (!d['지번주소']) {
+        const fallbackJibun = _trimAddr(d['주소'] || d.address);
+        if (fallbackJibun && !/[로길]\s*\d/.test(fallbackJibun)) d['지번주소'] = fallbackJibun;
+      }
+      if (!d['도로명주소']) {
+        const fallbackRoad = _trimAddr(d['주소'] || d.address);
+        if (fallbackRoad && /[로길]\s*\d/.test(fallbackRoad)) d['도로명주소'] = fallbackRoad;
+      }
+      if (!d['소재지']) d['소재지'] = d['도로명주소'] || d['지번주소'] || '';
+      return d;
+    }
+
     // ★ normalizeItem — 저장 시점 표준화 (_norm 생성)
     //   원본 data는 절대 건드리지 않음. item._norm 만 추가.
     //   모든 필터/CSV/카드/지도는 _norm 을 기준으로 읽는다.
@@ -6875,6 +6919,7 @@
     function normalizeItem(item) {
       if (!item) return item;
       const d = item.data || {};
+      _normalizeDualAddressFields(d);
       const src = item.source || d.출처 || '';
       const mode = item.mode || '';
 
@@ -7002,7 +7047,7 @@
       const 유찰횟수 = d.유찰횟수 != null ? (parseInt(d.유찰횟수) ?? null) : null;
 
       item._norm = {
-        소재지:          d.소재지 || d.주소 || null,
+        소재지:          d.소재지 || d['도로명주소'] || d['지번주소'] || d.주소 || null,
         층,
         면적_m2,
         면적기준,
@@ -7995,9 +8040,11 @@
             if (status === kakao.maps.services.Status.OK && result[0]) {
               const road = result[0].road_address;
               const jibun = result[0].address;
-              const addr = (road && road.address_name) || (jibun && jibun.address_name) || '';
+              const roadAddr = (road && road.address_name) || '';
+              const jibunAddr = (jibun && jibun.address_name) || '';
+              const addr = roadAddr || jibunAddr;
               if (addr) {
-                item.data.소재지 = addr;
+                _setDualAddressFields(item.data, roadAddr, jibunAddr);
                 // title도 갱신 (거래년월만 있던 경우)
                 if (!item.title || item.title === item.data.거래년월) {
                   item.title = addr;
@@ -8048,6 +8095,22 @@
                 item.lng = parseFloat(result[0].x);
                 saveCachedCoords(addr, item.lat, item.lng);
                 converted++;
+              }
+              resolve();
+            });
+          });
+        }
+        if (item.lat && item.lng) {
+          await new Promise(resolve => {
+            gc.coord2Address(parseFloat(item.lng), parseFloat(item.lat), (result, status) => {
+              if (status === kakao.maps.services.Status.OK && result && result[0]) {
+                const road = result[0].road_address;
+                const jibun = result[0].address;
+                _setDualAddressFields(
+                  item.data,
+                  (road && road.address_name) || '',
+                  (jibun && jibun.address_name) || ''
+                );
               }
               resolve();
             });
@@ -13034,26 +13097,30 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           if (window.geocoder && typeof geocoder.coord2Address === 'function') {
             geocoder.coord2Address(pos.getLng(), pos.getLat(), (res, status) => {
               if (status === kakao.maps.services.Status.OK && res && res.length) {
-                const addrName = (res[0].road_address && res[0].road_address.address_name)
-                  ? res[0].road_address.address_name
-                  : (res[0].address && res[0].address.address_name)
-                    ? res[0].address.address_name : '';
-                if (addrName) onSuccess(addrName);
+                const roadAddr = (res[0].road_address && res[0].road_address.address_name)
+                  ? res[0].road_address.address_name : '';
+                const jibunAddr = (res[0].address && res[0].address.address_name)
+                  ? res[0].address.address_name : '';
+                const addrName = roadAddr || jibunAddr;
+                if (addrName) onSuccess(addrName, roadAddr, jibunAddr);
               }
             });
           }
         };
 
         // confirm 없이: 이동하면 자동으로 주소 갱신 (카드 헤더 + 저장목록)
-        doGeocode(newPos, (addrName) => {
-          try { item.data = item.data || {}; item.data.소재지 = addrName; } catch (e) { }
+        doGeocode(newPos, (addrName, roadAddr, jibunAddr) => {
+          try {
+            item.data = item.data || {};
+            _setDualAddressFields(item.data, roadAddr, jibunAddr);
+          } catch (e) { }
           // 저장목록에도 반영
           try {
             const sv = getSv();
             const it = sv.find(s => s.id === item.id);
             if (it) {
               it.data = it.data || {};
-              it.data.소재지 = addrName;
+              _setDualAddressFields(it.data, roadAddr, jibunAddr);
               setSv(sv);
               renderSaved();
             }
@@ -14215,16 +14282,24 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           if (window.geocoder && typeof geocoder.coord2Address === 'function') {
             geocoder.coord2Address(targetPos.getLng(), targetPos.getLat(), (res, status) => {
               if (status === kakao.maps.services.Status.OK && res && res.length) {
-                const addrName = (res[0].road_address && res[0].road_address.address_name)
-                  ? res[0].road_address.address_name
-                  : (res[0].address && res[0].address.address_name) ? res[0].address.address_name : '';
+                const roadAddr = (res[0].road_address && res[0].road_address.address_name)
+                  ? res[0].road_address.address_name : '';
+                const jibunAddr = (res[0].address && res[0].address.address_name)
+                  ? res[0].address.address_name : '';
+                const addrName = roadAddr || jibunAddr;
                 if (addrName) {
                   const sv = getSv();
                   grpNow.forEach(eid => {
                     const ov = mapOverlays.find(o => o.id === eid);
-                    if (ov && ov.item) { ov.item.data = ov.item.data || {}; ov.item.data.소재지 = addrName; }
+                    if (ov && ov.item) {
+                      ov.item.data = ov.item.data || {};
+                      _setDualAddressFields(ov.item.data, roadAddr, jibunAddr);
+                    }
                     const it = sv.find(s => ov && ov.item && s.id === ov.item.id);
-                    if (it) { it.data = it.data || {}; it.data.소재지 = addrName; }
+                    if (it) {
+                      it.data = it.data || {};
+                      _setDualAddressFields(it.data, roadAddr, jibunAddr);
+                    }
                   });
                   setSv(sv); renderSaved();
                   showToast(`📍 ${grpNow.length}개 마커 이동+주소: ${addrName}`, 'ok');
@@ -15769,16 +15844,24 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
               if (window.geocoder && typeof geocoder.coord2Address === 'function') {
                 geocoder.coord2Address(targetPos.getLng(), targetPos.getLat(), (res, status) => {
                   if (status === kakao.maps.services.Status.OK && res && res.length) {
-                    const addrName = (res[0].road_address && res[0].road_address.address_name)
-                      ? res[0].road_address.address_name
-                      : (res[0].address && res[0].address.address_name) ? res[0].address.address_name : '';
+                    const roadAddr = (res[0].road_address && res[0].road_address.address_name)
+                      ? res[0].road_address.address_name : '';
+                    const jibunAddr = (res[0].address && res[0].address.address_name)
+                      ? res[0].address.address_name : '';
+                    const addrName = roadAddr || jibunAddr;
                     if (addrName) {
                       const sv = getSv();
                       grpNow.forEach(eid => {
                         const ov = mapOverlays.find(o => o.id === eid);
-                        if (ov && ov.item) { ov.item.data = ov.item.data || {}; ov.item.data.소재지 = addrName; }
+                        if (ov && ov.item) {
+                          ov.item.data = ov.item.data || {};
+                          _setDualAddressFields(ov.item.data, roadAddr, jibunAddr);
+                        }
                         const it = sv.find(s => ov && ov.item && s.id === ov.item.id);
-                        if (it) { it.data = it.data || {}; it.data.소재지 = addrName; }
+                        if (it) {
+                          it.data = it.data || {};
+                          _setDualAddressFields(it.data, roadAddr, jibunAddr);
+                        }
                       });
                       setSv(sv); renderSaved();
                       showToast(`📍 ${grpNow.length}개 마커 이동+주소: ${addrName}`, 'ok');
@@ -25998,6 +26081,7 @@ ${newsContext}
       if (!d.전용면적_m2 && d.spc2) d.전용면적_m2 = d.spc2;
       if (!d.소재지 && d.주소) d.소재지 = d.주소;
       if (!d.소재지 && d.address) d.소재지 = d.address;
+      _normalizeDualAddressFields(d);
       if (!d.매매가 && d.dealPrice) d.매매가 = d.dealPrice;
       if (!d.해당층 && d.flrInfo) d.해당층 = d.flrInfo;
       if (!d.해당층 && d.층수) d.해당층 = d.층수;
@@ -26025,6 +26109,7 @@ ${newsContext}
       if (!d.계약면적_m2) d.계약면적_m2 = d.sa || d.supply_area_m2 || d.supplyArea || d.spc1 || null;
       if (!d.전용면적_m2) d.전용면적_m2 = d.ea || d.excl_area_m2 || d.exclusiveArea || d.spc2 || null;
       if (!d.소재지 && d.addr_nm) d.소재지 = d.addr_nm;
+      _normalizeDualAddressFields(d);
       // ★ 매매가 단위 확인: 디스코/플래닛 모두 만원 단위로 저장됨 (확인: 2026-03-12)
       // 디스코 실측값: 매매가: 84200 (만원) = 8.42억, dealPrice 폴백 처리
       if (!d.매매가 && d.dealPrice) d.매매가 = d.dealPrice;
@@ -26385,7 +26470,11 @@ ${newsContext}
                   if (finalAddr) {
                     const svNow = getSv();
                     const target = svNow.find(s => s.id === item.id);
-                    if (target) { target.data.소재지 = finalAddr; setSv(svNow); }
+                    if (target) {
+                      target.data = target.data || {};
+                      _setDualAddressFields(target.data, roadAddr, jibunAddr);
+                      setSv(svNow);
+                    }
                   }
                 }
                 doneCount++;
