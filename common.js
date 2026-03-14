@@ -25378,6 +25378,7 @@ ${newsContext}
     window.naverUseMapCenter = naverUseMapCenter;
 
     async function collectNaverAuto(skipDetail = false) {
+      window._collectCount = 0; // ★ 수집 개수 카운터 초기화
       const proxyBase = 'http://127.0.0.1:8080';
       try {
         await fetch(proxyBase + '/', { signal: AbortSignal.timeout(2000), mode: 'no-cors' });
@@ -25448,6 +25449,7 @@ ${newsContext}
             kakao_level: bounds.kakao_level || 4,
             skip_detail: skipDetail,
             cookie: localStorage.getItem('naver_cookie') || '',
+            max_n: getRadiusConfig().maxN, // ★ 최대 수집 개수 전달
           })
         });
         const data = await resp.json();
