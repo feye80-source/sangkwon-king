@@ -2295,8 +2295,13 @@
                   }
                   const d = item.data || {};
                   const fmt = v => v ? Number(String(v).replace(/[^0-9]/g, '')).toLocaleString() + '원' : '-';
+                  const primaryAddr = d['소재지'] || d['도로명주소'] || d['지번주소'] || d['주소'] || room.address || '-';
+                  const roadAddr = d['도로명주소'] || '';
+                  const jibunAddr = d['지번주소'] || '';
                   const rows = [
-                    ['소재지', d['소재지'] || d['주소'] || room.address || '-'],
+                    ['소재지', primaryAddr],
+                    ...(roadAddr && roadAddr !== primaryAddr ? [['도로명주소', roadAddr]] : []),
+                    ...(jibunAddr && jibunAddr !== primaryAddr && jibunAddr !== roadAddr ? [['지번주소', jibunAddr]] : []),
                     ['물건종류', d['물건종류'] || d['type'] || d['용도'] || '-'],
                     ['감정가', d['감정가'] ? fmt(d['감정가']) : '-'],
                     ['최저가', d['최저가'] ? `<span class="wr2-info-highlight">${fmt(d['최저가'])}</span>` : '-'],
@@ -9688,6 +9693,17 @@ ${inputDesc.substring(0, 3000)}
       // ── 요약 헤더 ───────────────────────────────────────────────
       const srcBadge = `<span style="font-size:10px;padding:1px 7px;border-radius:10px;background:rgba(${colorRgb},.15);color:${color};border:1px solid rgba(${colorRgb},.45);font-weight:600;">${esc(src || '정보')}</span>`;
       const srcLinkBtn = d.상세URL ? `<a href="${esc(d.상세URL)}" target="_blank" style="font-size:10px;padding:2px 8px;background:rgba(79,142,255,.12);color:var(--ac);border:1px solid rgba(79,142,255,.4);border-radius:5px;text-decoration:none;font-weight:600;">🔗 원본</a>` : '';
+      const primaryAddr = d.소재지 || d['도로명주소'] || d['지번주소'] || d['주소'] || '';
+      const roadAddr = d['도로명주소'] || '';
+      const jibunAddr = d['지번주소'] || '';
+      const extraAddrHtml = [
+        roadAddr && roadAddr !== primaryAddr
+          ? `<div style="font-size:10px;color:var(--mu);margin:-3px 0 4px 0;">도로명주소: ${esc(roadAddr)}</div>`
+          : '',
+        jibunAddr && jibunAddr !== primaryAddr && jibunAddr !== roadAddr
+          ? `<div style="font-size:10px;color:var(--mu);margin:-3px 0 4px 0;">지번주소: ${esc(jibunAddr)}</div>`
+          : ''
+      ].join('');
 
       const 요약헤더 = `<div style="background:var(--s2);border-radius:8px;padding:12px 14px;margin-bottom:12px;border-left:3px solid ${color};">
     <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px;">${srcBadge}${srcLinkBtn}</div>
@@ -9696,8 +9712,10 @@ ${inputDesc.substring(0, 3000)}
           : (d.매물유형 || d.거래유형 ? `<div style="font-size:13px;font-weight:700;color:${color};margin-bottom:4px;">${esc(d.매물유형 || '')}${d.거래유형 && d.매물유형 ? ' · ' : ''} ${esc(d.거래유형 || '')}</div>` : '')
         }
     ${isEdit
-          ? `<input value="${esc(d.소재지 || '')}" placeholder="소재지" style="${_inS}margin-bottom:6px;" onchange="${_onChg('소재지')}" onmousedown="event.stopPropagation()">`
-          : (d.소재지 ? `<div style="font-size:11px;color:var(--tx);font-weight:600;margin-bottom:6px;">${esc(d.소재지)}</div>` : '')
+          ? `<input value="${esc(d.소재지 || '')}" placeholder="소재지" style="${_inS}margin-bottom:6px;" onchange="${_onChg('소재지')}" onmousedown="event.stopPropagation()">
+             <input value="${esc(d['도로명주소'] || '')}" placeholder="도로명주소" style="${_inS}margin-bottom:6px;" onchange="${_onChg('도로명주소')}" onmousedown="event.stopPropagation()">
+             <input value="${esc(d['지번주소'] || '')}" placeholder="지번주소" style="${_inS}margin-bottom:6px;" onchange="${_onChg('지번주소')}" onmousedown="event.stopPropagation()">`
+          : (primaryAddr ? `<div style="font-size:11px;color:var(--tx);font-weight:600;margin-bottom:6px;">${esc(primaryAddr)}</div>${extraAddrHtml}` : '')
         }
     ${isEdit
           ? `<input value="${esc(d.매물명 || '')}" placeholder="매물명" style="${_inS}font-size:13px;color:#f9a825;font-weight:700;margin-bottom:6px;" onchange="${_onChg('매물명')}" onmousedown="event.stopPropagation()">`
@@ -9720,6 +9738,8 @@ ${inputDesc.substring(0, 3000)}
         rowEdit('매물유형', '매물유형', d.매물유형, null, '매물유형') +
         rowEdit('거래유형', '거래유형', d.거래유형, null, '예: 매매') +
         rowEdit('소재지', '소재지', d.소재지, null, '소재지 입력') +
+        rowEdit('도로명주소', '도로명주소', d['도로명주소'], null, '도로명주소 입력') +
+        rowEdit('지번주소', '지번주소', d['지번주소'], null, '지번주소 입력') +
         rowEdit('거래년월', '거래년월', nG.거래년월 ? fmtYearMonth(nG.거래년월) : (d.거래년월 ? fmtYearMonth(d.거래년월) : d.거래년월), null, 'YYYY-MM') +
         rowEdit('건축연도', '건축연도', d.건축연도, null, '예: 2010')
       );
