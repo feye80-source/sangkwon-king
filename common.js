@@ -6490,6 +6490,26 @@
       return String(key || '').trim();
     }
 
+    function mergeFilledFields(base, incoming) {
+      const out = Array.isArray(base) ? base.slice() : { ...(base || {}) };
+      Object.keys(incoming || {}).forEach(key => {
+        const nextVal = incoming[key];
+        if (nextVal === undefined || nextVal === null) return;
+        if (typeof nextVal === 'string' && !nextVal.trim()) return;
+        if (Array.isArray(nextVal) && !nextVal.length) return;
+        if (nextVal && typeof nextVal === 'object' && !Array.isArray(nextVal)) {
+          const prevVal = out[key];
+          out[key] = mergeFilledFields(
+            prevVal && typeof prevVal === 'object' && !Array.isArray(prevVal) ? prevVal : {},
+            nextVal
+          );
+          return;
+        }
+        out[key] = nextVal;
+      });
+      return out;
+    }
+
     function getNaverDisplayTitle(itemOrData) {
       const d = itemOrData && itemOrData.data ? itemOrData.data : (itemOrData || {});
       return String(
@@ -6601,14 +6621,66 @@
       return false;
     }
 
+    function isDuplicateNaverSavedItem(item1, item2) {
+      if (!item1 || !item2) return false;
+      if (!isAnyNaverSavedItem(item1) || !isAnyNaverSavedItem(item2)) return false;
+      if (item1.id && item2.id && item1.id === item2.id) return false;
+
+      const key1 = getNaverDedupKey(item1);
+      const key2 = getNaverDedupKey(item2);
+      if (key1 && key2 && key1 === key2) return true;
+
+      const left = {
+        ...item1,
+        mode: item1.mode || 'listing',
+        source: item1.source || '네이버부동산',
+        data: normalizeNaverData(item1.data || item1),
+      };
+      const right = {
+        ...item2,
+        mode: item2.mode || 'listing',
+        source: item2.source || '네이버부동산',
+        data: normalizeNaverData(item2.data || item2),
+      };
+      return isDuplicateProperty(left, right);
+    }
+
+    function mergeNaverSavedItem(existing, incoming) {
+      const merged = mergeFilledFields(existing || {}, incoming || {});
+      merged.id = String(existing?.id || incoming?.id || '').trim();
+      merged._docId = existing?._docId || incoming?._docId || '';
+      merged.mode = existing?.mode || incoming?.mode || 'listing';
+      merged.source = existing?.source || incoming?.source || '네이버부동산';
+      merged.memo = String(existing?.memo || incoming?.memo || '').trim();
+      merged.group = String(existing?.group || incoming?.group || '').trim();
+      merged.csvFileName = existing?.csvFileName || incoming?.csvFileName || '';
+      merged.title = getNaverDisplayTitle(merged) || merged.title || existing?.title || incoming?.title || '';
+      merged.data = mergeFilledFields(existing?.data || {}, incoming?.data || {});
+      if ((merged.lat === null || merged.lat === undefined || merged.lat === '') && incoming?.lat !== undefined) merged.lat = incoming.lat;
+      if ((merged.lng === null || merged.lng === undefined || merged.lng === '') && incoming?.lng !== undefined) merged.lng = incoming.lng;
+      return merged;
+    }
+
     function sanitizeSavedItems(arr) {
       const src = Array.isArray(arr) ? arr : [];
       const cleaned = [];
       const removed = [];
+      const seenNaver = [];
       src.forEach(item => {
         if (isBrokenNaverSavedItem(item)) {
           removed.push(item);
           return;
+        }
+        if (isAnyNaverSavedItem(item)) {
+          const dup = seenNaver.find(existing => isDuplicateNaverSavedItem(existing, item));
+          if (dup) {
+            const merged = mergeNaverSavedItem(dup, item);
+            Object.keys(dup).forEach(key => delete dup[key]);
+            Object.assign(dup, merged);
+            removed.push(item);
+            return;
+          }
+          seenNaver.push(item);
         }
         cleaned.push(item);
       });
@@ -25685,24 +25757,26 @@ ${newsContext}
           // 자동 저장목록 추가
           const sv = getSv();
           let added = 0, updated = 0;
-          items.forEach(item => {
-            const key = getNaverDedupKey(item);
-            const exists = key ? sv.find(s => s.source === '네이버부동산' && getNaverDedupKey(s) === key) : null;
-            const entry = {
-              id: 'naver_' + key,
-              mode: 'listing',
-              source: '네이버부동산',
-              title: item.매물명 || item.소재지 || item.단지명 || `네이버 ${key}`,
-              lat: item.lat ? parseFloat(item.lat) : null,
-              lng: item.lng ? parseFloat(item.lng) : null,
-              data: normalizeNaverData(item),
-              memo: '',
-              timestamp: Date.now()
-            };
-            if (!exists && !checkCollectFilter(entry.data, entry.lat, entry.lng)) return; // ★ 수집 필터 + 반경
-            if (exists) { Object.assign(exists, entry); updated++; }
-            else { sv.push(entry); added++; }
-          });
+        items.forEach(item => {
+          const key = getNaverDedupKey(item);
+          const normalized = normalizeNaverData(item);
+          const exists = key ? sv.find(s => s.source === '네이버부동산' && getNaverDedupKey(s) === key) : null;
+          const entry = {
+            id: 'naver_' + key,
+            mode: 'listing',
+            source: '네이버부동산',
+            title: item.매물명 || item.소재지 || item.단지명 || `네이버 ${key}`,
+            lat: item.lat ? parseFloat(item.lat) : null,
+            lng: item.lng ? parseFloat(item.lng) : null,
+            data: normalized,
+            memo: '',
+            timestamp: Date.now()
+          };
+          const dedupTarget = exists || sv.find(s => isDuplicateNaverSavedItem(s, entry));
+          if (!dedupTarget && !checkCollectFilter(entry.data, entry.lat, entry.lng)) return; // ★ 수집 필터 + 반경
+          if (dedupTarget) { Object.assign(dedupTarget, mergeNaverSavedItem(dedupTarget, entry)); updated++; }
+          else { sv.push(entry); added++; }
+        });
           setSv(sv);
           updSvCnt();
           renderSaved && renderSaved();
@@ -25861,7 +25935,7 @@ ${newsContext}
         let added = 0, updated = 0;
         items.forEach(item => {
           const key = getNaverDedupKey(item);
-          const exists = key ? sv.find(s => s.source === '네이버부동산' && getNaverDedupKey(s) === key) : null;
+          const normalized = normalizeNaverData(item);
           const entry = {
             id: 'naver_' + key,
             mode: 'listing',
@@ -25869,12 +25943,13 @@ ${newsContext}
             title: item.매물명 || item.소재지 || item.단지명 || `네이버 ${key}`,
             lat: item.lat ? parseFloat(item.lat) : null,
             lng: item.lng ? parseFloat(item.lng) : null,
-            data: normalizeNaverData(item),
+            data: normalized,
             memo: '',
             timestamp: Date.now()
           };
-          if (exists) {
-            Object.assign(exists, entry);
+          const dedupTarget = sv.find(s => isDuplicateNaverSavedItem(s, entry));
+          if (dedupTarget) {
+            Object.assign(dedupTarget, mergeNaverSavedItem(dedupTarget, entry));
             updated++;
           } else {
             sv.push(entry);
