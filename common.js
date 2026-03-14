@@ -219,17 +219,21 @@
       console.log('[IDB] 프리로드 완료. 캐시 키:', Object.keys(window._idbCache).join(', '));
       // 검색 인덱스 초기 빌드
       try { if (typeof _svBuildIndex === 'function') _svBuildIndex(window._idbCache['re_sv']); } catch(e) {}
-      // ★ IDB 완료 즉시 노트/알짜 선렌더 (작업룸처럼 클라우드 기다리지 않음)
+      // 온라인 상태에서는 클라우드 인증/구독을 기다린다.
+      // 그렇지 않으면 다른 기기에서 이미 정리한 오래된 노트/알짜 캐시가 잠시 또는 계속 다시 보일 수 있다.
       try {
-        const _cachedNotes = window._idbCache && window._idbCache['nt_notes'];
-        if (typeof window._ntSetNotes === 'function' && _cachedNotes !== undefined) {
-          window._ntSetNotes(_cachedNotes || []);
-          if (typeof window.ntRender === 'function') window.ntRender();
-        }
-        if (typeof window._kcardsSyncFromCache === 'function') {
-          window._kcardsSyncFromCache();
-          if (typeof window.renderKcatTabs === 'function') window.renderKcatTabs();
-          if (typeof window.renderKcards === 'function') window.renderKcards();
+        const allowCachedCloudRender = (typeof navigator !== 'undefined' && navigator.onLine === false);
+        if (allowCachedCloudRender) {
+          const _cachedNotes = window._idbCache && window._idbCache['nt_notes'];
+          if (typeof window._ntSetNotes === 'function' && _cachedNotes !== undefined) {
+            window._ntSetNotes((_cachedNotes || []).filter(n => !n || !n.deletedAt));
+            if (typeof window.ntRender === 'function') window.ntRender();
+          }
+          if (typeof window._kcardsSyncFromCache === 'function') {
+            window._kcardsSyncFromCache();
+            if (typeof window.renderKcatTabs === 'function') window.renderKcatTabs();
+            if (typeof window.renderKcards === 'function') window.renderKcards();
+          }
         }
       } catch(e) {}
     } catch(e) {
@@ -30909,6 +30913,43 @@ ${newsText}
       return { error: null };
     };
 
+    window._sbWhoAmI = function(){
+      const user = auth.currentUser;
+      return user ? { email: user.email || '', uid: user.uid } : null;
+    };
+    window._sbForceUploadLocalCaches = async function(){
+      const uid = await fbUid();
+      if (!uid) throw new Error('Firebase 로그인이 필요합니다.');
+
+      const notes = Array.isArray(window._idbCache && window._idbCache['nt_notes']) ? window._idbCache['nt_notes'] : [];
+      const rooms = Array.isArray(window._idbCache && window._idbCache['wr2_rooms']) ? window._idbCache['wr2_rooms'] : [];
+      const sections = Array.isArray(window._idbCache && window._idbCache['wr2_sections']) ? window._idbCache['wr2_sections'] : [];
+      const items = Array.isArray(window._idbCache && window._idbCache['re_sv']) ? window._idbCache['re_sv'] : [];
+      const kcards = Array.isArray(window._idbCache && window._idbCache['ins_kcards']) ? window._idbCache['ins_kcards'] : [];
+      const snapshots = Array.isArray(window._idbCache && window._idbCache['re_ws']) ? window._idbCache['re_ws'] : [];
+
+      notes.forEach(note => { if (note && note.id) dirtyNotes.add(note.id); });
+      await saveDirtyNotes(notes);
+      await saveCol('workrooms', uid, rooms);
+      await saveCol('sections', uid, sections);
+      await saveCol('items', uid, items);
+      await saveCol('kcards', uid, kcards);
+      await saveCol('snapshots', uid, snapshots);
+
+      const summary = {
+        email: auth.currentUser && auth.currentUser.email || '',
+        uid,
+        notes: notes.length,
+        rooms: rooms.length,
+        sections: sections.length,
+        items: items.length,
+        kcards: kcards.length,
+        snapshots: snapshots.length
+      };
+      console.log('[FB] 로컬 캐시 강제 업로드 완료', summary);
+      return summary;
+    };
+
     // ── 노트 삭제 ──
     async function hardDeleteNote(id){
       const uid = await fbUid(); if (!uid || !id) return;
@@ -30994,6 +31035,72 @@ ${newsText}
         async remove(){ return {data:[],error:null}; },
         async list(){ return {data:[],error:null}; }
       }; } }
+    };
+
+    // Firebase 모드에서는 Supabase 블록이 skip되므로 로그인 UI를 여기서도 보장한다.
+    function _fbSbEl(id){ return document.getElementById(id); }
+    function _fbSetLoginState(isLoading, text) {
+      const btn = _fbSbEl('_sbLoginBtn');
+      if (!btn) return;
+      btn.disabled = !!isLoading;
+      btn.textContent = text || (isLoading ? '처리 중...' : '로그인');
+      btn.style.opacity = isLoading ? '0.7' : '1';
+      btn.style.cursor = isLoading ? 'default' : 'pointer';
+    }
+    window._sbShowLogin = window._sbShowLogin || function() {
+      const el = _fbSbEl('_sbLoginOverlay');
+      if (el) el.style.display = 'flex';
+      const err = _fbSbEl('_sbLoginErr');
+      if (err) { err.textContent = ''; err.style.color = '#f87171'; }
+      try {
+        const savedEmail = localStorage.getItem('_sb_saved_email') || '';
+        const savedPw = localStorage.getItem('_sb_saved_pw') || '';
+        const emailEl = _fbSbEl('_sbEmail');
+        const pwEl = _fbSbEl('_sbPw');
+        if (emailEl && savedEmail && !emailEl.value) emailEl.value = savedEmail;
+        if (pwEl && savedPw && !pwEl.value) pwEl.value = savedPw;
+      } catch (e) {}
+    };
+    window._sbHideLogin = window._sbHideLogin || function() {
+      const el = _fbSbEl('_sbLoginOverlay');
+      if (el) el.style.display = 'none';
+    };
+    window._sbLogin = window._sbLogin || async function() {
+      const email = (_fbSbEl('_sbEmail') || { value: '' }).value.trim();
+      const pw = (_fbSbEl('_sbPw') || { value: '' }).value.trim();
+      const errEl = _fbSbEl('_sbLoginErr');
+      if (errEl) { errEl.textContent = ''; errEl.style.color = '#f87171'; }
+      if (!email || !pw) {
+        if (errEl) errEl.textContent = '이메일과 비밀번호를 입력해주세요.';
+        return;
+      }
+      _fbSetLoginState(true, '로그인 중...');
+      try {
+        const { error } = await window._sb.auth.signInWithPassword({ email, password: pw });
+        if (error) throw error;
+        try {
+          localStorage.setItem('_sb_saved_email', email);
+          localStorage.setItem('_sb_saved_pw', pw);
+        } catch (e) {}
+        window._sbHideLogin();
+      } catch (e) {
+        if (errEl) errEl.textContent = '로그인 실패: ' + (e.message || '이메일/비밀번호 확인');
+      } finally {
+        _fbSetLoginState(false, '로그인');
+      }
+    };
+    window._sbLogout = window._sbLogout || async function() {
+      try { await window._sb.auth.signOut(); } catch (e) {}
+      window._sbShowLogin && window._sbShowLogin();
+    };
+    window._sbAddLogoutBtn = window._sbAddLogoutBtn || function() {
+      if (document.getElementById('_sbLogoutBtn')) return;
+      const btn = document.createElement('button');
+      btn.id = '_sbLogoutBtn';
+      btn.textContent = '☁️ 로그아웃';
+      btn.onclick = window._sbLogout;
+      btn.style.cssText = 'position:fixed;top:8px;right:8px;z-index:99998;background:rgba(30,35,55,0.85);color:#94a3b8;border:1px solid #334;border-radius:8px;padding:4px 10px;font-size:11px;cursor:pointer;';
+      document.body.appendChild(btn);
     };
 
     // ── _sbInitLoad: 모바일은 mbReady 이벤트 후 구독 시작, PC는 즉시 시작 ──
