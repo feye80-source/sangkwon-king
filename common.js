@@ -6515,6 +6515,16 @@
       return false;
     }
 
+    function isGenericNaverPropertyTitle(title) {
+      const compact = String(title || '').trim().replace(/\s+/g, '');
+      if (!compact) return true;
+      return [
+        '일반상가', '단지상가', '복합상가', '상가주택', '근린상가',
+        '사무실', '오피스텔상가', '상가점포', '상가건물', '지식산업센터',
+        '상가', '점포', '근린생활시설', '판매시설', '업무시설'
+      ].includes(compact);
+    }
+
     function hasNaverLocation(itemOrData) {
       const d = itemOrData && itemOrData.data ? itemOrData.data : (itemOrData || {});
       const hasAddr = !!String(
@@ -6545,7 +6555,7 @@
         d.spc1, d.spc2, d.exclusiveArea, d.supplyArea
       ]);
       const hasUsableTitle = !!title && !isGenericNaverTitle(title, key);
-      return hasLocation && (hasPrice || hasArea || hasUsableTitle);
+      return hasLocation && (hasAddr || hasArea || hasUsableTitle);
     }
 
     function shouldKeepNaverCollectedItem(itemOrData) {
@@ -6570,6 +6580,7 @@
       });
       if (!key) return true;
       if (!hasLocation) return true;
+      if (!hasAddr && !hasArea && isGenericNaverPropertyTitle(title)) return true;
       if (!hasAddr && !hasCoords && !hasPrice && !hasArea && isGenericNaverTitle(title, key)) return true;
       return !hasMeaningfulNaverData(item);
     }
@@ -31021,12 +31032,20 @@ ${newsText}
     window._sbPurgeBrokenNaverItems = async function(){
       const uid = await fbUid();
       if (!uid) throw new Error('Firebase 로그인이 필요합니다.');
-      const rows = await loadCol('items', uid);
+      let rows = Array.isArray(window._idbCache && window._idbCache['re_sv']) ? window._idbCache['re_sv'] : [];
+      if (!rows.length) rows = await loadCol('items', uid);
       const sanitized = sanitizeSavedItems(rows || []);
-      const deleted = sanitized.removed.length
-        ? await deleteColRows('items', uid, sanitized.removed)
-        : 0;
       applySv(sanitized.cleaned);
+      console.log('[FB] broken naver purge start', { target: sanitized.removed.length, total: rows.length });
+      let deleted = 0;
+      if (sanitized.removed.length) {
+        for (let i = 0; i < sanitized.removed.length; i += 200) {
+          const chunk = sanitized.removed.slice(i, i + 200);
+          deleted += await deleteColRows('items', uid, chunk);
+          console.log('[FB] broken naver purge progress', { deleted, total: sanitized.removed.length });
+          await new Promise(resolve => setTimeout(resolve, 0));
+        }
+      }
       const summary = { deleted, kept: sanitized.cleaned.length };
       console.log('[FB] broken naver purge', summary);
       return summary;
