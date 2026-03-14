@@ -5200,22 +5200,29 @@
       return true;
     }
 
+    function calcDistanceMeters(lat1, lng1, lat2, lng2) {
+      const toRad = deg => deg * Math.PI / 180;
+      const dLat = toRad(lat2 - lat1);
+      const dLng = toRad(lng2 - lng1);
+      const a = Math.sin(dLat / 2) ** 2
+        + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+      return 6371000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
     // ── 추출탭: 수집 필터 ────────────────────────────────────────
     // efEnabled 체크박스 ON일 때만 적용
     function checkCollectFilter(itemData, itemLat, itemLng) {
-      // ★ 반경 모드일 때 수집된 물건 좌표 기반 필터링 (사각형)
+      // ★ 반경 모드일 때는 네이버 bbox 응답을 원형 반경으로 한 번 더 정확히 걸러냄
       if (typeof getAreaSearchMode === 'function' && getAreaSearchMode() === 'radius') {
         if (radiusCenterLatLng) {
+          const iLat = parseFloat(itemLat);
+          const iLng = parseFloat(itemLng);
+          if (isNaN(iLat) || isNaN(iLng)) return false;
           const { radiusM } = getRadiusConfig();
           const clat = radiusCenterLatLng.getLat();
           const clng = radiusCenterLatLng.getLng();
-          const dLat = radiusM / 111320;
-          const dLng = radiusM / (111320 * Math.cos(clat * Math.PI / 180));
-          // ★ 좌표 없는 매물은 반경 모드에서 저장 안 함 (10000개 버그 방지)
-          if (!itemLat || !itemLng || isNaN(parseFloat(itemLat)) || isNaN(parseFloat(itemLng))) return false;
-          const iLat = parseFloat(itemLat), iLng = parseFloat(itemLng);
-          if (iLat < clat - dLat || iLat > clat + dLat ||
-              iLng < clng - dLng || iLng > clng + dLng) return false; // 사각형 밖
+          const distM = calcDistanceMeters(clat, clng, iLat, iLng);
+          if (distM > radiusM) return false;
         }
       }
       // 추출 조건 필터 (ef*)
@@ -6469,8 +6476,71 @@
 
     // ── pcMapExportCSV: 지도탭 CSV 내보내기 (gf 필터 기준) ────────
 
+    function getNaverDedupKey(itemOrData) {
+      const d = itemOrData && itemOrData.data ? itemOrData.data : (itemOrData || {});
+      let key = d.매물번호 || d.articleNo || d.atclNo || '';
+      if (!key && d.상세URL) {
+        const m = String(d.상세URL).match(/[?&]articleNo=(\d+)/);
+        if (m) key = m[1];
+      }
+      return String(key || '').trim();
+    }
+
+    function hasMeaningfulNaverData(itemOrData) {
+      const d = itemOrData && itemOrData.data ? itemOrData.data : (itemOrData || {});
+      const title = String(itemOrData?.title || d.매물명 || d.단지명 || '').trim();
+      const hasAddr = !!String(d.소재지 || d.address || d.exposureAddress || d.detailAddress || d.단지명 || d.매물명 || '').trim();
+      const hasCoords = (() => {
+        const lat = parseFloat(itemOrData?.lat ?? d.lat ?? '');
+        const lng = parseFloat(itemOrData?.lng ?? d.lng ?? '');
+        return !isNaN(lat) && !isNaN(lng);
+      })();
+      const hasNumber = (vals) => vals.some(v => {
+        const n = parseFloat(String(v ?? '').replace(/[^0-9.]/g, ''));
+        return !isNaN(n) && n > 0;
+      });
+      const hasPrice = hasNumber([
+        d.매매가, d.매매가_만원, d.dealPrice,
+        d.기보증금_만원, d.보증금_만원, d.보증금,
+        d.월세_만원, d.rentPrc, d.price
+      ]);
+      const hasArea = hasNumber([
+        d.전용면적_m2, d.계약면적_m2, d.공급면적_m2,
+        d.spc1, d.spc2, d.exclusiveArea, d.supplyArea
+      ]);
+      const hasUsableTitle = !!title && title !== '네이버 매물';
+      return hasAddr || hasCoords || hasPrice || hasArea || hasUsableTitle;
+    }
+
+    function shouldKeepNaverCollectedItem(itemOrData) {
+      const key = getNaverDedupKey(itemOrData);
+      if (!key) return false;
+      return hasMeaningfulNaverData(itemOrData);
+    }
+
+    function isBrokenNaverSavedItem(item) {
+      if (!item || item.source !== '네이버부동산') return false;
+      const key = getNaverDedupKey(item);
+      if (key) return false;
+      return !hasMeaningfulNaverData(item);
+    }
+
     function getSv() {
-      const arr = (window._idbCache && window._idbCache['re_sv'] || []);
+      let arr = (window._idbCache && window._idbCache['re_sv'] || []);
+      let needSave0 = false;
+      let removedBrokenNaver = 0;
+      if (Array.isArray(arr) && arr.length) {
+        const cleaned = [];
+        arr.forEach(item => {
+          if (isBrokenNaverSavedItem(item)) { removedBrokenNaver++; return; }
+          cleaned.push(item);
+        });
+        if (removedBrokenNaver > 0) {
+          arr = cleaned;
+          needSave0 = true;
+          console.warn(`[re_sv] 정보 없는 네이버 항목 ${removedBrokenNaver}개 자동 정리`);
+        }
+      }
       // ★ 마이그레이션: source 필드 없는 기존 데이터에 source 자동 복원
       let needSave = false;
       arr.forEach(item => {
@@ -6484,8 +6554,6 @@
           item.source = '점포라인'; needSave = true;
         }
       });
-      if (needSave) if(window._idbCache)window._idbCache['re_sv']=arr;if(window.idbSet)window.idbSet('re_sv',arr).catch(()=>{});
-
       // ★ 마이그레이션: 점포라인/아싸 계약면적_m2 → 전용면적_m2 이동
       // (과거에 계약면적으로 저장된 데이터를 전용면적으로 자동 전환)
       let needSave2 = false;
@@ -6498,7 +6566,10 @@
           needSave2 = true;
         }
       });
-      if (needSave2) if(window._idbCache)window._idbCache['re_sv']=arr;if(window.idbSet)window.idbSet('re_sv',arr).catch(()=>{});
+      if (needSave0 || needSave || needSave2) {
+        if(window._idbCache)window._idbCache['re_sv']=arr;
+        if(window.idbSet)window.idbSet('re_sv',arr).catch(()=>{});
+      }
 
       // ★ 마이그레이션: _norm 없는 기존 데이터 자동 정규화
       // normalizeItem은 함수 선언보다 늦게 정의되므로 typeof 체크
@@ -25235,9 +25306,12 @@ ${newsContext}
         return;
       }
 
+      let skippedInvalid = 0;
       filtered.forEach(item => {
+        const key = getNaverDedupKey(item);
+        if (!shouldKeepNaverCollectedItem({ ...item, title: item.단지명 || item.소재지 || '네이버 매물' })) { skippedInvalid++; return; }
         const _naverEntry = {
-          id: 'naver_' + Date.now() + '_' + Math.random().toString(36).slice(2),
+          id: 'naver_' + key,
           mode: 'listing', source: '네이버부동산', title: item.단지명 || item.소재지 || '네이버 매물',
           data: {
             단지명: item.단지명, 소재지: item.소재지 || item.단지명,
@@ -25252,8 +25326,8 @@ ${newsContext}
             공급면적_m2: parseFloat(item.공급면적) || '',
             해당층: item.층수, 방향: item.방향,
             특이사항: item.특징, 중개사명: item.중개사,
-            매물번호: item.매물번호, 출처: '네이버부동산',
-            상세URL: item.매물번호 ? `https://new.land.naver.com/offices?articleNo=${item.매물번호}` : ''
+            매물번호: key, 출처: '네이버부동산',
+            상세URL: key ? `https://new.land.naver.com/offices?articleNo=${key}` : ''
           }, memo: '', timestamp: Date.now()
         };
         normalizeItem(_naverEntry);
@@ -25261,7 +25335,8 @@ ${newsContext}
       });
 
       renderSaved();
-      showToast(`${filtered.length}건 결과 탭에 추가`, 'ok');
+      const addedCount = filtered.length - skippedInvalid;
+      showToast(skippedInvalid > 0 ? `${addedCount}건 추가, 빈 데이터 ${skippedInvalid}건 제외` : `${addedCount}건 결과 탭에 추가`, 'ok');
     }
 
     function naverExportCSV() {
@@ -25378,7 +25453,7 @@ ${newsContext}
       window._naverBounds = cb;
       document.getElementById('naverRegionInput').value = `${cb.lat.toFixed(6)}, ${cb.lng.toFixed(6)}`;
       const msg = cb._isRadiusMode
-        ? `📍 반경 ${cb._radiusM}m 기준 수집 범위 적용됨 (최소 500m)`
+        ? `📍 반경 ${cb._radiusM}m 기준 수집 범위 적용됨`
         : '📍 현재 지도 화면 범위 적용됨';
       showToast(msg, 'ok');
     }
@@ -25386,7 +25461,16 @@ ${newsContext}
 
     async function collectNaverAuto(skipDetail = false) {
       window._collectCount = 0; // ★ 수집 개수 카운터 초기화
-      const proxyBase = 'http://127.0.0.1:8080';
+      const proxyBase = window.PROXY_URL || 'http://127.0.0.1:8080';
+      const token = (document.getElementById('naverToken')?.value || localStorage.getItem('naver_token') || '').trim();
+      const cookie = (document.getElementById('naverCookie')?.value || localStorage.getItem('naver_cookie') || '').trim();
+      const areaMode = (typeof getAreaSearchMode === 'function') ? getAreaSearchMode() : 'bounds';
+      const radiusCfg = (typeof getRadiusConfig === 'function') ? getRadiusConfig() : { radiusM: 300, maxN: 20 };
+      const efMaxRaw = parseInt(document.getElementById('efMaxCount')?.value || '', 10);
+      const efMaxCount = (!isNaN(efMaxRaw) && efMaxRaw > 0) ? efMaxRaw : null;
+      const serverMaxN = areaMode === 'radius'
+        ? radiusCfg.maxN
+        : Math.max(efMaxCount || 0, 300);
       try {
         await fetch(proxyBase + '/', { signal: AbortSignal.timeout(2000), mode: 'no-cors' });
       } catch (_) {
@@ -25404,8 +25488,14 @@ ${newsContext}
           gc.addressSearch(regionInput, (result, status) => {
             if (status === kakao.maps.services.Status.OK && result[0]) {
               const lat = parseFloat(result[0].y), lng = parseFloat(result[0].x);
-              const delta = 0.008;
-              resolve({ lat, lng, nelat: lat + delta, swlat: lat - delta, nelng: lng + delta, swlng: lng - delta });
+              if (areaMode === 'radius') {
+                const dLat = radiusCfg.radiusM / 111320;
+                const dLng = radiusCfg.radiusM / (111320 * Math.cos(lat * Math.PI / 180));
+                resolve({ lat, lng, nelat: lat + dLat, swlat: lat - dLat, nelng: lng + dLng, swlng: lng - dLng, _isRadiusMode: true, _radiusM: radiusCfg.radiusM });
+              } else {
+                const delta = 0.008;
+                resolve({ lat, lng, nelat: lat + delta, swlat: lat - delta, nelng: lng + delta, swlng: lng - delta });
+              }
             } else resolve(null);
           });
         });
@@ -25420,8 +25510,14 @@ ${newsContext}
         if (parts.length >= 2) {
           const lat = parseFloat(parts[0]), lng = parseFloat(parts[1]);
           if (!isNaN(lat) && !isNaN(lng)) {
-            const delta = 0.008;
-            bounds = { lat, lng, nelat: lat + delta, swlat: lat - delta, nelng: lng + delta, swlng: lng - delta };
+            if (areaMode === 'radius') {
+              const dLat = radiusCfg.radiusM / 111320;
+              const dLng = radiusCfg.radiusM / (111320 * Math.cos(lat * Math.PI / 180));
+              bounds = { lat, lng, nelat: lat + dLat, swlat: lat - dLat, nelng: lng + dLng, swlng: lng - dLng, _isRadiusMode: true, _radiusM: radiusCfg.radiusM };
+            } else {
+              const delta = 0.008;
+              bounds = { lat, lng, nelat: lat + delta, swlat: lat - delta, nelng: lng + delta, swlng: lng - delta };
+            }
           }
         }
       }
@@ -25455,13 +25551,17 @@ ${newsContext}
             kakao_rest_key: localStorage.getItem('kakao_rest_key') || '58c8f459e2c2de75d3bf136a9978388a',
             kakao_level: bounds.kakao_level || 4,
             skip_detail: skipDetail,
-            cookie: localStorage.getItem('naver_cookie') || '',
-            max_n: getRadiusConfig().maxN, // ★ 최대 수집 개수 전달
+            token,
+            cookie,
+            radius_m: bounds._isRadiusMode ? Math.round(bounds._radiusM || radiusCfg.radiusM || 0) : null,
+            max_n: serverMaxN,
           })
         });
         const data = await resp.json();
         if (data.status === 'success') {
-          const items = data.data || [];
+          const rawItems = data.data || [];
+          const items = rawItems.filter(shouldKeepNaverCollectedItem);
+          const skippedInvalid = rawItems.length - items.length;
           shopCollectedData.naver = items;
           shopPreview('naver', items);
 
@@ -25469,13 +25569,13 @@ ${newsContext}
           const sv = getSv();
           let added = 0, updated = 0;
           items.forEach(item => {
-            const key = String(item.매물번호 || '');
-            const exists = key ? sv.find(s => s.source === '네이버부동산' && s.data && String(s.data.매물번호) === key) : null;
+            const key = getNaverDedupKey(item);
+            const exists = key ? sv.find(s => s.source === '네이버부동산' && getNaverDedupKey(s) === key) : null;
             const entry = {
-              id: 'naver_' + (key || Date.now() + '_' + Math.random().toString(36).slice(2)),
+              id: 'naver_' + key,
               mode: 'listing',
               source: '네이버부동산',
-              title: item.매물명 || item.소재지 || '네이버 매물',
+              title: item.매물명 || item.소재지 || item.단지명 || `네이버 ${key}`,
               lat: item.lat ? parseFloat(item.lat) : null,
               lng: item.lng ? parseFloat(item.lng) : null,
               data: normalizeNaverData(item),
@@ -25494,7 +25594,8 @@ ${newsContext}
           setTimeout(() => _forwardGeocodeSavedItems('네이버부동산'), 500);
 
           const msg = updated > 0 ? `${added}개 추가, ${updated}개 업데이트!` : `${added}개 저장목록에 추가!`;
-          shopStatus('naver', '✅ ' + msg, '#03c75a');
+          const fullMsg = skippedInvalid > 0 ? `${msg} (빈 데이터 ${skippedInvalid}개 제외)` : msg;
+          shopStatus('naver', '✅ ' + fullMsg, '#03c75a');
           showToast(`🟢 네이버 ${added}개 저장됨`, 'ok');
         } else if (data.status === 'warn') {
           shopStatus('naver', '⚠️ ' + data.message, '#ffd166');
@@ -25632,7 +25733,9 @@ ${newsContext}
       });
       const data = await resp.json();
       if (data.status === 'success') {
-        const items = data.data || [];
+        const rawItems = data.data || [];
+        const items = rawItems.filter(shouldKeepNaverCollectedItem);
+        const skippedInvalid = rawItems.length - items.length;
         shopCollectedData.naver = items;
         shopPreview('naver', items);
 
@@ -25640,13 +25743,13 @@ ${newsContext}
         const sv = getSv();
         let added = 0, updated = 0;
         items.forEach(item => {
-          const key = String(item.매물번호 || '');
-          const exists = key ? sv.find(s => s.source === '네이버부동산' && s.data && String(s.data.매물번호) === key) : null;
+          const key = getNaverDedupKey(item);
+          const exists = key ? sv.find(s => s.source === '네이버부동산' && getNaverDedupKey(s) === key) : null;
           const entry = {
-            id: 'naver_' + (key || Date.now() + '_' + Math.random().toString(36).slice(2)),
+            id: 'naver_' + key,
             mode: 'listing',
             source: '네이버부동산',
-            title: item.매물명 || item.소재지 || '네이버 매물',
+            title: item.매물명 || item.소재지 || item.단지명 || `네이버 ${key}`,
             lat: item.lat ? parseFloat(item.lat) : null,
             lng: item.lng ? parseFloat(item.lng) : null,
             data: normalizeNaverData(item),
@@ -25668,7 +25771,8 @@ ${newsContext}
         const msg = updated > 0
           ? `${added}개 추가, ${updated}개 업데이트 완료!`
           : `${added}개 저장목록에 추가 완료!`;
-        shopStatus('naver', '✅ ' + msg, '#03c75a');
+        const fullMsg = skippedInvalid > 0 ? `${msg} (빈 데이터 ${skippedInvalid}개 제외)` : msg;
+        shopStatus('naver', '✅ ' + fullMsg, '#03c75a');
         showToast(`🟢 네이버 ${added}개 저장목록에 추가됨`, 'ok');
 
       } else {
@@ -25680,6 +25784,10 @@ ${newsContext}
     // ★ 네이버 데이터 필드명 정규화 (Python 서버/API마다 다른 필드명 통일)
     function normalizeNaverData(it) {
       const d = { ...it, 출처: '네이버부동산' };
+      if (!d.매물번호) d.매물번호 = getNaverDedupKey(d);
+      if (!d.매물명 && d.articleName) d.매물명 = d.articleName;
+      if (!d.매물명 && d.atclNm) d.매물명 = d.atclNm;
+      if (!d.거래유형 && d.tradeTypeName) d.거래유형 = d.tradeTypeName;
       if (!d.기보증금_만원 && d.기보증금) d.기보증금_만원 = d.기보증금;
       if (!d.기보증금_만원 && d.보증금_만원) d.기보증금_만원 = d.보증금_만원;
       if (!d.기보증금_만원 && d.보증금) d.기보증금_만원 = d.보증금;
