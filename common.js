@@ -6586,7 +6586,19 @@
     }
 
     function isAnyNaverSavedItem(item) {
-      return !!item && ['네이버부동산', '네이버', 'naver'].includes(String(item.source || '').trim());
+      if (!item) return false;
+      const d = item.data || {};
+      const src = String(item.source || d.출처 || '').trim();
+      const mode = String(item.mode || '').trim();
+      const id = String(item.id || '').trim();
+      const detailUrl = String(d.상세URL || '').trim();
+      const nonNaver = ['점포라인', '점포거래소', '아싸점포', '아싸점포거래소', '디스코', '부동산플래닛', '온비드', '경매'];
+      if (['네이버부동산', '네이버', '네이버 부동산', 'naver'].includes(src)) return true;
+      if (nonNaver.includes(src)) return false;
+      if (id.startsWith('naver_')) return true;
+      if (/new\.land\.naver\.com/i.test(detailUrl)) return true;
+      if ((mode === 'listing' || mode === 'general') && !src) return true;
+      return false;
     }
 
     function sanitizeSavedItems(arr) {
