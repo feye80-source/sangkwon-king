@@ -25383,6 +25383,8 @@ ${newsContext}
     window.naverUseMapCenter = naverUseMapCenter;
 
     async function collectNaverAuto(skipDetail = false) {
+      if (window._naverCollecting) { showToast('이미 수집 중입니다. 잠시 기다려주세요.', 'warn'); return; }
+      window._naverCollecting = true;
       window._collectCount = 0; // ★ 수집 개수 카운터 초기화
       const proxyBase = 'http://127.0.0.1:8080';
       try {
@@ -25501,6 +25503,8 @@ ${newsContext}
         }
       } catch (e) {
         shopStatus('naver', '❌ 오류: ' + e.message, '#ff4d4d');
+      } finally {
+        window._naverCollecting = false; // ★ 수집 완료 후 플래그 해제
       }
     }
 
