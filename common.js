@@ -5203,12 +5203,17 @@
     // ── 추출탭: 수집 필터 ────────────────────────────────────────
     // efEnabled 체크박스 ON일 때만 적용
     function checkCollectFilter(itemData, itemLat, itemLng) {
-      // ★ 반경 모드일 때 수집된 물건 좌표 기반 필터링
+      // ★ 반경 모드일 때 수집된 물건 좌표 기반 필터링 (사각형)
       if (typeof getAreaSearchMode === 'function' && getAreaSearchMode() === 'radius') {
         if (radiusCenterLatLng && itemLat && itemLng && !isNaN(itemLat) && !isNaN(itemLng)) {
           const { radiusM } = getRadiusConfig();
-          const itemPos = new kakao.maps.LatLng(parseFloat(itemLat), parseFloat(itemLng));
-          if (distanceMeters(itemPos, radiusCenterLatLng) > radiusM) return false; // 반경 밖
+          const clat = radiusCenterLatLng.getLat();
+          const clng = radiusCenterLatLng.getLng();
+          const dLat = radiusM / 111320;
+          const dLng = radiusM / (111320 * Math.cos(clat * Math.PI / 180));
+          const iLat = parseFloat(itemLat), iLng = parseFloat(itemLng);
+          if (iLat < clat - dLat || iLat > clat + dLat ||
+              iLng < clng - dLng || iLng > clng + dLng) return false; // 사각형 밖
         }
       }
       // 추출 조건 필터 (ef*)
@@ -11626,12 +11631,11 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const level = map ? map.getLevel() : 4;
       if (mode === 'radius' && radiusCenterLatLng) {
         const { radiusM } = getRadiusConfig();
-        // 수집은 최소 500m bbox (너무 좁으면 API 결과 없음)
-        const collectR = Math.max(radiusM, 500);
+        // ★ 네모 반경: 지정한 크기 그대로 bbox로 사용 (최소 제한 없음)
         const clat = radiusCenterLatLng.getLat();
         const clng = radiusCenterLatLng.getLng();
-        const dLat = collectR / 111320;
-        const dLng = collectR / (111320 * Math.cos(clat * Math.PI / 180));
+        const dLat = radiusM / 111320;
+        const dLng = radiusM / (111320 * Math.cos(clat * Math.PI / 180));
         return {
           lat: clat, lng: clng,
           nelat: clat + dLat, swlat: clat - dLat,
@@ -11697,24 +11701,25 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     function updateRadiusCircle() {
       if (!map || !radiusCenterLatLng) return;
       const { radiusM } = getRadiusConfig();
-      if (!radiusCenterCircle) {
-        radiusCenterCircle = new kakao.maps.Circle({
-          center: radiusCenterLatLng,
-          radius: radiusM,
-          strokeWeight: 2,
-          strokeColor: '#60a5fa',
-          strokeOpacity: 0.55,
-          strokeStyle: 'solid',
-          fillColor: '#60a5fa',
-          fillOpacity: 0.10,
-          zIndex: 5
-        });
-        radiusCenterCircle.setMap(map);
-      } else {
-        radiusCenterCircle.setPosition(radiusCenterLatLng);
-        radiusCenterCircle.setRadius(radiusM);
-        radiusCenterCircle.setMap(map);
-      }
+      const clat = radiusCenterLatLng.getLat();
+      const clng = radiusCenterLatLng.getLng();
+      const dLat = radiusM / 111320;
+      const dLng = radiusM / (111320 * Math.cos(clat * Math.PI / 180));
+      const sw = new kakao.maps.LatLng(clat - dLat, clng - dLng);
+      const ne = new kakao.maps.LatLng(clat + dLat, clng + dLng);
+      const bounds = new kakao.maps.LatLngBounds(sw, ne);
+      if (radiusCenterCircle) radiusCenterCircle.setMap(null);
+      radiusCenterCircle = new kakao.maps.Rectangle({
+        bounds: bounds,
+        strokeWeight: 2,
+        strokeColor: '#60a5fa',
+        strokeOpacity: 0.8,
+        strokeStyle: 'solid',
+        fillColor: '#60a5fa',
+        fillOpacity: 0.10,
+        zIndex: 5
+      });
+      radiusCenterCircle.setMap(map);
     }
     function hideRadiusCenterUI() {
       if (radiusCenterMarker) radiusCenterMarker.setMap(null);
