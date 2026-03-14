@@ -6515,13 +6515,22 @@
       return false;
     }
 
+    function hasNaverLocation(itemOrData) {
+      const d = itemOrData && itemOrData.data ? itemOrData.data : (itemOrData || {});
+      const hasAddr = !!String(
+        d.소재지 || d.address || d.exposureAddress || d.detailAddress || d.주소 || d.단지명 || ''
+      ).trim();
+      const lat = parseFloat(itemOrData?.lat ?? d.lat ?? d.latitude ?? '');
+      const lng = parseFloat(itemOrData?.lng ?? d.lng ?? d.longitude ?? d.lon ?? '');
+      const hasCoords = !isNaN(lat) && !isNaN(lng);
+      return { hasAddr, hasCoords, hasLocation: hasAddr || hasCoords };
+    }
+
     function hasMeaningfulNaverData(itemOrData) {
       const d = itemOrData && itemOrData.data ? itemOrData.data : (itemOrData || {});
       const key = getNaverDedupKey(itemOrData);
       const title = getNaverDisplayTitle(itemOrData);
-      const hasAddr = !!String(
-        d.소재지 || d.address || d.exposureAddress || d.detailAddress || d.주소 || d.단지명 || ''
-      ).trim();
+      const { hasLocation } = hasNaverLocation(itemOrData);
       const hasNumber = (vals) => vals.some(v => {
         const n = parseFloat(String(v ?? '').replace(/[^0-9.]/g, ''));
         return !isNaN(n) && n > 0;
@@ -6536,7 +6545,7 @@
         d.spc1, d.spc2, d.exclusiveArea, d.supplyArea
       ]);
       const hasUsableTitle = !!title && !isGenericNaverTitle(title, key);
-      return hasAddr || hasPrice || hasArea || hasUsableTitle;
+      return hasLocation && (hasPrice || hasArea || hasUsableTitle);
     }
 
     function shouldKeepNaverCollectedItem(itemOrData) {
@@ -6550,7 +6559,7 @@
       const key = getNaverDedupKey(item);
       const d = item.data || {};
       const title = getNaverDisplayTitle(item);
-      const hasAddr = !!String(d.소재지 || d.address || d.exposureAddress || d.detailAddress || d.주소 || d.단지명 || '').trim();
+      const { hasAddr, hasCoords, hasLocation } = hasNaverLocation(item);
       const hasPrice = [d.매매가, d.매매가_만원, d.dealPrice, d.기보증금_만원, d.보증금_만원, d.보증금, d.월세_만원, d.rentPrc, d.price].some(v => {
         const n = parseFloat(String(v ?? '').replace(/[^0-9.]/g, ''));
         return !isNaN(n) && n > 0;
@@ -6560,7 +6569,8 @@
         return !isNaN(n) && n > 0;
       });
       if (!key) return true;
-      if (!hasAddr && !hasPrice && !hasArea && isGenericNaverTitle(title, key)) return true;
+      if (!hasLocation) return true;
+      if (!hasAddr && !hasCoords && !hasPrice && !hasArea && isGenericNaverTitle(title, key)) return true;
       return !hasMeaningfulNaverData(item);
     }
 
