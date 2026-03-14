@@ -6499,8 +6499,25 @@
       ).trim();
     }
 
+    function isGenericNaverTitle(title, key) {
+      const t = String(title || '').trim();
+      if (!t) return true;
+      const compact = t.replace(/\s+/g, '');
+      const rawKey = String(key || '').trim();
+      if (!compact) return true;
+      if (['네이버', '네이버매물', '네이버부동산', '부동산'].includes(compact)) return true;
+      if (/^네이버(?:부동산)?(?:매물)?[#:\-]?\d+$/.test(compact)) return true;
+      if (rawKey) {
+        if (compact === rawKey) return true;
+        if (compact === ('네이버' + rawKey)) return true;
+        if (compact === ('네이버매물' + rawKey)) return true;
+      }
+      return false;
+    }
+
     function hasMeaningfulNaverData(itemOrData) {
       const d = itemOrData && itemOrData.data ? itemOrData.data : (itemOrData || {});
+      const key = getNaverDedupKey(itemOrData);
       const title = getNaverDisplayTitle(itemOrData);
       const hasAddr = !!String(
         d.소재지 || d.address || d.exposureAddress || d.detailAddress || d.주소 || d.단지명 || ''
@@ -6518,7 +6535,7 @@
         d.전용면적_m2, d.계약면적_m2, d.공급면적_m2,
         d.spc1, d.spc2, d.exclusiveArea, d.supplyArea
       ]);
-      const hasUsableTitle = !!title && title !== '네이버 매물';
+      const hasUsableTitle = !!title && !isGenericNaverTitle(title, key);
       return hasAddr || hasPrice || hasArea || hasUsableTitle;
     }
 
@@ -6531,7 +6548,19 @@
     function isBrokenNaverSavedItem(item) {
       if (!item || item.source !== '네이버부동산') return false;
       const key = getNaverDedupKey(item);
+      const d = item.data || {};
+      const title = getNaverDisplayTitle(item);
+      const hasAddr = !!String(d.소재지 || d.address || d.exposureAddress || d.detailAddress || d.주소 || d.단지명 || '').trim();
+      const hasPrice = [d.매매가, d.매매가_만원, d.dealPrice, d.기보증금_만원, d.보증금_만원, d.보증금, d.월세_만원, d.rentPrc, d.price].some(v => {
+        const n = parseFloat(String(v ?? '').replace(/[^0-9.]/g, ''));
+        return !isNaN(n) && n > 0;
+      });
+      const hasArea = [d.전용면적_m2, d.계약면적_m2, d.공급면적_m2, d.spc1, d.spc2, d.exclusiveArea, d.supplyArea].some(v => {
+        const n = parseFloat(String(v ?? '').replace(/[^0-9.]/g, ''));
+        return !isNaN(n) && n > 0;
+      });
       if (!key) return true;
+      if (!hasAddr && !hasPrice && !hasArea && isGenericNaverTitle(title, key)) return true;
       return !hasMeaningfulNaverData(item);
     }
 
