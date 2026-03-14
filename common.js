@@ -5205,12 +5205,14 @@
     function checkCollectFilter(itemData, itemLat, itemLng) {
       // ★ 반경 모드일 때 수집된 물건 좌표 기반 필터링 (사각형)
       if (typeof getAreaSearchMode === 'function' && getAreaSearchMode() === 'radius') {
-        if (radiusCenterLatLng && itemLat && itemLng && !isNaN(itemLat) && !isNaN(itemLng)) {
+        if (radiusCenterLatLng) {
           const { radiusM } = getRadiusConfig();
           const clat = radiusCenterLatLng.getLat();
           const clng = radiusCenterLatLng.getLng();
           const dLat = radiusM / 111320;
           const dLng = radiusM / (111320 * Math.cos(clat * Math.PI / 180));
+          // ★ 좌표 없는 매물은 반경 모드에서 저장 안 함 (10000개 버그 방지)
+          if (!itemLat || !itemLng || isNaN(parseFloat(itemLat)) || isNaN(parseFloat(itemLng))) return false;
           const iLat = parseFloat(itemLat), iLng = parseFloat(itemLng);
           if (iLat < clat - dLat || iLat > clat + dLat ||
               iLng < clng - dLng || iLng > clng + dLng) return false; // 사각형 밖
@@ -25383,8 +25385,6 @@ ${newsContext}
     window.naverUseMapCenter = naverUseMapCenter;
 
     async function collectNaverAuto(skipDetail = false) {
-      if (window._naverCollecting) { showToast('이미 수집 중입니다. 잠시 기다려주세요.', 'warn'); return; }
-      window._naverCollecting = true;
       window._collectCount = 0; // ★ 수집 개수 카운터 초기화
       const proxyBase = 'http://127.0.0.1:8080';
       try {
@@ -25503,8 +25503,6 @@ ${newsContext}
         }
       } catch (e) {
         shopStatus('naver', '❌ 오류: ' + e.message, '#ff4d4d');
-      } finally {
-        window._naverCollecting = false; // ★ 수집 완료 후 플래그 해제
       }
     }
 
