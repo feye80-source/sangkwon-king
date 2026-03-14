@@ -30840,11 +30840,10 @@ ${newsText}
     function subscribeCol(col, uid, onData){
       if (unsubs[col]) { try { unsubs[col](); } catch(e){} }
       unsubs[col] = db.collection(col).where('user_id','==',uid).onSnapshot(snap => {
-        const rows = snap.docs.map(d => {
-          const data = d.data();
-          // notes 컬렉션은 data.data 구조, 나머지는 직접 저장
-          return data.data !== undefined ? data.data : data;
-        }).filter(Boolean);
+        // 일반 컬렉션은 문서 전체를 그대로 사용해야 한다.
+        // items 문서는 내부에 data 필드를 가지므로, 이를 언랩하면
+        // 저장목록 wrapper(id/mode/source/title/lat/lng)가 사라진다.
+        const rows = snap.docs.map(d => d.data()).filter(Boolean);
         onData(rows);
       }, e => console.warn('[FB] onSnapshot', col, e));
     }
