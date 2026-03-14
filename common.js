@@ -6528,7 +6528,7 @@
     function hasNaverLocation(itemOrData) {
       const d = itemOrData && itemOrData.data ? itemOrData.data : (itemOrData || {});
       const hasAddr = !!String(
-        d.소재지 || d.address || d.exposureAddress || d.detailAddress || d.주소 || d.단지명 || ''
+        d.소재지 || d.address || d.exposureAddress || d.detailAddress || d.주소 || ''
       ).trim();
       const lat = parseFloat(itemOrData?.lat ?? d.lat ?? d.latitude ?? '');
       const lng = parseFloat(itemOrData?.lng ?? d.lng ?? d.longitude ?? d.lon ?? '');
@@ -6554,7 +6554,7 @@
         d.전용면적_m2, d.계약면적_m2, d.공급면적_m2,
         d.spc1, d.spc2, d.exclusiveArea, d.supplyArea
       ]);
-      const hasUsableTitle = !!title && !isGenericNaverTitle(title, key);
+      const hasUsableTitle = !!title && !isGenericNaverTitle(title, key) && !isGenericNaverPropertyTitle(title);
       return hasLocation && (hasAddr || hasArea || hasUsableTitle);
     }
 
