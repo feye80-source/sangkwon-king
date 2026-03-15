@@ -15,12 +15,25 @@
     window.EDGE_URL = 'https://qgfkhbcpidmraxxjtetl.supabase.co/functions/v1/proxy';
 
     // Edge Function 호출 시 anon key 자동 추가
-    window._proxyFetch = function(url, options = {}) {
+    window._proxyFetch = async function(url, options = {}) {
+      const opts = Object.assign({}, options || {});
       if (url && url.startsWith('https://qgfkhbcpidmraxxjtetl.supabase.co/functions')) {
-        options.headers = options.headers || {};
-        options.headers['Authorization'] = 'Bearer ' + (typeof SUPABASE_KEY !== 'undefined' ? SUPABASE_KEY : '');
+        opts.headers = opts.headers || {};
+        opts.headers['Authorization'] = 'Bearer ' + (typeof SUPABASE_KEY !== 'undefined' ? SUPABASE_KEY : '');
       }
-      return fetch(url, options);
+      try {
+        if (!opts.signal && typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+          opts.signal = AbortSignal.timeout(15000);
+        }
+        return await fetch(url, opts);
+      } catch (e) {
+        const isLocalProxy = !!(url && String(url).startsWith(String(window.PROXY_URL || '')));
+        const isNetworkFail = e && (e.name === 'AbortError' || e instanceof TypeError || /Failed to fetch|NetworkError|Load failed/i.test(String(e.message || '')));
+        if (isLocalProxy && isNetworkFail) {
+          throw new Error('로컬 py 서버 연결 실패: proxy_server.py 실행 상태를 확인하세요.');
+        }
+        throw e;
+      }
     };
 
 /* ════════════════════════════════════════════════════════
@@ -32072,117 +32085,156 @@ ${newsText}
     }
 
     const _fbStorageUrlCache = window.__fbStorageUrlCache || (window.__fbStorageUrlCache = {});
+    const _fbStorageSvcCache = window.__fbStorageSvcCache || (window.__fbStorageSvcCache = {});
     function _fbDecorateStorageUrl(url, bucket, path) {
       if (!url) return '';
       const fullPath = bucket ? (bucket + '/' + path) : path;
       return url + (url.includes('#') ? '&' : '#') + 'skpath=' + encodeURIComponent(fullPath);
     }
-    function _fbProxyBase() {
-      return String(window.PROXY_URL || '').replace(/\/+$/, '');
-    }
-    function _fbProxyStorageUrl(bucket, path) {
-      const base = _fbProxyBase();
-      if (!base || !bucket || !path) return '';
-      const encodedPath = String(path).split('/').map(part => encodeURIComponent(part)).join('/');
-      const url = base + '/uploads/' + encodeURIComponent(bucket) + '/' + encodedPath;
-      return window._normalizeLocalAssetUrl ? window._normalizeLocalAssetUrl(url) : url;
-    }
-    async function _fbFetchWithTimeout(url, options, timeoutMs) {
-      const opts = Object.assign({}, options || {});
-      const ms = timeoutMs || 15000;
-      try {
-        if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
-          opts.signal = opts.signal || AbortSignal.timeout(ms);
-          return await fetch(url, opts);
-        }
-        let timer = null;
-        const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
-        if (ctrl && !opts.signal) opts.signal = ctrl.signal;
-        try {
-          if (ctrl) timer = setTimeout(() => ctrl.abort(), ms);
-          return await fetch(url, opts);
-        } finally {
-          if (timer) clearTimeout(timer);
-        }
-      } catch (e) {
-        if (e && (e.name === 'AbortError' || /aborted|timeout/i.test(String(e.message || '')))) {
-          throw new Error('로컬 프록시 응답 시간 초과');
-        }
-        throw e;
-      }
-    }
-    function _fbBlobToDataUrl(blob) {
-      return new Promise((resolve, reject) => {
-        try {
-          if (typeof blob === 'string' && blob.startsWith('data:')) {
-            resolve(blob);
-            return;
-          }
-          const reader = new FileReader();
-          reader.onload = () => resolve(String(reader.result || ''));
-          reader.onerror = () => reject(reader.error || new Error('파일 읽기 실패'));
-          reader.readAsDataURL(blob instanceof Blob ? blob : new Blob([blob]));
-        } catch (e) {
-          reject(e);
-        }
+    function _fbUnique(list) {
+      const out = [];
+      const seen = new Set();
+      (list || []).forEach(item => {
+        const key = String(item || '').trim();
+        if (!key || seen.has(key)) return;
+        seen.add(key);
+        out.push(key);
       });
+      return out;
     }
-    async function _fbParseProxyJson(resp) {
-      const rawText = await resp.text();
-      if (!rawText) {
-        throw new Error('프록시가 빈 응답을 반환했습니다.');
+    function _fbStorageBuckets() {
+      const cfg = window.__FIREBASE_CONFIG || {};
+      const pid = String(cfg.projectId || '').trim();
+      return _fbUnique([
+        cfg.storageBucket,
+        pid ? (pid + '.appspot.com') : '',
+        pid ? (pid + '.firebasestorage.app') : ''
+      ]);
+    }
+    function _fbGetStorageService(bucketName) {
+      const key = String(bucketName || '__default__');
+      if (Object.prototype.hasOwnProperty.call(_fbStorageSvcCache, key)) {
+        return _fbStorageSvcCache[key];
       }
+      let svc = null;
       try {
-        return JSON.parse(rawText);
-      } catch (e) {
-        const preview = rawText.slice(0, 160).replace(/\s+/g, ' ').trim();
-        throw new Error('프록시 응답 파싱 실패: ' + (preview || 'empty'));
-      }
+        if (bucketName) svc = firebase.app().storage('gs://' + bucketName);
+      } catch (e) {}
+      if (!svc && !bucketName) svc = storage;
+      _fbStorageSvcCache[key] = svc || null;
+      return _fbStorageSvcCache[key];
     }
-    async function _fbProxyStorageUpload(bucket, path, file, options) {
-      const base = _fbProxyBase();
-      if (!base) throw new Error('로컬 프록시 주소가 설정되지 않았습니다.');
-      const dataUrl = await _fbBlobToDataUrl(file);
-      const resp = await _fbFetchWithTimeout(base + '/api/storage_upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          bucket,
-          path,
-          data_url: dataUrl,
-          content_type: options && options.contentType ? options.contentType : ''
+    function _fbGetStorageCandidates() {
+      const out = [];
+      const seen = new Set();
+      const cfgBucket = String((window.__FIREBASE_CONFIG || {}).storageBucket || '').trim();
+      if (storage) {
+        out.push({ bucketName: cfgBucket, svc: storage });
+        if (cfgBucket) seen.add(cfgBucket);
+      }
+      _fbStorageBuckets().forEach(bucketName => {
+        if (seen.has(bucketName)) return;
+        const svc = _fbGetStorageService(bucketName);
+        if (!svc) return;
+        seen.add(bucketName);
+        out.push({ bucketName, svc });
+      });
+      return out;
+    }
+    function _fbTargetPath(bucket, path) {
+      const clean = String(path || '').replace(/^\/+/, '');
+      return bucket ? (bucket + '/' + clean) : clean;
+    }
+    function _fbStorageMeta(options) {
+      const meta = {};
+      if (options && options.contentType) meta.contentType = options.contentType;
+      if (options && options.cacheControl) meta.cacheControl = options.cacheControl;
+      return meta;
+    }
+    function _fbErrText(err) {
+      return String((err && (err.code || err.message)) || err || '').trim();
+    }
+    function _fbIsNotFound(err) {
+      const msg = _fbErrText(err);
+      return /object-not-found|storage\/object-not-found|404/i.test(msg);
+    }
+    function _fbWithTimeout(promise, ms, label) {
+      const timeoutMs = ms || 20000;
+      return Promise.race([
+        promise,
+        new Promise((_, reject) => {
+          setTimeout(() => reject(new Error((label || 'Firebase Storage') + ' 응답 시간 초과')), timeoutMs);
         })
-      }, 15000);
-      const data = await _fbParseProxyJson(resp);
-      if (!resp.ok || data.status !== 'success') {
-        throw new Error(data.message || data.error || ('HTTP ' + resp.status));
-      }
-      return data;
+      ]);
     }
-    async function _fbProxyStorageRemove(bucket, paths) {
-      const base = _fbProxyBase();
-      if (!base) throw new Error('로컬 프록시 주소가 설정되지 않았습니다.');
-      const resp = await _fbFetchWithTimeout(base + '/api/storage_delete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bucket, paths: paths || [] })
-      }, 10000);
-      const data = await _fbParseProxyJson(resp);
-      if (!resp.ok || data.status !== 'success') {
-        throw new Error(data.message || data.error || ('HTTP ' + resp.status));
+    async function _fbStorageUploadDirect(bucket, path, file, options) {
+      const candidates = _fbGetStorageCandidates();
+      if (!candidates.length) throw new Error('Firebase Storage가 초기화되지 않았습니다.');
+      const targetPath = _fbTargetPath(bucket, path);
+      const meta = _fbStorageMeta(options);
+      const errors = [];
+      for (const candidate of candidates) {
+        try {
+          const ref = candidate.svc.ref().child(targetPath);
+          const snap = await _fbWithTimeout(ref.put(file, meta), 25000, '이미지 업로드');
+          const rawUrl = await _fbWithTimeout(snap.ref.getDownloadURL(), 15000, '이미지 URL 생성');
+          const publicUrl = _fbDecorateStorageUrl(rawUrl, bucket, path);
+          _fbStorageUrlCache[targetPath] = publicUrl;
+          return {
+            fullPath: targetPath,
+            publicUrl,
+            bucketName: candidate.bucketName || ''
+          };
+        } catch (e) {
+          errors.push((candidate.bucketName || 'default') + ': ' + _fbErrText(e));
+        }
       }
-      return data;
+      throw new Error('Firebase Storage 업로드 실패: ' + (errors[0] || 'unknown'));
     }
-    async function _fbProxyStorageList(bucket, prefix) {
-      const base = _fbProxyBase();
-      if (!base) throw new Error('로컬 프록시 주소가 설정되지 않았습니다.');
-      const url = base + '/api/storage_list?bucket=' + encodeURIComponent(bucket || '') + '&prefix=' + encodeURIComponent(prefix || '');
-      const resp = await _fbFetchWithTimeout(url, {}, 10000);
-      const data = await _fbParseProxyJson(resp);
-      if (!resp.ok || data.status !== 'success') {
-        throw new Error(data.message || data.error || ('HTTP ' + resp.status));
+    async function _fbStorageDeleteDirect(bucket, paths) {
+      const candidates = _fbGetStorageCandidates();
+      if (!candidates.length) throw new Error('Firebase Storage가 초기화되지 않았습니다.');
+      const pathList = Array.isArray(paths) ? paths : [];
+      for (const rawPath of pathList) {
+        const targetPath = _fbTargetPath(bucket, rawPath);
+        let deleted = false;
+        let lastErr = null;
+        for (const candidate of candidates) {
+          try {
+            await _fbWithTimeout(candidate.svc.ref().child(targetPath).delete(), 15000, '이미지 삭제');
+            deleted = true;
+            break;
+          } catch (e) {
+            if (_fbIsNotFound(e)) {
+              deleted = true;
+              break;
+            }
+            lastErr = e;
+          }
+        }
+        delete _fbStorageUrlCache[targetPath];
+        if (!deleted && lastErr) throw lastErr;
       }
-      return Array.isArray(data.data) ? data.data : [];
+      return true;
+    }
+    async function _fbStorageListDirect(bucket, prefix) {
+      const candidates = _fbGetStorageCandidates();
+      if (!candidates.length) throw new Error('Firebase Storage가 초기화되지 않았습니다.');
+      const targetPrefix = _fbTargetPath(bucket, prefix || '');
+      let lastErr = null;
+      for (const candidate of candidates) {
+        try {
+          const ref = targetPrefix ? candidate.svc.ref().child(targetPrefix) : candidate.svc.ref();
+          const res = await _fbWithTimeout(ref.listAll(), 20000, '파일 목록 조회');
+          return (res.items || []).map(item => ({
+            name: item.name,
+            fullPath: item.fullPath
+          }));
+        } catch (e) {
+          lastErr = e;
+        }
+      }
+      throw lastErr || new Error('파일 목록 조회 실패');
     }
     function makeStorageBucket(bucket) {
       function fullPath(path) {
@@ -32193,42 +32245,42 @@ ${newsText}
         async upload(path, file, options) {
           const targetPath = fullPath(path);
           try {
-            const proxyData = await _fbProxyStorageUpload(bucket, path, file, options);
-            const publicUrl = proxyData.publicUrl || _fbProxyStorageUrl(bucket, path) || '';
-            if (!publicUrl) throw new Error('프록시 업로드 URL 생성 실패');
+            const storageData = await _fbStorageUploadDirect(bucket, path, file, options);
+            const publicUrl = storageData.publicUrl || '';
+            if (!publicUrl) throw new Error('업로드 URL 생성 실패');
             _fbStorageUrlCache[targetPath] = publicUrl;
             return {
               data: {
                 path,
-                fullPath: proxyData.fullPath || targetPath,
+                fullPath: storageData.fullPath || targetPath,
                 publicUrl
               },
               error: null
             };
-          } catch (proxyErr) {
-            return { data: null, error: proxyErr };
+          } catch (storageErr) {
+            return { data: null, error: storageErr };
           }
         },
         getPublicUrl(path) {
           const targetPath = fullPath(path);
           const cached = _fbStorageUrlCache[targetPath] || '';
-          return { data: { publicUrl: cached || _fbProxyStorageUrl(bucket, path) || '' } };
+          return { data: { publicUrl: cached || '' } };
         },
         async remove(paths) {
           try {
-            await _fbProxyStorageRemove(bucket, paths || []);
+            await _fbStorageDeleteDirect(bucket, paths || []);
             (paths || []).forEach(path => { delete _fbStorageUrlCache[fullPath(path)]; });
             return { data: [], error: null };
-          } catch (proxyErr) {
-            return { data: [], error: proxyErr };
+          } catch (storageErr) {
+            return { data: [], error: storageErr };
           }
         },
         async list(prefix) {
           try {
-            const data = await _fbProxyStorageList(bucket, prefix || '');
+            const data = await _fbStorageListDirect(bucket, prefix || '');
             return { data, error: null };
-          } catch (proxyErr) {
-            return { data: [], error: proxyErr };
+          } catch (storageErr) {
+            return { data: [], error: storageErr };
           }
         }
       };
