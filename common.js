@@ -6718,9 +6718,32 @@
 
     let _svCloudDeleteTimer = null;
     const _svCloudDeleteKeys = new Set();
+    const _svPendingDeleteKeys = new Set();
     let _svCloudDeleteRows = [];
+    function _getSvDeleteKeys(row) {
+      const keys = [];
+      const docId = String(row?._docId || '').trim();
+      const itemId = String(row?.id || '').trim();
+      if (docId) keys.push(docId);
+      if (itemId) keys.push(itemId);
+      return keys;
+    }
+    function _markPendingSvDeletes(rows) {
+      (rows || []).forEach(row => {
+        _getSvDeleteKeys(row).forEach(key => _svPendingDeleteKeys.add(key));
+      });
+    }
+    function _unmarkPendingSvDeletes(rows) {
+      (rows || []).forEach(row => {
+        _getSvDeleteKeys(row).forEach(key => _svPendingDeleteKeys.delete(key));
+      });
+    }
+    function _filterPendingDeletedSvRows(rows) {
+      return (rows || []).filter(row => !_getSvDeleteKeys(row).some(key => _svPendingDeleteKeys.has(key)));
+    }
     function scheduleSvCloudDelete(rows) {
       if (!window._sbDeleteSvRows || !Array.isArray(rows) || !rows.length) return;
+      _markPendingSvDeletes(rows);
       rows.forEach(row => {
         const key = String(row?._docId || row?.id || '').trim();
         if (!key || _svCloudDeleteKeys.has(key)) return;
@@ -6734,7 +6757,9 @@
         _svCloudDeleteKeys.clear();
         _svCloudDeleteTimer = null;
         if (!targets.length || !window._sbDeleteSvRows) return;
-        window._sbDeleteSvRows(targets).catch(e => console.warn('[FB] 저장목록 삭제 동기화 실패', e));
+        window._sbDeleteSvRows(targets)
+          .catch(e => console.warn('[FB] 저장목록 삭제 동기화 실패', e))
+          .finally(() => _unmarkPendingSvDeletes(targets));
       }, 300);
     }
 
@@ -31326,7 +31351,10 @@ ${newsText}
 
     function applySv(rows){
       try {
-        const sanitized = sanitizeSavedItems(rows || []);
+        const visibleRows = (typeof _filterPendingDeletedSvRows === 'function')
+          ? _filterPendingDeletedSvRows(rows || [])
+          : (rows || []);
+        const sanitized = sanitizeSavedItems(visibleRows);
         const all = sanitized.cleaned;
         if (sanitized.removed.length) {
           console.warn(`[FB] 정보 없는 네이버 저장항목 ${sanitized.removed.length}개 자동 삭제 예약`);
