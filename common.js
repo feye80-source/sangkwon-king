@@ -633,6 +633,7 @@
       window._sbSyncStatus('☁️ 노트 동기화 완료', true);
     };
     window._sbMarkNtDirty = function(noteId) { _markDirty('notes', noteId); };
+    window._sbMarkSvDirty = function(itemId) { _markDirty('items', itemId); };
     window._sbLoadNtNotes = async function() { return await tblLoadArr('notes'); };
 
     // ─── 작업룸 동기화 ────────────────────────────────────────
@@ -6853,7 +6854,7 @@
         const curHash = _itemHash(item);
         if (prevHash === undefined || prevHash !== curHash) {
           item.updatedAt = now;
-          _markDirty('items', item.id);
+          if (window._sbMarkSvDirty) window._sbMarkSvDirty(item.id);
           _svIndexOne(item); // 변경된 항목만 인덱스 갱신
         }
       });
