@@ -964,20 +964,22 @@
 
         // ── API 키 ──
         try {
-          const apiKeys = ['g_api', 'kakao_api', 'kakao_rest_key', 'sbiz_api'];
+          const apiKeys = ['g_api', 'kakao_api', 'kakao_rest_key', 'sbiz_api', 'naver_id', 'naver_sec', 'onbid_key'];
           const cloud = await kvGet('api_keys');
           if (cloud) {
-            apiKeys.forEach(k => { if (cloud[k]) localStorage.setItem(k, cloud[k]); });
-            const mapping = { g_api:'apiKey', kakao_api:'kakaoApiKey', kakao_rest_key:'kakaoRestKey', sbiz_api:'sbizApiKey' };
+            apiKeys.forEach(k => { if (cloud[k]) _setStoredApiValue(k, cloud[k]); });
+            if (cloud.onbid_api && !cloud.onbid_key) _setStoredApiValue('onbid_key', cloud.onbid_api);
+            const mapping = { g_api:'apiKey', kakao_api:'kakaoApiKey', kakao_rest_key:'kakaoRestKey', sbiz_api:'sbizApiKey', naver_id:'naverClientId', naver_sec:'naverClientSecret', onbid_key:'onbidApiKey' };
             Object.entries(mapping).forEach(([lsKey, elId]) => {
               const el = document.getElementById(elId);
-              const val = cloud[lsKey];
+              const val = cloud[lsKey] || (lsKey === 'onbid_key' ? cloud.onbid_api : '');
               if (el && val) { el.value = val; el.dispatchEvent(new Event('input')); }
             });
+            if (typeof window._syncApiSettingsUi === 'function') window._syncApiSettingsUi();
           } else {
             const payload = {};
             let hasAny = false;
-            apiKeys.forEach(k => { const v = localStorage.getItem(k); if (v) { payload[k] = v; hasAny = true; } });
+            apiKeys.forEach(k => { const v = _getStoredApiValue(k); if (v) { payload[k] = v; hasAny = true; } });
             if (hasAny) await kvSet('api_keys', payload);
           }
         } catch(e) { console.warn('[SB] API key sync error', e); }
@@ -1090,7 +1092,7 @@
     window._sbSaveApiKeys = async function() {
       try {
         const payload = {};
-        ['g_api','kakao_api','kakao_rest_key','sbiz_api'].forEach(k => { const v = localStorage.getItem(k); if (v) payload[k] = v; });
+        API_KEY_SYNC_KEYS.forEach(k => { const v = _getStoredApiValue(k); if (v) payload[k] = v; });
         await kvSet('api_keys', payload);
       } catch(e) {}
     };
@@ -3874,26 +3876,183 @@
     // ===================================================
     // API 키
     // ===================================================
+    const API_KEY_SYNC_KEYS = ['g_api', 'kakao_api', 'kakao_rest_key', 'sbiz_api', 'naver_id', 'naver_sec', 'onbid_key'];
+    function _getStoredApiValue(key) {
+      if (key === 'onbid_key') {
+        const migrated = localStorage.getItem('onbid_key') || localStorage.getItem('onbid_api') || '';
+        if (migrated) {
+          try {
+            localStorage.setItem('onbid_key', migrated);
+            localStorage.removeItem('onbid_api');
+          } catch (e) { }
+        }
+        return migrated;
+      }
+      return localStorage.getItem(key) || '';
+    }
+    function _setStoredApiValue(key, value) {
+      const clean = String(value || '').trim();
+      try {
+        if (clean) localStorage.setItem(key, clean);
+        else localStorage.removeItem(key);
+        if (key === 'onbid_key') localStorage.removeItem('onbid_api');
+      } catch (e) { }
+    }
+    function _setApiDotState(id, on) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      if (el.classList && el.classList.contains('api-dot')) {
+        el.classList.toggle('on', !!on);
+      } else {
+        el.className = String(el.className || '').replace(/\bon\b/g, '').trim() + (on ? ' on' : '');
+      }
+    }
+    function _syncApiSettingsUi() {
+      const mirrorPairs = [
+        { key: 'g_api', orig: 'apiKey', cfg: 'apiKey_cfg' },
+        { key: 'kakao_api', orig: 'kakaoApiKey', cfg: 'kakaoApiKey_cfg' },
+        { key: 'kakao_rest_key', orig: 'kakaoRestKey', cfg: 'kakaoRestKey_cfg' },
+        { key: 'sbiz_api', orig: 'sbizApiKey', cfg: 'sbizApiKey_cfg' },
+        { key: 'onbid_key', orig: 'onbidApiKey', cfg: 'onbidApiKey_cfg' }
+      ];
+      mirrorPairs.forEach(function (it) {
+        const v = _getStoredApiValue(it.key);
+        const origEl = document.getElementById(it.orig);
+        const cfgEl = document.getElementById(it.cfg);
+        if (origEl && !origEl.value && v) origEl.value = v;
+        if (cfgEl && !cfgEl.value && v) cfgEl.value = v;
+      });
+
+      const naverId = _getStoredApiValue('naver_id');
+      const naverSec = _getStoredApiValue('naver_sec');
+      const naverIdOrig = document.getElementById('naverClientId');
+      const naverSecOrig = document.getElementById('naverClientSecret');
+      const naverIdCfg = document.getElementById('naverClientId_cfg');
+      const naverSecCfg = document.getElementById('naverClientSecret_cfg');
+      if (naverIdOrig && !naverIdOrig.value && naverId) naverIdOrig.value = naverId;
+      if (naverSecOrig && !naverSecOrig.value && naverSec) naverSecOrig.value = naverSec;
+      if (naverIdCfg && !naverIdCfg.value && naverId) naverIdCfg.value = naverId;
+      if (naverSecCfg && !naverSecCfg.value && naverSec) naverSecCfg.value = naverSec;
+
+      const geminiOn = (_getStoredApiValue('g_api') || '').length > 10;
+      const kakaoJsOn = (_getStoredApiValue('kakao_api') || '').length > 10;
+      const kakaoRestOn = (_getStoredApiValue('kakao_rest_key') || '').length > 10;
+      const sbizOn = (_getStoredApiValue('sbiz_api') || '').length > 10;
+      const onbidOn = (_getStoredApiValue('onbid_key') || '').length > 5;
+      const naverOn = naverId.length > 3 && naverSec.length > 3;
+
+      ['apiDot', 'apiDot_cfg'].forEach(id => _setApiDotState(id, geminiOn));
+      ['kakaoApiDot', 'kakaoApiDot_cfg'].forEach(id => _setApiDotState(id, kakaoJsOn));
+      ['kakaoRestDot', 'kakaoRestDot_cfg'].forEach(id => _setApiDotState(id, kakaoRestOn));
+      ['sbizDot', 'sbizDot_cfg'].forEach(id => _setApiDotState(id, sbizOn));
+      ['onbidDot', 'onbidDot_cfg'].forEach(id => _setApiDotState(id, onbidOn));
+      ['naverDot', 'naverDot_cfg'].forEach(id => _setApiDotState(id, naverOn));
+    }
+    function _bindApiMirror(origId, cfgId, lsKey, okLen) {
+      const origEl = document.getElementById(origId);
+      const cfgEl = document.getElementById(cfgId);
+      if (cfgEl && !cfgEl._cfgMirrorBound) {
+        cfgEl._cfgMirrorBound = true;
+        ['input', 'change', 'keyup', 'paste'].forEach(function (ev) {
+          cfgEl.addEventListener(ev, function () {
+            const v = cfgEl.value.trim();
+            if (origEl && origEl.value !== v) {
+              origEl.value = v;
+              origEl.dispatchEvent(new Event('input', { bubbles: true }));
+              origEl.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+            if (v.length >= okLen) {
+              _setStoredApiValue(lsKey, v);
+              if (window._sbSaveApiKeys) window._sbSaveApiKeys();
+            }
+            _syncApiSettingsUi();
+          });
+        });
+      }
+      if (origEl && !origEl._cfgMirrorBound) {
+        origEl._cfgMirrorBound = true;
+        ['input', 'change'].forEach(function (ev) {
+          origEl.addEventListener(ev, function () {
+            if (cfgEl && cfgEl.value !== origEl.value) cfgEl.value = origEl.value;
+            _syncApiSettingsUi();
+          });
+        });
+      }
+    }
+    function _bindNaverCfgMirror() {
+      const idOrig = document.getElementById('naverClientId');
+      const secOrig = document.getElementById('naverClientSecret');
+      const idCfg = document.getElementById('naverClientId_cfg');
+      const secCfg = document.getElementById('naverClientSecret_cfg');
+      if (idCfg && !idCfg._cfgMirrorBound) {
+        idCfg._cfgMirrorBound = true;
+        ['input', 'change', 'keyup', 'paste'].forEach(function (ev) {
+          idCfg.addEventListener(ev, function () {
+            if (idOrig && idOrig.value !== idCfg.value) {
+              idOrig.value = idCfg.value;
+              idOrig.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+            _setStoredApiValue('naver_id', idCfg.value);
+            if (window._sbSaveApiKeys) window._sbSaveApiKeys();
+            _syncApiSettingsUi();
+          });
+        });
+      }
+      if (secCfg && !secCfg._cfgMirrorBound) {
+        secCfg._cfgMirrorBound = true;
+        ['input', 'change', 'keyup', 'paste'].forEach(function (ev) {
+          secCfg.addEventListener(ev, function () {
+            if (secOrig && secOrig.value !== secCfg.value) {
+              secOrig.value = secCfg.value;
+              secOrig.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+            _setStoredApiValue('naver_sec', secCfg.value);
+            if (window._sbSaveApiKeys) window._sbSaveApiKeys();
+            _syncApiSettingsUi();
+          });
+        });
+      }
+      [[idOrig, idCfg], [secOrig, secCfg]].forEach(function (pair) {
+        const origEl = pair[0], cfgEl = pair[1];
+        if (origEl && !origEl._cfgMirrorBound) {
+          origEl._cfgMirrorBound = true;
+          ['input', 'change'].forEach(function (ev) {
+            origEl.addEventListener(ev, function () {
+              if (cfgEl && cfgEl.value !== origEl.value) cfgEl.value = origEl.value;
+              _syncApiSettingsUi();
+            });
+          });
+        }
+      });
+    }
+    window._syncApiSettingsUi = _syncApiSettingsUi;
     function gk() { return document.getElementById('apiKey').value.trim(); }
     (() => {
-      const s = localStorage.getItem('g_api') || 'AIzaSyAuRNnEVnbP-1W14BofIN9br0JYhDG7xPY';
+      const s = _getStoredApiValue('g_api') || 'AIzaSyAuRNnEVnbP-1W14BofIN9br0JYhDG7xPY';
       if (s) {
         document.getElementById('apiKey').value = s;
         document.getElementById('apiDot').classList.add('on');
         chk();
       }
-      const k = localStorage.getItem('kakao_api');
+      const k = _getStoredApiValue('kakao_api');
       if (k) {
         document.getElementById('kakaoApiKey').value = k;
         document.getElementById('kakaoApiDot').classList.add('on');
       }
+      _syncApiSettingsUi();
+      _bindApiMirror('apiKey', 'apiKey_cfg', 'g_api', 10);
+      _bindApiMirror('kakaoApiKey', 'kakaoApiKey_cfg', 'kakao_api', 10);
+      _bindApiMirror('kakaoRestKey', 'kakaoRestKey_cfg', 'kakao_rest_key', 10);
+      _bindApiMirror('sbizApiKey', 'sbizApiKey_cfg', 'sbiz_api', 10);
+      _bindApiMirror('onbidApiKey', 'onbidApiKey_cfg', 'onbid_key', 5);
+      _bindNaverCfgMirror();
     })();
-    ['input', 'change', 'keyup', 'paste'].forEach(ev => document.getElementById('apiKey').addEventListener(ev, () => { const v = gk(), ok = v.length > 10; document.getElementById('apiDot').classList.toggle('on', ok); if (ok) { localStorage.setItem('g_api', v); if(window._sbSaveApiKeys) window._sbSaveApiKeys(); } chk(); }));
+    ['input', 'change', 'keyup', 'paste'].forEach(ev => document.getElementById('apiKey').addEventListener(ev, () => { const v = gk(), ok = v.length > 10; document.getElementById('apiDot').classList.toggle('on', ok); if (ok) { _setStoredApiValue('g_api', v); if(window._sbSaveApiKeys) window._sbSaveApiKeys(); } _syncApiSettingsUi(); chk(); }));
     ['input', 'change', 'keyup', 'paste'].forEach(ev => document.getElementById('kakaoApiKey').addEventListener(ev, () => {
       const v = document.getElementById('kakaoApiKey').value.trim(), ok = v.length > 10;
       document.getElementById('kakaoApiDot').classList.toggle('on', ok);
       if (ok) {
-        localStorage.setItem('kakao_api', v);
+        _setStoredApiValue('kakao_api', v);
         // ★ [FIX] 새로고침 없이 카카오맵 SDK 즉시 로드
         if (!window.kakao || !window.kakao.maps) {
           const s = document.createElement('script');
@@ -3911,20 +4070,22 @@
           s.onerror = () => { showToast('❌ 카카오맵 API 키가 올바르지 않습니다. 키를 확인해주세요.', 'error'); };
           document.head.appendChild(s);
         }
+        if(window._sbSaveApiKeys) window._sbSaveApiKeys();
       }
+      _syncApiSettingsUi();
     }));
-    ['input', 'change', 'keyup', 'paste'].forEach(ev => document.getElementById('kakaoRestKey').addEventListener(ev, () => { const v = document.getElementById('kakaoRestKey').value.trim(), ok = v.length > 10; document.getElementById('kakaoRestDot').classList.toggle('on', ok); if (ok) { localStorage.setItem('kakao_rest_key', v); if(window._sbSaveApiKeys) window._sbSaveApiKeys(); } }));
-    const _kr = localStorage.getItem('kakao_rest_key'); if (_kr) { document.getElementById('kakaoRestKey').value = _kr; document.getElementById('kakaoRestDot').classList.toggle('on', _kr.length > 10); }
+    ['input', 'change', 'keyup', 'paste'].forEach(ev => document.getElementById('kakaoRestKey').addEventListener(ev, () => { const v = document.getElementById('kakaoRestKey').value.trim(), ok = v.length > 10; document.getElementById('kakaoRestDot').classList.toggle('on', ok); if (ok) { _setStoredApiValue('kakao_rest_key', v); if(window._sbSaveApiKeys) window._sbSaveApiKeys(); } _syncApiSettingsUi(); }));
+    const _kr = _getStoredApiValue('kakao_rest_key'); if (_kr) { document.getElementById('kakaoRestKey').value = _kr; document.getElementById('kakaoRestDot').classList.toggle('on', _kr.length > 10); }
 
     // 소상공인 API 키 초기화
     (() => {
-      const sk = localStorage.getItem('sbiz_api');
+      const sk = _getStoredApiValue('sbiz_api');
       if (sk) {
         document.getElementById('sbizApiKey').value = sk;
         document.getElementById('sbizDot').classList.add('on');
       }
     })();
-    ['input', 'change', 'keyup', 'paste'].forEach(ev => document.getElementById('sbizApiKey').addEventListener(ev, () => { const v = document.getElementById('sbizApiKey').value.trim(), ok = v.length > 10; document.getElementById('sbizDot').classList.toggle('on', ok); if (ok) { localStorage.setItem('sbiz_api', v); if(window._sbSaveApiKeys) window._sbSaveApiKeys(); } }));
+    ['input', 'change', 'keyup', 'paste'].forEach(ev => document.getElementById('sbizApiKey').addEventListener(ev, () => { const v = document.getElementById('sbizApiKey').value.trim(), ok = v.length > 10; document.getElementById('sbizDot').classList.toggle('on', ok); if (ok) { _setStoredApiValue('sbiz_api', v); if(window._sbSaveApiKeys) window._sbSaveApiKeys(); } _syncApiSettingsUi(); }));
     function getSbizKey() { return document.getElementById('sbizApiKey').value.trim() || localStorage.getItem('sbiz_api') || '3TPJC0Q7lPb72GcvHBdm'; }
 
     // ===================================================
@@ -23122,7 +23283,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
     // ── 네이버 API 키 저장/상태 초기화 ────────────────
     (() => {
-      const id = localStorage.getItem('naver_id'), sec = localStorage.getItem('naver_sec');
+      const id = _getStoredApiValue('naver_id'), sec = _getStoredApiValue('naver_sec');
       if (id && document.getElementById('naverClientId')) document.getElementById('naverClientId').value = id;
       if (sec && document.getElementById('naverClientSecret')) document.getElementById('naverClientSecret').value = sec;
       if (id && sec) document.getElementById('naverDot')?.classList.add('on');
@@ -23131,7 +23292,12 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           const { id: i, sec: s } = getNaverKeys();
           const ok = i.length > 3 && s.length > 3;
           document.getElementById('naverDot')?.classList.toggle('on', ok);
-          if (ok) { localStorage.setItem('naver_id', i); localStorage.setItem('naver_sec', s); }
+          if (ok) {
+            _setStoredApiValue('naver_id', i);
+            _setStoredApiValue('naver_sec', s);
+            if (window._sbSaveApiKeys) window._sbSaveApiKeys();
+          }
+          _syncApiSettingsUi();
         });
       });
     })();
@@ -24914,7 +25080,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     }
 
     function initGuardianTab() {
-      const saved = localStorage.getItem('onbid_key');
+      const saved = _getStoredApiValue('onbid_key');
       if (saved) {
         const el1 = document.getElementById('onbidApiKey');
         const el2 = document.getElementById('onbidKeyLocal');
@@ -24929,9 +25095,13 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           el._guardianInit = true;
           el.addEventListener('input', () => {
             const v = el.value.trim();
-            if (v.length > 5) { localStorage.setItem('onbid_key', v); }
+            if (v.length > 5) {
+              _setStoredApiValue('onbid_key', v);
+              if (window._sbSaveApiKeys) window._sbSaveApiKeys();
+            }
             const dot = document.getElementById('onbidDot');
             if (dot) dot.classList.toggle('on', v.length > 5);
+            _syncApiSettingsUi();
           });
         }
       });
@@ -31718,6 +31888,59 @@ ${newsText}
       return { error: null };
     };
 
+    async function loadApiKeysSetting(uid) {
+      try {
+        const snap = await db.collection('settings').doc(uid + '_api_keys').get();
+        if (!snap.exists) return null;
+        const raw = snap.data() || {};
+        return raw.data && typeof raw.data === 'object' ? raw.data : null;
+      } catch (e) {
+        console.warn('[FB] loadApiKeys', e);
+        return null;
+      }
+    }
+    function applyApiKeysSetting(data) {
+      if (!data || typeof data !== 'object') return;
+      Object.entries(data).forEach(([key, value]) => {
+        if (!value) return;
+        try {
+          if (key === 'onbid_api' && !data.onbid_key) {
+            localStorage.setItem('onbid_key', value);
+            localStorage.removeItem('onbid_api');
+          } else {
+            localStorage.setItem(key, value);
+          }
+        } catch (e) { }
+      });
+      if (typeof window._syncApiSettingsUi === 'function') window._syncApiSettingsUi();
+    }
+    window._sbSaveApiKeys = async function() {
+      const uid = await fbUid();
+      if (!uid) return { error: null };
+      try {
+        const payload = {};
+        ['g_api', 'kakao_api', 'kakao_rest_key', 'sbiz_api', 'naver_id', 'naver_sec', 'onbid_key'].forEach(key => {
+          let value = '';
+          try {
+            value = localStorage.getItem(key) || '';
+            if (!value && key === 'onbid_key') value = localStorage.getItem('onbid_api') || '';
+          } catch (e) { }
+          if (value) payload[key] = value;
+        });
+        await db.collection('settings').doc(uid + '_api_keys').set({
+          id: uid + '_api_keys',
+          user_id: uid,
+          key: 'api_keys',
+          data: payload,
+          updated_at: new Date().toISOString()
+        }, { merge: true });
+        return { error: null };
+      } catch (e) {
+        console.warn('[FB] saveApiKeys', e);
+        return { error: e };
+      }
+    };
+
     window._sbWhoAmI = function(){
       const user = auth.currentUser;
       return user ? { email: user.email || '', uid: user.uid } : null;
@@ -31906,6 +32129,91 @@ ${newsText}
       storage: { from(bucket){ return makeStorageBucket(bucket); } }
     };
 
+    window._extractStoragePathFromUrl = function(url, bucket) {
+      if (!url) return '';
+      try {
+        const parsed = new URL(url, window.location.href);
+        const hash = String(parsed.hash || '');
+        const hashMatch = hash.match(/(?:^#|&)skpath=([^&]+)/);
+        if (hashMatch && hashMatch[1]) {
+          let path = decodeURIComponent(hashMatch[1]);
+          if (bucket && path.startsWith(bucket + '/')) path = path.slice(bucket.length + 1);
+          return path;
+        }
+        const firebaseMatch = parsed.pathname.match(/\/o\/([^/]+(?:\/[^/]+)*)$/);
+        if (firebaseMatch && firebaseMatch[1]) {
+          let path = decodeURIComponent(firebaseMatch[1]);
+          if (bucket && path.startsWith(bucket + '/')) path = path.slice(bucket.length + 1);
+          return path;
+        }
+      } catch (e) { }
+      if (bucket) {
+        const directMatch = String(url).match(new RegExp(bucket + '/([^?#]+)'));
+        if (directMatch && directMatch[1]) return decodeURIComponent(directMatch[1]);
+      }
+      return '';
+    };
+    window._sbUploadImage = async function(source, folder) {
+      const uid = await fbUid();
+      if (!uid) throw new Error('로그인이 필요합니다');
+      folder = folder || 'captures';
+
+      let blob, mimeType, ext;
+      if (typeof source === 'string' && source.startsWith('data:')) {
+        const match = source.match(/^data:(.+?);base64,(.+)$/);
+        if (!match) throw new Error('잘못된 dataURL 형식');
+        mimeType = match[1];
+        const byteStr = atob(match[2]);
+        const arr = new Uint8Array(byteStr.length);
+        for (let i = 0; i < byteStr.length; i++) arr[i] = byteStr.charCodeAt(i);
+        blob = new Blob([arr], { type: mimeType });
+        ext = mimeType.split('/')[1].replace('jpeg', 'jpg').split('+')[0];
+      } else if (source instanceof File || source instanceof Blob) {
+        blob = source;
+        mimeType = source.type || 'image/jpeg';
+        if (source instanceof File && source.name) {
+          ext = source.name.split('.').pop().toLowerCase();
+        } else {
+          ext = mimeType.split('/')[1].replace('jpeg', 'jpg').split('+')[0];
+        }
+      } else {
+        throw new Error('지원하지 않는 파일 형식');
+      }
+
+      const bucket = (folder === 'attachments') ? 'attachments' : 'room-images';
+      const path = uid + '/' + folder + '/' + Date.now() + '_' + Math.random().toString(36).slice(2) + '.' + ext;
+      const { data: uploadData, error } = await window._sb.storage
+        .from(bucket)
+        .upload(path, blob, { contentType: mimeType, upsert: false, cacheControl: '31536000' });
+      if (error) throw error;
+
+      const { data: urlData } = window._sb.storage.from(bucket).getPublicUrl(path);
+      const publicUrl = uploadData?.publicUrl || urlData?.publicUrl || '';
+      if (!publicUrl) throw new Error('업로드 URL 생성 실패');
+      return { url: publicUrl, path, bucket };
+    };
+    window._sbDeleteImages = async function(paths, bucket) {
+      if (!paths || !paths.length) return;
+      const resolveBucket = (p) => {
+        if (bucket) return bucket;
+        const folder = String(p || '').split('/')[1];
+        return folder === 'attachments' ? 'attachments' : 'room-images';
+      };
+      const groups = {};
+      paths.forEach(p => {
+        const resolved = resolveBucket(p);
+        if (!groups[resolved]) groups[resolved] = [];
+        groups[resolved].push(p);
+      });
+      try {
+        for (const [resolvedBucket, bucketPaths] of Object.entries(groups)) {
+          await window._sb.storage.from(resolvedBucket).remove(bucketPaths);
+        }
+      } catch (e) {
+        console.warn('[FB] deleteImages error', e);
+      }
+    };
+
     // Firebase 모드에서는 Supabase 블록이 skip되므로 로그인 UI를 여기서도 보장한다.
     function _fbSbEl(id){ return document.getElementById(id); }
     function _fbSetLoginState(isLoading, text) {
@@ -31976,6 +32284,7 @@ ${newsText}
     window._sbInitLoad = async function(){
       const user = auth.currentUser;
       if (!user) { window._sbShowLogin && window._sbShowLogin(); return; }
+      applyApiKeysSetting(await loadApiKeysSetting(user.uid));
       const isMobile = !!document.getElementById('ntEditorMain'); // mobile.html에만 있는 요소
       if (isMobile) {
         // 모바일: mbReady 이벤트 대기 (이미 발생했으면 즉시 실행)

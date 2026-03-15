@@ -2274,7 +2274,7 @@ window.__FIREBASE_CONFIG = {
     { mb:'mba-gemini',   orig:'apiKey',        dot:'mba-dot-0', ls:'g_api'         },
     { mb:'mba-kakaojs',  orig:'kakaoApiKey',   dot:'mba-dot-1', ls:'kakao_api'     },
     { mb:'mba-kakaorest',orig:'kakaoRestKey',  dot:'mba-dot-2', ls:'kakao_rest_key'},
-    { mb:'mba-onbid',    orig:'onbidApiKey',   dot:'mba-dot-3', ls:'onbid_api'     },
+    { mb:'mba-onbid',    orig:'onbidApiKey',   dot:'mba-dot-3', ls:'onbid_key'     },
     { mb:'mba-sbiz',     orig:'sbizApiKey',    dot:'mba-dot-4', ls:'sbiz_api'      },
   ];
 
@@ -2284,6 +2284,11 @@ window.__FIREBASE_CONFIG = {
   }
 
   function syncApiKeys() {
+    var legacyOnbid = localStorage.getItem('onbid_api');
+    if (legacyOnbid && !localStorage.getItem('onbid_key')) {
+      localStorage.setItem('onbid_key', legacyOnbid);
+      localStorage.removeItem('onbid_api');
+    }
     KEY_MAP.forEach(function(m) {
       var saved  = localStorage.getItem(m.ls) || '';
       var mbEl   = document.getElementById(m.mb);
