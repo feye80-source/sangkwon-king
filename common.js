@@ -11,7 +11,7 @@
     /* ★ 프록시 서버 파일명 — 여기서 한 번만 수정하면 전체 적용 */
     window.PROXY_FILENAME = 'proxy_server.py';
     /* ★ 프록시 서버 주소 (포트 변경 시 여기만 수정) */
-    window.PROXY_URL = 'http://127.0.0.1:8080'; // 로컬 py 서버 (항상 고정)
+    window.PROXY_URL = 'http://localhost:8080'; // 로컬 py 서버 (항상 고정)
     window.EDGE_URL = 'https://qgfkhbcpidmraxxjtetl.supabase.co/functions/v1/proxy';
 
     // Edge Function 호출 시 anon key 자동 추가
@@ -759,7 +759,12 @@
     // ─── Storage 이미지 URL → CDN 캐시 URL 변환 ──────────────
     // Supabase Storage public URL에 transform 파라미터 추가 → CDN 캐싱 활성화
     // width 지정 시 리사이즈도 겸함 (Egress 절감)
+    window._normalizeLocalAssetUrl = function(url) {
+      if (!url) return url;
+      return String(url).replace(/^http:\/\/127\.0\.0\.1:8080(\/|$)/, 'http://localhost:8080$1');
+    };
     window._sbImgUrl = function(url, width) {
+      url = window._normalizeLocalAssetUrl ? window._normalizeLocalAssetUrl(url) : url;
       if (!url || !url.includes('supabase.co/storage')) return url;
       // ★ kcard-images 버킷은 Transform API 미지원 → 원본 URL 그대로 반환
       if (url.includes('/kcard-images/')) return url;
@@ -2584,7 +2589,7 @@
                   if (!el) return;
                   const files = room.attachments || [];
                   el.innerHTML = files.map((f, i) => {
-                    const src = f.url || f.data || '';
+                    const src = window._normalizeLocalAssetUrl ? window._normalizeLocalAssetUrl(f.url || f.data || '') : (f.url || f.data || '');
                     const isImage = String(f.type || '').startsWith('image') || f.type === 'image';
                     if (isImage) {
                       return `<div class="wr2-attach-item"><img class="wr2-attach-img" src="${src}" title="${f.name}" onclick="window.open('${src}','_blank')"><button class="wr2-attach-del" onclick="wr2DelAttach(${i})">✕</button></div>`;
@@ -3835,7 +3840,16 @@
       });
     };
 
+    function _deferPageWork(fn) {
+      if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(() => setTimeout(fn, 0));
+        return;
+      }
+      setTimeout(fn, 0);
+    }
+
     function showPage(n) {
+      const workSeq = (window.__pageWorkSeq = (window.__pageWorkSeq || 0) + 1);
       currentPage = n;
       [0, 1, 2, 3].forEach(i => {
         const page = document.getElementById('page' + i);
@@ -3846,13 +3860,16 @@
       // 지도탭은 overflow:hidden 필요
       const mc = document.querySelector('.main-content');
       if (mc) mc.classList.toggle('map-active', n === 2);
-      if (n === 1) renderSaved();
-      if (n === 2) initMap();
-      if (n === 3) onInsightOpen();
       if (n !== 2) closeCalcPanel();
 
       // ★ 탭 전환 시 전역 필터 패널 갱신
       if (n === 0 || n === 1) setTimeout(renderGFilterPanels, 0);
+      _deferPageWork(() => {
+        if (window.__pageWorkSeq !== workSeq || currentPage !== n) return;
+        if (n === 1) renderSaved();
+        if (n === 2) initMap();
+        if (n === 3) onInsightOpen(window.__insActiveTab || 8);
+      });
     }
     window.showPage = showPage;
 
@@ -10342,7 +10359,8 @@ ${inputDesc.substring(0, 3000)}
       if (!doc) { showToast('파일 데이터 없음', 'warn'); return; }
       // Storage URL 방식 (신규)
       if (doc.url) {
-        window.open(doc.url, '_blank');
+        const normalizedUrl = window._normalizeLocalAssetUrl ? window._normalizeLocalAssetUrl(doc.url) : doc.url;
+        window.open(normalizedUrl, '_blank');
         return;
       }
       // 레거시 base64 방식 (구형 데이터 호환)
@@ -13075,20 +13093,22 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         jumpo: '점포라인', assa: '점포거래소', disco: '디스코', bds: '부동산플래닛'
       };
       const sourceName = sourceMap[type] || null;
-      return _forwardGeocodeSavedItems(sourceName).then(() => {
-        if (!_isActiveMapLoadRequest(loadKey, requestId)) return { cancelled: true };
-        // ★ [v158] loadType을 직접 인자로 전달 (window._mapLoadType 타이밍 버그 방지)
-        return loadCurrentAreaProperties(type, { loadKey, requestId }).then(result => {
-          if (!_isActiveMapLoadRequest(loadKey, requestId) || (result && result.cancelled)) return result;
-          showToast(`✅ ${label} 매물 불러오기 완료`, 'ok');
-          if (cl) cl.style.display = 'none';
-          // ★ [v177] 카드 열림/닫힘 상태 버튼 동기화
-          if (window._cardTypeState && window._refreshTypeBtn) {
-            Object.keys(window._cardTypeState).forEach(t => window._refreshTypeBtn(t));
-          }
-          updateFilterCounts && updateFilterCounts();
-          return result;
-        });
+      return loadCurrentAreaProperties(type, { loadKey, requestId }).then(result => {
+        if (!_isActiveMapLoadRequest(loadKey, requestId) || (result && result.cancelled)) return result;
+        // 저장 좌표 보강은 불러오기 완료 후 백그라운드에서 수행한다.
+        if (sourceName) {
+          setTimeout(() => {
+            _forwardGeocodeSavedItems(sourceName).catch(err => console.warn('[loadCurrentAreaByType geocode]', err));
+          }, 0);
+        }
+        showToast(`✅ ${label} 매물 불러오기 완료`, 'ok');
+        if (cl) cl.style.display = 'none';
+        // ★ [v177] 카드 열림/닫힘 상태 버튼 동기화
+        if (window._cardTypeState && window._refreshTypeBtn) {
+          Object.keys(window._cardTypeState).forEach(t => window._refreshTypeBtn(t));
+        }
+        updateFilterCounts && updateFilterCounts();
+        return result;
       }).catch(err => {
         if (!_isActiveMapLoadRequest(loadKey, requestId)) return { cancelled: true };
         console.error('[loadCurrentAreaByType]', err);
@@ -19991,9 +20011,19 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       if (!window._captureDataUrl && !window._capturePendingFile) { showToast('📸 먼저 이미지를 드래그하거나 선택해주세요', 'warn'); return; }
       // Storage 업로드 시 File 객체 우선 사용 (dataURL 변환 불필요)
       const _uploadSource = window._capturePendingFile || window._captureDataUrl;
+      let saveBtn = null;
+      let saveBtnText = '저장';
+      const _restoreSaveBtn = function() {
+        try {
+          if (!saveBtn) return;
+          saveBtn.disabled = false;
+          saveBtn.textContent = saveBtnText;
+        } catch (e) {}
+      };
       try {
-        var saveBtn = document.querySelector('#mapCaptureModal button[onclick*="saveCapturedImage"]') ||
-                      document.querySelector('#mapCaptureModal .wr2-save-btn');
+        saveBtn = document.querySelector('#mapCaptureModal button[onclick*="saveCapturedImage"]') ||
+                  document.querySelector('#mapCaptureModal .wr2-save-btn');
+        if (saveBtn) saveBtnText = saveBtn.textContent || saveBtnText;
         if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '저장 중...'; }
       } catch(e) {}
       const target = document.querySelector('input[name="captureTarget"]:checked')?.value || 'download';
@@ -20004,6 +20034,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         a.href = window._captureDataUrl;
         a.click();
         showToast('📥 캡처 이미지가 다운로드됩니다', 'ok');
+        _restoreSaveBtn();
         document.getElementById('mapCaptureModal').style.display = 'none';
         return;
       }
@@ -20019,9 +20050,10 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
       if (target === 'room') {
         const roomId = document.getElementById('captureRoomSelectEl')?.value;
-        if (!roomId) { showToast('작업룸을 선택하세요', 'warn'); return; }
+        if (!roomId) { _restoreSaveBtn(); showToast('작업룸을 선택하세요', 'warn'); return; }
 
         const _closeModal = function() {
+          _restoreSaveBtn();
           try { document.getElementById('mapCaptureModal').style.display = 'none'; } catch(e) {}
           try { _clearCapturePreview(); } catch(e) {}
         };
@@ -20083,7 +20115,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         return;
       } else if (target === 'note') {
         const noteId = document.getElementById('captureNoteSelectEl')?.value;
-        if (!noteId) { try { showToast('노트를 선택하세요', 'warn'); } catch (e) { } return; }
+        if (!noteId) { _restoreSaveBtn(); try { showToast('노트를 선택하세요', 'warn'); } catch (e) { } return; }
         const notes = (typeof window._ntGetNotes === 'function') ? window._ntGetNotes() : (typeof ntNotes !== 'undefined' ? ntNotes : []);
         const note = (notes || []).find(n => n.id === noteId);
         if (note) {
@@ -20108,6 +20140,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         }
       }
       // 반드시 모달 닫기
+      _restoreSaveBtn();
       try { document.getElementById('mapCaptureModal').style.display = 'none'; } catch (e) { }
       try { _clearCapturePreview(); } catch (e) { }
     };
@@ -21129,20 +21162,15 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     // showPage: page3 지원은 원본 함수에 통합됨
 
     // ── 인사이트 탭 열릴 때 초기화 ─────────────────────
-    function onInsightOpen() {
-      try { if (typeof window.ntInit === 'function') window.ntInit(); } catch (e) { }
-      try { populateItemSelects(); } catch (e) { }
-      try { renderKcatTabs(); renderKcards(); } catch (e) { }
-      // ★ wr2State가 아직 초기화 안 됐으면 여기서 강제 초기화
-      if (!window.__wr2Inited && typeof window.wr2Init === 'function') {
-        window.__wr2Inited = true;
-        try { window.wr2Init(); } catch (e) { }
-      }
-      showInsTab(8);
+    function onInsightOpen(targetTab) {
+      const nextTab = (targetTab === undefined || targetTab === null) ? (window.__insActiveTab || 8) : targetTab;
+      showInsTab(nextTab);
     }
 
     // ── 서브탭 전환 ─────────────────────────────────────
     function showInsTab(n) {
+      window.__insActiveTab = n;
+      const _insBoot = window.__insBoot || (window.__insBoot = {});
       // cfg(API 설정) 특수 처리
       const cfgPanel = document.getElementById('ipage_cfg');
       if (n === 'cfg') {
@@ -21173,7 +21201,12 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           // ★ 로컬 캐시 우선 즉시 렌더 (작업룸과 동일 방식)
           const _nc = window._idbCache && window._idbCache['nt_notes'];
           if (typeof window._ntSetNotes === 'function') window._ntSetNotes(_nc || []);
-          if (typeof window.ntInit === 'function') window.ntInit();
+          if (!_insBoot.notes && typeof window.ntInit === 'function') {
+            _insBoot.notes = true;
+            window.ntInit();
+          } else if (typeof window.ntRender === 'function') {
+            window.ntRender();
+          }
         } catch (e) { console.error('[ntInit]', e); }
       }
       if (n === 1) { try { populateItemSelects(); } catch (e) { console.error('[populateItemSelects]', e); } }
@@ -22373,7 +22406,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     window.ntUtPreviewAtt = function (id, atti) {
       const note = ntNotes.find(n => n.id === id); if (!note || !note.attachments[atti]) return;
       const att = note.attachments[atti];
-      const src = att.url || att.data || '';
+      const src = window._normalizeLocalAssetUrl ? window._normalizeLocalAssetUrl(att.url || att.data || '') : (att.url || att.data || '');
       if (!src) return;
       const w = window.open('', '_blank');
       w.document.write(`<html><body style="margin:0;background:#000;display:flex;align-items:center;justify-content:center;min-height:100vh;"><img src="${src}" style="max-width:100%;max-height:100vh;object-fit:contain;"><\/body><\/html>`);
@@ -26347,7 +26380,7 @@ ${newsContext}
 
     async function collectNaverAuto(skipDetail = false) {
       window._collectCount = 0; // ★ 수집 개수 카운터 초기화
-      const proxyBase = window.PROXY_URL || 'http://127.0.0.1:8080';
+      const proxyBase = window.PROXY_URL || 'http://localhost:8080';
       const token = (document.getElementById('naverToken')?.value || localStorage.getItem('naver_token') || '').trim();
       const cookie = (document.getElementById('naverCookie')?.value || localStorage.getItem('naver_cookie') || '').trim();
       const areaMode = (typeof getAreaSearchMode === 'function') ? getAreaSearchMode() : 'bounds';
@@ -26614,7 +26647,7 @@ ${newsContext}
         shopStatus('naver', '❌ 위의 토큰과 쿠키를 먼저 입력하세요.', '#ff4d4d'); return;
       }
 
-      const proxyBase = 'http://127.0.0.1:8080';
+      const proxyBase = window.PROXY_URL || 'http://localhost:8080';
       let useProxy = false;
       try {
         await fetch(proxyBase + '/', { signal: AbortSignal.timeout(2000), mode: 'no-cors' });
@@ -32051,7 +32084,32 @@ ${newsText}
       const base = _fbProxyBase();
       if (!base || !bucket || !path) return '';
       const encodedPath = String(path).split('/').map(part => encodeURIComponent(part)).join('/');
-      return base + '/uploads/' + encodeURIComponent(bucket) + '/' + encodedPath;
+      const url = base + '/uploads/' + encodeURIComponent(bucket) + '/' + encodedPath;
+      return window._normalizeLocalAssetUrl ? window._normalizeLocalAssetUrl(url) : url;
+    }
+    async function _fbFetchWithTimeout(url, options, timeoutMs) {
+      const opts = Object.assign({}, options || {});
+      const ms = timeoutMs || 15000;
+      try {
+        if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+          opts.signal = opts.signal || AbortSignal.timeout(ms);
+          return await fetch(url, opts);
+        }
+        let timer = null;
+        const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+        if (ctrl && !opts.signal) opts.signal = ctrl.signal;
+        try {
+          if (ctrl) timer = setTimeout(() => ctrl.abort(), ms);
+          return await fetch(url, opts);
+        } finally {
+          if (timer) clearTimeout(timer);
+        }
+      } catch (e) {
+        if (e && (e.name === 'AbortError' || /aborted|timeout/i.test(String(e.message || '')))) {
+          throw new Error('로컬 프록시 응답 시간 초과');
+        }
+        throw e;
+      }
     }
     function _fbBlobToDataUrl(blob) {
       return new Promise((resolve, reject) => {
@@ -32085,7 +32143,7 @@ ${newsText}
       const base = _fbProxyBase();
       if (!base) throw new Error('로컬 프록시 주소가 설정되지 않았습니다.');
       const dataUrl = await _fbBlobToDataUrl(file);
-      const resp = await fetch(base + '/api/storage_upload', {
+      const resp = await _fbFetchWithTimeout(base + '/api/storage_upload', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -32094,7 +32152,7 @@ ${newsText}
           data_url: dataUrl,
           content_type: options && options.contentType ? options.contentType : ''
         })
-      });
+      }, 15000);
       const data = await _fbParseProxyJson(resp);
       if (!resp.ok || data.status !== 'success') {
         throw new Error(data.message || data.error || ('HTTP ' + resp.status));
@@ -32104,11 +32162,11 @@ ${newsText}
     async function _fbProxyStorageRemove(bucket, paths) {
       const base = _fbProxyBase();
       if (!base) throw new Error('로컬 프록시 주소가 설정되지 않았습니다.');
-      const resp = await fetch(base + '/api/storage_delete', {
+      const resp = await _fbFetchWithTimeout(base + '/api/storage_delete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ bucket, paths: paths || [] })
-      });
+      }, 10000);
       const data = await _fbParseProxyJson(resp);
       if (!resp.ok || data.status !== 'success') {
         throw new Error(data.message || data.error || ('HTTP ' + resp.status));
@@ -32119,7 +32177,7 @@ ${newsText}
       const base = _fbProxyBase();
       if (!base) throw new Error('로컬 프록시 주소가 설정되지 않았습니다.');
       const url = base + '/api/storage_list?bucket=' + encodeURIComponent(bucket || '') + '&prefix=' + encodeURIComponent(prefix || '');
-      const resp = await fetch(url);
+      const resp = await _fbFetchWithTimeout(url, {}, 10000);
       const data = await _fbParseProxyJson(resp);
       if (!resp.ok || data.status !== 'success') {
         throw new Error(data.message || data.error || ('HTTP ' + resp.status));
@@ -32148,22 +32206,7 @@ ${newsText}
               error: null
             };
           } catch (proxyErr) {
-            if (!storage) return { data: null, error: proxyErr };
-          }
-          try {
-            const ref = storage.ref(targetPath);
-            const metadata = {};
-            if (options && options.contentType) metadata.contentType = options.contentType;
-            if (options && options.cacheControl) metadata.cacheControl = options.cacheControl;
-            const snap = await ref.put(file, metadata);
-            let publicUrl = '';
-            try {
-              publicUrl = _fbDecorateStorageUrl(await snap.ref.getDownloadURL(), bucket, path);
-              _fbStorageUrlCache[targetPath] = publicUrl;
-            } catch (e) { }
-            return { data: { path, fullPath: targetPath, publicUrl }, error: null };
-          } catch (e) {
-            return { data: null, error: e };
+            return { data: null, error: proxyErr };
           }
         },
         getPublicUrl(path) {
@@ -32177,17 +32220,7 @@ ${newsText}
             (paths || []).forEach(path => { delete _fbStorageUrlCache[fullPath(path)]; });
             return { data: [], error: null };
           } catch (proxyErr) {
-            if (!storage) return { data: [], error: proxyErr };
-          }
-          try {
-            for (const path of (paths || [])) {
-              const targetPath = fullPath(path);
-              await storage.ref(targetPath).delete();
-              delete _fbStorageUrlCache[targetPath];
-            }
-            return { data: [], error: null };
-          } catch (e) {
-            return { data: [], error: e };
+            return { data: [], error: proxyErr };
           }
         },
         async list(prefix) {
@@ -32195,22 +32228,7 @@ ${newsText}
             const data = await _fbProxyStorageList(bucket, prefix || '');
             return { data, error: null };
           } catch (proxyErr) {
-            if (!storage) return { data: [], error: proxyErr };
-          }
-          try {
-            const targetPrefix = fullPath(prefix || '');
-            const res = await storage.ref(targetPrefix).listAll();
-            const data = (res.items || []).map(item => ({
-              name: item.name,
-              fullPath: item.fullPath,
-              path: bucket && item.fullPath.startsWith(bucket + '/') ? item.fullPath.slice(bucket.length + 1) : item.fullPath
-            }));
-            return { data, error: null };
-          } catch (e) {
-            if (e && (e.code === 'storage/object-not-found' || e.code === 'storage/invalid-root-operation')) {
-              return { data: [], error: null };
-            }
-            return { data: [], error: e };
+            return { data: [], error: proxyErr };
           }
         }
       };
