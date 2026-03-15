@@ -7311,7 +7311,12 @@
 
     function clearAll() {
       if (confirm('저장된 모든 항목을 삭제할까요?')) {
-        if(window._idbCache)delete window._idbCache['re_sv']; if(window.idbRemove)window.idbRemove('re_sv').catch(()=>{});
+        const current = getSv();
+        current.forEach(item => {
+          if (item && item.id) removeMapItemBySavedId(item.id);
+        });
+        _selectedIds.clear();
+        setSv([]);
         renderSaved();
         updSvCnt();
       }
@@ -7397,7 +7402,7 @@
       const sv = getSv();
       const targets = sv.filter(s => {
         if (svFilter === 'auction') return s.source === '경매' || s.type === 'auction';
-        if (svFilter === 'listing') return s.source === '네이버' || s.source === 'naver' || s.source === 'listing';
+        if (svFilter === 'listing') return isAnyNaverSavedItem(s);
         if (svFilter === 'jumpo') return s.source === '점포라인';
         if (svFilter === 'assa') return s.source === '점포거래소' || s.source === 'assa';
         if (svFilter === 'disco') return s.source === '디스코';
@@ -7409,7 +7414,11 @@
       if (targets.length === 0) { alert('삭제할 항목이 없습니다.'); return; }
       if (!confirm(`${label} 항목 ${targets.length}개를 모두 삭제할까요?`)) return;
       const targetIds = new Set(targets.map(s => s.id));
+      targets.forEach(item => {
+        if (item && item.id) removeMapItemBySavedId(item.id);
+      });
       const remaining = sv.filter(s => !targetIds.has(s.id));
+      _selectedIds.forEach(id => { if (targetIds.has(id)) _selectedIds.delete(id); });
       setSv(remaining);
       renderSaved();
       updSvCnt();
