@@ -664,6 +664,30 @@
 
     // ─── Storage 이미지 업로드 공통 헬퍼 ─────────────────────
     // blob/File/base64dataURL → Storage 업로드 → public URL 반환
+    window._extractStoragePathFromUrl = function(url, bucket) {
+      if (!url) return '';
+      try {
+        const parsed = new URL(url, window.location.href);
+        const hash = String(parsed.hash || '');
+        const hashMatch = hash.match(/(?:^#|&)skpath=([^&]+)/);
+        if (hashMatch && hashMatch[1]) {
+          let path = decodeURIComponent(hashMatch[1]);
+          if (bucket && path.startsWith(bucket + '/')) path = path.slice(bucket.length + 1);
+          return path;
+        }
+        const firebaseMatch = parsed.pathname.match(/\/o\/([^/]+(?:\/[^/]+)*)$/);
+        if (firebaseMatch && firebaseMatch[1]) {
+          let path = decodeURIComponent(firebaseMatch[1]);
+          if (bucket && path.startsWith(bucket + '/')) path = path.slice(bucket.length + 1);
+          return path;
+        }
+      } catch (e) { }
+      if (bucket) {
+        const supabaseMatch = String(url).match(new RegExp(bucket + '/([^?#]+)'));
+        if (supabaseMatch && supabaseMatch[1]) return decodeURIComponent(supabaseMatch[1]);
+      }
+      return '';
+    };
     window._sbUploadImage = async function(source, folder) {
       const uid = await _sbGetUserId();
       if (!uid) throw new Error('로그인이 필요합니다');
@@ -697,13 +721,15 @@
       // 폴더에 따라 버킷 분기
       const bucket = (folder === 'attachments') ? 'attachments' : 'room-images';
       const path = uid + '/' + folder + '/' + Date.now() + '_' + Math.random().toString(36).slice(2) + '.' + ext;
-      const { error } = await window._sb.storage
+      const { data: uploadData, error } = await window._sb.storage
         .from(bucket)
         .upload(path, blob, { contentType: mimeType, upsert: false, cacheControl: '31536000' });
       if (error) throw error;
 
       const { data: urlData } = window._sb.storage.from(bucket).getPublicUrl(path);
-      return { url: urlData.publicUrl, path, bucket };
+      const publicUrl = uploadData?.publicUrl || urlData?.publicUrl || '';
+      if (!publicUrl) throw new Error('업로드 URL 생성 실패');
+      return { url: publicUrl, path, bucket };
     };
 
     // Storage에서 이미지/파일 삭제 (path 배열, bucket 옵션)
@@ -2556,15 +2582,21 @@
                   if (!el) return;
                   const files = room.attachments || [];
                   el.innerHTML = files.map((f, i) => {
-                    if (f.type === 'image') {
-                      return `<div class="wr2-attach-item"><img class="wr2-attach-img" src="${f.data}" title="${f.name}"><button class="wr2-attach-del" onclick="wr2DelAttach(${i})">✕</button></div>`;
+                    const src = f.url || f.data || '';
+                    const isImage = String(f.type || '').startsWith('image') || f.type === 'image';
+                    if (isImage) {
+                      return `<div class="wr2-attach-item"><img class="wr2-attach-img" src="${src}" title="${f.name}" onclick="window.open('${src}','_blank')"><button class="wr2-attach-del" onclick="wr2DelAttach(${i})">✕</button></div>`;
                     }
-                    return `<div class="wr2-attach-item"><div class="wr2-attach-file">📎 ${f.name}</div><button class="wr2-attach-del" onclick="wr2DelAttach(${i})">✕</button></div>`;
+                    return `<div class="wr2-attach-item"><a class="wr2-attach-file" href="${src}" target="_blank" rel="noopener">📎 ${f.name}</a><button class="wr2-attach-del" onclick="wr2DelAttach(${i})">✕</button></div>`;
                   }).join('');
                 }
 
-                window.wr2DelAttach = function (idx) {
+                window.wr2DelAttach = async function (idx) {
                   const room = getActiveRoom(); if (!room || !room.attachments) return;
+                  const target = room.attachments[idx];
+                  if (target && target.storagePath && window._sbDeleteImages) {
+                    try { await window._sbDeleteImages([target.storagePath]); } catch (e) { console.warn('[wr2DelAttach]', e); }
+                  }
                   room.attachments.splice(idx, 1);
                   room.updatedAt = Date.now();
                   saveRooms(); renderAttachments(room);
@@ -3033,20 +3065,31 @@
                   wr2HandleFilesArray(Array.from(input.files));
                   input.value = '';
                 };
-                function wr2HandleFilesArray(files) {
+                async function wr2HandleFilesArray(files) {
                   const room = getActiveRoom(); if (!room) return;
                   if (!room.attachments) room.attachments = [];
-                  let done = 0;
-                  files.forEach(file => {
-                    const reader = new FileReader();
-                    reader.onload = e => {
-                      const isImg = file.type.startsWith('image/');
-                      room.attachments.push({ name: file.name, type: isImg ? 'image' : 'file', data: e.target.result });
-                      room.updatedAt = Date.now(); done++;
-                      if (done === files.length) { saveRooms(); renderAttachments(room); }
-                    };
-                    reader.readAsDataURL(file);
-                  });
+                  let ok = 0, fail = 0;
+                  if (files.length) showToast('이미지 업로드 중...', 'info');
+                  for (const file of files) {
+                    try {
+                      const { url, path } = await window._sbUploadImage(file, 'attachments');
+                      room.attachments.push({
+                        name: file.name,
+                        type: file.type || 'application/octet-stream',
+                        url,
+                        storagePath: path
+                      });
+                      ok++;
+                    } catch (e) {
+                      console.error('[wr2HandleFilesArray]', e);
+                      fail++;
+                    }
+                  }
+                  room.updatedAt = Date.now();
+                  saveRooms();
+                  renderAttachments(room);
+                  if (ok) showToast(`📎 ${ok}개 첨부 완료`, fail ? 'warn' : 'ok');
+                  else if (fail) showToast('첨부 업로드 실패', 'warn');
                 }
 
                 // INIT
@@ -6872,15 +6915,20 @@
       const now = Date.now();
       const prev = (window._idbCache && window._idbCache['re_sv']) || [];
       const prevMap = {};
+      const changedAiItems = [];
       prev.forEach(item => { if (item && item.id) prevMap[item.id] = _itemHash(item); });
       (arr || []).forEach(item => {
         if (!item || !item.id) return;
         const prevHash = prevMap[item.id];
         const curHash = _itemHash(item);
         if (prevHash === undefined || prevHash !== curHash) {
+          if (typeof normalizeItem === 'function') normalizeItem(item);
           item.updatedAt = now;
           if (window._sbMarkSvDirty) window._sbMarkSvDirty(item.id);
           _svIndexOne(item); // 변경된 항목만 인덱스 갱신
+          if (window._sbSaveAi && item.data && (item.data.AI기본분석 || item.data.AI추가분석)) {
+            changedAiItems.push({ id: item.id, data: item.data });
+          }
         }
       });
       // 항목 수가 바뀌면 (추가/삭제) 전체 인덱스 재빌드
@@ -6889,6 +6937,9 @@
       const removedRows = prev.filter(item => item && item.id && !nextIdSet.has(item.id));
       if(window._idbCache)window._idbCache['re_sv']=arr;if(window.idbSet)window.idbSet('re_sv',arr).catch(()=>{});
       if (window._sbSaveSv) window._sbSaveSv(arr).catch(e => console.warn("[SB] setSv sync fail", e));
+      changedAiItems.forEach(({ id, data }) => {
+        window._sbSaveAi(id, data).catch(e => console.warn('[SB] setSv ai sync fail', e));
+      });
       scheduleSvCloudDelete(removedRows.concat(removedInvalidRows.filter(item => item && item.id && !nextIdSet.has(item.id))));
     }
 
@@ -6986,6 +7037,7 @@
       _normalizeDualAddressFields(d);
       const src = item.source || d.출처 || '';
       const mode = item.mode || '';
+      if (mode === 'auction' && typeof _auctionHydrateDataFields === 'function') _auctionHydrateDataFields(d);
 
       // ── 유틸 ────────────────────────────────────────────────────
       // 문자열/숫자를 만원 숫자로 변환. 억 단위 감지 포함.
@@ -7477,7 +7529,7 @@
         return yr;
       }
       if (key === 'area') return parseFloat(d.전용면적_m2 || d.건물면적_m2 || d.계약면적_m2) || 0;
-      if (key === 'saledate') return d.매각일 ? new Date(d.매각일).getTime() : 0;
+      if (key === 'saledate') return (d.매각일 || d.매각기일) ? new Date(d.매각일 || d.매각기일).getTime() : 0;
       if (key === 'title') return (item.title || '').toLowerCase();
       return 0;
     }
@@ -7795,7 +7847,7 @@
       if (ia) {
         if (n.감정가_만원) extraRows += _sied('감정가', '감정가', fM(n.감정가_만원), d.감정가, true);
         if (n.평당가_만원) extraRows += _sied('평당가', '평당가_만원', (function (v) { const nv = Math.round(v); if (nv >= 10000) { const e = Math.floor(nv / 10000), m = nv % 10000; return m ? e + '억 ' + m.toLocaleString() + '만원/평' : e + '억원/평'; } return nv.toLocaleString() + '만원/평'; })(n.평당가_만원), n.평당가_만원, true);
-        if (d.매각일) extraRows += _sied('매각일', '매각일', d.매각일, d.매각일, true);
+        if (d.매각일 || d.매각기일) extraRows += _sied('매각일', '매각기일', d.매각일 || d.매각기일, d.매각일 || d.매각기일, true);
         if (n.유찰횟수 != null && n.유찰횟수 !== '') extraRows += _sied('유찰', '유찰횟수', n.유찰횟수 + '회', n.유찰횟수, true);
       } else {
         const 면적py = n.면적_m2 ? n.면적_m2 / 3.3058 : 0;
@@ -8506,6 +8558,249 @@
     // ── 옥션원 수집 ─────────────────────────────────────────────
     let _a1Data = null; // 파싱 결과 임시 저장
 
+    function _auctionExtractDateFromText(v) {
+      const s = String(v || '').trim();
+      if (!s) return '';
+      const m = s.match(/(20\d{2})[-./](\d{1,2})[-./](\d{1,2})/);
+      if (!m) return '';
+      return `${m[1]}-${String(m[2]).padStart(2, '0')}-${String(m[3]).padStart(2, '0')}`;
+    }
+
+    function _auctionNum(v) {
+      if (v == null || v === '') return 0;
+      const n = parseFloat(String(v).replace(/,/g, '').replace(/[^\d.-]/g, ''));
+      return isNaN(n) ? 0 : n;
+    }
+
+    function _auctionManToWon(v) {
+      const n = _auctionNum(v);
+      if (!n) return 0;
+      return Math.abs(n) >= 1000000 ? Math.round(n) : Math.round(n * 10000);
+    }
+
+    function _auctionCloneTenantList(list) {
+      return Array.isArray(list) ? list.map(t => ({ ...(t || {}) })) : [];
+    }
+
+    function _auctionHydrateDataFields(d) {
+      if (!d || typeof d !== 'object') return d;
+      if (!d.매각일 && d.매각기일) d.매각일 = d.매각기일;
+      if (!d.매각기일 && d.매각일) d.매각기일 = d.매각일;
+      if (!d.입찰보증금 && d.보증금) d.입찰보증금 = d.보증금;
+      if (!d.보증금 && d.입찰보증금) d.보증금 = d.입찰보증금;
+      if (!d.채권합계 && d.채권액합계) d.채권합계 = d.채권액합계;
+      if (!d.채권액합계 && d.채권합계) d.채권액합계 = d.채권합계;
+      if (!d.배당요구종기 && d.배당요구종기일) d.배당요구종기 = d.배당요구종기일;
+      if (!d.배당요구종기일 && d.배당요구종기) d.배당요구종기일 = d.배당요구종기;
+      if (!d.말소기준등기일) d.말소기준등기일 = d.말소기준권리일 || _auctionExtractDateFromText(d.말소기준권리);
+      if (!d.말소기준권리일 && d.말소기준등기일) d.말소기준권리일 = d.말소기준등기일;
+      if (!d.임차인현황 && d.임차인_요약) d.임차인현황 = d.임차인_요약;
+      if (!d.임차인_요약 && d.임차인현황) d.임차인_요약 = d.임차인현황;
+      if (!d.경매구분 && d.물건종류) d.경매구분 = d.물건종류;
+      if (!d.물건종류 && d.경매구분) d.물건종류 = d.경매구분;
+      if (!d.용도 && d.물건종류) d.용도 = d.물건종류;
+      if (!d.물건종류 && d.용도) d.물건종류 = d.용도;
+      if ((d.해당층 == null || d.해당층 === '') && d.층 != null && d.층 !== '') d.해당층 = d.층;
+      if ((d.층 == null || d.층 === '') && d.해당층 != null && d.해당층 !== '') d.층 = d.해당층;
+
+      const tenants = _auctionCloneTenantList(d.임차인_목록);
+      if (tenants.length) {
+        const names = tenants.map(t => t.임차인명).filter(Boolean).join(', ');
+        if (!d.임차인 && names) d.임차인 = names;
+        if (!d.사업자등록일 && tenants[0].사업자등록일) d.사업자등록일 = tenants[0].사업자등록일;
+        if (!d.확정일자 && tenants[0].확정일자) d.확정일자 = tenants[0].확정일자;
+        if (!d.대항력 && tenants[0].대항력) d.대항력 = tenants[0].대항력;
+        if (!d.임차인_보증금 && tenants[0].보증금_만원 != null && tenants[0].보증금_만원 !== '') {
+          d.임차인_보증금 = _auctionManToWon(tenants[0].보증금_만원);
+        }
+        if (!d.임차인_월세 && tenants[0].월세_만원 != null && tenants[0].월세_만원 !== '') {
+          d.임차인_월세 = _auctionNum(tenants[0].월세_만원);
+        }
+      }
+      return d;
+    }
+
+    function _a1AuctionSchema(hasCookie) {
+      return `{
+  "경매번호": "",
+  "법원": "",
+  "경매구분": "",
+  "물건종류": "",
+  "용도": "",
+  "소재지": "",
+  "층": "",
+  "전용면적_m2": 0,
+  "건물면적_m2": 0,
+  "토지면적_m2": 0,
+  "감정가_만원": 0,
+  "최저가_만원": 0,
+  "청구액_만원": 0,
+  "보증금_만원": 0,
+  "유찰횟수": 0,
+  "매각기일": "",
+  "개시결정일": "",
+  "배당종기": "",
+  "채무자겸소유자": "",
+  "말소기준권리": "",
+  "말소기준권리일": "",
+  "말소기준등기일": "",
+  "권리분석_요약": "",
+  "채권액합계_만원": 0,
+  "배당요구종기일": "",
+  "임차인_요약": "",
+  "임차인_목록": ${hasCookie ? '[{"임차인명":"","보증금_만원":0,"월세_만원":0,"전입일":"","확정일자":"","사업자등록일":"","대항력":"","점유부분":"","배당요구":""}]' : '[]'},
+  "사업자등록일": "",
+  "확정일자": "",
+  "대항력": "",
+  "비고": ""
+}`;
+    }
+
+    function _a1VerifyFieldDefs() {
+      return [
+        { k: '경매번호', lb: '경매번호', warn: false },
+        { k: '법원', lb: '법원', warn: false },
+        { k: '경매구분', lb: '경매구분', warn: false },
+        { k: '물건종류', lb: '물건종류', warn: false },
+        { k: '용도', lb: '용도', warn: false },
+        { k: '소재지', lb: '소재지', warn: false, wide: true },
+        { k: '층', lb: '층', warn: false },
+        { k: '전용면적_m2', lb: '전용면적(㎡)', warn: false },
+        { k: '건물면적_m2', lb: '건물면적(㎡)', warn: false },
+        { k: '토지면적_m2', lb: '토지면적(㎡)', warn: false },
+        { k: '감정가_만원', lb: '🔴 감정가(만원)', warn: true },
+        { k: '최저가_만원', lb: '🔴 최저가(만원)', warn: true },
+        { k: '청구액_만원', lb: '청구액(만원)', warn: false },
+        { k: '보증금_만원', lb: '입찰보증금(만원)', warn: false },
+        { k: '유찰횟수', lb: '🟡 유찰횟수', warn: true },
+        { k: '매각기일', lb: '매각기일', warn: false },
+        { k: '개시결정일', lb: '개시결정일', warn: false },
+        { k: '배당종기', lb: '배당종기', warn: false },
+        { k: '배당요구종기일', lb: '배당요구종기일', warn: false },
+        { k: '말소기준권리', lb: '🔴 말소기준권리', warn: true, wide: true },
+        { k: '말소기준등기일', lb: '말소기준등기일', warn: false },
+        { k: '말소기준권리일', lb: '말소기준권리일', warn: false },
+        { k: '채권액합계_만원', lb: '채권액합계(만원)', warn: false },
+        { k: '채무자겸소유자', lb: '채무자겸소유자', warn: false },
+        { k: '권리분석_요약', lb: '🔴 권리분석', warn: true, wide: true, ta: true },
+        { k: '임차인_요약', lb: '🟡 임차인현황', warn: true, wide: true, ta: true },
+        { k: '사업자등록일', lb: '사업자등록일', warn: false },
+        { k: '확정일자', lb: '확정일자', warn: false },
+        { k: '대항력', lb: '대항력', warn: false },
+        { k: '비고', lb: '비고', warn: false, wide: true }
+      ];
+    }
+
+    async function _a1CallGeminiJson(prompt) {
+      const out = await callGEx([{ text: prompt }], {
+        generationConfig: { temperature: 0, maxOutputTokens: 4096 }
+      });
+      const txt = String(out.text || '').replace(/```json|```/g, '').trim();
+      if (!txt) throw new Error('Gemini 응답이 비어있습니다');
+      return JSON.parse(txt);
+    }
+
+    async function _a1CallGeminiAnalysis(prompt) {
+      const out = await callGEx([{ text: prompt }], {
+        generationConfig: { temperature: 0.3, maxOutputTokens: 2048 }
+      });
+      const txt = String(out.text || '').replace(/```json|```/g, '').trim();
+      if (!txt) return '';
+      try {
+        const parsed = JSON.parse(txt);
+        return parsed.AI기본분석 || txt;
+      } catch (e) {
+        return txt;
+      }
+    }
+
+    function _a1ReadVerifyState(root, target) {
+      if (!root || !target) return target;
+      root.querySelectorAll('[data-k]').forEach(el => {
+        target[el.dataset.k] = el.value;
+      });
+      const tenantInputs = root.querySelectorAll('[data-tenant-idx][data-tenant-k]');
+      if (tenantInputs.length) {
+        const tenants = _auctionCloneTenantList(target.임차인_목록);
+        tenantInputs.forEach(el => {
+          const idx = parseInt(el.dataset.tenantIdx, 10);
+          const key = el.dataset.tenantK;
+          if (!Number.isInteger(idx) || idx < 0 || !key) return;
+          if (!tenants[idx]) tenants[idx] = {};
+          tenants[idx][key] = el.value;
+        });
+        target.임차인_목록 = tenants;
+      }
+      _auctionHydrateDataFields(target);
+      return target;
+    }
+
+    function _a1BuildAuctionItem(d) {
+      const raw = { ...(d || {}) };
+      _auctionHydrateDataFields(raw);
+      const tenants = _auctionCloneTenantList(raw.임차인_목록);
+      const firstTenant = tenants[0] || {};
+      const item = {
+        id: Date.now() + '_a1',
+        title: raw.경매번호 || (raw.소재지 || '옥션원_' + Date.now()),
+        mode: 'auction',
+        source: '옥션원',
+        data: {
+          ...raw,
+          소재지: raw.소재지 || '',
+          경매번호: raw.경매번호 || '',
+          법원: raw.법원 || '',
+          경매구분: raw.경매구분 || raw.물건종류 || '',
+          물건종류: raw.물건종류 || raw.경매구분 || raw.용도 || '',
+          용도: raw.용도 || raw.물건종류 || raw.경매구분 || '',
+          층: raw.층 || raw.해당층 || '',
+          해당층: raw.해당층 || raw.층 || '',
+          전용면적_m2: _auctionNum(raw.전용면적_m2),
+          건물면적_m2: _auctionNum(raw.건물면적_m2),
+          토지면적_m2: _auctionNum(raw.토지면적_m2),
+          감정가: _auctionManToWon(raw.감정가_만원 || raw.감정가),
+          최저가: _auctionManToWon(raw.최저가_만원 || raw.최저가),
+          청구액: _auctionManToWon(raw.청구액_만원 || raw.청구액),
+          보증금: _auctionManToWon(raw.보증금_만원 || raw.입찰보증금_만원 || raw.입찰보증금 || raw.보증금),
+          입찰보증금: _auctionManToWon(raw.보증금_만원 || raw.입찰보증금_만원 || raw.입찰보증금 || raw.보증금),
+          유찰횟수: parseInt(raw.유찰횟수, 10) || 0,
+          매각기일: raw.매각기일 || raw.매각일 || '',
+          매각일: raw.매각기일 || raw.매각일 || '',
+          개시결정일: raw.개시결정일 || '',
+          배당종기: raw.배당종기 || '',
+          배당요구종기일: raw.배당요구종기일 || raw.배당요구종기 || '',
+          배당요구종기: raw.배당요구종기일 || raw.배당요구종기 || '',
+          말소기준권리: raw.말소기준권리 || '',
+          말소기준권리일: raw.말소기준권리일 || raw.말소기준등기일 || _auctionExtractDateFromText(raw.말소기준권리),
+          말소기준등기일: raw.말소기준등기일 || raw.말소기준권리일 || _auctionExtractDateFromText(raw.말소기준권리),
+          채권액합계: _auctionManToWon(raw.채권액합계_만원 || raw.채권액합계 || raw.채권합계_만원 || raw.채권합계),
+          채권합계: _auctionManToWon(raw.채권액합계_만원 || raw.채권액합계 || raw.채권합계_만원 || raw.채권합계),
+          임차인현황: raw.임차인_요약 || raw.임차인현황 || '',
+          임차인_요약: raw.임차인_요약 || raw.임차인현황 || '',
+          임차인_목록: tenants,
+          권리분석: raw.권리분석_요약 || raw.권리분석 || '',
+          권리분석_요약: raw.권리분석_요약 || raw.권리분석 || '',
+          비고: raw.비고 || '',
+          출처: '옥션원',
+          product_id: raw._pid || raw.product_id || '',
+          AI기본분석: raw.AI기본분석 || '',
+          AI추가분석: raw.AI추가분석 || '',
+          채무자겸소유자: raw.채무자겸소유자 || '',
+          임차인: raw.임차인 || tenants.map(t => t.임차인명).filter(Boolean).join(', '),
+          임차인_보증금: raw.임차인_보증금 || _auctionManToWon(firstTenant.보증금_만원),
+          임차인_월세: raw.임차인_월세 || _auctionNum(firstTenant.월세_만원),
+          사업자등록일: raw.사업자등록일 || firstTenant.사업자등록일 || '',
+          확정일자: raw.확정일자 || firstTenant.확정일자 || '',
+          대항력: raw.대항력 || firstTenant.대항력 || ''
+        },
+        model: 'gemini-parse',
+        memo: '',
+        timestamp: new Date().toISOString()
+      };
+      _auctionHydrateDataFields(item.data);
+      return item;
+    }
+
     async function collectAuction1() {
       const payload   = (document.getElementById('a1Payload')?.value || '').trim();
       const a1Cookie  = (document.getElementById('a1Cookie')?.value || '').trim() || localStorage.getItem('a1_cookie') || '';
@@ -8577,37 +8872,7 @@
         if (statusEl) statusEl.textContent = '⏳ Gemini 파싱 중...';
       }
 
-      const fullFields = hasCookie ? `
-  "말소기준권리": "",
-  "말소기준권리일": "",
-  "권리분석_요약": "",
-  "채권액합계_만원": 0,
-  "배당요구종기일": "",
-  "임차인_요약": "",
-  "임차인_목록": [{"임차인명":"","보증금_만원":0,"월세_만원":0,"전입일":"","확정일자":"","사업자등록일":"","대항력":"","점유부분":"","배당요구":""}]` : `
-  "말소기준권리": "",
-  "말소기준권리일": "",
-  "권리분석_요약": "",
-  "채권액합계_만원": 0,
-  "배당요구종기일": "",
-  "임차인_요약": "",
-  "임차인_목록": []`;
-
-      const schema = `{
-  "경매번호": "",
-  "법원": "",
-  "물건종류": "",
-  "소재지": "",
-  "층": "",
-  "전용면적_m2": 0,
-  "감정가_만원": 0,
-  "최저가_만원": 0,
-  "보증금_만원": 0,
-  "유찰횟수": 0,
-  "매각기일": "",
-  "개시결정일": "",` + fullFields + `,
-  "비고": ""
-}`;
+      const schema = _a1AuctionSchema(hasCookie);
 
       const prompt = [
         '당신은 부동산 경매 정보 추출 전문가입니다.',
@@ -8623,6 +8888,7 @@
         '- 미상: 원본 문서에 "미상"이라고 적혀있으면 반드시 "미상"으로 입력. 빈칸과 미상은 다름',
         '- 말소기준권리: 날짜 + 권리종류 + 권리자 조합 (예: 2023-09-26 근저당 중소기업은행)',
         '- 유찰횟수: 현재까지 유찰된 횟수 (진행 예정 차수 아님)',
+        '- 경매구분/용도/건물면적/토지면적/청구액/배당종기/말소기준등기일/채무자겸소유자/사업자등록일/확정일자/대항력도 문서에 있으면 모두 추출',
         '- 권리분석_요약: 등기부현황 섹션의 근저당/가압류/압류/경매 등 주요 권리를 번호순으로 나열. 예) 1.근저당 관인농협 130000만원(말소기준) 2.근저당 기독교대한감리회세움교회 54000만원 3.압류 연수구',
         '- 비고: 임차인현황의 기타사항(현황조사 내용)을 입력. 예) 폐문부재, 공실 확인 등',
         '- 임차인_목록: 임차인현황 섹션의 각 임차인 1명씩 배열 항목으로 만들 것',
@@ -8638,18 +8904,60 @@
       ].join('\n');
 
       try {
-        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(k)}`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0, maxOutputTokens: 4096 } })
-        });
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        const d = await res.json();
-        let txt = (d.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('').trim();
-        txt = txt.replace(/```json|```/g, '').trim();
-        const parsed = JSON.parse(txt);
+        const parsed = await _a1CallGeminiJson(prompt);
         _a1Data = { ...parsed, _pid: pid, _hasCookie: hasCookie };
+        _auctionHydrateDataFields(_a1Data);
         if (statusEl) statusEl.textContent = '✅ 파싱 완료! 아래 항목을 원본과 대조해 확인하세요.';
         _a1ShowVerify(parsed);
+
+        if (statusEl) statusEl.textContent = '✅ 파싱 완료! 🤖 AI 분석 중...';
+        try {
+          const aiPrompt = `당신은 부동산 경매 전문 투자 분석가입니다. 아래 경매 물건 데이터를 바탕으로 투자 분석을 해주세요.
+
+경매 데이터:
+${JSON.stringify(parsed, null, 2)}
+
+원본 페이지 텍스트:
+${inputDesc.substring(0, 3000)}
+
+【1차 종합 분석】
+
+## 물건 기본 정보
+- 정확한 위치 및 접근성 (주요 상권, 교통)
+- 건물 구조, 층수, 시설 현황
+- 면적 및 용도
+
+## 가격 분석
+- 감정가 대비 최저가 비율
+- 유찰 횟수별 가격 하락 현황
+- 예상 낙찰가 범위 (감정가 대비 %)
+
+## 수익성 분석
+- 현재 임차인 현황 (있는 경우)
+- 예상 월 임대료 및 연 수익률
+- 추가 비용 고려사항
+
+## 리스크 평가
+- 권리관계 위험 (말소기준권리, 임차인 대항력 등)
+- 건물 상태 및 업종 전환 가능성
+- 공실 위험
+
+## 투자 의견
+강점: [3-4가지]
+주의점: [2-3가지]
+추천전략: [구체적 조언]
+
+응답 형식:
+{
+  "AI기본분석": "위 형식을 정확히 따라 작성한 전체 분석 내용"
+}`;
+          const aiText = await _a1CallGeminiAnalysis(aiPrompt);
+          if (aiText) _a1Data.AI기본분석 = aiText;
+          if (statusEl) statusEl.textContent = '✅ 파싱 + AI 분석 완료! 아래 항목을 원본과 대조해 확인하세요.';
+        } catch (aiErr) {
+          console.warn('AI 분석 실패:', aiErr);
+          if (statusEl) statusEl.textContent = '✅ 파싱 완료! (AI 분석 실패) 아래 항목을 원본과 대조해 확인하세요.';
+        }
       } catch (err) {
         if (statusEl) statusEl.textContent = '❌ 실패: ' + err.message;
         showToast('옥션원 파싱 오류: ' + err.message, 'warn');
@@ -8662,27 +8970,8 @@
       const fl = document.getElementById('a1VerifyFields');
       if (!box || !fl) return;
 
-      const FIELDS = [
-        { k: '경매번호', lb: '경매번호', warn: false },
-        { k: '법원', lb: '법원', warn: false },
-        { k: '물건종류', lb: '물건종류', warn: false },
-        { k: '소재지', lb: '소재지', warn: false, wide: true },
-        { k: '층', lb: '층', warn: false },
-        { k: '전용면적_m2', lb: '전용면적(㎡)', warn: false },
-        { k: '감정가_만원', lb: '🔴 감정가(만원)', warn: true },
-        { k: '최저가_만원', lb: '🔴 최저가(만원)', warn: true },
-        { k: '보증금_만원', lb: '보증금(만원)', warn: false },
-        { k: '유찰횟수', lb: '🟡 유찰횟수', warn: true },
-        { k: '매각기일', lb: '매각기일', warn: false },
-        { k: '개시결정일', lb: '개시결정일', warn: false },
-        { k: '말소기준권리', lb: '🔴 말소기준권리', warn: true, wide: true },
-        { k: '말소기준권리일', lb: '말소기준권리일', warn: false },
-        { k: '배당요구종기일', lb: '배당요구종기일', warn: false },
-        { k: '채권액합계_만원', lb: '채권액합계(만원)', warn: false },
-        { k: '권리분석_요약', lb: '🔴 권리분석', warn: true, wide: true, ta: true },
-        { k: '임차인_요약', lb: '🟡 임차인현황', warn: true, wide: true, ta: true },
-        { k: '비고', lb: '비고', warn: false, wide: true },
-      ];
+      _auctionHydrateDataFields(d);
+      const FIELDS = _a1VerifyFieldDefs();
 
       fl.innerHTML = FIELDS.map(f => {
         const v = String(d[f.k] ?? '');
@@ -8704,14 +8993,14 @@
           fl.innerHTML += `<div style="grid-column:1/-1;background:rgba(0,0,0,.25);border:1px solid var(--b2);border-radius:8px;padding:10px;margin-bottom:6px;">
             <div style="font-size:11px;font-weight:700;color:#ff8c42;margin-bottom:8px;">👤 임차인 ${i+1}: ${t.임차인명 || '(이름없음)'}</div>
             <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;">
-              <div><div style="font-size:10px;color:var(--mu);margin-bottom:2px;">보증금(만원)</div><input value="${t.보증금_만원||0}" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,.25);border:1px solid ${t.보증금_만원>0?'rgba(255,80,80,.4)':'var(--b1)'};border-radius:5px;color:var(--tx);font-size:11px;padding:4px 6px;"></div>
-              <div><div style="font-size:10px;color:var(--mu);margin-bottom:2px;">월세(만원)</div><input value="${t.월세_만원||0}" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,.25);border:1px solid var(--b1);border-radius:5px;color:var(--tx);font-size:11px;padding:4px 6px;"></div>
-              <div><div style="font-size:10px;color:var(--mu);margin-bottom:2px;">대항력</div><input value="${t.대항력||''}" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,.25);border:1px solid rgba(255,80,80,.3);border-radius:5px;color:${daeColor};font-size:11px;font-weight:700;padding:4px 6px;"></div>
-              <div><div style="font-size:10px;color:var(--mu);margin-bottom:2px;">전입일</div><input value="${t.전입일||''}" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,.25);border:1px solid var(--b1);border-radius:5px;color:var(--tx);font-size:11px;padding:4px 6px;"></div>
-              <div><div style="font-size:10px;color:var(--mu);margin-bottom:2px;">확정일자</div><input value="${t.확정일자||''}" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,.25);border:1px solid var(--b1);border-radius:5px;color:var(--tx);font-size:11px;padding:4px 6px;"></div>
-              <div><div style="font-size:10px;color:var(--mu);margin-bottom:2px;">사업자등록일</div><input value="${t.사업자등록일||''}" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,.25);border:1px solid var(--b1);border-radius:5px;color:var(--tx);font-size:11px;padding:4px 6px;"></div>
-              <div><div style="font-size:10px;color:var(--mu);margin-bottom:2px;">배당요구</div><input value="${t.배당요구||''}" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,.25);border:1px solid var(--b1);border-radius:5px;color:var(--tx);font-size:11px;padding:4px 6px;"></div>
-              <div style="grid-column:2/-1"><div style="font-size:10px;color:var(--mu);margin-bottom:2px;">점유부분</div><input value="${t.점유부분||''}" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,.25);border:1px solid var(--b1);border-radius:5px;color:var(--tx);font-size:11px;padding:4px 6px;"></div>
+              <div><div style="font-size:10px;color:var(--mu);margin-bottom:2px;">보증금(만원)</div><input data-tenant-idx="${i}" data-tenant-k="보증금_만원" value="${t.보증금_만원||0}" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,.25);border:1px solid ${t.보증금_만원>0?'rgba(255,80,80,.4)':'var(--b1)'};border-radius:5px;color:var(--tx);font-size:11px;padding:4px 6px;"></div>
+              <div><div style="font-size:10px;color:var(--mu);margin-bottom:2px;">월세(만원)</div><input data-tenant-idx="${i}" data-tenant-k="월세_만원" value="${t.월세_만원||0}" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,.25);border:1px solid var(--b1);border-radius:5px;color:var(--tx);font-size:11px;padding:4px 6px;"></div>
+              <div><div style="font-size:10px;color:var(--mu);margin-bottom:2px;">대항력</div><input data-tenant-idx="${i}" data-tenant-k="대항력" value="${t.대항력||''}" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,.25);border:1px solid rgba(255,80,80,.3);border-radius:5px;color:${daeColor};font-size:11px;font-weight:700;padding:4px 6px;"></div>
+              <div><div style="font-size:10px;color:var(--mu);margin-bottom:2px;">전입일</div><input data-tenant-idx="${i}" data-tenant-k="전입일" value="${t.전입일||''}" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,.25);border:1px solid var(--b1);border-radius:5px;color:var(--tx);font-size:11px;padding:4px 6px;"></div>
+              <div><div style="font-size:10px;color:var(--mu);margin-bottom:2px;">확정일자</div><input data-tenant-idx="${i}" data-tenant-k="확정일자" value="${t.확정일자||''}" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,.25);border:1px solid var(--b1);border-radius:5px;color:var(--tx);font-size:11px;padding:4px 6px;"></div>
+              <div><div style="font-size:10px;color:var(--mu);margin-bottom:2px;">사업자등록일</div><input data-tenant-idx="${i}" data-tenant-k="사업자등록일" value="${t.사업자등록일||''}" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,.25);border:1px solid var(--b1);border-radius:5px;color:var(--tx);font-size:11px;padding:4px 6px;"></div>
+              <div><div style="font-size:10px;color:var(--mu);margin-bottom:2px;">배당요구</div><input data-tenant-idx="${i}" data-tenant-k="배당요구" value="${t.배당요구||''}" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,.25);border:1px solid var(--b1);border-radius:5px;color:var(--tx);font-size:11px;padding:4px 6px;"></div>
+              <div style="grid-column:2/-1"><div style="font-size:10px;color:var(--mu);margin-bottom:2px;">점유부분</div><input data-tenant-idx="${i}" data-tenant-k="점유부분" value="${t.점유부분||''}" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,.25);border:1px solid var(--b1);border-radius:5px;color:var(--tx);font-size:11px;padding:4px 6px;"></div>
             </div>
           </div>`;
         });
@@ -8724,49 +9013,8 @@
     function a1ConfirmSave() {
       if (!_a1Data) { showToast('파싱 데이터 없음', 'warn'); return; }
 
-      document.querySelectorAll('#a1VerifyFields [data-k]').forEach(el => {
-        _a1Data[el.dataset.k] = el.value;
-      });
-
-      const d = _a1Data;
-      const 감정가W = (parseFloat(String(d.감정가_만원 || 0).replace(/,/g, '')) || 0) * 10000;
-      const 최저가W = (parseFloat(String(d.최저가_만원 || 0).replace(/,/g, '')) || 0) * 10000;
-      const 보증금W = (parseFloat(String(d.보증금_만원 || 0).replace(/,/g, '')) || 0) * 10000;
-
-      const item = {
-        id: Date.now() + '_a1',
-        title: d.경매번호 || (d.소재지 || '옥션원_' + Date.now()),
-        mode: 'auction',
-        data: {
-          소재지: d.소재지 || '',
-          경매번호: d.경매번호 || '',
-          법원: d.법원 || '',
-          용도: d.물건종류 || '',
-          층: d.층 || '',
-          전용면적_m2: parseFloat(d.전용면적_m2) || 0,
-          건물면적_m2: parseFloat(d.건물면적_m2) || 0,
-          토지면적_m2: parseFloat(d.토지면적_m2) || 0,
-          감정가: 감정가W,
-          최저가: 최저가W,
-          보증금: 보증금W,
-          유찰횟수: parseInt(d.유찰횟수) || 0,
-          매각기일: d.매각기일 || '',
-          개시결정일: d.개시결정일 || '',
-          말소기준권리: d.말소기준권리 || '',
-          말소기준권리일: d.말소기준권리일 || '',
-          배당요구종기일: d.배당요구종기일 || '',
-          채권액합계: (parseFloat(String(d.채권액합계_만원||0).replace(/,/g,''))||0)*10000,
-          임차인현황: d.임차인_요약 || d.임차인현황 || '',
-          임차인_목록: d.임차인_목록 || [],
-          권리분석: d.권리분석_요약 || '',
-          비고: d.비고 || '',
-          출처: '옥션원',
-          product_id: d._pid || '',
-        },
-        model: 'gemini-parse',
-        memo: '',
-        timestamp: new Date().toISOString()
-      };
+      _a1ReadVerifyState(document.getElementById('a1VerifyFields'), _a1Data);
+      const item = _a1BuildAuctionItem(_a1Data);
 
       normalizeItem(item);
       results.push(item);
@@ -8846,39 +9094,7 @@
       } else {
         inputDesc = `HTML 소스 (앞 50000자):\n${payload.substring(0, 50000)}`;
       }
-      const fullFieldsFrom = hasCookie ? `
-  "말소기준권리": "",
-  "말소기준권리일": "",
-  "권리분석_요약": "",
-  "채권액합계_만원": 0,
-  "배당요구종기일": "",
-  "임차인_요약": "",
-  "임차인_목록": [{"임차인명":"","보증금_만원":0,"월세_만원":0,"전입일":"","확정일자":"","사업자등록일":"","대항력":"","점유부분":"","배당요구":""}]` : `
-  "말소기준권리": "",
-  "말소기준권리일": "",
-  "권리분석_요약": "",
-  "채권액합계_만원": 0,
-  "배당요구종기일": "",
-  "임차인_요약": "",
-  "임차인_목록": []`;
-
-      const schemaFrom = `{
-  "경매번호": "",
-  "법원": "",
-  "물건종류": "",
-  "소재지": "",
-  "층": "",
-  "전용면적_m2": 0,
-  "건물면적_m2": 0,
-  "토지면적_m2": 0,
-  "감정가_만원": 0,
-  "최저가_만원": 0,
-  "보증금_만원": 0,
-  "유찰횟수": 0,
-  "매각기일": "",
-  "개시결정일": "",` + fullFieldsFrom + `,
-  "비고": ""
-}`;
+      const schemaFrom = _a1AuctionSchema(hasCookie);
 
       const prompt = [
         '당신은 부동산 경매 정보 추출 전문가입니다.',
@@ -8894,6 +9110,7 @@
         '- 미상: 원본 문서에 "미상"이라고 적혀있으면 반드시 "미상"으로 입력. 빈칸과 미상은 다름',
         '- 말소기준권리: 날짜 + 권리종류 + 권리자 조합 (예: 2023-09-26 근저당 중소기업은행)',
         '- 유찰횟수: 현재까지 유찰된 횟수 (진행 예정 차수 아님)',
+        '- 경매구분/용도/건물면적/토지면적/청구액/배당종기/말소기준등기일/채무자겸소유자/사업자등록일/확정일자/대항력도 문서에 있으면 모두 추출',
         '- 권리분석_요약: 등기부현황 섹션의 근저당/가압류/압류/경매 등 주요 권리를 번호순으로 나열',
         '- 비고: 임차인현황의 기타사항(현황조사 내용)을 입력. 예) 폐문부재, 공실 확인 등',
         '- 임차인_목록: 임차인현황 섹션의 각 임차인 1명씩 배열 항목으로 만들 것',
@@ -8909,16 +9126,9 @@
       ].join('\n');
 
       try {
-        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(k)}`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0, maxOutputTokens: 4096 } })
-        });
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        const d = await res.json();
-        let txt = (d.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('').trim();
-        txt = txt.replace(/```json|```/g, '').trim();
-        const parsed = JSON.parse(txt);
+        const parsed = await _a1CallGeminiJson(prompt);
         _a1DataMap[payloadId] = { ...parsed, _pid: pid, _hasCookie: hasCookie };
+        _auctionHydrateDataFields(_a1DataMap[payloadId]);
         if (statusEl) statusEl.textContent = '✅ 파싱 완료! 아래 항목을 원본과 대조해 확인하세요.';
         _a1ShowVerifyTo(parsed, verifyBoxId, verifyFieldsId);
 
@@ -8964,22 +9174,8 @@ ${inputDesc.substring(0, 3000)}
 {
   "AI기본분석": "위 형식을 정확히 따라 작성한 전체 분석 내용"
 }`;
-          const aiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(k)}`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ contents: [{ parts: [{ text: aiPrompt }] }], generationConfig: { temperature: 0.3, maxOutputTokens: 2048 } })
-          });
-          if (aiRes.ok) {
-            const aiD = await aiRes.json();
-            let aiTxt = (aiD.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('').trim();
-            aiTxt = aiTxt.replace(/```json|```/g, '').trim();
-            try {
-              const aiParsed = JSON.parse(aiTxt);
-              if (aiParsed.AI기본분석) _a1DataMap[payloadId].AI기본분석 = aiParsed.AI기본분석;
-            } catch (e) {
-              // JSON 파싱 실패 시 텍스트 그대로 저장
-              _a1DataMap[payloadId].AI기본분석 = aiTxt;
-            }
-          }
+          const aiText = await _a1CallGeminiAnalysis(aiPrompt);
+          if (aiText) _a1DataMap[payloadId].AI기본분석 = aiText;
           if (statusEl) statusEl.textContent = '✅ 파싱 + AI 분석 완료! 아래 항목을 원본과 대조해 확인하세요.';
         } catch (aiErr) {
           console.warn('AI 분석 실패:', aiErr);
@@ -8995,27 +9191,8 @@ ${inputDesc.substring(0, 3000)}
       const box = document.getElementById(verifyBoxId);
       const fl = document.getElementById(verifyFieldsId);
       if (!box || !fl) return;
-      const FIELDS = [
-        { k: '경매번호', lb: '경매번호', warn: false },
-        { k: '법원', lb: '법원', warn: false },
-        { k: '물건종류', lb: '물건종류', warn: false },
-        { k: '소재지', lb: '소재지', warn: false, wide: true },
-        { k: '층', lb: '층', warn: false },
-        { k: '전용면적_m2', lb: '전용면적(㎡)', warn: false },
-        { k: '감정가_만원', lb: '🔴 감정가(만원)', warn: true },
-        { k: '최저가_만원', lb: '🔴 최저가(만원)', warn: true },
-        { k: '보증금_만원', lb: '보증금(만원)', warn: false },
-        { k: '유찰횟수', lb: '🟡 유찰횟수', warn: true },
-        { k: '매각기일', lb: '매각기일', warn: false },
-        { k: '개시결정일', lb: '개시결정일', warn: false },
-        { k: '말소기준권리', lb: '🔴 말소기준권리', warn: true, wide: true },
-        { k: '말소기준권리일', lb: '말소기준권리일', warn: false },
-        { k: '배당요구종기일', lb: '배당요구종기일', warn: false },
-        { k: '채권액합계_만원', lb: '채권액합계(만원)', warn: false },
-        { k: '권리분석_요약', lb: '🔴 권리분석', warn: true, wide: true, ta: true },
-        { k: '임차인_요약', lb: '🟡 임차인현황', warn: true, wide: true, ta: true },
-        { k: '비고', lb: '비고', warn: false, wide: true },
-      ];
+      _auctionHydrateDataFields(d);
+      const FIELDS = _a1VerifyFieldDefs();
       fl.innerHTML = FIELDS.map(f => {
         const v = String(d[f.k] ?? '');
         const bc = f.warn ? 'rgba(255,80,80,.45)' : 'var(--b1)';
@@ -9036,14 +9213,14 @@ ${inputDesc.substring(0, 3000)}
           fl.innerHTML += `<div style="grid-column:1/-1;background:rgba(0,0,0,.25);border:1px solid var(--b2);border-radius:8px;padding:10px;margin-bottom:6px;">
             <div style="font-size:11px;font-weight:700;color:#ff8c42;margin-bottom:8px;">👤 임차인 ${i+1}: ${t.임차인명 || '(이름없음)'}</div>
             <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;">
-              <div><div style="font-size:10px;color:var(--mu);margin-bottom:2px;">보증금(만원)</div><input value="${t.보증금_만원||0}" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,.25);border:1px solid ${t.보증금_만원>0?'rgba(255,80,80,.4)':'var(--b1)'};border-radius:5px;color:var(--tx);font-size:11px;padding:4px 6px;"></div>
-              <div><div style="font-size:10px;color:var(--mu);margin-bottom:2px;">월세(만원)</div><input value="${t.월세_만원||0}" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,.25);border:1px solid var(--b1);border-radius:5px;color:var(--tx);font-size:11px;padding:4px 6px;"></div>
-              <div><div style="font-size:10px;color:var(--mu);margin-bottom:2px;">대항력</div><input value="${t.대항력||''}" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,.25);border:1px solid rgba(255,80,80,.3);border-radius:5px;color:${daeColor2};font-size:11px;font-weight:700;padding:4px 6px;"></div>
-              <div><div style="font-size:10px;color:var(--mu);margin-bottom:2px;">전입일</div><input value="${t.전입일||''}" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,.25);border:1px solid var(--b1);border-radius:5px;color:var(--tx);font-size:11px;padding:4px 6px;"></div>
-              <div><div style="font-size:10px;color:var(--mu);margin-bottom:2px;">확정일자</div><input value="${t.확정일자||''}" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,.25);border:1px solid var(--b1);border-radius:5px;color:var(--tx);font-size:11px;padding:4px 6px;"></div>
-              <div><div style="font-size:10px;color:var(--mu);margin-bottom:2px;">사업자등록일</div><input value="${t.사업자등록일||''}" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,.25);border:1px solid var(--b1);border-radius:5px;color:var(--tx);font-size:11px;padding:4px 6px;"></div>
-              <div><div style="font-size:10px;color:var(--mu);margin-bottom:2px;">배당요구</div><input value="${t.배당요구||''}" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,.25);border:1px solid var(--b1);border-radius:5px;color:var(--tx);font-size:11px;padding:4px 6px;"></div>
-              <div style="grid-column:2/-1"><div style="font-size:10px;color:var(--mu);margin-bottom:2px;">점유부분</div><input value="${t.점유부분||''}" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,.25);border:1px solid var(--b1);border-radius:5px;color:var(--tx);font-size:11px;padding:4px 6px;"></div>
+              <div><div style="font-size:10px;color:var(--mu);margin-bottom:2px;">보증금(만원)</div><input data-tenant-idx="${i}" data-tenant-k="보증금_만원" value="${t.보증금_만원||0}" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,.25);border:1px solid ${t.보증금_만원>0?'rgba(255,80,80,.4)':'var(--b1)'};border-radius:5px;color:var(--tx);font-size:11px;padding:4px 6px;"></div>
+              <div><div style="font-size:10px;color:var(--mu);margin-bottom:2px;">월세(만원)</div><input data-tenant-idx="${i}" data-tenant-k="월세_만원" value="${t.월세_만원||0}" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,.25);border:1px solid var(--b1);border-radius:5px;color:var(--tx);font-size:11px;padding:4px 6px;"></div>
+              <div><div style="font-size:10px;color:var(--mu);margin-bottom:2px;">대항력</div><input data-tenant-idx="${i}" data-tenant-k="대항력" value="${t.대항력||''}" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,.25);border:1px solid rgba(255,80,80,.3);border-radius:5px;color:${daeColor2};font-size:11px;font-weight:700;padding:4px 6px;"></div>
+              <div><div style="font-size:10px;color:var(--mu);margin-bottom:2px;">전입일</div><input data-tenant-idx="${i}" data-tenant-k="전입일" value="${t.전입일||''}" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,.25);border:1px solid var(--b1);border-radius:5px;color:var(--tx);font-size:11px;padding:4px 6px;"></div>
+              <div><div style="font-size:10px;color:var(--mu);margin-bottom:2px;">확정일자</div><input data-tenant-idx="${i}" data-tenant-k="확정일자" value="${t.확정일자||''}" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,.25);border:1px solid var(--b1);border-radius:5px;color:var(--tx);font-size:11px;padding:4px 6px;"></div>
+              <div><div style="font-size:10px;color:var(--mu);margin-bottom:2px;">사업자등록일</div><input data-tenant-idx="${i}" data-tenant-k="사업자등록일" value="${t.사업자등록일||''}" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,.25);border:1px solid var(--b1);border-radius:5px;color:var(--tx);font-size:11px;padding:4px 6px;"></div>
+              <div><div style="font-size:10px;color:var(--mu);margin-bottom:2px;">배당요구</div><input data-tenant-idx="${i}" data-tenant-k="배당요구" value="${t.배당요구||''}" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,.25);border:1px solid var(--b1);border-radius:5px;color:var(--tx);font-size:11px;padding:4px 6px;"></div>
+              <div style="grid-column:2/-1"><div style="font-size:10px;color:var(--mu);margin-bottom:2px;">점유부분</div><input data-tenant-idx="${i}" data-tenant-k="점유부분" value="${t.점유부분||''}" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,.25);border:1px solid var(--b1);border-radius:5px;color:var(--tx);font-size:11px;padding:4px 6px;"></div>
             </div>
           </div>`;
         });
@@ -9056,59 +9233,9 @@ ${inputDesc.substring(0, 3000)}
       const data = _a1DataMap[payloadId];
       if (!data) { showToast('파싱 데이터 없음', 'warn'); return; }
 
-      // 수정된 값 반영
-      document.querySelectorAll('#' + verifyFieldsId + ' [data-k]').forEach(el => {
-        data[el.dataset.k] = el.value;
-      });
-
-      const d = data;
-      const 감정가W = (parseFloat(String(d.감정가_만원 || 0).replace(/,/g, '')) || 0) * 10000;
-      const 최저가W = (parseFloat(String(d.최저가_만원 || 0).replace(/,/g, '')) || 0) * 10000;
-      const 보증금W = (parseFloat(String(d.보증금_만원 || 0).replace(/,/g, '')) || 0) * 10000;
-
-      const item = {
-        id: Date.now() + '_a1',
-        title: d.경매번호 || (d.소재지 || '옥션원_' + Date.now()),
-        mode: 'auction',
-        data: {
-          소재지: d.소재지 || '',
-          경매번호: d.경매번호 || '',
-          법원: d.법원 || '',
-          용도: d.물건종류 || '',
-          층: d.층 || '',
-          전용면적_m2: parseFloat(d.전용면적_m2) || 0,
-          건물면적_m2: parseFloat(d.건물면적_m2) || 0,
-          토지면적_m2: parseFloat(d.토지면적_m2) || 0,
-          감정가: 감정가W,
-          최저가: 최저가W,
-          보증금: 보증금W,
-          유찰횟수: parseInt(d.유찰횟수) || 0,
-          매각기일: d.매각기일 || '',
-          개시결정일: d.개시결정일 || '',
-          말소기준권리: d.말소기준권리 || '',
-          말소기준권리일: d.말소기준권리일 || '',
-          배당요구종기일: d.배당요구종기일 || '',
-          채권액합계: (parseFloat(String(d.채권액합계_만원||0).replace(/,/g,''))||0)*10000,
-          임차인현황: d.임차인_요약 || d.임차인현황 || '',
-          임차인_목록: d.임차인_목록 || [],
-          권리분석: d.권리분석_요약 || '',
-          비고: d.비고 || '',
-          출처: '옥션원',
-          product_id: d._pid || '',
-          AI기본분석: d.AI기본분석 || '',
-          // 권리 정보 (buildAuction에서 표시되는 필드들)
-          채무자겸소유자: d.채무자겸소유자 || '',
-          임차인: Array.isArray(d.임차인_목록) && d.임차인_목록.length > 0 ? d.임차인_목록.map(t => t.임차인명).filter(Boolean).join(', ') : (d.임차인 || ''),
-          임차인_보증금: Array.isArray(d.임차인_목록) && d.임차인_목록.length > 0 ? d.임차인_목록[0].보증금_만원 * 10000 || 0 : 0,
-          임차인_월세: Array.isArray(d.임차인_목록) && d.임차인_목록.length > 0 ? d.임차인_목록[0].월세_만원 || 0 : 0,
-          사업자등록일: Array.isArray(d.임차인_목록) && d.임차인_목록.length > 0 ? d.임차인_목록[0].사업자등록일 || '' : (d.사업자등록일 || ''),
-          확정일자: Array.isArray(d.임차인_목록) && d.임차인_목록.length > 0 ? d.임차인_목록[0].확정일자 || '' : (d.확정일자 || ''),
-          대항력: Array.isArray(d.임차인_목록) && d.임차인_목록.length > 0 ? d.임차인_목록[0].대항력 || '' : (d.대항력 || ''),
-        },
-        model: 'gemini-parse',
-        memo: '',
-        timestamp: new Date().toISOString()
-      };
+      _a1ReadVerifyState(document.getElementById(verifyFieldsId), data);
+      const item = _a1BuildAuctionItem(data);
+      normalizeItem(item);
 
       results.push(item);
       activeTab = results.length - 1; editIdx = null;
@@ -10610,11 +10737,19 @@ ${combinedText}
         return;
       }
       const d = item.data || {};
+      if (typeof _auctionHydrateDataFields === 'function') _auctionHydrateDataFields(d);
       const apiKey = gk();
       if (!apiKey) {
         showToast('Google API 키를 먼저 입력하세요', 'warn');
         return;
       }
+
+      const fmtAuctionMoneyForPrompt = (v) => {
+        const n = _auctionNum(v);
+        if (!n) return '-';
+        const man = Math.abs(n) >= 1000000 ? Math.round(n / 10000) : Math.round(n);
+        return man.toLocaleString() + '만원';
+      };
 
       // 버튼 상태 변경
       const btn = document.getElementById('popAiAnalyzeBtn');
@@ -10627,21 +10762,21 @@ ${combinedText}
 - 사건번호: ${d.경매번호 || '-'}
 - 소재지: ${d.소재지 || '-'}
 - 용도: ${d.용도 || d.경매구분 || '-'}
-- 감정가: ${d.감정가 ? Math.round(d.감정가).toLocaleString() + '만원' : '-'}
-- 최저가: ${d.최저가 ? Math.round(d.최저가).toLocaleString() + '만원' : '-'}
-- 매각일: ${d.매각일 || '-'}
+- 감정가: ${fmtAuctionMoneyForPrompt(d.감정가)}
+- 최저가: ${fmtAuctionMoneyForPrompt(d.최저가)}
+- 매각일: ${d.매각일 || d.매각기일 || '-'}
 - 유찰횟수: ${d.유찰횟수 != null ? d.유찰횟수 + '회' : '-'}
 - 건물면적: ${d.건물면적_m2 ? d.건물면적_m2 + '㎡' : '-'}
 - 전용면적: ${d.전용면적_m2 ? d.전용면적_m2 + '㎡' : '-'}
 - 해당층: ${d.해당층 ? d.해당층 + '층' : '-'}
 - 소유자: ${d.채무자겸소유자 || '-'}
 - 임차인: ${d.임차인 || '-'}
-- 임차인 보증금: ${d.임차인_보증금 ? Math.round(d.임차인_보증금).toLocaleString() + '만원' : '-'}
+- 임차인 보증금: ${fmtAuctionMoneyForPrompt(d.임차인_보증금)}
 - 임차인 월세: ${d.임차인_월세 ? Math.round(d.임차인_월세).toLocaleString() + '만원' : '-'}
 - 대항력: ${d.대항력 || '-'}
 - 사업자등록일: ${d.사업자등록일 || '-'}
 - 확정일자: ${d.확정일자 || '-'}
-- 말소기준등기일: ${d.말소기준등기일 || '-'}
+- 말소기준등기일: ${d.말소기준등기일 || d.말소기준권리일 || _auctionExtractDateFromText(d.말소기준권리) || '-'}
 - 기존 분석메모: ${d.분析메모 || d.분析메모 || d.분석메모 || '-'}
 
 ## 분석 요청
@@ -10800,6 +10935,7 @@ ${combinedText}
     // 경매 카드
     // ===================================================
     function buildAuction(d, idx, isE, isPopup) {
+      if (typeof _auctionHydrateDataFields === 'function') _auctionHydrateDataFields(d);
       // 층수: 해당층 우선, 없으면 소재지 주소에서 추출
       let 층수표시 = null;
       if (d.해당층 != null && d.해당층 !== '') {
@@ -13441,7 +13577,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         ${item.data.대항력 ? `<div class="rights-panel-row"><span class="rights-panel-label">대항력</span><span class="rights-panel-value" style="color:${String(item.data.대항력).includes('있음') ? 'var(--g)' : 'var(--auction-c)'};">${esc(String(item.data.대항력))}</span></div>` : ''}
         ${item.data.사업자등록일 ? `<div class="rights-panel-row"><span class="rights-panel-label">사업자등록</span><span class="rights-panel-value">${esc(String(item.data.사업자등록일))}</span></div>` : ''}
         ${item.data.확정일자 ? `<div class="rights-panel-row"><span class="rights-panel-label">확정일자</span><span class="rights-panel-value">${esc(String(item.data.확정일자))}</span></div>` : ''}
-        ${item.data.말소기준등기일 ? `<div class="rights-panel-row"><span class="rights-panel-label">말소기준</span><span class="rights-panel-value">${esc(String(item.data.말소기준등기일))}</span></div>` : ''}
+        ${(item.data.말소기준등기일 || item.data.말소기준권리일 || _auctionExtractDateFromText(item.data.말소기준권리)) ? `<div class="rights-panel-row"><span class="rights-panel-label">말소기준</span><span class="rights-panel-value">${esc(String(item.data.말소기준등기일 || item.data.말소기준권리일 || _auctionExtractDateFromText(item.data.말소기준권리)))}</span></div>` : ''}
         ${item.data.분석메모 ? `<div class="rights-panel-hdr">📝 분석메모</div><div style="font-size:11px;color:var(--tx);line-height:1.5;white-space:pre-wrap;word-wrap:break-word;">${esc(String(item.data.분석메모))}</div>` : ''}
       </div>` : ''}
       <div class="yield-calc-panel" id="yield_${id}">
@@ -15458,7 +15594,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           return (기준가 > 0 && 면적pyeong > 0) ? Math.round(기준가 / 면적pyeong) : null;
         })();
         const 평당가str = _fPP(평당가_val);
-        const 매각일str = d.매각일 || '-';
+        const 매각일str = d.매각일 || d.매각기일 || '-';
         return `
       ${row('감정가', 감정가str || '-')}
       <div class="map-card-row"><span class="map-card-label">최저가</span><span class="map-card-value" style="color:#ff4444;font-weight:700;">${최저가str || '-'}</span></div>
@@ -19720,8 +19856,6 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         try { const r = window._idbCache && window._idbCache['wr2_rooms']; if (r && r.length) window.wr2State.rooms = r; } catch (e) { }
       }
 
-      const imgHtml = `\n\n<img src="${window._captureDataUrl}" style="max-width:100%;border-radius:8px;margin:8px 0;" alt="지도캡처_${new Date().toLocaleString('ko-KR')}" />\n\n`;
-
       if (target === 'room') {
         const roomId = document.getElementById('captureRoomSelectEl')?.value;
         if (!roomId) { showToast('작업룸을 선택하세요', 'warn'); return; }
@@ -19789,13 +19923,26 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       } else if (target === 'note') {
         const noteId = document.getElementById('captureNoteSelectEl')?.value;
         if (!noteId) { try { showToast('노트를 선택하세요', 'warn'); } catch (e) { } return; }
-        if (typeof ntGetNotes === 'function') {
-          const notes = ntGetNotes();
-          const note = notes.find(n => n.id === noteId);
-          if (note) {
-            note.content = (note.content || '') + imgHtml;
-            if (typeof ntSetNotes === 'function') ntSetNotes(notes);
+        const notes = (typeof window._ntGetNotes === 'function') ? window._ntGetNotes() : (typeof ntNotes !== 'undefined' ? ntNotes : []);
+        const note = (notes || []).find(n => n.id === noteId);
+        if (note) {
+          try {
+            const { url, path } = await window._sbUploadImage(_uploadSource, 'attachments');
+            if (!note.attachments) note.attachments = [];
+            note.attachments.push({
+              name: '지도캡처_' + new Date().toISOString().replace(/[:.]/g, '-') + '.png',
+              type: 'image/png',
+              url,
+              storagePath: path
+            });
+            note.updatedAt = new Date().toISOString();
+            if (typeof ntSave === 'function') ntSave(noteId);
+            if (typeof ntOpen === 'function') ntOpen(noteId);
+            if (typeof ntRender === 'function') ntRender();
             try { showToast('📸 노트에 캡처 이미지 추가됨', 'ok'); } catch (e) { }
+          } catch (e) {
+            console.error('[saveCapturedImage note]', e);
+            try { showToast('노트 이미지 업로드 실패: ' + (e.message || ''), 'warn'); } catch (err) { }
           }
         }
       }
@@ -22022,31 +22169,53 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       ntSave();
     };
     window.ntUtAddAtt = function (id, input) {
-      const note = ntNotes.find(n => n.id === id); if (!note) return;
-      const files = Array.from(input.files);
-      let loaded = 0;
-      files.forEach(file => {
-        const reader = new FileReader();
-        reader.onload = e => {
-          if (!note.attachments) note.attachments = [];
-          note.attachments.push({ name: file.name, type: file.type, data: e.target.result });
-          note.updatedAt = new Date().toISOString();
-          loaded++;
-          if (loaded === files.length) { ntSave(); ntOpen(id); showToast('📎 파일 첨부 완료', 'ok'); }
-        };
-        reader.readAsDataURL(file);
-      });
+      (async function(){
+        const note = ntNotes.find(n => n.id === id); if (!note) return;
+        const files = Array.from(input.files || []);
+        if (!files.length) return;
+        if (!note.attachments) note.attachments = [];
+        let ok = 0, fail = 0;
+        showToast('📤 파일 업로드 중...', 'info');
+        for (const file of files) {
+          try {
+            const { url, path } = await window._sbUploadImage(file, 'attachments');
+            note.attachments.push({
+              name: file.name,
+              type: file.type || 'application/octet-stream',
+              url,
+              storagePath: path
+            });
+            ok++;
+          } catch (e) {
+            console.error('[ntUtAddAtt]', e);
+            fail++;
+          }
+        }
+        note.updatedAt = new Date().toISOString();
+        ntSave(id);
+        ntOpen(id);
+        input.value = '';
+        if (ok) showToast(`📎 파일 ${ok}개 첨부 완료`, fail ? 'warn' : 'ok');
+        else if (fail) showToast('첨부 업로드 실패', 'warn');
+      })();
     };
-    window.ntUtRemoveAtt = function (id, atti) {
+    window.ntUtRemoveAtt = async function (id, atti) {
       const note = ntNotes.find(n => n.id === id); if (!note || !note.attachments) return;
+      const target = note.attachments[atti];
+      if (target && target.storagePath && window._sbDeleteImages) {
+        try { await window._sbDeleteImages([target.storagePath]); } catch (e) { console.warn('[ntUtRemoveAtt]', e); }
+      }
       note.attachments.splice(atti, 1);
-      ntSave(); ntOpen(id);
+      note.updatedAt = new Date().toISOString();
+      ntSave(id); ntOpen(id);
     };
     window.ntUtPreviewAtt = function (id, atti) {
       const note = ntNotes.find(n => n.id === id); if (!note || !note.attachments[atti]) return;
       const att = note.attachments[atti];
+      const src = att.url || att.data || '';
+      if (!src) return;
       const w = window.open('', '_blank');
-      w.document.write(`<html><body style="margin:0;background:#000;display:flex;align-items:center;justify-content:center;min-height:100vh;"><img src="${att.data}" style="max-width:100%;max-height:100vh;object-fit:contain;"><\/body><\/html>`);
+      w.document.write(`<html><body style="margin:0;background:#000;display:flex;align-items:center;justify-content:center;min-height:100vh;"><img src="${src}" style="max-width:100%;max-height:100vh;object-fit:contain;"><\/body><\/html>`);
     };
 
     // ── 뉴스 clip JSON 자동 로드 (news_clipper.py 연동) ──
@@ -24043,7 +24212,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             .from('kcard-images')
             .getPublicUrl(path);
 
-          const publicUrl = urlData.publicUrl;
+          const publicUrl = data?.publicUrl || urlData?.publicUrl || '';
+          if (!publicUrl) throw new Error('이미지 URL 생성 실패');
           window._kcardPendingImgs.push(publicUrl);
 
           // 로딩 완료 표시
@@ -24090,8 +24260,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         del.onclick = async function() {
           // Storage URL이면 path 추출 후 삭제 시도
           try {
-            const match = capturedUrl.match(/kcard-images\/(.+)$/);
-            if (match) await window._sb.storage.from('kcard-images').remove([decodeURIComponent(match[1])]);
+            const storagePath = window._extractStoragePathFromUrl ? window._extractStoragePathFromUrl(capturedUrl, 'kcard-images') : '';
+            if (storagePath) await window._sb.storage.from('kcard-images').remove([storagePath]);
           } catch(e) { console.warn('[kcard img del]', e); }
           const idx = window._kcardPendingImgs.indexOf(capturedUrl);
           if (idx > -1) window._kcardPendingImgs.splice(idx, 1);
@@ -24340,8 +24510,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
             // D-day
             let ddayHtml = '';
-            if (ia && d.매각일) {
-              const dDay = Math.ceil((new Date(d.매각일) - new Date()) / (1000 * 60 * 60 * 24));
+            if (ia && (d.매각일 || d.매각기일)) {
+              const dDay = Math.ceil((new Date(d.매각일 || d.매각기일) - new Date()) / (1000 * 60 * 60 * 24));
               const dColor = dDay < 0 ? 'var(--di)' : dDay <= 3 ? '#ff6370' : dDay <= 7 ? 'var(--or)' : '#4ade80';
               const dLabel = dDay < 0 ? '종료' : (dDay === 0 ? 'D-Day' : 'D-' + dDay);
               ddayHtml = `<span style="font-size:10px;font-weight:700;color:${dColor};background:${dColor}18;padding:1px 5px;border-radius:4px;">${dLabel}</span>`;
@@ -24534,7 +24704,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const note = {
         id: 'note_' + Date.now(),
         title: (d.소재지 || item.title || item.id).substring(0, 30) + ' 분석',
-        body: `[물건 정보]\n주소: ${d.소재지 || '-'}\n${item.mode === 'auction' ? `감정가: ${d.감정가 ? Math.round(d.감정가 / 10000) + '만원' : '-'}\n최저가: ${d.최저가 ? Math.round(d.최저가 / 10000) + '만원' : '-'}\n매각일: ${d.매각일 || '-'}` : `매매가: ${d.매매가 || '-'}만원`}\n\n[분석 메모]\n`,
+        body: `[물건 정보]\n주소: ${d.소재지 || '-'}\n${item.mode === 'auction' ? `감정가: ${d.감정가 ? Math.round(d.감정가 / 10000) + '만원' : '-'}\n최저가: ${d.최저가 ? Math.round(d.최저가 / 10000) + '만원' : '-'}\n매각일: ${d.매각일 || d.매각기일 || '-'}` : `매매가: ${d.매매가 || '-'}만원`}\n\n[분석 메모]\n`,
         tags: [],
         linkedItemId: itemId,
         createdAt: new Date().toISOString(),
@@ -31191,8 +31361,10 @@ ${newsText}
     }
     const auth = firebase.auth();
     const db = firebase.firestore();
+    const storage = (firebase.storage && typeof firebase.storage === 'function') ? firebase.storage() : null;
     window.firebaseAuth = auth;
     window.firebaseDB = db;
+    window.firebaseStorage = storage;
     // 방문기록 삭제해도 Firebase 세션 유지
     auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(e => console.warn("[FB] setPersistence 실패:", e));
 
@@ -31630,6 +31802,75 @@ ${newsText}
       return api;
     }
 
+    const _fbStorageUrlCache = window.__fbStorageUrlCache || (window.__fbStorageUrlCache = {});
+    function _fbDecorateStorageUrl(url, bucket, path) {
+      if (!url) return '';
+      const fullPath = bucket ? (bucket + '/' + path) : path;
+      return url + (url.includes('#') ? '&' : '#') + 'skpath=' + encodeURIComponent(fullPath);
+    }
+    function makeStorageBucket(bucket) {
+      function fullPath(path) {
+        const clean = String(path || '').replace(/^\/+/, '');
+        return bucket ? (bucket + '/' + clean) : clean;
+      }
+      return {
+        async upload(path, file, options) {
+          if (!storage) return { data: null, error: new Error('Firebase Storage SDK not loaded') };
+          try {
+            const targetPath = fullPath(path);
+            const ref = storage.ref(targetPath);
+            const metadata = {};
+            if (options && options.contentType) metadata.contentType = options.contentType;
+            if (options && options.cacheControl) metadata.cacheControl = options.cacheControl;
+            const snap = await ref.put(file, metadata);
+            let publicUrl = '';
+            try {
+              publicUrl = _fbDecorateStorageUrl(await snap.ref.getDownloadURL(), bucket, path);
+              _fbStorageUrlCache[targetPath] = publicUrl;
+            } catch (e) { }
+            return { data: { path, fullPath: targetPath, publicUrl }, error: null };
+          } catch (e) {
+            return { data: null, error: e };
+          }
+        },
+        getPublicUrl(path) {
+          const targetPath = fullPath(path);
+          return { data: { publicUrl: _fbStorageUrlCache[targetPath] || '' } };
+        },
+        async remove(paths) {
+          if (!storage) return { data: [], error: new Error('Firebase Storage SDK not loaded') };
+          try {
+            for (const path of (paths || [])) {
+              const targetPath = fullPath(path);
+              await storage.ref(targetPath).delete();
+              delete _fbStorageUrlCache[targetPath];
+            }
+            return { data: [], error: null };
+          } catch (e) {
+            return { data: [], error: e };
+          }
+        },
+        async list(prefix) {
+          if (!storage) return { data: [], error: new Error('Firebase Storage SDK not loaded') };
+          try {
+            const targetPrefix = fullPath(prefix || '');
+            const res = await storage.ref(targetPrefix).listAll();
+            const data = (res.items || []).map(item => ({
+              name: item.name,
+              fullPath: item.fullPath,
+              path: bucket && item.fullPath.startsWith(bucket + '/') ? item.fullPath.slice(bucket.length + 1) : item.fullPath
+            }));
+            return { data, error: null };
+          } catch (e) {
+            if (e && (e.code === 'storage/object-not-found' || e.code === 'storage/invalid-root-operation')) {
+              return { data: [], error: null };
+            }
+            return { data: [], error: e };
+          }
+        }
+      };
+    }
+
     window._sb = {
       auth: {
         async getSession(){
@@ -31662,12 +31903,7 @@ ${newsText}
         }
       },
       from: function(table){ return makeQuery(table); },
-      storage: { from(){ return {
-        async upload(){ return {data:null,error:new Error('Storage not configured')}; },
-        getPublicUrl(p){ return {data:{publicUrl:p||''}}; },
-        async remove(){ return {data:[],error:null}; },
-        async list(){ return {data:[],error:null}; }
-      }; } }
+      storage: { from(bucket){ return makeStorageBucket(bucket); } }
     };
 
     // Firebase 모드에서는 Supabase 블록이 skip되므로 로그인 UI를 여기서도 보장한다.
