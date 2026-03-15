@@ -28,7 +28,7 @@
    - localStorage 용량 한계(~2.5MB) 근본 해결
    - 대용량 키: re_sv, wr2_rooms, wr2_sections, nt_notes, re_ws,
                 ins_notes, ins_news, ins_kcards, ins_kcat,
-                ins_vars, ins_cl, csvDatasets, map_memos
+                ins_vars, ins_cl, csvDatasets, csv_transaction_raw, map_memos
    - 소용량 설정값(API키, 토큰 등)은 localStorage 그대로 유지
 ════════════════════════════════════════════════════════ */
 (function() {
@@ -41,7 +41,7 @@
     're_sv', 'wr2_rooms', 'wr2_sections', 'nt_notes', 're_ws',
     'ins_notes', 'ins_news', 'ins_kcards', 'ins_kcat',
     'ins_vars', 'ins_cl', 'ins_kw', 'ins_feed',
-    'csvDatasets', 'map_memos', 'news_auto_clips'
+    'csvDatasets', 'csv_transaction_raw', 'map_memos', 'news_auto_clips'
   ]);
 
   let _idbInstance = null;
@@ -2342,7 +2342,8 @@
                   const lower = q.toLowerCase();
                   const filtered = q ? sv.filter(s => {
                     const d = s.data || {};
-                    return [s.title, d['소재지'], d['주소'], d['사건번호'], String(s.id)].some(v => v && String(v).toLowerCase().includes(lower));
+                    return [s.title, d['소재지'], d['도로명주소'], d['지번주소'], d['주소'], d['사건번호'], String(s.id)]
+                      .some(v => v && String(v).toLowerCase().includes(lower));
                   }) : sv;
                   if (!filtered.length) { el.innerHTML = '<div style="padding:20px;text-align:center;font-size:12px;color:var(--mu);">검색 결과가 없습니다</div>'; return; }
                   el.innerHTML = filtered.slice(0, 50).map(s => {
@@ -3639,15 +3640,10 @@
     const GEOCODE_STORE = 'coords';
 
     // ===================================================
-    // CSV 실거래 데이터 localStorage 자동저장
+    // CSV 실거래 데이터 IDB 자동저장
     // ===================================================
     const CSV_RAW_STORAGE_KEY = 'csv_transaction_raw';
-
-    // CSV 데이터는 localStorage에 저장하지 않음 (용량 문제로 비활성화)
-    // 기존 데이터가 남아있으면 즉시 삭제
-    (function(){ try { localStorage.removeItem('csv_transaction_raw'); } catch(e){} })();
     function saveTransactionRawToStorage() {
-      return false; // 저장 안 함 - 메모리에만 유지
       try {
         const toSave = transactionDataRaw.map(item => ({
           name: item.name,
@@ -3668,10 +3664,12 @@
           buildYear: item.buildYear || '',
           name2: item.name || ''
         }));
-        localStorage.setItem(CSV_RAW_STORAGE_KEY, JSON.stringify(toSave));
+        if (window._idbCache) window._idbCache[CSV_RAW_STORAGE_KEY] = toSave;
+        if (window.idbSet) window.idbSet(CSV_RAW_STORAGE_KEY, toSave).catch(e => console.warn('CSV IDB 저장 실패:', e));
+        else localStorage.setItem(CSV_RAW_STORAGE_KEY, JSON.stringify(toSave));
         return true;
       } catch (e) {
-        // localStorage 용량 초과 시 압축 저장 시도
+        // 용량 초과 시 최근 데이터만 보존
         if (e.name === 'QuotaExceededError') {
           try {
             // 최근 10만 건만 유지
@@ -3681,7 +3679,9 @@
               year: item.year || '', month: item.month || '', day: item.day || '',
               lat: item.lat || null, lng: item.lng || null, source: item.source || 'CSV'
             }));
-            localStorage.setItem(CSV_RAW_STORAGE_KEY, JSON.stringify(trimmed));
+            if (window._idbCache) window._idbCache[CSV_RAW_STORAGE_KEY] = trimmed;
+            if (window.idbSet) window.idbSet(CSV_RAW_STORAGE_KEY, trimmed).catch(e2 => console.warn('CSV 축약 저장 실패:', e2));
+            else localStorage.setItem(CSV_RAW_STORAGE_KEY, JSON.stringify(trimmed));
             return true;
           } catch (e2) {
             console.warn('CSV 저장 실패 (용량 초과). 데이터가 너무 큽니다:', e2);
@@ -3693,14 +3693,22 @@
       }
     }
 
-    // CSV 데이터 복원 비활성화 (저장 안 하므로 복원도 불필요)
-    function loadTransactionRawFromStorage() {
-      try { localStorage.removeItem('csv_transaction_raw'); } catch(e) {}
-      return 0;
+    // CSV 데이터 복원
+    async function loadTransactionRawFromStorage() {
       try {
-        const raw = localStorage.getItem(CSV_RAW_STORAGE_KEY);
-        if (!raw) return 0;
-        const parsed = JSON.parse(raw);
+        let cached = (window._idbCache && window._idbCache[CSV_RAW_STORAGE_KEY] !== undefined)
+          ? window._idbCache[CSV_RAW_STORAGE_KEY]
+          : window.idbGetSync ? window.idbGetSync(CSV_RAW_STORAGE_KEY, null) : null;
+        if (cached == null && window.idbGet) {
+          cached = await window.idbGet(CSV_RAW_STORAGE_KEY);
+          if (cached != null && window._idbCache) window._idbCache[CSV_RAW_STORAGE_KEY] = cached;
+        }
+        const parsed = Array.isArray(cached)
+          ? cached
+          : (() => {
+              const raw = localStorage.getItem(CSV_RAW_STORAGE_KEY);
+              return raw ? JSON.parse(raw) : null;
+            })();
         if (!Array.isArray(parsed) || parsed.length === 0) return 0;
         // 기존 데이터 유지 + 새 데이터 병합 (중복 제거는 address+year+month 기준)
         const existingKeys = new Set(transactionDataRaw.map(i => `${i.address || ''}|${i.year || ''}|${i.month || ''}`));
@@ -3731,6 +3739,42 @@
       bds: true,          // 부동산플래닛
       transaction: false  // 실거래가 (기본 숨김)
     };
+
+    window._mapLoadTokens = window._mapLoadTokens || {};
+
+    function _nextMapLoadRequestId(loadKey) {
+      const key = loadKey || 'all';
+      window._mapLoadTokens[key] = (window._mapLoadTokens[key] || 0) + 1;
+      return window._mapLoadTokens[key];
+    }
+
+    function _isActiveMapLoadRequest(loadKey, requestId) {
+      const key = loadKey || 'all';
+      return window._mapLoadTokens[key] === requestId;
+    }
+
+    function _getMapLayerType(item, propertyType) {
+      const src = item?.source || item?.data?.출처 || '';
+      const mode = item?.mode || '';
+      const ptype = propertyType || item?.propertyType || mode || '';
+
+      if (ptype === 'disco' || src === '디스코') return 'disco';
+      if (ptype === 'bds' || src === '부동산플래닛') return 'bds';
+      if (ptype === 'jumpo' || src === '점포라인') return 'jumpo';
+      if (ptype === 'assa' || src === '점포거래소') return 'assa';
+      if (ptype === 'transaction') return 'transaction';
+      if (ptype === 'auction' || mode === 'auction') return 'auction';
+      if (
+        src === '네이버부동산' || src === '네이버' ||
+        ptype === 'listing' || ptype === 'general' ||
+        mode === 'listing' || mode === 'general'
+      ) return 'naver';
+      return 'naver';
+    }
+
+    function _isMapCardTypeOpen(type) {
+      return !window._cardTypeState || window._cardTypeState[type] !== false;
+    }
 
     // ===================================================
     // 네비
@@ -5175,7 +5219,10 @@
       // ── 소재지 키워드 ──
       const addrKw = v('AddrKeyword').trim();
       if (addrKw) {
-        const addr = String(n?.소재지 ?? d.소재지 ?? d.물건소재지 ?? d.주소 ?? item?.title ?? '');
+        const addr = [
+          n?.소재지, d.소재지, d['도로명주소'], d['지번주소'],
+          d.물건소재지, d.주소, d.address, item?.title
+        ].filter(Boolean).join(' ');
         if (!addrKw.split(/\s+/).every(kw => addr.includes(kw))) return false;
       }
 
@@ -6350,33 +6397,9 @@
         }
       }
       if (!sv.length) { showToast('내보낼 항목이 없습니다', 'warn'); return; }
-      const keySet = new Set();
-      sv.forEach(item => { if (item.data) Object.keys(item.data).forEach(k => keySet.add(k)); });
-      const normHdrs = ['_거래유형','_매물유형','_면적_m2','_면적기준','_면적_평','_층',
-        '_매매가_만원','_실거래가_만원','_감정가_만원','_최저가_만원','_보증금_만원','_전세가_만원','_월세_만원',
-        '_평당가_만원','_수익률','_수익률_산출방식','_표시가격기준','_거래년월','_유찰횟수'];
-      const allHdrs = ['ID','소재지','출처','유형','lat','lng',...normHdrs,...Array.from(keySet)];
-      const esc2 = v => { const s = String(v ?? '').replace(/"/g, '""'); return (s.includes(',')||s.includes('"')||s.includes('\n'))?`"${s}"`:s; };
-      const rows = sv.map(item => {
-        const d = item.data || {};
-        return allHdrs.map(h => {
-          if (h==='ID') return esc2(item.id||'');
-          if (h==='소재지') return esc2(d.소재지||item.title||'');
-          if (h==='출처') return esc2(item.source||d.출처||'');
-          if (h==='유형') return esc2(item.mode||'');
-          if (h==='lat') return esc2(item.lat||'');
-          if (h==='lng') return esc2(item.lng||'');
-          if (h.startsWith('_') && item._norm) { const nk=h.slice(1); return esc2(item._norm[nk]??''); }
-          return esc2(d[h]??'');
-        }).join(',');
-      });
+      const { csvStr } = _buildUnifiedCsvPayload(sv, true);
       const label = screenOnly ? '화면' : '필터';
-      const csvStr = '\uFEFF' + allHdrs.join(',') + '\n' + rows.join('\n');
-      const a = Object.assign(document.createElement('a'), {
-        href: URL.createObjectURL(new Blob([csvStr], {type:'text/csv;charset=utf-8;'})),
-        download: `상권King_지도_${label}_${new Date().toISOString().slice(0,10)}.csv`
-      });
-      a.click();
+      _downloadCsvFile(csvStr, `상권King_지도_${label}_${new Date().toISOString().slice(0,10)}.csv`);
       showToast(`📊 ${label}CSV ${sv.length}건 다운로드 완료`, 'ok');
     };
     window.applyMapFilter = function () {
@@ -6785,12 +6808,22 @@
 
     function _svIndexOne(item) {
       if (!item || !item.id) return;
+      if (!item._norm && typeof normalizeItem === 'function') normalizeItem(item);
       const d = item.data || {};
-      const tokens = [
-        item.title, item.memo, item.group, item.source, item.csvFileName,
-        d.소재지, d.단지명, d.건물명, d.상품명, d.물건종류, d.용도, d.매물특징,
-        d.경매번호, d.사건번호, d.임차인, d.소유자, d.주소
-      ].filter(Boolean).join(' ').toLowerCase();
+      const n = item._norm || {};
+      const tokenParts = [
+        item.id, item.title, item.memo, item.group, item.source, item.csvFileName,
+        n.소재지, d.소재지, d['도로명주소'], d['지번주소'], d.주소, d.address, d.roadAddress, d.jibunAddress,
+        d.단지명, d.건물명, d.상품명, d.매물명, d.매물번호, d.물건종류, d.용도, d.매물특징,
+        d.업종, d.업종상세, d.가게상호, d.프랜차이즈,
+        d.경매번호, d.사건번호, d.임차인, d.소유자
+      ].filter(Boolean);
+      const tokens = tokenParts.flatMap(v => {
+        const s = String(v || '').trim().toLowerCase();
+        if (!s) return [];
+        const compact = s.replace(/\s+/g, '');
+        return compact && compact !== s ? [s, compact] : [s];
+      }).join(' ');
       _svSearchIndex[item.id] = tokens;
     }
 
@@ -7574,38 +7607,9 @@
     window.pcExportCSV = function(allItems) {
       const sv = allItems ? getSv() : getFilteredSv();
       if (!sv.length) { showToast(allItems ? '저장된 항목이 없습니다' : '필터 결과가 없습니다', 'warn'); return; }
-      const keySet = new Set();
-      sv.forEach(item => { if (item.data) Object.keys(item.data).forEach(k => keySet.add(k)); });
-      // ★ _norm 공통 컬럼을 앞에 고정 배치 (소스 무관 공통 비교 기준)
-      const normHdrs = ['_거래유형','_매물유형','_면적_m2','_면적기준','_면적_평','_층',
-        '_매매가_만원','_실거래가_만원','_감정가_만원','_최저가_만원','_보증금_만원','_전세가_만원','_월세_만원',
-        '_평당가_만원','_수익률','_수익률_산출방식','_표시가격기준','_거래년월','_유찰횟수'];
-      const allHdrs = ['ID', '소재지', '출처', '유형', 'lat', 'lng', ...normHdrs, ...Array.from(keySet)];
-      const esc2 = v => { const s = String(v ?? '').replace(/"/g, '""'); return (s.includes(',') || s.includes('"') || s.includes('\n')) ? `"${s}"` : s; };
-      const rows = sv.map(item => {
-        const d = item.data || {};
-        return allHdrs.map(h => {
-          if (h === 'ID') return esc2(item.id || '');
-          if (h === '소재지') return esc2(d.소재지 || item.title || '');
-          if (h === '출처') return esc2(item.source || d.출처 || '');
-          if (h === '유형') return esc2(item.mode || '');
-          if (h === 'lat') return esc2(item.lat || '');
-          if (h === 'lng') return esc2(item.lng || '');
-          // _norm 컬럼 처리 (접두사 _ 제거 후 _norm에서 읽기)
-          if (h.startsWith('_') && item._norm) {
-            const nk = h.slice(1); // '_매매가_만원' → '매매가_만원'
-            return esc2(item._norm[nk] ?? '');
-          }
-          return esc2(d[h] ?? '');
-        }).join(',');
-      });
+      const { csvStr } = _buildUnifiedCsvPayload(sv, true);
       const label = allItems ? '전체' : '필터';
-      const csvStr = '\uFEFF' + allHdrs.join(',') + '\n' + rows.join('\n');
-      const a = Object.assign(document.createElement('a'), {
-        href: URL.createObjectURL(new Blob([csvStr], { type: 'text/csv;charset=utf-8;' })),
-        download: `상권King_저장목록_${label}_${new Date().toISOString().slice(0,10)}.csv`
-      });
-      a.click();
+      _downloadCsvFile(csvStr, `상권King_저장목록_${label}_${new Date().toISOString().slice(0,10)}.csv`);
       showToast(`📊 CSV ${sv.length}건 다운로드 완료`, 'ok');
     };
 
@@ -8030,18 +8034,24 @@
       if (!window.kakao.maps.services) return;
       const gc = new kakao.maps.services.Geocoder();
       const sv = getSv();
-      // 주소 없고 좌표 있는 항목만
+      // 소재지/도로명주소/지번주소 중 하나라도 비어 있으면 좌표로 보강
       const toFix = sv.filter(s =>
         s.source === sourceName &&
         s.data &&
-        (!s.data.소재지 || s.data.소재지.trim() === '') &&
-        s.data.lat && s.data.lng
+        (s.lat || s.data.lat) && (s.lng || s.data.lng) &&
+        (
+          !String(s.data.소재지 || '').trim() ||
+          !String(s.data['도로명주소'] || '').trim() ||
+          !String(s.data['지번주소'] || '').trim()
+        )
       );
       if (!toFix.length) return;
       let converted = 0;
       for (const item of toFix) {
         await new Promise(resolve => {
-          gc.coord2Address(parseFloat(item.data.lng), parseFloat(item.data.lat), (result, status) => {
+          const lng = parseFloat(item.lng || item.data.lng);
+          const lat = parseFloat(item.lat || item.data.lat);
+          gc.coord2Address(lng, lat, (result, status) => {
             if (status === kakao.maps.services.Status.OK && result[0]) {
               const road = result[0].road_address;
               const jibun = result[0].address;
@@ -8049,12 +8059,14 @@
               const jibunAddr = (jibun && jibun.address_name) || '';
               const addr = roadAddr || jibunAddr;
               if (addr) {
+                const before = [item.data.소재지, item.data['도로명주소'], item.data['지번주소']].join('|');
                 _setDualAddressFields(item.data, roadAddr, jibunAddr);
                 // title도 갱신 (거래년월만 있던 경우)
                 if (!item.title || item.title === item.data.거래년월) {
                   item.title = addr;
                 }
-                converted++;
+                const after = [item.data.소재지, item.data['도로명주소'], item.data['지번주소']].join('|');
+                if (before !== after) converted++;
               }
             }
             resolve();
@@ -8281,12 +8293,14 @@
       window._collectCount = 0; // ★ 수집 개수 카운터 초기화
       const _progEl1 = document.getElementById('efCollectProgress');
       if (_progEl1) _progEl1.textContent = '대기중';
+      const normalizedItems = _setShopCollectedData('disco', items);
+      shopPreview('disco', normalizedItems);
       const sv = getSv();
       let added = 0, updated = 0, skipped = 0;
       const now = Date.now();
       // ★ 토지/공장/창고 제외 키워드
       const _excludeTypes = ['토지', '공장', '창고', '대지', '임야', '전', '답', '잡종지'];
-      items.forEach(item => {
+      normalizedItems.forEach(item => {
         // 매물유형/용도에 제외 키워드 포함 시 스킵
         const _typeStr = String(item.매물명 || item.r_type_nm || item.매물유형 || item.용도 || item.건물용도 || '');
         if (_excludeTypes.some(kw => _typeStr.includes(kw))) { skipped++; return; }
@@ -8320,12 +8334,14 @@
       window._collectCount = 0; // ★ 수집 개수 카운터 초기화
       const _progEl2 = document.getElementById('efCollectProgress');
       if (_progEl2) _progEl2.textContent = '대기중';
+      const normalizedItems = _setShopCollectedData('bds', items);
+      shopPreview('bds', normalizedItems);
       const sv = getSv();
       let added = 0, updated = 0, skipped = 0;
       const now = Date.now();
       // ★ 토지/공장/창고 제외 키워드
       const _excludeTypes = ['토지', '공장', '창고', '대지', '임야', '전', '답', '잡종지'];
-      items.forEach(item => {
+      normalizedItems.forEach(item => {
         // 매물유형/용도에 제외 키워드 포함 시 스킵
         const _typeStr = String(item.매물명 || item.r_type_nm || item.매물유형 || item.용도 || '');
         if (_excludeTypes.some(kw => _typeStr.includes(kw))) { skipped++; return; }
@@ -9238,13 +9254,12 @@ ${inputDesc.substring(0, 3000)}
             window._mapOpenOnlyItemId = itemId;
             loadedMarkerIds.delete('marker_' + itemId);
             // ★ [v179 FIX] loadCurrentAreaByType 사용 (geocoding 선처리 포함)
-            loadCurrentAreaByType(srcType);
-            // loadCurrentAreaByType 내부 geocoding+불러오기 완료 대기 후 마커 열기
-            setTimeout(() => {
+            Promise.resolve(loadCurrentAreaByType(srcType)).then(result => {
+              if (result && result.cancelled) return;
               window._mapOpenOnlyItemId = itemId; // 혹시 초기화됐으면 재설정
               openMarkerCard();
               setTimeout(() => { window._mapOpenOnlyItemId = null; }, 300);
-            }, 1800);
+            });
           };
           if (pos && map) {
             // 지도 이동 완료 대기 (panTo 비동기 특성상 300~500ms 후 bounds 갱신됨)
@@ -11465,7 +11480,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           document.getElementById('trade-status').textContent = `좌표 캐시 ${count.toLocaleString()}건 준비됨`;
         }
         // ★ localStorage에서 CSV 실거래 데이터 자동 복원
-        const restored = loadTransactionRawFromStorage();
+        const restored = await loadTransactionRawFromStorage();
         if (restored > 0) {
           // 캐시에서 좌표도 일괄 복원
           prefetchCoordsFromCache(transactionDataRaw).then(cacheHits => {
@@ -11479,9 +11494,10 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       }).catch(() => {
         console.warn('IndexedDB를 사용할 수 없습니다. 캐시 없이 동작합니다.');
         // ★ IndexedDB 없어도 localStorage CSV 복원 시도
-        const restored = loadTransactionRawFromStorage();
-        if (restored > 0) updateCSVStorageStatus();
-        initExternalCSVDatasets(); // IndexedDB 없어도 데이터는 로드
+        loadTransactionRawFromStorage().then(restored => {
+          if (restored > 0) updateCSVStorageStatus();
+          initExternalCSVDatasets(); // IndexedDB 없어도 데이터는 로드
+        });
       });
 
       refreshMapView();
@@ -12242,11 +12258,15 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       // 초기 상태: bounds이면 opts 숨김
       showRadiusOpts(getAreaSearchMode() === 'radius');
     }
-    async function loadCurrentAreaProperties(_forceLoadType) {
+    async function loadCurrentAreaProperties(_forceLoadType, _loadOpts) {
       if (!map || !geocoder) {
         alert('지도를 먼저 초기화해주세요');
         return;
       }
+      const loadKey = (_loadOpts && _loadOpts.loadKey) || (_forceLoadType || 'all');
+      const requestId = (_loadOpts && _loadOpts.requestId) || _nextMapLoadRequestId(loadKey);
+      const isActiveLoad = () => _isActiveMapLoadRequest(loadKey, requestId);
+      if (!isActiveLoad()) return { cancelled: true, inBoundsCount: 0, totalToLoad: 0 };
       // ★ [v165] 반경 모드 카드 분산 배치 인덱스 리셋
       if (typeof resetAutoCardIdx === 'function') resetAutoCardIdx();
 
@@ -12344,6 +12364,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       let totalToLoad = 0;
       let loadedCount = 0;
       let inBoundsCount = 0;
+      let scheduledAsyncCount = 0;
 
       // 경매/일반 매물 처리 - matchItem으로 저장목록 탭과 동일 기준 필터링
       if (sv.length > 0) {
@@ -12509,7 +12530,9 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           try { return _geoSnapBounds.contain(coords); } catch (e) { return true; }
         };
         needsGeocode.forEach((item, idx) => {
+          scheduledAsyncCount++;
           setTimeout(() => {
+            if (!isActiveLoad()) return;
             const markerId = 'marker_' + item.id;
             if (loadedMarkerIds.has(markerId)) return;
 
@@ -12555,6 +12578,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             if ((!hasDigit || hasMask) && sgg) q = sgg;
 
             geocodeWithCache(q).then(cached => {
+              if (!isActiveLoad()) return;
               if (cached) {
                 const coords = new kakao.maps.LatLng(cached.lat, cached.lng);
                 const isAuction = (item.mode === 'auction');
@@ -12629,9 +12653,12 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           for (let i = 0; i < geocodeLimit; i++) {
             const item = needsGeocoding[i];
             totalToLoad++;
+            scheduledAsyncCount++;
             setTimeout(() => {
+              if (!isActiveLoad()) return;
               const geocodeAddr = item.address || (item.sigungu ? (item.sigungu + ' ' + item.dong + (item.jibun ? ' ' + item.jibun : '')) : (item.dong + (item.jibun ? ' ' + item.jibun : '')));
               geocoder.addressSearch(geocodeAddr, (result, status) => {
+                if (!isActiveLoad()) return;
                 if (status === kakao.maps.services.Status.OK && result.length > 0) {
                   item.lat = result[0].y;
                   item.lng = result[0].x;
@@ -12655,35 +12682,45 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       // 카드 즉시 표시 (alert 전에)
       // ★ _mapOpenOnlyItemId는 모든 지오코딩(totalToLoad*50ms)이 끝난 후에 초기화해야 함
       //   100ms에 초기화하면 지오코딩 중인 마커가 아직 생성되지 않아 플래그가 무시됨
-      const clearDelay = Math.max(totalToLoad * 50 + 300, 400);
+      const asyncDelayBase = scheduledAsyncCount * 50;
+      const clearDelay = Math.max(asyncDelayBase + 300, 250);
       // ★ [v162] refreshMapView가 bounds 재체크로 방금 추가한 마커를 숨기는 것 방지
       window._skipBoundsHide = true;
-      setTimeout(() => {
-        window._mapOpenOnlyItemId = null;
-        refreshMapView();
-        // ★ [v173 FIX] 지오코딩 완료 시간(totalToLoad*50ms) + 여유 1초 후 해제
-        // 기존 고정 2000ms → 실제 처리시간 기반으로 동적 계산
-        const skipDelay = Math.max(totalToLoad * 50 + 1000, 2000);
-        setTimeout(() => { window._skipBoundsHide = false; }, skipDelay);
-        updateFilterCounts();
-        adjustCardSizeByZoom();
-        mapOverlays.forEach(obj => {
-          if (obj.isOpen) updateMapLine(obj.id);
-        });
-      }, clearDelay);
 
-      // 결과 알림 (카드 표시 후)
-      setTimeout(() => {
-        if (inBoundsCount > 0) {
-          showToast(`✅ ${inBoundsCount}개 매물이 지도에 표시되었습니다`, 'ok');
-        } else {
-          showToast('현재 화면 영역에 표시할 매물이 없습니다. 다른 지역으로 이동해보세요', 'warn');
-        }
-      }, totalToLoad * 50 + 500);
+      return new Promise(resolve => {
+        setTimeout(() => {
+          if (!isActiveLoad()) {
+            resolve({ cancelled: true, inBoundsCount, totalToLoad });
+            return;
+          }
+          window._mapOpenOnlyItemId = null;
+          refreshMapView();
+          updateFilterCounts();
+          adjustCardSizeByZoom();
+          mapOverlays.forEach(obj => {
+            if (obj.isOpen) updateMapLine(obj.id);
+          });
+
+          const skipDelay = Math.max(asyncDelayBase + 1000, 1200);
+          setTimeout(() => {
+            if (isActiveLoad()) window._skipBoundsHide = false;
+          }, skipDelay);
+
+          if (inBoundsCount > 0) {
+            showToast(`✅ ${inBoundsCount}개 매물이 지도에 표시되었습니다`, 'ok');
+          } else {
+            showToast('현재 화면 영역에 표시할 매물이 없습니다. 다른 지역으로 이동해보세요', 'warn');
+          }
+
+          resolve({ cancelled: false, inBoundsCount, totalToLoad });
+        }, clearDelay);
+      });
     }
 
     // ★ 경매/매물 타입별 개별 불러오기
     function loadCurrentAreaByType(type) {
+      const loadKey = type || 'all';
+      const requestId = _nextMapLoadRequestId(loadKey);
       window._mapLoadSourceFilter = null;
       window._mapLoadType = type;
 
@@ -12706,25 +12743,31 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         jumpo: '점포라인', assa: '점포거래소', disco: '디스코', bds: '부동산플래닛'
       };
       const sourceName = sourceMap[type] || null;
-      _forwardGeocodeSavedItems(sourceName).then(() => {
+      return _forwardGeocodeSavedItems(sourceName).then(() => {
+        if (!_isActiveMapLoadRequest(loadKey, requestId)) return { cancelled: true };
         // ★ [v158] loadType을 직접 인자로 전달 (window._mapLoadType 타이밍 버그 방지)
-        loadCurrentAreaProperties(type).then(() => {
+        return loadCurrentAreaProperties(type, { loadKey, requestId }).then(result => {
+          if (!_isActiveMapLoadRequest(loadKey, requestId) || (result && result.cancelled)) return result;
           showToast(`✅ ${label} 매물 불러오기 완료`, 'ok');
           if (cl) cl.style.display = 'none';
-          if (statusEl) statusEl.innerHTML = `화면 내: ${document.querySelectorAll('.map-card').length}건`;
           // ★ [v177] 카드 열림/닫힘 상태 버튼 동기화
           if (window._cardTypeState && window._refreshTypeBtn) {
             Object.keys(window._cardTypeState).forEach(t => window._refreshTypeBtn(t));
           }
           updateFilterCounts && updateFilterCounts();
-        }).catch(err => {
-          console.error('[loadCurrentAreaByType]', err);
-          showToast(`❌ ${label} 불러오기 실패`, 'error');
-          if (cl) cl.style.display = 'none';
-          window._mapLoadType = null;
-          window._mapLoadSourceFilter = null;
+          return result;
         });
-      }); // _forwardGeocodeSavedItems 완료 후
+      }).catch(err => {
+        if (!_isActiveMapLoadRequest(loadKey, requestId)) return { cancelled: true };
+        console.error('[loadCurrentAreaByType]', err);
+        showToast(`❌ ${label} 불러오기 실패`, 'error');
+        if (cl) cl.style.display = 'none';
+        window._mapLoadType = null;
+        window._mapLoadSourceFilter = null;
+        return { cancelled: false, error: err };
+      }).finally(() => {
+        if (_isActiveMapLoadRequest(loadKey, requestId) && cl) cl.style.display = 'none';
+      });
     }
     window.loadCurrentAreaByType = loadCurrentAreaByType;
 
@@ -13168,30 +13211,27 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         propertyType: propertyType
       });
 
+      const layerType = _getMapLayerType(item, propertyType);
+      const initialCardOpen = (window.innerWidth > 768)
+        && _isMapCardTypeOpen(layerType)
+        && (window._mapOpenOnlyItemId ? (item.id === window._mapOpenOnlyItemId) : true);
+
       mapOverlays.push({
         id,
         overlay,
         marker,
-        isOpen: (window.innerWidth > 768) && (window._mapOpenOnlyItemId ? (item.id === window._mapOpenOnlyItemId) : true),  // 📱 모바일: 항상 false (바텀시트 전용)
+        isOpen: initialCardOpen,  // 📱 모바일: 항상 false (바텀시트 전용)
         item,
         propertyType: propertyType
       });
       window.mapOverlays = mapOverlays; // 📱 모바일 동기화
 
       // 필터에 따라 표시
-      const src = item.source || '';
-      const filterKey = propertyType === 'auction' ? 'auction'
-        : src === '점포라인' ? 'jumpo'
-          : src === '점포거래소' ? 'assa'
-            : src === '디스코' ? 'disco'
-              : src === '부동산플래닛' ? 'bds'
-                : src === '네이버부동산' || src === '네이버' ? 'naver'
-                  : 'general';
-      marker.setMap(mapFilters[filterKey] ? map : null);
+      const filterKey = layerType === 'general' ? 'naver' : layerType;
+      marker.setMap(mapFilters[filterKey] !== false ? map : null);
 
       // 카드도 즉시 표시 (해당 카드만 또는 전체)
-      const thisIsOpen = window._mapOpenOnlyItemId ? (item.id === window._mapOpenOnlyItemId) : true;
-      if (mapFilters[filterKey] && thisIsOpen && window.innerWidth > 768) {  // 📱 모바일: 카드 표시 안 함
+      if (mapFilters[filterKey] !== false && initialCardOpen && window.innerWidth > 768) {  // 📱 모바일: 카드 표시 안 함
         overlay.setMap(map);
 
         // 카드 크기 및 연결선 즉시 적용
@@ -17684,12 +17724,15 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         yAnchor: 0,
         zIndex: 10
       });
+      const initialTradeCardOpen = (window.innerWidth > 768)
+        && mapFilters.transaction !== false
+        && _isMapCardTypeOpen('transaction');
       // mapOverlays에 먼저 등록 (클릭 이벤트가 이 배열을 참조하므로 선행 등록 필수)
       const overlayObj = {
         id,
         overlay,
         marker,
-        isOpen: false,
+        isOpen: initialTradeCardOpen,
         item,
         propertyType: 'transaction',
         stackKey: getStackKeyFromPos(position)
@@ -17730,8 +17773,9 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         if (obj && obj.isOpen) updateMapLine(id);
       });
 
-      mapMarkers.push({ id, marker, overlay, isOpen: false, item, propertyType: 'transaction' });
-      marker.setMap(map);
+      mapMarkers.push({ id, marker, overlay, isOpen: initialTradeCardOpen, item, propertyType: 'transaction' });
+      marker.setMap(mapFilters.transaction !== false ? map : null);
+      if (initialTradeCardOpen) overlay.setMap(map);
     }
 
     // ===================================================
@@ -19087,13 +19131,16 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         yAnchor: 0,
         zIndex: 10
       });
+      const initialTradeCardOpen = (window.innerWidth > 768)
+        && mapFilters.transaction !== false
+        && _isMapCardTypeOpen('transaction');
 
       // mapOverlays에 먼저 등록 (클릭 이벤트가 이 배열을 참조하므로 선행 등록 필수)
       const overlayObj = {
         id: id,
         overlay: overlay,
         marker: marker,
-        isOpen: true,  // 새로 추가되는 실거래 마커도 카드를 바로 열어둠
+        isOpen: initialTradeCardOpen,
         item: tItem,
         propertyType: 'transaction',
         stackKey: getStackKeyFromPos(position),
@@ -19167,7 +19214,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       marker.setMap(mapFilters.transaction ? map : null);
 
       // 카드도 즉시 표시 (📱 모바일 제외)
-      if (mapFilters.transaction && window.innerWidth > 768) {
+      if (mapFilters.transaction && initialTradeCardOpen && window.innerWidth > 768) {
         overlay.setMap(map);
 
         // ✅ 동일 좌표 실거래는 대표 1장만 열리도록 등록(+N 배지/순환)
@@ -19189,6 +19236,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const cbIds = {
         auction: 'filterAuction', naver: 'filterNaver',
         jumpo: 'filterJumpo', assa: 'filterAssa',
+        disco: 'filterDisco', bds: 'filterBds',
         general: 'filterNaver', transaction: 'filterTransaction'
       };
       const cb = document.getElementById(cbIds[type] || 'filter' + type);
@@ -25656,6 +25704,177 @@ ${newsContext}
 
     // 수집된 데이터 저장소
     const shopCollectedData = { naver: [], jumpo: [], georae: [], assa: [], disco: [], bds: [] };
+    const SHOP_SITE_SOURCE_NAMES = {
+      naver: '네이버부동산',
+      jumpo: '점포라인',
+      georae: '점포거래소',
+      assa: '점포거래소',
+      disco: '디스코',
+      bds: '부동산플래닛',
+    };
+    const SHOP_SITE_MODE_MAP = {
+      naver: 'listing',
+      jumpo: 'general',
+      georae: 'general',
+      assa: 'general',
+      disco: 'transaction',
+      bds: 'transaction',
+    };
+    const UNIFIED_CSV_NORM_FIELDS = ['거래유형','매물유형','면적_m2','면적기준','면적_평','층',
+      '매매가_만원','실거래가_만원','감정가_만원','최저가_만원','보증금_만원','전세가_만원','월세_만원',
+      '평당가_만원','수익률','수익률_산출방식','표시가격기준','거래년월','유찰횟수'];
+    const UNIFIED_CSV_FIXED_FIELDS = [
+      '매물번호','매물명','매물유형','거래유형',
+      '업종','업종상세','가게상호','프랜차이즈',
+      '매매가','기보증금_만원','보증금_만원','전세가_만원','월세_만원','권리금_만원','관리비_만원','관리비포함',
+      '월수익_만원','월매출_만원','수익률_퍼센트','사용기간',
+      '계약면적_m2','전용면적_m2','공급면적_m2','건물면적_m2','토지면적_m2',
+      '해당층','총층','방향','주차','건축연도','건축물용도','사용승인일','입주가능일','등록일','거래년월',
+      '중개사','전화번호','매물특징','특이사항','상세URL','거리_m'
+    ];
+
+    function _normalizeShopSiteKey(site) {
+      return String(site || '').replace(/_auto$/, '');
+    }
+
+    function _inferShopItemMode(site, d) {
+      const baseSite = _normalizeShopSiteKey(site);
+      if (SHOP_SITE_MODE_MAP[baseSite]) return SHOP_SITE_MODE_MAP[baseSite];
+      if (d && (d.매물유형 === '실거래' || d.거래유형 === '실거래')) return 'transaction';
+      return 'general';
+    }
+
+    function _normalizeCollectedSiteItem(site, item) {
+      const baseSite = _normalizeShopSiteKey(site);
+      const sourceName = SHOP_SITE_SOURCE_NAMES[baseSite] || (item && item.출처) || baseSite;
+      let d = { ...(item || {}) };
+
+      if (baseSite === 'naver') d = normalizeNaverData(d);
+      else if (baseSite === 'disco') d = normalizeTxData(d, '디스코');
+      else if (baseSite === 'bds') d = normalizeTxData(d, '부동산플래닛');
+      else {
+        if (!d.매물번호 && d.id) d.매물번호 = String(d.id);
+        if (!d.매물명 && d.제목) d.매물명 = d.제목;
+        if (!d.매물명 && d.title) d.매물명 = d.title;
+        if (!d.업종 && d.type) d.업종 = d.type;
+        if (!d.업종 && d.category) d.업종 = d.category;
+        if (!d.기보증금_만원 && d['보증금(만)'] != null) d.기보증금_만원 = d['보증금(만)'];
+        if (!d.월세_만원 && d['월세(만)'] != null) d.월세_만원 = d['월세(만)'];
+        if (!d.권리금_만원 && d['권리금(만)'] != null) d.권리금_만원 = d['권리금(만)'];
+        if (!d.계약면적_m2 && d['면적(㎡)'] != null) d.계약면적_m2 = d['면적(㎡)'];
+        if (!d.전용면적_m2 && d['면적(㎡)'] != null && (baseSite === 'assa' || baseSite === 'georae')) d.전용면적_m2 = d['면적(㎡)'];
+        if (!d.해당층 && d.층수 != null) d.해당층 = d.층수;
+        if (!d.소재지 && d.주소) d.소재지 = d.주소;
+      }
+
+      if (!d.출처) d.출처 = sourceName;
+      if (!d.기보증금_만원 && d.보증금_만원) d.기보증금_만원 = d.보증금_만원;
+      if (!d.전세가_만원 && String(d.거래유형 || '').includes('전세')) d.전세가_만원 = d.기보증금_만원 || d.보증금_만원 || null;
+      if (!d.매물특징 && d.특징) d.매물특징 = d.특징;
+      if (!d.매물특징 && d.특이사항) d.매물특징 = d.특이사항;
+      if (!d.특이사항 && d.매물특징) d.특이사항 = d.매물특징;
+      _normalizeDualAddressFields(d);
+      return d;
+    }
+
+    function _setShopCollectedData(site, items) {
+      const baseSite = _normalizeShopSiteKey(site);
+      const normalized = (items || []).map(item => _normalizeCollectedSiteItem(baseSite, item));
+      shopCollectedData[baseSite] = normalized;
+      return normalized;
+    }
+
+    function _wrapCollectedItemsForCsv(site, items) {
+      const baseSite = _normalizeShopSiteKey(site);
+      const sourceName = SHOP_SITE_SOURCE_NAMES[baseSite] || baseSite;
+      const savedMatches = (typeof getSv === 'function' ? getSv() : []).filter(s => s && s.source === sourceName && s.data);
+      return (items || []).map((item, idx) => {
+        let d = _normalizeCollectedSiteItem(baseSite, item);
+        const key = String(d.매물번호 || d.id || '');
+        const savedMatch = key ? savedMatches.find(s => String((s.data && s.data.매물번호) || s.id || '') === key) : null;
+        if (savedMatch && savedMatch.data) {
+          const merged = { ...d };
+          Object.keys(savedMatch.data).forEach(k => {
+            if ((merged[k] == null || merged[k] === '') && savedMatch.data[k] != null && savedMatch.data[k] !== '') {
+              merged[k] = savedMatch.data[k];
+            }
+          });
+          d = _normalizeCollectedSiteItem(baseSite, merged);
+        }
+        const lat = (d.lat != null && d.lat !== '') ? parseFloat(d.lat) : null;
+        const lng = (d.lng != null && d.lng !== '') ? parseFloat(d.lng) : null;
+        const wrapped = {
+          id: `${baseSite}_${d.매물번호 || d.id || (idx + 1)}`,
+          mode: _inferShopItemMode(baseSite, d),
+          source: d.출처 || sourceName,
+          title: d.매물명 || d.제목 || d.소재지 || `${baseSite}_${idx + 1}`,
+          lat: Number.isFinite(lat) ? lat : null,
+          lng: Number.isFinite(lng) ? lng : null,
+          data: d
+        };
+        normalizeItem(wrapped);
+        return wrapped;
+      });
+    }
+
+    function _csvEscape(v) {
+      const s = String(v ?? '').replace(/"/g, '""');
+      return (s.includes(',') || s.includes('"') || s.includes('\n')) ? `"${s}"` : s;
+    }
+
+    function _downloadCsvFile(csvStr, filename) {
+      const a = Object.assign(document.createElement('a'), {
+        href: URL.createObjectURL(new Blob([csvStr], { type: 'text/csv;charset=utf-8;' })),
+        download: filename
+      });
+      a.click();
+    }
+
+    function _buildUnifiedCsvPayload(items, includeId) {
+      const includeItemId = includeId !== false;
+      const normalizedItems = (items || []).filter(Boolean).map(item => {
+        if (!item._norm && typeof normalizeItem === 'function') normalizeItem(item);
+        return item;
+      });
+      const reserved = new Set(['ID','소재지','도로명주소','지번주소','출처','유형','lat','lng',
+        ...UNIFIED_CSV_NORM_FIELDS, ...UNIFIED_CSV_FIXED_FIELDS]);
+      const extraKeySet = new Set();
+      normalizedItems.forEach(item => {
+        Object.keys(item.data || {}).forEach(k => {
+          if (!reserved.has(k)) extraKeySet.add(k);
+        });
+      });
+      const extraHeaders = Array.from(extraKeySet).sort((a, b) => String(a).localeCompare(String(b), 'ko'));
+      const headers = [
+        ...(includeItemId ? ['ID'] : []),
+        '소재지','도로명주소','지번주소','출처','유형','lat','lng',
+        ...UNIFIED_CSV_NORM_FIELDS.map(h => '_' + h),
+        ...UNIFIED_CSV_FIXED_FIELDS,
+        ...extraHeaders
+      ];
+      const rows = normalizedItems.map(item => {
+        const d = item.data || {};
+        const n = item._norm || {};
+        return headers.map(h => {
+          if (h === 'ID') return _csvEscape(item.id || '');
+          if (h === '소재지') return _csvEscape(n.소재지 || d.소재지 || d['도로명주소'] || d['지번주소'] || item.title || '');
+          if (h === '도로명주소') return _csvEscape(d['도로명주소'] || '');
+          if (h === '지번주소') return _csvEscape(d['지번주소'] || '');
+          if (h === '출처') return _csvEscape(item.source || d.출처 || '');
+          if (h === '유형') return _csvEscape(item.mode || '');
+          if (h === 'lat') return _csvEscape(item.lat ?? d.lat ?? '');
+          if (h === 'lng') return _csvEscape(item.lng ?? d.lng ?? '');
+          if (h.startsWith('_')) return _csvEscape(n[h.slice(1)] ?? '');
+          if (h === '매물명') return _csvEscape(d.매물명 ?? item.title ?? '');
+          return _csvEscape(d[h] ?? '');
+        }).join(',');
+      });
+      return {
+        headers,
+        rows,
+        csvStr: '\uFEFF' + headers.join(',') + '\n' + rows.join('\n')
+      };
+    }
 
     // ── 네이버 헤더 (매일 갱신 필요) ────────────────────
     const NAVER_COLLECT_HEADERS = {
@@ -25700,7 +25919,7 @@ ${newsContext}
 
     // ── 메인 수집 함수 ──────────────────────────────────
     async function doShopCollect(site, skipDetail = false) {
-      shopCollectedData[site] = [];
+      shopCollectedData[_normalizeShopSiteKey(site)] = [];
       shopStatus(site, '⏳ 수집 중...', 'var(--mu)');
       // ★ FIX: 'naver_auto' → 'naverCollectPreview', 'disco_auto' → 'discoPreview' 등
       // site 키에서 _auto 제거 + 각 사이트별 실제 Preview element ID 매핑
@@ -25854,8 +26073,8 @@ ${newsContext}
           const rawItems = data.data || [];
           const items = rawItems.filter(shouldKeepNaverCollectedItem);
           const skippedInvalid = rawItems.length - items.length;
-          shopCollectedData.naver = items;
-          shopPreview('naver', items);
+          const previewItems = _setShopCollectedData('naver', items);
+          shopPreview('naver', previewItems);
 
           // 자동 저장목록 추가
           const sv = getSv();
@@ -26030,8 +26249,8 @@ ${newsContext}
         const rawItems = data.data || [];
         const items = rawItems.filter(shouldKeepNaverCollectedItem);
         const skippedInvalid = rawItems.length - items.length;
-        shopCollectedData.naver = items;
-        shopPreview('naver', items);
+        const previewItems = _setShopCollectedData('naver', items);
+        shopPreview('naver', previewItems);
 
         // 자동으로 저장목록에 추가
         const sv = getSv();
@@ -26232,13 +26451,13 @@ ${newsContext}
 
     // 공통 저장 로직
     function _jumpoSaveToList(items) {
-      shopCollectedData.jumpo = items;
-      shopPreview('jumpo', items);
+      const normalizedItems = _setShopCollectedData('jumpo', items);
+      shopPreview('jumpo', normalizedItems);
 
       const sv = getSv();
       let added = 0, updated = 0;
       const now = Date.now();
-      items.forEach(item => {
+      normalizedItems.forEach(item => {
         const key = String(item.매물번호 || '');
         const exists = key ? sv.find(s => s.source === '점포라인' && s.data && String(s.data.매물번호) === key) : null;
         const entry = {
@@ -26342,6 +26561,9 @@ ${newsContext}
           }
         };
       });
+
+      const previewItems = _setShopCollectedData('jumpo', savedItems.map(item => item.data));
+      shopPreview('jumpo', previewItems);
 
       // 저장목록(re_sv)에 추가
       const sv = getSv();
@@ -26566,8 +26788,8 @@ ${newsContext}
           await new Promise(r => setTimeout(r, 800));
         }
 
-        shopCollectedData.jumpo = result;
-        shopPreview('jumpo', result);
+        const previewItems = _setShopCollectedData('jumpo', result);
+        shopPreview('jumpo', previewItems);
         shopStatus('jumpo', `✅ ${result.length}개 수집 완료`, '#03c75a');
       } // end if(false)
     }
@@ -26692,14 +26914,14 @@ ${newsContext}
       }
 
       const items = data.data || [];
-      shopCollectedData.assa = items;
-      shopPreview('assa', items);
+      const normalizedItems = _setShopCollectedData('assa', items);
+      shopPreview('assa', normalizedItems);
 
       // 저장목록에 추가 (중복 방지)
       const sv = getSv();
       let added = 0, updated = 0;
       const now = Date.now();
-      items.forEach(item => {
+      normalizedItems.forEach(item => {
         const key = String(item.매물번호 || '');
         const exists = key ? sv.find(s => s.source === '점포거래소' && s.data && String(s.data.매물번호) === key) : null;
         const entry = {
@@ -26793,53 +27015,48 @@ ${newsContext}
         상세URL: d.id ? `https://xn--v69ap5so3hsnb81e1wfh6z.com/item/view/${d.id}` : '',
       }));
 
-      shopCollectedData.georae = result;
-      shopPreview('georae', result);
+      const previewItems = _setShopCollectedData('georae', result);
+      shopPreview('georae', previewItems);
       shopStatus('georae', `✅ ${result.length}개 수집 완료`, '#03c75a');
     }
 
     // ── CSV 다운로드 ─────────────────────────────────────
     function doShopExportCSV(site) {
-      const items = shopCollectedData[site];
+      const baseSite = _normalizeShopSiteKey(site);
+      const items = shopCollectedData[baseSite];
       if (!items || !items.length) { showToast('수집된 데이터 없음', 'warn'); return; }
-      const keys = Object.keys(items[0]);
-      const rows = items.map(item => keys.map(k => {
-        const v = String(item[k] ?? '').replace(/"/g, '""');
-        return (v.includes(',') || v.includes('"') || v.includes('\n')) ? `"${v}"` : v;
-      }).join(','));
-      const csv = '\uFEFF' + keys.join(',') + '\n' + rows.join('\n');
-      const names = { naver: '네이버부동산', jumpo: '점포라인', georae: '점포거래소', assa: '아싸점포거래소', disco: '디스코', bds: '부동산플래닛' };
-      const a = Object.assign(document.createElement('a'), {
-        href: URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' })),
-        download: `${names[site]}_${Date.now()}.csv`
-      });
-      a.click();
+      const wrapped = _wrapCollectedItemsForCsv(baseSite, items);
+      const { csvStr } = _buildUnifiedCsvPayload(wrapped, false);
+      const names = { naver: '네이버부동산', jumpo: '점포라인', georae: '점포거래소', assa: '점포거래소', disco: '디스코', bds: '부동산플래닛' };
+      _downloadCsvFile(csvStr, `${names[baseSite] || baseSite}_${Date.now()}.csv`);
       showToast('CSV 다운로드 완료!', 'ok');
     }
     window.doShopExportCSV = doShopExportCSV;
 
     // ── 결과탭에 저장 ────────────────────────────────────
     function doShopSave(site) {
-      const items = shopCollectedData[site];
+      const baseSite = _normalizeShopSiteKey(site);
+      const items = shopCollectedData[baseSite];
       if (!items || !items.length) { showToast('수집된 데이터 없음', 'warn'); return; }
-      const siteNames = { naver: '네이버부동산', jumpo: '점포라인', georae: '점포거래소', assa: '아싸점포거래소', disco: '디스코', bds: '부동산플래닛' };
-      const sourceKey = siteNames[site] || site;
-      items.forEach(item => {
-        results.push({
-          id: 'shop_' + site + '_' + Date.now() + '_' + Math.random().toString(36).slice(2),
-          mode: 'listing',
-          source: sourceKey,
-          title: item.매물명 || item.제목 || item.idx || item.id || siteNames[site],
-          data: {
-            ...item,
-            출처: siteNames[site]
-          },
+      const wrapped = _wrapCollectedItemsForCsv(baseSite, items);
+      const now = Date.now();
+      wrapped.forEach((wrappedItem, idx) => {
+        const entry = {
+          ...wrappedItem,
+          id: 'shop_' + baseSite + '_' + now + '_' + idx + '_' + Math.random().toString(36).slice(2),
           memo: '',
           timestamp: Date.now()
-        });
+        };
+        normalizeItem(entry);
+        results.push(entry);
       });
-      renderSaved();
-      showToast(`${items.length}건 결과탭에 추가`, 'ok');
+      if (typeof renderTabs === 'function') renderTabs();
+      if (typeof renderTab === 'function') {
+        activeTab = results.length - 1;
+        renderTab(activeTab);
+      }
+      try { if (typeof renderSaved === 'function') renderSaved(); } catch(e) {}
+      showToast(`${wrapped.length}건 결과탭에 추가`, 'ok');
     }
 
 
@@ -31108,7 +31325,7 @@ ${newsText}
         if (window._idbCache) window._idbCache['re_sv'] = all;
         if (window.idbSet) window.idbSet('re_sv', all).catch(()=>{});
         if (typeof _svBuildIndex === 'function') _svBuildIndex(all);
-        if (typeof window.renderSvList === 'function') window.renderSvList();
+        if (typeof window.renderSaved === 'function') window.renderSaved();
         if (typeof window.mbRenderSaved === 'function') window.mbRenderSaved();
       } catch(e){ console.warn('[FB] applySv', e); }
     }
