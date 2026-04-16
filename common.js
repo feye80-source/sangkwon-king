@@ -41327,135 +41327,144 @@ window.addEventListener('DOMContentLoaded', () => {
     }, 100);
 
     setTimeout(() => clearInterval(waitForKakao), 10000);
-    // =============================================
+});
+// =============================================
 // 물건리스트 (page4)
 // =============================================
 (function () {
-  const KEY = 'pl_items_v1';
-
-  function loadItems() {
-    try { return JSON.parse(localStorage.getItem(KEY) || '[]'); } catch { return []; }
-  }
-  function saveItems(arr) {
-    localStorage.setItem(KEY, JSON.stringify(arr));
-  }
+  var KEY = 'pl_items_v1';
+  function loadItems() { try { return JSON.parse(localStorage.getItem(KEY) || '[]'); } catch(e) { return []; } }
+  function saveItems(arr) { localStorage.setItem(KEY, JSON.stringify(arr)); }
   function daysDiff(dateStr) {
     if (!dateStr) return null;
-    const diff = (new Date(dateStr) - new Date()) / 86400000;
-    return Math.ceil(diff);
+    return Math.ceil((new Date(dateStr) - new Date()) / 86400000);
   }
   function fmtDate(dateStr) {
     if (!dateStr) return '—';
-    const d = new Date(dateStr);
+    var d = new Date(dateStr);
     return (d.getMonth() + 1) + '.' + d.getDate();
   }
   function statusBadge(s) {
-    const map = {
-      '관심':    'background:#2a2a3a;color:#aaa;',
-      '임장필요': 'background:#3a2e00;color:#f5a623;',
-      '입찰준비': 'background:#3a0000;color:#ff6b6b;',
-      '완료':    'background:#003a1a;color:#4caf87;',
-      '포기':    'background:#222;color:#666;',
-    };
-    return `<span style="padding:3px 8px;border-radius:10px;font-size:11px;font-weight:500;${map[s]||''}">${s}</span>`;
+    var map = {'관심':'background:#2a2a3a;color:#aaa;','임장필요':'background:#3a2e00;color:#f5a623;','입찰준비':'background:#3a0000;color:#ff6b6b;','완료':'background:#003a1a;color:#4caf87;','포기':'background:#222;color:#666;'};
+    return '<span style="padding:3px 8px;border-radius:10px;font-size:11px;font-weight:500;' + (map[s]||'') + '">' + s + '</span>';
   }
   function siteDots(n) {
     n = parseInt(n) || 0;
-    return [1,2,3].map(i =>
-      `<span style="display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:3px;background:${i<=n?'#1D9E75':'#444'};"></span>`
-    ).join('');
+    return [1,2,3].map(function(i){ return '<span style="display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:3px;background:' + (i<=n?'#1D9E75':'#444') + ';"></span>'; }).join('');
   }
-
   window.renderPropertyList = function () {
-    const items = loadItems();
-    const q = (document.getElementById('pl-search')?.value || '').toLowerCase();
-    const fs = document.getElementById('pl-filter-status')?.value || '';
-    const today = new Date();
-
-    // 알람
-    let overdueCount = 0, soonField = 0, soonReady = 0;
-    items.forEach(it => {
-      const d = daysDiff(it.biddate);
+    var items = loadItems();
+    var q = ((document.getElementById('pl-search')||{}).value||'').toLowerCase();
+    var fs = (document.getElementById('pl-filter-status')||{}).value||'';
+    var overdueCount=0, soonField=0, soonReady=0;
+    items.forEach(function(it) {
+      var d = daysDiff(it.biddate);
       if (d === null) return;
       if (d < 0 && it.status !== '완료' && it.status !== '포기') overdueCount++;
       else if (d <= 7 && d >= 0 && it.status === '관심') soonField++;
       else if (d <= 3 && d >= 0 && it.status === '임장필요') soonReady++;
     });
-    const alertEl = document.getElementById('pl-alerts');
+    var alertEl = document.getElementById('pl-alerts');
     if (alertEl) {
       alertEl.innerHTML = [
-        overdueCount ? `<span style="padding:6px 12px;border-radius:20px;font-size:12px;font-weight:500;background:#3a0000;color:#ff6b6b;border:1px solid #ff6b6b44;cursor:pointer;" onclick="document.getElementById('pl-filter-status').value='';renderPropertyList()">● 결과 미입력 ${overdueCount}건 — 기일 지남</span>` : '',
-        soonField   ? `<span style="padding:6px 12px;border-radius:20px;font-size:12px;font-weight:500;background:#3a2e00;color:#f5a623;border:1px solid #f5a62344;">● 임장 필요 ${soonField}건 — 7일 이내</span>` : '',
-        soonReady   ? `<span style="padding:6px 12px;border-radius:20px;font-size:12px;font-weight:500;background:#003050;color:#4f8eff;border:1px solid #4f8eff44;">● 입찰 준비 ${soonReady}건 — 3일 이내</span>` : '',
+        overdueCount ? '<span style="padding:6px 12px;border-radius:20px;font-size:12px;font-weight:500;background:#3a0000;color:#ff6b6b;border:1px solid #ff6b6b44;">● 결과 미입력 ' + overdueCount + '건 — 기일 지남</span>' : '',
+        soonField    ? '<span style="padding:6px 12px;border-radius:20px;font-size:12px;font-weight:500;background:#3a2e00;color:#f5a623;border:1px solid #f5a62344;">● 임장 필요 ' + soonField + '건 — 7일 이내</span>' : '',
+        soonReady    ? '<span style="padding:6px 12px;border-radius:20px;font-size:12px;font-weight:500;background:#003050;color:#4f8eff;border:1px solid #4f8eff44;">● 입찰 준비 ' + soonReady + '건 — 3일 이내</span>' : '',
       ].join('');
     }
-
-    // 필터
-    let filtered = items.filter(it => {
+    var filtered = items.filter(function(it) {
       if (fs && it.status !== fs) return false;
       if (q && !(it.addr||'').toLowerCase().includes(q) && !(it.casenum||'').toLowerCase().includes(q)) return false;
       return true;
     });
-
-    // 정렬: 기일 임박순
-    filtered.sort((a, b) => {
-      const da = a.biddate ? new Date(a.biddate) : new Date('9999-12-31');
-      const db = b.biddate ? new Date(b.biddate) : new Date('9999-12-31');
+    filtered.sort(function(a,b) {
+      var da = a.biddate ? new Date(a.biddate) : new Date('9999-12-31');
+      var db = b.biddate ? new Date(b.biddate) : new Date('9999-12-31');
       return da - db;
     });
-
-    const tbody = document.getElementById('pl-tbody');
+    var tbody = document.getElementById('pl-tbody');
     if (!tbody) return;
     if (!filtered.length) {
-      tbody.innerHTML = `<tr><td colspan="8" style="padding:32px;text-align:center;color:var(--fg3);font-size:13px;">물건이 없어요. '+ 물건 추가'로 시작하세요.</td></tr>`;
+      tbody.innerHTML = '<tr><td colspan="8" style="padding:32px;text-align:center;color:var(--fg3);font-size:13px;">물건이 없어요. + 물건 추가로 시작하세요.</td></tr>';
     } else {
-      tbody.innerHTML = filtered.map(it => {
-        const d = daysDiff(it.biddate);
-        const dStr = d === null ? '—' : d < 0 ? `<span style="color:#888;font-size:11px;">기일 지남</span>` : d <= 3 ? `<span style="color:#ff6b6b;font-weight:500;">D-${d}</span>` : d <= 7 ? `<span style="color:#f5a623;font-weight:500;">D-${d}</span>` : `<span style="color:var(--fg2);">D-${d}</span>`;
-        const rowBg = d !== null && d < 0 && it.status !== '완료' && it.status !== '포기' ? 'background:rgba(255,100,100,.05);' : d !== null && d <= 3 && d >= 0 ? 'background:rgba(255,100,100,.05);' : '';
-        const op = (it.status === '포기') ? 'opacity:0.5;' : '';
-        return `<tr style="${rowBg}${op}border-bottom:1px solid var(--b1);" onmouseenter="this.style.background='var(--bg3)'" onmouseleave="this.style.background='${rowBg||''}'" >
-          <td style="padding:10px 12px;">
-            <div style="font-weight:500;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${it.addr||'(주소없음)'}</div>
-            <div style="font-size:11px;color:var(--fg3);">${it.casenum||''}</div>
-          </td>
-          <td style="padding:10px 12px;">${statusBadge(it.status)}</td>
-          <td style="padding:10px 12px;">
-            <div style="font-size:13px;">${fmtDate(it.biddate)}</div>
-            <div style="font-size:11px;">${dStr}</div>
-          </td>
-          <td style="padding:10px 12px;font-family:monospace;font-size:12px;">${it.appraisal||'—'}</td>
-          <td style="padding:10px 12px;font-family:monospace;font-size:12px;color:#4f8eff;">${it.estimate||'—'}</td>
-          <td style="padding:10px 12px;">${siteDots(it.site)}</td>
-          <td style="padding:10px 12px;font-size:12px;color:var(--fg2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${it.memo||''}</td>
-          <td style="padding:10px 12px;text-align:center;">
-            <button onclick="openEditPLItem('${it.id}')" style="background:none;border:none;color:var(--fg3);cursor:pointer;font-size:14px;">···</button>
-          </td>
-        </tr>`;
+      tbody.innerHTML = filtered.map(function(it) {
+        var d = daysDiff(it.biddate);
+        var dStr = d === null ? '—' : d < 0 ? '<span style="color:#888;font-size:11px;">기일 지남</span>' : d <= 3 ? '<span style="color:#ff6b6b;font-weight:500;">D-' + d + '</span>' : d <= 7 ? '<span style="color:#f5a623;font-weight:500;">D-' + d + '</span>' : '<span style="color:var(--fg2);">D-' + d + '</span>';
+        var rowBg = (d !== null && d < 0 && it.status !== '완료' && it.status !== '포기') || (d !== null && d <= 3 && d >= 0) ? 'background:rgba(255,100,100,.05);' : '';
+        var op = it.status === '포기' ? 'opacity:0.5;' : '';
+        return '<tr style="' + rowBg + op + 'border-bottom:1px solid var(--b1);" onmouseenter="this.style.background=\'var(--bg3)\'" onmouseleave="this.style.background=\'' + rowBg + '\'">'
+          + '<td style="padding:10px 12px;"><div style="font-weight:500;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (it.addr||'(주소없음)') + '</div><div style="font-size:11px;color:var(--fg3);">' + (it.casenum||'') + '</div></td>'
+          + '<td style="padding:10px 12px;">' + statusBadge(it.status) + '</td>'
+          + '<td style="padding:10px 12px;"><div style="font-size:13px;">' + fmtDate(it.biddate) + '</div><div style="font-size:11px;">' + dStr + '</div></td>'
+          + '<td style="padding:10px 12px;font-family:monospace;font-size:12px;">' + (it.appraisal||'—') + '</td>'
+          + '<td style="padding:10px 12px;font-family:monospace;font-size:12px;color:#4f8eff;">' + (it.estimate||'—') + '</td>'
+          + '<td style="padding:10px 12px;">' + siteDots(it.site) + '</td>'
+          + '<td style="padding:10px 12px;font-size:12px;color:var(--fg2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (it.memo||'') + '</td>'
+          + '<td style="padding:10px 12px;text-align:center;"><button onclick="openEditPLItem(\'' + it.id + '\')" style="background:none;border:none;color:var(--fg3);cursor:pointer;font-size:14px;">···</button></td>'
+          + '</tr>';
       }).join('');
     }
-
-    const cnt = document.getElementById('pl-count');
-    if (cnt) cnt.textContent = `총 ${items.length}건 · 진행중 ${items.filter(i=>i.status!=='완료'&&i.status!=='포기').length}건`;
+    var cnt = document.getElementById('pl-count');
+    if (cnt) cnt.textContent = '총 ' + items.length + '건 · 진행중 ' + items.filter(function(i){return i.status!=='완료'&&i.status!=='포기';}).length + '건';
   };
-
   window.openAddPropertyModal = function () {
-    ['pl-f-addr','pl-f-case','pl-f-biddate','pl-f-appraisal','pl-f-estimate','pl-f-memo'].forEach(id => {
-      const el = document.getElementById(id); if (el) el.value = '';
+    ['pl-f-addr','pl-f-case','pl-f-biddate','pl-f-appraisal','pl-f-estimate','pl-f-memo'].forEach(function(id) {
+      var el = document.getElementById(id); if (el) el.value = '';
     });
-    const fs = document.getElementById('pl-f-status'); if (fs) fs.value = '관심';
-    const fsi = document.getElementById('pl-f-site'); if (fsi) fsi.value = '0';
-    const eid = document.getElementById('pl-edit-id'); if (eid) eid.value = '';
-    const db = document.getElementById('pl-del-btn'); if (db) db.style.display = 'none';
-    const m = document.getElementById('pl-modal'); if (m) m.style.display = 'flex';
+    var fs = document.getElementById('pl-f-status'); if (fs) fs.value = '관심';
+    var fsi = document.getElementById('pl-f-site'); if (fsi) fsi.value = '0';
+    var eid = document.getElementById('pl-edit-id'); if (eid) eid.value = '';
+    var db = document.getElementById('pl-del-btn'); if (db) db.style.display = 'none';
+    var m = document.getElementById('pl-modal'); if (m) m.style.display = 'flex';
   };
-
   window.openEditPLItem = function (id) {
-    const items = loadItems();
-    const it = items.find(i => i.id === id); if (!it) return;
+    var items = loadItems();
+    var it = items.find(function(i){return i.id===id;}); if (!it) return;
     document.getElementById('pl-edit-id').value = id;
     document.getElementById('pl-f-addr').value = it.addr||'';
     document.getElementById('pl-f-case').value = it.casenum||'';
     document.getElementById('pl-f-status').value = it.status||'관심';
     document.getElementById('pl-f-biddate').value = it.biddate||'';
-});
+    document.getElementById('pl-f-appraisal').value = it.appraisal||'';
+    document.getElementById('pl-f-estimate').value = it.estimate||'';
+    document.getElementById('pl-f-site').value = it.site||'0';
+    document.getElementById('pl-f-memo').value = it.memo||'';
+    var db = document.getElementById('pl-del-btn'); if (db) db.style.display = '';
+    var m = document.getElementById('pl-modal'); if (m) m.style.display = 'flex';
+  };
+  window.closePLModal = function () {
+    var m = document.getElementById('pl-modal'); if (m) m.style.display = 'none';
+  };
+  window.savePLItem = function () {
+    var items = loadItems();
+    var id = document.getElementById('pl-edit-id').value;
+    var item = {
+      id: id || Date.now().toString(),
+      addr:      document.getElementById('pl-f-addr').value.trim(),
+      casenum:   document.getElementById('pl-f-case').value.trim(),
+      status:    document.getElementById('pl-f-status').value,
+      biddate:   document.getElementById('pl-f-biddate').value,
+      appraisal: document.getElementById('pl-f-appraisal').value.trim(),
+      estimate:  document.getElementById('pl-f-estimate').value.trim(),
+      site:      document.getElementById('pl-f-site').value,
+      memo:      document.getElementById('pl-f-memo').value.trim(),
+    };
+    if (!item.addr) { alert('주소를 입력해주세요.'); return; }
+    if (id) {
+      var idx = items.findIndex(function(i){return i.id===id;});
+      if (idx >= 0) items[idx] = item; else items.push(item);
+    } else {
+      items.push(item);
+    }
+    saveItems(items);
+    closePLModal();
+    renderPropertyList();
+  };
+  window.deletePLItem = function () {
+    var id = document.getElementById('pl-edit-id').value;
+    if (!id || !confirm('삭제할까요?')) return;
+    saveItems(loadItems().filter(function(i){return i.id!==id;}));
+    closePLModal();
+    renderPropertyList();
+  };
+})();
