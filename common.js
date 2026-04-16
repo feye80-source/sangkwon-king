@@ -14886,25 +14886,17 @@ window.wr2SummaryCancelEdit = function() {
       window._collectCount = 0; // ★ 수집 개수 카운터 초기화
       const _progEl1 = document.getElementById('efCollectProgress');
       if (_progEl1) _progEl1.textContent = '대기중';
-      
-      // ★ 최신순 정렬 추가 (등록일 기준 내림차순)
-      items.sort((a, b) => {
-        const dateA = a.등록일 || a.created_at || a.createdAt || a.거래년월 || '';
-        const dateB = b.등록일 || b.created_at || b.createdAt || b.거래년월 || '';
-        return String(dateB).localeCompare(String(dateA));
-      });
-      
       const normalizedItems = _setShopCollectedData('disco', items);
       shopPreview('disco', normalizedItems);
       const sv = getSv();
       let added = 0, updated = 0, skipped = 0;
       const now = Date.now();
-      // ★ 토지/공장/창고 제외 키워드 강화
-      const _excludeTypes = ['토지', '공장', '창고', '대지', '임야', '전', '답', '잡종지', '주차장', '나대지'];
+      // ★ 토지/공장/창고 제외 키워드
+      const _excludeTypes = ['토지', '공장', '창고', '대지', '임야', '전', '답', '잡종지'];
       normalizedItems.forEach(item => {
         // 매물유형/용도에 제외 키워드 포함 시 스킵
-        const _typeStr = String(item.매물명 || item.r_type_nm || item.매물유형 || item.용도 || item.건물용도 || '').toLowerCase();
-        if (_excludeTypes.some(kw => _typeStr.includes(kw.toLowerCase()))) { skipped++; return; }
+        const _typeStr = String(item.매물명 || item.r_type_nm || item.매물유형 || item.용도 || item.건물용도 || '');
+        if (_excludeTypes.some(kw => _typeStr.includes(kw))) { skipped++; return; }
         const key = String(item.매물번호 || '');
         const exists = key ? sv.find(s => s.source === '디스코' && s.data && String(s.data.매물번호) === key) : null;
         const entry = {
@@ -14925,7 +14917,6 @@ window.wr2SummaryCancelEdit = function() {
       const skipMsg = skipped > 0 ? ` (토지/공장/창고 ${skipped}건 제외)` : '';
       shopStatus('disco', '✅ ' + msg + skipMsg, '#8b5cf6');
       showToast(`🟣 디스코 ${added}개 추가됨${skipped > 0 ? ' (' + skipped + '건 제외)' : ''}`, 'ok');
-      console.log(`✅ 디스코 수집 완료: 추가 ${added}, 업데이트 ${updated}, 스킵 ${skipped}`);
       const eb = document.getElementById('discoExportBtn');
       if (eb) eb.style.display = '';
       // ★ 주소 없는 항목 역지오코딩
@@ -14937,14 +14928,6 @@ window.wr2SummaryCancelEdit = function() {
       window._collectCount = 0; // ★ 수집 개수 카운터 초기화
       const _progEl2 = document.getElementById('efCollectProgress');
       if (_progEl2) _progEl2.textContent = '대기중';
-      
-      // ★ 최신순 정렬 추가 (등록일 기준 내림차순)
-      items.sort((a, b) => {
-        const dateA = a.등록일 || a.created_at || a.createdAt || a.거래년월 || '';
-        const dateB = b.등록일 || b.created_at || b.createdAt || b.거래년월 || '';
-        return String(dateB).localeCompare(String(dateA));
-      });
-      
       const normalizedItems = _setShopCollectedData('bds', items);
       shopPreview('bds', normalizedItems);
       const sv = getSv();
@@ -14995,12 +14978,12 @@ window.wr2SummaryCancelEdit = function() {
           if (prevIdx == null || _bdsIsBetter(s, sv[prevIdx])) bdsByAddr.set(ak, idx);
         }
       });
-      // ★ 토지/공장/창고 제외 키워드 강화
-      const _excludeTypes = ['토지', '공장', '창고', '대지', '임야', '전', '답', '잡종지', '주차장', '나대지'];
+      // ★ 토지/공장/창고 제외 키워드
+      const _excludeTypes = ['토지', '공장', '창고', '대지', '임야', '전', '답', '잡종지'];
       normalizedItems.forEach(item => {
         // 매물유형/용도에 제외 키워드 포함 시 스킵
-        const _typeStr = String(item.매물명 || item.r_type_nm || item.매물유형 || item.용도 || '').toLowerCase();
-        if (_excludeTypes.some(kw => _typeStr.includes(kw.toLowerCase()))) { skipped++; return; }
+        const _typeStr = String(item.매물명 || item.r_type_nm || item.매물유형 || item.용도 || '');
+        if (_excludeTypes.some(kw => _typeStr.includes(kw))) { skipped++; return; }
         const key = String(item.매물번호 || '');
         const entry = {
           id: 'bds_' + (key || now + '_' + Math.random().toString(36).slice(2)),
@@ -32982,271 +32965,91 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         items = items.filter(s => closedSt.includes(s.watchStatus));
       }
 
-      // ★ 입찰일 기준 정렬 (D-day 계산)
-      const parseBidDate = (dateStr) => {
-        if(!dateStr) return null;
-        const m = String(dateStr).match(/(20\d{2})[.\-\/년\s]*(\d{1,2})[.\-\/월\s]*(\d{1,2})/);
-        if(!m) return null;
-        return new Date(parseInt(m[1]), parseInt(m[2]) - 1, parseInt(m[3]));
-      };
-
-      items.sort((a, b) => {
-        const dateA = parseBidDate(a.data?.매각일 || a.data?.매각기일 || '');
-        const dateB = parseBidDate(b.data?.매각일 || b.data?.매각기일 || '');
-        if(!dateA && !dateB) return 0;
-        if(!dateA) return 1;
-        if(!dateB) return -1;
-        return dateA - dateB;
-      });
-
       let html = `
-        <style>
-          .pl-table { width:100%; min-width:1800px; border-collapse:collapse; text-align:center; font-size:11px; }
-          .pl-table thead { background:rgba(0,0,0,.3); color:var(--mu); position:sticky; top:41px; z-index:1; }
-          .pl-table th { padding:10px 6px; font-weight:600; border-bottom:2px solid rgba(255,255,255,.15); white-space:nowrap; }
-          .pl-table tbody tr { border-bottom:1px solid rgba(255,255,255,.05); transition:background .15s; }
-          .pl-table tbody tr:hover { background:rgba(255,255,255,.03); }
-          .pl-table td { padding:8px 6px; }
-          .pl-editable { background:rgba(79,142,255,.05); cursor:text; }
-          .pl-editable:hover { background:rgba(79,142,255,.1); outline:1px dashed rgba(79,142,255,.3); }
-          .pl-editable input { width:100%; background:transparent; border:none; color:var(--tx); text-align:center; font-size:10px; outline:none; }
-          .pl-editable input:focus { background:rgba(0,0,0,.3); padding:4px; border-radius:4px; }
-          .pl-urgent { background:rgba(239,68,68,.08); }
-          .pl-warning { background:rgba(245,158,11,.08); }
-        </style>
         <div style="padding:10px 14px;background:rgba(255,255,255,.02);border-bottom:1px solid rgba(255,255,255,.06);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:2;backdrop-filter:blur(10px);">
-          <div style="font-size:13px;font-weight:700;color:var(--tx);">📊 경매킹 통합 대시보드 (${items.length}건)</div>
-          <div style="display:flex;gap:8px;align-items:center;">
-            <select id="plListFilter" onchange="window.renderPipelineList()" style="padding:5px 10px;font-size:11px;background:var(--s2);color:var(--tx);border:1px solid var(--b1);border-radius:6px;outline:none;cursor:pointer;">
-              <option value="all" ${currentFilter==='all'?'selected':''}>전체 (진행+종료)</option>
-              <option value="active" ${currentFilter==='active'?'selected':''}>진행 중 (관심~입찰)</option>
-              <option value="closed" ${currentFilter==='closed'?'selected':''}>종료 단락 (낙찰/패찰/보류)</option>
-            </select>
-            <button onclick="window.renderPipelineList()" style="padding:5px 12px;background:var(--ac);border:none;border-radius:6px;color:#000;font-size:11px;font-weight:700;cursor:pointer;">🔄 새로고침</button>
-          </div>
+          <div style="font-size:12px;font-weight:700;color:var(--tx);">📑 파이프라인 리스트 (${items.length}건)</div>
+          <select id="plListFilter" onchange="window.renderPipelineList()" style="padding:4px 8px;font-size:11px;background:var(--s2);color:var(--tx);border:1px solid var(--b1);border-radius:4px;outline:none;cursor:pointer;">
+            <option value="all" ${currentFilter==='all'?'selected':''}>전체 (진행+종료)</option>
+            <option value="active" ${currentFilter==='active'?'selected':''}>진행 중 (관심~입찰)</option>
+            <option value="closed" ${currentFilter==='closed'?'selected':''}>종료 단락 (낙찰/패찰/보류)</option>
+          </select>
         </div>
         <div style="overflow-x:auto;">
-          <table class="pl-table">
-            <thead>
+          <table style="width:100%;min-width:1100px;border-collapse:collapse;text-align:center;font-size:11px;">
+            <thead style="background:rgba(0,0,0,.2);color:var(--mu);position:sticky;top:41px;z-index:1;">
               <tr>
-                <th>상태</th>
-                <th>유형</th>
-                <th>의향</th>
-                <th>매물번호</th>
-                <th style="text-align:left;min-width:180px;">물건명</th>
-                <th style="text-align:left;min-width:150px;">지역</th>
-                <th>특징</th>
-                <th>감정가</th>
-                <th>최저가</th>
-                <th>회차</th>
-                <th style="min-width:90px;">입찰기일</th>
-                <th style="background:rgba(249,115,22,.1);">내 입찰가</th>
-                <th style="background:rgba(16,185,129,.1);">낙찰가</th>
-                <th style="background:rgba(249,115,22,.1);">차순위가</th>
-                <th>보증금</th>
-                <th>월세</th>
-                <th style="min-width:200px;">메모</th>
-                <th>알림</th>
+                <th style="padding:8px 4px;font-weight:600;border-bottom:1px solid rgba(255,255,255,.1);">조회분류</th>
+                <th style="padding:8px 4px;font-weight:600;border-bottom:1px solid rgba(255,255,255,.1);">유형</th>
+                <th style="padding:8px 4px;font-weight:700;border-bottom:1px solid rgba(255,255,255,.1);color:var(--tx);">물건번호(Click)</th>
+                <th style="padding:8px 4px;font-weight:600;text-align:left;border-bottom:1px solid rgba(255,255,255,.1);">물건명</th>
+                <th style="padding:8px 4px;font-weight:600;text-align:left;border-bottom:1px solid rgba(255,255,255,.1);">소재지</th>
+                <th style="padding:8px 4px;font-weight:600;border-bottom:1px solid rgba(255,255,255,.1);">감정가</th>
+                <th style="padding:8px 4px;font-weight:600;border-bottom:1px solid rgba(255,255,255,.1);">최저가/매매가</th>
+                <th style="padding:8px 4px;font-weight:600;border-bottom:1px solid rgba(255,255,255,.1);">진행회차 및 기일</th>
+                <th style="padding:8px 4px;font-weight:600;border-bottom:1px solid rgba(255,255,255,.1);">결과가 추정 / 입찰가</th>
+                <th style="padding:8px 4px;font-weight:600;border-bottom:1px solid rgba(255,255,255,.1);">워크스페이스</th>
+                <th style="padding:8px 4px;font-weight:600;border-bottom:1px solid rgba(255,255,255,.1);">액션</th>
               </tr>
             </thead>
             <tbody>
       `;
 
       if(items.length === 0) {
-        html += `<tr><td colspan="18" style="padding:60px;color:var(--di);font-size:12px;">
-          <div style="opacity:0.5;margin-bottom:8px;">📭</div>
-          선택한 필터 조건에 해당하는 물건이 없습니다.<br>
-          <span style="font-size:10px;color:var(--di);">저장목록에서 물건에 👀/🔍/📍/🎯 표시를 하면 여기에 나타납니다</span>
-        </td></tr>`;
+        html += `<tr><td colspan="11" style="padding:40px;color:var(--di);">선택한 필터 조건에 해당하는 물건이 없습니다.</td></tr>`;
       } else {
         items.forEach(it => {
           const d = it.data || {};
           const room = rooms.find(r => String(r.linkedSavedId) === String(it.id) || String(r.auctionId) === String(it.id));
           
-          // 색상 결정
-          let rowClass = '';
-          let stColor = 'var(--tx)';
-          if(it.watchStatus === 'won') stColor = '#4ade80';
-          if(it.watchStatus === 'lost') stColor = '#ff6370';
-          if(it.watchStatus === 'pass') stColor = 'var(--di)';
+          let stColor = 'var(--tx)'; let bgColor = 'transparent';
+          if(it.watchStatus === 'won') { stColor = '#4ade80'; bgColor = 'rgba(74,222,128,.04)'; }
+          if(it.watchStatus === 'lost') { stColor = '#ff6370'; bgColor = 'rgba(255,99,112,.04)'; }
+          if(it.watchStatus === 'pass') { stColor = 'var(--di)'; bgColor = 'rgba(255,255,255,.01)'; }
           
-          // D-day 계산 및 긴급도
-          const bidDate = parseBidDate(d.매각일 || d.매각기일 || '');
-          const today = new Date(); today.setHours(0,0,0,0);
-          let dday = bidDate ? Math.ceil((bidDate - today) / (1000*60*60*24)) : 999;
+          let numStr = it.id || '-';
+          let appPrice = d.감정가 ? d.감정가.replace(/[^0-9]/g,'') : '';
+          appPrice = appPrice ? (parseInt(appPrice)/10000).toLocaleString()+'만' : '-';
           
-          if(dday >= 0 && dday <= 3 && it.watchStatus === 'bid') rowClass = 'pl-urgent';
-          else if(dday >= 0 && dday <= 7 && it.watchStatus === 'bid') rowClass = 'pl-warning';
+          let minPrice = (d.매매가 || d.최저가) ? String(d.매매가 || d.최저가).replace(/[^0-9]/g,'') : '';
+          minPrice = minPrice ? (parseInt(minPrice)/10000).toLocaleString()+'만' : '-';
           
-          // 물건번호
-          let numStr = d.사건번호 || d.매물번호 || it.id || '-';
+          let bd = d.매각일 || d.매각기일 || '-';
+          let hc = d.회차!=null ? `<span style="margin-right:4px;">${d.회차}회</span>` : '';
           
-          // 감정가
-          let appPrice = d.감정가 ? String(d.감정가).replace(/[^0-9]/g,'') : '';
-          appPrice = appPrice ? (parseInt(appPrice)/100000000).toFixed(1)+'억' : '-';
-          
-          // 최저가
-          let minPrice = (d.최저가 || d.매매가) ? String(d.최저가 || d.매매가).replace(/[^0-9]/g,'') : '';
-          minPrice = minPrice ? (parseInt(minPrice)/100000000).toFixed(1)+'억' : '-';
-          
-          // 입찰기일
-          let bdStr = d.매각일 || d.매각기일 || '-';
-          let ddayStr = '';
-          if(bidDate && dday >= 0) {
-            ddayStr = `<span style="color:${dday<=3?'#ef4444':dday<=7?'#f59e0b':'var(--mu)'};font-weight:700;margin-left:4px;">(D-${dday})</span>`;
-          } else if(bidDate && dday < 0) {
-            ddayStr = `<span style="color:var(--di);font-size:9px;margin-left:4px;">(지남)</span>`;
+          let resStr = '-';
+          if(room && room.bidResult) {
+            const wP = room.bidResult.winPrice ? (parseInt(room.bidResult.winPrice)/10000).toLocaleString()+'만' : '';
+            const mP = room.bidResult.myPrice ? (parseInt(room.bidResult.myPrice)/10000).toLocaleString()+'만' : '';
+            if(wP || mP) resStr = `낙: ${wP||'-'}<br><span style="color:#119ded">내: ${mP||'-'}</span>`;
           }
-          
-          // 회차
-          let hc = d.회차 || d.진행회차 || '-';
-          
-          // 내 입찰가
-          let myBid = room?.bidResult?.myPrice || room?.myBid || '';
-          let myBidDisplay = myBid ? (parseInt(myBid)/100000000).toFixed(2)+'억' : '';
-          
-          // 낙찰가
-          let winBid = room?.bidResult?.winPrice || room?.winningBid || '';
-          let winBidDisplay = winBid ? (parseInt(winBid)/100000000).toFixed(2)+'억' : '';
-          
-          // 차순위가
-          let secondBid = room?.bidResult?.secondPrice || room?.secondBid || '';
-          let secondBidDisplay = secondBid ? (parseInt(secondBid)/100000000).toFixed(2)+'억' : '';
-          
-          // 보증금/월세
-          let deposit = d.보증금 || '-';
-          let monthly = d.월세 || '-';
-          
-          // 메모
-          let memoStr = room?.bidMemo || it.memo || '';
-          
-          // 알림
-          let alerts = [];
-          if(dday >= 0 && dday <= 3 && it.watchStatus === 'bid') alerts.push('🔥입찰임박');
-          if(dday < 0 && it.watchStatus === 'bid' && !room?.bidResult) alerts.push('⚠️결과입력');
-          if(dday >= 0 && dday <= 7 && !room) alerts.push('📍임장필요');
-          let alertStr = alerts.length > 0 ? alerts.join(' ') : '-';
+
+          const doneCts = room ? (room.checklist||[]).filter(c=>c.done).length : 0;
+          let noteCnt = (window._idbCache&&window._idbCache['nt_notes']||[]).filter(n=>n.linkedItemId===it.id).length;
           
           html += `
-            <tr class="${rowClass}">
-              <td style="color:${stColor};font-weight:700;font-size:12px;">${stMap[it.watchStatus]||'-'}</td>
-              <td style="color:var(--di);font-size:10px;">${getType(it)}</td>
-              <td style="font-size:10px;">${it.watchStatus==='bid'?'상':it.watchStatus==='review'?'중':'하'}</td>
-              <td style="color:#119ded;font-family:'JetBrains Mono',monospace;font-weight:600;font-size:10px;cursor:pointer;" onclick="openPopup('${it.id}')">${numStr}</td>
-              <td style="text-align:left;color:var(--tx);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;" onclick="openPopup('${it.id}')" title="${esc(it.title||d.물건명||d.소재지||'')}">${esc(it.title||d.물건명||d.소재지||'-')}</td>
-              <td style="text-align:left;color:var(--mu);font-size:10px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(d.소재지||'')}">${esc(String(d.소재지||'').split(' ').slice(0,3).join(' '))}</td>
-              <td style="color:var(--di);font-size:9px;">${d.특징||d.용도||'-'}</td>
-              <td style="color:var(--di);font-family:'JetBrains Mono',monospace;font-size:10px;">${appPrice}</td>
-              <td style="font-weight:700;color:var(--auction-c);font-family:'JetBrains Mono',monospace;font-size:10px;">${minPrice}</td>
-              <td style="color:var(--mu);font-size:10px;">${hc}</td>
-              <td style="color:var(--mu);white-space:nowrap;font-size:10px;">${bdStr}${ddayStr}</td>
-              <td class="pl-editable" onclick="event.stopPropagation();this.querySelector('input').focus();">
-                <input type="text" value="${myBidDisplay}" placeholder="입찰가 입력" 
-                  onblur="window._updateRoomBid('${room?.id||''}','myPrice',this.value,'${it.id}')"
-                  onkeypress="if(event.key==='Enter')this.blur()"
-                  style="font-family:'JetBrains Mono',monospace;font-weight:600;color:#f97316;">
+            <tr style="border-bottom:1px solid rgba(255,255,255,.05);background:${bgColor};">
+              <td style="padding:10px 4px;color:${stColor};font-weight:700;">${stMap[it.watchStatus]||'-'}</td>
+              <td style="padding:10px 4px;color:var(--di);font-size:10px;">${getType(it)}</td>
+              <td style="padding:10px 4px;color:#119ded;font-family:'JetBrains Mono',monospace;font-weight:600;cursor:pointer;" onclick="openPopup('${it.id}')">${numStr}</td>
+              <td style="padding:10px 4px;text-align:left;color:var(--tx);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;" onclick="openPopup('${it.id}')">${esc(it.title||d.소재지||it.id)}</td>
+              <td style="padding:10px 4px;text-align:left;color:var(--mu);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(String(d.소재지||'').split(' ').slice(0,2).join(' '))}</td>
+              <td style="padding:10px 4px;color:var(--di);">${appPrice}</td>
+              <td style="padding:10px 4px;font-weight:700;color:var(--auction-c);">${minPrice}</td>
+              <td style="padding:10px 4px;color:var(--mu);white-space:nowrap;">${hc}${bd}</td>
+              <td style="padding:8px 4px;font-size:10px;font-family:'JetBrains Mono',monospace;white-space:nowrap;line-height:1.4;">${resStr}</td>
+              <td style="padding:10px 4px;font-size:10px;color:var(--mu);">${room? `분석 ${doneCts}/8` : '미연결'}${noteCnt? ` <span style="background:var(--ac);color:#111;padding:1px 4px;border-radius:4px;font-weight:700;">N${noteCnt}</span>`:''}</td>
+              <td style="padding:6px 4px;">
+                <div style="display:flex;gap:4px;justify-content:center;">
+                  ${room ? `<button onclick="_wbGoRoom('${room.id}')" style="padding:4px 6px;background:rgba(17,157,237,.1);border:1px solid rgba(17,157,237,.3);border-radius:4px;color:#119ded;font-size:10px;cursor:pointer;" title="워크룸 열기">🗂</button>` : `<button onclick="_wbCreateAndLink('${it.id}')" style="padding:4px 6px;background:var(--s2);border:1px dashed rgba(17,157,237,.3);border-radius:4px;color:var(--mu);font-size:10px;cursor:pointer;" title="새 워크룸 만들기">🗂 만들기</button>`}
+                  ${room ? `<button onclick="wr2QuickShowBidResultModal('${room.id}')" style="padding:4px 6px;background:var(--s2);border:1px solid var(--b1);border-radius:4px;color:var(--or);font-size:10px;cursor:pointer;" title="조치 및 결과 기록">⚡ 조치</button>` : `<button disabled style="padding:4px 6px;background:var(--s1);border:1px solid var(--b1);border-radius:4px;color:var(--di);font-size:10px;opacity:0.3;">⚡ 조치</button>`}
+                </div>
               </td>
-              <td class="pl-editable" onclick="event.stopPropagation();this.querySelector('input').focus();">
-                <input type="text" value="${winBidDisplay}" placeholder="낙찰가 입력"
-                  onblur="window._updateRoomBid('${room?.id||''}','winPrice',this.value,'${it.id}')"
-                  onkeypress="if(event.key==='Enter')this.blur()"
-                  style="font-family:'JetBrains Mono',monospace;font-weight:600;color:#10b981;">
-              </td>
-              <td class="pl-editable" onclick="event.stopPropagation();this.querySelector('input').focus();">
-                <input type="text" value="${secondBidDisplay}" placeholder="차순위가"
-                  onblur="window._updateRoomBid('${room?.id||''}','secondPrice',this.value,'${it.id}')"
-                  onkeypress="if(event.key==='Enter')this.blur()"
-                  style="font-family:'JetBrains Mono',monospace;">
-              </td>
-              <td style="color:var(--di);font-size:10px;">${deposit}</td>
-              <td style="color:var(--di);font-size:10px;">${monthly}</td>
-              <td class="pl-editable" onclick="event.stopPropagation();this.querySelector('input').focus();" style="text-align:left;">
-                <input type="text" value="${esc(memoStr)}" placeholder="메모 입력..."
-                  onblur="window._updateRoomMemo('${room?.id||''}',this.value,'${it.id}')"
-                  onkeypress="if(event.key==='Enter')this.blur()"
-                  style="text-align:left;">
-              </td>
-              <td style="color:${alerts.length>0?'#f59e0b':'var(--di)'};font-size:9px;white-space:nowrap;">${alertStr}</td>
             </tr>
           `;
         });
       }
       html += `</tbody></table></div>`;
       container.innerHTML = html;
-    };
-
-    // ★ 테이블에서 입찰가/낙찰가 업데이트 함수
-    window._updateRoomBid = function(roomId, field, value, savedId) {
-      if(!value || value.trim() === '') return;
-      
-      // 억 단위 파싱
-      let numVal = 0;
-      if(value.includes('억')) {
-        const parts = value.split('억');
-        numVal = parseFloat(parts[0]) * 100000000;
-        if(parts[1]) numVal += parseFloat(parts[1].replace(/[^0-9.]/g,'')) * 10000;
-      } else {
-        numVal = parseFloat(value.replace(/[^0-9.]/g,'')) * 100000000;
-      }
-      
-      if(isNaN(numVal) || numVal <= 0) return;
-      
-      // 작업룸이 있으면 업데이트
-      if(roomId && typeof wrGetRooms === 'function' && typeof wrSaveRooms === 'function') {
-        const rooms = wrGetRooms();
-        const room = rooms.find(r => r.id === roomId);
-        if(room) {
-          if(!room.bidResult) room.bidResult = {};
-          room.bidResult[field] = String(numVal);
-          if(field === 'myPrice') room.myBid = String(numVal);
-          if(field === 'winPrice') room.winningBid = String(numVal);
-          wrSaveRooms(rooms);
-          console.log(`✅ 작업룸 ${roomId} ${field} 업데이트: ${numVal}`);
-        }
-      }
-      
-      // saved 데이터도 업데이트
-      if(savedId && typeof getSv === 'function' && typeof setSv === 'function') {
-        const sv = getSv();
-        const item = sv.find(s => s.id === savedId);
-        if(item) {
-          if(!item.bidData) item.bidData = {};
-          item.bidData[field] = String(numVal);
-          setSv(sv);
-          console.log(`✅ 저장목록 ${savedId} ${field} 업데이트: ${numVal}`);
-        }
-      }
-      
-      window.showToast && showToast(`💾 ${field==='myPrice'?'내 입찰가':field==='winPrice'?'낙찰가':'차순위가'} 저장됨`, 'ok');
-    };
-
-    // ★ 메모 업데이트 함수
-    window._updateRoomMemo = function(roomId, value, savedId) {
-      // 작업룸이 있으면 업데이트
-      if(roomId && typeof wrGetRooms === 'function' && typeof wrSaveRooms === 'function') {
-        const rooms = wrGetRooms();
-        const room = rooms.find(r => r.id === roomId);
-        if(room) {
-          room.bidMemo = value;
-          wrSaveRooms(rooms);
-          console.log(`✅ 작업룸 ${roomId} 메모 업데이트`);
-        }
-      }
-      
-      // saved 데이터도 업데이트
-      if(savedId && typeof getSv === 'function' && typeof setSv === 'function') {
-        const sv = getSv();
-        const item = sv.find(s => s.id === savedId);
-        if(item) {
-          item.memo = value;
-          setSv(sv);
-          console.log(`✅ 저장목록 ${savedId} 메모 업데이트`);
-        }
-      }
-      
-      if(value.trim()) {
-        window.showToast && showToast('💬 메모 저장됨', 'ok');
-      }
     };
 
     // ★ 작업룸 기반 파이프라인 알람 배너
