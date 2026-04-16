@@ -10854,8 +10854,8 @@ window.wr2SummaryCancelEdit = function() {
       var sel = document.getElementById('wrRoomSelectMap') || document.getElementById('swRoomSelect');
       var roomId = (sel && sel.value) || window._swActiveRoomId || '';
       if (!roomId) { showToast('룸을 선택하세요', 'warn'); return; }
-      showPage(4);
-      setTimeout(function () { if (window.pmShowTab) window.pmShowTab('work'); if (typeof window.wrDbOpenRoom === 'function') window.wrDbOpenRoom(roomId); }, 300);
+      showPage(3);
+      setTimeout(function () { showInsTab(8); if (typeof window.wrDbOpenRoom === 'function') window.wrDbOpenRoom(roomId); }, 150);
     };
 
     window.wrCreateRoomAndSave = function () {
@@ -29852,8 +29852,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           window.wr2State.activeRoomId = roomId;
           window.wr2State.activePhase = _targetPhase;
           window.wr2State.activeView = 'phase';
-          showPage(4);
-          setTimeout(function() { if (window.pmShowTab) window.pmShowTab('work'); }, 100);
+          showPage(3);
+          showInsTab(8);
           setTimeout(function() {
             if (typeof window.wr2SwitchView === 'function') window.wr2SwitchView('phase');
             if (typeof window.wr2Render === 'function') window.wr2Render();
@@ -31713,19 +31713,15 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       setTimeout(renderWatchBoard, 50);
     };
     window._wbGoRoom = function (roomId) {
-      if (window.showPage) showPage(4);
-      setTimeout(function () {
-        if (window.pmShowTab) window.pmShowTab('work');
-        setTimeout(function () { if (typeof window.wrDbOpenRoom === 'function') window.wrDbOpenRoom(roomId); }, 150);
-      }, 100);
+      showInsTab(8);
+      setTimeout(function () { if (typeof window.wrDbOpenRoom === 'function') window.wrDbOpenRoom(roomId); }, 80);
     };
     window._wbCreateAndLink = function (itemId) {
       if (typeof window.wr2OpenOrCreateFromSavedId === 'function') {
         window.wr2OpenOrCreateFromSavedId(itemId);
         return;
       }
-      if (window.showPage) showPage(4);
-      setTimeout(function() { if (window.pmShowTab) window.pmShowTab('work'); }, 100);
+      showInsTab(8);
       showToast('작업룸 기능을 불러오는 중입니다. 잠시 후 다시 시도해주세요.', 'warn');
     };
     window._wbNote = function (itemId) {
@@ -39890,70 +39886,32 @@ window.addEventListener('DOMContentLoaded', () => {
   window.pmShowTab = function(tab) {
     var list = document.getElementById('pm-panel-list');
     var work = document.getElementById('pm-panel-work');
-    var pipeline = document.getElementById('pm-panel-pipeline');
     var tabList = document.getElementById('pm-tab-list');
     var tabWork = document.getElementById('pm-tab-work');
-    var tabPipeline = document.getElementById('pm-tab-pipeline');
-    if (!list) return;
-
-    // 모두 숨기기
-    if (list) list.style.display = 'none';
-    if (work) work.style.display = 'none';
-    if (pipeline) pipeline.style.display = 'none';
-    [tabList, tabWork, tabPipeline].forEach(function(t) {
-      if (t) { t.style.borderBottomColor = 'transparent'; t.style.color = 'var(--fg2)'; }
-    });
-
+    if (!list || !work) return;
     if (tab === 'list') {
-      if (list) list.style.display = '';
-      if (tabList) { tabList.style.borderBottomColor = 'var(--accent,#4f8eff)'; tabList.style.color = 'var(--fg)'; }
+      list.style.display = ''; work.style.display = 'none';
+      if (tabList) { tabList.style.borderBottomColor='var(--accent,#4f8eff)'; tabList.style.color='var(--fg)'; }
+      if (tabWork) { tabWork.style.borderBottomColor='transparent'; tabWork.style.color='var(--fg2)'; }
       renderPropertyList();
-    } else if (tab === 'work') {
-      if (work) work.style.display = '';
-      if (tabWork) { tabWork.style.borderBottomColor = 'var(--accent,#4f8eff)'; tabWork.style.color = 'var(--fg)'; }
-      // ipage8(작업룸) 패널을 마운트 포인트로 이동
-      var mount = document.getElementById('pm-workroom-mount');
-      var src = document.getElementById('ipage8');
-      if (mount && src && !mount.contains(src)) {
-        src.style.display = '';
-        src.style.width = '100%';
-        src.style.height = '100%';
-        src.style.overflow = 'auto';
-        mount.appendChild(src);
-      } else if (src) {
-        src.style.display = '';
-      }
-      if (window.wr2Render) window.wr2Render();
-    } else if (tab === 'pipeline') {
-      if (pipeline) pipeline.style.display = '';
-      if (tabPipeline) { tabPipeline.style.borderBottomColor = 'var(--accent,#4f8eff)'; tabPipeline.style.color = 'var(--fg)'; }
-      // ipage5(파이프라인) 패널을 마운트 포인트로 이동
-      var mountP = document.getElementById('pm-pipeline-mount');
-      var srcP = document.getElementById('ipage5');
-      if (mountP && srcP && !mountP.contains(srcP)) {
-        srcP.style.display = '';
-        srcP.style.width = '100%';
-        srcP.style.height = '100%';
-        srcP.style.overflow = 'auto';
-        mountP.appendChild(srcP);
-      } else if (srcP) {
-        srcP.style.display = '';
-      }
+    } else {
+      list.style.display = 'none'; work.style.display = '';
+      if (tabWork) { tabWork.style.borderBottomColor='var(--accent,#4f8eff)'; tabWork.style.color='var(--fg)'; }
+      if (tabList) { tabList.style.borderBottomColor='transparent'; tabList.style.color='var(--fg2)'; }
+      // 기존 작업룸 탭(page3 → 인사이트탭)으로 내부 이동
+      if (window.showPage) window.showPage(3);
     }
   };
 
   // ── 작업룸 이동 ─────────────────────────
   window.plGoToWorkroom = function(roomId) {
-    if (window.showPage) window.showPage(4);
+    if (window.showPage) window.showPage(3);
     setTimeout(function(){
-      if (window.pmShowTab) window.pmShowTab('work');
-      setTimeout(function(){
-        if (window.wr2State) {
-          window.wr2State.activeRoomId = roomId;
-          if (window.wr2Render) window.wr2Render();
-        }
-      }, 150);
-    }, 100);
+      if (window.wr2State) {
+        window.wr2State.activeRoomId = roomId;
+        if (window.wr2Render) window.wr2Render();
+      }
+    }, 300);
   };
 
   // ── 모달: 추가 ──────────────────────────

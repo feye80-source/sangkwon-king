@@ -2510,9 +2510,9 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
       <!-- 인사이트 새 뼈대 (v68 스타일) -->
       <div class="insw" id="insw">
         <div class="insw-seg" role="tablist" aria-label="인사이트탭 섹션">
-          <button class="ins-stab" id="itab5" onclick="showInsTab(5)" style="display:none;">🎯 파이프라인 · 플래너<span id="watchCnt"
+          <button class="ins-stab" id="itab5" onclick="showInsTab(5)">🎯 파이프라인 · 플래너<span id="watchCnt"
               style="display:none;background:var(--or);color:#111;font-size:9px;padding:1px 5px;border-radius:8px;margin-left:4px;font-family:'JetBrains Mono',monospace;">0</span></button>
-          <button class="ins-stab on" id="itab8" onclick="showInsTab(8)" style="display:none;">🗂 작업룸</button>
+          <button class="ins-stab on" id="itab8" onclick="showInsTab(8)">🗂 작업룸</button>
           <button class="ins-stab" id="itab0" onclick="showInsTab(0)">📓 노트</button>
           <button class="ins-stab" id="itab4" onclick="showInsTab(4)">⭐ 알짜</button>
           <button class="ins-stab" id="itab1" onclick="showInsTab(1)">🧮 계산기</button>
@@ -4672,7 +4672,6 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
       <div style="display:flex;gap:0;border-bottom:1px solid var(--b1);padding:0 16px;background:var(--bg2);flex-shrink:0;">
         <button id="pm-tab-list" onclick="pmShowTab('list')" style="padding:10px 18px;font-size:13px;font-weight:500;border:none;border-bottom:2px solid var(--accent,#4f8eff);background:transparent;color:var(--fg);cursor:pointer;">📋 물건리스트</button>
         <button id="pm-tab-work" onclick="pmShowTab('work')" style="padding:10px 18px;font-size:13px;font-weight:500;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--fg2);cursor:pointer;">🗂 작업룸</button>
-        <button id="pm-tab-pipeline" onclick="pmShowTab('pipeline')" style="padding:10px 18px;font-size:13px;font-weight:500;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--fg2);cursor:pointer;">🎯 파이프라인</button>
       </div>
 
       <!-- 물건리스트 패널 -->
@@ -4728,12 +4727,7 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
 
       <!-- 작업룸 패널 (기존 작업룸 내용을 iframe처럼 show/hide) -->
       <div id="pm-panel-work" style="display:none;flex:1;overflow:hidden;">
-        <div id="pm-workroom-mount" style="width:100%;height:100%;overflow:hidden;"></div>
-      </div>
-
-      <!-- 파이프라인 패널 -->
-      <div id="pm-panel-pipeline" style="display:none;flex:1;overflow:hidden;">
-        <div id="pm-pipeline-mount" style="width:100%;height:100%;overflow:hidden;"></div>
+        <div style="padding:20px;color:var(--fg2);font-size:13px;">작업룸 패널 — 기존 탭의 작업룸이 여기에 연동됩니다.</div>
       </div>
 
       <!-- 물건 추가/수정 모달 -->
