@@ -4730,7 +4730,7 @@ var _safeLocalSet = function(key, value) {
                   if (oldPanel) oldPanel.remove();
 
                   // closed 상태가 아니면 패널 없음
-                  const isClosed = (room.status === 'closed' || room.phase === 'closed' || room.activePhase === 'closed');
+                  const isClosed = ['closed','pass','dropped','lost','won'].includes(String(room.status || '')) || room.phase === 'closed' || room.activePhase === 'closed' || !!room.bidResult;
                   if (!isClosed) return;
 
                   const br = room.bidResult || {};
@@ -4748,13 +4748,13 @@ var _safeLocalSet = function(key, value) {
                   };
 
                   const winPrice = parseNum(br.winPrice);
-                  const myBid   = parseNum(br.myBid);
+                  const myBid   = parseNum(br.myBid || br.myPrice);
                   const secBid  = parseNum(br.secondBid);
                   const diff = (myBid && winPrice) ? (myBid - winPrice) : null;
 
                   // 패결 / 낙찰 여부 (myBid >= winPrice 이면 낙찰, 아니면 패찰)
                   const isWon = winPrice && myBid && myBid >= winPrice;
-                  const resultLabel = !winPrice ? '결과 미입력' : isWon ? '🏆 낙찰' : '❌ 패찰';
+                  const resultLabel = !winPrice ? '결과 미입력' : (room.status === 'won' || isWon) ? '🏆 낙찰' : '❌ 패찰';
                   const panelAccent = isWon ? '#22c55e' : (winPrice ? '#ef4444' : '#fbbf24');
                   const panelBg    = isWon ? 'rgba(34,197,94,.06)' : (winPrice ? 'rgba(239,68,68,.06)' : 'rgba(251,191,36,.04)');
                   const panelBorder = isWon ? 'rgba(34,197,94,.3)' : (winPrice ? 'rgba(239,68,68,.3)' : 'rgba(251,191,36,.25)');
@@ -4794,7 +4794,7 @@ var _safeLocalSet = function(key, value) {
                       <!-- 내 입찰가 -->
                       <div style="background:rgba(0,0,0,.25);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:12px 14px;">
                         <div style="font-size:10px;color:var(--mu);margin-bottom:5px;letter-spacing:.3px;">✋ 내 입찰가</div>
-                        <input id="wr2BrMyBid" type="text" inputmode="numeric" placeholder="예: 14500" value="${br.myBid || ''}"
+                        <input id="wr2BrMyBid" type="text" inputmode="numeric" placeholder="예: 14500" value="${br.myBid || br.myPrice || ''}"
                           style="width:100%;background:none;border:none;outline:none;font-size:22px;font-weight:800;color:var(--tx);font-family:inherit;letter-spacing:-1px;"
                           oninput="window._wr2BidResultPreview()">
                         <div id="wr2BrMyDisp" style="font-size:11px;color:var(--mu);margin-top:2px;">${fmtW(br.myBid) || '—'}</div>
@@ -4874,6 +4874,7 @@ var _safeLocalSet = function(key, value) {
                     r.bidResult = {
                       winPrice: _v('wr2BrWinPrice').replace(/[^0-9.]/g, '') || null,
                       myBid:    _v('wr2BrMyBid').replace(/[^0-9.]/g, '') || null,
+                      myPrice:  _v('wr2BrMyBid').replace(/[^0-9.]/g, '') || null,
                       secondBid:_v('wr2BrSecBid').replace(/[^0-9.]/g, '') || null,
                       memo:     _v('wr2BrMemo') || null,
                       savedAt:  Date.now()
@@ -4881,7 +4882,7 @@ var _safeLocalSet = function(key, value) {
                     r.updatedAt = Date.now();
                     if (window._sbMarkRoomDirty) window._sbMarkRoomDirty(r.id);
                     saveRooms();
-                    if (!silent) showToast('📦 낙찰 결과 저장 완료', 'ok');
+                    if (!silent) showToast('📦 결과 요약 저장 완료', 'ok');
                   };
                 }
 
@@ -32939,115 +32940,220 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
     window.renderPipelineList = function() {
       const container = document.getElementById('pipelineListBoard');
-      if(!container) return;
-      
-      const esc = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+      if (!container) return;
+
+      const esc = (s) => String(s == null ? '' : s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+      const fmtNum = (v) => {
+        const n = Number(String(v == null ? '' : v).replace(/[^0-9.-]/g, ''));
+        return isNaN(n) || !n ? '' : n.toLocaleString('ko-KR');
+      };
+      const fmtWan = (v) => {
+        const n = Number(String(v == null ? '' : v).replace(/[^0-9.-]/g, ''));
+        if (isNaN(n) || !n) return '-';
+        if (n >= 100000000) {
+          const eok = Math.floor(n / 100000000);
+          const man = Math.round((n % 100000000) / 10000);
+          return man ? (eok + '억 ' + man.toLocaleString('ko-KR')) : (eok + '억');
+        }
+        return Math.round(n / 10000).toLocaleString('ko-KR') + '만';
+      };
+      const parseDate = (v) => {
+        if (!v) return null;
+        const s = String(v).trim();
+        const m = s.match(/(20\d{2})[^0-9]?(\d{1,2})[^0-9]?(\d{1,2})/);
+        if (!m) return null;
+        const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+        return isNaN(d.getTime()) ? null : d;
+      };
+      const fmtDate = (v) => {
+        const d = parseDate(v);
+        if (!d) return v || '-';
+        return d.getFullYear() + '.' + (d.getMonth() + 1) + '.' + d.getDate();
+      };
+      const ddayOf = (v) => {
+        const d = parseDate(v);
+        if (!d) return null;
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        return Math.round((d - today) / 86400000);
+      };
+      const getSavedType = (item) => {
+        if (!item) return '-';
+        if (item.mode === 'auction') return '경매';
+        if (item.mode === 'gongmae') return '공매';
+        if (item.mode === 'listing') return '일반';
+        return item.data && (item.data['유형'] || item.data['매물종류'] || item.data['물건종류']) || '기타';
+      };
+      const getPriority = (room, item) => {
+        const raw = room && (room.priority || room.importance || room.rank || room.weight || room.grade)
+          || (item && item.memoPriority)
+          || (item && item.data && (item.data['의향'] || item.data['우선도']))
+          || '';
+        const s = String(raw || '').trim();
+        return s || '-';
+      };
+      const getAnalysisState = (room, item) => {
+        const st = String((room && (room.status || room.phase || room.activePhase)) || (item && item.watchStatus) || 'review');
+        if (st === 'interest' || st === 'review') return '관심·검토';
+        if (st === 'field') return '현장';
+        if (st === 'bid') return '입찰';
+        if (st === 'won') return '낙찰';
+        if (st === 'lost') return '패찰';
+        if (st === 'closed' || st === 'pass' || st === 'dropped') return '종료';
+        return st || '-';
+      };
+      const getRoomByItem = (rooms, itemId) => rooms.find(r => String(r.linkedSavedId || r.auctionId || r.listingId || '') === String(itemId));
+      const getMainItemByRoom = (sv, room) => {
+        const linkId = room && (room.linkedSavedId || room.auctionId || room.listingId);
+        if (linkId) {
+          const found = sv.find(s => String(s.id) === String(linkId));
+          if (found) return found;
+        }
+        return null;
+      };
+      const getAlarm = (room, item) => {
+        const saleDateStr = (room && room.bidDate) || (item && item.data && (item.data['매각일'] || item.data['매각기일'])) || '';
+        const dday = ddayOf(saleDateStr);
+        const isClosed = room && ['closed','won','lost','pass','dropped'].includes(String(room.status || ''));
+        if (dday == null || isClosed || !room) return '';
+        const sections = (window.wr2State && Array.isArray(window.wr2State.sections)) ? window.wr2State.sections : [];
+        const hasFieldLog = !!sections.find(sec => sec && sec.roomId === room.id && sec.phase === 'field' && !sec.deletedAt && ((sec.content && String(sec.content).trim()) || (sec.rows && sec.rows.length)));
+        const hasBidPlan = !!((room.bidResult && (room.bidResult.myBid || room.bidResult.myPrice)) || room.expectedBidPrice || room.expectedBid || room.bidPrice);
+        if (dday < 0 && !(room.bidResult && (room.bidResult.winPrice || room.bidResult.myBid || room.bidResult.myPrice))) return '결과 입력';
+        if (dday <= 3 && !hasBidPlan) return '입찰 준비';
+        if (dday > 3 && dday <= 7 && !hasFieldLog) return '임장 필요';
+        return '';
+      };
+      const getResultText = (room) => {
+        if (!room) return '-';
+        const br = room.bidResult || {};
+        const win = br.winPrice || '';
+        const my = br.myBid || br.myPrice || '';
+        const second = br.secondBid || '';
+        const resultLabel = room.status === 'won' ? '낙찰' : (room.status === 'lost' ? '패찰' : (room.status === 'closed' || room.status === 'pass' || room.status === 'dropped') ? '종료' : '진행중');
+        let lines = [resultLabel];
+        if (win) lines.push('낙찰 ' + fmtWan(win));
+        if (my) lines.push('내입찰 ' + fmtWan(my));
+        if (second) lines.push('차순위 ' + fmtWan(second));
+        return lines.join(' · ');
+      };
+      const getMemo = (room, item) => {
+        const brMemo = room && room.bidResult && room.bidResult.memo;
+        const memo = brMemo || (room && room.summaryMemo) || (item && item.memo) || '';
+        return String(memo || '').trim();
+      };
 
       const sv = typeof getSv === 'function' ? getSv() : [];
-      let items = sv.filter(s => s.watchStatus);
       const rooms = typeof wrGetRooms === 'function' ? wrGetRooms() : [];
-      
-      const stMap = { 'interest':'👀 관심', 'review':'🔍 검토', 'field':'📍 현장', 'bid':'🎯 입찰', 'won':'✅ 낙찰', 'lost':'❌ 패찰', 'pass':'🗑️ 포기' };
-      const getType = (it) => {
-        if(it.mode === 'auction') return it.data?.물건종류 || '경매';
-        if(it.mode === 'listing') return it.data?.매물종류 || '일반';
-        return '기타';
-      };
+      const watchItems = sv.filter(s => s && s.watchStatus);
+      const roomOnly = rooms.filter(room => !getMainItemByRoom(sv, room));
+      let rows = [];
+
+      watchItems.forEach(item => {
+        const room = getRoomByItem(rooms, item.id);
+        rows.push({ room, item, key: 'item:' + item.id });
+      });
+      roomOnly.forEach(room => rows.push({ room, item: null, key: 'room:' + room.id }));
 
       let filterEl = document.getElementById('plListFilter');
       let currentFilter = filterEl ? filterEl.value : 'active';
-      
-      if(currentFilter === 'active') {
-        const activeSt = ['interest','review','field','bid'];
-        items = items.filter(s => activeSt.includes(s.watchStatus));
-      } else if(currentFilter === 'closed') {
-        const closedSt = ['won','lost','pass'];
-        items = items.filter(s => closedSt.includes(s.watchStatus));
-      }
+      if (currentFilter === 'active') rows = rows.filter(row => {
+        const st = String((row.room && row.room.status) || (row.item && row.item.watchStatus) || 'review');
+        return !['won','lost','pass','closed','dropped'].includes(st);
+      });
+      else if (currentFilter === 'closed') rows = rows.filter(row => {
+        const st = String((row.room && row.room.status) || (row.item && row.item.watchStatus) || 'review');
+        return ['won','lost','pass','closed','dropped'].includes(st);
+      });
+
+      rows.sort((a, b) => {
+        const ad = parseDate((a.room && a.room.bidDate) || (a.item && a.item.data && (a.item.data['매각일'] || a.item.data['매각기일'])) || '') || new Date(2099,0,1);
+        const bd = parseDate((b.room && b.room.bidDate) || (b.item && b.item.data && (b.item.data['매각일'] || b.item.data['매각기일'])) || '') || new Date(2099,0,1);
+        return ad - bd;
+      });
 
       let html = `
-        <div style="padding:10px 14px;background:rgba(255,255,255,.02);border-bottom:1px solid rgba(255,255,255,.06);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:2;backdrop-filter:blur(10px);">
-          <div style="font-size:12px;font-weight:700;color:var(--tx);">📑 파이프라인 리스트 (${items.length}건)</div>
+        <div style="padding:10px 14px;background:rgba(255,255,255,.02);border-bottom:1px solid rgba(255,255,255,.06);display:flex;align-items:center;justify-content:space-between;gap:10px;position:sticky;top:0;z-index:3;backdrop-filter:blur(10px);">
+          <div>
+            <div style="font-size:13px;font-weight:800;color:var(--tx);">📑 플래너 리스트 (${rows.length}건)</div>
+            <div style="font-size:10px;color:var(--mu);margin-top:3px;">물건 상태 · 입찰기일 · 결과 · 메모를 한 화면에서 관리</div>
+          </div>
           <select id="plListFilter" onchange="window.renderPipelineList()" style="padding:4px 8px;font-size:11px;background:var(--s2);color:var(--tx);border:1px solid var(--b1);border-radius:4px;outline:none;cursor:pointer;">
-            <option value="all" ${currentFilter==='all'?'selected':''}>전체 (진행+종료)</option>
-            <option value="active" ${currentFilter==='active'?'selected':''}>진행 중 (관심~입찰)</option>
-            <option value="closed" ${currentFilter==='closed'?'selected':''}>종료 단락 (낙찰/패찰/보류)</option>
+            <option value="all" ${currentFilter==='all'?'selected':''}>전체</option>
+            <option value="active" ${currentFilter==='active'?'selected':''}>진행 중</option>
+            <option value="closed" ${currentFilter==='closed'?'selected':''}>종료</option>
           </select>
         </div>
-        <div style="overflow-x:auto;">
-          <table style="width:100%;min-width:1100px;border-collapse:collapse;text-align:center;font-size:11px;">
-            <thead style="background:rgba(0,0,0,.2);color:var(--mu);position:sticky;top:41px;z-index:1;">
+        <div style="overflow:auto;min-height:0;">
+          <table style="width:100%;min-width:1560px;border-collapse:collapse;font-size:11px;table-layout:fixed;">
+            <thead style="position:sticky;top:55px;z-index:2;background:rgba(12,14,18,.96);backdrop-filter:blur(8px);">
               <tr>
-                <th style="padding:8px 4px;font-weight:600;border-bottom:1px solid rgba(255,255,255,.1);">조회분류</th>
-                <th style="padding:8px 4px;font-weight:600;border-bottom:1px solid rgba(255,255,255,.1);">유형</th>
-                <th style="padding:8px 4px;font-weight:700;border-bottom:1px solid rgba(255,255,255,.1);color:var(--tx);">물건번호(Click)</th>
-                <th style="padding:8px 4px;font-weight:600;text-align:left;border-bottom:1px solid rgba(255,255,255,.1);">물건명</th>
-                <th style="padding:8px 4px;font-weight:600;text-align:left;border-bottom:1px solid rgba(255,255,255,.1);">소재지</th>
-                <th style="padding:8px 4px;font-weight:600;border-bottom:1px solid rgba(255,255,255,.1);">감정가</th>
-                <th style="padding:8px 4px;font-weight:600;border-bottom:1px solid rgba(255,255,255,.1);">최저가/매매가</th>
-                <th style="padding:8px 4px;font-weight:600;border-bottom:1px solid rgba(255,255,255,.1);">진행회차 및 기일</th>
-                <th style="padding:8px 4px;font-weight:600;border-bottom:1px solid rgba(255,255,255,.1);">결과가 추정 / 입찰가</th>
-                <th style="padding:8px 4px;font-weight:600;border-bottom:1px solid rgba(255,255,255,.1);">워크스페이스</th>
-                <th style="padding:8px 4px;font-weight:600;border-bottom:1px solid rgba(255,255,255,.1);">액션</th>
+                ${['분석상태','유형','우선도','물건번호','물건명','지역','특징','감정가','현재 최저가','회차','입찰기일','결과','내 입찰가','보증금','월세','예상 입찰가','알람','메모','작업룸'].map((label, idx) => `<th style="padding:9px 6px;border-bottom:1px solid rgba(255,255,255,.08);color:${idx===0||idx===16?'var(--tx)':'var(--mu)'};font-weight:700;">${label}</th>`).join('')}
               </tr>
             </thead>
-            <tbody>
-      `;
+            <tbody>`;
 
-      if(items.length === 0) {
-        html += `<tr><td colspan="11" style="padding:40px;color:var(--di);">선택한 필터 조건에 해당하는 물건이 없습니다.</td></tr>`;
+      if (!rows.length) {
+        html += `<tr><td colspan="19" style="padding:42px 12px;text-align:center;color:var(--di);">표시할 물건이 없습니다.</td></tr>`;
       } else {
-        items.forEach(it => {
-          const d = it.data || {};
-          const room = rooms.find(r => String(r.linkedSavedId) === String(it.id) || String(r.auctionId) === String(it.id));
-          
-          let stColor = 'var(--tx)'; let bgColor = 'transparent';
-          if(it.watchStatus === 'won') { stColor = '#4ade80'; bgColor = 'rgba(74,222,128,.04)'; }
-          if(it.watchStatus === 'lost') { stColor = '#ff6370'; bgColor = 'rgba(255,99,112,.04)'; }
-          if(it.watchStatus === 'pass') { stColor = 'var(--di)'; bgColor = 'rgba(255,255,255,.01)'; }
-          
-          let numStr = it.id || '-';
-          let appPrice = d.감정가 ? d.감정가.replace(/[^0-9]/g,'') : '';
-          appPrice = appPrice ? (parseInt(appPrice)/10000).toLocaleString()+'만' : '-';
-          
-          let minPrice = (d.매매가 || d.최저가) ? String(d.매매가 || d.최저가).replace(/[^0-9]/g,'') : '';
-          minPrice = minPrice ? (parseInt(minPrice)/10000).toLocaleString()+'만' : '-';
-          
-          let bd = d.매각일 || d.매각기일 || '-';
-          let hc = d.회차!=null ? `<span style="margin-right:4px;">${d.회차}회</span>` : '';
-          
-          let resStr = '-';
-          if(room && room.bidResult) {
-            const wP = room.bidResult.winPrice ? (parseInt(room.bidResult.winPrice)/10000).toLocaleString()+'만' : '';
-            const mP = room.bidResult.myPrice ? (parseInt(room.bidResult.myPrice)/10000).toLocaleString()+'만' : '';
-            if(wP || mP) resStr = `낙: ${wP||'-'}<br><span style="color:#119ded">내: ${mP||'-'}</span>`;
-          }
-
-          const doneCts = room ? (room.checklist||[]).filter(c=>c.done).length : 0;
-          let noteCnt = (window._idbCache&&window._idbCache['nt_notes']||[]).filter(n=>n.linkedItemId===it.id).length;
-          
-          html += `
-            <tr style="border-bottom:1px solid rgba(255,255,255,.05);background:${bgColor};">
-              <td style="padding:10px 4px;color:${stColor};font-weight:700;">${stMap[it.watchStatus]||'-'}</td>
-              <td style="padding:10px 4px;color:var(--di);font-size:10px;">${getType(it)}</td>
-              <td style="padding:10px 4px;color:#119ded;font-family:'JetBrains Mono',monospace;font-weight:600;cursor:pointer;" onclick="openPopup('${it.id}')">${numStr}</td>
-              <td style="padding:10px 4px;text-align:left;color:var(--tx);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;" onclick="openPopup('${it.id}')">${esc(it.title||d.소재지||it.id)}</td>
-              <td style="padding:10px 4px;text-align:left;color:var(--mu);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(String(d.소재지||'').split(' ').slice(0,2).join(' '))}</td>
-              <td style="padding:10px 4px;color:var(--di);">${appPrice}</td>
-              <td style="padding:10px 4px;font-weight:700;color:var(--auction-c);">${minPrice}</td>
-              <td style="padding:10px 4px;color:var(--mu);white-space:nowrap;">${hc}${bd}</td>
-              <td style="padding:8px 4px;font-size:10px;font-family:'JetBrains Mono',monospace;white-space:nowrap;line-height:1.4;">${resStr}</td>
-              <td style="padding:10px 4px;font-size:10px;color:var(--mu);">${room? `분석 ${doneCts}/8` : '미연결'}${noteCnt? ` <span style="background:var(--ac);color:#111;padding:1px 4px;border-radius:4px;font-weight:700;">N${noteCnt}</span>`:''}</td>
-              <td style="padding:6px 4px;">
-                <div style="display:flex;gap:4px;justify-content:center;">
-                  ${room ? `<button onclick="_wbGoRoom('${room.id}')" style="padding:4px 6px;background:rgba(17,157,237,.1);border:1px solid rgba(17,157,237,.3);border-radius:4px;color:#119ded;font-size:10px;cursor:pointer;" title="워크룸 열기">🗂</button>` : `<button onclick="_wbCreateAndLink('${it.id}')" style="padding:4px 6px;background:var(--s2);border:1px dashed rgba(17,157,237,.3);border-radius:4px;color:var(--mu);font-size:10px;cursor:pointer;" title="새 워크룸 만들기">🗂 만들기</button>`}
-                  ${room ? `<button onclick="wr2QuickShowBidResultModal('${room.id}')" style="padding:4px 6px;background:var(--s2);border:1px solid var(--b1);border-radius:4px;color:var(--or);font-size:10px;cursor:pointer;" title="조치 및 결과 기록">⚡ 조치</button>` : `<button disabled style="padding:4px 6px;background:var(--s1);border:1px solid var(--b1);border-radius:4px;color:var(--di);font-size:10px;opacity:0.3;">⚡ 조치</button>`}
-                </div>
-              </td>
-            </tr>
-          `;
+        rows.forEach((row, idx) => {
+          const room = row.room;
+          const item = row.item;
+          const d = item && item.data ? item.data : {};
+          const number = (item && item.id) || (room && (room.auctionId || room.listingId || room.id)) || '-';
+          const name = (room && room.title) || d['물건명'] || d['건물명'] || d['title'] || '이름 없음';
+          const area = d['지역'] || d['소재지'] || d['주소'] || (room && room.address) || '-';
+          const feature = d['특징'] || d['매물특징'] || d['특이사항'] || '-';
+          const appraisal = d['감정가'] || d['매매가'] || '';
+          const currentMin = d['최저가'] || d['매매가'] || '';
+          const turn = d['회차'] || d['유찰횟수'] || '-';
+          const saleDate = (room && room.bidDate) || d['매각일'] || d['매각기일'] || '';
+          const alarm = getAlarm(room, item);
+          const memo = getMemo(room, item);
+          const expectedBid = (room && (room.expectedBidPrice || room.expectedBid || room.bidPrice)) || (item && item.expectedBidPrice) || '';
+          const deposit = d['보증금'] || (room && room.deposit) || '';
+          const monthly = d['월세'] || (room && room.monthlyRent) || '';
+          const bidPrice = (room && ((room.bidResult && (room.bidResult.myBid || room.bidResult.myPrice)) || room.expectedBidPrice || room.expectedBid || room.bidPrice)) || '';
+          const alarmColor = alarm === '결과 입력' ? '#ef4444' : alarm === '입찰 준비' ? '#f59e0b' : alarm === '임장 필요' ? '#38bdf8' : 'var(--mu)';
+          const rowBg = idx % 2 === 0 ? 'rgba(255,255,255,.01)' : 'rgba(255,255,255,.025)';
+          const dday = ddayOf(saleDate);
+          html += `<tr style="background:${rowBg};border-bottom:1px solid rgba(255,255,255,.05);">
+            <td style="padding:8px 6px;text-align:center;font-weight:700;color:var(--tx);">${esc(getAnalysisState(room, item))}</td>
+            <td style="padding:8px 6px;text-align:center;color:var(--mu);">${esc(getSavedType(item))}</td>
+            <td style="padding:8px 6px;text-align:center;font-weight:800;color:${String(getPriority(room, item)).includes('상') ? '#ef4444' : String(getPriority(room, item)).includes('중') ? '#38bdf8' : String(getPriority(room, item)).includes('하') ? '#4ade80' : 'var(--mu)'};">${esc(getPriority(room, item))}</td>
+            <td style="padding:8px 6px;text-align:center;font-family:'JetBrains Mono',monospace;color:#9fc2ff;cursor:${item?'pointer':'default'};" ${item ? `onclick="openPopup('${esc(item.id)}')" title="상세 열기"` : ''}>${esc(number)}</td>
+            <td style="padding:8px 8px;text-align:left;font-weight:700;color:var(--tx);line-height:1.45;">${esc(name)}</td>
+            <td style="padding:8px 8px;text-align:left;color:var(--mu);line-height:1.45;">${esc(area)}</td>
+            <td style="padding:8px 8px;text-align:left;color:var(--mu);line-height:1.45;white-space:normal;word-break:break-word;">${esc(feature)}</td>
+            <td style="padding:8px 6px;text-align:right;font-weight:700;color:var(--tx);">${esc(fmtNum(appraisal) || '-')}</td>
+            <td style="padding:8px 6px;text-align:right;font-weight:800;color:#ffd166;">${esc(fmtNum(currentMin) || '-')}</td>
+            <td style="padding:8px 6px;text-align:center;color:var(--mu);">${esc(String(turn))}</td>
+            <td style="padding:8px 6px;text-align:center;line-height:1.45;">
+              <div style="font-weight:700;color:var(--tx);">${esc(fmtDate(saleDate) || '-')}</div>
+              <div style="font-size:10px;color:${dday == null ? 'var(--di)' : dday < 0 ? '#ef4444' : dday <= 3 ? '#ef4444' : dday <= 7 ? '#f59e0b' : '#4ade80'};">${dday == null ? '' : (dday < 0 ? '지남' : dday === 0 ? 'D-Day' : 'D-' + dday)}</div>
+            </td>
+            <td style="padding:8px 8px;text-align:left;line-height:1.45;color:var(--tx);white-space:normal;word-break:break-word;">${esc(getResultText(room))}</td>
+            <td style="padding:8px 6px;text-align:right;color:#9fc2ff;">${esc(fmtNum(bidPrice) || '-')}</td>
+            <td style="padding:8px 6px;text-align:right;color:var(--mu);">${esc(fmtNum(deposit) || '-')}</td>
+            <td style="padding:8px 6px;text-align:right;color:var(--mu);">${esc(fmtNum(monthly) || '-')}</td>
+            <td style="padding:8px 6px;text-align:right;font-weight:800;color:#4f8eff;">${esc(fmtNum(expectedBid) || '-')}</td>
+            <td style="padding:8px 6px;text-align:center;"><span style="display:inline-flex;align-items:center;justify-content:center;min-width:58px;padding:3px 8px;border-radius:999px;background:${alarm ? alarmColor + '18' : 'rgba(255,255,255,.04)'};border:1px solid ${alarm ? alarmColor + '33' : 'rgba(255,255,255,.08)'};color:${alarm ? alarmColor : 'var(--di)'};font-size:10px;font-weight:800;">${esc(alarm || '-')}</span></td>
+            <td style="padding:8px 8px;text-align:left;white-space:normal;word-break:break-word;color:${memo ? '#9fc2ff' : 'var(--di)'};line-height:1.45;">${esc(memo || '-')}</td>
+            <td style="padding:8px 6px;text-align:center;">
+              ${room ? `<div style="display:flex;gap:4px;justify-content:center;flex-wrap:wrap;">
+                  <button onclick="_wbGoRoom('${room.id}')" style="padding:4px 7px;background:rgba(17,157,237,.12);border:1px solid rgba(17,157,237,.35);border-radius:5px;color:#119ded;font-size:10px;cursor:pointer;">열기</button>
+                  <button onclick="wr2QuickShowBidResultModal('${room.id}')" style="padding:4px 7px;background:rgba(255,140,66,.12);border:1px solid rgba(255,140,66,.35);border-radius:5px;color:#ff8c42;font-size:10px;cursor:pointer;">결과</button>
+                </div>` : `<button onclick="_wbCreateAndLink('${item ? esc(item.id) : ''}')" style="padding:4px 7px;background:var(--s2);border:1px dashed rgba(17,157,237,.35);border-radius:5px;color:var(--mu);font-size:10px;cursor:pointer;">만들기</button>`}
+            </td>
+          </tr>`;
         });
       }
+
       html += `</tbody></table></div>`;
       container.innerHTML = html;
     };
@@ -33086,18 +33192,20 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         if (!saleDate) return;
         var dday = _dday(saleDate);
 
-        // 입찰일이 지났는데 closed/결과 미입력
-        if (dday < 0 && room.status !== 'closed' && !(room.bidResult && room.bidResult.winPrice)) {
-          alarms.push({ type: 'result', room: room, dday: dday, msg: '📋 입찰일이 ' + Math.abs(dday) + '일 지났습니다 — 결과를 입력해 종료 처리하세요', color: '#ef4444', bg: 'rgba(239,68,68,.08)', border: 'rgba(239,68,68,.3)' });
+        var sections = (window.wr2State && Array.isArray(window.wr2State.sections)) ? window.wr2State.sections : [];
+        var hasFieldLog = !!sections.find(function(sec) {
+          return sec && sec.roomId === room.id && sec.phase === 'field' && !sec.deletedAt && ((sec.content && String(sec.content).trim()) || (sec.rows && sec.rows.length));
+        });
+        var hasBidPlan = !!((room.bidResult && (room.bidResult.myBid || room.bidResult.myPrice)) || room.expectedBidPrice || room.expectedBid || room.bidPrice);
+        if (dday < 0 && !(room.bidResult && (room.bidResult.winPrice || room.bidResult.myBid || room.bidResult.myPrice))) {
+          alarms.push({ type: 'result', room: room, dday: dday, msg: '📋 입찰일이 지났습니다 — 결과를 입력해 주세요', color: '#ef4444', bg: 'rgba(239,68,68,.08)', border: 'rgba(239,68,68,.3)' });
           return;
         }
-        // D-3 이내 긴박도
-        if (dday >= 0 && dday <= 3) {
-          alarms.push({ type: 'danger', room: room, dday: dday, msg: '🔥 D-' + (dday === 0 ? 'Day' : dday) + ' ─ ' + (room.title || '작업룸') + ' 입찰기일 임박!', color: '#ff6370', bg: 'rgba(255,99,112,.08)', border: 'rgba(255,99,112,.3)' });
+        if (dday >= 0 && dday <= 3 && !hasBidPlan) {
+          alarms.push({ type: 'danger', room: room, dday: dday, msg: '🔥 D-' + (dday === 0 ? 'Day' : dday) + ' ─ 입찰 준비 확인이 필요합니다', color: '#ff6370', bg: 'rgba(255,99,112,.08)', border: 'rgba(255,99,112,.3)' });
         }
-        // D-7 이내인데 현장 단계가 아님
-        else if (dday <= 7 && room.status !== 'field' && room.status !== 'bid' && room.status !== 'won') {
-          alarms.push({ type: 'warning', room: room, dday: dday, msg: '⚠️ D-' + dday + ' ─ 현장 점검 전 입찰기일이 다가오고 있습니다', color: '#fbbf24', bg: 'rgba(251,191,36,.08)', border: 'rgba(251,191,36,.3)' });
+        else if (dday > 3 && dday <= 7 && !hasFieldLog) {
+          alarms.push({ type: 'warning', room: room, dday: dday, msg: '⚠️ D-' + dday + ' ─ 임장 기록을 남겨 주세요', color: '#fbbf24', bg: 'rgba(251,191,36,.08)', border: 'rgba(251,191,36,.3)' });
         }
       });
 
