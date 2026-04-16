@@ -6,6 +6,59 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>상권King</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%231a1f2e'/><path d='M4 22 L8 10 L13 17 L16 8 L19 17 L24 10 L28 22 Z' fill='%23f59e0b' stroke='%23fbbf24' stroke-width='0.5'/><rect x='4' y='22' width='24' height='3' rx='1.5' fill='%23f59e0b'/><circle cx='16' cy='8' r='2' fill='%23fcd34d'/><circle cx='8' cy='10' r='1.5' fill='%23fcd34d'/><circle cx='24' cy='10' r='1.5' fill='%23fcd34d'/></svg>" type="image/svg+xml">
+  <script>
+    (function() {
+      var MODE_KEY = 'sk_device_mode';
+
+      function isIPadLike() {
+        var ua = navigator.userAgent || '';
+        return /iPad/i.test(ua) || ((navigator.platform === 'MacIntel' || /Macintosh/i.test(ua)) && navigator.maxTouchPoints > 1);
+      }
+
+      function setMode(mode) {
+        try {
+          if (mode === 'auto') localStorage.removeItem(MODE_KEY);
+          else localStorage.setItem(MODE_KEY, mode);
+        } catch (err) {}
+      }
+
+      function getMode() {
+        try {
+          return localStorage.getItem(MODE_KEY) || 'auto';
+        } catch (err) {
+          return 'auto';
+        }
+      }
+
+      function moveTo(page, mode, replace) {
+        var url = new URL(page, location.href);
+        url.searchParams.set('mode', mode);
+        if (replace) location.replace(url.toString());
+        else location.href = url.toString();
+      }
+
+      var params = new URLSearchParams(location.search);
+      var requestedMode = params.get('mode');
+      if (requestedMode === 'pc' || requestedMode === 'mobile' || requestedMode === 'auto') setMode(requestedMode);
+
+      var ipad = isIPadLike();
+      if (ipad) document.documentElement.classList.add('sk-ipad-like');
+
+      window.skIsIPadLike = isIPadLike;
+      window.skSwitchDeviceMode = function(mode) {
+        if (mode !== 'pc' && mode !== 'mobile') mode = 'auto';
+        setMode(mode);
+        moveTo(mode === 'mobile' ? 'mobile.html' : 'index.html', mode, false);
+      };
+
+      var mode = (requestedMode === 'pc' || requestedMode === 'mobile' || requestedMode === 'auto') ? requestedMode : getMode();
+      if (requestedMode === 'mobile') {
+        moveTo('mobile.html', 'mobile', true);
+        return;
+      }
+      if (ipad && mode === 'mobile') moveTo('mobile.html', 'mobile', true);
+    })();
+  </script>
 
   <!--
 ═══════════════════════════════════════════════════════════════════
@@ -300,7 +353,29 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
 2026-02-16 v1.2: showTransactionMarker 함수 추가 (단수형)
 ═══════════════════════════════════════════════════════════════════
 -->
-  <link rel="stylesheet" href="style.css?v=202604041830">
+  <link rel="stylesheet" href="style.css?v=202604131705">
+  <style>
+    #pc-mobile-mode-btn {
+      display: none;
+      position: fixed;
+      right: 16px;
+      bottom: 16px;
+      z-index: 99998;
+      height: 36px;
+      padding: 0 13px;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      border: 1px solid rgba(79,142,255,.42);
+      border-radius: 8px;
+      background: rgba(16,21,33,.94);
+      color: #8ab2ff;
+      box-shadow: 0 8px 26px rgba(0,0,0,.35);
+      font: 800 12px 'Noto Sans KR', sans-serif;
+      cursor: pointer;
+    }
+    html.sk-ipad-like #pc-mobile-mode-btn { display: flex; }
+  </style>
 
 
   <!-- ★ Supabase 연동 (v289) -->
@@ -390,6 +465,7 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
       <button class="ntab" id="nav2" onclick="showPage(2)">🗺️ 지도</button>
 
       <button class="ntab" id="nav3" onclick="showPage(3)">💡 인사이트탭</button>
+      <button class="ntab" id="nav4" onclick="showPage(4)">📋 물건리스트</button>
     </div>
 
     <div class="main-content">
@@ -2315,19 +2391,16 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
           <button type="button" class="ctx-shortcut-btn ctx-disco" onclick="ctxOpenExternalService('disco')" title="디스코">디</button>
           <button type="button" class="ctx-shortcut-btn ctx-bds" onclick="ctxOpenExternalService('bds')" title="플래닛">플</button>
         </div>
-        <div class="ctx-item" onclick="ctxNaverBuilding()">
-          <div class="ctx-icon">🏢</div>
-          <div>
-            <div class="ctx-label">네이버 지도 건물정보 보기</div>
-            <span class="ctx-sub">클릭 위치로 이동 → 건물 클릭 시 상세 확인</span>
-          </div>
-        </div>
-        <div class="ctx-item" onclick="ctxNaverLand()">
-          <div class="ctx-icon">🏪</div>
-          <div>
-            <div class="ctx-label">네이버 부동산 상가매물 보기</div>
-            <span class="ctx-sub">해당 위치 상가·사무실 매물 검색</span>
-          </div>
+        <div class="ctx-map-links" aria-label="지도 바로가기">
+          <button type="button" class="ctx-map-link ctx-map-naver" onclick="ctxNaverBuilding()" title="네이버 지도 건물정보">
+            <span class="ctx-map-icon">N</span><span>지도</span>
+          </button>
+          <button type="button" class="ctx-map-link ctx-map-land" onclick="ctxNaverLand()" title="네이버 부동산 상가매물">
+            <span class="ctx-map-icon">N</span><span>부동산</span>
+          </button>
+          <button type="button" class="ctx-map-link ctx-map-kakao" onclick="ctxKakaoMap()" title="카카오맵">
+            <span class="ctx-map-icon">K</span><span>카카오</span>
+          </button>
         </div>
         <div class="ctx-item" onclick="ctxRoadview()">
           <div class="ctx-icon">📷</div>
@@ -2357,12 +2430,6 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
           <div>
             <div class="ctx-label">이 위치에 매물 추가</div>
             <span class="ctx-sub">주소/좌표를 채워 저장목록 매물 생성</span>
-          </div>
-        </div>
-        <div class="ctx-item" onclick="ctxAddMemo()">
-          <div class="ctx-icon">📝</div>
-          <div>
-            <div class="ctx-label">이 위치에 메모 추가</div>
           </div>
         </div>
       </div>
@@ -2443,12 +2510,13 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
       <!-- 인사이트 새 뼈대 (v68 스타일) -->
       <div class="insw" id="insw">
         <div class="insw-seg" role="tablist" aria-label="인사이트탭 섹션">
+          <button class="ins-stab" id="itab5" onclick="showInsTab(5)">🎯 파이프라인 · 플래너<span id="watchCnt"
+              style="display:none;background:var(--or);color:#111;font-size:9px;padding:1px 5px;border-radius:8px;margin-left:4px;font-family:'JetBrains Mono',monospace;">0</span></button>
           <button class="ins-stab on" id="itab8" onclick="showInsTab(8)">🗂 작업룸</button>
           <button class="ins-stab" id="itab0" onclick="showInsTab(0)">📓 노트</button>
           <button class="ins-stab" id="itab4" onclick="showInsTab(4)">⭐ 알짜</button>
           <button class="ins-stab" id="itab1" onclick="showInsTab(1)">🧮 계산기</button>
-          <button class="ins-stab" id="itab5" onclick="showInsTab(5)">🎯 파이프라인<span id="watchCnt"
-              style="display:none;background:var(--or);color:#111;font-size:9px;padding:1px 5px;border-radius:8px;margin-left:4px;font-family:'JetBrains Mono',monospace;">0</span></button>
+          
           <button class="ins-stab" id="itab6" onclick="showInsTab(6)">🔗 사이트</button>
           <button class="ins-stab" id="itab3" onclick="showInsTab(3)">📰 클리핑</button>
           <button class="ins-stab" id="itab7" onclick="showInsTab('cfg')">⚙️ 설정</button>
@@ -2457,50 +2525,42 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
         <div class="insw-body">
           <div id="ipage0" class="ins-panel">
 
-            <div class="nt-wrap">
-              <div class="nt-sidebar">
-                <div class="nt-sidebar-top">
-                  <!-- 새 노트 + 그룹 관리 버튼 -->
-                  <div style="display:flex;gap:4px;margin-bottom:8px;">
-                    <button class="nt-new-btn-main" onclick="ntCreate('unified')" style="flex:1;">＋ 새 노트</button>
-                    <button onclick="ntOpenGroupManager()" title="그룹 관리"
-                      style="padding:6px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:7px;color:var(--mu);cursor:pointer;font-size:13px;"
-                      onmouseover="this.style.color='var(--tx)'" onmouseout="this.style.color='var(--mu)'">🗂</button>
-                  </div>
-                  <!-- 그룹 필터 -->
-                  <div style="padding:0 0 8px 0;flex-shrink:0;" id="ntGroupFilterWrap">
-                    <div style="display:flex;gap:3px;flex-wrap:wrap;" id="ntGroupFilter">
-                      <span class="nt-domain-chip on" data-g="all" onclick="ntSetGroupFilter('all')">전체</span>
-                    </div>
+            <div class="nt-wrap nt-board">
+              <div class="nt-board-top">
+                <input id="ntSearchInput" class="nt-search-main" placeholder="🔍 노트 검색" oninput="ntRender()">
+                <button class="nt-new-btn-main nt-new-btn-board" onclick="ntCreate('unified')">＋ 새 노트</button>
+                <button class="nt-toolbar-btn" onclick="ntOpenGroupManager()" title="카테고리 추가/이름변경/삭제">카테고리 관리</button>
+                <button class="nt-toolbar-btn" onclick="ntOpenTagManager()" title="태그 전체 관리">태그 관리</button>
+              </div>
+
+              <div class="nt-board-filters">
+                <div class="nt-filter-box" id="ntGroupFilterWrap">
+                  <span class="nt-filter-label">카테고리</span>
+                  <div class="nt-filter-control" id="ntGroupFilter">
+                    <span class="nt-domain-chip on" data-g="all" onclick="ntSetGroupFilter('all')">전체</span>
                   </div>
                 </div>
-                <!-- 검색 -->
-                <div style="padding:7px 10px;border-bottom:1px solid var(--b1);flex-shrink:0;">
-                  <input id="ntSearchInput" placeholder="🔍 검색..." oninput="ntRender()"
-                    style="width:100%;padding:5px 8px;background:var(--s2);border:1px solid var(--b1);border-radius:6px;color:var(--tx);font-size:11px;outline:none;box-sizing:border-box;">
-                </div>
-                <!-- 태그 필터 -->
-                <div style="padding:6px 10px;border-bottom:1px solid var(--b1);flex-shrink:0;" id="ntTagFilterWrap">
-                  <div style="display:flex;align-items:center;gap:4px;margin-bottom:4px;">
-                    <span style="font-size:10px;color:var(--di);flex:1;"># 태그 필터</span>
-                    <button onclick="ntOpenTagManager()" style="padding:2px 7px;background:var(--s2);border:1px solid var(--b1);border-radius:6px;color:var(--mu);font-size:10px;cursor:pointer;white-space:nowrap;" title="태그 전체 관리"># 관리</button>
-                  </div>
-                  <div style="display:flex;gap:3px;flex-wrap:wrap;align-items:center;" id="ntTagFilter">
+                <div class="nt-filter-box" id="ntTagFilterWrap">
+                  <span class="nt-filter-label">태그</span>
+                  <div class="nt-filter-control" id="ntTagFilter">
                     <span style="font-size:10px;color:var(--di);">태그 없음</span>
                   </div>
                 </div>
-                <div class="nt-list" id="ntList"></div>
               </div>
 
-              <div class="nt-editor" id="ntEditorArea">
-                <div class="nt-empty" id="ntEmpty">
-                  <div style="font-size:48px;">📝</div>
-                  <div style="font-size:15px;font-weight:600;">노트를 선택하거나 새로 만드세요</div>
-                  <div style="font-size:12px;line-height:2.2;color:var(--di);">
-                    📝 생각·분석·메모 &nbsp; 🎬 유튜브 타임스탬프<br>📰 기사/URL 발췌 &nbsp; 📎 파일 첨부 지원
+              <div class="nt-board-body">
+                <div class="nt-list" id="ntList"></div>
+
+                <div class="nt-editor" id="ntEditorArea">
+                  <div class="nt-empty" id="ntEmpty">
+                    <div style="font-size:48px;">📝</div>
+                    <div style="font-size:15px;font-weight:600;">노트를 선택하거나 새로 만드세요</div>
+                    <div style="font-size:12px;line-height:2.2;color:var(--di);">
+                      📝 생각·분석·메모 &nbsp; 🎬 유튜브 타임스탬프<br>📰 기사/URL 발췌 &nbsp; 📎 파일 첨부 지원
+                    </div>
                   </div>
-                </div>
-                <div id="ntEditorMain" style="display:none;flex:1;flex-direction:column;height:100%;overflow:hidden;">
+                  <div id="ntEditorMain" style="display:none;flex:1;flex-direction:column;height:100%;overflow:hidden;">
+                  </div>
                 </div>
               </div>
             </div>
@@ -3532,24 +3592,18 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
                 <button onclick="openKcardEditor(null)"
                   style="padding:7px 16px;background:var(--ac);color:#111;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;font-family:'Noto Sans KR',sans-serif;">⭐ 새 카드</button>
                 <button onclick="openKcatManager()"
-                  style="padding:7px 11px;background:var(--s2);color:var(--mu);border:1px solid var(--b1);border-radius:8px;font-size:12px;cursor:pointer;flex-shrink:0;font-family:'Noto Sans KR',sans-serif;" title="카테고리 관리">⚙️</button>
+                  style="padding:7px 11px;background:var(--s2);color:var(--mu);border:1px solid var(--b1);border-radius:8px;font-size:12px;cursor:pointer;flex-shrink:0;font-family:'Noto Sans KR',sans-serif;" title="카테고리 관리">카테고리 관리</button>
               </div>
-              <!-- 알짜탭 검색 + 그룹/태그 필터 -->
+              <!-- 알짜탭 검색 + 태그 필터 -->
               <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;flex-shrink:0;flex-wrap:wrap;">
                 <input id="kcardSearchInput" placeholder="🔍 카드 검색" oninput="kcardFilter.search=this.value;renderKcards()"
                   style="flex:1;min-width:120px;padding:6px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:7px;color:var(--tx);font-size:12px;outline:none;">
-                <select id="kcardGroupFilter" onchange="kcardFilter.group=this.value;renderKcards()"
-                  style="padding:5px 8px;background:var(--s2);border:1px solid var(--b1);border-radius:7px;color:var(--tx);font-size:11px;outline:none;">
-                  <option value="all">🗂 전체 그룹</option>
-                </select>
                 <select id="kcardTagFilter" onchange="kcardFilter.tag=this.value;renderKcards()"
                   style="padding:5px 8px;background:var(--s2);border:1px solid var(--b1);border-radius:7px;color:var(--tx);font-size:11px;outline:none;">
                   <option value="all"># 전체 태그</option>
                 </select>
-                <button onclick="openKcardGroupManager()" title="그룹 관리"
-                  style="padding:5px 9px;background:var(--s2);border:1px solid var(--b1);border-radius:7px;color:var(--mu);font-size:11px;cursor:pointer;white-space:nowrap;">🗂</button>
                 <button onclick="openKcardTagManager()" title="태그 관리"
-                  style="padding:5px 9px;background:var(--s2);border:1px solid var(--b1);border-radius:7px;color:var(--mu);font-size:11px;cursor:pointer;white-space:nowrap;">#</button>
+                  style="padding:5px 9px;background:var(--s2);border:1px solid var(--b1);border-radius:7px;color:var(--mu);font-size:11px;cursor:pointer;white-space:nowrap;">태그 관리</button>
               </div>
 
               <!-- 카드 그리드 -->
@@ -3616,19 +3670,12 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
                     <div id="kcardImgPreview" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;"></div>
                   </div>
 
-                  <!-- 태그 + 그룹 -->
+                  <!-- 태그 -->
                   <div style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
                     <div style="flex:1;min-width:160px;">
                       <label style="font-size:11px;color:var(--mu);display:block;margin-bottom:5px;">태그 (쉼표로 구분)</label>
                       <input id="kcardTags" placeholder="예: 임대료, 상가, 투자조건"
                         style="width:100%;padding:8px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:7px;color:var(--tx);font-size:12px;outline:none;box-sizing:border-box;font-family:'Noto Sans KR',sans-serif;">
-                    </div>
-                    <div style="flex:1;min-width:120px;">
-                      <label style="font-size:11px;color:var(--mu);display:block;margin-bottom:5px;">그룹</label>
-                      <input id="kcardGroup" placeholder="예: 경매전략, 상권분석"
-                        style="width:100%;padding:8px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:7px;color:var(--tx);font-size:12px;outline:none;box-sizing:border-box;font-family:'Noto Sans KR',sans-serif;"
-                        list="kcardGroupList">
-                      <datalist id="kcardGroupList"></datalist>
                     </div>
                   </div>
 
@@ -3783,10 +3830,23 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
                 style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px;">
                 <div>
                   <div style="font-size:15px;font-weight:700;color:var(--tx);">🎯 파이프라인</div>
-                  <div style="font-size:11px;color:var(--mu);margin-top:2px;">관심·검토중·입찰예정으로 분류된 물건을 칸반으로 — 단계 이동 ↻, 작업룸
-                    연결 🗂</div>
+                  <div style="font-size:11px;color:var(--mu);margin-top:2px;">물건 상태·입찰기일·결과·메모를 한 화면에서 보는 플래너 — 보드/리스트/달력 전환</div>
                 </div>
                 <div style="display:flex;gap:6px;align-items:center;">
+                  <div class="pl-segment-control" style="display:flex;background:rgba(0,0,0,.2);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:3px;margin-right:8px;position:relative;">
+                    <style>
+                      .pl-segment-btn { padding:5px 16px; border:none; background:transparent; color:var(--mu); font-size:12px; font-weight:700; border-radius:6px; cursor:pointer; flex:1; transition:all .2s ease; z-index:2; position:relative; white-space:nowrap; }
+                      .pl-segment-btn.active { color:#fff; }
+                      #plSegmentBg { position:absolute; top:3px; bottom:3px; left:3px; width:calc(33.33% - 2px); background:var(--ac); border-radius:6px; transition:transform .3s cubic-bezier(0.4, 0, 0.2, 1); z-index:1; }
+                      #plViewKanbanBtn.active ~ #plSegmentBg { transform:translateX(0); }
+                      #plViewListBtn.active ~ #plSegmentBg { transform:translateX(100%); }
+                      #plViewCalBtn.active ~ #plSegmentBg { transform:translateX(200%); }
+                    </style>
+                    <button id="plViewKanbanBtn" class="pl-segment-btn active" onclick="if(window.wr2PipelineSetView) window.wr2PipelineSetView('kanban')" title="보드 형태로 보기">📊 보드</button>
+                    <button id="plViewListBtn" class="pl-segment-btn" onclick="if(window.wr2PipelineSetView) window.wr2PipelineSetView('list')" title="엑셀 형태로 표 보기">📑 리스트</button>
+                    <button id="plViewCalBtn" class="pl-segment-btn" onclick="if(window.wr2PipelineSetView) window.wr2PipelineSetView('calendar')" title="달력 형태로 보기">📅 달력</button>
+                    <div id="plSegmentBg"></div>
+                  </div>
                   <select id="watchSortSel" onchange="renderWatchBoard()"
                     style="padding:5px 8px;background:var(--s2);border:1px solid var(--b1);border-radius:6px;color:var(--tx);font-size:11px;outline:none;">
                     <option value="savedAt">저장순</option>
@@ -3802,18 +3862,23 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
               <!-- 역할 구분 안내 배너 -->
               <div
                 style="display:flex;gap:8px;margin-bottom:10px;padding:8px 12px;background:rgba(79,142,255,.05);border:1px solid rgba(79,142,255,.15);border-radius:8px;font-size:10px;color:var(--mu);line-height:1.6;flex-wrap:wrap;">
-                <span>🎯 <b style="color:var(--tx);">파이프라인</b> — 어떤 물건을 보고 있는지 <b>큰 그림</b> 추적. ↻ 버튼으로 관심→검토→입찰 단계
-                  이동.</span>
+                <span>🎯 <b style="color:var(--tx);">파이프라인·플래너</b> — 현재 물건 상태, 입찰기일, 결과, 메모를 <b>한 화면</b>에서 운영.</span>
                 <span style="color:var(--di);">|</span>
-                <span>🗂 <b style="color:#119ded;">작업룸</b> — 물건 하나에 집중해서 <b>권리분석·임장메모·체크리스트</b> 등 상세 작업 공간. 파이프라인 카드 하단
-                  "작업룸 만들기"로 연결하세요.</span>
+                <span>🗂 <b style="color:#119ded;">작업룸</b> — 물건 하나를 깊게 보는 상세 공간. 플래너의 각 행에서 바로 열고 결과도 기록할 수 있습니다.</span>
               </div>
 
-              <div id="watchScheduleBoard"
-                style="display:none;margin-bottom:10px;padding:10px 12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:10px;"></div>
+              <!-- ★ 작업룸 기반 알람 요약 바 -->
+              <div id="wr2PipelineAlarmBanner" style="display:none;margin-bottom:10px;"></div>
 
-              <!-- 칸반 5컬럼 -->
-              <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;flex:1;min-height:0;overflow:hidden;">
+              <div id="watchScheduleBoard"
+                style="display:none;margin-bottom:10px;padding:10px 12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:10px;flex:1;overflow-y:auto;min-height:0;"></div>
+
+              <div id="pipelineListBoard"
+                style="display:none;margin-bottom:10px;flex:1;min-height:0;overflow:auto;background:var(--s1);border-radius:10px;border:1px solid rgba(255,255,255,.1);">
+              </div>
+
+              <!-- 칸반 4컬럼 -->
+              <div id="pipelineKanbanBoard" style="display:grid;grid-template-columns:repeat(4,minmax(230px,1fr));gap:8px;flex:1;min-height:0;overflow-x:auto;overflow-y:hidden;padding-bottom:12px;">
                 <!-- 칸반: 관심 -->
                 <div style="display:flex;flex-direction:column;background:var(--s1);border-radius:10px;border:1px solid rgba(148,163,184,.25);overflow:hidden;">
                   <div style="padding:8px 10px;background:rgba(148,163,184,.1);border-bottom:1px solid rgba(148,163,184,.2);display:flex;align-items:center;justify-content:space-between;">
@@ -3854,16 +3919,7 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
                     <div style="text-align:center;color:var(--di);font-size:11px;padding:20px 4px;line-height:1.5;" id="wEmpty3">실제 입찰할<br>물건을 모아두세요</div>
                   </div>
                 </div>
-                <!-- 칸반: 낙찰 -->
-                <div style="display:flex;flex-direction:column;background:var(--s1);border-radius:10px;border:1px solid rgba(74,222,128,.25);overflow:hidden;">
-                  <div style="padding:8px 10px;background:rgba(74,222,128,.06);border-bottom:1px solid rgba(74,222,128,.15);display:flex;align-items:center;justify-content:space-between;">
-                    <span style="font-size:12px;font-weight:700;color:#4ade80;">✅ 낙찰</span>
-                    <span id="wCnt4" style="font-size:10px;background:rgba(74,222,128,.12);color:#4ade80;padding:1px 6px;border-radius:8px;font-family:'JetBrains Mono',monospace;">0</span>
-                  </div>
-                  <div id="wCol4" style="flex:1;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:6px;">
-                    <div style="text-align:center;color:var(--di);font-size:11px;padding:20px 4px;line-height:1.5;" id="wEmpty4">낙찰 완료된<br>물건</div>
-                  </div>
-                </div>
+
               </div>
             </div>
           </div>
@@ -4099,6 +4155,7 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
                       <button onclick="wr2OpenTagManager()" title="태그 관리"
                         style="padding:4px 8px;background:var(--s2);border:1px solid var(--b1);border-radius:6px;color:var(--mu);font-size:11px;cursor:pointer;white-space:nowrap;flex-shrink:0;"># 태그</button>
                     </div>
+                    <div id="wr2ListScopeBar" class="wr2-list-scope-bar"></div>
                     <div id="wr2FolderFilterBar" style="display:flex;gap:6px;overflow-x:auto;margin-top:8px;padding-bottom:2px;"></div>
                   </div>
                   <div id="wr2RoomList" class="wr2-list"></div>
@@ -4124,9 +4181,16 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
                         <input id="wr2Title" class="wr2-title-input" placeholder="작업룸 제목" />
                         <div class="wr2-hdr-row1-btns">
                           <span id="wr2StageBadge" class="wr2-stage-pill">👀 관심·검토</span>
+                          <select id="wr2ArchiveState" title="작업 상태"
+                            style="height:30px;padding:0 9px;background:rgba(255,255,255,.05);border:1px solid var(--b1);border-radius:7px;color:var(--tx);font-size:11px;font-weight:700;outline:none;">
+                            <option value="active">진행중</option>
+                            <option value="won">낙찰</option>
+                            <option value="closed">종료</option>
+                          </select>
                           <button id="wr2LinkSavedBtn" class="wr2-hd-btn" title="저장목록 물건 연결">🔗 물건연결</button>
                           <button id="wr2DeleteRoomBtn" class="wr2-del-btn" title="작업룸 삭제">🗑</button>
                           <div class="wr2-hdr-divider"></div>
+                          <button id="wr2ListToggleBtn" class="wr2-hd-btn" onclick="wr2ToggleListPanel()" title="왼쪽 작업룸 목록 접기/펼치기">목록 접기</button>
                           <select id="wr2SortInHdr" class="wr2-sort-sel-hdr" onchange="document.getElementById('wr2Sort').value=this.value;if(typeof wr2Render==='function')wr2Render();" title="정렬">
                             <option value="updated">수정순</option>
                             <option value="created">생성순</option>
@@ -4139,10 +4203,11 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
                         <input id="wr2Address" class="wr2-addr-input" placeholder="주소" />
                         <div id="wr2TagChips" class="wr2-tag-chips-inline"></div>
                         <input id="wr2AuctionId" class="wr2-id-input" placeholder="경매ID" title="경매 ID" />
+                        <input id="wr2BidDate" class="wr2-id-input" placeholder="📅 입찰기일 예:2025.06.10" title="입찰기일 직접 입력 (파이프라인 알람에 사용)"
+                          style="min-width:140px;" />
                         <div class="wr2-hdr-row2-btns">
                           <div id="wr2RoomFolderInline"></div>
                           <button onclick="wr2OpenRoomTagEditor()" class="wr2-tag-mini-btn">＋태그</button>
-                          <button onclick="wr2OpenGroupManager()" class="wr2-tag-mini-btn">폴더관리</button>
                         </div>
                       </div>
                     </div>
@@ -4159,14 +4224,13 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
                       <div id="wr2TabOverview" class="wr2-tab-pane active">
                         <div class="wr2-dashboard">
 
-                          <!-- 상단 전체: 지도 캡처 (풀너비) -->
+                          <!-- 작업 이미지 입력은 사진 보드 버튼에서 사용 -->
                           <div class="wr2-widget wr2-widget-capture" id="wr2WidgetCapture">
                             <div class="wr2-widget-hd">
                               🖼 작업 이미지
                               <div class="wr2-widget-hd-btns">
                                 <label class="wr2-hd-btn" style="cursor:pointer;" title="이미지 직접 업로드">
                                   ＋ 업로드
-                                  <input id="wr2CaptureInput" type="file" accept="image/*" multiple style="display:none;" onchange="wr2UploadCapture(this)">
                                 </label>
                                 <button onclick="captureMapScreen()" class="wr2-hd-btn" title="지도탭에서 캡처">📷 지도 캡처</button>
                               </div>
@@ -4177,15 +4241,8 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
                                 <div class="wr2-capture-drop-txt">이미지가 없습니다<br/><span style="color:#4f8eff;cursor:pointer;" onclick="event.stopPropagation();captureMapScreen()">📷 지도 캡처</span>하거나 이미지를 클릭/드래그해 업로드하세요</div>
                               </div>
                             </div>
-                            <div style="border-top:1px solid var(--b1);margin:4px 12px 0;"></div>
-                            <div class="wr2-widget-hd" style="padding-top:8px;">
-                              📷 연결된 스냅샷
-                              <button onclick="wr2RestoreMap()" class="wr2-hd-btn" id="wr2RestoreMapBtn" title="스냅샷으로 지도 복원">↗ 지도로 이동</button>
-                            </div>
-                            <div id="wr2SnapList" style="padding:4px 12px 10px;"></div>
                           </div>
 
-                          <!-- 하단 좌: 물건 요약 -->
                           <div class="wr2-widget wr2-widget-info" id="wr2WidgetInfo">
                             <div class="wr2-widget-hd">
                               📋 물건 요약
@@ -4197,6 +4254,13 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
                                   onclick="document.getElementById('wr2LinkSavedBtn').click()">🔗 물건연결</span> 버튼으로 저장목록과
                                 연결하세요.</div>
                             </div>
+                            <div class="wr2-summary-snap">
+                              <div class="wr2-summary-snap-hd">
+                                <span>📷 연결된 스냅샷</span>
+                                <button onclick="wr2RestoreMap()" class="wr2-hd-btn" id="wr2RestoreMapBtn" title="스냅샷으로 지도 복원">↗ 지도로 이동</button>
+                              </div>
+                              <div id="wr2SnapList"></div>
+                            </div>
                           </div>
 
                           <!-- 하단 우: 노트 + 파일첨부 -->
@@ -4205,6 +4269,7 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
                               📝 노트
                               <div style="display:flex;gap:4px;align-items:center;">
                                 <button class="wr2-hd-btn" onclick="wr2NoteAdd()" style="background:#4f8eff22;border:1px solid #4f8eff44;color:#4f8eff;">＋ 노트</button>
+                                <button class="wr2-hd-btn" onclick="wr2AddNoteLink()" title="웹사이트 링크 추가">🔗 링크</button>
                                 <label class="wr2-hd-btn" style="cursor:pointer;">
                                   📎 파일 추가
                                   <input type="file" id="wr2FileInput" multiple accept="image/*,.pdf,.docx,.xlsx,.txt"
@@ -4219,6 +4284,20 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
                                 placeholder="＋ 노트 버튼으로 새 노트를 추가하세요"></textarea>
                               <div id="wr2Attachments" class="wr2-attachments"></div>
                             </div>
+                          </div>
+                          <div class="wr2-widget wr2-widget-gallery" id="wr2WidgetGallery">
+                            <div class="wr2-widget-hd">
+                              🖼 사진 보드
+                              <div class="wr2-widget-hd-btns">
+                                <label class="wr2-hd-btn" style="cursor:pointer;" title="이미지 직접 업로드">
+                                  ＋ 업로드
+                                  <input id="wr2CaptureInput" type="file" accept="image/*" multiple style="display:none;" onchange="wr2UploadCapture(this)">
+                                </label>
+                                <button class="wr2-hd-btn" onclick="captureMapScreen()">📷 지도 캡처</button>
+                                <button class="wr2-hd-btn" onclick="wr2OpenRoomGallery(0)">전체 보기</button>
+                              </div>
+                            </div>
+                            <div class="wr2-widget-body wr2-gallery-body" id="wr2GalleryBoard"></div>
                           </div>
 <!-- 하단 좌: 수익률 계산기 -->
                           <div class="wr2-widget wr2-widget-calc" id="wr2WidgetCalc">
@@ -4335,6 +4414,7 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
                                   </div>
                                 </div>
                               </div>
+                              <button type="button" id="wc_table_toggle" class="wr2-calc-more-btn" onclick="wr2ToggleCalcDetail()" style="display:none;">수익률별 차익표 보기</button>
                               <div id="wc_table" class="wr2-yield-table" style="display:none;"></div>
                             </div>
                           </div>
@@ -4585,6 +4665,96 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
 
 
     </div><!-- /page3 -->
+    <div id="page4" style="display:none;" class="saved-page">
+  <div style="padding:16px;max-width:1400px;margin:0 auto;">
+
+    <!-- 알람 바 -->
+    <div id="pl-alerts" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;"></div>
+
+    <!-- 툴바 -->
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap;">
+      <input id="pl-search" type="text" placeholder="주소·사건번호 검색"
+        style="height:32px;padding:0 10px;border:1px solid var(--b1);border-radius:6px;background:var(--bg2);color:var(--fg);font-size:13px;width:200px;"
+        oninput="renderPropertyList()">
+      <select id="pl-filter-status" onchange="renderPropertyList()"
+        style="height:32px;padding:0 8px;border:1px solid var(--b1);border-radius:6px;background:var(--bg2);color:var(--fg);font-size:13px;">
+        <option value="">전체 상태</option>
+        <option value="관심">관심</option>
+        <option value="임장필요">임장 필요</option>
+        <option value="입찰준비">입찰 준비</option>
+        <option value="완료">완료</option>
+        <option value="포기">포기</option>
+      </select>
+      <button onclick="openAddPropertyModal()"
+        style="height:32px;padding:0 14px;border:1px solid var(--b1);border-radius:6px;background:var(--bg2);color:var(--fg);font-size:13px;cursor:pointer;">
+        + 물건 추가
+      </button>
+      <span id="pl-count" style="margin-left:auto;font-size:12px;color:var(--fg3);"></span>
+    </div>
+
+    <!-- 테이블 -->
+    <div style="border:1px solid var(--b1);border-radius:10px;overflow:hidden;">
+      <table id="pl-table" style="width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed;">
+        <colgroup>
+          <col style="width:22%"><col style="width:10%"><col style="width:10%">
+          <col style="width:10%"><col style="width:10%"><col style="width:7%">
+          <col style="width:16%"><col style="width:5%">
+        </colgroup>
+        <thead>
+          <tr style="background:var(--bg3);">
+            <th style="padding:9px 12px;text-align:left;font-size:12px;color:var(--fg2);font-weight:500;border-bottom:1px solid var(--b1);">물건 (주소)</th>
+            <th style="padding:9px 12px;text-align:left;font-size:12px;color:var(--fg2);font-weight:500;border-bottom:1px solid var(--b1);">상태</th>
+            <th style="padding:9px 12px;text-align:left;font-size:12px;color:var(--fg2);font-weight:500;border-bottom:1px solid var(--b1);">입찰기일</th>
+            <th style="padding:9px 12px;text-align:left;font-size:12px;color:var(--fg2);font-weight:500;border-bottom:1px solid var(--b1);">감정가</th>
+            <th style="padding:9px 12px;text-align:left;font-size:12px;color:var(--fg2);font-weight:500;border-bottom:1px solid var(--b1);">예상입찰가</th>
+            <th style="padding:9px 12px;text-align:left;font-size:12px;color:var(--fg2);font-weight:500;border-bottom:1px solid var(--b1);">임장</th>
+            <th style="padding:9px 12px;text-align:left;font-size:12px;color:var(--fg2);font-weight:500;border-bottom:1px solid var(--b1);">메모</th>
+            <th style="border-bottom:1px solid var(--b1);"></th>
+          </tr>
+        </thead>
+        <tbody id="pl-tbody"></tbody>
+      </table>
+    </div>
+
+    <!-- 물건 추가/수정 모달 -->
+    <div id="pl-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center;">
+      <div style="background:var(--bg2);border-radius:12px;padding:24px;width:420px;max-width:95vw;max-height:90vh;overflow-y:auto;">
+        <h3 style="margin:0 0 16px;font-size:16px;">물건 추가 / 수정</h3>
+        <input type="hidden" id="pl-edit-id">
+        <div style="display:grid;gap:10px;">
+          <input id="pl-f-addr" placeholder="주소" style="padding:8px 10px;border:1px solid var(--b1);border-radius:6px;background:var(--bg3);color:var(--fg);font-size:13px;">
+          <input id="pl-f-case" placeholder="사건번호 (예: 2025타경1234)" style="padding:8px 10px;border:1px solid var(--b1);border-radius:6px;background:var(--bg3);color:var(--fg);font-size:13px;">
+          <select id="pl-f-status" style="padding:8px 10px;border:1px solid var(--b1);border-radius:6px;background:var(--bg3);color:var(--fg);font-size:13px;">
+            <option value="관심">관심</option>
+            <option value="임장필요">임장 필요</option>
+            <option value="입찰준비">입찰 준비</option>
+            <option value="완료">완료</option>
+            <option value="포기">포기</option>
+          </select>
+          <input id="pl-f-biddate" type="date" placeholder="입찰기일" style="padding:8px 10px;border:1px solid var(--b1);border-radius:6px;background:var(--bg3);color:var(--fg);font-size:13px;">
+          <input id="pl-f-appraisal" placeholder="감정가 (예: 8.4억)" style="padding:8px 10px;border:1px solid var(--b1);border-radius:6px;background:var(--bg3);color:var(--fg);font-size:13px;">
+          <input id="pl-f-estimate" placeholder="예상 입찰가 (예: 6.72억)" style="padding:8px 10px;border:1px solid var(--b1);border-radius:6px;background:var(--bg3);color:var(--fg);font-size:13px;">
+          <select id="pl-f-site" style="padding:8px 10px;border:1px solid var(--b1);border-radius:6px;background:var(--bg3);color:var(--fg);font-size:13px;">
+            <option value="0">임장 안 함</option>
+            <option value="1">1회</option>
+            <option value="2">2회</option>
+            <option value="3">3회 이상</option>
+          </select>
+          <textarea id="pl-f-memo" placeholder="메모" rows="3" style="padding:8px 10px;border:1px solid var(--b1);border-radius:6px;background:var(--bg3);color:var(--fg);font-size:13px;resize:vertical;"></textarea>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end;">
+          <button onclick="deletePLItem()" id="pl-del-btn"
+            style="padding:8px 14px;border:1px solid var(--b1);border-radius:6px;background:var(--bg3);color:#e55;font-size:13px;cursor:pointer;display:none;">삭제</button>
+          <button onclick="closePLModal()"
+            style="padding:8px 14px;border:1px solid var(--b1);border-radius:6px;background:var(--bg3);color:var(--fg);font-size:13px;cursor:pointer;">취소</button>
+          <button onclick="savePLItem()"
+            style="padding:8px 16px;border:none;border-radius:6px;background:#4f8eff;color:#fff;font-size:13px;cursor:pointer;font-weight:500;">저장</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
 
     <!-- PAGE 4: 수집 탭 -->
 
@@ -5017,8 +5187,10 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
     </button>
   </div>
 
+  <button id="pc-mobile-mode-btn" onclick="skSwitchDeviceMode('mobile')" title="모바일 모드로 보기">📱 모바일</button>
+
   <!-- 공통 로직 -->
-<script src="common.js?v=202604042030"></script>
+<script src="common.js?v=202604131705"></script>
 
   <!-- 측정 서브패널 (fixed - overflow 영향 없음) -->
   <div id="measureSubBtns" style="display:none;position:fixed;transform:translateY(-50%);background:rgba(13,18,32,0.96);border:1px solid rgba(79,142,255,.35);border-radius:12px;padding:8px 6px;flex-direction:column;gap:4px;z-index:9999;box-shadow:0 8px 32px rgba(0,0,0,.7);min-width:72px;backdrop-filter:blur(12px);">
