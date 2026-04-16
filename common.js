@@ -6581,7 +6581,7 @@ window.wr2SummaryCancelEdit = function() {
                 window.wr2OpenOrCreateFromSavedId = function (savedId) {
                   try {
                     // 작업룸 탭으로 이동
-                    if (typeof showInsTab === 'function') showInsTab(8);
+                    if (typeof window.openPropertyManagementTab === 'function') window.openPropertyManagementTab('work');
                     const tab = document.getElementById('ipage8');
                     if (tab) tab.style.display = 'block';
                   } catch (e) { }
@@ -8015,7 +8015,7 @@ window.wr2SummaryCancelEdit = function() {
             }, 280);
           }
         }
-        if (n === 3) onInsightOpen(window.__insActiveTab || 8);
+        if (n === 3) onInsightOpen(window.__insActiveTab || 0);
       });
     }
     window.showPage = showPage;
@@ -10855,7 +10855,7 @@ window.wr2SummaryCancelEdit = function() {
       var roomId = (sel && sel.value) || window._swActiveRoomId || '';
       if (!roomId) { showToast('룸을 선택하세요', 'warn'); return; }
       showPage(3);
-      setTimeout(function () { showInsTab(8); if (typeof window.wrDbOpenRoom === 'function') window.wrDbOpenRoom(roomId); }, 150);
+      setTimeout(function () { if (typeof window.openPropertyManagementTab === 'function') window.openPropertyManagementTab('work', { roomId: roomId }); else if (typeof window.wrDbOpenRoom === 'function') window.wrDbOpenRoom(roomId); }, 150);
     };
 
     window.wrCreateRoomAndSave = function () {
@@ -27394,21 +27394,24 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
     // ── 인사이트 탭 열릴 때 초기화 ─────────────────────
     function onInsightOpen(targetTab) {
-      const nextTab = (targetTab === undefined || targetTab === null) ? (window.__insActiveTab || 8) : targetTab;
+      var remembered = window.__insActiveTab;
+      if (remembered === 5 || remembered === 8) remembered = 0;
+      const nextTab = (targetTab === undefined || targetTab === null) ? (remembered || 0) : targetTab;
       showInsTab(nextTab);
     }
+
+    window.openPropertyManagementTab = function(tab, opts) {
+      if (typeof window.showPage === 'function') window.showPage(4);
+      setTimeout(function() {
+        if (typeof window.pmShowTab === 'function') window.pmShowTab(tab || 'list', opts || {});
+      }, 30);
+    };
 
     // ── 서브탭 전환 ─────────────────────────────────────
     function showInsTab(n) {
       if (n === 5 || n === 8) {
-        window.__insActiveTab = n;
-        if (typeof window.showPage === 'function') window.showPage(4);
-        setTimeout(function() {
-          if (typeof window.pmShowTab === 'function') {
-            window.pmShowTab(n === 8 ? 'work' : 'pipeline');
-          }
-        }, 30);
-        return;
+        // 기존 인사이트 내부 탭 번호와 충돌하지 않도록 마지막 인사이트 탭 기억값은 보존하지 않음.
+        n = 0;
       }
       window.__insActiveTab = n;
       const _insBoot = window.__insBoot || (window.__insBoot = {});
@@ -29862,8 +29865,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           window.wr2State.activeRoomId = roomId;
           window.wr2State.activePhase = _targetPhase;
           window.wr2State.activeView = 'phase';
-          showPage(3);
-          showInsTab(8);
+          showPage(4);
+          if (typeof window.pmShowTab === 'function') window.pmShowTab('work', { roomId: roomId });
           setTimeout(function() {
             if (typeof window.wr2SwitchView === 'function') window.wr2SwitchView('phase');
             if (typeof window.wr2Render === 'function') window.wr2Render();
@@ -31723,15 +31726,15 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       setTimeout(renderWatchBoard, 50);
     };
     window._wbGoRoom = function (roomId) {
-      showInsTab(8);
-      setTimeout(function () { if (typeof window.wrDbOpenRoom === 'function') window.wrDbOpenRoom(roomId); }, 80);
+      if (typeof window.openPropertyManagementTab === 'function') window.openPropertyManagementTab('work', { roomId: roomId });
+      else setTimeout(function () { if (typeof window.wrDbOpenRoom === 'function') window.wrDbOpenRoom(roomId); }, 80);
     };
     window._wbCreateAndLink = function (itemId) {
       if (typeof window.wr2OpenOrCreateFromSavedId === 'function') {
         window.wr2OpenOrCreateFromSavedId(itemId);
         return;
       }
-      showInsTab(8);
+      if (typeof window.openPropertyManagementTab === 'function') window.openPropertyManagementTab('work');
       showToast('작업룸 기능을 불러오는 중입니다. 잠시 후 다시 시도해주세요.', 'warn');
     };
     window._wbNote = function (itemId) {
