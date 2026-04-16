@@ -28337,10 +28337,6 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
     // ── 서브탭 전환 ─────────────────────────────────────
     function showInsTab(n) {
-      if (n === 5) {
-        try { localStorage.setItem('sk_workhub_sub', 'planner'); } catch(e) {}
-        n = 8;
-      }
       window.__insActiveTab = n;
       const _insBoot = window.__insBoot || (window.__insBoot = {});
       const cfgPanel = document.getElementById('ipage_cfg');
@@ -28408,12 +28404,6 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
               try { if (typeof window.renderMobileSiteBookmarks === 'function') window.renderMobileSiteBookmarks(); } catch (e) {}
             });
         }
-      }
-      if (n === 8) {
-        _skEnsureWorkHubNav();
-        var sub = window.__workHubSub;
-        if (!sub) { try { sub = localStorage.getItem('sk_workhub_sub') || 'planner'; } catch(e) { sub = 'planner'; } }
-        window._skSetWorkHubSub(sub);
       }
     }
     window.showInsTab = showInsTab;
