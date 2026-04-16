@@ -27879,7 +27879,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           badges += `<span class="nt-domain-badge">${NT_DOMAIN_LABELS[n.domain]}</span>`;
         }
 
-        return `<div class="nt-card${n.id === ntActiveId ? ' active' : ''}" data-ntid="${n.id}">
+        return `<div class="nt-card${n.id === ntActiveId ? ' active' : ''}" data-ntid="${n.id}" onclick="ntOpen('${n.id}')">
       <div style="display:flex;align-items:center;gap:5px;margin-bottom:3px;">
         <span style="font-size:12px;cursor:pointer;" onclick="ntOpen('${n.id}')">${t.icon}</span>
         <span class="nt-card-title" style="flex:1;cursor:pointer;" onclick="ntOpen('${n.id}')">${esc(n.title || '제목 없음')}</span>
@@ -40021,8 +40021,19 @@ window.addEventListener('DOMContentLoaded', () => {
         body.style.overflow = 'hidden';
       }
       if (listPanel) {
+        listPanel.style.display = 'flex';
+        listPanel.style.flexDirection = 'column';
         listPanel.style.minHeight = '0';
-        listPanel.style.overflow = 'auto';
+        listPanel.style.height = '100%';
+        listPanel.style.overflow = 'hidden';
+        var roomList = workPanel.querySelector('.wr2-list');
+        if (roomList) {
+          roomList.style.flex = '1';
+          roomList.style.minHeight = '0';
+          roomList.style.height = '100%';
+          roomList.style.overflowY = 'auto';
+          roomList.style.overscrollBehavior = 'contain';
+        }
       }
       if (detailPanel) {
         detailPanel.style.display = 'flex';
@@ -40108,6 +40119,55 @@ window.addEventListener('DOMContentLoaded', () => {
   window.plGoToWorkroom = function(roomId) {
     if (window.showPage) window.showPage(4);
     setTimeout(function(){ window.pmShowTab('work', { roomId: roomId }); }, 60);
+  };
+
+  // ── 물건리스트 → 작업룸 즉시 생성/연결 ─────────────────
+  window.plQuickCreateRoom = function(itemId) {
+    var items = plLoad();
+    var item = items.find(function(x){ return x.id === itemId; });
+    if (!item) return;
+    var rooms = getWrRooms();
+    var existing = rooms.find(function(r){ return r && (String(r.linkedSavedId||'') === String(item.linkedSavedId||'') || String(r.auctionId||'') === String(item.linkedSavedId||'') || ((r.title||'').trim() && (r.title||'').trim() === (item.addr||'').trim())); });
+    if (existing) {
+      item.roomId = existing.id;
+      plSave(items);
+      syncToWorkroom(item);
+      renderPropertyList();
+      showToast('기존 작업룸에 연결했습니다', 'ok');
+      return window.plGoToWorkroom(existing.id);
+    }
+    var roomId = 'wr_' + Date.now() + '_' + Math.random().toString(36).slice(2,7);
+    var phase = item.status || 'review';
+    var folder = (STATUS_MAP[phase] || STATUS_MAP.review).folder;
+    var room = {
+      id: roomId,
+      title: item.addr || item.casenum || '새 작업룸',
+      address: item.addr || '',
+      phase: phase,
+      status: phase,
+      activePhase: phase,
+      group: folder,
+      auctionId: item.linkedSavedId || item.id || '',
+      linkedSavedId: item.linkedSavedId || '',
+      linkedItems: item.linkedSavedId ? [item.linkedSavedId] : [],
+      bidDate: item.biddate || '',
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    };
+    if (window.wr2State && Array.isArray(window.wr2State.rooms)) {
+      window.wr2State.rooms.unshift(room);
+      if (typeof window.wr2SaveAll === 'function') window.wr2SaveAll();
+      else if (window._wrPersistRooms) window._wrPersistRooms(window.wr2State.rooms, { syncState: true });
+    } else {
+      rooms.unshift(room);
+      try { localStorage.setItem('wr2_rooms', JSON.stringify(rooms)); } catch(e) {}
+    }
+    item.roomId = roomId;
+    plSave(items);
+    syncToWorkroom(item);
+    renderPropertyList();
+    showToast('새 작업룸을 만들고 연결했습니다', 'ok');
+    window.plGoToWorkroom(roomId);
   };
 
   function _plToRegion(addr) {

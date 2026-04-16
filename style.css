@@ -4750,11 +4750,11 @@
       z-index: 99999;
       background: #111827;
       border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 8px;
+      border-radius: 12px;
       box-shadow: 0 12px 40px rgba(0, 0, 0, 0.8);
       padding: 5px 0 6px;
       min-width: 196px;
-      max-width: min(250px, calc(100vw - 16px));
+      max-width: min(240px, calc(100vw - 16px));
       display: none;
       animation: ctxFadeIn .13s ease;
     }
@@ -4831,84 +4831,10 @@
       margin-bottom: 3px;
     }
 
-    .ctx-map-links {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 6px;
-      padding: 7px 12px 8px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.07);
-      margin-bottom: 3px;
-    }
-
-    .ctx-map-link {
-      min-width: 0;
-      height: 34px;
-      border-radius: 8px;
-      border: 1px solid rgba(255, 255, 255, .10);
-      background: rgba(255, 255, 255, .05);
-      color: #e8ecf4;
-      font-size: 10px;
-      font-weight: 800;
-      cursor: pointer;
-      font-family: 'Noto Sans KR', sans-serif;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 4px;
-      white-space: nowrap;
-    }
-
-    .ctx-map-link:hover {
-      background: rgba(255, 255, 255, .09);
-      transform: translateY(-1px);
-    }
-
-    .ctx-map-icon {
-      width: 15px;
-      height: 15px;
-      border-radius: 4px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 9px;
-      line-height: 1;
-      color: #101318;
-      background: #e8ecf4;
-    }
-
-    .ctx-map-naver {
-      color: #86efac;
-      border-color: rgba(34, 197, 94, .32);
-      background: rgba(34, 197, 94, .09);
-    }
-
-    .ctx-map-naver .ctx-map-icon,
-    .ctx-map-land .ctx-map-icon {
-      background: #03c75a;
-      color: #07120b;
-    }
-
-    .ctx-map-land {
-      color: #7dd3fc;
-      border-color: rgba(14, 165, 233, .32);
-      background: rgba(14, 165, 233, .09);
-    }
-
-    .ctx-map-kakao {
-      color: #fde047;
-      border-color: rgba(250, 204, 21, .34);
-      background: rgba(250, 204, 21, .09);
-    }
-
-    .ctx-map-kakao .ctx-map-icon {
-      background: #fee500;
-      color: #191600;
-    }
-
     .ctx-shortcut-btn {
       width: 28px;
       height: 28px;
-      border-radius: 8px;
+      border-radius: 10px;
       border: 1px solid rgba(255, 255, 255, .10);
       background: rgba(255, 255, 255, .05);
       color: #e8ecf4;
@@ -7507,7 +7433,7 @@
 ═══════════════════════════════════════════ */
               .nt-wrap {
                 display: grid;
-                grid-template-columns: 300px 1fr;
+                grid-template-columns: 260px 1fr;
                 height: 100%;
                 overflow: hidden;
               }
@@ -7609,21 +7535,16 @@
               .nt-list {
                 flex: 1;
                 overflow-y: auto;
-                padding: 8px 9px;
+                padding: 8px;
               }
 
               .nt-card {
-                position: relative;
-                display: flex;
-                align-items: stretch;
-                gap: 10px;
                 padding: 10px 11px;
                 border-radius: 8px;
                 border: 1px solid var(--b1);
                 cursor: pointer;
-                margin-bottom: 7px;
+                margin-bottom: 5px;
                 background: var(--s2);
-                overflow: hidden;
               }
 
               .nt-card:hover {
@@ -7632,31 +7553,19 @@
 
               .nt-card-actions {
                 display: flex;
-                gap: 3px;
-                position: absolute;
-                right: 8px;
-                top: 8px;
-                z-index: 2;
-                max-width: calc(100% - 16px);
-                flex-wrap: wrap;
-                justify-content: flex-end;
+                gap: 2px;
                 opacity: 0;
                 transition: opacity .15s;
-                pointer-events: none;
+                flex-shrink: 0;
               }
               .nt-card:hover .nt-card-actions {
                 opacity: 1;
-                pointer-events: auto;
-              }
-              .nt-card.active .nt-card-actions {
-                opacity: 1;
-                pointer-events: auto;
               }
               .nt-act-btn {
-                padding: 2px 6px;
+                padding: 2px 5px;
                 border-radius: 4px;
                 border: 1px solid var(--b1);
-                background: rgba(10,14,22,.92);
+                background: transparent;
                 color: var(--di);
                 font-size: 10px;
                 cursor: pointer;
@@ -7674,170 +7583,9 @@
                 border-color: rgba(239,68,68,.4) !important;
               }
 
-              .nt-card-menu {
-                position: absolute;
-                top: 8px;
-                right: 8px;
-                z-index: 4;
-              }
-
-              .nt-card-menu summary {
-                list-style: none;
-                width: 24px;
-                height: 24px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                border-radius: 6px;
-                border: 1px solid rgba(255,255,255,.08);
-                background: rgba(8,12,18,.80);
-                color: var(--di);
-                cursor: pointer;
-                font-size: 15px;
-                line-height: 1;
-              }
-
-              .nt-card-menu summary::-webkit-details-marker {
-                display: none;
-              }
-
-              .nt-card-menu-pop {
-                position: absolute;
-                top: 28px;
-                right: 0;
-                width: 132px;
-                padding: 5px;
-                border: 1px solid var(--b1);
-                border-radius: 8px;
-                background: #111722;
-                box-shadow: 0 10px 24px rgba(0,0,0,.35);
-              }
-
-              .nt-card-menu-pop button {
-                display: block;
-                width: 100%;
-                min-height: 27px;
-                padding: 0 8px;
-                border: 0;
-                border-radius: 6px;
-                background: transparent;
-                color: var(--tx);
-                font-size: 11px;
-                text-align: left;
-                cursor: pointer;
-                font-family: inherit;
-              }
-
-              .nt-card-menu-pop button:hover {
-                background: rgba(255,255,255,.06);
-              }
-
-              .nt-card-menu-pop button.danger {
-                color: #ff6370;
-              }
-
               .nt-card.active {
                 border-color: var(--ac);
                 background: rgba(79, 142, 255, .06);
-              }
-
-              .nt-card-thumb {
-                position: relative;
-                width: 44px;
-                height: 44px;
-                min-width: 44px;
-                align-self: flex-start;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                border: 1px solid rgba(255, 255, 255, .08);
-                border-radius: 7px;
-                background: #10141d;
-                overflow: hidden;
-              }
-
-              .nt-card-thumb img {
-                width: 100%;
-                height: 100%;
-                object-fit: cover;
-                display: block;
-              }
-
-              .nt-card-thumb-empty span {
-                font-size: 18px;
-                opacity: .75;
-              }
-
-              .nt-card-thumb-link {
-                flex-direction: column;
-                gap: 5px;
-                padding: 6px;
-                color: #9fc2ff;
-                font-size: 9px;
-                font-weight: 700;
-                line-height: 1.25;
-                text-align: center;
-              }
-
-              .nt-card-thumb-link img {
-                width: 22px;
-                height: 22px;
-                object-fit: contain;
-              }
-
-              .nt-card-media-badge {
-                position: absolute;
-                right: 4px;
-                bottom: 4px;
-                padding: 1px 5px;
-                border-radius: 6px;
-                background: rgba(0, 0, 0, .68);
-                color: #fff;
-                font-size: 9px;
-                font-weight: 800;
-              }
-
-              .nt-card-play {
-                position: absolute;
-                left: 50%;
-                top: 50%;
-                transform: translate(-50%, -50%);
-                width: 26px;
-                height: 26px;
-                border-radius: 50%;
-                background: rgba(255, 68, 68, .9);
-                color: #fff;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                font-size: 11px;
-                padding-left: 2px;
-              }
-
-              .nt-card-body {
-                min-width: 0;
-                flex: 1;
-              }
-
-              .nt-card-title-row {
-                display: flex;
-                align-items: flex-start;
-                gap: 5px;
-                margin-bottom: 4px;
-                padding-right: 30px;
-              }
-
-              .nt-card-icon {
-                font-size: 12px;
-                flex-shrink: 0;
-                line-height: 1.45;
-              }
-
-              .nt-card-date {
-                font-size: 10px;
-                color: var(--di);
-                flex-shrink: 0;
-                line-height: 1.6;
               }
 
               .nt-card-title {
@@ -7845,27 +7593,18 @@
                 font-weight: 700;
                 color: var(--tx);
                 overflow: hidden;
-                display: -webkit-box;
-                -webkit-line-clamp: 2;
-                -webkit-box-orient: vertical;
-                line-height: 1.45;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                margin-bottom: 3px;
               }
 
               .nt-card-preview {
                 font-size: 11px;
                 color: var(--mu);
                 overflow: hidden;
-                display: -webkit-box;
-                -webkit-line-clamp: 2;
-                -webkit-box-orient: vertical;
-                line-height: 1.55;
-                margin-bottom: 5px;
-              }
-
-              .nt-card-media-line {
-                color: var(--di);
-                font-size: 10px;
-                margin-top: 2px;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                margin-bottom: 4px;
               }
 
               .nt-card-tag {
@@ -7876,81 +7615,6 @@
                 border-radius: 8px;
                 color: #119ded;
                 margin-right: 3px;
-              }
-
-              .nt-attach-info-card {
-                position: relative;
-                display: grid;
-                grid-template-columns: minmax(120px, 180px) minmax(0, 1fr);
-                gap: 12px;
-                padding: 10px;
-                border: 1px solid var(--b1);
-                border-radius: 8px;
-                background: var(--s2);
-                margin-bottom: 8px;
-              }
-
-              .nt-attach-info-img {
-                width: 100%;
-                aspect-ratio: 4 / 3;
-                padding: 0;
-                border: 1px solid rgba(255,255,255,.08);
-                border-radius: 7px;
-                background: #0b0f18;
-                overflow: hidden;
-                cursor: zoom-in;
-              }
-
-              .nt-attach-info-img img {
-                width: 100%;
-                height: 100%;
-                object-fit: cover;
-                display: block;
-              }
-
-              .nt-attach-info-copy {
-                min-width: 0;
-                padding: 4px 28px 4px 0;
-                border: 0;
-                background: none;
-                color: inherit;
-                text-align: left;
-                cursor: zoom-in;
-                font-family: inherit;
-              }
-
-              .nt-attach-info-title {
-                display: block;
-                color: var(--tx);
-                font-size: 13px;
-                font-weight: 800;
-                white-space: nowrap;
-                overflow: hidden;
-                text-overflow: ellipsis;
-                margin-bottom: 7px;
-              }
-
-              .nt-attach-info-memo {
-                display: -webkit-box;
-                -webkit-line-clamp: 4;
-                -webkit-box-orient: vertical;
-                overflow: hidden;
-                color: var(--mu);
-                font-size: 12px;
-                line-height: 1.65;
-              }
-
-              .nt-attach-info-del {
-                position: absolute;
-                top: 8px;
-                right: 8px;
-                padding: 3px 7px;
-                background: rgba(255,99,112,.08);
-                border: 1px solid rgba(255,99,112,.24);
-                border-radius: 5px;
-                color: #ff6370;
-                font-size: 10px;
-                cursor: pointer;
               }
 
               .nt-badge {
@@ -7997,204 +7661,6 @@
                 color: var(--mu);
                 gap: 12px;
                 text-align: center;
-              }
-
-              .nt-wrap.nt-board {
-                display: flex;
-                flex-direction: column;
-                gap: 9px;
-                height: 100%;
-                padding: 0 18px 18px;
-                overflow: hidden;
-              }
-
-              .nt-board-top {
-                display: grid;
-                grid-template-columns: minmax(220px, 1fr) auto auto auto;
-                gap: 8px;
-                align-items: center;
-                flex-shrink: 0;
-              }
-
-              .nt-search-main {
-                width: 100%;
-                height: 34px;
-                padding: 0 11px;
-                background: var(--s2);
-                border: 1px solid var(--b1);
-                border-radius: 8px;
-                color: var(--tx);
-                font-size: 12px;
-                font-family: "Noto Sans KR", sans-serif;
-                outline: none;
-                box-sizing: border-box;
-              }
-
-              .nt-new-btn-main.nt-new-btn-board {
-                width: auto;
-                height: 34px;
-                padding: 0 18px;
-                white-space: nowrap;
-              }
-
-              .nt-toolbar-btn {
-                height: 34px;
-                padding: 0 12px;
-                background: var(--s2);
-                border: 1px solid var(--b1);
-                border-radius: 8px;
-                color: var(--mu);
-                font-size: 12px;
-                font-weight: 700;
-                font-family: "Noto Sans KR", sans-serif;
-                cursor: pointer;
-                white-space: nowrap;
-              }
-
-              .nt-toolbar-btn:hover {
-                color: var(--tx);
-                border-color: rgba(255, 255, 255, .18);
-              }
-
-              .nt-board-filters {
-                display: grid;
-                grid-template-columns: minmax(240px, .8fr) minmax(240px, 1fr);
-                gap: 8px;
-                flex-shrink: 0;
-              }
-
-              .nt-filter-box {
-                display: grid;
-                grid-template-columns: auto minmax(0, 1fr);
-                gap: 8px;
-                align-items: center;
-                min-width: 0;
-                min-height: 36px;
-                padding: 5px 8px;
-                background: rgba(255, 255, 255, .025);
-                border: 1px solid var(--b1);
-                border-radius: 8px;
-              }
-
-              .nt-filter-label {
-                color: var(--di);
-                font-size: 10px;
-                font-weight: 800;
-                white-space: nowrap;
-              }
-
-              .nt-filter-control {
-                min-width: 0;
-              }
-
-              .nt-wrap.nt-board .nt-board-body {
-                display: grid;
-                grid-template-columns: minmax(420px, 1.15fr) minmax(400px, .85fr);
-                gap: 10px;
-                flex: 1;
-                min-height: 0;
-                overflow: hidden;
-              }
-
-              .nt-wrap.nt-board:not(.nt-has-active) .nt-board-body {
-                grid-template-columns: minmax(0, 1fr);
-              }
-
-              .nt-wrap.nt-board:not(.nt-has-active) .nt-editor {
-                display: none;
-              }
-
-              .nt-wrap.nt-board .nt-list {
-                display: grid;
-                grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-                gap: 10px;
-                align-content: start;
-                min-height: 0;
-                padding: 0;
-                overflow-y: auto;
-              }
-
-              .nt-wrap.nt-board .nt-card {
-                min-height: 128px;
-                margin-bottom: 0;
-              }
-
-              .nt-wrap.nt-board .nt-card-title {
-                font-size: 13px;
-                line-height: 1.45;
-              }
-
-              .nt-wrap.nt-board .nt-card-preview {
-                -webkit-line-clamp: 3;
-                line-height: 1.6;
-              }
-
-              .nt-wrap.nt-board .nt-editor {
-                min-width: 0;
-                min-height: 0;
-                border: 1px solid var(--b1);
-                border-radius: 8px;
-                background: rgba(255, 255, 255, .02);
-              }
-
-              @media (max-width: 1180px) {
-                .nt-wrap.nt-board {
-                  padding: 0 12px 14px;
-                }
-
-                .nt-board-top {
-                  grid-template-columns: minmax(180px, 1fr) auto auto;
-                }
-
-                .nt-new-btn-main.nt-new-btn-board {
-                  grid-column: 2;
-                }
-
-                .nt-toolbar-btn {
-                  padding: 0 10px;
-                }
-
-                .nt-wrap.nt-board .nt-board-body {
-                  grid-template-columns: minmax(0, 1fr);
-                  overflow-y: auto;
-                }
-
-                .nt-wrap.nt-board .nt-list {
-                  overflow: visible;
-                }
-
-                .nt-wrap.nt-board .nt-editor {
-                  min-height: 460px;
-                }
-              }
-
-              @media (max-width: 760px) {
-                .nt-wrap.nt-board {
-                  gap: 7px;
-                  padding: 0 10px 12px;
-                }
-
-                .nt-board-top {
-                  grid-template-columns: 1fr 1fr;
-                }
-
-                .nt-search-main {
-                  grid-column: 1 / -1;
-                }
-
-                .nt-new-btn-main.nt-new-btn-board,
-                .nt-toolbar-btn {
-                  width: 100%;
-                  padding: 0 8px;
-                }
-
-                .nt-board-filters {
-                  grid-template-columns: 1fr;
-                }
-
-                .nt-wrap.nt-board .nt-list {
-                  grid-template-columns: 1fr;
-                }
               }
 
               /* v236: 듀얼 모드 추가 CSS */
@@ -8569,21 +8035,6 @@
                 background: var(--s1);
                 position: relative;
                 flex-shrink: 0;
-                transition: width .18s ease, min-width .18s ease, border-color .18s ease;
-              }
-
-              #workroomTab.list-collapsed .wr2-list-panel {
-                width: 0 !important;
-                min-width: 0 !important;
-                max-width: 0 !important;
-                border-right-color: transparent;
-              }
-
-              #workroomTab.list-collapsed .wr2-list-hd,
-              #workroomTab.list-collapsed .wr2-list,
-              #workroomTab.list-collapsed .wr2-empty,
-              #workroomTab.list-collapsed .wr2-resize-handle {
-                display: none !important;
               }
 
               #ipage8 .wr2-resize-handle {
@@ -8596,7 +8047,6 @@
                 z-index: 10;
                 background: transparent;
                 transition: background .15s;
-                touch-action: none;
               }
 
               #ipage8 .wr2-resize-handle:hover,
@@ -8608,48 +8058,6 @@
                 padding: 8px 10px;
                 border-bottom: 1px solid var(--b1);
                 flex-shrink: 0;
-              }
-
-              #ipage8 .wr2-list-scope-bar {
-                display: grid;
-                grid-template-columns: repeat(4, minmax(0, 1fr));
-                gap: 5px;
-                margin-top: 8px;
-              }
-
-              #ipage8 .wr2-list-scope-chip {
-                min-width: 0;
-                height: 28px;
-                padding: 0 6px;
-                border-radius: 7px;
-                border: 1px solid var(--b1);
-                background: var(--s2);
-                color: var(--mu);
-                font-size: 10px;
-                font-weight: 700;
-                cursor: pointer;
-                display: inline-flex;
-                align-items: center;
-                justify-content: center;
-                gap: 4px;
-                white-space: nowrap;
-              }
-
-              #ipage8 .wr2-list-scope-chip span {
-                color: var(--di);
-                font-size: 9px;
-              }
-
-              #ipage8 .wr2-list-scope-chip.active {
-                border-color: rgba(79,142,255,.35);
-                background: rgba(79,142,255,.12);
-                color: #9fc2ff;
-              }
-
-              #ipage8 .wr2-list-scope-chip.drag-over {
-                border-color: rgba(0, 212, 170, .58);
-                background: rgba(0, 212, 170, .14);
-                color: #7fe3cb;
               }
 
               #ipage8 .wr2-search-input {
@@ -8889,21 +8297,6 @@
               #ipage8 .wr2-room-meta span {
                 font-size: 9px;
                 color: var(--di);
-              }
-
-              #ipage8 .wr2-work-state-select {
-                height: 22px;
-                max-width: 76px;
-                padding: 0 18px 0 7px;
-                border-radius: 7px;
-                border: 1px solid rgba(79, 142, 255, .22);
-                background: rgba(79, 142, 255, .08);
-                color: #a9c6ff;
-                font-size: 9px;
-                font-weight: 700;
-                font-family: inherit;
-                outline: none;
-                cursor: pointer;
               }
 
               #ipage8 .wr2-dday {
@@ -9235,7 +8628,7 @@
                 display: block;
               }
 
-              /* 대시보드 - 요약/수익률 → 사진 → 노트 → 비교표 */
+              /* 대시보드 - 캡처 상단 풀너비 + 하단 2열 */
               #ipage8 .wr2-dashboard {
                 display: grid;
                 grid-template-columns: 1fr 1fr;
@@ -9247,17 +8640,8 @@
               }
 
               #ipage8 .wr2-widget-capture {
-                display: none !important;
-              }
-
-              #ipage8 .wr2-widget-info {
-                grid-column: 1;
-                grid-row: 1;
-              }
-
-              #ipage8 .wr2-widget-calc {
-                grid-column: 2;
-                grid-row: 1;
+                grid-column: 1/-1;
+                min-height: 80px;
               }
 
               /* 이미지 그리드 갤러리 */
@@ -9541,27 +8925,6 @@
                 gap: 4px;
               }
 
-              #ipage8 .wr2-summary-snap {
-                border-top: 1px solid var(--b1);
-                padding: 8px 12px 10px;
-                background: rgba(0,0,0,.08);
-              }
-
-              #ipage8 .wr2-summary-snap-hd {
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                gap: 8px;
-                margin-bottom: 6px;
-                color: var(--mu);
-                font-size: 10px;
-                font-weight: 800;
-              }
-
-              #ipage8 .wr2-summary-snap #wr2SnapList {
-                padding: 0 !important;
-              }
-
               /* phase 체크리스트 (단계별 탭 상단) */
               #ipage8 .wr2-phase-checklist {
                 border-left: 3px solid var(--ac);
@@ -9570,15 +8933,13 @@
 
               /* ── 자유 비교표 위젯 ── */
               #ipage8 .wr2-widget-table {
-                grid-column: 1 / -1;
-                grid-row: 4;
+                grid-column: span 1;
               }
               #ipage8 .wr2-free-table {
-                width: max-content;
-                min-width: 100%;
+                width: 100%;
                 border-collapse: collapse;
                 font-size: 11px;
-                table-layout: fixed;
+                table-layout: auto;
               }
               #ipage8 .wr2-free-table thead tr {
                 background: var(--s2);
@@ -9629,9 +8990,6 @@
                 padding: 3px 4px;
                 min-width: 0;
                 box-sizing: border-box;
-                resize: none;
-                overflow: hidden;
-                line-height: 1.45;
               }
               #ipage8 .wr2-ft-cell-inp:focus {
                 background: rgba(79,142,255,.08);
@@ -9663,12 +9021,11 @@
                 position: absolute;
                 right: 0;
                 top: 0;
-                width: 8px;
+                width: 5px;
                 height: 100%;
                 cursor: col-resize;
                 background: transparent;
                 z-index: 1;
-                touch-action: none;
               }
               #ipage8 .wr2-ft-col-resizer:hover {
                 background: rgba(79,142,255,.4);
@@ -9680,44 +9037,6 @@
                 border: 1px solid var(--b1);
                 border-radius: 8px;
                 overflow: hidden;
-              }
-              #ipage8 .wr2-ft-scroll-wrap {
-                overflow: auto;
-                cursor: grab;
-                user-select: none;
-                scrollbar-gutter: stable;
-              }
-              #ipage8 .wr2-ft-tools {
-                display: flex;
-                align-items: center;
-                gap: 5px;
-                padding: 6px 8px;
-                border-bottom: 1px solid var(--b1);
-                background: rgba(255,255,255,.025);
-                overflow-x: auto;
-              }
-              #ipage8 .wr2-ft-tools button {
-                flex: 0 0 auto;
-                height: 24px;
-                padding: 0 8px;
-                border-radius: 6px;
-                border: 1px solid rgba(255,255,255,.10);
-                background: rgba(255,255,255,.04);
-                color: var(--mu);
-                font-size: 10px;
-                font-family: inherit;
-                cursor: pointer;
-              }
-              #ipage8 .wr2-ft-tools button:hover {
-                border-color: rgba(79,142,255,.34);
-                color: #9fc2ff;
-                background: rgba(79,142,255,.08);
-              }
-              #ipage8 .wr2-ft-tools span {
-                flex: 0 0 auto;
-                color: var(--di);
-                font-size: 10px;
-                padding-left: 2px;
               }
               #ipage8 .wr2-ft-title-bar {
                 display: flex; align-items: center; gap: 6px;
@@ -9951,26 +9270,6 @@
               #ipage8 .wr2-calc-result-row span:last-child {
                 color: var(--tx);
                 font-weight: 600;
-              }
-
-              #ipage8 .wr2-calc-more-btn {
-                width: 100%;
-                margin-top: 10px;
-                height: 30px;
-                border-radius: 7px;
-                border: 1px solid rgba(79,142,255,.24);
-                background: rgba(79,142,255,.07);
-                color: #9fc2ff;
-                font-size: 11px;
-                font-weight: 700;
-                font-family: inherit;
-                cursor: pointer;
-              }
-
-              #ipage8 .wr2-calc-more-btn.active {
-                border-color: rgba(255,209,102,.32);
-                background: rgba(255,209,102,.08);
-                color: #ffd166;
               }
 
               #ipage8 .wr2-yield-table {
@@ -10393,28 +9692,13 @@
                 }
               }
 
-              #ipage8 .wr2-widget-note {
-                grid-column: 1 / -1;
-                grid-row: 3;
-                min-height: 470px;
-              }
-
-              #ipage8 .wr2-widget-gallery {
-                grid-column: 1 / -1;
-                grid-row: 2;
-                min-height: 220px;
-              }
-
               /* 노트 드롭존 */
               #ipage8 .wr2-note-body {
-                display: grid;
-                grid-template-columns: minmax(0, 1fr);
-                grid-template-rows: auto minmax(300px, 1fr) auto;
+                display: flex;
+                flex-direction: column;
                 gap: 0;
                 padding: 0;
                 transition: background .2s;
-                min-height: 500px;
-                overflow: hidden;
               }
 
               #ipage8 .wr2-note-body.drag-over {
@@ -10423,243 +9707,33 @@
 
               /* 노트 위젯 */
               #ipage8 .wr2-note-body {
-                gap: 0;
-              }
-
-              #ipage8 #wr2NoteList {
-                grid-column: 1;
-                grid-row: 1;
-                display: flex !important;
-                flex-direction: row;
-                flex-wrap: nowrap !important;
-                gap: 6px !important;
-                min-height: 0;
-                padding: 10px !important;
-                border-right: none;
-                border-bottom: 1px solid var(--b1);
-                background: rgba(0,0,0,.10);
-                overflow-x: auto;
-                overflow-y: hidden;
-              }
-
-              #ipage8 .wr2-note-tab {
-                flex: 0 0 220px;
-                position: relative;
-                border: 1px solid rgba(255,255,255,.08);
-                border-radius: 8px;
-                background: rgba(255,255,255,.035);
-                padding: 9px 34px 9px 10px;
-                cursor: pointer;
-                min-width: 0;
-                transition: border-color .15s, background .15s;
-              }
-
-              #ipage8 .wr2-note-tab:hover {
-                border-color: rgba(79,142,255,.26);
-                background: rgba(79,142,255,.06);
-              }
-
-              #ipage8 .wr2-note-tab.active {
-                border-color: rgba(79,142,255,.48);
-                background: rgba(79,142,255,.12);
-              }
-
-              #ipage8 .wr2-note-tab-main {
-                min-width: 0;
-                padding-right: 2px;
-              }
-
-              #ipage8 .wr2-note-tab-title {
-                font-size: 12px;
-                font-weight: 800;
-                color: var(--tx);
-                white-space: nowrap;
-                overflow: hidden;
-                text-overflow: ellipsis;
-              }
-
-              #ipage8 .wr2-note-tab-preview {
-                margin-top: 4px;
-                min-height: 16px;
-                color: var(--mu);
-                font-size: 10px;
-                line-height: 1.45;
-                overflow: hidden;
-                display: -webkit-box;
-                -webkit-line-clamp: 2;
-                -webkit-box-orient: vertical;
-              }
-
-              #ipage8 .wr2-note-tab-meta {
                 display: flex;
-                flex-wrap: wrap;
-                gap: 4px;
-                margin-top: 8px;
-              }
-
-              #ipage8 .wr2-note-tab-meta span {
-                border-radius: 999px;
-                border: 1px solid rgba(255,255,255,.08);
-                background: rgba(255,255,255,.04);
-                color: var(--di);
-                font-size: 9px;
-                padding: 1px 6px;
-              }
-
-              #ipage8 .wr2-note-tab-sub {
-                margin-top: 6px;
-                color: var(--di);
-                font-size: 9px;
-                line-height: 1.35;
-                white-space: nowrap;
-                overflow: hidden;
-                text-overflow: ellipsis;
-              }
-
-              #ipage8 .wr2-note-tab-menu {
-                position: absolute;
-                top: 7px;
-                right: 7px;
-                z-index: 3;
-              }
-
-              #ipage8 .wr2-note-tab-menu summary {
-                list-style: none;
-                width: 22px;
-                height: 22px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                border-radius: 6px;
-                border: 1px solid rgba(255,255,255,.08);
-                background: rgba(8,12,18,.76);
-                color: var(--di);
-                cursor: pointer;
-                font-size: 14px;
-                line-height: 1;
-              }
-
-              #ipage8 .wr2-note-tab-menu summary::-webkit-details-marker {
-                display: none;
-              }
-
-              #ipage8 .wr2-note-tab-menu-pop {
-                position: absolute;
-                top: 26px;
-                right: 0;
-                min-width: 94px;
-                padding: 5px;
-                border: 1px solid var(--b1);
-                border-radius: 8px;
-                background: #111722;
-                box-shadow: 0 10px 24px rgba(0,0,0,.35);
-              }
-
-              #ipage8 .wr2-note-tab-menu-pop button {
-                display: block;
-                width: 100%;
-                min-height: 26px;
-                padding: 0 8px;
-                border: 0;
-                border-radius: 6px;
-                background: transparent;
-                color: var(--tx);
-                font-size: 11px;
-                text-align: left;
-                cursor: pointer;
-                font-family: inherit;
-              }
-
-              #ipage8 .wr2-note-tab-menu-pop button:hover {
-                background: rgba(255,255,255,.06);
-              }
-
-              #ipage8 .wr2-note-tab-menu-pop button.danger {
-                color: #ff6370;
-              }
-
-              #ipage8 .wr2-note-tab-actions {
-                display: flex;
-                gap: 4px;
-                margin-top: 7px;
-              }
-
-              #ipage8 .wr2-note-tab-actions button {
-                height: 22px;
-                padding: 0 7px;
-                border-radius: 6px;
-                border: 1px solid rgba(255,255,255,.08);
-                background: rgba(255,255,255,.035);
-                color: var(--mu);
-                font-size: 10px;
-                cursor: pointer;
-                font-family: inherit;
-              }
-
-              #ipage8 .wr2-note-tab-actions button:hover {
-                border-color: rgba(79,142,255,.25);
-                color: #9fc2ff;
+                flex-direction: column;
+                gap: 8px;
+                padding: 0;
               }
 
               #ipage8 .wr2-note-textarea {
-                grid-column: 1;
-                grid-row: 2;
+                flex: 1;
                 width: 100%;
-                min-height: 320px;
-                padding: 20px 22px;
+                min-height: 120px;
+                padding: 10px 12px;
                 background: transparent;
                 border: none;
-                border-bottom: 1px solid var(--b1);
                 color: var(--tx);
-                font-size: 14px;
+                font-size: 12px;
                 font-family: 'Noto Sans KR', sans-serif;
                 resize: none;
                 outline: none;
-                line-height: 1.85;
+                line-height: 1.7;
                 box-sizing: border-box;
               }
 
               #ipage8 .wr2-attachments {
-                grid-column: 1;
-                grid-row: 3;
                 display: flex;
-                flex-direction: column;
-                gap: 8px;
-                padding: 10px 12px 12px;
-                min-height: 138px;
-                max-height: 260px;
-                overflow-y: auto;
-                background: rgba(0,0,0,.08);
-              }
-
-              #ipage8 .wr2-attach-toolbar {
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                gap: 10px;
-                color: var(--mu);
-                font-size: 10px;
-                min-height: 24px;
-              }
-
-              #ipage8 .wr2-attach-toolbar button {
-                height: 24px;
-                padding: 0 9px;
-                border-radius: 6px;
-                border: 1px solid rgba(79,142,255,.28);
-                background: rgba(79,142,255,.08);
-                color: #9fc2ff;
-                font-size: 10px;
-                font-family: inherit;
-                cursor: pointer;
-                white-space: nowrap;
-              }
-
-              #ipage8 .wr2-attach-grid {
-                display: grid;
-                grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-                gap: 8px;
-                align-items: stretch;
+                flex-wrap: wrap;
+                gap: 6px;
+                padding: 6px 12px 10px;
               }
 
               #ipage8 .wr2-attach-empty {
@@ -10678,115 +9752,18 @@
               }
 
               #ipage8 .wr2-attach-img {
-                width: 100%;
-                aspect-ratio: 4 / 3;
+                width: 72px;
+                height: 72px;
                 object-fit: cover;
                 display: block;
-                cursor: zoom-in;
-              }
-
-              #ipage8 .wr2-attach-note-card {
-                display: grid;
-                grid-template-columns: 108px minmax(0, 1fr);
-                gap: 9px;
-                padding: 8px;
-                min-height: 106px;
-              }
-
-              #ipage8 .wr2-attach-img-btn {
-                border: 0;
-                padding: 0;
-                border-radius: 7px;
-                background: #0a0d14;
-                overflow: hidden;
-                cursor: zoom-in;
-                font-family: inherit;
-              }
-
-              #ipage8 .wr2-attach-note-card .wr2-attach-img {
-                height: 90px;
-                aspect-ratio: auto;
-              }
-
-              #ipage8 .wr2-attach-note-copy {
-                min-width: 0;
-                display: flex;
-                flex-direction: column;
-                justify-content: center;
-                gap: 5px;
-                padding-right: 16px;
-              }
-
-              #ipage8 .wr2-attach-note-title {
-                color: var(--tx);
-                font-size: 11px;
-                font-weight: 800;
-                white-space: nowrap;
-                overflow: hidden;
-                text-overflow: ellipsis;
-              }
-
-              #ipage8 .wr2-attach-note-memo {
-                color: var(--mu);
-                font-size: 10px;
-                line-height: 1.55;
-                overflow: hidden;
-                display: -webkit-box;
-                -webkit-line-clamp: 3;
-                -webkit-box-orient: vertical;
               }
 
               #ipage8 .wr2-attach-file {
-                display: block;
-                padding: 10px;
+                padding: 8px 10px;
                 font-size: 10px;
                 color: var(--mu);
-                min-height: 72px;
+                max-width: 120px;
                 word-break: break-all;
-              }
-
-              #ipage8 .wr2-attach-link-item {
-                min-height: 84px;
-              }
-
-              #ipage8 .wr2-attach-link-card {
-                display: flex;
-                min-height: 84px;
-                flex-direction: column;
-                justify-content: center;
-                gap: 4px;
-                padding: 10px;
-                text-decoration: none;
-                color: var(--tx);
-                box-sizing: border-box;
-              }
-
-              #ipage8 .wr2-attach-link-icon {
-                width: 24px;
-                height: 24px;
-                border-radius: 7px;
-                display: inline-flex;
-                align-items: center;
-                justify-content: center;
-                background: rgba(79,142,255,.12);
-                color: #9fc2ff;
-                font-size: 12px;
-              }
-
-              #ipage8 .wr2-attach-link-title {
-                font-size: 11px;
-                font-weight: 800;
-                white-space: nowrap;
-                overflow: hidden;
-                text-overflow: ellipsis;
-              }
-
-              #ipage8 .wr2-attach-link-url {
-                font-size: 9px;
-                color: var(--mu);
-                white-space: nowrap;
-                overflow: hidden;
-                text-overflow: ellipsis;
               }
 
               #ipage8 .wr2-attach-del {
@@ -10806,7 +9783,7 @@
                 justify-content: center;
               }
 
-              #ipage8 .wr2-attach-drop {
+	              #ipage8 .wr2-attach-drop {
 	                min-width: 126px;
 	                min-height: 72px;
 	                padding: 10px 12px;
@@ -10843,187 +9820,6 @@
               #ipage8 .wr2-attach-drop-meta {
                 color: var(--mu);
                 font-size: 9px;
-              }
-
-              #ipage8 .wr2-gallery-body {
-                padding: 12px;
-                overflow: auto;
-              }
-
-              #ipage8 .wr2-gallery-board {
-                display: grid;
-                grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-                gap: 12px;
-              }
-
-              #ipage8 .wr2-gallery-card {
-                display: grid;
-                grid-template-columns: 112px minmax(0, 1fr);
-                gap: 10px;
-                min-height: 128px;
-                border: 1px solid var(--b1);
-                border-radius: 8px;
-                background: rgba(255,255,255,.035);
-                overflow: hidden;
-                padding: 8px;
-                cursor: default;
-                font-family: inherit;
-                color: inherit;
-                text-align: left;
-                transition: border-color .15s, background .15s;
-              }
-
-              #ipage8 .wr2-gallery-card:hover {
-                border-color: rgba(79,142,255,.34);
-                background: rgba(79,142,255,.07);
-              }
-
-              #ipage8 .wr2-gallery-media {
-                display: block;
-                height: 100px;
-                width: 100%;
-                padding: 0;
-                border: 0;
-                border-radius: 7px;
-                overflow: hidden;
-                background: #0a0d14;
-                cursor: zoom-in;
-              }
-
-              #ipage8 .wr2-gallery-media img {
-                width: 100%;
-                height: 100%;
-                object-fit: cover;
-                display: block;
-              }
-
-              #ipage8 .wr2-gallery-copy {
-                min-width: 0;
-                display: flex;
-                flex-direction: column;
-                justify-content: flex-start;
-                gap: 5px;
-              }
-
-              #ipage8 .wr2-gallery-title {
-                color: var(--tx);
-                font-size: 12px;
-                font-weight: 800;
-                white-space: nowrap;
-                overflow: hidden;
-                text-overflow: ellipsis;
-              }
-
-              #ipage8 .wr2-gallery-memo {
-                color: var(--mu);
-                font-size: 11px;
-                line-height: 1.55;
-                overflow: hidden;
-                display: -webkit-box;
-                -webkit-line-clamp: 3;
-                -webkit-box-orient: vertical;
-              }
-
-              #ipage8 .wr2-gallery-memo-full {
-                color: var(--mu);
-                font-size: 11px;
-                line-height: 1.6;
-              }
-
-              #ipage8 .wr2-gallery-memo-full summary {
-                color: #9fc2ff;
-                cursor: pointer;
-                font-weight: 800;
-                font-size: 10px;
-                list-style-position: inside;
-              }
-
-              #ipage8 .wr2-gallery-memo-full div {
-                margin-top: 5px;
-                max-height: 180px;
-                overflow: auto;
-                padding: 8px 9px;
-                border: 1px solid rgba(79,142,255,.16);
-                border-radius: 7px;
-                background: rgba(0,0,0,.13);
-                word-break: break-word;
-              }
-
-              #ipage8 .wr2-gallery-note-open {
-                align-self: flex-start;
-                min-height: 24px;
-                padding: 0 9px;
-                border-radius: 6px;
-                border: 1px solid rgba(79,142,255,.26);
-                background: rgba(79,142,255,.08);
-                color: #9fc2ff;
-                font-size: 10px;
-                font-weight: 800;
-                font-family: inherit;
-                cursor: pointer;
-              }
-
-              #ipage8 .wr2-gallery-empty {
-                min-height: 120px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                text-align: center;
-                color: var(--di);
-                font-size: 12px;
-                line-height: 1.7;
-                border: 1px dashed rgba(79,142,255,.22);
-                border-radius: 8px;
-                background: rgba(79,142,255,.035);
-              }
-
-              @media (max-width: 900px) {
-                #ipage8 .wr2-dashboard {
-                  grid-template-columns: 1fr;
-                }
-
-                #ipage8 .wr2-widget-info,
-                #ipage8 .wr2-widget-calc,
-                #ipage8 .wr2-widget-note,
-                #ipage8 .wr2-widget-gallery,
-                #ipage8 .wr2-widget-table {
-                  grid-column: 1;
-                  grid-row: auto;
-                }
-
-                #ipage8 .wr2-note-body {
-                  display: flex;
-                  flex-direction: column;
-                  min-height: 0;
-                }
-
-                #ipage8 #wr2NoteList {
-                  max-height: 150px;
-                  border-right: none;
-                  border-bottom: 1px solid var(--b1);
-                }
-
-                #ipage8 .wr2-note-textarea {
-                  min-height: 220px;
-                }
-
-                #ipage8 .wr2-attachments {
-                  max-height: none;
-                }
-
-                #ipage8 .wr2-gallery-board {
-                  grid-template-columns: 1fr;
-                }
-
-                #ipage8 .wr2-gallery-card,
-                #ipage8 .wr2-attach-note-card {
-                  grid-template-columns: 96px minmax(0, 1fr);
-                }
-
-                #ipage8 .wr2-gallery-media,
-                #ipage8 .wr2-attach-note-card .wr2-attach-img {
-                  height: 86px;
-                }
               }
 
               /* 단계탭 본문 */
@@ -11549,3 +10345,157 @@
     #_mbTabBar button .mb-icon { font-size: 20px; line-height: 1; }
     #_mbTabBar button.active { color: #f59e0b; }
     #_mbTabBar button:active { background: rgba(245,158,11,0.1); }
+
+
+/* ═══════════════════════════════════════════════════════════════
+   물건관리/노트 보강 (실제 탭 이동 대응)
+═══════════════════════════════════════════════════════════════ */
+#page4 {
+  display: flex;
+}
+#pm-panel-work,
+#pm-work-host,
+#pm-panel-work #ipage8,
+#pm-panel-work #workroomTab,
+#pm-panel-work #workroomTab .wr2-body,
+#pm-panel-work #workroomTab .wr2-detail,
+#pm-panel-work #workroomTab .wr2-detail-panel {
+  min-height: 0;
+}
+#pm-panel-work #ipage8,
+#pm-panel-work #workroomTab,
+#pm-panel-work #workroomTab .wr2-body {
+  height: 100%;
+}
+#pm-panel-work #workroomTab .wr2-list-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+#pm-panel-work #workroomTab .wr2-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+#pm-panel-work #workroomTab .wr2-tab-body,
+#pm-panel-work #workroomTab .wr2-tab-pane.active {
+  min-height: 0;
+}
+#pm-panel-work #workroomTab .wr2-tab-pane.active {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* 노트탭 보드형 레이아웃 */
+#ipage0 .nt-board {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+#ipage0 .nt-board-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px 8px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+#ipage0 .nt-search-main {
+  flex: 1 1 360px;
+  min-width: 220px;
+  height: 42px;
+  padding: 0 14px;
+  background: var(--s2);
+  border: 1px solid var(--b1);
+  border-radius: 10px;
+  color: var(--tx);
+  font-size: 14px;
+  outline: none;
+}
+#ipage0 .nt-new-btn-board,
+#ipage0 .nt-toolbar-btn {
+  height: 42px;
+  padding: 0 14px;
+  width: auto;
+  flex: 0 0 auto;
+}
+#ipage0 .nt-toolbar-btn {
+  border: 1px solid var(--b1);
+  background: var(--s2);
+  color: var(--mu);
+  border-radius: 10px;
+  font-size: 12px;
+  cursor: pointer;
+  font-family: 'Noto Sans KR', sans-serif;
+}
+#ipage0 .nt-board-filters {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) minmax(0,1fr);
+  gap: 10px;
+  padding: 0 14px 10px;
+  flex-shrink: 0;
+}
+#ipage0 .nt-filter-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px 12px;
+  background: rgba(17,19,24,.88);
+  border: 1px solid var(--b1);
+  border-radius: 10px;
+}
+#ipage0 .nt-filter-label {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--mu);
+}
+#ipage0 .nt-filter-control {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+#ipage0 .nt-board-body {
+  flex: 1;
+  min-height: 0;
+  padding: 6px 14px 14px;
+  display: grid;
+  grid-template-columns: minmax(320px, 42%) minmax(0, 1fr);
+  gap: 14px;
+}
+#ipage0 .nt-list {
+  min-width: 0;
+  border: 1px solid var(--b1);
+  border-radius: 14px;
+  background: rgba(17,19,24,.84);
+  padding: 10px;
+}
+#ipage0 .nt-editor {
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid var(--b1);
+  border-radius: 14px;
+  background: rgba(17,19,24,.84);
+}
+#ipage0 .nt-card {
+  min-width: 0;
+}
+@media (max-width: 1180px) {
+  #ipage0 .nt-board-body {
+    grid-template-columns: 1fr;
+  }
+  #ipage0 .nt-editor {
+    min-height: 340px;
+  }
+}
+@media (max-width: 780px) {
+  #ipage0 .nt-board-filters {
+    grid-template-columns: 1fr;
+  }
+}
