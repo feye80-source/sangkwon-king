@@ -28337,9 +28337,12 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
     // ── 서브탭 전환 ─────────────────────────────────────
     function showInsTab(n) {
+      if (n === 5) {
+        try { localStorage.setItem('sk_workhub_sub', 'planner'); } catch(e) {}
+        n = 8;
+      }
       window.__insActiveTab = n;
       const _insBoot = window.__insBoot || (window.__insBoot = {});
-      // cfg(API 설정) 특수 처리
       const cfgPanel = document.getElementById('ipage_cfg');
       if (n === 'cfg') {
         [0, 1, 3, 4, 5, 6, 7, 8, 9].forEach(i => {
@@ -28348,6 +28351,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           const t = document.getElementById('itab' + i);
           if (t) t.classList.remove('on');
         });
+        var page3 = document.getElementById('page3'); if (page3) page3.classList.remove('workhub-wide');
         if (cfgPanel) cfgPanel.style.display = '';
         const t7 = document.getElementById('itab7');
         if (t7) t7.classList.add('on');
@@ -28357,24 +28361,23 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       [0, 1, 3, 4, 5, 6, 8, 9].forEach(i => {
         const p = document.getElementById('ipage' + i);
         const t = document.getElementById('itab' + i);
-        if (p) p.style.display = (i === n) ? '' : 'none';
-        if (t) t.classList.toggle('on', i === n);
+        if (p) p.style.display = (i === n && i !== 5) ? '' : 'none';
+        if (t) t.classList.toggle('on', i === n && i !== 5);
       });
-      const labels = { 0: '노트', 1: '계산기', 3: '뉴스 클리핑', 4: '알짜정보', 5: '파이프라인', 6: '사이트', 8: '작업룸', 9: '소상공인 상권' };
+      const labels = { 0: '노트', 1: '계산기', 3: '뉴스 클리핑', 4: '알짜정보', 6: '사이트', 8: '작업', 9: '소상공인 상권' };
       const lbl = document.getElementById('insTabLabel');
       if (lbl) lbl.textContent = labels[n] || '';
 
+      if (n !== 8) {
+        var page3 = document.getElementById('page3'); if (page3) page3.classList.remove('workhub-wide');
+      }
+
       if (n === 0) {
         try {
-          // ★ 로컬 캐시 우선 즉시 렌더 (작업룸과 동일 방식)
           const _nc = window._idbCache && window._idbCache['nt_notes'];
           if (typeof window._ntSetNotes === 'function') window._ntSetNotes(_nc || []);
-          if (!_insBoot.notes && typeof window.ntInit === 'function') {
-            _insBoot.notes = true;
-            window.ntInit();
-          } else if (typeof window.ntRender === 'function') {
-            window.ntRender();
-          }
+          if (!_insBoot.notes && typeof window.ntInit === 'function') { _insBoot.notes = true; window.ntInit(); }
+          else if (typeof window.ntRender === 'function') { window.ntRender(); }
           if (window._sbRunEntryRefresh && typeof window._ntRefreshFromCloud === 'function') {
             window._sbRunEntryRefresh('notes', window._ntRefreshFromCloud, { render: true, label: 'notes', force: true });
           }
@@ -28383,7 +28386,6 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       if (n === 1) { try { populateItemSelects(); } catch (e) { console.error('[populateItemSelects]', e); } }
       if (n === 4) {
         try {
-          // ★ 로컬 캐시 우선 즉시 렌더 (클라우드 완료 여부 무관)
           if (typeof window._kcardsSyncFromCache === 'function') window._kcardsSyncFromCache();
           if (typeof renderKcatTabs === 'function') renderKcatTabs();
           if (typeof renderKcards === 'function') renderKcards();
@@ -28393,9 +28395,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           }
         } catch (e) { console.error('[kcards]', e); }
       }
-
       if (n === 3) { try { clipTabInit(); } catch (e) { console.error('[clipTabInit]', e); } }
-      if (n === 5) { try { renderWatchBoard(); } catch (e) { console.error('[renderWatchBoard]', e); } }
       if (n === 6) {
         if (typeof window._siteHydrateKeysFromIdb === 'function') {
           window._siteHydrateKeysFromIdb().catch(function(e) { console.warn('[site hydrate]', e); });
@@ -28409,26 +28409,11 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             });
         }
       }
-
       if (n === 8) {
-        // WorkRoom v2 init (one-time) + render
-        try {
-          if (!window.__wr2Inited) {
-            window.__wr2Inited = true;
-            if (typeof window.wr2Init === 'function') window.wr2Init();
-          }
-        } catch (e) {
-          console.error('[wr2]', e);
-        }
-        if (window.wr2State) window.wr2State.activeView = 'overview';
-        if (window._sbRunEntryRefresh && typeof window._wrRefreshFromCloud === 'function') {
-          window._sbRunEntryRefresh('workrooms', window._wrRefreshFromCloud, { render: true, label: 'workrooms', force: true })
-            .then(function(payload) {
-              if (!payload && typeof window.wr2Render === 'function') window.wr2Render();
-            });
-        } else if (typeof window.wr2Render === 'function') {
-          window.wr2Render();
-        }
+        _skEnsureWorkHubNav();
+        var sub = window.__workHubSub;
+        if (!sub) { try { sub = localStorage.getItem('sk_workhub_sub') || 'planner'; } catch(e) { sub = 'planner'; } }
+        window._skSetWorkHubSub(sub);
       }
     }
     window.showInsTab = showInsTab;
@@ -32939,225 +32924,143 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     window.renderWatchBoard = renderWatchBoard;
 
     window.renderPipelineList = function() {
-      const container = document.getElementById('pipelineListBoard');
+      var container = document.getElementById('pipelineListBoard');
       if (!container) return;
 
-      const esc = (s) => String(s == null ? '' : s)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-      const fmtNum = (v) => {
-        const n = Number(String(v == null ? '' : v).replace(/[^0-9.-]/g, ''));
-        return isNaN(n) || !n ? '' : n.toLocaleString('ko-KR');
-      };
-      const fmtWan = (v) => {
-        const n = Number(String(v == null ? '' : v).replace(/[^0-9.-]/g, ''));
-        if (isNaN(n) || !n) return '-';
-        if (n >= 100000000) {
-          const eok = Math.floor(n / 100000000);
-          const man = Math.round((n % 100000000) / 10000);
-          return man ? (eok + '억 ' + man.toLocaleString('ko-KR')) : (eok + '억');
-        }
-        return Math.round(n / 10000).toLocaleString('ko-KR') + '만';
-      };
-      const parseDate = (v) => {
+      function esc2(v){ return (typeof esc === 'function') ? esc(v) : String(v == null ? '' : v).replace(/[&<>"]/g, function(m){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[m]; }); }
+      function parseDate(v){
         if (!v) return null;
-        const s = String(v).trim();
-        const m = s.match(/(20\d{2})[^0-9]?(\d{1,2})[^0-9]?(\d{1,2})/);
+        var s = String(v).trim();
+        var m = s.match(/(20\d{2})[.\-\/년\s]*(\d{1,2})[.\-\/월\s]*(\d{1,2})/);
         if (!m) return null;
-        const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-        return isNaN(d.getTime()) ? null : d;
-      };
-      const fmtDate = (v) => {
-        const d = parseDate(v);
-        if (!d) return v || '-';
-        return d.getFullYear() + '.' + (d.getMonth() + 1) + '.' + d.getDate();
-      };
-      const ddayOf = (v) => {
-        const d = parseDate(v);
-        if (!d) return null;
-        const now = new Date();
-        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        return Math.round((d - today) / 86400000);
-      };
-      const getSavedType = (item) => {
-        if (!item) return '-';
-        if (item.mode === 'auction') return '경매';
-        if (item.mode === 'gongmae') return '공매';
-        if (item.mode === 'listing') return '일반';
-        return item.data && (item.data['유형'] || item.data['매물종류'] || item.data['물건종류']) || '기타';
-      };
-      const getPriority = (room, item) => {
-        const raw = room && (room.priority || room.importance || room.rank || room.weight || room.grade)
-          || (item && item.memoPriority)
-          || (item && item.data && (item.data['의향'] || item.data['우선도']))
-          || '';
-        const s = String(raw || '').trim();
-        return s || '-';
-      };
-      const getAnalysisState = (room, item) => {
-        const st = String((room && (room.status || room.phase || room.activePhase)) || (item && item.watchStatus) || 'review');
-        if (st === 'interest' || st === 'review') return '관심·검토';
-        if (st === 'field') return '현장';
-        if (st === 'bid') return '입찰';
-        if (st === 'won') return '낙찰';
-        if (st === 'lost') return '패찰';
-        if (st === 'closed' || st === 'pass' || st === 'dropped') return '종료';
-        return st || '-';
-      };
-      const getRoomByItem = (rooms, itemId) => rooms.find(r => String(r.linkedSavedId || r.auctionId || r.listingId || '') === String(itemId));
-      const getMainItemByRoom = (sv, room) => {
-        const linkId = room && (room.linkedSavedId || room.auctionId || room.listingId);
-        if (linkId) {
-          const found = sv.find(s => String(s.id) === String(linkId));
-          if (found) return found;
-        }
-        return null;
-      };
-      const getAlarm = (room, item) => {
-        const saleDateStr = (room && room.bidDate) || (item && item.data && (item.data['매각일'] || item.data['매각기일'])) || '';
-        const dday = ddayOf(saleDateStr);
-        const isClosed = room && ['closed','won','lost','pass','dropped'].includes(String(room.status || ''));
-        if (dday == null || isClosed || !room) return '';
-        const sections = (window.wr2State && Array.isArray(window.wr2State.sections)) ? window.wr2State.sections : [];
-        const hasFieldLog = !!sections.find(sec => sec && sec.roomId === room.id && sec.phase === 'field' && !sec.deletedAt && ((sec.content && String(sec.content).trim()) || (sec.rows && sec.rows.length)));
-        const hasBidPlan = !!((room.bidResult && (room.bidResult.myBid || room.bidResult.myPrice)) || room.expectedBidPrice || room.expectedBid || room.bidPrice);
-        if (dday < 0 && !(room.bidResult && (room.bidResult.winPrice || room.bidResult.myBid || room.bidResult.myPrice))) return '결과 입력';
-        if (dday <= 3 && !hasBidPlan) return '입찰 준비';
-        if (dday > 3 && dday <= 7 && !hasFieldLog) return '임장 필요';
-        return '';
-      };
-      const getResultText = (room) => {
-        if (!room) return '-';
-        const br = room.bidResult || {};
-        const win = br.winPrice || '';
-        const my = br.myBid || br.myPrice || '';
-        const second = br.secondBid || '';
-        const resultLabel = room.status === 'won' ? '낙찰' : (room.status === 'lost' ? '패찰' : (room.status === 'closed' || room.status === 'pass' || room.status === 'dropped') ? '종료' : '진행중');
-        let lines = [resultLabel];
-        if (win) lines.push('낙찰 ' + fmtWan(win));
-        if (my) lines.push('내입찰 ' + fmtWan(my));
-        if (second) lines.push('차순위 ' + fmtWan(second));
-        return lines.join(' · ');
-      };
-      const getMemo = (room, item) => {
-        const brMemo = room && room.bidResult && room.bidResult.memo;
-        const memo = brMemo || (room && room.summaryMemo) || (item && item.memo) || '';
-        return String(memo || '').trim();
-      };
-
-      const sv = typeof getSv === 'function' ? getSv() : [];
-      const rooms = typeof wrGetRooms === 'function' ? wrGetRooms() : [];
-      const watchItems = sv.filter(s => s && s.watchStatus);
-      const roomOnly = rooms.filter(room => !getMainItemByRoom(sv, room));
-      let rows = [];
-
-      watchItems.forEach(item => {
-        const room = getRoomByItem(rooms, item.id);
-        rows.push({ room, item, key: 'item:' + item.id });
-      });
-      roomOnly.forEach(room => rows.push({ room, item: null, key: 'room:' + room.id }));
-
-      let filterEl = document.getElementById('plListFilter');
-      let currentFilter = filterEl ? filterEl.value : 'active';
-      if (currentFilter === 'active') rows = rows.filter(row => {
-        const st = String((row.room && row.room.status) || (row.item && row.item.watchStatus) || 'review');
-        return !['won','lost','pass','closed','dropped'].includes(st);
-      });
-      else if (currentFilter === 'closed') rows = rows.filter(row => {
-        const st = String((row.room && row.room.status) || (row.item && row.item.watchStatus) || 'review');
-        return ['won','lost','pass','closed','dropped'].includes(st);
-      });
-
-      rows.sort((a, b) => {
-        const ad = parseDate((a.room && a.room.bidDate) || (a.item && a.item.data && (a.item.data['매각일'] || a.item.data['매각기일'])) || '') || new Date(2099,0,1);
-        const bd = parseDate((b.room && b.room.bidDate) || (b.item && b.item.data && (b.item.data['매각일'] || b.item.data['매각기일'])) || '') || new Date(2099,0,1);
-        return ad - bd;
-      });
-
-      let html = `
-        <div style="padding:10px 14px;background:rgba(255,255,255,.02);border-bottom:1px solid rgba(255,255,255,.06);display:flex;align-items:center;justify-content:space-between;gap:10px;position:sticky;top:0;z-index:3;backdrop-filter:blur(10px);">
-          <div>
-            <div style="font-size:13px;font-weight:800;color:var(--tx);">📑 플래너 리스트 (${rows.length}건)</div>
-            <div style="font-size:10px;color:var(--mu);margin-top:3px;">물건 상태 · 입찰기일 · 결과 · 메모를 한 화면에서 관리</div>
-          </div>
-          <select id="plListFilter" onchange="window.renderPipelineList()" style="padding:4px 8px;font-size:11px;background:var(--s2);color:var(--tx);border:1px solid var(--b1);border-radius:4px;outline:none;cursor:pointer;">
-            <option value="all" ${currentFilter==='all'?'selected':''}>전체</option>
-            <option value="active" ${currentFilter==='active'?'selected':''}>진행 중</option>
-            <option value="closed" ${currentFilter==='closed'?'selected':''}>종료</option>
-          </select>
-        </div>
-        <div style="overflow:auto;min-height:0;">
-          <table style="width:100%;min-width:1560px;border-collapse:collapse;font-size:11px;table-layout:fixed;">
-            <thead style="position:sticky;top:55px;z-index:2;background:rgba(12,14,18,.96);backdrop-filter:blur(8px);">
-              <tr>
-                ${['분석상태','유형','우선도','물건번호','물건명','지역','특징','감정가','현재 최저가','회차','입찰기일','결과','내 입찰가','보증금','월세','예상 입찰가','알람','메모','작업룸'].map((label, idx) => `<th style="padding:9px 6px;border-bottom:1px solid rgba(255,255,255,.08);color:${idx===0||idx===16?'var(--tx)':'var(--mu)'};font-weight:700;">${label}</th>`).join('')}
-              </tr>
-            </thead>
-            <tbody>`;
-
-      if (!rows.length) {
-        html += `<tr><td colspan="19" style="padding:42px 12px;text-align:center;color:var(--di);">표시할 물건이 없습니다.</td></tr>`;
-      } else {
-        rows.forEach((row, idx) => {
-          const room = row.room;
-          const item = row.item;
-          const d = item && item.data ? item.data : {};
-          const number = (item && item.id) || (room && (room.auctionId || room.listingId || room.id)) || '-';
-          const name = (room && room.title) || d['물건명'] || d['건물명'] || d['title'] || '이름 없음';
-          const area = d['지역'] || d['소재지'] || d['주소'] || (room && room.address) || '-';
-          const feature = d['특징'] || d['매물특징'] || d['특이사항'] || '-';
-          const appraisal = d['감정가'] || d['매매가'] || '';
-          const currentMin = d['최저가'] || d['매매가'] || '';
-          const turn = d['회차'] || d['유찰횟수'] || '-';
-          const saleDate = (room && room.bidDate) || d['매각일'] || d['매각기일'] || '';
-          const alarm = getAlarm(room, item);
-          const memo = getMemo(room, item);
-          const expectedBid = (room && (room.expectedBidPrice || room.expectedBid || room.bidPrice)) || (item && item.expectedBidPrice) || '';
-          const deposit = d['보증금'] || (room && room.deposit) || '';
-          const monthly = d['월세'] || (room && room.monthlyRent) || '';
-          const bidPrice = (room && ((room.bidResult && (room.bidResult.myBid || room.bidResult.myPrice)) || room.expectedBidPrice || room.expectedBid || room.bidPrice)) || '';
-          const alarmColor = alarm === '결과 입력' ? '#ef4444' : alarm === '입찰 준비' ? '#f59e0b' : alarm === '임장 필요' ? '#38bdf8' : 'var(--mu)';
-          const rowBg = idx % 2 === 0 ? 'rgba(255,255,255,.01)' : 'rgba(255,255,255,.025)';
-          const dday = ddayOf(saleDate);
-          html += `<tr style="background:${rowBg};border-bottom:1px solid rgba(255,255,255,.05);">
-            <td style="padding:8px 6px;text-align:center;font-weight:700;color:var(--tx);">${esc(getAnalysisState(room, item))}</td>
-            <td style="padding:8px 6px;text-align:center;color:var(--mu);">${esc(getSavedType(item))}</td>
-            <td style="padding:8px 6px;text-align:center;font-weight:800;color:${String(getPriority(room, item)).includes('상') ? '#ef4444' : String(getPriority(room, item)).includes('중') ? '#38bdf8' : String(getPriority(room, item)).includes('하') ? '#4ade80' : 'var(--mu)'};">${esc(getPriority(room, item))}</td>
-            <td style="padding:8px 6px;text-align:center;font-family:'JetBrains Mono',monospace;color:#9fc2ff;cursor:${item?'pointer':'default'};" ${item ? `onclick="openPopup('${esc(item.id)}')" title="상세 열기"` : ''}>${esc(number)}</td>
-            <td style="padding:8px 8px;text-align:left;font-weight:700;color:var(--tx);line-height:1.45;">${esc(name)}</td>
-            <td style="padding:8px 8px;text-align:left;color:var(--mu);line-height:1.45;">${esc(area)}</td>
-            <td style="padding:8px 8px;text-align:left;color:var(--mu);line-height:1.45;white-space:normal;word-break:break-word;">${esc(feature)}</td>
-            <td style="padding:8px 6px;text-align:right;font-weight:700;color:var(--tx);">${esc(fmtNum(appraisal) || '-')}</td>
-            <td style="padding:8px 6px;text-align:right;font-weight:800;color:#ffd166;">${esc(fmtNum(currentMin) || '-')}</td>
-            <td style="padding:8px 6px;text-align:center;color:var(--mu);">${esc(String(turn))}</td>
-            <td style="padding:8px 6px;text-align:center;line-height:1.45;">
-              <div style="font-weight:700;color:var(--tx);">${esc(fmtDate(saleDate) || '-')}</div>
-              <div style="font-size:10px;color:${dday == null ? 'var(--di)' : dday < 0 ? '#ef4444' : dday <= 3 ? '#ef4444' : dday <= 7 ? '#f59e0b' : '#4ade80'};">${dday == null ? '' : (dday < 0 ? '지남' : dday === 0 ? 'D-Day' : 'D-' + dday)}</div>
-            </td>
-            <td style="padding:8px 8px;text-align:left;line-height:1.45;color:var(--tx);white-space:normal;word-break:break-word;">${esc(getResultText(room))}</td>
-            <td style="padding:8px 6px;text-align:right;color:#9fc2ff;">${esc(fmtNum(bidPrice) || '-')}</td>
-            <td style="padding:8px 6px;text-align:right;color:var(--mu);">${esc(fmtNum(deposit) || '-')}</td>
-            <td style="padding:8px 6px;text-align:right;color:var(--mu);">${esc(fmtNum(monthly) || '-')}</td>
-            <td style="padding:8px 6px;text-align:right;font-weight:800;color:#4f8eff;">${esc(fmtNum(expectedBid) || '-')}</td>
-            <td style="padding:8px 6px;text-align:center;"><span style="display:inline-flex;align-items:center;justify-content:center;min-width:58px;padding:3px 8px;border-radius:999px;background:${alarm ? alarmColor + '18' : 'rgba(255,255,255,.04)'};border:1px solid ${alarm ? alarmColor + '33' : 'rgba(255,255,255,.08)'};color:${alarm ? alarmColor : 'var(--di)'};font-size:10px;font-weight:800;">${esc(alarm || '-')}</span></td>
-            <td style="padding:8px 8px;text-align:left;white-space:normal;word-break:break-word;color:${memo ? '#9fc2ff' : 'var(--di)'};line-height:1.45;">${esc(memo || '-')}</td>
-            <td style="padding:8px 6px;text-align:center;">
-              ${room ? `<div style="display:flex;gap:4px;justify-content:center;flex-wrap:wrap;">
-                  <button onclick="_wbGoRoom('${room.id}')" style="padding:4px 7px;background:rgba(17,157,237,.12);border:1px solid rgba(17,157,237,.35);border-radius:5px;color:#119ded;font-size:10px;cursor:pointer;">열기</button>
-                  <button onclick="wr2QuickShowBidResultModal('${room.id}')" style="padding:4px 7px;background:rgba(255,140,66,.12);border:1px solid rgba(255,140,66,.35);border-radius:5px;color:#ff8c42;font-size:10px;cursor:pointer;">결과</button>
-                </div>` : `<button onclick="_wbCreateAndLink('${item ? esc(item.id) : ''}')" style="padding:4px 7px;background:var(--s2);border:1px dashed rgba(17,157,237,.35);border-radius:5px;color:var(--mu);font-size:10px;cursor:pointer;">만들기</button>`}
-            </td>
-          </tr>`;
-        });
+        var dt = new Date(parseInt(m[1],10), parseInt(m[2],10)-1, parseInt(m[3],10));
+        return isNaN(dt.getTime()) ? null : dt;
       }
+      function ddayOf(v){ var dt = parseDate(v); if (!dt) return null; var now=new Date(); var today=new Date(now.getFullYear(), now.getMonth(), now.getDate()); return Math.round((dt-today)/(1000*60*60*24)); }
+      function fmtDate(v){ var dt=parseDate(v); if(!dt) return ''; return dt.getFullYear()+'.'+(dt.getMonth()+1)+'.'+dt.getDate(); }
+      function fmtNum(v){ if (v == null || v === '') return ''; var s=String(v).replace(/[^0-9.-]/g,''); if (!s) return String(v); var n=Number(s); return isNaN(n) ? String(v) : n.toLocaleString('ko-KR'); }
+      function getMainItemByRoom(sv, room) {
+        if (!room) return null;
+        var ids = [];
+        if (room.linkedSavedId) ids.push(String(room.linkedSavedId));
+        if (room.auctionId) ids.push(String(room.auctionId));
+        if (room.listingId) ids.push(String(room.listingId));
+        (room.linkedItems || []).forEach(function(id){ ids.push(String(id)); });
+        return sv.find(function(it){ return it && ids.includes(String(it.id)); }) || null;
+      }
+      function getRoomByItem(rooms, itemId) {
+        var idStr = String(itemId);
+        return rooms.find(function(r){ return (r.linkedSavedId && String(r.linkedSavedId) === idStr) || (r.auctionId && String(r.auctionId) === idStr) || (r.listingId && String(r.listingId) === idStr) || ((r.linkedItems || []).map(String).includes(idStr)); }) || null;
+      }
+      function getSavedType(item){ if (!item) return '-'; return item.mode === 'auction' ? '경매' : (item.mode === 'public' ? '공매' : '일반'); }
+      function getPriority(room,item){ return (room && (room.priority || room.rank || room.importance)) || (item && (item.priority || item.rank)) || '-'; }
+      function getAnalysisState(room,item){
+        var st = String((room && room.status) || (item && item.watchStatus) || 'interest');
+        st = typeof _migrateStatus === 'function' ? _migrateStatus(st) : st;
+        var map = { interest:'관심·검토', review:'관심·검토', field:'현장', bid:'입찰 준비', won:'낙찰', sell:'매도', pass:'패찰', closed:'종료', lost:'패찰', dropped:'패찰' };
+        return map[st] || st;
+      }
+      function getResultText(room){
+        if (!room) return '';
+        var br = room.bidResult || {};
+        return br.resultType || room.resultType || room.result || '';
+      }
+      function getAlarm(room,item){
+        var saleDate = (room && room.bidDate) || (item && item.data && (item.data['매각일'] || item.data['매각기일'])) || '';
+        var dday = ddayOf(saleDate);
+        var result = getResultText(room);
+        if (dday == null) return '';
+        if (dday < 0 && !result) return '결과 입력';
+        if (dday <= 3 && !(room && (room.expectedBidPrice || room.expectedBid || room.bidPrice))) return '입찰 준비';
+        if (dday <= 7) {
+          var hasField = !!(room && room.phases && room.phases.some(function(ph){ return /field|현장/i.test(String(ph.id||'') + ' ' + String(ph.label||'')) && ph.sections && ph.sections.some(function(sec){ return (sec.logs && sec.logs.length) || (sec.content && String(sec.content).trim()); }); }));
+          if (!hasField) return '임장 필요';
+        }
+        return '';
+      }
+      function getMemo(room,item){ var brMemo = room && room.bidResult && room.bidResult.memo; return String(brMemo || (room && room.summaryMemo) || (item && item.memo) || '').trim(); }
 
-      html += `</tbody></table></div>`;
+      var sv = typeof getSv === 'function' ? getSv() : [];
+      var rooms = typeof wrGetRooms === 'function' ? wrGetRooms() : [];
+      var watchItems = sv.filter(function(s){ return s && s.watchStatus; });
+      var roomOnly = rooms.filter(function(room){ return !getMainItemByRoom(sv, room); });
+      var rows = [];
+      watchItems.forEach(function(item){ rows.push({ room:getRoomByItem(rooms, item.id), item:item, key:'item:'+item.id }); });
+      roomOnly.forEach(function(room){ rows.push({ room:room, item:null, key:'room:'+room.id }); });
+      rows = rows.filter(function(row){
+        var room=row.room, item=row.item, d=item && item.data ? item.data : {};
+        var number=(item && item.id) || (room && (room.auctionId || room.listingId || room.id)) || '';
+        var name=(room && room.title) || d['물건명'] || d['건물명'] || d['title'] || '';
+        var area=d['지역'] || d['소재지'] || d['주소'] || (room && room.address) || '';
+        return !!(String(number).trim() || String(name).trim() || String(area).trim());
+      });
+
+      var filterEl = document.getElementById('plListFilter');
+      var currentFilter = filterEl ? filterEl.value : 'active';
+      if (currentFilter === 'active') rows = rows.filter(function(row){ var st=String((row.room&&row.room.status)||(row.item&&row.item.watchStatus)||'review'); return !['won','lost','pass','closed','dropped'].includes(st); });
+      else if (currentFilter === 'closed') rows = rows.filter(function(row){ var st=String((row.room&&row.room.status)||(row.item&&row.item.watchStatus)||'review'); return ['won','lost','pass','closed','dropped'].includes(st); });
+      rows.sort(function(a,b){ var ad=parseDate((a.room&&a.room.bidDate)||(a.item&&a.item.data&&(a.item.data['매각일']||a.item.data['매각기일']))||'') || new Date(2099,0,1); var bd=parseDate((b.room&&b.room.bidDate)||(b.item&&b.item.data&&(b.item.data['매각일']||b.item.data['매각기일']))||'') || new Date(2099,0,1); return ad-bd; });
+
+      var html = '<div class="planner-shell">'
+        + '<div style="padding:12px 14px;background:rgba(255,255,255,.02);border-bottom:1px solid rgba(255,255,255,.06);display:flex;align-items:center;justify-content:space-between;gap:10px;position:sticky;top:0;z-index:3;backdrop-filter:blur(10px);">'
+        + '  <div><div style="font-size:14px;font-weight:800;color:var(--tx);">📑 플래너 리스트 (' + rows.length + '건)</div><div style="font-size:10px;color:var(--mu);margin-top:3px;">물건 상태 · 입찰기일 · 결과 · 메모를 한 화면에서 관리</div></div>'
+        + '  <select id="plListFilter" onchange="window.renderPipelineList()" style="padding:6px 9px;font-size:11px;background:var(--s2);color:var(--tx);border:1px solid var(--b1);border-radius:6px;outline:none;cursor:pointer;">'
+        + '    <option value="all" ' + (currentFilter==='all'?'selected':'') + '>전체</option>'
+        + '    <option value="active" ' + (currentFilter==='active'?'selected':'') + '>진행 중</option>'
+        + '    <option value="closed" ' + (currentFilter==='closed'?'selected':'') + '>종료</option>'
+        + '  </select></div>'
+        + '<div class="planner-scroll"><table class="planner-table">'
+        + '<colgroup>'
+        + '<col style="width:100px"><col style="width:70px"><col style="width:70px"><col style="width:150px"><col style="width:220px"><col style="width:190px"><col style="width:160px"><col style="width:120px"><col style="width:130px"><col style="width:70px"><col style="width:105px"><col style="width:90px"><col style="width:120px"><col style="width:90px"><col style="width:90px"><col style="width:130px"><col style="width:90px"><col style="width:220px"><col style="width:110px">'
+        + '</colgroup><thead><tr>'
+        + ['분석상태','유형','우선도','물건번호','물건명','지역','특징','감정가','현재 최저가','회차','입찰기일','결과','내 입찰가','보증금','월세','예상 입찰가','알람','메모','작업룸'].map(function(label){ return '<th>' + label + '</th>'; }).join('')
+        + '</tr></thead><tbody>';
+
+      if (!rows.length) html += '<tr><td colspan="19" style="padding:42px 12px;text-align:center;color:var(--di);">표시할 물건이 없습니다.</td></tr>';
+      else rows.forEach(function(row){
+        var room=row.room, item=row.item, d=item && item.data ? item.data : {};
+        var number=(item && item.id) || (room && (room.auctionId || room.listingId || room.id)) || '-';
+        var name=(room && room.title) || d['물건명'] || d['건물명'] || d['title'] || '이름 없음';
+        var area=d['지역'] || d['소재지'] || d['주소'] || (room && room.address) || '-';
+        var feature=d['특징'] || d['매물특징'] || d['특이사항'] || '-';
+        var appraisal=d['감정가'] || d['매매가'] || '';
+        var currentMin=d['최저가'] || d['매매가'] || '';
+        var turn=d['회차'] || d['유찰횟수'] || '-';
+        var saleDate=(room && room.bidDate) || d['매각일'] || d['매각기일'] || '';
+        var alarm=getAlarm(room,item);
+        var memo=getMemo(room,item);
+        var expectedBid=(room && (room.expectedBidPrice || room.expectedBid || room.bidPrice)) || (item && item.expectedBidPrice) || '';
+        var deposit=d['보증금'] || (room && room.deposit) || '';
+        var monthly=d['월세'] || (room && room.monthlyRent) || '';
+        var bidPrice=(room && ((room.bidResult && (room.bidResult.myBid || room.bidResult.myPrice)) || room.expectedBidPrice || room.expectedBid || room.bidPrice)) || '';
+        var alarmColor = alarm === '결과 입력' ? '#ef4444' : alarm === '입찰 준비' ? '#f59e0b' : alarm === '임장 필요' ? '#38bdf8' : 'var(--mu)';
+        var dday = ddayOf(saleDate);
+        html += '<tr>'
+          + '<td class="planner-center" style="font-weight:800;color:var(--tx);">' + esc2(getAnalysisState(room,item)) + '</td>'
+          + '<td class="planner-center">' + esc2(getSavedType(item)) + '</td>'
+          + '<td class="planner-center" style="font-weight:800;color:' + (String(getPriority(room,item)).includes('상') ? '#ef4444' : String(getPriority(room,item)).includes('중') ? '#38bdf8' : String(getPriority(room,item)).includes('하') ? '#4ade80' : 'var(--mu)') + ';">' + esc2(getPriority(room,item)) + '</td>'
+          + '<td class="planner-center" style="font-family:JetBrains Mono,monospace;color:#9fc2ff;cursor:' + (item?'pointer':'default') + ';" title="' + esc2(number) + '"><span class="planner-ellipsis">' + esc2(number) + '</span></td>'
+          + '<td class="planner-left"><span class="planner-title planner-ellipsis" title="' + esc2(name) + '">' + esc2(name) + '</span></td>'
+          + '<td class="planner-left"><span class="planner-ellipsis-2" title="' + esc2(area) + '">' + esc2(area) + '</span></td>'
+          + '<td class="planner-left"><span class="planner-ellipsis-2" title="' + esc2(feature) + '">' + esc2(feature) + '</span></td>'
+          + '<td class="planner-num" style="font-weight:700;color:var(--tx);">' + esc2(fmtNum(appraisal) || '-') + '</td>'
+          + '<td class="planner-num" style="font-weight:800;color:#ffd166;">' + esc2(fmtNum(currentMin) || '-') + '</td>'
+          + '<td class="planner-center">' + esc2(String(turn)) + '</td>'
+          + '<td class="planner-center"><div style="font-weight:700;color:var(--tx);">' + esc2(fmtDate(saleDate) || '-') + '</div><div class="planner-sub" style="color:' + (dday == null ? 'var(--di)' : dday < 0 ? '#ef4444' : dday <= 3 ? '#ef4444' : dday <= 7 ? '#f59e0b' : '#4ade80') + ';">' + (dday == null ? '' : (dday < 0 ? '지남' : dday === 0 ? 'D-Day' : 'D-' + dday)) + '</div></td>'
+          + '<td class="planner-center"><span class="planner-ellipsis">' + esc2(getResultText(room) || ((dday != null && dday < 0) ? '진행중' : '-')) + '</span></td>'
+          + '<td class="planner-num" style="color:#9fc2ff;">' + esc2(fmtNum(bidPrice) || '-') + '</td>'
+          + '<td class="planner-num">' + esc2(fmtNum(deposit) || '-') + '</td>'
+          + '<td class="planner-num">' + esc2(fmtNum(monthly) || '-') + '</td>'
+          + '<td class="planner-num" style="font-weight:800;color:#4f8eff;">' + esc2(fmtNum(expectedBid) || '-') + '</td>'
+          + '<td class="planner-center"><span class="planner-chip" style="background:' + (alarm ? alarmColor + '18' : 'rgba(255,255,255,.04)') + ';border:1px solid ' + (alarm ? alarmColor + '33' : 'rgba(255,255,255,.08)') + ';color:' + (alarm ? alarmColor : 'var(--di)') + ';">' + esc2(alarm || '-') + '</span></td>'
+          + '<td class="planner-left"><span class="planner-ellipsis-2" title="' + esc2(memo || '-') + '" style="color:' + (memo ? '#9fc2ff' : 'var(--di)') + ';">' + esc2(memo || '-') + '</span></td>'
+          + '<td class="planner-center">' + (room ? '<div style="display:flex;gap:4px;justify-content:center;flex-wrap:wrap;"><button onclick="_wbGoRoom(\'' + room.id + '\')" style="padding:4px 7px;background:rgba(17,157,237,.12);border:1px solid rgba(17,157,237,.35);border-radius:5px;color:#119ded;font-size:10px;cursor:pointer;">열기</button><button onclick="wr2QuickShowBidResultModal(\'' + room.id + '\')" style="padding:4px 7px;background:rgba(255,140,66,.12);border:1px solid rgba(255,140,66,.35);border-radius:5px;color:#ff8c42;font-size:10px;cursor:pointer;">결과</button></div>' : '<button onclick="_wbCreateAndLink(\'' + (item ? esc2(item.id) : '') + '\')" style="padding:4px 7px;background:var(--s2);border:1px dashed rgba(17,157,237,.35);border-radius:5px;color:var(--mu);font-size:10px;cursor:pointer;">만들기</button>') + '</td>'
+          + '</tr>';
+      });
+
+      html += '</tbody></table></div></div>';
       container.innerHTML = html;
     };
-
     // ★ 작업룸 기반 파이프라인 알람 배너
     function _renderWr2AlarmBanner(rooms) {
       var bannerEl = document.getElementById('wr2PipelineAlarmBanner');
