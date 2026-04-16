@@ -39865,7 +39865,15 @@ window.addEventListener('DOMContentLoaded', () => {
         if (it.roomId) {
           var rooms = getWrRooms();
           var room = rooms.find(function(r){return r.id===it.roomId;});
-          if (room) wrLink = '<button onclick="plGoToWorkroom(\''+it.roomId+'\')" style="font-size:11px;padding:2px 8px;border:1px solid var(--b1);border-radius:5px;background:transparent;color:var(--fg2);cursor:pointer;white-space:nowrap;" title="작업룸으로 이동">🗂 '+((room.title||'').substring(0,8)||'작업룸')+'</button>';
+          if (room) {
+            wrLink = '<div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">'
+              + '<button onclick="plGoToWorkroom(\''+it.roomId+'\')" style="font-size:11px;padding:2px 8px;border:1px solid var(--b1);border-radius:5px;background:transparent;color:var(--fg2);cursor:pointer;white-space:nowrap;" title="작업룸으로 이동">🗂 '+((room.title||'').substring(0,8)||'작업룸')+'</button>'
+              + '<button onclick="plOpenEdit(\''+it.id+'\')" style="font-size:11px;padding:2px 8px;border:1px solid var(--b1);border-radius:5px;background:rgba(79,142,255,.08);color:#8ab2ff;cursor:pointer;white-space:nowrap;" title="연결 작업룸 변경">변경</button>'
+              + '</div>';
+          }
+        }
+        if (!wrLink) {
+          wrLink = '<button onclick="plOpenEdit(\''+it.id+'\')" style="font-size:11px;padding:2px 8px;border:1px dashed var(--b1);border-radius:5px;background:transparent;color:#8ab2ff;cursor:pointer;white-space:nowrap;" title="작업룸 연결">🔗 연결</button>';
         }
         // 결과 카드 표시 (종료된 경우)
         var resultTag = '';
@@ -39947,13 +39955,14 @@ window.addEventListener('DOMContentLoaded', () => {
       var origin = origins[key];
       if (!panel || !origin || !origin.parent || !origin.placeholder || panel.parentNode === origin.parent) return;
       if (origin.placeholder.parentNode === origin.parent) {
-        origin.parent.insertBefore(panel, origin.placeholder.nextSibling);
+        origin.parent.insertBefore(panel, origin.placeholder);
       } else {
         origin.parent.appendChild(panel);
       }
       panel.style.flex = '';
       panel.style.minHeight = '';
       panel.style.height = '';
+      panel.style.maxHeight = '';
       panel.style.overflow = '';
       panel.style.display = 'none';
     });
@@ -39977,17 +39986,63 @@ window.addEventListener('DOMContentLoaded', () => {
     if (roomId && window.wr2State) window.wr2State.activeRoomId = roomId;
     workPanel.style.display = '';
     try {
-      var selectors = ['#workroomTab', '.wr2-body', '.wr2-list-panel', '.wr2-detail-panel', '.wr2-detail', '.wr2-tab-body'];
-      selectors.forEach(function(sel) {
-        workPanel.querySelectorAll(sel).forEach(function(el) {
-          el.style.minHeight = '0';
-        });
-      });
       var host = document.getElementById('pm-work-host');
       var wrap = document.getElementById('workroomTab');
-      if (host) host.style.overflow = 'auto';
-      if (wrap) wrap.style.minHeight = '0';
-      workPanel.style.overflow = 'auto';
+      var body = workPanel.querySelector('.wr2-body');
+      var listPanel = workPanel.querySelector('.wr2-list-panel');
+      var detailPanel = workPanel.querySelector('.wr2-detail-panel');
+      var detail = workPanel.querySelector('.wr2-detail');
+      var tabBody = workPanel.querySelector('.wr2-tab-body');
+      if (host) {
+        host.style.display = 'flex';
+        host.style.flex = '1';
+        host.style.minHeight = '0';
+        host.style.overflow = 'hidden';
+      }
+      workPanel.style.display = 'flex';
+      workPanel.style.flexDirection = 'column';
+      workPanel.style.flex = '1';
+      workPanel.style.minHeight = '0';
+      workPanel.style.height = '100%';
+      workPanel.style.maxHeight = '100%';
+      workPanel.style.overflow = 'hidden';
+      if (wrap) {
+        wrap.style.display = 'flex';
+        wrap.style.flexDirection = 'column';
+        wrap.style.flex = '1';
+        wrap.style.minHeight = '0';
+        wrap.style.height = '100%';
+        wrap.style.overflow = 'hidden';
+      }
+      if (body) {
+        body.style.display = 'flex';
+        body.style.flex = '1';
+        body.style.minHeight = '0';
+        body.style.overflow = 'hidden';
+      }
+      if (listPanel) {
+        listPanel.style.minHeight = '0';
+        listPanel.style.overflow = 'auto';
+      }
+      if (detailPanel) {
+        detailPanel.style.display = 'flex';
+        detailPanel.style.flexDirection = 'column';
+        detailPanel.style.flex = '1';
+        detailPanel.style.minHeight = '0';
+        detailPanel.style.overflow = 'hidden';
+      }
+      if (detail) {
+        detail.style.display = 'flex';
+        detail.style.flexDirection = 'column';
+        detail.style.flex = '1';
+        detail.style.minHeight = '0';
+        detail.style.overflow = 'hidden';
+      }
+      if (tabBody) {
+        tabBody.style.flex = '1';
+        tabBody.style.minHeight = '0';
+        tabBody.style.overflow = 'auto';
+      }
     } catch (e) { console.warn('[pm work scroll]', e); }
     if (window._sbRunEntryRefresh && typeof window._wrRefreshFromCloud === 'function') {
       window._sbRunEntryRefresh('workrooms', window._wrRefreshFromCloud, { render: true, label: 'workrooms', force: true })
@@ -40026,8 +40081,8 @@ window.addEventListener('DOMContentLoaded', () => {
     window.pmEnsureEmbeddedPanels();
 
     list.style.display = (tab === 'list') ? '' : 'none';
-    work.style.display = (tab === 'work') ? '' : 'none';
-    pipeline.style.display = (tab === 'pipeline') ? '' : 'none';
+    work.style.display = (tab === 'work') ? 'flex' : 'none';
+    pipeline.style.display = (tab === 'pipeline') ? 'flex' : 'none';
     if (workPanel) workPanel.style.display = 'none';
     if (pipelinePanel) pipelinePanel.style.display = 'none';
 
@@ -40283,6 +40338,19 @@ window.addEventListener('DOMContentLoaded', () => {
   var _origShowPage = window.showPage;
   if (_origShowPage) {
     window.showPage = function(n) {
+      if (n !== 4) {
+        try {
+          if (typeof window.pmRestoreEmbeddedPanels === 'function') window.pmRestoreEmbeddedPanels();
+          var wp = document.getElementById('pm-panel-work');
+          var pp = document.getElementById('pm-panel-pipeline');
+          if (wp) wp.style.display = 'none';
+          if (pp) pp.style.display = 'none';
+          var ip5 = document.getElementById('ipage5');
+          var ip8 = document.getElementById('ipage8');
+          if (ip5) ip5.style.display = 'none';
+          if (ip8) ip8.style.display = 'none';
+        } catch (e) { console.warn('[pm leave restore]', e); }
+      }
       _origShowPage(n);
       if (n === 4) {
         setTimeout(function() {
