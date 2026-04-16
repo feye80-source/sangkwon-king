@@ -27394,6 +27394,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
     // ── 인사이트 탭 열릴 때 초기화 ─────────────────────
     function onInsightOpen(targetTab) {
+      try { if (typeof window.pmRestoreEmbeddedPanels === 'function') window.pmRestoreEmbeddedPanels(); } catch (e) { console.warn('[pmRestoreEmbeddedPanels]', e); }
       var remembered = window.__insActiveTab;
       if (remembered === 5 || remembered === 8) remembered = 0;
       const nextTab = (targetTab === undefined || targetTab === null) ? (remembered || 0) : targetTab;
@@ -39901,22 +39902,61 @@ window.addEventListener('DOMContentLoaded', () => {
     var pipelineHost = document.getElementById('pm-pipeline-host');
     var workPanel = document.getElementById('ipage8');
     var pipelinePanel = document.getElementById('ipage5');
+    window.__pmPanelOrigins = window.__pmPanelOrigins || {};
+
+    function ensurePlaceholder(key, panel) {
+      if (!panel) return null;
+      var origin = window.__pmPanelOrigins[key] || (window.__pmPanelOrigins[key] = {});
+      if (!origin.placeholder) {
+        origin.placeholder = document.createComment('pm-origin-' + key);
+      }
+      if (!origin.parent && panel.parentNode) {
+        origin.parent = panel.parentNode;
+        if (!origin.placeholder.parentNode) {
+          origin.parent.insertBefore(origin.placeholder, panel);
+        }
+      }
+      return origin;
+    }
+
     if (workHost && workPanel && workPanel.parentNode !== workHost) {
+      ensurePlaceholder('work', workPanel);
       workHost.appendChild(workPanel);
       workPanel.style.display = 'none';
       workPanel.style.flex = '1';
       workPanel.style.minHeight = '0';
       workPanel.style.height = '100%';
-      workPanel.style.overflow = 'hidden';
+      workPanel.style.overflow = 'auto';
     }
     if (pipelineHost && pipelinePanel && pipelinePanel.parentNode !== pipelineHost) {
+      ensurePlaceholder('pipeline', pipelinePanel);
       pipelineHost.appendChild(pipelinePanel);
       pipelinePanel.style.display = 'none';
       pipelinePanel.style.flex = '1';
       pipelinePanel.style.minHeight = '0';
       pipelinePanel.style.height = '100%';
-      pipelinePanel.style.overflow = 'hidden';
+      pipelinePanel.style.overflow = 'auto';
     }
+  };
+
+  window.pmRestoreEmbeddedPanels = function() {
+    var origins = window.__pmPanelOrigins || {};
+    [['work','ipage8'], ['pipeline','ipage5']].forEach(function(meta) {
+      var key = meta[0];
+      var panel = document.getElementById(meta[1]);
+      var origin = origins[key];
+      if (!panel || !origin || !origin.parent || !origin.placeholder || panel.parentNode === origin.parent) return;
+      if (origin.placeholder.parentNode === origin.parent) {
+        origin.parent.insertBefore(panel, origin.placeholder.nextSibling);
+      } else {
+        origin.parent.appendChild(panel);
+      }
+      panel.style.flex = '';
+      panel.style.minHeight = '';
+      panel.style.height = '';
+      panel.style.overflow = '';
+      panel.style.display = 'none';
+    });
   };
 
   function _pmSetTabBtnState(btn, active) {
@@ -39936,6 +39976,19 @@ window.addEventListener('DOMContentLoaded', () => {
     if (window.wr2State) window.wr2State.activeView = 'overview';
     if (roomId && window.wr2State) window.wr2State.activeRoomId = roomId;
     workPanel.style.display = '';
+    try {
+      var selectors = ['#workroomTab', '.wr2-body', '.wr2-list-panel', '.wr2-detail-panel', '.wr2-detail', '.wr2-tab-body'];
+      selectors.forEach(function(sel) {
+        workPanel.querySelectorAll(sel).forEach(function(el) {
+          el.style.minHeight = '0';
+        });
+      });
+      var host = document.getElementById('pm-work-host');
+      var wrap = document.getElementById('workroomTab');
+      if (host) host.style.overflow = 'auto';
+      if (wrap) wrap.style.minHeight = '0';
+      workPanel.style.overflow = 'auto';
+    } catch (e) { console.warn('[pm work scroll]', e); }
     if (window._sbRunEntryRefresh && typeof window._wrRefreshFromCloud === 'function') {
       window._sbRunEntryRefresh('workrooms', window._wrRefreshFromCloud, { render: true, label: 'workrooms', force: true })
         .then(function(payload) {
@@ -39983,6 +40036,7 @@ window.addEventListener('DOMContentLoaded', () => {
     _pmSetTabBtnState(tabPipeline, tab === 'pipeline');
 
     if (tab === 'list') {
+      try { if (typeof window.pmRestoreEmbeddedPanels === 'function') window.pmRestoreEmbeddedPanels(); } catch (e) {}
       renderPropertyList();
       return;
     }
@@ -39999,6 +40053,97 @@ window.addEventListener('DOMContentLoaded', () => {
   window.plGoToWorkroom = function(roomId) {
     if (window.showPage) window.showPage(4);
     setTimeout(function(){ window.pmShowTab('work', { roomId: roomId }); }, 60);
+  };
+
+  function _plToRegion(addr) {
+    var parts = String(addr || '').trim().split(/\s+/).filter(Boolean);
+    return parts.slice(0, Math.min(3, parts.length)).join(' ');
+  }
+
+  function _plNormMoney(val) {
+    if (val === null || val === undefined) return '';
+    var s = String(val).trim();
+    if (!s) return '';
+    var n = parseInt(s.replace(/[^0-9]/g, ''), 10);
+    return isFinite(n) && n > 0 ? String(n) : s;
+  }
+
+  function _plNormDate(val) {
+    if (!val) return '';
+    var s = String(val).trim();
+    if (!s) return '';
+    var m = s.match(/(20\d{2})[^0-9]?(\d{1,2})[^0-9]?(\d{1,2})/);
+    if (!m) return '';
+    return m[1] + '-' + String(m[2]).padStart(2, '0') + '-' + String(m[3]).padStart(2, '0');
+  }
+
+  window.plImportFromSavedAuctions = function() {
+    try {
+      var saved = (typeof getSv === 'function') ? (getSv() || []) : [];
+      if (!saved.length) { alert('저장목록에 불러올 물건이 없습니다.'); return; }
+      var items = plLoad();
+      var rooms = getWrRooms();
+      var added = 0, updated = 0, skipped = 0;
+
+      saved.forEach(function(s) {
+        var d = (s && s.data) ? s.data : {};
+        var n = (s && s._norm) ? s._norm : (d && d._norm ? d._norm : {});
+        var isAuction = String(s.mode || '').toLowerCase() === 'auction'
+          || !!(d['사건번호'] || d['경매번호'] || d['매각기일'] || d['최저가'] || d['감정가'] || d['product_id']);
+        if (!isAuction) { skipped += 1; return; }
+
+        var addr = s.title || d['소재지'] || d['주소'] || d['도로명주소'] || d['지번주소'] || '';
+        var casenum = d['사건번호'] || d['경매번호'] || d['caseNo'] || '';
+        var linkedRoom = rooms.find(function(r) {
+          return String(r.linkedSavedId || '') === String(s.id)
+            || String(r.auctionId || '') === String(s.id)
+            || String(r.listingId || '') === String(s.id);
+        });
+        var payload = {
+          id: 'pl_' + String(s.id || Date.now()),
+          type: '경매',
+          status: 'review',
+          addr: addr,
+          casenum: String(casenum || ''),
+          region: d['지역'] || _plToRegion(addr),
+          appraisal: _plNormMoney(n['감정가_만원'] || d['감정가_만원'] || d['감정가']),
+          minprice: _plNormMoney(n['최저가_만원'] || d['최저가_만원'] || d['최저가']),
+          round: String(d['회차'] || d['매각회차'] || (d['유찰횟수'] ? (String(d['유찰횟수']) + '회 유찰') : '') || ''),
+          biddate: _plNormDate(d['입찰기일'] || d['매각기일'] || d['매각일'] || d['경매기일']),
+          estimate: '',
+          site: '0',
+          roomId: linkedRoom ? linkedRoom.id : '',
+          memo: '',
+          linkedSavedId: s.id,
+          importSource: 'saved-auction'
+        };
+        if (!payload.addr) { skipped += 1; return; }
+
+        var existing = items.find(function(it) {
+          return String(it.linkedSavedId || '') === String(s.id)
+            || (!!payload.casenum && !!it.casenum && String(it.casenum) === String(payload.casenum) && String(it.addr || '') === String(payload.addr || ''));
+        });
+
+        if (existing) {
+          ['type','addr','casenum','region','appraisal','minprice','round','biddate','roomId','linkedSavedId','importSource'].forEach(function(k) {
+            if (!existing[k] && payload[k]) existing[k] = payload[k];
+          });
+          if (!existing.status) existing.status = payload.status;
+          updated += 1;
+          return;
+        }
+        items.push(payload);
+        added += 1;
+      });
+
+      plSave(items);
+      renderPropertyList();
+      try { if (typeof showToast === 'function') showToast('저장목록 경매 가져오기 완료: 추가 ' + added + '건, 보완 ' + updated + '건', 'ok'); } catch (e) {}
+      if (!added && !updated) alert('가져올 경매 물건이 없었습니다.');
+    } catch (e) {
+      console.error('[plImportFromSavedAuctions]', e);
+      alert('저장목록 경매 가져오기에 실패했습니다.');
+    }
   };
 
   // ── 모달: 추가 ──────────────────────────
