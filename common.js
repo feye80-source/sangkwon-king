@@ -27400,6 +27400,16 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
     // ── 서브탭 전환 ─────────────────────────────────────
     function showInsTab(n) {
+      if (n === 5 || n === 8) {
+        window.__insActiveTab = n;
+        if (typeof window.showPage === 'function') window.showPage(4);
+        setTimeout(function() {
+          if (typeof window.pmShowTab === 'function') {
+            window.pmShowTab(n === 8 ? 'work' : 'pipeline');
+          }
+        }, 30);
+        return;
+      }
       window.__insActiveTab = n;
       const _insBoot = window.__insBoot || (window.__insBoot = {});
       // cfg(API 설정) 특수 처리
@@ -39882,36 +39892,110 @@ window.addEventListener('DOMContentLoaded', () => {
     if (cnt) cnt.textContent = '총 '+items.length+'건 · 진행중 '+items.filter(function(i){return i.status!=='closed';}).length+'건';
   };
 
+  // ── 물건관리 하위탭: 기존 인사이트 패널 이동/연결 ─────────────────────────
+  window.pmEnsureEmbeddedPanels = function() {
+    var workHost = document.getElementById('pm-work-host');
+    var pipelineHost = document.getElementById('pm-pipeline-host');
+    var workPanel = document.getElementById('ipage8');
+    var pipelinePanel = document.getElementById('ipage5');
+    if (workHost && workPanel && workPanel.parentNode !== workHost) {
+      workHost.appendChild(workPanel);
+      workPanel.style.display = 'none';
+      workPanel.style.flex = '1';
+      workPanel.style.minHeight = '0';
+      workPanel.style.height = '100%';
+      workPanel.style.overflow = 'hidden';
+    }
+    if (pipelineHost && pipelinePanel && pipelinePanel.parentNode !== pipelineHost) {
+      pipelineHost.appendChild(pipelinePanel);
+      pipelinePanel.style.display = 'none';
+      pipelinePanel.style.flex = '1';
+      pipelinePanel.style.minHeight = '0';
+      pipelinePanel.style.height = '100%';
+      pipelinePanel.style.overflow = 'hidden';
+    }
+  };
+
+  function _pmSetTabBtnState(btn, active) {
+    if (!btn) return;
+    btn.style.borderBottomColor = active ? 'var(--accent,#4f8eff)' : 'transparent';
+    btn.style.color = active ? 'var(--fg)' : 'var(--fg2)';
+  }
+
+  function _pmOpenWorkroomPanel(roomId) {
+    window.pmEnsureEmbeddedPanels();
+    var workPanel = document.getElementById('ipage8');
+    if (!workPanel) return;
+    if (!window.__wr2Inited && typeof window.wr2Init === 'function') {
+      window.__wr2Inited = true;
+      try { window.wr2Init(); } catch (e) { console.error('[wr2 init]', e); }
+    }
+    if (window.wr2State) window.wr2State.activeView = 'overview';
+    if (roomId && window.wr2State) window.wr2State.activeRoomId = roomId;
+    workPanel.style.display = '';
+    if (window._sbRunEntryRefresh && typeof window._wrRefreshFromCloud === 'function') {
+      window._sbRunEntryRefresh('workrooms', window._wrRefreshFromCloud, { render: true, label: 'workrooms', force: true })
+        .then(function(payload) {
+          if (!payload && typeof window.wr2Render === 'function') window.wr2Render();
+          if (roomId && typeof window.wrDbOpenRoom === 'function') setTimeout(function(){ window.wrDbOpenRoom(roomId); }, 60);
+        });
+    } else if (typeof window.wr2Render === 'function') {
+      window.wr2Render();
+      if (roomId && typeof window.wrDbOpenRoom === 'function') setTimeout(function(){ window.wrDbOpenRoom(roomId); }, 60);
+    }
+  }
+
+  function _pmOpenPipelinePanel() {
+    window.pmEnsureEmbeddedPanels();
+    var pipelinePanel = document.getElementById('ipage5');
+    if (!pipelinePanel) return;
+    pipelinePanel.style.display = '';
+    try { if (typeof renderWatchBoard === 'function') renderWatchBoard(); } catch (e) { console.error('[renderWatchBoard]', e); }
+  }
+
   // ── 서브탭 전환 ─────────────────────────
-  window.pmShowTab = function(tab) {
+  window.pmShowTab = function(tab, opts) {
+    var options = opts || {};
     var list = document.getElementById('pm-panel-list');
     var work = document.getElementById('pm-panel-work');
+    var pipeline = document.getElementById('pm-panel-pipeline');
     var tabList = document.getElementById('pm-tab-list');
     var tabWork = document.getElementById('pm-tab-work');
-    if (!list || !work) return;
+    var tabPipeline = document.getElementById('pm-tab-pipeline');
+    var workPanel = document.getElementById('ipage8');
+    var pipelinePanel = document.getElementById('ipage5');
+    if (!list || !work || !pipeline) return;
+
+    window.__pmActiveTab = tab;
+    window.pmEnsureEmbeddedPanels();
+
+    list.style.display = (tab === 'list') ? '' : 'none';
+    work.style.display = (tab === 'work') ? '' : 'none';
+    pipeline.style.display = (tab === 'pipeline') ? '' : 'none';
+    if (workPanel) workPanel.style.display = 'none';
+    if (pipelinePanel) pipelinePanel.style.display = 'none';
+
+    _pmSetTabBtnState(tabList, tab === 'list');
+    _pmSetTabBtnState(tabWork, tab === 'work');
+    _pmSetTabBtnState(tabPipeline, tab === 'pipeline');
+
     if (tab === 'list') {
-      list.style.display = ''; work.style.display = 'none';
-      if (tabList) { tabList.style.borderBottomColor='var(--accent,#4f8eff)'; tabList.style.color='var(--fg)'; }
-      if (tabWork) { tabWork.style.borderBottomColor='transparent'; tabWork.style.color='var(--fg2)'; }
       renderPropertyList();
-    } else {
-      list.style.display = 'none'; work.style.display = '';
-      if (tabWork) { tabWork.style.borderBottomColor='var(--accent,#4f8eff)'; tabWork.style.color='var(--fg)'; }
-      if (tabList) { tabList.style.borderBottomColor='transparent'; tabList.style.color='var(--fg2)'; }
-      // 기존 작업룸 탭(page3 → 인사이트탭)으로 내부 이동
-      if (window.showPage) window.showPage(3);
+      return;
+    }
+    if (tab === 'work') {
+      _pmOpenWorkroomPanel(options.roomId || null);
+      return;
+    }
+    if (tab === 'pipeline') {
+      _pmOpenPipelinePanel();
     }
   };
 
   // ── 작업룸 이동 ─────────────────────────
   window.plGoToWorkroom = function(roomId) {
-    if (window.showPage) window.showPage(3);
-    setTimeout(function(){
-      if (window.wr2State) {
-        window.wr2State.activeRoomId = roomId;
-        if (window.wr2Render) window.wr2Render();
-      }
-    }, 300);
+    if (window.showPage) window.showPage(4);
+    setTimeout(function(){ window.pmShowTab('work', { roomId: roomId }); }, 60);
   };
 
   // ── 모달: 추가 ──────────────────────────
@@ -40052,7 +40136,13 @@ window.addEventListener('DOMContentLoaded', () => {
   if (_origShowPage) {
     window.showPage = function(n) {
       _origShowPage(n);
-      if (n === 4) setTimeout(renderPropertyList, 50);
+      if (n === 4) {
+        setTimeout(function() {
+          var active = window.__pmActiveTab || 'list';
+          if (typeof window.pmShowTab === 'function') window.pmShowTab(active);
+          else renderPropertyList();
+        }, 50);
+      }
     };
   }
 
