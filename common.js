@@ -39705,11 +39705,17 @@ window.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => clearInterval(waitForKakao), 10000);
 });
 
-// ===== 물건리스트 (page4) =====
+// =============================================
+// 물건관리 (page4) — 물건리스트 + 작업룸 연동
+// =============================================
 (function () {
-  var KEY = 'pl_items_v1';
-  function loadItems() { try { return JSON.parse(localStorage.getItem(KEY) || '[]'); } catch(e) { return []; } }
-  function saveItems(arr) { localStorage.setItem(KEY, JSON.stringify(arr)); }
+  var PL_KEY = 'pl_items_v2';
+
+  // ── 데이터 ──────────────────────────────
+  function plLoad() { try { return JSON.parse(localStorage.getItem(PL_KEY) || '[]'); } catch(e) { return []; } }
+  function plSave(arr) { localStorage.setItem(PL_KEY, JSON.stringify(arr)); }
+
+  // ── 날짜 유틸 ──────────────────────────
   function daysDiff(dateStr) {
     if (!dateStr) return null;
     return Math.ceil((new Date(dateStr) - new Date()) / 86400000);
@@ -39719,146 +39725,340 @@ window.addEventListener('DOMContentLoaded', () => {
     var d = new Date(dateStr);
     return (d.getMonth()+1) + '.' + d.getDate();
   }
-  function statusBadge(s) {
-    var map = {'진행중':'background:#003a1a;color:#4caf87;','종료':'background:#2a2a3a;color:#aaa;','미진행':'background:#3a2e00;color:#f5a623;'};
-    return '<span style="padding:2px 7px;border-radius:9px;font-size:11px;font-weight:500;white-space:nowrap;' + (map[s]||'') + '">' + (s||'') + '</span>';
+
+  // ── 상태 표시 ──────────────────────────
+  var STATUS_MAP = {
+    review: { label: '관심·검토', bg: '#1a2a3a', color: '#7eb8ff', folder: '관심·검토' },
+    field:  { label: '현장',     bg: '#2a2a00', color: '#f5d623', folder: '현장' },
+    bid:    { label: '입찰',     bg: '#002a3a', color: '#4fcfff', folder: '입찰' },
+    won:    { label: '낙찰',     bg: '#003a1a', color: '#4caf87', folder: '낙찰' },
+    closed: { label: '종료',     bg: '#1a1a1a', color: '#888',    folder: '종료' },
+  };
+  function statusBadge(s, id) {
+    var m = STATUS_MAP[s] || STATUS_MAP.review;
+    return '<select onchange="plChangeStatus(\''+id+'\',this.value)" onclick="event.stopPropagation()" '
+      + 'style="padding:3px 6px;border-radius:8px;font-size:11px;font-weight:600;border:none;cursor:pointer;'
+      + 'background:'+m.bg+';color:'+m.color+';">'
+      + Object.keys(STATUS_MAP).map(function(k){
+          return '<option value="'+k+'"'+(k===s?' selected':'')+'>'+STATUS_MAP[k].label+'</option>';
+        }).join('')
+      + '</select>';
   }
   function siteDots(n) {
     n = parseInt(n)||0;
-    return [1,2,3].map(function(i){ return '<span style="display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:2px;background:' + (i<=n?'#1D9E75':'#444') + ';"></span>'; }).join('');
+    return [1,2,3].map(function(i){
+      return '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:2px;background:'+(i<=n?'#1D9E75':'#333')+';" title="'+(i<=n?'임장 완료':'미완료')+'"></span>';
+    }).join('');
   }
-  function num(v) { return v ? '<span style="font-family:monospace;font-size:12px;">' + v + '</span>' : '<span style="color:#555;">—</span>'; }
+  function numCell(v, color) {
+    if (!v) return '<span style="color:#444;">—</span>';
+    return '<span style="font-family:monospace;font-size:12px;'+(color?'color:'+color+';':'')+'">' + v + '</span>';
+  }
 
-  window.renderPropertyList = function () {
-    var items = loadItems();
-    var q = ((document.getElementById('pl-search')||{}).value||'').toLowerCase();
-    var fs = (document.getElementById('pl-filter-status')||{}).value||'';
-    var overdueCount=0, soonField=0, soonReady=0;
+  // ── 작업룸 연동 ─────────────────────────
+  function getWrRooms() {
+    if (window.wr2State && Array.isArray(window.wr2State.rooms)) return window.wr2State.rooms.filter(function(r){return r && !r.deletedAt;});
+    try { return JSON.parse(localStorage.getItem('wr2_rooms') || '[]').filter(function(r){return r && !r.deletedAt;}); } catch(e) { return []; }
+  }
+  function syncToWorkroom(item) {
+    if (!item.roomId) return;
+    var rooms = getWrRooms();
+    var room = rooms.find(function(r){return r.id === item.roomId;});
+    if (!room) return;
+    var newPhase = item.status || 'review';
+    var newFolder = (STATUS_MAP[newPhase]||STATUS_MAP.review).folder;
+    if (room.phase !== newPhase || room.activePhase !== newPhase) {
+      if (window.updateRoom) {
+        window.updateRoom(room.id, { phase: newPhase, status: newPhase, activePhase: newPhase, group: newFolder });
+      } else {
+        room.phase = newPhase; room.status = newPhase; room.activePhase = newPhase;
+        room.group = newFolder; room.updatedAt = Date.now();
+        if (window._wrPersistRooms) window._wrPersistRooms(rooms, { syncState: true });
+      }
+    }
+  }
+
+  // ── 상태 변경 (드롭다운) ─────────────────
+  window.plChangeStatus = function(id, newStatus) {
+    var items = plLoad();
+    var item = items.find(function(i){return i.id===id;});
+    if (!item) return;
+    var oldStatus = item.status;
+    item.status = newStatus;
+    plSave(items);
+    syncToWorkroom(item);
+    // 종료로 변경 시 결과 카드 팝업
+    if (newStatus === 'closed' && oldStatus !== 'closed') {
+      setTimeout(function(){ plOpenResultModal(id); }, 200);
+    }
+    renderPropertyList();
+  };
+
+  // ── 알람 렌더 ──────────────────────────
+  function renderAlerts(items) {
+    var overdue=[], needField=[], needBid=[];
     items.forEach(function(it) {
+      if (it.status === 'closed' || it.status === 'won') return;
       var d = daysDiff(it.biddate);
       if (d === null) return;
-      if (d < 0 && it.status === '진행중') overdueCount++;
-      else if (d <= 7 && d >= 0 && it.status === '진행중') soonField++;
-      if (d <= 3 && d >= 0 && it.status === '진행중') soonReady++;
+      if (d < 0) overdue.push(it);
+      else if (d <= 7 && (!it.site || parseInt(it.site) === 0)) needField.push(it);
+      else if (d <= 3) needBid.push(it);
     });
-    var alertEl = document.getElementById('pl-alerts');
-    if (alertEl) {
-      alertEl.innerHTML = [
-        overdueCount ? '<span style="padding:6px 12px;border-radius:20px;font-size:12px;font-weight:500;background:#3a0000;color:#ff6b6b;border:1px solid #ff6b6b44;cursor:pointer;">● 결과 미입력 ' + overdueCount + '건 — 기일 지남</span>' : '',
-        soonField    ? '<span style="padding:6px 12px;border-radius:20px;font-size:12px;font-weight:500;background:#3a2e00;color:#f5a623;border:1px solid #f5a62344;">● 임장 필요 ' + soonField + '건 — 7일 이내</span>' : '',
-        soonReady    ? '<span style="padding:6px 12px;border-radius:20px;font-size:12px;font-weight:500;background:#003050;color:#4f8eff;border:1px solid #4f8eff44;">● 입찰 준비 ' + soonReady + '건 — 3일 이내</span>' : '',
-      ].join('');
-    }
-    var filtered = items.filter(function(it) {
+    var el = document.getElementById('pl-alerts');
+    if (!el) return;
+    var chips = [];
+    if (overdue.length) chips.push('<span style="padding:6px 14px;border-radius:20px;font-size:12px;font-weight:600;background:#3a0000;color:#ff6b6b;border:1px solid #ff6b6b55;cursor:pointer;" onclick="document.getElementById(\'pl-filter-status\').value=\'\';renderPropertyList()">● 결과 미입력 '+overdue.length+'건 — 기일 지남</span>');
+    if (needField.length) chips.push('<span style="padding:6px 14px;border-radius:20px;font-size:12px;font-weight:600;background:#3a2e00;color:#f5a623;border:1px solid #f5a62355;">● 임장 필요 '+needField.length+'건 — 7일 이내 & 임장 없음</span>');
+    if (needBid.length)   chips.push('<span style="padding:6px 14px;border-radius:20px;font-size:12px;font-weight:600;background:#003050;color:#4f8eff;border:1px solid #4f8eff55;">● 입찰 준비 '+needBid.length+'건 — 3일 이내</span>');
+    el.innerHTML = chips.join('');
+  }
+
+  // ── 메인 렌더 ──────────────────────────
+  window.renderPropertyList = function() {
+    var items = plLoad();
+    var q = ((document.getElementById('pl-search')||{}).value||'').toLowerCase();
+    var fs = (document.getElementById('pl-filter-status')||{}).value||'';
+
+    renderAlerts(items);
+
+    var filtered = items.filter(function(it){
       if (fs && it.status !== fs) return false;
       if (q && !(it.addr||'').toLowerCase().includes(q) && !(it.casenum||'').toLowerCase().includes(q) && !(it.region||'').toLowerCase().includes(q)) return false;
       return true;
     });
-    filtered.sort(function(a,b) {
+    filtered.sort(function(a,b){
       var da = a.biddate ? new Date(a.biddate) : new Date('9999-12-31');
       var db = b.biddate ? new Date(b.biddate) : new Date('9999-12-31');
       return da - db;
     });
+
     var tbody = document.getElementById('pl-tbody');
     if (!tbody) return;
+
     if (!filtered.length) {
-      tbody.innerHTML = '<tr><td colspan="17" style="padding:32px;text-align:center;color:var(--fg3);font-size:13px;">물건이 없어요. + 물건 추가로 시작하세요.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="15" style="padding:40px;text-align:center;color:var(--fg3);">물건이 없어요. + 물건 추가로 시작하세요.</td></tr>';
     } else {
-      tbody.innerHTML = filtered.map(function(it) {
+      tbody.innerHTML = filtered.map(function(it){
         var d = daysDiff(it.biddate);
-        var dStr = d===null ? '' : d<0 ? '' : d<=3 ? ' <span style="color:#ff6b6b;font-weight:500;font-size:11px;">D-'+d+'</span>' : d<=7 ? ' <span style="color:#f5a623;font-weight:500;font-size:11px;">D-'+d+'</span>' : '';
-        var rowBg = (d!==null && d<0 && it.status==='진행중') ? 'background:rgba(255,100,100,.06);' : '';
-        return '<tr style="' + rowBg + 'border-bottom:1px solid var(--b1);" onmouseenter="this.style.background=\'var(--bg3)\'" onmouseleave="this.style.background=\'' + rowBg + '\'">'
-          + '<td style="padding:8px 10px;">' + statusBadge(it.status) + '</td>'
-          + '<td style="padding:8px 10px;font-size:12px;white-space:nowrap;">' + (it.type||'—') + '</td>'
-          + '<td style="padding:8px 10px;font-size:12px;white-space:nowrap;color:var(--fg2);">' + (it.casenum||'—') + '</td>'
-          + '<td style="padding:8px 10px;font-size:13px;font-weight:500;white-space:nowrap;max-width:160px;overflow:hidden;text-overflow:ellipsis;">' + (it.addr||'—') + '</td>'
-          + '<td style="padding:8px 10px;font-size:12px;white-space:nowrap;color:var(--fg2);">' + (it.region||'—') + '</td>'
-          + '<td style="padding:8px 10px;text-align:right;">' + num(it.appraisal) + '</td>'
-          + '<td style="padding:8px 10px;text-align:right;">' + num(it.minprice) + '</td>'
-          + '<td style="padding:8px 10px;text-align:center;font-size:12px;">' + (it.round||'—') + '</td>'
-          + '<td style="padding:8px 10px;white-space:nowrap;font-size:12px;">' + fmtDate(it.biddate) + dStr + '</td>'
-          + '<td style="padding:8px 10px;text-align:right;">' + num(it.wonprice) + '</td>'
-          + '<td style="padding:8px 10px;text-align:center;font-size:12px;">' + (it.bidcount||'—') + '</td>'
-          + '<td style="padding:8px 10px;text-align:right;">' + num(it.deposit) + '</td>'
-          + '<td style="padding:8px 10px;text-align:right;">' + num(it.monthly) + '</td>'
-          + '<td style="padding:8px 10px;text-align:right;color:#4f8eff;">' + num(it.estimate) + '</td>'
-          + '<td style="padding:8px 10px;">' + siteDots(it.site) + '</td>'
-          + '<td style="padding:8px 10px;font-size:12px;color:var(--fg2);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (it.memo||'') + '</td>'
-          + '<td style="padding:8px 10px;text-align:center;"><button onclick="openEditPLItem(\'' + it.id + '\')" style="background:none;border:none;color:var(--fg3);cursor:pointer;font-size:14px;">···</button></td>'
+        var dTag = d===null ? '' : d<0 ? '<div style="font-size:10px;color:#888;">기일지남</div>'
+          : d<=3 ? '<div style="font-size:10px;color:#ff6b6b;font-weight:700;">D-'+d+'</div>'
+          : d<=7 ? '<div style="font-size:10px;color:#f5a623;font-weight:700;">D-'+d+'</div>'
+          : '<div style="font-size:10px;color:var(--fg3);">D-'+d+'</div>';
+        var rowHl = (d!==null && d<0 && it.status!=='closed' && it.status!=='won') ? 'background:rgba(255,80,80,.04);' : '';
+        // 작업룸 연결 표시
+        var wrLink = '';
+        if (it.roomId) {
+          var rooms = getWrRooms();
+          var room = rooms.find(function(r){return r.id===it.roomId;});
+          if (room) wrLink = '<button onclick="plGoToWorkroom(\''+it.roomId+'\')" style="font-size:11px;padding:2px 8px;border:1px solid var(--b1);border-radius:5px;background:transparent;color:var(--fg2);cursor:pointer;white-space:nowrap;" title="작업룸으로 이동">🗂 '+((room.title||'').substring(0,8)||'작업룸')+'</button>';
+        }
+        // 결과 카드 표시 (종료된 경우)
+        var resultTag = '';
+        if (it.status === 'closed' && it.result && it.result.won) {
+          resultTag = '<div style="font-size:10px;color:#4caf87;margin-top:2px;">낙 '+it.result.won+'</div>';
+        }
+        return '<tr style="'+rowHl+'border-bottom:1px solid var(--b1);" onmouseenter="this.style.background=\'var(--bg3)\'" onmouseleave="this.style.background=\''+rowHl+'\'">'
+          + '<td style="padding:8px 10px;">'+statusBadge(it.status, it.id)+'</td>'
+          + '<td style="padding:8px 10px;font-size:12px;color:var(--fg2);white-space:nowrap;">'+(it.type||'경매')+'</td>'
+          + '<td style="padding:8px 10px;max-width:160px;"><div style="font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+(it.addr||'')+'">'+(it.addr||'—')+'</div>'+resultTag+'</td>'
+          + '<td style="padding:8px 10px;font-size:12px;color:var(--fg2);white-space:nowrap;">'+(it.casenum||'—')+'</td>'
+          + '<td style="padding:8px 10px;font-size:12px;color:var(--fg2);white-space:nowrap;">'+(it.region||'—')+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;">'+numCell(it.appraisal)+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;">'+numCell(it.minprice)+'</td>'
+          + '<td style="padding:8px 10px;text-align:center;font-size:12px;">'+(it.round||'—')+'</td>'
+          + '<td style="padding:8px 10px;white-space:nowrap;"><div style="font-size:13px;">'+fmtDate(it.biddate)+'</div>'+dTag+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;">'+numCell(it.estimate,'#4f8eff')+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;">'+numCell(it.result&&it.result.won?it.result.won:'','#4caf87')+'</td>'
+          + '<td style="padding:8px 10px;">'+siteDots(it.site)+'</td>'
+          + '<td style="padding:8px 10px;">'+wrLink+'</td>'
+          + '<td style="padding:8px 10px;font-size:12px;color:var(--fg2);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+(it.memo||'')+'">'+(it.memo||'')+'</td>'
+          + '<td style="padding:8px 6px;text-align:center;"><button onclick="plOpenEdit(\''+it.id+'\')" style="background:none;border:none;color:var(--fg3);cursor:pointer;font-size:15px;padding:2px 4px;">···</button></td>'
           + '</tr>';
       }).join('');
     }
+
     var cnt = document.getElementById('pl-count');
-    if (cnt) cnt.textContent = '총 ' + items.length + '건 · 진행중 ' + items.filter(function(i){return i.status==='진행중';}).length + '건';
+    if (cnt) cnt.textContent = '총 '+items.length+'건 · 진행중 '+items.filter(function(i){return i.status!=='closed';}).length+'건';
   };
 
-  window.openAddPropertyModal = function () {
-    ['pl-f-addr','pl-f-case','pl-f-region','pl-f-appraisal','pl-f-minprice','pl-f-biddate','pl-f-round','pl-f-estimate','pl-f-wonprice','pl-f-deposit','pl-f-monthly','pl-f-memo'].forEach(function(id){
-      var el=document.getElementById(id); if(el) el.value='';
+  // ── 서브탭 전환 ─────────────────────────
+  window.pmShowTab = function(tab) {
+    var list = document.getElementById('pm-panel-list');
+    var work = document.getElementById('pm-panel-work');
+    var tabList = document.getElementById('pm-tab-list');
+    var tabWork = document.getElementById('pm-tab-work');
+    if (!list || !work) return;
+    if (tab === 'list') {
+      list.style.display = ''; work.style.display = 'none';
+      if (tabList) { tabList.style.borderBottomColor='var(--accent,#4f8eff)'; tabList.style.color='var(--fg)'; }
+      if (tabWork) { tabWork.style.borderBottomColor='transparent'; tabWork.style.color='var(--fg2)'; }
+      renderPropertyList();
+    } else {
+      list.style.display = 'none'; work.style.display = '';
+      if (tabWork) { tabWork.style.borderBottomColor='var(--accent,#4f8eff)'; tabWork.style.color='var(--fg)'; }
+      if (tabList) { tabList.style.borderBottomColor='transparent'; tabList.style.color='var(--fg2)'; }
+      // 기존 작업룸 탭(page3 → 인사이트탭)으로 내부 이동
+      if (window.showPage) window.showPage(3);
+    }
+  };
+
+  // ── 작업룸 이동 ─────────────────────────
+  window.plGoToWorkroom = function(roomId) {
+    if (window.showPage) window.showPage(3);
+    setTimeout(function(){
+      if (window.wr2State) {
+        window.wr2State.activeRoomId = roomId;
+        if (window.wr2Render) window.wr2Render();
+      }
+    }, 300);
+  };
+
+  // ── 모달: 추가 ──────────────────────────
+  window.plOpenAdd = function() {
+    document.getElementById('pl-modal-title').textContent = '물건 추가';
+    ['pl-f-addr','pl-f-case','pl-f-region','pl-f-appraisal','pl-f-minprice','pl-f-round','pl-f-biddate','pl-f-estimate','pl-f-memo'].forEach(function(id){
+      var el = document.getElementById(id); if (el) el.value = '';
     });
-    var fs=document.getElementById('pl-f-status'); if(fs) fs.value='진행중';
-    var ft=document.getElementById('pl-f-type'); if(ft) ft.value='경매';
-    var fsi=document.getElementById('pl-f-site'); if(fsi) fsi.value='0';
-    var eid=document.getElementById('pl-edit-id'); if(eid) eid.value='';
-    var db=document.getElementById('pl-del-btn'); if(db) db.style.display='none';
-    var m=document.getElementById('pl-modal'); if(m) m.style.display='flex';
+    var fs = document.getElementById('pl-f-status'); if (fs) fs.value = 'review';
+    var ft = document.getElementById('pl-f-type'); if (ft) ft.value = '경매';
+    var fsi = document.getElementById('pl-f-site'); if (fsi) fsi.value = '0';
+    var eid = document.getElementById('pl-edit-id'); if (eid) eid.value = '';
+    var db = document.getElementById('pl-del-btn'); if (db) db.style.display = 'none';
+    plPopulateRoomSelect('');
+    var m = document.getElementById('pl-modal'); if (m) m.style.display = 'flex';
   };
-  window.openEditPLItem = function (id) {
-    var items=loadItems();
-    var it=items.find(function(i){return i.id===id;}); if(!it) return;
-    document.getElementById('pl-edit-id').value=id;
-    document.getElementById('pl-f-addr').value=it.addr||'';
-    document.getElementById('pl-f-case').value=it.casenum||'';
-    document.getElementById('pl-f-region').value=it.region||'';
-    document.getElementById('pl-f-type').value=it.type||'경매';
-    document.getElementById('pl-f-status').value=it.status||'진행중';
-    document.getElementById('pl-f-appraisal').value=it.appraisal||'';
-    document.getElementById('pl-f-minprice').value=it.minprice||'';
-    document.getElementById('pl-f-biddate').value=it.biddate||'';
-    document.getElementById('pl-f-round').value=it.round||'';
-    document.getElementById('pl-f-estimate').value=it.estimate||'';
-    document.getElementById('pl-f-wonprice').value=it.wonprice||'';
-    document.getElementById('pl-f-deposit').value=it.deposit||'';
-    document.getElementById('pl-f-monthly').value=it.monthly||'';
-    document.getElementById('pl-f-site').value=it.site||'0';
-    document.getElementById('pl-f-memo').value=it.memo||'';
-    var db=document.getElementById('pl-del-btn'); if(db) db.style.display='';
-    var m=document.getElementById('pl-modal'); if(m) m.style.display='flex';
+
+  // ── 모달: 수정 ──────────────────────────
+  window.plOpenEdit = function(id) {
+    var items = plLoad();
+    var it = items.find(function(i){return i.id===id;}); if (!it) return;
+    document.getElementById('pl-modal-title').textContent = '물건 수정';
+    document.getElementById('pl-edit-id').value = id;
+    document.getElementById('pl-f-addr').value = it.addr||'';
+    document.getElementById('pl-f-case').value = it.casenum||'';
+    document.getElementById('pl-f-region').value = it.region||'';
+    document.getElementById('pl-f-type').value = it.type||'경매';
+    document.getElementById('pl-f-status').value = it.status||'review';
+    document.getElementById('pl-f-appraisal').value = it.appraisal||'';
+    document.getElementById('pl-f-minprice').value = it.minprice||'';
+    document.getElementById('pl-f-round').value = it.round||'';
+    document.getElementById('pl-f-biddate').value = it.biddate||'';
+    document.getElementById('pl-f-estimate').value = it.estimate||'';
+    document.getElementById('pl-f-site').value = it.site||'0';
+    document.getElementById('pl-f-memo').value = it.memo||'';
+    var db = document.getElementById('pl-del-btn'); if (db) db.style.display = '';
+    plPopulateRoomSelect(it.roomId||'');
+    var m = document.getElementById('pl-modal'); if (m) m.style.display = 'flex';
   };
-  window.closePLModal = function () {
-    var m=document.getElementById('pl-modal'); if(m) m.style.display='none';
+
+  function plPopulateRoomSelect(selectedId) {
+    var sel = document.getElementById('pl-f-roomid'); if (!sel) return;
+    var rooms = getWrRooms();
+    sel.innerHTML = '<option value="">연결 안 함</option>'
+      + rooms.map(function(r){
+          return '<option value="'+r.id+'"'+(r.id===selectedId?' selected':'')+'>'+((r.title||r.name||'(이름없음)').substring(0,30))+'</option>';
+        }).join('');
+  }
+
+  window.plCloseModal = function() {
+    var m = document.getElementById('pl-modal'); if (m) m.style.display = 'none';
   };
-  window.savePLItem = function () {
-    var items=loadItems();
-    var id=document.getElementById('pl-edit-id').value;
-    var item={
-      id: id||Date.now().toString(),
-      addr:     document.getElementById('pl-f-addr').value.trim(),
-      casenum:  document.getElementById('pl-f-case').value.trim(),
-      region:   document.getElementById('pl-f-region').value.trim(),
-      type:     document.getElementById('pl-f-type').value,
-      status:   document.getElementById('pl-f-status').value,
-      appraisal:document.getElementById('pl-f-appraisal').value.trim(),
-      minprice: document.getElementById('pl-f-minprice').value.trim(),
-      biddate:  document.getElementById('pl-f-biddate').value,
-      round:    document.getElementById('pl-f-round').value.trim(),
-      estimate: document.getElementById('pl-f-estimate').value.trim(),
-      wonprice: document.getElementById('pl-f-wonprice').value.trim(),
-      deposit:  document.getElementById('pl-f-deposit').value.trim(),
-      monthly:  document.getElementById('pl-f-monthly').value.trim(),
-      site:     document.getElementById('pl-f-site').value,
-      memo:     document.getElementById('pl-f-memo').value.trim(),
+
+  // ── 저장 ────────────────────────────────
+  window.plSaveItem = function() {
+    var items = plLoad();
+    var id = document.getElementById('pl-edit-id').value;
+    var item = {
+      id: id || Date.now().toString(),
+      type:      document.getElementById('pl-f-type').value,
+      status:    document.getElementById('pl-f-status').value,
+      addr:      document.getElementById('pl-f-addr').value.trim(),
+      casenum:   document.getElementById('pl-f-case').value.trim(),
+      region:    document.getElementById('pl-f-region').value.trim(),
+      appraisal: document.getElementById('pl-f-appraisal').value.trim(),
+      minprice:  document.getElementById('pl-f-minprice').value.trim(),
+      round:     document.getElementById('pl-f-round').value.trim(),
+      biddate:   document.getElementById('pl-f-biddate').value,
+      estimate:  document.getElementById('pl-f-estimate').value.trim(),
+      site:      document.getElementById('pl-f-site').value,
+      roomId:    document.getElementById('pl-f-roomid').value,
+      memo:      document.getElementById('pl-f-memo').value.trim(),
     };
-    if(!item.addr){alert('물건명/주소를 입력해주세요.');return;}
-    if(id){var idx=items.findIndex(function(i){return i.id===id;}); if(idx>=0) items[idx]=item; else items.push(item);}
-    else items.push(item);
-    saveItems(items); closePLModal(); renderPropertyList();
+    if (!item.addr) { alert('물건명/주소를 입력해주세요.'); return; }
+    var oldItem = items.find(function(i){return i.id===id;});
+    if (oldItem) item.result = oldItem.result; // 결과 보존
+    if (id) {
+      var idx = items.findIndex(function(i){return i.id===id;}); if (idx>=0) items[idx]=item; else items.push(item);
+    } else {
+      items.push(item);
+    }
+    plSave(items);
+    syncToWorkroom(item);
+    // 종료 상태로 저장 시 결과 팝업
+    if (item.status === 'closed' && (!oldItem || oldItem.status !== 'closed')) {
+      plCloseModal();
+      setTimeout(function(){ plOpenResultModal(item.id); }, 200);
+    } else {
+      plCloseModal();
+    }
+    renderPropertyList();
   };
-  window.deletePLItem = function () {
-    var id=document.getElementById('pl-edit-id').value;
-    if(!id||!confirm('삭제할까요?')) return;
-    saveItems(loadItems().filter(function(i){return i.id!==id;}));
-    closePLModal(); renderPropertyList();
+
+  window.plDeleteItem = function() {
+    var id = document.getElementById('pl-edit-id').value;
+    if (!id || !confirm('삭제할까요?')) return;
+    plSave(plLoad().filter(function(i){return i.id!==id;}));
+    plCloseModal();
+    renderPropertyList();
   };
+
+  // ── 결과 카드 모달 ───────────────────────
+  window.plOpenResultModal = function(id) {
+    var items = plLoad();
+    var it = items.find(function(i){return i.id===id;}); if (!it) return;
+    var titleEl = document.getElementById('pl-result-title');
+    if (titleEl) titleEl.textContent = '📋 ' + (it.addr||'물건') + ' — 입찰 결과 기록';
+    var r = it.result || {};
+    document.getElementById('pl-r-won').value = r.won||'';
+    document.getElementById('pl-r-second').value = r.second||'';
+    document.getElementById('pl-r-mine').value = r.mine||'';
+    document.getElementById('pl-r-review').value = r.review||'';
+    document.getElementById('pl-result-modal').dataset.itemId = id;
+    var m = document.getElementById('pl-result-modal'); if (m) m.style.display = 'flex';
+  };
+  window.plCloseResultModal = function() {
+    var m = document.getElementById('pl-result-modal'); if (m) m.style.display = 'none';
+  };
+  window.plSaveResult = function() {
+    var id = document.getElementById('pl-result-modal').dataset.itemId; if (!id) return;
+    var items = plLoad();
+    var it = items.find(function(i){return i.id===id;}); if (!it) return;
+    it.result = {
+      won:    document.getElementById('pl-r-won').value.trim(),
+      second: document.getElementById('pl-r-second').value.trim(),
+      mine:   document.getElementById('pl-r-mine').value.trim(),
+      review: document.getElementById('pl-r-review').value.trim(),
+    };
+    it.status = 'closed';
+    plSave(items);
+    syncToWorkroom(it);
+    plCloseResultModal();
+    renderPropertyList();
+  };
+
+  // ── page4 진입 시 렌더 트리거 ────────────
+  var _origShowPage = window.showPage;
+  if (_origShowPage) {
+    window.showPage = function(n) {
+      _origShowPage(n);
+      if (n === 4) setTimeout(renderPropertyList, 50);
+    };
+  }
+
+  // ── 주기적 알람 체크 (1분마다) ───────────
+  setInterval(function() {
+    if (document.getElementById('pl-alerts')) renderAlerts(plLoad());
+  }, 60000);
+
 })();
