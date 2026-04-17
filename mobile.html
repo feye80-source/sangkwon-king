@@ -2319,38 +2319,7 @@ html.sk-ipad-like #mb-desktop-mode-btn { display: flex; }
       <div class="mb-note-toolbar">
         <input type="text" id="ntSearchInput" placeholder="🔍 노트 검색" inputmode="search" enterkeyhint="search" oninput="if(typeof ntRender==='function')ntRender()">
         <button class="mb-btn mb-btn-gold" onclick="ntCreate('unified')">＋ 새 노트</button>
-        <button class="mb-btn" onclick="if(typeof ntOpenGroupManager==='function')ntOpenGroupManager()" title="카테고리 관리" style="padding:6px 9px;flex-shrink:0;">카테고리</button>
-        <button class="mb-btn" onclick="if(typeof ntOpenTagManager==='function')ntOpenTagManager()" title="태그 관리" style="padding:6px 9px;flex-shrink:0;">태그</button>
       </div>
-      <!-- 모드 버튼 -->
-      <div class="mb-filter-scroll" style="margin-bottom:6px;">
-        <button class="mb-ftab nt-mode-btn on" id="ntModeAll" onclick="window._ntSetMode&&window._ntSetMode('all',this)">전체</button>
-        <button class="mb-ftab nt-mode-btn" id="ntModeStudy" onclick="window._ntSetMode&&window._ntSetMode('study',this)">📚 학습</button>
-        <button class="mb-ftab nt-mode-btn" id="ntModeDeal" onclick="window._ntSetMode&&window._ntSetMode('deal',this)">🏠 물건</button>
-      </div>
-      <!-- 도메인 칩 (학습 모드) -->
-      <div id="ntDomainFilter" class="mb-filter-scroll" style="margin-bottom:6px;display:none;">
-        <button class="mb-ftab active" onclick="mbNtDomain('all',this)">전체</button>
-        <button class="mb-ftab" onclick="mbNtDomain('auction',this)">⚖️ 경매</button>
-        <button class="mb-ftab" onclick="mbNtDomain('tax',this)">💰 세금</button>
-        <button class="mb-ftab" onclick="mbNtDomain('legal',this)">📋 권리</button>
-        <button class="mb-ftab" onclick="mbNtDomain('market',this)">🏘️ 상권</button>
-        <button class="mb-ftab" onclick="mbNtDomain('memo',this)">📌 메모</button>
-      </div>
-      <!-- 단계 칩 (물건 모드) -->
-      <div id="ntPhaseFilter" class="mb-filter-scroll" style="margin-bottom:6px;display:none;">
-        <button class="mb-ftab active" onclick="mbNtPhase('all',this)">전체</button>
-        <button class="mb-ftab" onclick="mbNtPhase('interest',this)">관심</button>
-        <button class="mb-ftab" onclick="mbNtPhase('analysis',this)">분석</button>
-        <button class="mb-ftab" onclick="mbNtPhase('bid',this)">입찰</button>
-        <button class="mb-ftab" onclick="mbNtPhase('done',this)">완료</button>
-      </div>
-      <!-- 카테고리 필터 (ntRender/_ntRenderGroupFilter가 렌더링) -->
-      <div id="ntGroupFilter" class="mb-filter-scroll" style="margin-bottom:4px;display:flex;gap:4px;flex-wrap:nowrap;overflow-x:auto;">
-        <span class="nt-domain-chip on" data-g="all" onclick="ntSetGroupFilter('all')">전체</span>
-      </div>
-      <!-- 태그 필터 -->
-      <div id="ntTagFilter" class="mb-filter-scroll" style="margin-bottom:6px;display:flex;gap:4px;flex-wrap:nowrap;overflow-x:auto;min-height:0;"></div>
       <!-- 노트 목록 (ntRender가 여기에 렌더링) -->
       <div id="ntList"></div>
       <div id="ntEmpty" style="display:none;text-align:center;color:var(--di);padding:30px 10px;">
@@ -3426,18 +3395,18 @@ html.sk-ipad-like #mb-desktop-mode-btn { display: flex; }
 
 <!-- ── 하단 탭바 ── -->
 <nav id="mb-tabbar" role="tablist">
-  <button id="mb-tab-insight" onclick="mbGoPage('insight',this)" role="tab" class="active">
-    <span class="mb-tab-icon">💡</span>인사이트
-  </button>
-  <button id="mb-tab-map" onclick="mbGoPage('map',this)" role="tab">
-    <span class="mb-tab-icon">🗺️</span>지도
+  <button id="mb-tab-extract" onclick="mbGoPage('extract',this)" role="tab" class="active">
+    <span class="mb-tab-icon">🔍</span>추출
   </button>
   <button id="mb-tab-saved" onclick="mbGoPage('saved',this)" role="tab">
     <span class="mb-tab-icon">💾</span>저장목록
     <span class="mb-tab-badge" id="mb-sv-badge"></span>
   </button>
-  <button id="mb-tab-extract" onclick="mbGoPage('extract',this)" role="tab">
-    <span class="mb-tab-icon">🔍</span>추출
+  <button id="mb-tab-map" onclick="mbGoPage('map',this)" role="tab">
+    <span class="mb-tab-icon">🗺️</span>지도
+  </button>
+  <button id="mb-tab-insight" onclick="mbGoPage('insight',this)" role="tab">
+    <span class="mb-tab-icon">💡</span>인사이트
   </button>
 </nav>
 
@@ -3449,13 +3418,11 @@ html.sk-ipad-like #mb-desktop-mode-btn { display: flex; }
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;">
       <div>
         <div style="font-size:15px;font-weight:700;color:var(--tx);">새 작업룸 만들기</div>
-        <div style="font-size:11px;color:var(--di);margin-top:2px;">제목만 먼저 만들고, 폴더는 필요하면 같이 지정하세요.</div>
       </div>
       <button type="button" onclick="mbCloseRoomCreateModal()" style="width:32px;height:32px;border-radius:50%;border:1px solid var(--b1);background:var(--s2);color:var(--mu);font-size:15px;">✕</button>
     </div>
     <div style="display:flex;flex-direction:column;gap:10px;">
       <input id="mb-room-create-title" type="text" inputmode="text" placeholder="예: 봉담 포코피아노" style="height:42px;padding:0 12px;border-radius:10px;border:1px solid var(--b1);background:var(--s2);color:var(--tx);font-size:14px;outline:none;">
-      <input id="mb-room-create-folder" type="text" inputmode="text" placeholder="폴더명(선택) 예: 인천" style="height:42px;padding:0 12px;border-radius:10px;border:1px solid var(--b1);background:var(--s2);color:var(--tx);font-size:14px;outline:none;">
       <div style="display:flex;gap:8px;margin-top:2px;">
         <button type="button" onclick="mbCloseRoomCreateModal()" class="mb-btn" style="flex:1;justify-content:center;height:42px;">취소</button>
         <button type="button" onclick="mbConfirmRoomCreate()" class="mb-btn mb-btn-gold" style="flex:1;justify-content:center;height:42px;">생성</button>
@@ -7244,8 +7211,8 @@ html.sk-ipad-like #mb-desktop-mode-btn { display: flex; }
       if (firstRoom && !_mbActiveRoomId) mbRoomLoad(firstRoom.id, { cloud: false });
     }, 800);
 
-    // 기본 시작 탭: 인사이트
-    mbGoPage('insight', document.getElementById('mb-tab-insight'));
+    // 기본 시작 탭: 추출
+    mbGoPage('extract', document.getElementById('mb-tab-extract'));
 
     // ── 노트 초기화 (common.js 로드 후) ──
     setTimeout(function() {
