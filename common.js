@@ -1749,16 +1749,28 @@
     };
     window._sbSavePlItems = async function(arr) {
       try {
+        const uid = await _sbGetUserId();
+        if (!uid) throw new Error('no session');
         const prev = _sbGetCachedArray('pl_items_v3');
         const nextInput = (Array.isArray(arr) ? arr : []).filter(it => it && it.id);
         const full = _sbPruneTombstones(_sbKeepTombstones(prev, nextInput));
         _sbPersistCachedArray('pl_items_v3', full);
         _markKvDirty('pl_items_v3');
         await kvSet('pl_items_v3', full);
+        // 저장 직후 확인: 실패를 성공으로 오인하지 않도록 검증
+        const ack = await kvGet('pl_items_v3');
+        if (!Array.isArray(ack)) throw new Error('kv ack failed');
         _clearKvDirty('pl_items_v3');
         window._sbSyncStatus('☁️ 물건리스트 동기화 완료', true);
       } catch (e) {
         console.warn('[SB] savePlItems error', e);
+        _markKvDirty('pl_items_v3');
+        window._sbSyncStatus('⚠️ 물건리스트 동기화 재시도 중', false);
+        // 일시 오류(네트워크/타임아웃) 대비 자동 재시도
+        try {
+          const retryPayload = _sbGetCachedArray('pl_items_v3');
+          window._sbScheduleSavePlItems(retryPayload, 2000);
+        } catch (e2) {}
       }
     };
     window._sbLoadPlItems = async function() {
