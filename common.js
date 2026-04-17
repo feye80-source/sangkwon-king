@@ -231,7 +231,8 @@
     'ins_notes', 'ins_news', 'ins_kcards', 'ins_kcat',
     'ins_vars', 'ins_cl', 'ins_kw', 'ins_feed',
     'csvDatasets', 'csv_transaction_raw', 'map_memos', 'news_auto_clips',
-    'site_bookmarks_v2', 'site_bookmarks', 'site_bookmarks_backup_v1', 'site_categories_v1'
+    'site_bookmarks_v2', 'site_bookmarks', 'site_bookmarks_backup_v1', 'site_categories_v1',
+    'pl_items_v3'
   ]);
   window.IDB_KEYS = IDB_KEYS;
 
@@ -1740,6 +1741,54 @@
       return Array.isArray(d) ? _sbPruneTombstones(d) : null;
     };
 
+    // 물건리스트(page4)는 kv_store + IDB 캐시로 동기화
+    window._sbScheduleSavePlItems = function(arr, delay) {
+      _sbScheduleAsyncSave('pl_items_v3', arr, function(latest) {
+        return window._sbSavePlItems(latest);
+      }, typeof delay === 'number' ? delay : 900);
+    };
+    window._sbSavePlItems = async function(arr) {
+      try {
+        const prev = _sbGetCachedArray('pl_items_v3');
+        const nextInput = (Array.isArray(arr) ? arr : []).filter(it => it && it.id);
+        const full = _sbPruneTombstones(_sbKeepTombstones(prev, nextInput));
+        _sbPersistCachedArray('pl_items_v3', full);
+        _markKvDirty('pl_items_v3');
+        await kvSet('pl_items_v3', full);
+        _clearKvDirty('pl_items_v3');
+        window._sbSyncStatus('☁️ 물건리스트 동기화 완료', true);
+      } catch (e) {
+        console.warn('[SB] savePlItems error', e);
+      }
+    };
+    window._sbLoadPlItems = async function() {
+      const d = await kvGet('pl_items_v3');
+      return Array.isArray(d) ? _sbPruneTombstones(d) : null;
+    };
+    window._plRefreshFromCloud = async function(opts) {
+      const options = opts || {};
+      if (_hasKvDirty('pl_items_v3') && window._sbSavePlItems) {
+        try {
+          await window._sbSavePlItems(_sbGetCachedArray('pl_items_v3').filter(it => it && it.id));
+        } catch (e) {
+          console.warn('[SB] pl flush before refresh', e);
+        }
+      }
+      const cloudItems = window._sbLoadPlItems ? await window._sbLoadPlItems() : null;
+      if (cloudItems === null) return null;
+      const localItems = _sbGetCachedArray('pl_items_v3');
+      const merged = _sbMergeById(cloudItems, localItems).filter(it => it && it.id);
+      _sbPersistCachedArray('pl_items_v3', merged);
+      if (options.render !== false) {
+        try {
+          if (typeof renderPropertyList === 'function' && typeof currentPage !== 'undefined' && currentPage === 4) {
+            renderPropertyList();
+          }
+        } catch (e) {}
+      }
+      return { full: merged, active: _sbFilterActiveEntities(merged) };
+    };
+
     // ─── Storage 이미지 업로드 공통 헬퍼 ─────────────────────
     // blob/File/base64dataURL → Storage 업로드 → public URL 반환
     window._extractStoragePathFromUrl = function(url, bucket) {
@@ -2560,6 +2609,9 @@
       if (_hasKvDirty('wr2_sections') && window._sbSaveSections) {
         enqueue('wr2_sections', () => window._sbSaveSections(_sbGetCachedArray('wr2_sections').filter(sec => sec && sec.id)));
       }
+      if (_hasKvDirty('pl_items_v3') && window._sbSavePlItems) {
+        enqueue('pl_items_v3', () => window._sbSavePlItems(_sbGetCachedArray('pl_items_v3').filter(it => it && it.id)));
+      }
       if (_hasKvDirty('map_memos') && window._sbSaveMapMemos) {
         enqueue('map_memos', () => window._sbSaveMapMemos(_sbGetCachedArray('map_memos').filter(memo => memo && memo.id)));
       }
@@ -2623,6 +2675,16 @@
           }
         } catch (e) {
           console.warn('[SB] API key init sync error', e);
+        }
+        try {
+          await _sbSafeLoad('workrooms_init', () => {
+            return window._wrRefreshFromCloud ? window._wrRefreshFromCloud({ render: false }) : null;
+          }, 0);
+          await _sbSafeLoad('pl_items_init', () => {
+            return window._plRefreshFromCloud ? window._plRefreshFromCloud({ render: false }) : null;
+          }, 0);
+        } catch (e) {
+          console.warn('[SB] init entity sync error', e);
         }
         window._sbCloudLoaded = true;
         window._sbSyncStatus('✅ 변경분 확인 완료', true);
@@ -39800,7 +39862,12 @@ window.addEventListener('DOMContentLoaded', () => {
     };
   }
   function plLoad() { try { return JSON.parse(localStorage.getItem(PL_KEY) || '[]').map(plNormalizeItem); } catch(e) { return []; } }
-  function plSave(arr) { localStorage.setItem(PL_KEY, JSON.stringify((arr||[]).map(plNormalizeItem))); }
+  function plSave(arr) {
+    var full = (arr || []).map(plNormalizeItem);
+    localStorage.setItem(PL_KEY, JSON.stringify(full));
+    if (typeof window._sbMarkKvDirty === 'function') window._sbMarkKvDirty(PL_KEY);
+    if (typeof window._sbScheduleSavePlItems === 'function') window._sbScheduleSavePlItems(full);
+  }
   function plMoneyNum(v) {
     if (v === null || v === undefined) return '';
     var raw = String(v).replace(/[^0-9]/g, '');
@@ -40202,12 +40269,29 @@ window.addEventListener('DOMContentLoaded', () => {
       el.style.borderBottomColor = (tab === key ? 'var(--accent,#4f8eff)' : 'transparent');
       el.style.color = (tab === key ? 'var(--fg)' : 'var(--fg2)');
     });
-    if (tab === 'list') { pmRestoreInsightPanels(); renderPropertyList(); }
+    if (tab === 'list') {
+      pmRestoreInsightPanels();
+      if (window._sbRunEntryRefresh && typeof window._plRefreshFromCloud === 'function') {
+        window._sbRunEntryRefresh('properties', window._plRefreshFromCloud, { render: true, label: 'properties', force: true })
+          .then(function(payload) {
+            if (!payload && typeof renderPropertyList === 'function') renderPropertyList();
+          });
+      } else {
+        renderPropertyList();
+      }
+    }
     if (tab === 'work') {
       pmMountPanel('work');
       try { if (!window.__wr2Inited && typeof window.wr2Init === 'function') { window.__wr2Inited = true; window.wr2Init(); } } catch(e) {}
       if (window.wr2State) window.wr2State.activeView = 'overview';
-      if (typeof window.wr2Render === 'function') window.wr2Render();
+      if (window._sbRunEntryRefresh && typeof window._wrRefreshFromCloud === 'function') {
+        window._sbRunEntryRefresh('workrooms', window._wrRefreshFromCloud, { render: true, label: 'workrooms', force: true })
+          .then(function(payload) {
+            if (!payload && typeof window.wr2Render === 'function') window.wr2Render();
+          });
+      } else if (typeof window.wr2Render === 'function') {
+        window.wr2Render();
+      }
     }
     if (tab === 'pipeline') {
       pmMountPanel('pipeline');
