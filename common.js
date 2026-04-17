@@ -39915,6 +39915,7 @@ window.addEventListener('DOMContentLoaded', () => {
   var PL_KEY = 'pl_items_v3';
   var plSelectedMap = {};
   var plImportSelectedMap = {};
+  var plInlineEdit = { id: '', field: '' };
 
   // ── 데이터 ──────────────────────────────
   function plNormalizeItem(it) {
@@ -40076,7 +40077,80 @@ window.addEventListener('DOMContentLoaded', () => {
   }
   function numCell(v, color) {
     if (!v) return '<span style="color:#444;">—</span>';
-    return '<span style="font-family:monospace;font-size:12px;'+(color?'color:'+color+';':'')+'">' + plDisplayMoney(v) + '</span>';
+    return '<span style="font-family:monospace;font-size:12px;'+(color?'color:'+color+';':'')+'">' + plDisplayMoney(v) + ' <span style="font-size:11px;color:var(--fg3);">만원</span></span>';
+  }
+  function _plEsc(v) {
+    return String(v == null ? '' : v)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+  function plIsEditing(id, field) {
+    return String(plInlineEdit.id || '') === String(id || '') && String(plInlineEdit.field || '') === String(field || '');
+  }
+  function plStartInlineEdit(id, field) {
+    plInlineEdit = { id: String(id || ''), field: String(field || '') };
+    if (typeof renderPropertyList === 'function') renderPropertyList();
+    setTimeout(function(){
+      var el = document.querySelector('[data-pl-editor="1"][data-id="'+CSS.escape(String(id||''))+'"][data-field="'+CSS.escape(String(field||''))+'"]');
+      if (el) {
+        try { el.focus(); if (typeof el.select === 'function') el.select(); } catch(e) {}
+      }
+    }, 30);
+  }
+  function plCancelInlineEdit() {
+    plInlineEdit = { id: '', field: '' };
+    if (typeof renderPropertyList === 'function') renderPropertyList();
+  }
+  function plSaveInline(id, field, rawValue) {
+    var items = plLoad();
+    var item = items.find(function(i){ return String(i.id) === String(id); });
+    if (!item) { plCancelInlineEdit(); return; }
+    var value = rawValue;
+    if (['appraisal','minprice','estimate','deposit','monthly'].indexOf(field) >= 0) value = plParseAmountText(rawValue);
+    else if (field === 'biddate') value = plNormalizeDateInput(rawValue);
+    else value = String(rawValue == null ? '' : rawValue).trim();
+    item[field] = value;
+    item.updatedAt = Date.now();
+    plSave(items.map(plNormalizeItem));
+    if (field === 'status' || field === 'addr') syncToWorkroom(item);
+    plInlineEdit = { id: '', field: '' };
+    if (typeof renderPropertyList === 'function') renderPropertyList();
+  }
+  window.plInlineKey = function(e, id, field) {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      plCancelInlineEdit();
+    } else if (e.key === 'Enter' && field !== 'memo') {
+      e.preventDefault();
+      plSaveInline(id, field, e.target.value);
+    }
+  };
+  function plCell(id, field, displayHtml, value, opts) {
+    opts = opts || {};
+    if (!plIsEditing(id, field)) {
+      return '<div onclick="plStartInlineEdit(\''+String(id)+'\',\''+String(field)+'\')" style="cursor:text;min-height:18px;">'+ displayHtml +'</div>';
+    }
+    var val = value == null ? '' : String(value);
+    var commonStyle = 'width:100%;background:rgba(255,255,255,.03);border:1px solid var(--accent,#4f8eff);border-radius:6px;color:var(--fg);padding:5px 7px;font-size:12px;';
+    if (opts.type === 'textarea') {
+      return '<textarea data-pl-editor="1" data-id="'+_plEsc(id)+'" data-field="'+_plEsc(field)+'" '
+        + 'onkeydown="plInlineKey(event,\''+String(id)+'\',\''+String(field)+'\')" '
+        + 'onblur="plSaveInline(\''+String(id)+'\',\''+String(field)+'\',this.value)" '
+        + 'style="'+commonStyle+'min-height:56px;resize:vertical;">'+_plEsc(val)+'</textarea>';
+    }
+    if (opts.type === 'date') {
+      return '<input type="date" data-pl-editor="1" data-id="'+_plEsc(id)+'" data-field="'+_plEsc(field)+'" value="'+_plEsc(plNormalizeDateInput(val))+'" '
+        + 'onkeydown="plInlineKey(event,\''+String(id)+'\',\''+String(field)+'\')" '
+        + 'onblur="plSaveInline(\''+String(id)+'\',\''+String(field)+'\',this.value)" '
+        + 'style="'+commonStyle+'">';
+    }
+    return '<input type="text" data-pl-editor="1" data-id="'+_plEsc(id)+'" data-field="'+_plEsc(field)+'" value="'+_plEsc(val)+'" '
+      + 'onkeydown="plInlineKey(event,\''+String(id)+'\',\''+String(field)+'\')" '
+      + 'onblur="plSaveInline(\''+String(id)+'\',\''+String(field)+'\',this.value)" '
+      + 'style="'+commonStyle+'">';
   }
 
   // ── 작업룸 연동 ─────────────────────────
@@ -40106,16 +40180,14 @@ window.addEventListener('DOMContentLoaded', () => {
     var room = rooms.find(function(r){return r.id === item.roomId;});
     if (!room) return;
     var newPhase = (item.status === 'archived' ? 'closed' : (item.status || 'review'));
-    var newFolder = (STATUS_MAP[newPhase]||STATUS_MAP.review).folder;
-    var patch = { phase: newPhase, status: newPhase, activePhase: newPhase, group: newFolder };
+    var patch = { phase: newPhase, status: newPhase, activePhase: newPhase };
     if (item.addr && !room.title) patch.title = item.addr;
     if (item.addr && !room.address) patch.address = item.addr;
     if (window.updateRoom) {
       window.updateRoom(room.id, patch);
       if (typeof window.wrDbLinkItem === 'function') window.wrDbLinkItem(room.id, item.id);
     } else {
-      room.phase = newPhase; room.status = newPhase; room.activePhase = newPhase;
-      room.group = newFolder; room.updatedAt = Date.now();
+      room.phase = newPhase; room.status = newPhase; room.activePhase = newPhase; room.updatedAt = Date.now();
       if (!room.linkedItems) room.linkedItems = [];
       if (room.linkedItems.indexOf(item.id) < 0) room.linkedItems.push(item.id);
       if (window._wrPersistRooms) window._wrPersistRooms(rooms, { syncState: true });
@@ -40302,6 +40374,9 @@ window.addEventListener('DOMContentLoaded', () => {
   window.renderPropertyList = function() {
     _plWrapWorkroomSync();
     var items = plLoad();
+    var synced = plSyncLinkedSavedItems(items);
+    items = synced.items;
+    if (synced.changed) plSave(items.map(plNormalizeItem));
     renderAlerts(items.filter(function(it){ return !it.archived; }));
     var filtered = plVisibleItems(items);
     var tbody = document.getElementById('pl-tbody');
@@ -40320,7 +40395,15 @@ window.addEventListener('DOMContentLoaded', () => {
         if (it.roomId) {
           var rooms = getWrRooms();
           var room = rooms.find(function(r){return r.id===it.roomId;});
-          if (room) wrLink = '<button onclick="plGoToWorkroom(\''+it.roomId+'\')" style="font-size:11px;padding:2px 8px;border:1px solid var(--b1);border-radius:5px;background:transparent;color:var(--fg2);cursor:pointer;white-space:nowrap;" title="작업룸으로 이동">🗂 '+((room.title||'').substring(0,8)||'작업룸')+'</button>';
+          if (room) wrLink = '<div style="display:flex;gap:6px;justify-content:flex-end;">'
+            + '<button onclick="plGoToWorkroom(\''+it.roomId+'\')" style="font-size:11px;padding:3px 8px;border:1px solid var(--accent,#4f8eff);border-radius:6px;background:rgba(79,142,255,.08);color:var(--fg);cursor:pointer;white-space:nowrap;">작업룸</button>'
+            + '<button onclick="plLinkRoomPrompt(\''+it.id+'\')" style="font-size:11px;padding:3px 8px;border:1px solid var(--b1);border-radius:6px;background:transparent;color:var(--fg2);cursor:pointer;white-space:nowrap;">변경</button>'
+            + '</div>';
+        } else {
+          wrLink = '<div style="display:flex;gap:6px;justify-content:flex-end;">'
+            + '<button onclick="plLinkRoomPrompt(\''+it.id+'\')" style="font-size:11px;padding:3px 8px;border:1px solid var(--b1);border-radius:6px;background:transparent;color:var(--fg2);cursor:pointer;white-space:nowrap;">연결</button>'
+            + '<button onclick="plCreateRoomForItem(\''+it.id+'\')" style="font-size:11px;padding:3px 8px;border:1px solid var(--accent,#4f8eff);border-radius:6px;background:rgba(79,142,255,.08);color:var(--fg);cursor:pointer;white-space:nowrap;">새 작업룸</button>'
+            + '</div>';
         }
         var resultTag = '';
         if ((it.status === 'closed' || it.status==='archived') && it.result && it.result.won) resultTag = '<div style="font-size:10px;color:#4caf87;margin-top:2px;">낙 '+it.result.won+'</div>';
@@ -40414,6 +40497,57 @@ window.addEventListener('DOMContentLoaded', () => {
         if (window.wr2Render) window.wr2Render();
       }
     }, 300);
+  };
+
+  window.plCreateRoomForItem = function(id) {
+    var items = plLoad();
+    var item = items.find(function(i){ return String(i.id) === String(id); });
+    if (!item) return;
+    var newId = 'wr_' + Date.now();
+    var rooms = getWrRooms();
+    var room = {
+      id: newId,
+      title: item.addr || item.region || item.casenum || '새 작업룸',
+      address: item.region || item.addr || '',
+      status: item.status || 'review',
+      phase: item.status || 'review',
+      activePhase: item.status || 'review',
+      linkedSavedId: item.linkedSavedId || '',
+      auctionId: item.linkedSavedId || '',
+      linkedItems: [item.id],
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    };
+    rooms.push(room);
+    if (window._wrPersistRooms) window._wrPersistRooms(rooms, { syncState: true });
+    item.roomId = newId;
+    item.updatedAt = Date.now();
+    plSave(items.map(plNormalizeItem));
+    if (typeof renderPropertyList === 'function') renderPropertyList();
+  };
+  window.plLinkRoomPrompt = function(id) {
+    var rooms = getWrRooms();
+    if (!rooms.length) {
+      alert('연결할 작업룸이 없습니다. 먼저 작업룸을 만들거나 새 작업룸 버튼을 눌러주세요.');
+      return;
+    }
+    var guide = rooms.map(function(r, idx){ return (idx+1)+'. '+(r.title||r.address||r.id); }).join('
+');
+    var picked = prompt('연결할 작업룸 번호를 입력하세요.
+
+' + guide, '1');
+    if (!picked) return;
+    var idx = parseInt(String(picked).replace(/[^0-9]/g,''), 10) - 1;
+    if (isNaN(idx) || idx < 0 || idx >= rooms.length) { alert('번호를 다시 확인해주세요.'); return; }
+    var room = rooms[idx];
+    var items = plLoad();
+    var item = items.find(function(i){ return String(i.id) === String(id); });
+    if (!item) return;
+    item.roomId = room.id;
+    item.updatedAt = Date.now();
+    plSave(items.map(plNormalizeItem));
+    syncToWorkroom(item);
+    if (typeof renderPropertyList === 'function') renderPropertyList();
   };
 
   // ── 모달: 추가 ──────────────────────────
@@ -40659,6 +40793,26 @@ window.addEventListener('DOMContentLoaded', () => {
       memo: src.memo || ''
     });
   }
+  function plSyncLinkedSavedItems(items) {
+    var sv = [];
+    try { sv = (typeof getSv === 'function') ? getSv() : JSON.parse(localStorage.getItem('re_sv')||'[]'); } catch(e) { sv = []; }
+    var byId = {};
+    (sv || []).forEach(function(src){ if (src && src.id != null) byId[String(src.id)] = src; });
+    var changed = false;
+    items = (items || []).map(function(it){
+      if (!it || !it.linkedSavedId) return it;
+      var src = byId[String(it.linkedSavedId)];
+      if (!src) return it;
+      var mapped = plMapSavedToItem(src);
+      var next = Object.assign({}, it);
+      ['addr','casenum','region','feature','appraisal','minprice','round','biddate','deposit','monthly'].forEach(function(key){
+        if (mapped[key] && next[key] !== mapped[key]) { next[key] = mapped[key]; changed = true; }
+      });
+      return next;
+    });
+    return { items: items, changed: changed };
+  }
+
   window.plOpenImportModal = function() {
     plImportSelectedMap = {};
     var m = document.getElementById('pl-import-modal'); if (m) { m.style.display = 'flex'; document.body.style.overflow = 'hidden'; }
