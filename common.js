@@ -363,6 +363,12 @@
       if (window._idbCache[key] !== undefined) {
         return JSON.stringify(window._idbCache[key]);
       }
+      // 캐시가 아직 없으면 원본 localStorage도 한 번 확인
+      // (IDB 프리로드/마이그레이션 직전의 초기 렌더 공백 방지)
+      try {
+        const raw = _lsGetOrig(key);
+        if (raw != null) return raw;
+      } catch (e) {}
       // 캐시 없으면 null 반환 (비동기 IDB 로드는 _idbPreload가 처리)
       return null;
     }
@@ -411,6 +417,11 @@
       console.log('[IDB] 프리로드 완료. 캐시 키:', Object.keys(window._idbCache).join(', '));
       // 검색 인덱스 초기 빌드
       try { if (typeof _svBuildIndex === 'function') _svBuildIndex(window._idbCache['re_sv']); } catch(e) {}
+      try {
+        if (typeof renderPropertyList === 'function' && typeof currentPage !== 'undefined' && currentPage === 4) {
+          setTimeout(function() { try { renderPropertyList(); } catch (e) {} }, 0);
+        }
+      } catch(e) {}
       // 온라인 상태에서는 클라우드 인증/구독을 기다린다.
       // 그렇지 않으면 다른 기기에서 이미 정리한 오래된 노트/알짜 캐시가 잠시 또는 계속 다시 보일 수 있다.
       try {
@@ -1844,7 +1855,8 @@
     };
     window._plRefreshFromCloud = async function(opts) {
       const options = opts || {};
-      if (_hasKvDirty('pl_items_v3') && window._sbSavePlItems) {
+      const hasLocalDirty = _hasKvDirty('pl_items_v3');
+      if (hasLocalDirty && window._sbSavePlItems) {
         try {
           await window._sbSavePlItems(_sbGetCachedArray('pl_items_v3').filter(it => it && it.id));
         } catch (e) {
@@ -1853,10 +1865,13 @@
       }
       const cloudItems = window._sbLoadPlItems ? await window._sbLoadPlItems() : [];
       const localItems = _sbGetCachedArray('pl_items_v3');
-      const merged = _sbMergeById(cloudItems, localItems).filter(it => it && it.id);
+      // 물건리스트는 kv 단위 dirty 추적만 하므로, 로컬 미저장 변경이 없을 때는 클라우드를 기준으로 본다.
+      // 그렇지 않으면 오래된 아이패드 캐시가 최신 클라우드를 덮어써서 맥북→아이패드 반영이 막힐 수 있다.
+      const mergeBaseLocal = hasLocalDirty ? localItems : [];
+      const merged = _sbMergeById(cloudItems, mergeBaseLocal).filter(it => it && it.id);
       _sbPersistCachedArray('pl_items_v3', merged);
-      // 로컬이 더 최신/풍부한 경우 클라우드로 역전파(backfill)하여 기기간 빈 목록 불일치 방지
-      if (options.sync !== false && window._sbSavePlItems) {
+      // 로컬이 더 최신/풍부한 경우에만 클라우드로 역전파(backfill)
+      if (options.sync !== false && hasLocalDirty && window._sbSavePlItems) {
         try {
           const changedIds = _sbChangedIds(cloudItems, merged);
           if (changedIds.length) await window._sbSavePlItems(merged);
@@ -39946,7 +39961,13 @@ window.addEventListener('DOMContentLoaded', () => {
       updatedAt: it.updatedAt || it.timestamp || Date.now()
     };
   }
-  function plLoad() { try { return JSON.parse(localStorage.getItem(PL_KEY) || '[]').map(plNormalizeItem); } catch(e) { return []; } }
+  function plLoad() {
+    try {
+      var cached = window._idbCache && window._idbCache[PL_KEY];
+      if (Array.isArray(cached)) return cached.map(plNormalizeItem);
+      return JSON.parse(localStorage.getItem(PL_KEY) || '[]').map(plNormalizeItem);
+    } catch(e) { return []; }
+  }
   function plSave(arr) {
     var full = (arr || []).map(plNormalizeItem);
     localStorage.setItem(PL_KEY, JSON.stringify(full));
