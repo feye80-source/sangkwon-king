@@ -10558,3 +10558,18 @@
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }
+
+
+/* workroom cleanup patch */
+#wr2FolderFilterBar, #wr2GroupFilter, #wr2RoomFolderInline, #mb-room-folder-bar, #mb-room-folder-inline { display:none !important; }
+.wr2-summary-snap, #wr2SnapList { display:none !important; }
+.wr2-room-item-actions { display:none !important; }
+.wr2-img-grid { grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 10px; }
+.wr2-img-thumb { border-radius: 12px; border: 1px solid rgba(79,142,255,.18); background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.01)); box-shadow: 0 8px 20px rgba(0,0,0,.18); }
+.wr2-img-thumb img { object-fit: cover; background: #111; }
+.wr2-img-overlay { opacity: 1; inset: auto 0 0 0; background: linear-gradient(180deg, rgba(0,0,0,0), rgba(0,0,0,.82)); align-items: flex-start; justify-content: flex-end; padding: 10px 10px 8px; }
+.wr2-img-zoom { display:none; }
+.wr2-img-snap-label { font-size: 11px; color: #fff; margin-top: 0; text-align: left; padding: 0; white-space: normal; line-height: 1.35; }
+.wr2-img-go-map { display:block; bottom:8px; left:8px; right:auto; width:auto; max-width:calc(100% - 48px); border-radius: 999px; padding: 4px 8px; background: rgba(79,142,255,.92); }
+.wr2-img-del { display:block; top:8px; right:8px; border-radius:999px; padding: 3px 7px; font-size: 11px; }
+.wr2-img-add { border-radius: 12px; min-height: 108px; background: rgba(255,255,255,.02); }

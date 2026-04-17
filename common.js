@@ -363,12 +363,6 @@
       if (window._idbCache[key] !== undefined) {
         return JSON.stringify(window._idbCache[key]);
       }
-      // 캐시가 아직 없으면 원본 localStorage도 한 번 확인
-      // (IDB 프리로드/마이그레이션 직전의 초기 렌더 공백 방지)
-      try {
-        const raw = _lsGetOrig(key);
-        if (raw != null) return raw;
-      } catch (e) {}
       // 캐시 없으면 null 반환 (비동기 IDB 로드는 _idbPreload가 처리)
       return null;
     }
@@ -417,11 +411,6 @@
       console.log('[IDB] 프리로드 완료. 캐시 키:', Object.keys(window._idbCache).join(', '));
       // 검색 인덱스 초기 빌드
       try { if (typeof _svBuildIndex === 'function') _svBuildIndex(window._idbCache['re_sv']); } catch(e) {}
-      try {
-        if (typeof renderPropertyList === 'function' && typeof currentPage !== 'undefined' && currentPage === 4) {
-          setTimeout(function() { try { renderPropertyList(); } catch (e) {} }, 0);
-        }
-      } catch(e) {}
       // 온라인 상태에서는 클라우드 인증/구독을 기다린다.
       // 그렇지 않으면 다른 기기에서 이미 정리한 오래된 노트/알짜 캐시가 잠시 또는 계속 다시 보일 수 있다.
       try {
@@ -1855,8 +1844,7 @@
     };
     window._plRefreshFromCloud = async function(opts) {
       const options = opts || {};
-      const hasLocalDirty = _hasKvDirty('pl_items_v3');
-      if (hasLocalDirty && window._sbSavePlItems) {
+      if (_hasKvDirty('pl_items_v3') && window._sbSavePlItems) {
         try {
           await window._sbSavePlItems(_sbGetCachedArray('pl_items_v3').filter(it => it && it.id));
         } catch (e) {
@@ -1865,11 +1853,10 @@
       }
       const cloudItems = window._sbLoadPlItems ? await window._sbLoadPlItems() : [];
       const localItems = _sbGetCachedArray('pl_items_v3');
-      const mergeBaseLocal = hasLocalDirty ? localItems : [];
-      const merged = _sbMergeById(cloudItems, mergeBaseLocal).filter(it => it && it.id);
+      const merged = _sbMergeById(cloudItems, localItems).filter(it => it && it.id);
       _sbPersistCachedArray('pl_items_v3', merged);
-      // 로컬 미저장 변경이 있을 때만 역전파
-      if (options.sync !== false && hasLocalDirty && window._sbSavePlItems) {
+      // 로컬이 더 최신/풍부한 경우 클라우드로 역전파(backfill)하여 기기간 빈 목록 불일치 방지
+      if (options.sync !== false && window._sbSavePlItems) {
         try {
           const changedIds = _sbChangedIds(cloudItems, merged);
           if (changedIds.length) await window._sbSavePlItems(merged);
@@ -3189,7 +3176,7 @@ var _safeLocalSet = function(key, value) {
                   activePhase: 'review',
                   sort: 'updated',
                   search: '',
-                  statusFilter: 'active',
+                  statusFilter: 'all',
                   folderOpen: {},
                   folderViewMode: 'rooms'
                 };
@@ -3370,36 +3357,17 @@ var _safeLocalSet = function(key, value) {
 
                 function genId(prefix) { return prefix + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
                 function getActiveRoom() { return wr2State.rooms.find(r => r.id === wr2State.activeRoomId) || null; }
-                function wr2GetLifecycle(room) {
-                  const lifecycle = String((room && room.lifecycleStatus) || '').trim();
-                  if (lifecycle === 'closed' || lifecycle === 'changed' || lifecycle === 'active') return lifecycle;
-                  const raw = String((room && (room.status || room.phase || room.activePhase)) || '').trim();
-                  if (raw === 'closed' || raw === 'archived') return 'closed';
-                  if (raw === 'changed') return 'changed';
-                  return 'active';
-                }
-                function wr2LifecycleLabel(room) {
-                  const lifecycle = typeof room === 'string' ? room : wr2GetLifecycle(room);
-                  if (lifecycle === 'closed') return '종료';
-                  if (lifecycle === 'changed') return '변경';
-                  return '진행중';
-                }
-                function wr2RoomMatchesLifecycle(room, filter) {
-                  const lifecycle = wr2GetLifecycle(room);
-                  const key = String(filter || 'active');
-                  if (key === 'all') return true;
-                  if (key === 'closed') return lifecycle === 'closed';
-                  if (key === 'changed') return lifecycle === 'changed';
-                  return lifecycle === 'active';
-                }
+
                 function statusLabel(st) {
+                  if (st === 'active') return '활성';
+                  if (st === 'changed') return '변경';
                   if (st === 'interest' || st === 'review') return '관심·검토';
                   if (st === 'field') return '현장';
                   if (st === 'bid') return '입찰';
                   if (st === 'won') return '낙찰';
                   if (st === 'sell') return '매도';
-                  if (st === 'closed') return '종료';
-                  return '미정';
+                  if (st === 'closed' || st === 'archived') return '종료';
+                  return '활성';
                 }
 
                 function phaseHint(phase) {
@@ -3637,37 +3605,8 @@ var _safeLocalSet = function(key, value) {
                   return y + '-' + m + '-' + da + ' ' + hh + ':' + mm;
                 }
 
-                function wr2RenderScopeBar() {
-                  var host = document.getElementById('wr2ListScopeBar');
-                  if (!host) return;
-                  var counts = { active: 0, changed: 0, closed: 0 };
-                  (wr2State.rooms || []).filter(function(r){ return r && !r.deletedAt; }).forEach(function(room) {
-                    var key = wr2GetLifecycle(room);
-                    if (!counts.hasOwnProperty(key)) key = 'active';
-                    counts[key] += 1;
-                  });
-                  var defs = [
-                    { key: 'active', label: '활성', icon: '📌' },
-                    { key: 'changed', label: '변경', icon: '🔄' },
-                    { key: 'closed', label: '종료', icon: '📦' }
-                  ];
-                  host.innerHTML = defs.map(function(def) {
-                    var active = (wr2State.statusFilter || 'active') === def.key;
-                    return '<button type="button" data-wr2-scope="' + def.key + '" style="flex:0 0 auto;padding:6px 11px;border-radius:999px;border:1px solid ' + (active ? 'rgba(79,142,255,.32)' : 'var(--b1)') + ';background:' + (active ? 'rgba(79,142,255,.12)' : 'var(--s2)') + ';color:' + (active ? '#4f8eff' : 'var(--mu)') + ';font-size:11px;white-space:nowrap;cursor:pointer;">' + def.icon + ' ' + def.label + ' (' + counts[def.key] + ')</button>';
-                  }).join('');
-                  host.querySelectorAll('[data-wr2-scope]').forEach(function(btn) {
-                    btn.onclick = function() {
-                      wr2State.statusFilter = btn.dataset.wr2Scope || 'active';
-                      wr2Render();
-                    };
-                  });
-                  var folderBar = document.getElementById('wr2FolderFilterBar');
-                  if (folderBar) folderBar.style.display = 'none';
-                }
-
                 // RENDER
                 function wr2Render() {
-                  wr2RenderScopeBar();
                   renderList();
                   renderDetail();
                 }
@@ -4083,6 +4022,7 @@ var _safeLocalSet = function(key, value) {
 
                   wr2State.folderOpen = wr2State.folderOpen || {};
                   wr2State.folderPreviewOpen = wr2State.folderPreviewOpen || {};
+                  wr2State.folderViewMode = 'rooms';
                   let rooms = wr2State.rooms.filter(r => !r.deletedAt);
                   const q = (wr2State.search || '').trim().toLowerCase();
                   if (q) rooms = rooms.filter(r =>
@@ -4090,7 +4030,13 @@ var _safeLocalSet = function(key, value) {
                     (r.address || '').toLowerCase().includes(q) ||
                     (r.tags || []).some(t => (t || '').toLowerCase().includes(q))
                   );
-                  rooms = rooms.filter(function(r) { return wr2RoomMatchesLifecycle(r, wr2State.statusFilter || 'active'); });
+                  if (wr2State.statusFilter && wr2State.statusFilter !== 'all') {
+                    rooms = rooms.filter(function(r){
+                      var lifecycle = (r && (r.lifecycleStatus || ((r.status === 'closed' || r.status === 'archived') ? 'closed' : (r.status === 'changed' ? 'changed' : 'active')))) || 'active';
+                      return lifecycle === wr2State.statusFilter;
+                    });
+                  }
+                  wr2State.groupFilter = 'all';
                   rooms.sort((a, b) => wr2State.sort === 'created' ? (b.createdAt || 0) - (a.createdAt || 0) : (b.updatedAt || 0) - (a.updatedAt || 0));
 
                   listEl.innerHTML = '';
@@ -4119,10 +4065,15 @@ var _safeLocalSet = function(key, value) {
                     const meta = document.createElement('div');
                     meta.className = 'wr2-room-meta';
                     const badge = document.createElement('span');
-                    var lifecycle = wr2GetLifecycle(r);
-                    badge.className = 'wr2-status-badge ' + (lifecycle === 'active' ? (r.status || 'interest') : lifecycle);
-                    badge.textContent = lifecycle === 'active' ? statusLabel(r.status) : wr2LifecycleLabel(lifecycle);
+                    badge.className = 'wr2-status-badge ' + (r.status || 'interest');
+                    badge.textContent = statusLabel(r.status);
                     meta.appendChild(badge);
+                    if (r.group && (!wr2State.groupFilter || wr2State.groupFilter === 'all')) {
+                      const folderTag = document.createElement('span');
+                      folderTag.style.cssText = 'padding:1px 6px;border-radius:999px;background:rgba(79,142,255,.12);border:1px solid rgba(79,142,255,.2);color:#8ab2ff;';
+                      folderTag.textContent = '📁 ' + r.group;
+                      meta.appendChild(folderTag);
+                    }
                     var linkedCount = Array.isArray(r.linkedItems) ? r.linkedItems.length : 0;
                     if (linkedCount > 0) {
                       const linkedTag = document.createElement('span');
@@ -4139,16 +4090,7 @@ var _safeLocalSet = function(key, value) {
                     const actions = document.createElement('div');
                     actions.className = 'wr2-room-item-actions';
 
-                    const openBtn = document.createElement('button');
-                    openBtn.className = 'wr2-room-act-btn';
-                    openBtn.textContent = '열기';
-                    openBtn.title = '작업룸 열기';
-                    openBtn.onclick = e => {
-                      e.stopPropagation();
-                      setActiveRoom(r.id);
-                    };
-
-                    actions.appendChild(openBtn);
+                    actions.style.display = 'none';
 
                     item.appendChild(handle);
                     item.appendChild(content);
@@ -4156,208 +4098,32 @@ var _safeLocalSet = function(key, value) {
                     parentEl.appendChild(item);
                   };
 
-                  if (false && wr2State.folderViewMode === 'folders') {
-                    const folderCards = folderRecords.map(function(folder) {
-                      return {
-                        name: folder.name,
-                        rooms: wr2State.rooms.filter(function(room) { return !room.deletedAt && room.group === folder.name; }),
-                        icon: '📁'
-                      };
-                    });
-                    const ungroupedRooms = wr2State.rooms.filter(function(room) { return !room.deletedAt && !room.group; });
-                    if (ungroupedRooms.length) {
-                      folderCards.unshift({
-                        name: '미분류',
-                        rooms: ungroupedRooms,
-                        icon: '🗃'
-                      });
-                    }
-                    folderCards.forEach(function(folder) {
-                      const isUngrouped = folder.name === '미분류';
-                      const active = wr2State.groupFilter === folder.name;
-                      const previewOpen = !!wr2State.folderPreviewOpen[folder.name];
-                      const sortedRooms = folder.rooms.slice().sort(function(a, b) { return (b.updatedAt || 0) - (a.updatedAt || 0); });
-                      const latestRoom = sortedRooms[0] || null;
-                      const latestLabel = latestRoom ? statusLabel(latestRoom.status) : '작업 없음';
-                      const latestStamp = latestRoom ? formatRoomStamp(latestRoom.updatedAt || latestRoom.createdAt || Date.now()) : '';
-                      const card = document.createElement('div');
-                      card.className = 'wr2-folder-pro-card' + (active ? ' active' : '');
-                      card.innerHTML = '<div class="wr2-folder-pro-header">'
-                        + '<button type="button" data-toggle-folder="' + folder.name + '" class="wr2-folder-pro-toggle">' + (previewOpen ? '▾' : '▸') + '</button>'
-                        + '<div class="wr2-folder-pro-main">'
-                        + '<div class="wr2-folder-pro-title-row"><span class="wr2-folder-pro-icon">' + ((active || previewOpen) ? '📂' : folder.icon) + '</span><span class="wr2-folder-pro-title">' + folder.name + '</span><span class="wr2-folder-pro-count">' + folder.rooms.length + '</span></div>'
-                        + '<div class="wr2-folder-pro-meta">' + (latestRoom ? ('최근 업데이트 · ' + latestStamp + ' · ' + latestLabel) : '아직 작업룸이 없습니다') + '</div>'
-                        + '</div>'
-                        + '<div class="wr2-folder-pro-actions">'
-                        + '<button type="button" data-open-folder="' + folder.name + '" class="wr2-folder-pro-btn primary">' + (active ? '열림' : '열기') + '</button>'
-                        + '<button type="button" data-new-folder="' + folder.name + '" class="wr2-folder-pro-btn accent">＋ 작업룸</button>'
-                        + (!isUngrouped ? '<button type="button" data-edit-folder="' + folder.name + '" class="wr2-folder-pro-btn">관리</button>' : '')
-                        + '</div>'
-                        + '</div>';
-                      const toggleBtn = card.querySelector('[data-toggle-folder]');
-                      if (toggleBtn) toggleBtn.onclick = function(e) {
-                        e.stopPropagation();
-                        wr2State.folderPreviewOpen[folder.name] = !wr2State.folderPreviewOpen[folder.name];
-                        renderList();
-                      };
-                      const btn = card.querySelector('[data-open-folder]');
-                      if (btn) btn.onclick = function(e) {
-                        e.stopPropagation();
-                        if (isUngrouped) {
-                          wr2State.groupFilter = 'all';
-                          wr2State.folderViewMode = 'rooms';
-                          if (folder.rooms.length) wr2State.activeRoomId = folder.rooms[0].id;
-                          wr2RenderGroupSelect();
-                          wr2Render();
-                          return;
-                        }
-                        wr2State.groupFilter = folder.name;
-                        wr2State.folderViewMode = 'rooms';
-                        if (folder.rooms.length) wr2State.activeRoomId = folder.rooms[0].id;
-                        wr2RenderGroupSelect();
-                        wr2Render();
-                      };
-                      const editBtn = card.querySelector('[data-edit-folder]');
-                      const newBtn = card.querySelector('[data-new-folder]');
-                      if (newBtn) newBtn.onclick = function(e) {
-                        e.stopPropagation();
-                        window.wr2PrepareNewRoomInFolder(isUngrouped ? '' : folder.name);
-                      };
-                      if (editBtn) editBtn.onclick = function(e) {
-                        e.stopPropagation();
-                        const next = prompt('폴더 이름 변경', folder.name);
-                        if (next === null) return;
-                        const clean = (next || '').trim();
-                        if (!clean) return;
-                        if (clean !== folder.name) window.wr2RenameFolder(folder.name, clean);
-                      };
-                      const preview = document.createElement('div');
-                      preview.className = 'wr2-folder-pro-preview';
-                      preview.style.display = previewOpen ? 'block' : 'none';
-                      if (sortedRooms.length) {
-                        preview.innerHTML = '<div class="wr2-folder-pro-roomlist">'
-                          + sortedRooms.slice(0, 5).map(function(room) {
-                            return '<button type="button" data-room-open="' + room.id + '" class="wr2-folder-pro-room">'
-                              + '<span class="wr2-folder-pro-room-name">' + esc(room.title || '(제목 없음)') + '</span>'
-                              + '<span class="wr2-folder-pro-room-meta">' + statusLabel(room.status) + ' · ' + formatRoomStamp(room.updatedAt || room.createdAt || Date.now()) + '</span>'
-                              + '</button>';
-                          }).join('')
-                          + (sortedRooms.length > 5 ? '<div class="wr2-folder-pro-more">외 ' + (sortedRooms.length - 5) + '개 작업룸</div>' : '')
-                          + '</div>';
-                      } else {
-                        preview.innerHTML = '<div class="wr2-folder-pro-empty">아직 작업룸이 없습니다</div>';
-                      }
-                      preview.querySelectorAll('[data-room-open]').forEach(function(roomBtn) {
-                        roomBtn.onclick = function(e) {
-                          e.stopPropagation();
-                          setActiveRoom(roomBtn.dataset.roomOpen);
-                          wr2State.folderViewMode = 'rooms';
-                          wr2RenderGroupSelect();
-                          wr2Render();
-                        };
-                      });
-                      card.appendChild(preview);
-                      card.onclick = function(e) {
-                        if (e.target.closest('button')) return;
-                        wr2State.folderPreviewOpen[folder.name] = !wr2State.folderPreviewOpen[folder.name];
-                        renderList();
-                      };
-                      listEl.appendChild(card);
-                    });
-                    if (countEl) countEl.textContent = '(' + folderCards.length + ')';
-                    emptyEl.style.display = folderCards.length ? 'none' : 'flex';
-                    return;
-                  }
-
-                  const buckets = [];
-                  const bucketMap = new Map();
-                  folderRecords.forEach(function(folder) {
-                    const key = String(folder.name || '');
-                    if (!key || bucketMap.has(key)) return;
-                    const bucket = { key: key, label: key, rooms: [] };
-                    bucketMap.set(key, bucket);
-                    buckets.push(bucket);
+                  var statusBuckets = [
+                    { key: 'active', label: '활성', rooms: [] },
+                    { key: 'changed', label: '변경', rooms: [] },
+                    { key: 'closed', label: '종료', rooms: [] }
+                  ];
+                  rooms.forEach(function(r) {
+                    var lifecycle = (r && (r.lifecycleStatus || ((r.status === 'closed' || r.status === 'archived') ? 'closed' : (r.status === 'changed' ? 'changed' : 'active')))) || 'active';
+                    (statusBuckets.find(function(b){ return b.key === lifecycle; }) || statusBuckets[0]).rooms.push(r);
                   });
-                  rooms.forEach(r => {
-                    const key = String(r.group || '__ungrouped__');
-                    if (!bucketMap.has(key)) {
-                      const bucket = { key, label: key === '__ungrouped__' ? '미분류' : key, rooms: [] };
-                      bucketMap.set(key, bucket);
-                      buckets.push(bucket);
-                    }
-                    bucketMap.get(key).rooms.push(r);
-                  });
-
-                  buckets.forEach(bucket => {
-                    if (bucket.key === '__ungrouped__') {
-                      if (bucket.rooms.length) {
-                        const ungroupedHd = document.createElement('div');
-                        ungroupedHd.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:6px 8px 4px;color:var(--di);font-size:10px;font-weight:700;letter-spacing:.3px;';
-                        ungroupedHd.innerHTML = `<span>미분류 작업룸</span><span>${bucket.rooms.length}</span>`;
-                        listEl.appendChild(ungroupedHd);
-                      }
-                      bucket.rooms.forEach(r => appendRoomItem(listEl, r));
-                      return;
-                    }
-
-                    const hasActive = bucket.rooms.some(r => r.id === wr2State.activeRoomId);
-                    const isOpen = hasActive || wr2State.groupFilter === bucket.label || wr2State.folderOpen[bucket.key] !== false;
-                    wr2State.folderOpen[bucket.key] = isOpen;
-
-                    const section = document.createElement('div');
+                  statusBuckets.forEach(function(bucket) {
+                    if (!bucket.rooms.length) return;
+                    var section = document.createElement('div');
                     section.className = 'wr2-folder-section';
                     section.style.cssText = 'margin-bottom:8px;border:1px solid rgba(79,142,255,.16);border-radius:10px;background:rgba(79,142,255,.04);overflow:hidden;';
-
-                    const header = document.createElement('div');
-                    header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;background:rgba(79,142,255,.08);cursor:pointer;';
-                    header.onclick = () => {
-                      wr2State.folderOpen[bucket.key] = !wr2State.folderOpen[bucket.key];
-                      renderList();
-                    };
-
-                    const left = document.createElement('div');
-                    left.style.cssText = 'display:flex;align-items:center;gap:7px;min-width:0;';
-                    left.innerHTML = `<span style="font-size:12px;color:#4f8eff;">${wr2State.folderOpen[bucket.key] ? '📂' : '📁'}</span><span style="font-size:11px;font-weight:700;color:#dbe7ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${bucket.label}</span><span style="font-size:10px;color:#93a6c9;">${bucket.rooms.length}개</span>`;
-
-                    const right = document.createElement('div');
-                    right.style.cssText = 'display:flex;align-items:center;gap:5px;flex-shrink:0;';
-                    const filterBtn = document.createElement('button');
-                    filterBtn.textContent = wr2State.groupFilter === bucket.label ? '전체' : '집중';
-                    filterBtn.style.cssText = 'padding:3px 8px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:var(--mu);font-size:10px;cursor:pointer;';
-                    filterBtn.onclick = (e) => {
-                      e.stopPropagation();
-                      wr2State.groupFilter = (wr2State.groupFilter === bucket.label) ? 'all' : bucket.label;
-                      wr2RenderGroupSelect();
-                      wr2Render();
-                    };
-                    const addBtn = document.createElement('button');
-                    addBtn.textContent = '＋';
-                    addBtn.title = '현재 작업룸을 이 폴더로 지정';
-                    addBtn.style.cssText = 'width:24px;height:24px;border:none;border-radius:6px;background:rgba(79,142,255,.18);color:#4f8eff;font-size:13px;cursor:pointer;';
-                    addBtn.onclick = (e) => {
-                      e.stopPropagation();
-                      const room = getActiveRoom();
-                      if (!room) { showToast('먼저 작업룸을 선택하세요', 'warn'); return; }
-                      wr2SetRoomFolder(room, bucket.label);
-                      saveRooms();
-                      wr2RenderGroupSelect();
-                      wr2Render();
-                    };
-                    right.appendChild(filterBtn);
-                    right.appendChild(addBtn);
-                    header.appendChild(left);
-                    header.appendChild(right);
+                    var header = document.createElement('div');
+                    header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;background:rgba(79,142,255,.08);';
+                    header.innerHTML = '<div style="display:flex;align-items:center;gap:7px;min-width:0;"><span style="font-size:12px;color:#4f8eff;">' + (bucket.key === 'closed' ? '🧺' : (bucket.key === 'changed' ? '🔄' : '📌')) + '</span><span style="font-size:11px;font-weight:700;color:#dbe7ff;">' + bucket.label + '</span><span style="font-size:10px;color:#93a6c9;">' + bucket.rooms.length + '개</span></div>';
                     section.appendChild(header);
-
-                    const body = document.createElement('div');
-                    body.style.cssText = 'display:' + (wr2State.folderOpen[bucket.key] ? '' : 'none') + ';padding:6px 6px 2px;';
-                    bucket.rooms.forEach(r => appendRoomItem(body, r));
+                    var body = document.createElement('div');
+                    body.style.cssText = 'padding:6px 6px 2px;';
+                    bucket.rooms.forEach(function(r) { appendRoomItem(body, r); });
                     section.appendChild(body);
                     listEl.appendChild(section);
                   });
-
                   initListDrag(listEl);
-                  if (countEl) countEl.textContent = '(' + rooms.length + ')';
+                  if (countEl) countEl.textContent = '(' + wr2State.rooms.length + ')';
                   emptyEl.style.display = rooms.length ? 'none' : 'flex';
                 }
 
@@ -4417,13 +4183,11 @@ var _safeLocalSet = function(key, value) {
                   const statusBadge = document.getElementById('wr2StageBadge');
                   const auctionIn = document.getElementById('wr2AuctionId');
                   const listingIn = document.getElementById('wr2ListingId');
-                  const archiveSel = document.getElementById('wr2ArchiveState');
                   if (titleInput) titleInput.value = room.title || '';
                   if (addrInput) addrInput.value = room.address || '';
                   if (statusBadge) statusBadge.textContent = wr2PhaseDisplayLabel(room.activePhase || room.phase || room.status || 'review');
                   if (auctionIn) auctionIn.value = room.auctionId || '';
                   if (listingIn) listingIn.value = room.listingId || '';
-                  if (archiveSel) archiveSel.value = wr2GetLifecycle(room);
 
                   renderPhaseTabs(room);
                   renderDashboard(room);
@@ -4533,7 +4297,7 @@ var _safeLocalSet = function(key, value) {
                         + '</div>';
                     }
                     imgs.forEach(function(img, i) {
-                      var snapLabel = img.snapName ? '<div class="wr2-img-snap-label">📷 ' + img.snapName + '</div>' : '';
+                      var snapLabel = img.snapName ? '<div class="wr2-img-snap-label">📷 ' + img.snapName + '</div>' : '<div class="wr2-img-snap-label">작업 이미지</div>';
                       var goBtn = img.snapName ? '<button class="wr2-img-go-map" onclick="event.stopPropagation();wr2GoToSnap(this.dataset.snap)" data-snap="' + img.snapName.replace(/"/g,'&quot;') + '" title="이 스냅샷으로 지도 이동">🗺 지도로</button>' : '';
                       gridHtml += '<div class="wr2-img-thumb" onclick="wr2Lightbox(' + i + ')">'
                         + '<img src="' + (window._sbImgUrl ? window._sbImgUrl(img.src, 400) : img.src) + '" alt="캡처 ' + (i+1) + '">'
@@ -4635,106 +4399,8 @@ var _safeLocalSet = function(key, value) {
                 function renderSnapList(room) {
                   var el = document.getElementById('wr2SnapList');
                   if (!el) return;
-                  var restoreBtn = document.getElementById('wr2RestoreMapBtn');
-                  if (restoreBtn) {
-                    var hasScene = room && (room.mapScene || (room.mapScenes && room.mapScenes.length));
-                    restoreBtn.style.display = hasScene ? '' : 'none';
-                    if (hasScene) restoreBtn.style.color = '#4f8eff';
-                  }
-
-                  var imgs = (room && room.captureImages) || [];
-                  var snapNames = [];
-                  imgs.forEach(function(img) { if (img.snapName && snapNames.indexOf(img.snapName) === -1) snapNames.push(img.snapName); });
-
-                  var sceneData = room && room.mapScene;
-                  var allMapScenes = (room && room.mapScenes && room.mapScenes.length) ? room.mapScenes : (sceneData ? [sceneData] : []);
-                  allMapScenes.forEach(function(ms) {
-                    if (ms.sceneName && snapNames.indexOf(ms.sceneName) === -1) snapNames.unshift(ms.sceneName);
-                    if (ms.children) {
-                      ms.children.forEach(function(ch) {
-                        if (ch.name && snapNames.indexOf(ch.name) === -1) snapNames.push(ch.name);
-                      });
-                    }
-                  });
-
-                  if (!snapNames.length) {
-                    el.innerHTML = '<div style="font-size:10px;color:var(--di);padding:4px 0;">연결된 스냅샷 없음 · 지도탭에서 캡처하면 자동 연결됩니다</div>';
-                    return;
-                  }
-
-                  var scenes = typeof getWorkScenes === 'function' ? getWorkScenes() : [];
-                  var html = '';
-                  var renderedChildren = {};
-
-                  snapNames.forEach(function(sn) {
-                    var sc = scenes.find(function(s){ return s.name === sn; });
-                    var imgCount = imgs.filter(function(i){ return i.snapName === sn; }).length;
-                    var exists = !!sc;
-                    var isChild = sc && sc.parentName;
-                    if (isChild) return; // 자식은 부모 렌더 시 처리
-
-                    var parentName = null;
-                    var children = exists ? scenes.filter(function(s){ return s.parentName === sn; }) : [];
-                    var hasChildren = children.length > 0;
-                    var isCollapsed = !!window._snapCollapsed[sn];
-                    var snQ = sn.replace(/'/g, "\\'").replace(/"/g, '&quot;');
-
-                    // ── 부모 행
-                    html += '<div style="display:flex;align-items:center;gap:6px;padding:4px 7px;background:var(--s2);border:1px solid var(--b1);border-radius:6px;margin-bottom:3px;">';
-
-                    // 접기/펼치기 버튼 (하위 있을 때만)
-                    if (hasChildren) {
-                      html += '<button onclick="wr2SnapToggle(\'' + snQ + '\')" style="background:none;border:none;color:var(--ac);cursor:pointer;font-size:11px;padding:0 2px;line-height:1;flex-shrink:0;" title="' + (isCollapsed ? '펼치기' : '접기') + '">' +
-                        (isCollapsed ? '▶' : '▼') + '</button>';
-                    } else {
-                      html += '<span style="width:16px;flex-shrink:0;"></span>';
-                    }
-
-                    html += '<span style="font-size:11px;">' + (exists ? '📷' : '🔸') + '</span>';
-                    html += '<div style="flex:1;min-width:0;">';
-                    html += '<div style="font-size:10px;font-weight:600;color:' + (exists ? 'var(--tx)' : 'var(--di)') + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' +
-                      sn + (exists ? '' : ' <span style="font-size:8px;color:var(--di);">(삭제됨)</span>') + '</div>';
-                    html += '<div style="font-size:9px;color:var(--di);">이미지 ' + imgCount + '장';
-                    if (hasChildren) {
-                      // 하위 개수 + 접힘 상태 힌트
-                      html += ' · <span style="color:' + (isCollapsed ? '#fbbf24' : 'var(--ac)') + ';font-weight:600;">하위 ' + children.length + '개' + (isCollapsed ? ' ▸' : '') + '</span>';
-                    }
-                    html += '</div>';
-                    html += '</div>';
-
-                    if (exists) {
-                      var pnQ = '';
-                      html += '<button onclick="wr2GoToSnap(this.dataset.snap)" data-snap="' + sn.replace(/"/g,'&quot;') + '" style="padding:3px 8px;font-size:10px;background:rgba(79,142,255,.1);border:1px solid rgba(79,142,255,.3);border-radius:5px;color:#4f8eff;cursor:pointer;font-family:inherit;white-space:nowrap;">↗ 이동</button>';
-                      html += '<button onclick="swRenameSnap(\'' + snQ + '\',\'\')" style="padding:3px 6px;font-size:11px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);border-radius:5px;color:#fbbf24;cursor:pointer;" title="이름 변경">✏️</button>';
-                      html += '<button onclick="swDeleteSnap(\'' + snQ + '\',\'\')" style="padding:3px 6px;font-size:11px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);border-radius:5px;color:#ef4444;cursor:pointer;" title="스냅샷 삭제">🗑</button>';
-                    }
-                    html += '</div>';
-
-                    // ── 자식 행 (접힌 경우 숨김)
-                    if (hasChildren && !isCollapsed) {
-                      children.forEach(function(child) {
-                        var childImgCount = imgs.filter(function(i){ return i.snapName === child.name; }).length;
-                        var childExists = scenes.some(function(s){ return s.name === child.name; });
-                        var cQ = child.name.replace(/'/g, "\\'").replace(/"/g, '&quot;');
-                        var cpQ = sn.replace(/'/g, "\\'").replace(/"/g, '&quot;');
-
-                        html += '<div style="margin-left:20px;display:flex;align-items:center;gap:6px;padding:4px 7px;background:var(--s2);border:1px solid var(--b1);border-left:2px solid var(--ac);border-radius:0 6px 6px 0;margin-bottom:3px;">';
-                        html += '<span style="color:var(--di);font-size:9px;margin-right:2px;">ㄴ</span><span style="font-size:11px;">📷</span>';
-                        html += '<div style="flex:1;min-width:0;">';
-                        html += '<div style="font-size:10px;font-weight:600;color:var(--tx);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + child.name + '</div>';
-                        html += '<div style="font-size:9px;color:var(--di);">↑ ' + sn + (childImgCount ? ' · 이미지 ' + childImgCount + '장' : '') + '</div>';
-                        html += '</div>';
-                        if (childExists) {
-                          html += '<button onclick="wr2GoToSnap(this.dataset.snap)" data-snap="' + child.name.replace(/"/g,'&quot;') + '" style="padding:3px 8px;font-size:10px;background:rgba(79,142,255,.1);border:1px solid rgba(79,142,255,.3);border-radius:5px;color:#4f8eff;cursor:pointer;font-family:inherit;white-space:nowrap;">↗ 이동</button>';
-                          html += '<button onclick="swRenameSnap(\'' + cQ + '\',\'' + cpQ + '\')" style="padding:3px 6px;font-size:11px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);border-radius:5px;color:#fbbf24;cursor:pointer;" title="이름 변경">✏️</button>';
-                          html += '<button onclick="swDeleteSnap(\'' + cQ + '\',\'' + cpQ + '\')" style="padding:3px 6px;font-size:11px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);border-radius:5px;color:#ef4444;cursor:pointer;" title="하위 스냅샷 삭제">🗑</button>';
-                        }
-                        html += '</div>';
-                      });
-                    }
-                  });
-
-                  el.innerHTML = html || '<div style="font-size:10px;color:var(--di);">연결된 스냅샷 없음</div>';
+                  el.style.display = 'none';
+                  el.innerHTML = '';
                 }
 
                                 function initCaptureDrop(zoneId) {
@@ -6646,21 +6312,12 @@ window.wr2SummaryCancelEdit = function() {
                   const secTypeSel = document.getElementById('wr2NewSectionType');
                   const delRoomBtn = document.getElementById('wr2DeleteRoomBtn');
                   const linkBtn = document.getElementById('wr2LinkSavedBtn');
-                  const archiveSel = document.getElementById('wr2ArchiveState');
 
                   if (sortSel) sortSel.onchange = e => { wr2State.sort = e.target.value; wr2Render(); };
                   if (newBtn) newBtn.onclick = showNewModal;
                   if (newCreate) newCreate.onclick = createRoomFromModal;
                   if (newCancel) newCancel.onclick = hideNewModal;
                   if (linkBtn) linkBtn.onclick = () => wr2ShowLinkModal();
-                  if (archiveSel) archiveSel.onchange = e => {
-                    const r = getActiveRoom(); if (!r) return;
-                    const next = (e.target.value || 'active');
-                    updateRoom(r.id, { lifecycleStatus: next });
-                    if (!wr2RoomMatchesLifecycle(r, wr2State.statusFilter || 'active')) {
-                      wr2State.statusFilter = next;
-                    }
-                  };
 
                   const modal = document.getElementById('wr2NewModal');
                   if (modal) modal.addEventListener('click', e => { if (e.target === modal) hideNewModal(); });
@@ -7017,19 +6674,22 @@ window.wr2SummaryCancelEdit = function() {
                 // 그룹 셀렉트 드롭다운 갱신
                 function wr2RenderGroupSelect() {
                   const sel = document.getElementById('wr2GroupFilter');
-                  if (sel) sel.style.display = 'none';
-                  const folderBar = document.getElementById('wr2FolderFilterBar');
-                  if (folderBar) folderBar.style.display = 'none';
-                  const inlineDesktop = document.getElementById('wr2RoomFolderInline');
-                  const inlineMobile = document.getElementById('mb-room-folder-inline');
-                  if (inlineDesktop) inlineDesktop.innerHTML = '';
-                  if (inlineMobile) inlineMobile.innerHTML = '';
+                  const groups = wr2GetGroups();
+                  const cur = wr2State.groupFilter || 'all';
+                  if (sel) {
+                    sel.innerHTML = '<option value="all">🗂 전체 폴더</option>' +
+                      (cur === '__ungrouped__' ? '<option value="__ungrouped__" selected>🗃 미분류</option>' : '') +
+                      groups.map(g => `<option value="${g}"${cur === g ? ' selected' : ''}>${g}</option>`).join('');
+                  }
+                  if (!wr2State.groupFilter) wr2State.groupFilter = 'all';
                   if (typeof window.mbRoomRefreshFolderToggle === 'function') {
                     try { window.mbRoomRefreshFolderToggle(); } catch (e) {}
                   }
                   if (typeof window.mbRoomRefreshSel === 'function') {
                     try { window.mbRoomRefreshSel(); } catch (e) {}
                   }
+                  wr2RenderFolderFilterBars();
+                  wr2RenderInlineFolderAssign(getActiveRoom());
                 }
                 window.wr2ToggleFolderOnly = function() {
                   wr2State.folderViewMode = (wr2State.folderViewMode === 'folders') ? 'rooms' : 'folders';
@@ -12133,56 +11793,6 @@ window.wr2SummaryCancelEdit = function() {
       const item = getSv().find(s => String(s.id) === String(id));
       const entry = _getPrimaryPdfDoc(item);
       _downloadSavedDocEntry(entry);
-    };
-
-    function _openSavedDocEntry(entry) {
-      if (!entry || !entry.doc) {
-        showToast('PDF 파일이 없습니다', 'warn');
-        return false;
-      }
-      const doc = entry.doc || {};
-      if (doc.url) {
-        const normalizedUrl = window._normalizeLocalAssetUrl ? window._normalizeLocalAssetUrl(doc.url) : doc.url;
-        try { window.open(normalizedUrl, '_blank', 'noopener'); } catch (e) { location.href = normalizedUrl; }
-        return true;
-      }
-      if (doc.base64) {
-        const mime = doc.type || 'application/pdf';
-        const byteStr = atob(doc.base64);
-        const arr = new Uint8Array(byteStr.length);
-        for (let i = 0; i < byteStr.length; i++) arr[i] = byteStr.charCodeAt(i);
-        const blob = new Blob([arr], { type: mime });
-        const blobUrl = URL.createObjectURL(blob);
-        try { window.open(blobUrl, '_blank', 'noopener'); } catch (e) { location.href = blobUrl; }
-        setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
-        return true;
-      }
-      showToast('PDF 파일이 없습니다', 'warn');
-      return false;
-    }
-    window._openSavedDocEntry = _openSavedDocEntry;
-
-    window.openAuctionSource = function(id) {
-      try {
-        const item = getSv().find(s => String(s.id) === String(id));
-        if (!item) {
-          showToast('물건을 찾을 수 없습니다', 'warn');
-          return false;
-        }
-        const d = item.data || {};
-        const linkUrl = String(d.상세URL || d.옥션원URL || (d.product_id ? `https://auction1.co.kr/auction/ca_view.php?product_id=${encodeURIComponent(d.product_id)}` : '')).trim();
-        if (linkUrl) {
-          try { window.open(linkUrl, '_blank', 'noopener'); } catch (e) { location.href = linkUrl; }
-          return false;
-        }
-        const entry = _getPrimaryPdfDoc(item);
-        if (entry) return _openSavedDocEntry(entry);
-        showToast('열 수 있는 링크나 PDF가 없습니다', 'warn');
-      } catch (e) {
-        console.warn('openAuctionSource', e);
-        showToast('링크를 열지 못했습니다', 'warn');
-      }
-      return false;
     };
 
     function _normalizeDualAddressFields(d) {
@@ -20150,7 +19760,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     <svg class="conn-svg"><line class="conn-line" x1="0" y1="0" x2="0" y2="0" style="stroke:${lineColor};"/></svg>
     <div class="map-card ${mapCardCls}${stackedClass}${item.marked ? ' card-marked' : ''}" id="${id}" style="left:${pos.left}px;top:${pos.top}px;" data-base-left="${pos.left}" data-base-top="${pos.top}">
       ${countBadge}
-      <div class="map-card-header" onmousedown="dragMapCard(event,'${id}')" ontouchstart="dragMapCard(event,'${id}')">
+      <div class="map-card-header" onmousedown="dragMapCard(event,'${id}')">
         <div class="map-card-header-left">
           ${isAuction ? `<span class="card-type-icon" style="width:24px;height:24px;flex:0 0 24px;display:flex;align-items:center;justify-content:center;font-size:17px;background:none;border:none;box-shadow:none;cursor:pointer;" onmousedown="event.stopPropagation()" onclick="event.stopPropagation();toggleCardMark(\'${item.id}\')">👑</span>` : `<img class="card-type-icon" src="${cardType === 'sale' ? ICON_SALE : ICON_RENT}" alt="" draggable="false" style="cursor:pointer;" onmousedown="event.stopPropagation()" onclick="event.stopPropagation();toggleCardMark(\'${item.id}\')"/>`}
           <input class="map-card-title" id="title_${id}" value="${esc(item.title)}" readonly onclick="editCardTitle('${id}')"/>
@@ -20161,7 +19771,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           <span class="map-card-close" onclick="closeMapCard('${id}','single')">×</span>
         </div>
       </div>
-      <div class="map-card-body" onmousedown="dragMapCard(event,'${id}')" ontouchstart="dragMapCard(event,'${id}')">
+      <div class="map-card-body" onmousedown="dragMapCard(event,'${id}')">
         ${buildMapCardBodyHTML(item)}
       </div>
       ${isAuction ? `<div class="auction-rights-panel" id="rights_${id}">
@@ -20802,19 +20412,17 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         e.target.classList.contains('map-card-close') ||
         e.target.classList.contains('card-stack-buttons')
       )) return;
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.closest('button,a,label,select,option')) return;
-
-      var isTouch = /^touch/.test(e.type || '');
-      var startPoint = isTouch ? (e.touches && e.touches[0]) : e;
-      if (!startPoint) return;
-      if (e.cancelable) e.preventDefault();
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      e.preventDefault();
       e.stopPropagation();
 
+      // ★ [BUG FIX v120] card DOM을 bringCardToFront 호출 전에 먼저 캡처.
       const card = document.getElementById(id);
       if (!card) return;
 
       bringCardToFront(id);
 
+      // 지도 드래그 비활성화 (캡처 단계 차단과 이중 보호)
       if (map) { map.setDraggable(false); map.setZoomable(false); }
 
       const baseCardScale = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--base-card-scale')) || 1.0;
@@ -20823,17 +20431,15 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
       const startLeft = parseFloat(card.style.left) || 0;
       const startTop = parseFloat(card.style.top) || 0;
-      const startMouseX = startPoint.clientX;
-      const startMouseY = startPoint.clientY;
+      const startMouseX = e.clientX;
+      const startMouseY = e.clientY;
 
-      function onPointerMove(event) {
-        const pt = /^touch/.test(event.type || '') ? (event.touches && event.touches[0]) : event;
-        if (!pt) return;
-        if (event.cancelable) event.preventDefault();
+      function onMouseMove(event) {
+        // ★ [BUG FIX v123] 매 mousemove마다 getElementById로 현재 DOM 재조회
         const liveCard = document.getElementById(id);
         if (!liveCard) return;
-        const deltaX = pt.clientX - startMouseX;
-        const deltaY = pt.clientY - startMouseY;
+        const deltaX = event.clientX - startMouseX;
+        const deltaY = event.clientY - startMouseY;
         let newLeft = startLeft + deltaX / scale;
         let newTop = startTop + deltaY / scale;
         liveCard.style.left = newLeft + 'px';
@@ -20842,30 +20448,21 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         updateMapLine(id);
       }
 
-      function cleanup() {
-        document.removeEventListener('mousemove', onPointerMove);
-        document.removeEventListener('mouseup', onPointerUp);
-        document.removeEventListener('touchmove', onPointerMove);
-        document.removeEventListener('touchend', onPointerUp);
-        document.removeEventListener('touchcancel', onPointerUp);
+      function onMouseUp() {
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
         if (map) { map.setDraggable(true); map.setZoomable(true); }
-      }
-
-      function onPointerUp() {
-        cleanup();
         const upCard = document.getElementById(id);
         const newLeft = upCard ? (parseFloat(upCard.style.left) || 0) : 0;
         const newTop = upCard ? (parseFloat(upCard.style.top) || 0) : 0;
         if (upCard) upCard.dataset.baseLeft = String(newLeft);
         if (upCard) upCard.dataset.baseTop = String(newTop);
-        updateMapLine(id);
+        const dragObj = mapOverlays.find(o => o.id === id);
+        if (dragObj) dragObj.savedPos = { left: newLeft, top: newTop };
       }
 
-      document.addEventListener('mousemove', onPointerMove);
-      document.addEventListener('mouseup', onPointerUp);
-      document.addEventListener('touchmove', onPointerMove, { passive: false });
-      document.addEventListener('touchend', onPointerUp, { passive: false });
-      document.addEventListener('touchcancel', onPointerUp, { passive: false });
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
     }
 
 
@@ -22293,7 +21890,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       <button class="rights-toggle-btn" onclick="toggleRightsPanel('${item.id}')">👤 권리정보 보기 ▶</button>
       <div class="map-card-action-row">
         <button class="mca-btn saved" onclick="goToSavedFromMap('${item.id}')" onmousedown="event.stopPropagation()">📋 목록</button>
-        <button class="mca-btn link-a" onmousedown="event.stopPropagation()" ontouchstart="event.stopPropagation()" onclick="event.stopPropagation();return openAuctionSource('${item.id}');" title="경매 링크 또는 PDF">⚖️ 링크</button>
+        <a href="${esc(linkUrl)}" target="_blank" class="mca-btn link-a" onmousedown="event.stopPropagation()" ontouchstart="event.stopPropagation()" onclick="window.open(this.href,'_blank');return false;" style="text-decoration:none;" title="경매사이트">⚖️ 링크</a>
         <button class="mca-btn yield" onclick="toggleYieldPanel('${item.id}')" onmousedown="event.stopPropagation()">💰 수익</button>
       </div>
       <button class="mca-memo-btn ${item.memo ? 'has-memo' : ''}" onclick="toggleMapCardMemo(this)" onmousedown="event.stopPropagation()">📝 메모</button>
@@ -24592,14 +24189,14 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       cardContent.innerHTML = `
     <svg class="conn-svg"><line class="conn-line" x1="0" y1="0" x2="0" y2="0"/></svg>
     <div class="map-card transaction-card" id="${id}" style="left:30px;top:-70px;">
-      <div class="map-card-header" onmousedown="dragMapCard(event,'${id}')" ontouchstart="dragMapCard(event,'${id}')">
+      <div class="map-card-header" onmousedown="dragMapCard(event,'${id}')">
         <input class="map-card-title" id="title_${id}" value="${esc(item.name || '실거래')}" readonly onclick="editCardTitle('${id}')"/>
         <div class="map-card-header-right">
           <span class="card-expand-button" style="width:20px;height:20px;font-size:11px;background:rgba(30,144,255,.2);color:#1e90ff;border-radius:5px;border:none;" title="자석 결합" onmousedown="event.stopPropagation();event.preventDefault();" onclick="event.stopPropagation();mergeCardToNearest('${id}')">🧲</span>
           <span class="map-card-close" onclick="closeMapCard(\'${id}\',\'single\')">×</span>
         </div>
       </div>
-      <div class="map-card-body" onmousedown="dragMapCard(event,'${id}')" ontouchstart="dragMapCard(event,'${id}')">
+      <div class="map-card-body" onmousedown="dragMapCard(event,'${id}')">
         ${buildMapCardBodyHTML(tItemForCard)}
       </div>
     </div>
@@ -26050,9 +25647,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const _resize = cardWrap.querySelector('.card-resize-handle');
       const _merge = cardWrap.querySelector('.card-expand-button');
       if (_header) _header.addEventListener('mousedown', ev => dragMapCard(ev, id));
-      if (_header) _header.addEventListener('touchstart', ev => dragMapCard(ev, id), { passive: false });
       if (_body) _body.addEventListener('mousedown', ev => dragMapCard(ev, id));
-      if (_body) _body.addEventListener('touchstart', ev => dragMapCard(ev, id), { passive: false });
       if (_resize) _resize.addEventListener('mousedown', ev => resizeMapCard(ev, id));
       if (_merge) _merge.addEventListener('mousedown', ev => { ev.stopPropagation(); ev.preventDefault(); });
       if (_merge) _merge.addEventListener('click', ev => { ev.stopPropagation(); mergeCardToNearest(id); });
@@ -40067,9 +39662,11 @@ window.addEventListener('DOMContentLoaded', () => {
   }
   function plLoad() {
     try {
-      var cached = window._idbCache && window._idbCache[PL_KEY];
-      if (Array.isArray(cached)) return cached.map(plNormalizeItem);
-      return JSON.parse(localStorage.getItem(PL_KEY) || '[]').map(plNormalizeItem);
+      var raw = null;
+      if (window._idbCache && window._idbCache[PL_KEY] !== undefined) raw = window._idbCache[PL_KEY];
+      if (!raw) raw = JSON.parse(localStorage.getItem(PL_KEY) || '[]');
+      var items = (Array.isArray(raw) ? raw : []).map(plNormalizeItem);
+      return plApplyLinkedSavedSync(items, { persist: false });
     } catch(e) { return []; }
   }
   function plSave(arr) {
@@ -40158,6 +39755,72 @@ window.addEventListener('DOMContentLoaded', () => {
     return fallback || '';
   }
 
+  function plDisplayMoneyWithUnit(v, unit) {
+    var shown = plDisplayMoney(v);
+    if (!shown) return '<span style="color:#444;">—</span>';
+    return '<span style="font-family:monospace;font-size:12px;">' + shown + (unit || '만원') + '</span>';
+  }
+  function plInlineText(id, key, value, placeholder, width, title) {
+    return '<input type="text" value="' + esc(value || '') + '" placeholder="' + (placeholder || '') + '" '
+      + 'onclick="event.stopPropagation()" onkeydown="if(event.key===\'Enter\'){this.blur();}" '
+      + 'onchange="plInlineSet(\'' + id + '\',\'' + key + '\',this.value,\'text\')" '
+      + 'style="width:' + (width || '100%') + ';max-width:100%;padding:5px 8px;border-radius:7px;border:1px solid var(--b1);background:rgba(255,255,255,.03);color:var(--fg);font-size:12px;" title="' + (title || '') + '">';
+  }
+  function plInlineMoney(id, key, value, color) {
+    var display = plDisplayMoney(value || '');
+    return '<div style="display:flex;align-items:center;justify-content:flex-end;gap:4px;">'
+      + '<input type="text" value="' + esc(display) + '" inputmode="numeric" '
+      + 'onclick="event.stopPropagation()" oninput="this.value=plDisplayMoney(this.value)" onkeydown="if(event.key===\'Enter\'){this.blur();}" '
+      + 'onchange="plInlineSet(\'' + id + '\',\'' + key + '\',this.value,\'money\')" '
+      + 'style="width:92px;padding:5px 8px;border-radius:7px;border:1px solid var(--b1);background:rgba(255,255,255,.03);color:' + (color || 'var(--fg)') + ';font-size:12px;text-align:right;">'
+      + '<span style="font-size:11px;color:var(--fg3);white-space:nowrap;">만원</span>'
+      + '</div>';
+  }
+  function plInlineDate(id, key, value) {
+    return '<input type="text" value="' + esc(value ? plDisplayDate(value) : '') + '" placeholder="YYYY.MM.DD" '
+      + 'onclick="event.stopPropagation()" onkeydown="if(event.key===\'Enter\'){this.blur();}" '
+      + 'onchange="plInlineSet(\'' + id + '\',\'' + key + '\',this.value,\'date\')" '
+      + 'style="width:104px;padding:5px 8px;border-radius:7px;border:1px solid var(--b1);background:rgba(255,255,255,.03);color:var(--fg);font-size:12px;">';
+  }
+  window.plInlineSet = function(id, key, value, kind) {
+    var items = plLoad();
+    var idx = items.findIndex(function(it){ return String(it.id) === String(id); });
+    if (idx < 0) return;
+    var nextVal = value;
+    if (kind === 'money') nextVal = plParseAmountText(value);
+    else if (kind === 'date') nextVal = plNormalizeDateInput(value);
+    else nextVal = String(value || '').trim();
+    items[idx][key] = nextVal;
+    items[idx].updatedAt = Date.now();
+    plSave(items);
+    syncToWorkroom(items[idx]);
+    if (typeof renderPropertyList === 'function') renderPropertyList();
+  };
+  function plApplyLinkedSavedSync(items, opts) {
+    var options = opts || {};
+    var saved = null;
+    try { saved = (typeof getSv === 'function') ? getSv() : []; } catch(e) { saved = []; }
+    var byId = {};
+    (saved || []).forEach(function(src){ if (src && src.id) byId[String(src.id)] = src; });
+    var changed = false;
+    var next = (items || []).map(function(it){
+      if (!it || !it.linkedSavedId) return plNormalizeItem(it);
+      var src = byId[String(it.linkedSavedId)];
+      if (!src) return plNormalizeItem(it);
+      var mapped = plMapSavedToItem(src);
+      var merged = Object.assign({}, it);
+      ['addr','casenum','region','feature','appraisal','minprice','round','biddate','deposit','monthly','type'].forEach(function(k){
+        if (mapped[k] !== undefined && mapped[k] !== null && mapped[k] !== '' && merged[k] !== mapped[k]) {
+          merged[k] = mapped[k];
+          changed = true;
+        }
+      });
+      return plNormalizeItem(merged);
+    });
+    if (changed && options.persist !== false) plSave(next);
+    return next;
+  }
+
   // ── 날짜 유틸 ──────────────────────────
   function daysDiff(dateStr) {
     if (!dateStr) return null;
@@ -40199,9 +39862,10 @@ window.addEventListener('DOMContentLoaded', () => {
       return '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:2px;background:'+(i<=n?'#1D9E75':'#333')+';" title="'+(i<=n?'임장 완료':'미완료')+'"></span>';
     }).join('');
   }
-  function numCell(v, color) {
-    if (!v) return '<span style="color:#444;">—</span>';
-    return '<span style="font-family:monospace;font-size:12px;'+(color?'color:'+color+';':'')+'">' + plDisplayMoney(v) + '</span>';
+  function numCell(v, color, unit) {
+    var shown = plDisplayMoney(v);
+    if (!shown) return '<span style="color:#444;">—</span>';
+    return '<span style="font-family:monospace;font-size:12px;'+(color?'color:'+color+';':'')+'">' + shown + (unit || '만원') + '</span>';
   }
 
   // ── 작업룸 연동 ─────────────────────────
@@ -40426,7 +40090,7 @@ window.addEventListener('DOMContentLoaded', () => {
   // ── 메인 렌더 ──────────────────────────
   window.renderPropertyList = function() {
     _plWrapWorkroomSync();
-    var items = plLoad();
+    var items = plApplyLinkedSavedSync(plLoad(), { persist: true });
     renderAlerts(items.filter(function(it){ return !it.archived; }));
     var filtered = plVisibleItems(items);
     var tbody = document.getElementById('pl-tbody');
@@ -40448,27 +40112,27 @@ window.addEventListener('DOMContentLoaded', () => {
           if (room) wrLink = '<button onclick="plGoToWorkroom(\''+it.roomId+'\')" style="font-size:11px;padding:2px 8px;border:1px solid var(--b1);border-radius:5px;background:transparent;color:var(--fg2);cursor:pointer;white-space:nowrap;" title="작업룸으로 이동">🗂 '+((room.title||'').substring(0,8)||'작업룸')+'</button>';
         }
         var resultTag = '';
-        if ((it.status === 'closed' || it.status==='archived') && it.result && it.result.won) resultTag = '<div style="font-size:10px;color:#4caf87;margin-top:2px;">낙 '+it.result.won+'</div>';
+        if ((it.status === 'closed' || it.status==='archived') && it.result && it.result.won) resultTag = '<div style="font-size:10px;color:#4caf87;margin-top:2px;">낙 '+it.result.won+'만원</div>';
         return '<tr style="'+rowHl+'border-bottom:1px solid var(--b1);">'
           + '<td style="padding:8px 8px;text-align:center;"><input type="checkbox" '+(plSelectedMap[it.id]?'checked':'')+' onclick="event.stopPropagation();plToggleOne(\''+it.id+'\',this.checked)"></td>'
           + '<td style="padding:8px 10px;">'+statusBadge(it.status, it.id)+'</td>'
           + '<td style="padding:8px 10px;font-size:12px;color:var(--fg2);white-space:nowrap;">'+(it.type||'경매')+'</td>'
           + '<td style="padding:8px 10px;text-align:center;">'+intentBadge(it.intent)+'</td>'
-          + '<td style="padding:8px 10px;max-width:160px;"><div style="font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+(it.addr||'')+'">'+(it.addr||'—')+'</div>'+resultTag+'</td>'
-          + '<td style="padding:8px 10px;font-size:12px;color:var(--fg2);white-space:nowrap;">'+(it.casenum||'—')+'</td>'
-          + '<td style="padding:8px 10px;font-size:12px;color:var(--fg2);white-space:nowrap;">'+(it.region||'—')+'</td>'
-          + '<td style="padding:8px 10px;font-size:12px;color:var(--fg2);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+(it.feature||'')+'">'+(it.feature||'—')+'</td>'
-          + '<td style="padding:8px 10px;text-align:right;">'+numCell(it.appraisal)+'</td>'
-          + '<td style="padding:8px 10px;text-align:right;">'+numCell(it.minprice)+'</td>'
-          + '<td style="padding:8px 10px;text-align:center;font-size:12px;">'+(it.round||'—')+'</td>'
-          + '<td style="padding:8px 10px;white-space:nowrap;"><div style="font-size:13px;">'+fmtDate(it.biddate)+'</div>'+dTag+'</td>'
-          + '<td style="padding:8px 10px;text-align:right;">'+numCell(it.estimate,'#4f8eff')+'</td>'
-          + '<td style="padding:8px 10px;text-align:right;">'+numCell(it.result&&it.result.won?it.result.won:'','#4caf87')+'</td>'
+          + '<td style="padding:8px 10px;max-width:200px;">'+plInlineText(it.id,'addr',it.addr||'', '물건명/주소', '100%','저장목록과 연결된 물건은 이름이 자동 동기화됩니다')+resultTag+'</td>'
+          + '<td style="padding:8px 10px;font-size:12px;color:var(--fg2);white-space:nowrap;">'+plInlineText(it.id,'casenum',it.casenum||'', '', '110px')+'</td>'
+          + '<td style="padding:8px 10px;font-size:12px;color:var(--fg2);white-space:nowrap;">'+plInlineText(it.id,'region',it.region||'', '', '130px')+'</td>'
+          + '<td style="padding:8px 10px;font-size:12px;color:var(--fg2);max-width:170px;">'+plInlineText(it.id,'feature',it.feature||'', '', '100%')+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;">'+plInlineMoney(it.id,'appraisal',it.appraisal,'var(--fg)')+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;">'+plInlineMoney(it.id,'minprice',it.minprice,'var(--fg)')+'</td>'
+          + '<td style="padding:8px 10px;text-align:center;font-size:12px;">'+plInlineText(it.id,'round',it.round||'', '', '76px')+'</td>'
+          + '<td style="padding:8px 10px;white-space:nowrap;">'+plInlineDate(it.id,'biddate',it.biddate)+dTag+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;">'+plInlineMoney(it.id,'estimate',it.estimate,'#4f8eff')+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;">'+numCell(it.result&&it.result.won?it.result.won:'','#4caf87','만원')+'</td>'
           + '<td style="padding:8px 10px;">'+siteDots(it.site)+'</td>'
-          + '<td style="padding:8px 10px;text-align:right;">'+numCell(it.deposit)+'</td>'
-          + '<td style="padding:8px 10px;text-align:right;">'+numCell(it.monthly)+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;">'+plInlineMoney(it.id,'deposit',it.deposit,'var(--fg)')+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;">'+plInlineMoney(it.id,'monthly',it.monthly,'var(--fg)')+'</td>'
           + '<td style="padding:8px 10px;">'+wrLink+'</td>'
-          + '<td style="padding:8px 10px;font-size:12px;color:var(--fg2);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+(it.memo||'')+'">'+(it.memo||'')+'</td>'
+          + '<td style="padding:8px 10px;font-size:12px;color:var(--fg2);max-width:180px;">'+plInlineText(it.id,'memo',it.memo||'', '메모', '100%')+'</td>'
           + '<td style="padding:8px 6px;text-align:center;"><button onclick="plOpenEdit(\''+it.id+'\')" style="background:none;border:none;color:var(--fg3);cursor:pointer;font-size:15px;padding:2px 4px;">···</button></td>'
           + '</tr>';
       }).join('');
