@@ -3359,15 +3359,13 @@ var _safeLocalSet = function(key, value) {
                 function getActiveRoom() { return wr2State.rooms.find(r => r.id === wr2State.activeRoomId) || null; }
 
                 function statusLabel(st) {
-                  if (st === 'active') return '활성';
-                  if (st === 'changed') return '변경';
                   if (st === 'interest' || st === 'review') return '관심·검토';
                   if (st === 'field') return '현장';
                   if (st === 'bid') return '입찰';
                   if (st === 'won') return '낙찰';
                   if (st === 'sell') return '매도';
-                  if (st === 'closed' || st === 'archived') return '종료';
-                  return '활성';
+                  if (st === 'closed') return '종료';
+                  return '미정';
                 }
 
                 function phaseHint(phase) {
@@ -4022,7 +4020,6 @@ var _safeLocalSet = function(key, value) {
 
                   wr2State.folderOpen = wr2State.folderOpen || {};
                   wr2State.folderPreviewOpen = wr2State.folderPreviewOpen || {};
-                  wr2State.folderViewMode = 'rooms';
                   let rooms = wr2State.rooms.filter(r => !r.deletedAt);
                   const q = (wr2State.search || '').trim().toLowerCase();
                   if (q) rooms = rooms.filter(r =>
@@ -4030,13 +4027,8 @@ var _safeLocalSet = function(key, value) {
                     (r.address || '').toLowerCase().includes(q) ||
                     (r.tags || []).some(t => (t || '').toLowerCase().includes(q))
                   );
-                  if (wr2State.statusFilter && wr2State.statusFilter !== 'all') {
-                    rooms = rooms.filter(function(r){
-                      var lifecycle = (r && (r.lifecycleStatus || ((r.status === 'closed' || r.status === 'archived') ? 'closed' : (r.status === 'changed' ? 'changed' : 'active')))) || 'active';
-                      return lifecycle === wr2State.statusFilter;
-                    });
-                  }
-                  wr2State.groupFilter = 'all';
+                  if (wr2State.statusFilter !== 'all') rooms = rooms.filter(r => r.status === wr2State.statusFilter);
+                  if (wr2State.groupFilter && wr2State.groupFilter !== 'all') rooms = rooms.filter(r => wr2RoomMatchesGroup(r, wr2State.groupFilter));
                   rooms.sort((a, b) => wr2State.sort === 'created' ? (b.createdAt || 0) - (a.createdAt || 0) : (b.updatedAt || 0) - (a.updatedAt || 0));
 
                   listEl.innerHTML = '';
@@ -4090,7 +4082,27 @@ var _safeLocalSet = function(key, value) {
                     const actions = document.createElement('div');
                     actions.className = 'wr2-room-item-actions';
 
-                    actions.style.display = 'none';
+                    const openBtn = document.createElement('button');
+                    openBtn.className = 'wr2-room-act-btn';
+                    openBtn.textContent = '열기';
+                    openBtn.title = '작업룸 열기';
+                    openBtn.onclick = e => {
+                      e.stopPropagation();
+                      setActiveRoom(r.id);
+                    };
+
+                    const moreBtn = document.createElement('button');
+                    moreBtn.className = 'wr2-room-act-btn';
+                    moreBtn.textContent = '폴더';
+                    moreBtn.title = '현재 작업룸 폴더 지정';
+                    moreBtn.onclick = e => {
+                      e.stopPropagation();
+                      setActiveRoom(r.id);
+                      setTimeout(function() { window.wr2OpenRoomGroupEditor(); }, 30);
+                    };
+
+                    actions.appendChild(openBtn);
+                    actions.appendChild(moreBtn);
 
                     item.appendChild(handle);
                     item.appendChild(content);
@@ -4098,30 +4110,206 @@ var _safeLocalSet = function(key, value) {
                     parentEl.appendChild(item);
                   };
 
-                  var statusBuckets = [
-                    { key: 'active', label: '활성', rooms: [] },
-                    { key: 'changed', label: '변경', rooms: [] },
-                    { key: 'closed', label: '종료', rooms: [] }
-                  ];
-                  rooms.forEach(function(r) {
-                    var lifecycle = (r && (r.lifecycleStatus || ((r.status === 'closed' || r.status === 'archived') ? 'closed' : (r.status === 'changed' ? 'changed' : 'active')))) || 'active';
-                    (statusBuckets.find(function(b){ return b.key === lifecycle; }) || statusBuckets[0]).rooms.push(r);
+                  if (wr2State.folderViewMode === 'folders') {
+                    const folderCards = folderRecords.map(function(folder) {
+                      return {
+                        name: folder.name,
+                        rooms: wr2State.rooms.filter(function(room) { return !room.deletedAt && room.group === folder.name; }),
+                        icon: '📁'
+                      };
+                    });
+                    const ungroupedRooms = wr2State.rooms.filter(function(room) { return !room.deletedAt && !room.group; });
+                    if (ungroupedRooms.length) {
+                      folderCards.unshift({
+                        name: '미분류',
+                        rooms: ungroupedRooms,
+                        icon: '🗃'
+                      });
+                    }
+                    folderCards.forEach(function(folder) {
+                      const isUngrouped = folder.name === '미분류';
+                      const active = wr2State.groupFilter === folder.name;
+                      const previewOpen = !!wr2State.folderPreviewOpen[folder.name];
+                      const sortedRooms = folder.rooms.slice().sort(function(a, b) { return (b.updatedAt || 0) - (a.updatedAt || 0); });
+                      const latestRoom = sortedRooms[0] || null;
+                      const latestLabel = latestRoom ? statusLabel(latestRoom.status) : '작업 없음';
+                      const latestStamp = latestRoom ? formatRoomStamp(latestRoom.updatedAt || latestRoom.createdAt || Date.now()) : '';
+                      const card = document.createElement('div');
+                      card.className = 'wr2-folder-pro-card' + (active ? ' active' : '');
+                      card.innerHTML = '<div class="wr2-folder-pro-header">'
+                        + '<button type="button" data-toggle-folder="' + folder.name + '" class="wr2-folder-pro-toggle">' + (previewOpen ? '▾' : '▸') + '</button>'
+                        + '<div class="wr2-folder-pro-main">'
+                        + '<div class="wr2-folder-pro-title-row"><span class="wr2-folder-pro-icon">' + ((active || previewOpen) ? '📂' : folder.icon) + '</span><span class="wr2-folder-pro-title">' + folder.name + '</span><span class="wr2-folder-pro-count">' + folder.rooms.length + '</span></div>'
+                        + '<div class="wr2-folder-pro-meta">' + (latestRoom ? ('최근 업데이트 · ' + latestStamp + ' · ' + latestLabel) : '아직 작업룸이 없습니다') + '</div>'
+                        + '</div>'
+                        + '<div class="wr2-folder-pro-actions">'
+                        + '<button type="button" data-open-folder="' + folder.name + '" class="wr2-folder-pro-btn primary">' + (active ? '열림' : '열기') + '</button>'
+                        + '<button type="button" data-new-folder="' + folder.name + '" class="wr2-folder-pro-btn accent">＋ 작업룸</button>'
+                        + (!isUngrouped ? '<button type="button" data-edit-folder="' + folder.name + '" class="wr2-folder-pro-btn">관리</button>' : '')
+                        + '</div>'
+                        + '</div>';
+                      const toggleBtn = card.querySelector('[data-toggle-folder]');
+                      if (toggleBtn) toggleBtn.onclick = function(e) {
+                        e.stopPropagation();
+                        wr2State.folderPreviewOpen[folder.name] = !wr2State.folderPreviewOpen[folder.name];
+                        renderList();
+                      };
+                      const btn = card.querySelector('[data-open-folder]');
+                      if (btn) btn.onclick = function(e) {
+                        e.stopPropagation();
+                        if (isUngrouped) {
+                          wr2State.groupFilter = 'all';
+                          wr2State.folderViewMode = 'rooms';
+                          if (folder.rooms.length) wr2State.activeRoomId = folder.rooms[0].id;
+                          wr2RenderGroupSelect();
+                          wr2Render();
+                          return;
+                        }
+                        wr2State.groupFilter = folder.name;
+                        wr2State.folderViewMode = 'rooms';
+                        if (folder.rooms.length) wr2State.activeRoomId = folder.rooms[0].id;
+                        wr2RenderGroupSelect();
+                        wr2Render();
+                      };
+                      const editBtn = card.querySelector('[data-edit-folder]');
+                      const newBtn = card.querySelector('[data-new-folder]');
+                      if (newBtn) newBtn.onclick = function(e) {
+                        e.stopPropagation();
+                        window.wr2PrepareNewRoomInFolder(isUngrouped ? '' : folder.name);
+                      };
+                      if (editBtn) editBtn.onclick = function(e) {
+                        e.stopPropagation();
+                        const next = prompt('폴더 이름 변경', folder.name);
+                        if (next === null) return;
+                        const clean = (next || '').trim();
+                        if (!clean) return;
+                        if (clean !== folder.name) window.wr2RenameFolder(folder.name, clean);
+                      };
+                      const preview = document.createElement('div');
+                      preview.className = 'wr2-folder-pro-preview';
+                      preview.style.display = previewOpen ? 'block' : 'none';
+                      if (sortedRooms.length) {
+                        preview.innerHTML = '<div class="wr2-folder-pro-roomlist">'
+                          + sortedRooms.slice(0, 5).map(function(room) {
+                            return '<button type="button" data-room-open="' + room.id + '" class="wr2-folder-pro-room">'
+                              + '<span class="wr2-folder-pro-room-name">' + esc(room.title || '(제목 없음)') + '</span>'
+                              + '<span class="wr2-folder-pro-room-meta">' + statusLabel(room.status) + ' · ' + formatRoomStamp(room.updatedAt || room.createdAt || Date.now()) + '</span>'
+                              + '</button>';
+                          }).join('')
+                          + (sortedRooms.length > 5 ? '<div class="wr2-folder-pro-more">외 ' + (sortedRooms.length - 5) + '개 작업룸</div>' : '')
+                          + '</div>';
+                      } else {
+                        preview.innerHTML = '<div class="wr2-folder-pro-empty">아직 작업룸이 없습니다</div>';
+                      }
+                      preview.querySelectorAll('[data-room-open]').forEach(function(roomBtn) {
+                        roomBtn.onclick = function(e) {
+                          e.stopPropagation();
+                          setActiveRoom(roomBtn.dataset.roomOpen);
+                          wr2State.folderViewMode = 'rooms';
+                          wr2RenderGroupSelect();
+                          wr2Render();
+                        };
+                      });
+                      card.appendChild(preview);
+                      card.onclick = function(e) {
+                        if (e.target.closest('button')) return;
+                        wr2State.folderPreviewOpen[folder.name] = !wr2State.folderPreviewOpen[folder.name];
+                        renderList();
+                      };
+                      listEl.appendChild(card);
+                    });
+                    if (countEl) countEl.textContent = '(' + folderCards.length + ')';
+                    emptyEl.style.display = folderCards.length ? 'none' : 'flex';
+                    return;
+                  }
+
+                  const buckets = [];
+                  const bucketMap = new Map();
+                  folderRecords.forEach(function(folder) {
+                    const key = String(folder.name || '');
+                    if (!key || bucketMap.has(key)) return;
+                    const bucket = { key: key, label: key, rooms: [] };
+                    bucketMap.set(key, bucket);
+                    buckets.push(bucket);
                   });
-                  statusBuckets.forEach(function(bucket) {
-                    if (!bucket.rooms.length) return;
-                    var section = document.createElement('div');
+                  rooms.forEach(r => {
+                    const key = String(r.group || '__ungrouped__');
+                    if (!bucketMap.has(key)) {
+                      const bucket = { key, label: key === '__ungrouped__' ? '미분류' : key, rooms: [] };
+                      bucketMap.set(key, bucket);
+                      buckets.push(bucket);
+                    }
+                    bucketMap.get(key).rooms.push(r);
+                  });
+
+                  buckets.forEach(bucket => {
+                    if (bucket.key === '__ungrouped__') {
+                      if (bucket.rooms.length) {
+                        const ungroupedHd = document.createElement('div');
+                        ungroupedHd.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:6px 8px 4px;color:var(--di);font-size:10px;font-weight:700;letter-spacing:.3px;';
+                        ungroupedHd.innerHTML = `<span>미분류 작업룸</span><span>${bucket.rooms.length}</span>`;
+                        listEl.appendChild(ungroupedHd);
+                      }
+                      bucket.rooms.forEach(r => appendRoomItem(listEl, r));
+                      return;
+                    }
+
+                    const hasActive = bucket.rooms.some(r => r.id === wr2State.activeRoomId);
+                    const isOpen = hasActive || wr2State.groupFilter === bucket.label || wr2State.folderOpen[bucket.key] !== false;
+                    wr2State.folderOpen[bucket.key] = isOpen;
+
+                    const section = document.createElement('div');
                     section.className = 'wr2-folder-section';
                     section.style.cssText = 'margin-bottom:8px;border:1px solid rgba(79,142,255,.16);border-radius:10px;background:rgba(79,142,255,.04);overflow:hidden;';
-                    var header = document.createElement('div');
-                    header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;background:rgba(79,142,255,.08);';
-                    header.innerHTML = '<div style="display:flex;align-items:center;gap:7px;min-width:0;"><span style="font-size:12px;color:#4f8eff;">' + (bucket.key === 'closed' ? '🧺' : (bucket.key === 'changed' ? '🔄' : '📌')) + '</span><span style="font-size:11px;font-weight:700;color:#dbe7ff;">' + bucket.label + '</span><span style="font-size:10px;color:#93a6c9;">' + bucket.rooms.length + '개</span></div>';
+
+                    const header = document.createElement('div');
+                    header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;background:rgba(79,142,255,.08);cursor:pointer;';
+                    header.onclick = () => {
+                      wr2State.folderOpen[bucket.key] = !wr2State.folderOpen[bucket.key];
+                      renderList();
+                    };
+
+                    const left = document.createElement('div');
+                    left.style.cssText = 'display:flex;align-items:center;gap:7px;min-width:0;';
+                    left.innerHTML = `<span style="font-size:12px;color:#4f8eff;">${wr2State.folderOpen[bucket.key] ? '📂' : '📁'}</span><span style="font-size:11px;font-weight:700;color:#dbe7ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${bucket.label}</span><span style="font-size:10px;color:#93a6c9;">${bucket.rooms.length}개</span>`;
+
+                    const right = document.createElement('div');
+                    right.style.cssText = 'display:flex;align-items:center;gap:5px;flex-shrink:0;';
+                    const filterBtn = document.createElement('button');
+                    filterBtn.textContent = wr2State.groupFilter === bucket.label ? '전체' : '집중';
+                    filterBtn.style.cssText = 'padding:3px 8px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:var(--mu);font-size:10px;cursor:pointer;';
+                    filterBtn.onclick = (e) => {
+                      e.stopPropagation();
+                      wr2State.groupFilter = (wr2State.groupFilter === bucket.label) ? 'all' : bucket.label;
+                      wr2RenderGroupSelect();
+                      wr2Render();
+                    };
+                    const addBtn = document.createElement('button');
+                    addBtn.textContent = '＋';
+                    addBtn.title = '현재 작업룸을 이 폴더로 지정';
+                    addBtn.style.cssText = 'width:24px;height:24px;border:none;border-radius:6px;background:rgba(79,142,255,.18);color:#4f8eff;font-size:13px;cursor:pointer;';
+                    addBtn.onclick = (e) => {
+                      e.stopPropagation();
+                      const room = getActiveRoom();
+                      if (!room) { showToast('먼저 작업룸을 선택하세요', 'warn'); return; }
+                      wr2SetRoomFolder(room, bucket.label);
+                      saveRooms();
+                      wr2RenderGroupSelect();
+                      wr2Render();
+                    };
+                    right.appendChild(filterBtn);
+                    right.appendChild(addBtn);
+                    header.appendChild(left);
+                    header.appendChild(right);
                     section.appendChild(header);
-                    var body = document.createElement('div');
-                    body.style.cssText = 'padding:6px 6px 2px;';
-                    bucket.rooms.forEach(function(r) { appendRoomItem(body, r); });
+
+                    const body = document.createElement('div');
+                    body.style.cssText = 'display:' + (wr2State.folderOpen[bucket.key] ? '' : 'none') + ';padding:6px 6px 2px;';
+                    bucket.rooms.forEach(r => appendRoomItem(body, r));
                     section.appendChild(body);
                     listEl.appendChild(section);
                   });
+
                   initListDrag(listEl);
                   if (countEl) countEl.textContent = '(' + wr2State.rooms.length + ')';
                   emptyEl.style.display = rooms.length ? 'none' : 'flex';
@@ -4297,7 +4485,7 @@ var _safeLocalSet = function(key, value) {
                         + '</div>';
                     }
                     imgs.forEach(function(img, i) {
-                      var snapLabel = img.snapName ? '<div class="wr2-img-snap-label">📷 ' + img.snapName + '</div>' : '<div class="wr2-img-snap-label">작업 이미지</div>';
+                      var snapLabel = img.snapName ? '<div class="wr2-img-snap-label">📷 ' + img.snapName + '</div>' : '';
                       var goBtn = img.snapName ? '<button class="wr2-img-go-map" onclick="event.stopPropagation();wr2GoToSnap(this.dataset.snap)" data-snap="' + img.snapName.replace(/"/g,'&quot;') + '" title="이 스냅샷으로 지도 이동">🗺 지도로</button>' : '';
                       gridHtml += '<div class="wr2-img-thumb" onclick="wr2Lightbox(' + i + ')">'
                         + '<img src="' + (window._sbImgUrl ? window._sbImgUrl(img.src, 400) : img.src) + '" alt="캡처 ' + (i+1) + '">'
@@ -4399,8 +4587,106 @@ var _safeLocalSet = function(key, value) {
                 function renderSnapList(room) {
                   var el = document.getElementById('wr2SnapList');
                   if (!el) return;
-                  el.style.display = 'none';
-                  el.innerHTML = '';
+                  var restoreBtn = document.getElementById('wr2RestoreMapBtn');
+                  if (restoreBtn) {
+                    var hasScene = room && (room.mapScene || (room.mapScenes && room.mapScenes.length));
+                    restoreBtn.style.display = hasScene ? '' : 'none';
+                    if (hasScene) restoreBtn.style.color = '#4f8eff';
+                  }
+
+                  var imgs = (room && room.captureImages) || [];
+                  var snapNames = [];
+                  imgs.forEach(function(img) { if (img.snapName && snapNames.indexOf(img.snapName) === -1) snapNames.push(img.snapName); });
+
+                  var sceneData = room && room.mapScene;
+                  var allMapScenes = (room && room.mapScenes && room.mapScenes.length) ? room.mapScenes : (sceneData ? [sceneData] : []);
+                  allMapScenes.forEach(function(ms) {
+                    if (ms.sceneName && snapNames.indexOf(ms.sceneName) === -1) snapNames.unshift(ms.sceneName);
+                    if (ms.children) {
+                      ms.children.forEach(function(ch) {
+                        if (ch.name && snapNames.indexOf(ch.name) === -1) snapNames.push(ch.name);
+                      });
+                    }
+                  });
+
+                  if (!snapNames.length) {
+                    el.innerHTML = '<div style="font-size:10px;color:var(--di);padding:4px 0;">연결된 스냅샷 없음 · 지도탭에서 캡처하면 자동 연결됩니다</div>';
+                    return;
+                  }
+
+                  var scenes = typeof getWorkScenes === 'function' ? getWorkScenes() : [];
+                  var html = '';
+                  var renderedChildren = {};
+
+                  snapNames.forEach(function(sn) {
+                    var sc = scenes.find(function(s){ return s.name === sn; });
+                    var imgCount = imgs.filter(function(i){ return i.snapName === sn; }).length;
+                    var exists = !!sc;
+                    var isChild = sc && sc.parentName;
+                    if (isChild) return; // 자식은 부모 렌더 시 처리
+
+                    var parentName = null;
+                    var children = exists ? scenes.filter(function(s){ return s.parentName === sn; }) : [];
+                    var hasChildren = children.length > 0;
+                    var isCollapsed = !!window._snapCollapsed[sn];
+                    var snQ = sn.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+
+                    // ── 부모 행
+                    html += '<div style="display:flex;align-items:center;gap:6px;padding:4px 7px;background:var(--s2);border:1px solid var(--b1);border-radius:6px;margin-bottom:3px;">';
+
+                    // 접기/펼치기 버튼 (하위 있을 때만)
+                    if (hasChildren) {
+                      html += '<button onclick="wr2SnapToggle(\'' + snQ + '\')" style="background:none;border:none;color:var(--ac);cursor:pointer;font-size:11px;padding:0 2px;line-height:1;flex-shrink:0;" title="' + (isCollapsed ? '펼치기' : '접기') + '">' +
+                        (isCollapsed ? '▶' : '▼') + '</button>';
+                    } else {
+                      html += '<span style="width:16px;flex-shrink:0;"></span>';
+                    }
+
+                    html += '<span style="font-size:11px;">' + (exists ? '📷' : '🔸') + '</span>';
+                    html += '<div style="flex:1;min-width:0;">';
+                    html += '<div style="font-size:10px;font-weight:600;color:' + (exists ? 'var(--tx)' : 'var(--di)') + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' +
+                      sn + (exists ? '' : ' <span style="font-size:8px;color:var(--di);">(삭제됨)</span>') + '</div>';
+                    html += '<div style="font-size:9px;color:var(--di);">이미지 ' + imgCount + '장';
+                    if (hasChildren) {
+                      // 하위 개수 + 접힘 상태 힌트
+                      html += ' · <span style="color:' + (isCollapsed ? '#fbbf24' : 'var(--ac)') + ';font-weight:600;">하위 ' + children.length + '개' + (isCollapsed ? ' ▸' : '') + '</span>';
+                    }
+                    html += '</div>';
+                    html += '</div>';
+
+                    if (exists) {
+                      var pnQ = '';
+                      html += '<button onclick="wr2GoToSnap(this.dataset.snap)" data-snap="' + sn.replace(/"/g,'&quot;') + '" style="padding:3px 8px;font-size:10px;background:rgba(79,142,255,.1);border:1px solid rgba(79,142,255,.3);border-radius:5px;color:#4f8eff;cursor:pointer;font-family:inherit;white-space:nowrap;">↗ 이동</button>';
+                      html += '<button onclick="swRenameSnap(\'' + snQ + '\',\'\')" style="padding:3px 6px;font-size:11px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);border-radius:5px;color:#fbbf24;cursor:pointer;" title="이름 변경">✏️</button>';
+                      html += '<button onclick="swDeleteSnap(\'' + snQ + '\',\'\')" style="padding:3px 6px;font-size:11px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);border-radius:5px;color:#ef4444;cursor:pointer;" title="스냅샷 삭제">🗑</button>';
+                    }
+                    html += '</div>';
+
+                    // ── 자식 행 (접힌 경우 숨김)
+                    if (hasChildren && !isCollapsed) {
+                      children.forEach(function(child) {
+                        var childImgCount = imgs.filter(function(i){ return i.snapName === child.name; }).length;
+                        var childExists = scenes.some(function(s){ return s.name === child.name; });
+                        var cQ = child.name.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                        var cpQ = sn.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+
+                        html += '<div style="margin-left:20px;display:flex;align-items:center;gap:6px;padding:4px 7px;background:var(--s2);border:1px solid var(--b1);border-left:2px solid var(--ac);border-radius:0 6px 6px 0;margin-bottom:3px;">';
+                        html += '<span style="color:var(--di);font-size:9px;margin-right:2px;">ㄴ</span><span style="font-size:11px;">📷</span>';
+                        html += '<div style="flex:1;min-width:0;">';
+                        html += '<div style="font-size:10px;font-weight:600;color:var(--tx);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + child.name + '</div>';
+                        html += '<div style="font-size:9px;color:var(--di);">↑ ' + sn + (childImgCount ? ' · 이미지 ' + childImgCount + '장' : '') + '</div>';
+                        html += '</div>';
+                        if (childExists) {
+                          html += '<button onclick="wr2GoToSnap(this.dataset.snap)" data-snap="' + child.name.replace(/"/g,'&quot;') + '" style="padding:3px 8px;font-size:10px;background:rgba(79,142,255,.1);border:1px solid rgba(79,142,255,.3);border-radius:5px;color:#4f8eff;cursor:pointer;font-family:inherit;white-space:nowrap;">↗ 이동</button>';
+                          html += '<button onclick="swRenameSnap(\'' + cQ + '\',\'' + cpQ + '\')" style="padding:3px 6px;font-size:11px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);border-radius:5px;color:#fbbf24;cursor:pointer;" title="이름 변경">✏️</button>';
+                          html += '<button onclick="swDeleteSnap(\'' + cQ + '\',\'' + cpQ + '\')" style="padding:3px 6px;font-size:11px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);border-radius:5px;color:#ef4444;cursor:pointer;" title="하위 스냅샷 삭제">🗑</button>';
+                        }
+                        html += '</div>';
+                      });
+                    }
+                  });
+
+                  el.innerHTML = html || '<div style="font-size:10px;color:var(--di);">연결된 스냅샷 없음</div>';
                 }
 
                                 function initCaptureDrop(zoneId) {
@@ -39660,15 +39946,7 @@ window.addEventListener('DOMContentLoaded', () => {
       updatedAt: it.updatedAt || it.timestamp || Date.now()
     };
   }
-  function plLoad() {
-    try {
-      var raw = null;
-      if (window._idbCache && window._idbCache[PL_KEY] !== undefined) raw = window._idbCache[PL_KEY];
-      if (!raw) raw = JSON.parse(localStorage.getItem(PL_KEY) || '[]');
-      var items = (Array.isArray(raw) ? raw : []).map(plNormalizeItem);
-      return plApplyLinkedSavedSync(items, { persist: false });
-    } catch(e) { return []; }
-  }
+  function plLoad() { try { return JSON.parse(localStorage.getItem(PL_KEY) || '[]').map(plNormalizeItem); } catch(e) { return []; } }
   function plSave(arr) {
     var full = (arr || []).map(plNormalizeItem);
     localStorage.setItem(PL_KEY, JSON.stringify(full));
@@ -39755,72 +40033,6 @@ window.addEventListener('DOMContentLoaded', () => {
     return fallback || '';
   }
 
-  function plDisplayMoneyWithUnit(v, unit) {
-    var shown = plDisplayMoney(v);
-    if (!shown) return '<span style="color:#444;">—</span>';
-    return '<span style="font-family:monospace;font-size:12px;">' + shown + (unit || '만원') + '</span>';
-  }
-  function plInlineText(id, key, value, placeholder, width, title) {
-    return '<input type="text" value="' + esc(value || '') + '" placeholder="' + (placeholder || '') + '" '
-      + 'onclick="event.stopPropagation()" onkeydown="if(event.key===\'Enter\'){this.blur();}" '
-      + 'onchange="plInlineSet(\'' + id + '\',\'' + key + '\',this.value,\'text\')" '
-      + 'style="width:' + (width || '100%') + ';max-width:100%;padding:5px 8px;border-radius:7px;border:1px solid var(--b1);background:rgba(255,255,255,.03);color:var(--fg);font-size:12px;" title="' + (title || '') + '">';
-  }
-  function plInlineMoney(id, key, value, color) {
-    var display = plDisplayMoney(value || '');
-    return '<div style="display:flex;align-items:center;justify-content:flex-end;gap:4px;">'
-      + '<input type="text" value="' + esc(display) + '" inputmode="numeric" '
-      + 'onclick="event.stopPropagation()" oninput="this.value=plDisplayMoney(this.value)" onkeydown="if(event.key===\'Enter\'){this.blur();}" '
-      + 'onchange="plInlineSet(\'' + id + '\',\'' + key + '\',this.value,\'money\')" '
-      + 'style="width:92px;padding:5px 8px;border-radius:7px;border:1px solid var(--b1);background:rgba(255,255,255,.03);color:' + (color || 'var(--fg)') + ';font-size:12px;text-align:right;">'
-      + '<span style="font-size:11px;color:var(--fg3);white-space:nowrap;">만원</span>'
-      + '</div>';
-  }
-  function plInlineDate(id, key, value) {
-    return '<input type="text" value="' + esc(value ? plDisplayDate(value) : '') + '" placeholder="YYYY.MM.DD" '
-      + 'onclick="event.stopPropagation()" onkeydown="if(event.key===\'Enter\'){this.blur();}" '
-      + 'onchange="plInlineSet(\'' + id + '\',\'' + key + '\',this.value,\'date\')" '
-      + 'style="width:104px;padding:5px 8px;border-radius:7px;border:1px solid var(--b1);background:rgba(255,255,255,.03);color:var(--fg);font-size:12px;">';
-  }
-  window.plInlineSet = function(id, key, value, kind) {
-    var items = plLoad();
-    var idx = items.findIndex(function(it){ return String(it.id) === String(id); });
-    if (idx < 0) return;
-    var nextVal = value;
-    if (kind === 'money') nextVal = plParseAmountText(value);
-    else if (kind === 'date') nextVal = plNormalizeDateInput(value);
-    else nextVal = String(value || '').trim();
-    items[idx][key] = nextVal;
-    items[idx].updatedAt = Date.now();
-    plSave(items);
-    syncToWorkroom(items[idx]);
-    if (typeof renderPropertyList === 'function') renderPropertyList();
-  };
-  function plApplyLinkedSavedSync(items, opts) {
-    var options = opts || {};
-    var saved = null;
-    try { saved = (typeof getSv === 'function') ? getSv() : []; } catch(e) { saved = []; }
-    var byId = {};
-    (saved || []).forEach(function(src){ if (src && src.id) byId[String(src.id)] = src; });
-    var changed = false;
-    var next = (items || []).map(function(it){
-      if (!it || !it.linkedSavedId) return plNormalizeItem(it);
-      var src = byId[String(it.linkedSavedId)];
-      if (!src) return plNormalizeItem(it);
-      var mapped = plMapSavedToItem(src);
-      var merged = Object.assign({}, it);
-      ['addr','casenum','region','feature','appraisal','minprice','round','biddate','deposit','monthly','type'].forEach(function(k){
-        if (mapped[k] !== undefined && mapped[k] !== null && mapped[k] !== '' && merged[k] !== mapped[k]) {
-          merged[k] = mapped[k];
-          changed = true;
-        }
-      });
-      return plNormalizeItem(merged);
-    });
-    if (changed && options.persist !== false) plSave(next);
-    return next;
-  }
-
   // ── 날짜 유틸 ──────────────────────────
   function daysDiff(dateStr) {
     if (!dateStr) return null;
@@ -39862,10 +40074,9 @@ window.addEventListener('DOMContentLoaded', () => {
       return '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:2px;background:'+(i<=n?'#1D9E75':'#333')+';" title="'+(i<=n?'임장 완료':'미완료')+'"></span>';
     }).join('');
   }
-  function numCell(v, color, unit) {
-    var shown = plDisplayMoney(v);
-    if (!shown) return '<span style="color:#444;">—</span>';
-    return '<span style="font-family:monospace;font-size:12px;'+(color?'color:'+color+';':'')+'">' + shown + (unit || '만원') + '</span>';
+  function numCell(v, color) {
+    if (!v) return '<span style="color:#444;">—</span>';
+    return '<span style="font-family:monospace;font-size:12px;'+(color?'color:'+color+';':'')+'">' + plDisplayMoney(v) + '</span>';
   }
 
   // ── 작업룸 연동 ─────────────────────────
@@ -40090,7 +40301,7 @@ window.addEventListener('DOMContentLoaded', () => {
   // ── 메인 렌더 ──────────────────────────
   window.renderPropertyList = function() {
     _plWrapWorkroomSync();
-    var items = plApplyLinkedSavedSync(plLoad(), { persist: true });
+    var items = plLoad();
     renderAlerts(items.filter(function(it){ return !it.archived; }));
     var filtered = plVisibleItems(items);
     var tbody = document.getElementById('pl-tbody');
@@ -40112,27 +40323,27 @@ window.addEventListener('DOMContentLoaded', () => {
           if (room) wrLink = '<button onclick="plGoToWorkroom(\''+it.roomId+'\')" style="font-size:11px;padding:2px 8px;border:1px solid var(--b1);border-radius:5px;background:transparent;color:var(--fg2);cursor:pointer;white-space:nowrap;" title="작업룸으로 이동">🗂 '+((room.title||'').substring(0,8)||'작업룸')+'</button>';
         }
         var resultTag = '';
-        if ((it.status === 'closed' || it.status==='archived') && it.result && it.result.won) resultTag = '<div style="font-size:10px;color:#4caf87;margin-top:2px;">낙 '+it.result.won+'만원</div>';
+        if ((it.status === 'closed' || it.status==='archived') && it.result && it.result.won) resultTag = '<div style="font-size:10px;color:#4caf87;margin-top:2px;">낙 '+it.result.won+'</div>';
         return '<tr style="'+rowHl+'border-bottom:1px solid var(--b1);">'
           + '<td style="padding:8px 8px;text-align:center;"><input type="checkbox" '+(plSelectedMap[it.id]?'checked':'')+' onclick="event.stopPropagation();plToggleOne(\''+it.id+'\',this.checked)"></td>'
           + '<td style="padding:8px 10px;">'+statusBadge(it.status, it.id)+'</td>'
           + '<td style="padding:8px 10px;font-size:12px;color:var(--fg2);white-space:nowrap;">'+(it.type||'경매')+'</td>'
           + '<td style="padding:8px 10px;text-align:center;">'+intentBadge(it.intent)+'</td>'
-          + '<td style="padding:8px 10px;max-width:200px;">'+plInlineText(it.id,'addr',it.addr||'', '물건명/주소', '100%','저장목록과 연결된 물건은 이름이 자동 동기화됩니다')+resultTag+'</td>'
-          + '<td style="padding:8px 10px;font-size:12px;color:var(--fg2);white-space:nowrap;">'+plInlineText(it.id,'casenum',it.casenum||'', '', '110px')+'</td>'
-          + '<td style="padding:8px 10px;font-size:12px;color:var(--fg2);white-space:nowrap;">'+plInlineText(it.id,'region',it.region||'', '', '130px')+'</td>'
-          + '<td style="padding:8px 10px;font-size:12px;color:var(--fg2);max-width:170px;">'+plInlineText(it.id,'feature',it.feature||'', '', '100%')+'</td>'
-          + '<td style="padding:8px 10px;text-align:right;">'+plInlineMoney(it.id,'appraisal',it.appraisal,'var(--fg)')+'</td>'
-          + '<td style="padding:8px 10px;text-align:right;">'+plInlineMoney(it.id,'minprice',it.minprice,'var(--fg)')+'</td>'
-          + '<td style="padding:8px 10px;text-align:center;font-size:12px;">'+plInlineText(it.id,'round',it.round||'', '', '76px')+'</td>'
-          + '<td style="padding:8px 10px;white-space:nowrap;">'+plInlineDate(it.id,'biddate',it.biddate)+dTag+'</td>'
-          + '<td style="padding:8px 10px;text-align:right;">'+plInlineMoney(it.id,'estimate',it.estimate,'#4f8eff')+'</td>'
-          + '<td style="padding:8px 10px;text-align:right;">'+numCell(it.result&&it.result.won?it.result.won:'','#4caf87','만원')+'</td>'
+          + '<td style="padding:8px 10px;max-width:160px;"><div style="font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+(it.addr||'')+'">'+(it.addr||'—')+'</div>'+resultTag+'</td>'
+          + '<td style="padding:8px 10px;font-size:12px;color:var(--fg2);white-space:nowrap;">'+(it.casenum||'—')+'</td>'
+          + '<td style="padding:8px 10px;font-size:12px;color:var(--fg2);white-space:nowrap;">'+(it.region||'—')+'</td>'
+          + '<td style="padding:8px 10px;font-size:12px;color:var(--fg2);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+(it.feature||'')+'">'+(it.feature||'—')+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;">'+numCell(it.appraisal)+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;">'+numCell(it.minprice)+'</td>'
+          + '<td style="padding:8px 10px;text-align:center;font-size:12px;">'+(it.round||'—')+'</td>'
+          + '<td style="padding:8px 10px;white-space:nowrap;"><div style="font-size:13px;">'+fmtDate(it.biddate)+'</div>'+dTag+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;">'+numCell(it.estimate,'#4f8eff')+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;">'+numCell(it.result&&it.result.won?it.result.won:'','#4caf87')+'</td>'
           + '<td style="padding:8px 10px;">'+siteDots(it.site)+'</td>'
-          + '<td style="padding:8px 10px;text-align:right;">'+plInlineMoney(it.id,'deposit',it.deposit,'var(--fg)')+'</td>'
-          + '<td style="padding:8px 10px;text-align:right;">'+plInlineMoney(it.id,'monthly',it.monthly,'var(--fg)')+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;">'+numCell(it.deposit)+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;">'+numCell(it.monthly)+'</td>'
           + '<td style="padding:8px 10px;">'+wrLink+'</td>'
-          + '<td style="padding:8px 10px;font-size:12px;color:var(--fg2);max-width:180px;">'+plInlineText(it.id,'memo',it.memo||'', '메모', '100%')+'</td>'
+          + '<td style="padding:8px 10px;font-size:12px;color:var(--fg2);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+(it.memo||'')+'">'+(it.memo||'')+'</td>'
           + '<td style="padding:8px 6px;text-align:center;"><button onclick="plOpenEdit(\''+it.id+'\')" style="background:none;border:none;color:var(--fg3);cursor:pointer;font-size:15px;padding:2px 4px;">···</button></td>'
           + '</tr>';
       }).join('');
@@ -40542,4 +40753,270 @@ window.addEventListener('DOMContentLoaded', () => {
     if (document.getElementById('pl-alerts')) renderAlerts(plLoad());
   }, 60000);
 
+})();
+
+
+/* === integrated cleanup patch === */
+(function(){
+  function _escHtml(v){ return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function _plScope(status, archived){
+    var s = String(status||'').toLowerCase();
+    if (archived || s === 'archived' || s === 'closed' || s === '종료') return 'closed';
+    if (s === 'changed' || s === '변경') return 'changed';
+    return 'active';
+  }
+  function _plStatusLabel(s){
+    var map={review:'관심·검토',field:'현장',bid:'입찰',won:'낙찰',closed:'종료',archived:'종료',active:'활성',changed:'변경'};
+    return map[s] || map.review;
+  }
+  window._plEditingCell = window._plEditingCell || null;
+  window.plBeginCellEdit = function(id, field){ window._plEditingCell = { id:id, field:field }; if (typeof renderPropertyList === 'function') renderPropertyList(); };
+  window.plCancelCellEdit = function(){ window._plEditingCell = null; if (typeof renderPropertyList === 'function') renderPropertyList(); };
+  window.plCommitCellEdit = function(id, field, el){
+    if (!el) return;
+    var val = el.value;
+    if (typeof window.plInlineSet === 'function') window.plInlineSet(id, field, val);
+    window._plEditingCell = null;
+    if (typeof renderPropertyList === 'function') renderPropertyList();
+  };
+  window.plCommitCellSelect = function(id, field, el){
+    if (!el) return;
+    if (typeof window.plInlineSetSelect === 'function') window.plInlineSetSelect(id, field, el.value);
+    window._plEditingCell = null;
+    if (typeof renderPropertyList === 'function') renderPropertyList();
+  };
+  window.plCellKey = function(ev, id, field, el){
+    if (!ev) return;
+    if (ev.key === 'Enter' && !(el && el.tagName === 'TEXTAREA' && !ev.metaKey && !ev.ctrlKey)) { ev.preventDefault(); window.plCommitCellEdit(id, field, el); }
+    if (ev.key === 'Escape') { ev.preventDefault(); window.plCancelCellEdit(); }
+  };
+  function _plIsEditing(id, field){
+    return !!(window._plEditingCell && window._plEditingCell.id === id && window._plEditingCell.field === field);
+  }
+  function _plMoney(v){
+    if (!v) return '—';
+    try { return (typeof plDisplayMoney === 'function' ? plDisplayMoney(v) : v) + '만원'; } catch(e){ return String(v) + '만원'; }
+  }
+  function _plValueView(id, field, value, opts){
+    opts = opts || {};
+    if (_plIsEditing(id, field)) {
+      if (opts.select) {
+        return '<select class="pl-inline-select" autofocus onclick="event.stopPropagation()" onchange="plCommitCellSelect(\''+id+'\',\''+field+'\',this)" onblur="plCommitCellSelect(\''+id+'\',\''+field+'\',this)">' + opts.select.map(function(row){ var v=row[0], lb=row[1]; return '<option value="'+v+'"'+(String(v)===String(value)?' selected':'')+'>'+lb+'</option>'; }).join('') + '</select>';
+      }
+      if (opts.textarea) {
+        return '<textarea class="pl-inline-textarea" autofocus onclick="event.stopPropagation()" onkeydown="plCellKey(event,\''+id+'\',\''+field+'\',this)" onblur="plCommitCellEdit(\''+id+'\',\''+field+'\',this)">'+_escHtml(value||'')+'</textarea>';
+      }
+      return '<input class="pl-inline-input" autofocus value="'+_escHtml(opts.editValue != null ? opts.editValue : (value||''))+'" onclick="event.stopPropagation()" onkeydown="plCellKey(event,\''+id+'\',\''+field+'\',this)" onblur="plCommitCellEdit(\''+id+'\',\''+field+'\',this)">';
+    }
+    var display = opts.display != null ? opts.display : (value || '');
+    var cls = 'pl-cell-view' + (!display || display === '—' ? ' is-empty' : '') + (opts.memo ? ' pl-memo-view' : '');
+    return '<span class="'+cls+'" title="'+_escHtml(String(display||''))+'" onclick="plBeginCellEdit(\''+id+'\',\''+field+'\')">'+_escHtml(display || '—')+'</span>';
+  }
+  function _getRooms(){
+    try {
+      if (window.wr2State && Array.isArray(window.wr2State.rooms)) return window.wr2State.rooms.filter(function(r){ return r && !r.deletedAt; });
+      return JSON.parse(localStorage.getItem('wr2_rooms') || '[]').filter(function(r){ return r && !r.deletedAt; });
+    } catch(e){ return []; }
+  }
+  function _getPlItems(){ try { return (typeof plLoad === 'function') ? plLoad() : []; } catch(e){ return []; } }
+  function _savePlItems(arr){ if (typeof plSave === 'function') plSave(arr); }
+  function _findRoomByItem(it){
+    var rooms = _getRooms();
+    var byId = rooms.find(function(r){ return String(r.id||'') === String(it.roomId||''); });
+    if (byId) return byId;
+    return rooms.find(function(r){
+      if (!r) return false;
+      if (String(r.linkedSavedId||'') === String(it.linkedSavedId||it.id||'')) return true;
+      if (Array.isArray(r.linkedItems) && r.linkedItems.map(String).indexOf(String(it.id||'')) >= 0) return true;
+      return false;
+    }) || null;
+  }
+  window.plLinkRoom = function(itemId){
+    var items = _getPlItems();
+    var it = items.find(function(x){ return x.id === itemId; });
+    if (!it) return;
+    var rooms = _getRooms();
+    if (!rooms.length) { if (typeof showToast === 'function') showToast('먼저 작업룸을 하나 만드세요', 'warn'); return; }
+    var names = rooms.map(function(r, i){ return (i+1)+'. '+(r.title||r.name||('작업룸 '+(i+1))); }).join('\n');
+    var ans = prompt('연결할 작업룸 번호를 입력하세요\n\n' + names, '1');
+    if (ans == null) return;
+    var idx = Math.max(0, parseInt(ans, 10) - 1);
+    var room = rooms[idx];
+    if (!room) return;
+    it.roomId = room.id;
+    it.updatedAt = Date.now();
+    _savePlItems(items);
+    if (typeof window.wrDbLinkItem === 'function') window.wrDbLinkItem(room.id, it.linkedSavedId || it.id);
+    if (typeof renderPropertyList === 'function') renderPropertyList();
+    if (typeof showToast === 'function') showToast('작업룸에 연결했어요', 'ok');
+  };
+  window.plCreateRoomFromItem = function(itemId){
+    var items = _getPlItems();
+    var it = items.find(function(x){ return x.id === itemId; });
+    if (!it) return;
+    var rooms = _getRooms();
+    var room = {
+      id: 'room_' + Date.now().toString(36) + Math.random().toString(36).slice(2,7),
+      title: (it.addr || it.casenum || '새 작업룸').slice(0,80),
+      address: it.addr || '',
+      status: 'review',
+      phase: 'review',
+      activePhase: 'review',
+      linkedSavedId: it.linkedSavedId || it.id,
+      linkedItems: [it.id],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      notes: [],
+      captureImages: []
+    };
+    rooms.unshift(room);
+    localStorage.setItem('wr2_rooms', JSON.stringify(rooms));
+    it.roomId = room.id;
+    it.updatedAt = Date.now();
+    _savePlItems(items);
+    if (typeof renderPropertyList === 'function') renderPropertyList();
+    if (typeof showToast === 'function') showToast('새 작업룸을 만들고 연결했어요', 'ok');
+  };
+  var _origRenderPropertyList = window.renderPropertyList;
+  window.renderPropertyList = function(){
+    if (typeof _plWrapWorkroomSync === 'function') _plWrapWorkroomSync();
+    var items = _getPlItems();
+    if (typeof renderAlerts === 'function') try { renderAlerts(items.filter(function(it){ return !it.archived; })); } catch(e) {}
+    var filtered = (typeof plVisibleItems === 'function') ? plVisibleItems(items) : items;
+    var tbody = document.getElementById('pl-tbody');
+    if (!tbody) { if (_origRenderPropertyList) return _origRenderPropertyList(); return; }
+    if (!filtered.length) {
+      tbody.innerHTML = '<tr><td colspan="20" style="padding:40px;text-align:center;color:var(--fg3);">물건이 없어요. + 물건 추가 또는 저장목록 경매 가져오기로 시작하세요.</td></tr>';
+    } else {
+      tbody.innerHTML = filtered.map(function(it){
+        var d = (typeof daysDiff === 'function') ? daysDiff(it.biddate) : null;
+        var dTag = d===null ? '' : d<0 ? '<div style="font-size:10px;color:#888;">기일지남</div>' : d<=3 ? '<div style="font-size:10px;color:#ff6b6b;font-weight:700;">D-'+d+'</div>' : d<=7 ? '<div style="font-size:10px;color:#f5a623;font-weight:700;">D-'+d+'</div>' : '<div style="font-size:10px;color:var(--fg3);">D-'+d+'</div>';
+        var rowHl = it.archived ? 'background:rgba(120,120,120,.05);opacity:.72;' : ((d!==null && d<0 && it.status!=='closed' && it.status!=='won') ? 'background:rgba(255,80,80,.04);' : '');
+        var room = _findRoomByItem(it);
+        var roomHtml = room
+          ? '<div class="pl-room-actions"><button class="pl-room-btn primary" onclick="plGoToWorkroom(\''+room.id+'\')">작업룸</button><button class="pl-room-btn" onclick="plLinkRoom(\''+it.id+'\')">변경</button></div>'
+          : '<div class="pl-room-actions"><button class="pl-room-btn primary" onclick="plCreateRoomFromItem(\''+it.id+'\')">새 작업룸</button><button class="pl-room-btn" onclick="plLinkRoom(\''+it.id+'\')">연결</button></div>';
+        return '<tr style="'+rowHl+'border-bottom:1px solid var(--b1);">'
+          + '<td style="padding:8px 8px;text-align:center;"><input type="checkbox" '+(window.plSelectedMap && plSelectedMap[it.id]?'checked':'')+' onclick="event.stopPropagation();plToggleOne(\''+it.id+'\',this.checked)"></td>'
+          + '<td style="padding:8px 10px;">'+(typeof statusBadge === 'function' ? statusBadge(it.status, it.id) : _plStatusLabel(it.status))+'</td>'
+          + '<td style="padding:8px 10px;font-size:12px;color:var(--fg2);white-space:nowrap;">'+(it.type||'경매')+'</td>'
+          + '<td style="padding:8px 10px;text-align:center;">'+(typeof intentBadge === 'function' ? intentBadge(it.intent) : (it.intent||'—'))+'</td>'
+          + '<td style="padding:8px 10px;max-width:180px;">'+_plValueView(it.id,'addr',it.addr,{display:it.addr||'—'})+'</td>'
+          + '<td style="padding:8px 10px;max-width:130px;">'+_plValueView(it.id,'casenum',it.casenum,{display:it.casenum||'—'})+'</td>'
+          + '<td style="padding:8px 10px;max-width:150px;">'+_plValueView(it.id,'region',it.region,{display:it.region||'—'})+'</td>'
+          + '<td style="padding:8px 10px;max-width:120px;">'+_plValueView(it.id,'feature',it.feature,{display:it.feature||'—'})+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;min-width:98px;">'+_plValueView(it.id,'appraisal',it.appraisal,{display:_plMoney(it.appraisal), editValue:(typeof plDisplayMoney==='function'?plDisplayMoney(it.appraisal):it.appraisal)})+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;min-width:98px;">'+_plValueView(it.id,'minprice',it.minprice,{display:_plMoney(it.minprice), editValue:(typeof plDisplayMoney==='function'?plDisplayMoney(it.minprice):it.minprice)})+'</td>'
+          + '<td style="padding:8px 10px;text-align:center;min-width:88px;">'+_plValueView(it.id,'round',it.round,{display:it.round||'—'})+'</td>'
+          + '<td style="padding:8px 10px;min-width:108px;">'+_plValueView(it.id,'biddate',it.biddate,{display:(typeof fmtDate==='function'?fmtDate(it.biddate):it.biddate)||'—', editValue:(typeof plDisplayDate==='function'?plDisplayDate(it.biddate):it.biddate)})+dTag+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;min-width:98px;">'+_plValueView(it.id,'estimate',it.estimate,{display:_plMoney(it.estimate), editValue:(typeof plDisplayMoney==='function'?plDisplayMoney(it.estimate):it.estimate)})+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;min-width:98px;">'+((it.result && it.result.won) ? _plMoney(it.result.won) : '<span style="color:#444;">—</span>')+'</td>'
+          + '<td style="padding:8px 10px;">'+(typeof siteDots==='function'?siteDots(it.site):String(it.site||'—'))+'</td>'
+          + '<td style="padding:8px 10px;">'+roomHtml+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;min-width:90px;">'+_plValueView(it.id,'deposit',it.deposit,{display:_plMoney(it.deposit), editValue:(typeof plDisplayMoney==='function'?plDisplayMoney(it.deposit):it.deposit)})+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;min-width:90px;">'+_plValueView(it.id,'monthly',it.monthly,{display:_plMoney(it.monthly), editValue:(typeof plDisplayMoney==='function'?plDisplayMoney(it.monthly):it.monthly)})+'</td>'
+          + '<td style="padding:8px 10px;min-width:160px;">'+_plValueView(it.id,'memo',it.memo,{display:it.memo||'—', textarea:true, memo:true})+'</td>'
+          + '<td style="padding:8px 6px;text-align:center;"><button onclick="plOpenEdit(\''+it.id+'\')" style="background:none;border:none;color:var(--fg3);cursor:pointer;font-size:15px;padding:2px 4px;">···</button></td>'
+          + '</tr>';
+      }).join('');
+    }
+    if (typeof plRenderBulkBar === 'function') plRenderBulkBar(filtered);
+    var cnt = document.getElementById('pl-count');
+    if (cnt) {
+      var activeItems = items.filter(function(i){return !i.archived;});
+      cnt.textContent = '총 '+activeItems.length+'건 · 진행중 '+activeItems.filter(function(i){return _plScope(i.status, i.archived) !== 'closed';}).length+'건';
+    }
+  };
+
+  function _wrRoomsArray(){
+    try { return _getRooms(); } catch(e){ return []; }
+  }
+  window._wrUiLifecycle = function(room){ return _plScope(room && (room.lifecycleStatus || room.status), room && room.archived); };
+  function _cleanupWorkroomDom(){
+    ['wr2FolderFilterBar','wr2GroupFilter','wr2RoomFolderInline','mb-room-folder-bar','mb-room-folder-inline','wr2WidgetGallery'].forEach(function(id){ var el=document.getElementById(id); if(el){ var box=el.closest('div'); if(id==='wr2WidgetGallery') (el).style.display='none'; else el.style.display='none'; } });
+    var snap = document.querySelector('.wr2-summary-snap'); if (snap) snap.style.display='none';
+    document.querySelectorAll('button,span,div').forEach(function(el){
+      var txt=(el.textContent||'').trim();
+      if (!txt) return;
+      if (txt === '폴더 관리' || txt.indexOf('파이프라인·플래너')>=0 || txt.indexOf('작업룸은 물건 1개를 깊게 분석')>=0) {
+        el.style.display='none';
+      }
+      if (txt.indexOf('연결된 스냅샷')>=0) {
+        var sec = el.closest('.wr2-summary-snap'); if (sec) sec.style.display='none';
+      }
+      if (txt === '열기' && el.hasAttribute('data-room-open')) el.remove();
+    });
+    var noteEmpty=document.getElementById('ntEmpty');
+    if (noteEmpty) {
+      var lines=noteEmpty.querySelectorAll('div');
+      if (lines[1]) lines[1].textContent='노트를 선택하거나 새로 만드세요';
+      if (lines[2]) lines[2].textContent='기록과 이미지, 링크 중심으로 간단하게 관리합니다.';
+    }
+  }
+  function _patchWorkroomRender(){
+    if (!window.wr2Render || window.__wr2Patched) return;
+    window.__wr2Patched = true;
+    if (window.wr2RenderFolderFilterBars) window.wr2RenderFolderFilterBars = function(){};
+    if (window.wr2RenderGroupSelect) window.wr2RenderGroupSelect = function(){ var sel=document.getElementById('wr2GroupFilter'); if(sel){ sel.innerHTML='<option value="all">전체</option>'; sel.value='all'; } };
+    var orig = window.wr2Render;
+    window.wr2Render = function(){
+      try {
+        if (window.wr2State) {
+          window.wr2State.folders = [];
+          window.wr2State.groupFilter = 'all';
+          (window.wr2State.rooms||[]).forEach(function(r){ if (r && r.group) delete r.group; });
+        }
+      } catch(e){}
+      var out = orig.apply(this, arguments);
+      _cleanupWorkroomDom();
+      return out;
+    };
+  }
+  function _patchMobileRoomHome(){
+    if (!window._mbGetRoomsArray || window.__mbRoomHomePatched) return;
+    window.__mbRoomHomePatched = true;
+    window._mbRenderRoomHome = function(){
+      var listEl = document.getElementById('mb-room-list');
+      if (!listEl) return;
+      var rooms = (window._mbGetRoomsArray ? window._mbGetRoomsArray() : []).filter(Boolean).filter(function(r){ return !r.deletedAt; });
+      if (!rooms.length) {
+        listEl.innerHTML = '<div style="padding:20px;color:var(--mu);font-size:13px;text-align:center;">작업룸이 없습니다.</div>';
+        return;
+      }
+      function sec(label,key){
+        var arr = rooms.filter(function(r){ return _plScope(r.lifecycleStatus||r.status, r.archived) === key; });
+        if (!arr.length) return '';
+        return '<div style="margin-bottom:14px;"><div style="padding:0 2px 8px;font-size:12px;color:var(--mu);font-weight:700;">'+label+' '+arr.length+'</div>' + arr.map(function(room){
+          var title = _escHtml(room.title || room.address || '작업룸');
+          var sub = _escHtml(room.address || '');
+          return '<div onclick="mbRoomLoad(\''+room.id+'\')" style="padding:12px;border:1px solid var(--b1);border-radius:12px;background:var(--s2);margin-bottom:8px;cursor:pointer;">'
+            + '<div style="font-size:14px;font-weight:700;color:var(--tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+title+'</div>'
+            + '<div style="margin-top:4px;font-size:12px;color:var(--mu);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+sub+'</div>'
+            + '</div>';
+        }).join('') + '</div>';
+      }
+      listEl.innerHTML = sec('활성','active') + sec('변경','changed') + sec('종료','closed');
+    };
+  }
+  function _patchFileViewer(){
+    var orig = window._skOpenFileViewer;
+    if (!orig || window.__fileViewerPatched) return;
+    window.__fileViewerPatched = true;
+    window._skOpenFileViewer = function(entry){
+      orig(entry);
+      var ov = document.getElementById('skFileViewerOverlay');
+      if (!ov) return;
+      function keyHandler(e){ if (e.key === 'Escape') { if (ov && ov.parentNode) ov.parentNode.removeChild(ov); document.removeEventListener('keydown', keyHandler); document.body.style.overflow=''; } }
+      document.addEventListener('keydown', keyHandler);
+      ov.addEventListener('click', function(e){ if (e.target === ov) { document.removeEventListener('keydown', keyHandler); document.body.style.overflow=''; } });
+    };
+  }
+  function _simpleNotes(){
+    var gf=document.getElementById('ntGroupFilterWrap'); if(gf) gf.style.display='none';
+    var tf=document.getElementById('ntTagFilterWrap'); if(tf) tf.style.display='none';
+    document.querySelectorAll('.nt-toolbar-btn').forEach(function(el){ el.style.display='none'; });
+  }
+  function _hook(){ _patchWorkroomRender(); _patchMobileRoomHome(); _patchFileViewer(); _cleanupWorkroomDom(); _simpleNotes(); }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _hook); else _hook();
+  setTimeout(_hook, 600);
 })();
