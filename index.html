@@ -2510,7 +2510,10 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
       <!-- 인사이트 새 뼈대 (v68 스타일) -->
       <div class="insw" id="insw">
         <div class="insw-seg" role="tablist" aria-label="인사이트탭 섹션">
-          <button class="ins-stab on" id="itab0" onclick="showInsTab(0)">📓 노트</button>
+          <button class="ins-stab" id="itab5" onclick="showInsTab(5)">🎯 파이프라인 · 플래너<span id="watchCnt"
+              style="display:none;background:var(--or);color:#111;font-size:9px;padding:1px 5px;border-radius:8px;margin-left:4px;font-family:'JetBrains Mono',monospace;">0</span></button>
+          <button class="ins-stab on" id="itab8" onclick="showInsTab(8)">🗂 작업룸</button>
+          <button class="ins-stab" id="itab0" onclick="showInsTab(0)">📓 노트</button>
           <button class="ins-stab" id="itab4" onclick="showInsTab(4)">⭐ 알짜</button>
           <button class="ins-stab" id="itab1" onclick="showInsTab(1)">🧮 계산기</button>
           
@@ -4183,7 +4186,6 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
                             <option value="active">진행중</option>
                             <option value="won">낙찰</option>
                             <option value="closed">종료</option>
-                  <option value="archived">숨김</option>
                           </select>
                           <button id="wr2LinkSavedBtn" class="wr2-hd-btn" title="저장목록 물건 연결">🔗 물건연결</button>
                           <button id="wr2DeleteRoomBtn" class="wr2-del-btn" title="작업룸 삭제">🗑</button>
@@ -4670,7 +4672,6 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
       <div style="display:flex;gap:0;border-bottom:1px solid var(--b1);padding:0 16px;background:var(--bg2);flex-shrink:0;">
         <button id="pm-tab-list" onclick="pmShowTab('list')" style="padding:10px 18px;font-size:13px;font-weight:500;border:none;border-bottom:2px solid var(--accent,#4f8eff);background:transparent;color:var(--fg);cursor:pointer;">📋 물건리스트</button>
         <button id="pm-tab-work" onclick="pmShowTab('work')" style="padding:10px 18px;font-size:13px;font-weight:500;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--fg2);cursor:pointer;">🗂 작업룸</button>
-        <button id="pm-tab-pipeline" onclick="pmShowTab('pipeline')" style="padding:10px 18px;font-size:13px;font-weight:500;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--fg2);cursor:pointer;">🎯 파이프라인</button>
       </div>
 
       <!-- 물건리스트 패널 -->
@@ -4691,45 +4692,23 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
             <option value="bid">입찰</option>
             <option value="won">낙찰</option>
             <option value="closed">종료</option>
-                  <option value="archived">숨김</option>
           </select>
-          <label style="display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 10px;border:1px solid var(--b1);border-radius:6px;background:var(--bg2);color:var(--fg2);font-size:12px;cursor:pointer;">
-            <input id="pl-show-archived" type="checkbox" onchange="renderPropertyList()"> 종료/숨김 포함
-          </label>
           <button onclick="plOpenAdd()"
             style="height:32px;padding:0 14px;border:1px solid var(--b1);border-radius:6px;background:var(--bg2);color:var(--fg);font-size:13px;cursor:pointer;white-space:nowrap;">+ 물건 추가</button>
-          <button onclick="plOpenImportModal()"
-            style="height:32px;padding:0 14px;border:1px solid rgba(79,142,255,.35);border-radius:6px;background:rgba(79,142,255,.1);color:#8ab8ff;font-size:13px;cursor:pointer;white-space:nowrap;">↙ 저장목록 경매 가져오기</button>
           <span id="pl-count" style="margin-left:auto;font-size:12px;color:var(--fg3);"></span>
-        </div>
-        <div id="pl-bulkbar" style="display:none;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;padding:10px 12px;border:1px solid rgba(79,142,255,.18);border-radius:10px;background:rgba(79,142,255,.06);">
-          <span id="pl-bulk-count" style="font-size:12px;color:var(--fg2);font-weight:600;">0건 선택</span>
-          <select id="pl-bulk-status" style="height:32px;padding:0 8px;border:1px solid var(--b1);border-radius:6px;background:var(--bg2);color:var(--fg);font-size:12px;">
-            <option value="">상태 일괄 변경</option>
-            <option value="review">관심·검토</option>
-            <option value="field">현장</option>
-            <option value="bid">입찰</option>
-            <option value="won">낙찰</option>
-            <option value="closed">종료</option>
-                  <option value="archived">숨김</option>
-          </select>
-          <button onclick="plBulkChangeStatus()" style="height:32px;padding:0 12px;border:1px solid var(--b1);border-radius:6px;background:var(--bg2);color:var(--fg);font-size:12px;cursor:pointer;">적용</button>
-          <button onclick="plBulkArchive()" style="height:32px;padding:0 12px;border:1px solid rgba(239,99,99,.35);border-radius:6px;background:rgba(239,99,99,.1);color:#ff8a8a;font-size:12px;cursor:pointer;">선택 종료/숨김</button>
-          <button onclick="plClearSelection()" style="height:32px;padding:0 12px;border:1px solid var(--b1);border-radius:6px;background:transparent;color:var(--fg2);font-size:12px;cursor:pointer;">선택 해제</button>
         </div>
 
         <!-- 테이블 -->
         <div style="border:1px solid var(--b1);border-radius:10px;overflow-x:auto;">
-          <table style="width:100%;min-width:1320px;border-collapse:collapse;font-size:13px;">
+          <table style="width:100%;min-width:1100px;border-collapse:collapse;font-size:13px;">
             <thead>
               <tr style="background:var(--bg3);">
-                <th style="padding:9px 10px;text-align:center;border-bottom:1px solid var(--b1);width:34px;white-space:nowrap;"><input id="pl-check-all" type="checkbox" onclick="plToggleAllVisible(this.checked)"></th>
                 <th style="padding:9px 12px;text-align:left;font-size:12px;color:var(--fg2);font-weight:500;border-bottom:1px solid var(--b1);white-space:nowrap;">상태</th>
                 <th style="padding:9px 12px;text-align:left;font-size:12px;color:var(--fg2);font-weight:500;border-bottom:1px solid var(--b1);white-space:nowrap;">유형</th>
-                <th style="padding:9px 12px;text-align:left;font-size:12px;color:var(--fg2);font-weight:500;border-bottom:1px solid var(--b1);white-space:nowrap;">의향</th>
                 <th style="padding:9px 12px;text-align:left;font-size:12px;color:var(--fg2);font-weight:500;border-bottom:1px solid var(--b1);white-space:nowrap;">물건명</th>
                 <th style="padding:9px 12px;text-align:left;font-size:12px;color:var(--fg2);font-weight:500;border-bottom:1px solid var(--b1);white-space:nowrap;">사건번호</th>
                 <th style="padding:9px 12px;text-align:left;font-size:12px;color:var(--fg2);font-weight:500;border-bottom:1px solid var(--b1);white-space:nowrap;">지역</th>
+                <th style="padding:9px 12px;text-align:left;font-size:12px;color:var(--fg2);font-weight:500;border-bottom:1px solid var(--b1);white-space:nowrap;">특징</th>
                 <th style="padding:9px 12px;text-align:right;font-size:12px;color:var(--fg2);font-weight:500;border-bottom:1px solid var(--b1);white-space:nowrap;">감정가</th>
                 <th style="padding:9px 12px;text-align:right;font-size:12px;color:var(--fg2);font-weight:500;border-bottom:1px solid var(--b1);white-space:nowrap;">최저가</th>
                 <th style="padding:9px 12px;text-align:center;font-size:12px;color:var(--fg2);font-weight:500;border-bottom:1px solid var(--b1);white-space:nowrap;">회차</th>
@@ -4738,8 +4717,6 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
                 <th style="padding:9px 12px;text-align:right;font-size:12px;color:var(--fg2);font-weight:500;border-bottom:1px solid var(--b1);white-space:nowrap;">낙찰가</th>
                 <th style="padding:9px 12px;text-align:left;font-size:12px;color:var(--fg2);font-weight:500;border-bottom:1px solid var(--b1);white-space:nowrap;">임장</th>
                 <th style="padding:9px 12px;text-align:left;font-size:12px;color:var(--fg2);font-weight:500;border-bottom:1px solid var(--b1);white-space:nowrap;">작업룸</th>
-                <th style="padding:9px 12px;text-align:left;font-size:12px;color:var(--fg2);font-weight:500;border-bottom:1px solid var(--b1);white-space:nowrap;">보증금</th>
-                <th style="padding:9px 12px;text-align:left;font-size:12px;color:var(--fg2);font-weight:500;border-bottom:1px solid var(--b1);white-space:nowrap;">월세</th>
                 <th style="padding:9px 12px;text-align:left;font-size:12px;color:var(--fg2);font-weight:500;border-bottom:1px solid var(--b1);">메모</th>
                 <th style="border-bottom:1px solid var(--b1);width:32px;"></th>
               </tr>
@@ -4749,25 +4726,14 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
         </div>
       </div>
 
-      <!-- 작업룸 패널 -->
+      <!-- 작업룸 패널 (기존 작업룸 내용을 iframe처럼 show/hide) -->
       <div id="pm-panel-work" style="display:none;flex:1;overflow:hidden;">
-        <div style="padding:16px 20px;border-bottom:1px solid var(--b1);display:flex;align-items:center;justify-content:space-between;gap:10px;">
-          <div style="font-size:13px;color:var(--fg2);">작업룸은 물건 1개를 깊게 분석·기록하는 상세 작업 공간입니다.</div>
-          <button onclick="if(window.pmShowTab) pmShowTab('work');" style="height:32px;padding:0 12px;border:1px solid var(--b1);border-radius:6px;background:var(--bg2);color:var(--fg);cursor:pointer;">작업룸 새로고침</button>
-        </div>
-        <div id="pm-work-host" style="height:calc(100% - 65px);overflow:hidden;"></div>
-      </div>
-      <div id="pm-panel-pipeline" style="display:none;flex:1;overflow:hidden;">
-        <div style="padding:16px 20px;border-bottom:1px solid var(--b1);display:flex;align-items:center;justify-content:space-between;gap:10px;">
-          <div style="font-size:13px;color:var(--fg2);">파이프라인은 같은 물건의 진행 단계를 흐름으로 보는 칸반 화면입니다.</div>
-          <button onclick="if(window.pmShowTab) pmShowTab('pipeline');" style="height:32px;padding:0 12px;border:1px solid var(--b1);border-radius:6px;background:var(--bg2);color:var(--fg);cursor:pointer;">파이프라인 새로고침</button>
-        </div>
-        <div id="pm-pipeline-host" style="height:calc(100% - 65px);overflow:hidden;"></div>
+        <div style="padding:20px;color:var(--fg2);font-size:13px;">작업룸 패널 — 기존 탭의 작업룸이 여기에 연동됩니다.</div>
       </div>
 
       <!-- 물건 추가/수정 모달 -->
       <div id="pl-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;align-items:center;justify-content:center;">
-        <div class="pl-modal-card" style="background:var(--bg2);border-radius:14px;padding:28px;width:500px;max-width:96vw;max-height:92vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.4);">
+        <div style="background:var(--bg2);border-radius:14px;padding:28px;width:500px;max-width:96vw;max-height:92vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.4);">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
             <h3 id="pl-modal-title" style="margin:0;font-size:16px;font-weight:600;">물건 추가</h3>
             <button onclick="plCloseModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--fg2);">×</button>
@@ -4789,25 +4755,12 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
                   <option value="bid">입찰</option>
                   <option value="won">낙찰</option>
                   <option value="closed">종료</option>
-                  <option value="archived">숨김</option>
                 </select>
               </div>
             </div>
             <div>
               <div style="font-size:11px;color:var(--fg3);margin-bottom:4px;">물건명 / 주소 *</div>
               <input id="pl-f-addr" placeholder="예: 서울 강동구 천호동 123-4 아파트" style="width:100%;padding:8px 10px;border:1px solid var(--b1);border-radius:6px;background:var(--bg3);color:var(--fg);font-size:13px;box-sizing:border-box;">
-            </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-              <div>
-                <div style="font-size:11px;color:var(--fg3);margin-bottom:4px;">의향</div>
-                <select id="pl-f-intent" style="width:100%;padding:8px 10px;border:1px solid var(--b1);border-radius:6px;background:var(--bg3);color:var(--fg);font-size:13px;">
-                  <option value="">미정</option><option value="상">상</option><option value="중">중</option><option value="하">하</option>
-                </select>
-              </div>
-              <div>
-                <div style="font-size:11px;color:var(--fg3);margin-bottom:4px;">특징</div>
-                <input id="pl-f-feature" placeholder="예: 역세권 / 코너 / 공실" style="width:100%;padding:8px 10px;border:1px solid var(--b1);border-radius:6px;background:var(--bg3);color:var(--fg);font-size:13px;box-sizing:border-box;">
-              </div>
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
               <div>
@@ -4843,16 +4796,6 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
                 <input id="pl-f-estimate" placeholder="예: 6억7천" style="width:100%;padding:8px 10px;border:1px solid var(--b1);border-radius:6px;background:var(--bg3);color:var(--fg);font-size:13px;box-sizing:border-box;">
               </div>
             </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-              <div>
-                <div style="font-size:11px;color:var(--fg3);margin-bottom:4px;">보증금</div>
-                <input id="pl-f-deposit" placeholder="예: 5000만" style="width:100%;padding:8px 10px;border:1px solid var(--b1);border-radius:6px;background:var(--bg3);color:var(--fg);font-size:13px;box-sizing:border-box;">
-              </div>
-              <div>
-                <div style="font-size:11px;color:var(--fg3);margin-bottom:4px;">월세</div>
-                <input id="pl-f-monthly" placeholder="예: 330만" style="width:100%;padding:8px 10px;border:1px solid var(--b1);border-radius:6px;background:var(--bg3);color:var(--fg);font-size:13px;box-sizing:border-box;">
-              </div>
-            </div>
             <div>
               <div style="font-size:11px;color:var(--fg3);margin-bottom:4px;">임장 횟수</div>
               <select id="pl-f-site" style="width:100%;padding:8px 10px;border:1px solid var(--b1);border-radius:6px;background:var(--bg3);color:var(--fg);font-size:13px;">
@@ -4871,45 +4814,9 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
             </div>
           </div>
           <div style="display:flex;gap:8px;margin-top:20px;justify-content:flex-end;">
-            <button id="pl-del-btn" onclick="plDeleteItem()" style="display:none;padding:9px 16px;border:1px solid #e55;border-radius:6px;background:transparent;color:#e55;font-size:13px;cursor:pointer;">종료/숨김</button>
+            <button id="pl-del-btn" onclick="plDeleteItem()" style="display:none;padding:9px 16px;border:1px solid #e55;border-radius:6px;background:transparent;color:#e55;font-size:13px;cursor:pointer;">삭제</button>
             <button onclick="plCloseModal()" style="padding:9px 16px;border:1px solid var(--b1);border-radius:6px;background:transparent;color:var(--fg);font-size:13px;cursor:pointer;">취소</button>
             <button onclick="plSaveItem()" style="padding:9px 20px;border:none;border-radius:6px;background:#4f8eff;color:#fff;font-size:13px;cursor:pointer;font-weight:600;">저장</button>
-          </div>
-        </div>
-      </div>
-
-
-      <!-- 저장목록 경매 가져오기 모달 -->
-      <div id="pl-import-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9998;align-items:center;justify-content:center;">
-        <div class="pl-modal-card" style="background:var(--bg2);border-radius:14px;padding:24px;width:760px;max-width:96vw;max-height:88vh;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,.4);display:flex;flex-direction:column;">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:10px;">
-            <div>
-              <h3 style="margin:0;font-size:16px;font-weight:600;">저장목록 경매 가져오기</h3>
-              <div style="font-size:12px;color:var(--fg3);margin-top:4px;">저장목록의 경매 물건을 선택해 물건리스트의 기본값으로 채웁니다.</div>
-            </div>
-            <button onclick="plCloseImportModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--fg2);">×</button>
-          </div>
-          <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
-            <input id="pl-import-search" type="text" oninput="plRenderImportList()" placeholder="물건명·사건번호·주소 검색" style="height:34px;padding:0 10px;border:1px solid var(--b1);border-radius:6px;background:var(--bg3);color:var(--fg);font-size:13px;width:220px;">
-            <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--fg2);"><input id="pl-import-check-all" type="checkbox" onclick="plToggleAllImport(this.checked)"> 전체선택</label>
-            <span id="pl-import-count" style="margin-left:auto;font-size:12px;color:var(--fg3);"></span>
-          </div>
-          <div style="flex:1;overflow:auto;border:1px solid var(--b1);border-radius:10px;">
-            <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:680px;">
-              <thead><tr style="background:var(--bg3);">
-                <th style="padding:8px 10px;border-bottom:1px solid var(--b1);width:34px;"></th>
-                <th style="padding:8px 10px;border-bottom:1px solid var(--b1);text-align:left;">물건명</th>
-                <th style="padding:8px 10px;border-bottom:1px solid var(--b1);text-align:left;">사건번호</th>
-                <th style="padding:8px 10px;border-bottom:1px solid var(--b1);text-align:left;">지역</th>
-                <th style="padding:8px 10px;border-bottom:1px solid var(--b1);text-align:right;">최저가</th>
-                <th style="padding:8px 10px;border-bottom:1px solid var(--b1);text-align:left;">입찰기일</th>
-              </tr></thead>
-              <tbody id="pl-import-tbody"></tbody>
-            </table>
-          </div>
-          <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px;">
-            <button onclick="plCloseImportModal()" style="padding:9px 16px;border:1px solid var(--b1);border-radius:6px;background:transparent;color:var(--fg);font-size:13px;cursor:pointer;">취소</button>
-            <button onclick="plImportSelected()" style="padding:9px 18px;border:none;border-radius:6px;background:#4f8eff;color:#fff;font-size:13px;cursor:pointer;font-weight:600;">선택한 물건 가져오기</button>
           </div>
         </div>
       </div>
