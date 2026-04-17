@@ -40136,7 +40136,7 @@ window.addEventListener('DOMContentLoaded', () => {
     var eid = document.getElementById('pl-edit-id'); if (eid) eid.value = '';
     var db = document.getElementById('pl-del-btn'); if (db) db.style.display = 'none';
     plPopulateRoomSelect('');
-    var m = document.getElementById('pl-modal'); if (m) m.style.display = 'flex';
+    var m = document.getElementById('pl-modal'); if (m) { m.style.display = 'flex'; document.body.style.overflow = 'hidden'; }
   };
 
   // ── 모달: 수정 ──────────────────────────
@@ -40163,7 +40163,7 @@ window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('pl-f-memo').value = it.memo||'';
     var db = document.getElementById('pl-del-btn'); if (db) db.style.display = '';
     plPopulateRoomSelect(it.roomId||'');
-    var m = document.getElementById('pl-modal'); if (m) m.style.display = 'flex';
+    var m = document.getElementById('pl-modal'); if (m) { m.style.display = 'flex'; document.body.style.overflow = 'hidden'; }
   };
 
   function plPopulateRoomSelect(selectedId) {
@@ -40176,8 +40176,41 @@ window.addEventListener('DOMContentLoaded', () => {
   }
 
   window.plCloseModal = function() {
-    var m = document.getElementById('pl-modal'); if (m) m.style.display = 'none';
+    var m = document.getElementById('pl-modal');
+    if (m) m.style.display = 'none';
+    document.body.style.overflow = '';
   };
+
+  window.plCloseImportModal = window.plCloseImportModal || function() {
+    var m = document.getElementById('pl-import-modal');
+    if (m) m.style.display = 'none';
+    document.body.style.overflow = '';
+  };
+
+  if (!window.__plModalBound) {
+    window.__plModalBound = true;
+    setTimeout(function(){
+      var modal = document.getElementById('pl-modal');
+      if (modal) {
+        modal.addEventListener('mousedown', function(e){
+          if (e.target === modal) window.plCloseModal();
+        });
+      }
+      var importModal = document.getElementById('pl-import-modal');
+      if (importModal) {
+        importModal.addEventListener('mousedown', function(e){
+          if (e.target === importModal && typeof window.plCloseImportModal === 'function') window.plCloseImportModal();
+        });
+      }
+      document.addEventListener('keydown', function(e){
+        if (e.key !== 'Escape') return;
+        var modalOpen = document.getElementById('pl-modal');
+        if (modalOpen && modalOpen.style.display !== 'none' && modalOpen.style.display !== '') { window.plCloseModal(); return; }
+        var importOpen = document.getElementById('pl-import-modal');
+        if (importOpen && importOpen.style.display !== 'none' && importOpen.style.display !== '') { if (typeof window.plCloseImportModal === 'function') window.plCloseImportModal(); }
+      });
+    }, 0);
+  }
 
   // ── 저장 ────────────────────────────────
   window.plSaveItem = function() {
@@ -40309,13 +40342,13 @@ window.addEventListener('DOMContentLoaded', () => {
   }
   window.plOpenImportModal = function() {
     plImportSelectedMap = {};
-    var m = document.getElementById('pl-import-modal'); if (m) m.style.display = 'flex';
+    var m = document.getElementById('pl-import-modal'); if (m) { m.style.display = 'flex'; document.body.style.overflow = 'hidden'; }
     var s = document.getElementById('pl-import-search'); if (s) s.value = '';
     var c = document.getElementById('pl-import-check-all'); if (c) c.checked = false;
     plRenderImportList();
   };
   window.plCloseImportModal = function() {
-    var m = document.getElementById('pl-import-modal'); if (m) m.style.display = 'none';
+    var m = document.getElementById('pl-import-modal'); if (m) m.style.display = 'none'; document.body.style.overflow = ''; 
   };
   window.plToggleAllImport = function(checked) {
     var q = ((document.getElementById('pl-import-search')||{}).value||'').toLowerCase();
