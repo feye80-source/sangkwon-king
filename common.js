@@ -19,8 +19,15 @@
         ? (window.EDGE_URL || 'https://sangkwon-upload-worker.feye80.workers.dev')
         : (window.PROXY_URL || 'http://localhost:8080');
     };
+    // AbortSignal.timeout 미지원 브라우저(Safari 구버전 등) 안전장치
+    window._skTimeoutSignal = window._skTimeoutSignal || function(ms) {
+      try {
+        if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') return AbortSignal.timeout(ms);
+      } catch (e) {}
+      return undefined;
+    };
     window._proxyAlive = null;
-    fetch('http://localhost:8080/', { method: 'GET', signal: AbortSignal.timeout(1500) })
+    fetch('http://localhost:8080/', { method: 'GET', signal: window._skTimeoutSignal(1500) })
       .then(() => { window._proxyAlive = true; console.log('[proxy] localhost:8080 연결됨'); })
       .catch(() => { window._proxyAlive = false; console.log('[proxy] localhost 없음 → Cloudflare 사용'); });
 
@@ -32,9 +39,7 @@
         opts.headers['Authorization'] = 'Bearer ' + (typeof SUPABASE_KEY !== 'undefined' ? SUPABASE_KEY : '');
       }
       try {
-        if (!opts.signal && typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
-          opts.signal = AbortSignal.timeout(15000);
-        }
+        if (!opts.signal) opts.signal = window._skTimeoutSignal(15000);
         return await fetch(url, opts);
       } catch (e) {
         const isLocalProxy = !!(url && String(url).startsWith(String(window.PROXY_URL || '')));
@@ -14614,7 +14619,7 @@ window.wr2SummaryCancelEdit = function() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ url: fetchUrl, ...(a1Cookie ? { cookie: a1Cookie } : {}) }),
-            signal: AbortSignal.timeout(15000)
+            signal: window._skTimeoutSignal(15000)
           });
           if (!fetchResp.ok) throw new Error('HTTP ' + fetchResp.status);
           const fetchData = await fetchResp.json();
@@ -14858,7 +14863,7 @@ ${inputDesc.substring(0, 3000)}
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ url: fetchUrl, ...(a1Cookie ? { cookie: a1Cookie } : {}) }),
-            signal: AbortSignal.timeout(15000)
+            signal: window._skTimeoutSignal(15000)
           });
           if (!fetchResp.ok) throw new Error('HTTP ' + fetchResp.status);
           const fetchData = await fetchResp.json();
@@ -32725,7 +32730,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ serviceKey: key, ctgrId: ctgrId, numOfRows: limit, pageNo: '1', region: region }),
-            signal: AbortSignal.timeout(5000)
+            signal: window._skTimeoutSignal(5000)
           });
           if (!resp.ok) throw new Error('proxy ' + resp.status);
           const data = await resp.json();
@@ -33242,7 +33247,7 @@ ${newsContext}
       const badge = document.getElementById('naverProxyBadge');
       const banner = document.getElementById('naverProxyBanner');
       try {
-        const r = await fetch(`${PROXY}/search?query=test`, { signal: AbortSignal.timeout(3000) });
+        const r = await fetch(`${PROXY}/search?query=test`, { signal: window._skTimeoutSignal(3000) });
         if (r.ok || r.status === 400) {
           if (badge) {
             badge.textContent = '● 프록시 연결됨';
@@ -33997,7 +34002,7 @@ ${newsContext}
         ? radiusCfg.maxN
         : Math.max(efMaxCount || 0, 300);
       try {
-        await fetch(proxyBase + '/', { signal: AbortSignal.timeout(2000), mode: 'no-cors' });
+        await fetch(proxyBase + '/', { signal: window._skTimeoutSignal(2000), mode: 'no-cors' });
       } catch (_) {
         /* Edge Function으로 대체됨 */
       }
@@ -34267,7 +34272,7 @@ ${newsContext}
       const proxyBase = window.PROXY_URL || 'http://localhost:8080';
       let useProxy = false;
       try {
-        await fetch(proxyBase + '/', { signal: AbortSignal.timeout(2000), mode: 'no-cors' });
+        await fetch(proxyBase + '/', { signal: window._skTimeoutSignal(2000), mode: 'no-cors' });
         useProxy = true;
       } catch (_) { }
 
@@ -34856,7 +34861,7 @@ ${newsContext}
         // 프록시 살아있는지 먼저 확인
         let proxyAlive = false;
         try {
-          const testRes = await fetch(PROXY, { signal: AbortSignal.timeout(3000) });
+          const testRes = await fetch(PROXY, { signal: window._skTimeoutSignal(3000) });
           proxyAlive = testRes.ok;
         } catch (_) { proxyAlive = false; }
 
@@ -34864,7 +34869,7 @@ ${newsContext}
           shopStatus('jumpo', `⏳ 상세정보(방향/상호) 수집 중... 0/${total}`, 'var(--mu)');
           for (const item of itemsNeedingDetail) {
             try {
-              const res = await fetch(PROXY + item.data.상세URL, { signal: AbortSignal.timeout(8000) });
+              const res = await fetch(PROXY + item.data.상세URL, { signal: window._skTimeoutSignal(8000) });
               const html = await res.text();
               const detail = parseDetail(html);
               if (detail.방향 || detail.가게상호 || detail.전용면적_m2) {
@@ -35167,7 +35172,7 @@ ${newsContext}
       const proxyBase = window.PROXY_URL;
       let useProxy = false;
       try {
-        const test = await fetch(proxyBase + '/', { signal: AbortSignal.timeout(2000), mode: 'no-cors' });
+        const test = await fetch(proxyBase + '/', { signal: window._skTimeoutSignal(2000), mode: 'no-cors' });
         useProxy = true;  // no-cors는 opaque response라 ok 체크 불가, 연결만 확인
       } catch (_) { }
 
