@@ -39857,8 +39857,8 @@ window.addEventListener('DOMContentLoaded', () => {
       memo: it.memo || '',
       result: it.result || null,
       archived: archived,
-      createdAt: it.createdAt || Date.now(),
-      updatedAt: Date.now()
+      createdAt: it.createdAt || it.timestamp || Date.now(),
+      updatedAt: it.updatedAt || it.timestamp || Date.now()
     };
   }
   function plLoad() { try { return JSON.parse(localStorage.getItem(PL_KEY) || '[]').map(plNormalizeItem); } catch(e) { return []; } }
