@@ -45,7 +45,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260329-debug55';
+    window.__SK_BUILD = '20260417-syncfix5';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
