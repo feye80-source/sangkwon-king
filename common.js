@@ -45,7 +45,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260417-syncfix5';
+    window.__SK_BUILD = '20260417-syncfix6';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -1742,6 +1742,32 @@
     };
 
     // 물건리스트(page4)는 kv_store + IDB 캐시로 동기화
+    // kv_store 단건 용량 한계를 피하기 위해 chunk 저장을 함께 사용한다.
+    const _PL_META_KEY = 'pl_items_v3_meta';
+    const _PL_CHUNK_PREFIX = 'pl_items_v3_chunk_';
+    const _PL_CHUNK_LIMIT = 160000;
+    function _plSplitChunks(items) {
+      const list = Array.isArray(items) ? items : [];
+      if (!list.length) return [];
+      const out = [];
+      let cur = [];
+      let curLen = 2; // "[]"
+      list.forEach(function(it) {
+        let raw = '';
+        try { raw = JSON.stringify(it); } catch (e) { raw = ''; }
+        if (!raw) return;
+        const addLen = raw.length + (cur.length ? 1 : 0);
+        if (cur.length && (curLen + addLen > _PL_CHUNK_LIMIT)) {
+          out.push(cur);
+          cur = [];
+          curLen = 2;
+        }
+        cur.push(it);
+        curLen += raw.length + (cur.length > 1 ? 1 : 0);
+      });
+      if (cur.length) out.push(cur);
+      return out;
+    }
     window._sbScheduleSavePlItems = function(arr, delay) {
       _sbScheduleAsyncSave('pl_items_v3', arr, function(latest) {
         return window._sbSavePlItems(latest);
@@ -1756,10 +1782,27 @@
         const full = _sbPruneTombstones(_sbKeepTombstones(prev, nextInput));
         _sbPersistCachedArray('pl_items_v3', full);
         _markKvDirty('pl_items_v3');
-        await kvSet('pl_items_v3', full);
-        // 저장 직후 확인: 실패를 성공으로 오인하지 않도록 검증
-        const ack = await kvGet('pl_items_v3');
-        if (!Array.isArray(ack)) throw new Error('kv ack failed');
+        const chunks = _plSplitChunks(full);
+        const prevMeta = await kvGet(_PL_META_KEY);
+        const prevCount = prevMeta && prevMeta.count ? parseInt(prevMeta.count, 10) || 0 : 0;
+        await kvSet(_PL_META_KEY, {
+          version: 2,
+          count: chunks.length,
+          updatedAt: Date.now()
+        });
+        for (let i = 0; i < chunks.length; i += 1) {
+          await kvSet(_PL_CHUNK_PREFIX + i, chunks[i]);
+        }
+        // 줄어든 chunk 꼬리 정리(빈 배열로 덮기)
+        for (let j = chunks.length; j < prevCount; j += 1) {
+          await kvSet(_PL_CHUNK_PREFIX + j, []);
+        }
+        // 하위 호환용(작은 목록만 legacy 키 유지)
+        if (full.length <= 120) await kvSet('pl_items_v3', full);
+        // 저장 직후 확인: 실제 반영 여부 검증
+        const ack = await window._sbLoadPlItems({ forceLegacy: false });
+        const ackDiff = _sbChangedIds(full, ack);
+        if (ackDiff.length) throw new Error('kv ack mismatch');
         _clearKvDirty('pl_items_v3');
         window._sbSyncStatus('☁️ 물건리스트 동기화 완료', true);
       } catch (e) {
@@ -1773,11 +1816,31 @@
         } catch (e2) {}
       }
     };
-    window._sbLoadPlItems = async function() {
-      const d = await kvGet('pl_items_v3');
-      // 키가 아직 없는 초기 상태(null)도 "빈 목록"으로 취급해야
-      // 로컬 데이터를 클라우드로 backfill 할 수 있다.
-      return Array.isArray(d) ? _sbPruneTombstones(d) : [];
+    window._sbLoadPlItems = async function(opts) {
+      const options = opts || {};
+      let out = null;
+      if (!options.forceLegacy) {
+        try {
+          const meta = await kvGet(_PL_META_KEY);
+          if (meta && parseInt(meta.count, 10) >= 0) {
+            const count = parseInt(meta.count, 10) || 0;
+            const merged = [];
+            for (let i = 0; i < count; i += 1) {
+              const part = await kvGet(_PL_CHUNK_PREFIX + i);
+              if (Array.isArray(part) && part.length) merged.push.apply(merged, part);
+            }
+            out = merged;
+          }
+        } catch (e) {
+          console.warn('[SB] loadPlItems chunk read fail', e);
+        }
+      }
+      if (!Array.isArray(out)) {
+        const legacy = await kvGet('pl_items_v3');
+        out = Array.isArray(legacy) ? legacy : [];
+      }
+      // 키가 아직 없는 초기 상태도 빈 목록으로 취급
+      return _sbPruneTombstones(Array.isArray(out) ? out : []);
     };
     window._plRefreshFromCloud = async function(opts) {
       const options = opts || {};
