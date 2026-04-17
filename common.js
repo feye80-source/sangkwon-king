@@ -1779,6 +1779,15 @@
       const localItems = _sbGetCachedArray('pl_items_v3');
       const merged = _sbMergeById(cloudItems, localItems).filter(it => it && it.id);
       _sbPersistCachedArray('pl_items_v3', merged);
+      // 로컬이 더 최신/풍부한 경우 클라우드로 역전파(backfill)하여 기기간 빈 목록 불일치 방지
+      if (options.sync !== false && window._sbSavePlItems) {
+        try {
+          const changedIds = _sbChangedIds(cloudItems, merged);
+          if (changedIds.length) await window._sbSavePlItems(merged);
+        } catch (e) {
+          console.warn('[SB] pl backfill after refresh', e);
+        }
+      }
       if (options.render !== false) {
         try {
           if (typeof renderPropertyList === 'function' && typeof currentPage !== 'undefined' && currentPage === 4) {
