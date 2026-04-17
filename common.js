@@ -363,6 +363,12 @@
       if (window._idbCache[key] !== undefined) {
         return JSON.stringify(window._idbCache[key]);
       }
+      // 캐시가 아직 없으면 원본 localStorage도 한 번 확인
+      // (IDB 프리로드/마이그레이션 직전의 초기 렌더 공백 방지)
+      try {
+        const raw = _lsGetOrig(key);
+        if (raw != null) return raw;
+      } catch (e) {}
       // 캐시 없으면 null 반환 (비동기 IDB 로드는 _idbPreload가 처리)
       return null;
     }
@@ -411,6 +417,11 @@
       console.log('[IDB] 프리로드 완료. 캐시 키:', Object.keys(window._idbCache).join(', '));
       // 검색 인덱스 초기 빌드
       try { if (typeof _svBuildIndex === 'function') _svBuildIndex(window._idbCache['re_sv']); } catch(e) {}
+      try {
+        if (typeof renderPropertyList === 'function' && typeof currentPage !== 'undefined' && currentPage === 4) {
+          setTimeout(function() { try { renderPropertyList(); } catch (e) {} }, 0);
+        }
+      } catch(e) {}
       // 온라인 상태에서는 클라우드 인증/구독을 기다린다.
       // 그렇지 않으면 다른 기기에서 이미 정리한 오래된 노트/알짜 캐시가 잠시 또는 계속 다시 보일 수 있다.
       try {
@@ -1844,7 +1855,8 @@
     };
     window._plRefreshFromCloud = async function(opts) {
       const options = opts || {};
-      if (_hasKvDirty('pl_items_v3') && window._sbSavePlItems) {
+      const hasLocalDirty = _hasKvDirty('pl_items_v3');
+      if (hasLocalDirty && window._sbSavePlItems) {
         try {
           await window._sbSavePlItems(_sbGetCachedArray('pl_items_v3').filter(it => it && it.id));
         } catch (e) {
@@ -1853,10 +1865,11 @@
       }
       const cloudItems = window._sbLoadPlItems ? await window._sbLoadPlItems() : [];
       const localItems = _sbGetCachedArray('pl_items_v3');
-      const merged = _sbMergeById(cloudItems, localItems).filter(it => it && it.id);
+      const mergeBaseLocal = hasLocalDirty ? localItems : [];
+      const merged = _sbMergeById(cloudItems, mergeBaseLocal).filter(it => it && it.id);
       _sbPersistCachedArray('pl_items_v3', merged);
-      // 로컬이 더 최신/풍부한 경우 클라우드로 역전파(backfill)하여 기기간 빈 목록 불일치 방지
-      if (options.sync !== false && window._sbSavePlItems) {
+      // 로컬 미저장 변경이 있을 때만 역전파
+      if (options.sync !== false && hasLocalDirty && window._sbSavePlItems) {
         try {
           const changedIds = _sbChangedIds(cloudItems, merged);
           if (changedIds.length) await window._sbSavePlItems(merged);
@@ -12122,6 +12135,56 @@ window.wr2SummaryCancelEdit = function() {
       _downloadSavedDocEntry(entry);
     };
 
+    function _openSavedDocEntry(entry) {
+      if (!entry || !entry.doc) {
+        showToast('PDF 파일이 없습니다', 'warn');
+        return false;
+      }
+      const doc = entry.doc || {};
+      if (doc.url) {
+        const normalizedUrl = window._normalizeLocalAssetUrl ? window._normalizeLocalAssetUrl(doc.url) : doc.url;
+        try { window.open(normalizedUrl, '_blank', 'noopener'); } catch (e) { location.href = normalizedUrl; }
+        return true;
+      }
+      if (doc.base64) {
+        const mime = doc.type || 'application/pdf';
+        const byteStr = atob(doc.base64);
+        const arr = new Uint8Array(byteStr.length);
+        for (let i = 0; i < byteStr.length; i++) arr[i] = byteStr.charCodeAt(i);
+        const blob = new Blob([arr], { type: mime });
+        const blobUrl = URL.createObjectURL(blob);
+        try { window.open(blobUrl, '_blank', 'noopener'); } catch (e) { location.href = blobUrl; }
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+        return true;
+      }
+      showToast('PDF 파일이 없습니다', 'warn');
+      return false;
+    }
+    window._openSavedDocEntry = _openSavedDocEntry;
+
+    window.openAuctionSource = function(id) {
+      try {
+        const item = getSv().find(s => String(s.id) === String(id));
+        if (!item) {
+          showToast('물건을 찾을 수 없습니다', 'warn');
+          return false;
+        }
+        const d = item.data || {};
+        const linkUrl = String(d.상세URL || d.옥션원URL || (d.product_id ? `https://auction1.co.kr/auction/ca_view.php?product_id=${encodeURIComponent(d.product_id)}` : '')).trim();
+        if (linkUrl) {
+          try { window.open(linkUrl, '_blank', 'noopener'); } catch (e) { location.href = linkUrl; }
+          return false;
+        }
+        const entry = _getPrimaryPdfDoc(item);
+        if (entry) return _openSavedDocEntry(entry);
+        showToast('열 수 있는 링크나 PDF가 없습니다', 'warn');
+      } catch (e) {
+        console.warn('openAuctionSource', e);
+        showToast('링크를 열지 못했습니다', 'warn');
+      }
+      return false;
+    };
+
     function _normalizeDualAddressFields(d) {
       if (!d || typeof d !== 'object') return d;
       const road = _trimAddr(
@@ -20087,7 +20150,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     <svg class="conn-svg"><line class="conn-line" x1="0" y1="0" x2="0" y2="0" style="stroke:${lineColor};"/></svg>
     <div class="map-card ${mapCardCls}${stackedClass}${item.marked ? ' card-marked' : ''}" id="${id}" style="left:${pos.left}px;top:${pos.top}px;" data-base-left="${pos.left}" data-base-top="${pos.top}">
       ${countBadge}
-      <div class="map-card-header" onmousedown="dragMapCard(event,'${id}')">
+      <div class="map-card-header" onmousedown="dragMapCard(event,'${id}')" ontouchstart="dragMapCard(event,'${id}')">
         <div class="map-card-header-left">
           ${isAuction ? `<span class="card-type-icon" style="width:24px;height:24px;flex:0 0 24px;display:flex;align-items:center;justify-content:center;font-size:17px;background:none;border:none;box-shadow:none;cursor:pointer;" onmousedown="event.stopPropagation()" onclick="event.stopPropagation();toggleCardMark(\'${item.id}\')">👑</span>` : `<img class="card-type-icon" src="${cardType === 'sale' ? ICON_SALE : ICON_RENT}" alt="" draggable="false" style="cursor:pointer;" onmousedown="event.stopPropagation()" onclick="event.stopPropagation();toggleCardMark(\'${item.id}\')"/>`}
           <input class="map-card-title" id="title_${id}" value="${esc(item.title)}" readonly onclick="editCardTitle('${id}')"/>
@@ -20098,7 +20161,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           <span class="map-card-close" onclick="closeMapCard('${id}','single')">×</span>
         </div>
       </div>
-      <div class="map-card-body" onmousedown="dragMapCard(event,'${id}')">
+      <div class="map-card-body" onmousedown="dragMapCard(event,'${id}')" ontouchstart="dragMapCard(event,'${id}')">
         ${buildMapCardBodyHTML(item)}
       </div>
       ${isAuction ? `<div class="auction-rights-panel" id="rights_${id}">
@@ -20739,17 +20802,19 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         e.target.classList.contains('map-card-close') ||
         e.target.classList.contains('card-stack-buttons')
       )) return;
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-      e.preventDefault();
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.closest('button,a,label,select,option')) return;
+
+      var isTouch = /^touch/.test(e.type || '');
+      var startPoint = isTouch ? (e.touches && e.touches[0]) : e;
+      if (!startPoint) return;
+      if (e.cancelable) e.preventDefault();
       e.stopPropagation();
 
-      // ★ [BUG FIX v120] card DOM을 bringCardToFront 호출 전에 먼저 캡처.
       const card = document.getElementById(id);
       if (!card) return;
 
       bringCardToFront(id);
 
-      // 지도 드래그 비활성화 (캡처 단계 차단과 이중 보호)
       if (map) { map.setDraggable(false); map.setZoomable(false); }
 
       const baseCardScale = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--base-card-scale')) || 1.0;
@@ -20758,15 +20823,17 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
       const startLeft = parseFloat(card.style.left) || 0;
       const startTop = parseFloat(card.style.top) || 0;
-      const startMouseX = e.clientX;
-      const startMouseY = e.clientY;
+      const startMouseX = startPoint.clientX;
+      const startMouseY = startPoint.clientY;
 
-      function onMouseMove(event) {
-        // ★ [BUG FIX v123] 매 mousemove마다 getElementById로 현재 DOM 재조회
+      function onPointerMove(event) {
+        const pt = /^touch/.test(event.type || '') ? (event.touches && event.touches[0]) : event;
+        if (!pt) return;
+        if (event.cancelable) event.preventDefault();
         const liveCard = document.getElementById(id);
         if (!liveCard) return;
-        const deltaX = event.clientX - startMouseX;
-        const deltaY = event.clientY - startMouseY;
+        const deltaX = pt.clientX - startMouseX;
+        const deltaY = pt.clientY - startMouseY;
         let newLeft = startLeft + deltaX / scale;
         let newTop = startTop + deltaY / scale;
         liveCard.style.left = newLeft + 'px';
@@ -20775,21 +20842,30 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         updateMapLine(id);
       }
 
-      function onMouseUp() {
-        document.removeEventListener('mousemove', onMouseMove);
-        document.removeEventListener('mouseup', onMouseUp);
+      function cleanup() {
+        document.removeEventListener('mousemove', onPointerMove);
+        document.removeEventListener('mouseup', onPointerUp);
+        document.removeEventListener('touchmove', onPointerMove);
+        document.removeEventListener('touchend', onPointerUp);
+        document.removeEventListener('touchcancel', onPointerUp);
         if (map) { map.setDraggable(true); map.setZoomable(true); }
+      }
+
+      function onPointerUp() {
+        cleanup();
         const upCard = document.getElementById(id);
         const newLeft = upCard ? (parseFloat(upCard.style.left) || 0) : 0;
         const newTop = upCard ? (parseFloat(upCard.style.top) || 0) : 0;
         if (upCard) upCard.dataset.baseLeft = String(newLeft);
         if (upCard) upCard.dataset.baseTop = String(newTop);
-        const dragObj = mapOverlays.find(o => o.id === id);
-        if (dragObj) dragObj.savedPos = { left: newLeft, top: newTop };
+        updateMapLine(id);
       }
 
-      document.addEventListener('mousemove', onMouseMove);
-      document.addEventListener('mouseup', onMouseUp);
+      document.addEventListener('mousemove', onPointerMove);
+      document.addEventListener('mouseup', onPointerUp);
+      document.addEventListener('touchmove', onPointerMove, { passive: false });
+      document.addEventListener('touchend', onPointerUp, { passive: false });
+      document.addEventListener('touchcancel', onPointerUp, { passive: false });
     }
 
 
@@ -22217,7 +22293,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       <button class="rights-toggle-btn" onclick="toggleRightsPanel('${item.id}')">👤 권리정보 보기 ▶</button>
       <div class="map-card-action-row">
         <button class="mca-btn saved" onclick="goToSavedFromMap('${item.id}')" onmousedown="event.stopPropagation()">📋 목록</button>
-        <a href="${esc(linkUrl)}" target="_blank" class="mca-btn link-a" onmousedown="event.stopPropagation()" ontouchstart="event.stopPropagation()" onclick="window.open(this.href,'_blank');return false;" style="text-decoration:none;" title="경매사이트">⚖️ 링크</a>
+        <button class="mca-btn link-a" onmousedown="event.stopPropagation()" ontouchstart="event.stopPropagation()" onclick="event.stopPropagation();return openAuctionSource('${item.id}');" title="경매 링크 또는 PDF">⚖️ 링크</button>
         <button class="mca-btn yield" onclick="toggleYieldPanel('${item.id}')" onmousedown="event.stopPropagation()">💰 수익</button>
       </div>
       <button class="mca-memo-btn ${item.memo ? 'has-memo' : ''}" onclick="toggleMapCardMemo(this)" onmousedown="event.stopPropagation()">📝 메모</button>
@@ -24516,14 +24592,14 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       cardContent.innerHTML = `
     <svg class="conn-svg"><line class="conn-line" x1="0" y1="0" x2="0" y2="0"/></svg>
     <div class="map-card transaction-card" id="${id}" style="left:30px;top:-70px;">
-      <div class="map-card-header" onmousedown="dragMapCard(event,'${id}')">
+      <div class="map-card-header" onmousedown="dragMapCard(event,'${id}')" ontouchstart="dragMapCard(event,'${id}')">
         <input class="map-card-title" id="title_${id}" value="${esc(item.name || '실거래')}" readonly onclick="editCardTitle('${id}')"/>
         <div class="map-card-header-right">
           <span class="card-expand-button" style="width:20px;height:20px;font-size:11px;background:rgba(30,144,255,.2);color:#1e90ff;border-radius:5px;border:none;" title="자석 결합" onmousedown="event.stopPropagation();event.preventDefault();" onclick="event.stopPropagation();mergeCardToNearest('${id}')">🧲</span>
           <span class="map-card-close" onclick="closeMapCard(\'${id}\',\'single\')">×</span>
         </div>
       </div>
-      <div class="map-card-body" onmousedown="dragMapCard(event,'${id}')">
+      <div class="map-card-body" onmousedown="dragMapCard(event,'${id}')" ontouchstart="dragMapCard(event,'${id}')">
         ${buildMapCardBodyHTML(tItemForCard)}
       </div>
     </div>
@@ -25974,7 +26050,9 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const _resize = cardWrap.querySelector('.card-resize-handle');
       const _merge = cardWrap.querySelector('.card-expand-button');
       if (_header) _header.addEventListener('mousedown', ev => dragMapCard(ev, id));
+      if (_header) _header.addEventListener('touchstart', ev => dragMapCard(ev, id), { passive: false });
       if (_body) _body.addEventListener('mousedown', ev => dragMapCard(ev, id));
+      if (_body) _body.addEventListener('touchstart', ev => dragMapCard(ev, id), { passive: false });
       if (_resize) _resize.addEventListener('mousedown', ev => resizeMapCard(ev, id));
       if (_merge) _merge.addEventListener('mousedown', ev => { ev.stopPropagation(); ev.preventDefault(); });
       if (_merge) _merge.addEventListener('click', ev => { ev.stopPropagation(); mergeCardToNearest(id); });
@@ -39987,7 +40065,13 @@ window.addEventListener('DOMContentLoaded', () => {
       updatedAt: it.updatedAt || it.timestamp || Date.now()
     };
   }
-  function plLoad() { try { return JSON.parse(localStorage.getItem(PL_KEY) || '[]').map(plNormalizeItem); } catch(e) { return []; } }
+  function plLoad() {
+    try {
+      var cached = window._idbCache && window._idbCache[PL_KEY];
+      if (Array.isArray(cached)) return cached.map(plNormalizeItem);
+      return JSON.parse(localStorage.getItem(PL_KEY) || '[]').map(plNormalizeItem);
+    } catch(e) { return []; }
+  }
   function plSave(arr) {
     var full = (arr || []).map(plNormalizeItem);
     localStorage.setItem(PL_KEY, JSON.stringify(full));
