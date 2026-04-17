@@ -6581,9 +6581,7 @@ window.wr2SummaryCancelEdit = function() {
                 window.wr2OpenOrCreateFromSavedId = function (savedId) {
                   try {
                     // 작업룸 탭으로 이동
-                    if (typeof showInsTab === 'function') showInsTab(8);
-                    const tab = document.getElementById('ipage8');
-                    if (tab) tab.style.display = 'block';
+                    if (typeof window.pmOpenWorkroom === 'function') { window.pmOpenWorkroom(); }
                   } catch (e) { }
 
                   // init 보장
@@ -8015,7 +8013,7 @@ window.wr2SummaryCancelEdit = function() {
             }, 280);
           }
         }
-        if (n === 3) onInsightOpen(window.__insActiveTab || 8);
+        if (n === 3) onInsightOpen((window.__insActiveTab === 5 || window.__insActiveTab === 8) ? 0 : (window.__insActiveTab || 0));
       });
     }
     window.showPage = showPage;
@@ -10854,8 +10852,7 @@ window.wr2SummaryCancelEdit = function() {
       var sel = document.getElementById('wrRoomSelectMap') || document.getElementById('swRoomSelect');
       var roomId = (sel && sel.value) || window._swActiveRoomId || '';
       if (!roomId) { showToast('룸을 선택하세요', 'warn'); return; }
-      showPage(3);
-      setTimeout(function () { showInsTab(8); if (typeof window.wrDbOpenRoom === 'function') window.wrDbOpenRoom(roomId); }, 150);
+      if (typeof window.pmOpenWorkroom === 'function') { window.pmOpenWorkroom(roomId); }
     };
 
     window.wrCreateRoomAndSave = function () {
@@ -27392,14 +27389,75 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
     // showPage: page3 지원은 원본 함수에 통합됨
 
+    function pmEnsurePanelMounts() {
+      try {
+        if (!window.__pmPanelAnchors) {
+          window.__pmPanelAnchors = {};
+          ['5','8'].forEach(function(key){
+            var panel = document.getElementById('ipage' + key);
+            if (panel && panel.parentNode) {
+              var mark = document.createComment('pm-anchor-' + key);
+              panel.parentNode.insertBefore(mark, panel);
+              window.__pmPanelAnchors[key] = { marker: mark, parent: panel.parentNode };
+            }
+          });
+        }
+      } catch (e) { console.warn('[pmEnsurePanelMounts]', e); }
+    }
+    function pmRestoreInsightPanels() {
+      try {
+        pmEnsurePanelMounts();
+        ['5','8'].forEach(function(key){
+          var panel = document.getElementById('ipage' + key);
+          var anchor = window.__pmPanelAnchors && window.__pmPanelAnchors[key];
+          if (panel && anchor && anchor.parent && anchor.marker && panel.parentNode !== anchor.parent) {
+            anchor.parent.insertBefore(panel, anchor.marker.nextSibling);
+          }
+          if (panel) panel.style.display = 'none';
+        });
+      } catch (e) { console.warn('[pmRestoreInsightPanels]', e); }
+    }
+    function pmMountPanel(tab) {
+      try {
+        pmEnsurePanelMounts();
+        var map = { work: { panelId: 'ipage8', hostId: 'pm-work-host' }, pipeline: { panelId: 'ipage5', hostId: 'pm-pipeline-host' } };
+        var conf = map[tab];
+        if (!conf) return null;
+        var panel = document.getElementById(conf.panelId);
+        var host = document.getElementById(conf.hostId);
+        if (!panel || !host) return null;
+        if (panel.parentNode !== host) host.appendChild(panel);
+        panel.style.display = '';
+        panel.style.height = '100%';
+        panel.style.overflow = 'hidden';
+        panel.style.border = '0';
+        return panel;
+      } catch (e) { console.warn('[pmMountPanel]', e); return null; }
+    }
+    window.pmOpenWorkroom = function(roomId) {
+      if (typeof window.showPage === 'function') window.showPage(4);
+      setTimeout(function(){
+        if (typeof window.pmShowTab === 'function') window.pmShowTab('work');
+        if (roomId) setTimeout(function(){ if (typeof window.wrDbOpenRoom === 'function') window.wrDbOpenRoom(roomId); }, 120);
+      }, 40);
+    };
+    window.pmOpenPipeline = function() {
+      if (typeof window.showPage === 'function') window.showPage(4);
+      setTimeout(function(){ if (typeof window.pmShowTab === 'function') window.pmShowTab('pipeline'); }, 40);
+    };
+
     // ── 인사이트 탭 열릴 때 초기화 ─────────────────────
     function onInsightOpen(targetTab) {
-      const nextTab = (targetTab === undefined || targetTab === null) ? (window.__insActiveTab || 8) : targetTab;
+      pmRestoreInsightPanels();
+      const rememberedTab = (window.__insActiveTab === 5 || window.__insActiveTab === 8) ? 0 : (window.__insActiveTab || 0);
+      const nextTab = (targetTab === undefined || targetTab === null) ? rememberedTab : targetTab;
       showInsTab(nextTab);
     }
 
     // ── 서브탭 전환 ─────────────────────────────────────
     function showInsTab(n) {
+      if (n === 8) { if (typeof window.pmOpenWorkroom === 'function') { window.pmOpenWorkroom(); return; } }
+      if (n === 5) { if (typeof window.pmOpenPipeline === 'function') { window.pmOpenPipeline(); return; } }
       window.__insActiveTab = n;
       const _insBoot = window.__insBoot || (window.__insBoot = {});
       // cfg(API 설정) 특수 처리
@@ -29852,8 +29910,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           window.wr2State.activeRoomId = roomId;
           window.wr2State.activePhase = _targetPhase;
           window.wr2State.activeView = 'phase';
-          showPage(3);
-          showInsTab(8);
+          if (typeof window.pmOpenWorkroom === 'function') window.pmOpenWorkroom(roomId);
           setTimeout(function() {
             if (typeof window.wr2SwitchView === 'function') window.wr2SwitchView('phase');
             if (typeof window.wr2Render === 'function') window.wr2Render();
@@ -31713,15 +31770,14 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       setTimeout(renderWatchBoard, 50);
     };
     window._wbGoRoom = function (roomId) {
-      showInsTab(8);
-      setTimeout(function () { if (typeof window.wrDbOpenRoom === 'function') window.wrDbOpenRoom(roomId); }, 80);
+      if (typeof window.pmOpenWorkroom === 'function') { window.pmOpenWorkroom(roomId); }
     };
     window._wbCreateAndLink = function (itemId) {
       if (typeof window.wr2OpenOrCreateFromSavedId === 'function') {
         window.wr2OpenOrCreateFromSavedId(itemId);
         return;
       }
-      showInsTab(8);
+      if (typeof window.pmOpenWorkroom === 'function') { window.pmOpenWorkroom(); return; }
       showToast('작업룸 기능을 불러오는 중입니다. 잠시 후 다시 시도해주세요.', 'warn');
     };
     window._wbNote = function (itemId) {
@@ -40026,6 +40082,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
   // ── 서브탭 전환 ─────────────────────────
   window.pmShowTab = function(tab) {
+    pmEnsurePanelMounts();
     var list = document.getElementById('pm-panel-list');
     var work = document.getElementById('pm-panel-work');
     var pipe = document.getElementById('pm-panel-pipeline');
@@ -40041,14 +40098,23 @@ window.addEventListener('DOMContentLoaded', () => {
       el.style.borderBottomColor = (tab === key ? 'var(--accent,#4f8eff)' : 'transparent');
       el.style.color = (tab === key ? 'var(--fg)' : 'var(--fg2)');
     });
-    if (tab === 'list') renderPropertyList();
-    if (tab === 'work' && window.showPage) { window.showPage(3); setTimeout(function(){ if(window.showInsTab) showInsTab(8); }, 80); }
-    if (tab === 'pipeline' && window.showPage) { window.showPage(3); setTimeout(function(){ if(window.showInsTab) showInsTab(5); }, 80); }
+    if (tab === 'list') { pmRestoreInsightPanels(); renderPropertyList(); }
+    if (tab === 'work') {
+      pmMountPanel('work');
+      try { if (!window.__wr2Inited && typeof window.wr2Init === 'function') { window.__wr2Inited = true; window.wr2Init(); } } catch(e) {}
+      if (window.wr2State) window.wr2State.activeView = 'overview';
+      if (typeof window.wr2Render === 'function') window.wr2Render();
+    }
+    if (tab === 'pipeline') {
+      pmMountPanel('pipeline');
+      if (typeof window.renderWatchBoard === 'function') window.renderWatchBoard();
+    }
   };
 
   // ── 작업룸 이동 ─────────────────────────
   window.plGoToWorkroom = function(roomId) {
-    if (window.showPage) window.showPage(3);
+    if (window.showPage) window.showPage(4);
+    if (typeof window.pmShowTab === 'function') window.pmShowTab('work');
     setTimeout(function(){
       if (window.wr2State) {
         window.wr2State.activeRoomId = roomId;
