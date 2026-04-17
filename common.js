@@ -45,7 +45,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260417-syncfix6';
+    window.__SK_BUILD = '20260417-syncfix7';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -39953,6 +39953,26 @@ window.addEventListener('DOMContentLoaded', () => {
     if (typeof window._sbMarkKvDirty === 'function') window._sbMarkKvDirty(PL_KEY);
     if (typeof window._sbScheduleSavePlItems === 'function') window._sbScheduleSavePlItems(full);
   }
+  window.plForcePush = async function() {
+    try {
+      var items = plLoad();
+      if (typeof window._sbSavePlItems === 'function') await window._sbSavePlItems(items);
+      if (typeof showToast === 'function') showToast('☁ 물건리스트 강제 업로드 완료', 'ok');
+    } catch (e) {
+      console.warn('[plForcePush]', e);
+      if (typeof showToast === 'function') showToast('업로드 실패: 네트워크/로그인 상태 확인', 'warn');
+    }
+  };
+  window.plForcePull = async function() {
+    try {
+      if (typeof window._plRefreshFromCloud === 'function') await window._plRefreshFromCloud({ render: true, force: true });
+      if (typeof renderPropertyList === 'function') renderPropertyList();
+      if (typeof showToast === 'function') showToast('☁ 물건리스트 강제 내려받기 완료', 'ok');
+    } catch (e) {
+      console.warn('[plForcePull]', e);
+      if (typeof showToast === 'function') showToast('내려받기 실패: 네트워크/로그인 상태 확인', 'warn');
+    }
+  };
   function plMoneyNum(v) {
     if (v === null || v === undefined) return '';
     var raw = String(v).replace(/[^0-9]/g, '');

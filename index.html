@@ -4700,6 +4700,10 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
             style="height:32px;padding:0 14px;border:1px solid var(--b1);border-radius:6px;background:var(--bg2);color:var(--fg);font-size:13px;cursor:pointer;white-space:nowrap;">+ 물건 추가</button>
           <button onclick="plOpenImportModal()"
             style="height:32px;padding:0 14px;border:1px solid rgba(79,142,255,.35);border-radius:6px;background:rgba(79,142,255,.1);color:#8ab8ff;font-size:13px;cursor:pointer;white-space:nowrap;">↙ 저장목록 경매 가져오기</button>
+          <button onclick="plForcePush()"
+            style="height:32px;padding:0 12px;border:1px solid rgba(0,212,170,.35);border-radius:6px;background:rgba(0,212,170,.1);color:#73e8cc;font-size:12px;cursor:pointer;white-space:nowrap;">☁ 강제 업로드</button>
+          <button onclick="plForcePull()"
+            style="height:32px;padding:0 12px;border:1px solid rgba(138,184,255,.35);border-radius:6px;background:rgba(138,184,255,.1);color:#9dc4ff;font-size:12px;cursor:pointer;white-space:nowrap;">☁ 강제 내려받기</button>
           <span id="pl-count" style="margin-left:auto;font-size:12px;color:var(--fg3);"></span>
         </div>
         <div id="pl-bulkbar" style="display:none;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;padding:10px 12px;border:1px solid rgba(79,142,255,.18);border-radius:10px;background:rgba(79,142,255,.06);">
@@ -5381,7 +5385,7 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
   <button id="pc-mobile-mode-btn" onclick="skSwitchDeviceMode('mobile')" title="모바일 모드로 보기">📱 모바일</button>
 
   <!-- 공통 로직 -->
-<script src="common.js?v=202604172220"></script>
+<script src="common.js?v=202604172255"></script>
 
   <!-- 측정 서브패널 (fixed - overflow 영향 없음) -->
   <div id="measureSubBtns" style="display:none;position:fixed;transform:translateY(-50%);background:rgba(13,18,32,0.96);border:1px solid rgba(79,142,255,.35);border-radius:12px;padding:8px 6px;flex-direction:column;gap:4px;z-index:9999;box-shadow:0 8px 32px rgba(0,0,0,.7);min-width:72px;backdrop-filter:blur(12px);">
