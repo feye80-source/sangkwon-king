@@ -1763,7 +1763,9 @@
     };
     window._sbLoadPlItems = async function() {
       const d = await kvGet('pl_items_v3');
-      return Array.isArray(d) ? _sbPruneTombstones(d) : null;
+      // 키가 아직 없는 초기 상태(null)도 "빈 목록"으로 취급해야
+      // 로컬 데이터를 클라우드로 backfill 할 수 있다.
+      return Array.isArray(d) ? _sbPruneTombstones(d) : [];
     };
     window._plRefreshFromCloud = async function(opts) {
       const options = opts || {};
@@ -1774,8 +1776,7 @@
           console.warn('[SB] pl flush before refresh', e);
         }
       }
-      const cloudItems = window._sbLoadPlItems ? await window._sbLoadPlItems() : null;
-      if (cloudItems === null) return null;
+      const cloudItems = window._sbLoadPlItems ? await window._sbLoadPlItems() : [];
       const localItems = _sbGetCachedArray('pl_items_v3');
       const merged = _sbMergeById(cloudItems, localItems).filter(it => it && it.id);
       _sbPersistCachedArray('pl_items_v3', merged);
