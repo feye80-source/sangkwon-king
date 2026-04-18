@@ -38601,6 +38601,30 @@ ${newsContext}
     }
 
     // ── 메인 대시보드 ────────────────────────────────────────
+
+    function _wrDbLifecycleSelect(roomId, room) {
+      var cur = room.lifecycleStatus || 'active';
+      var opts = [['active','활성'],['changed','변경'],['closed','종료']];
+      var html = '<select id="wrLifecycleSel_' + roomId + '" onchange="_wrDbSetLifecycle(\'' + roomId + '\',this.value)" '
+        + 'title="작업룸 상태" '
+        + 'style="padding:2px 6px;background:var(--s2);border:1px solid var(--b1);border-radius:5px;'
+        + 'color:var(--mu);font-size:10px;font-weight:700;outline:none;cursor:pointer;flex-shrink:0;">';
+      opts.forEach(function(p) {
+        html += '<option value="' + p[0] + '"' + (p[0] === cur ? ' selected' : '') + '>' + p[1] + '</option>';
+      });
+      html += '</select>';
+      return html;
+    }
+    window._wrDbSetLifecycle = function(roomId, val) {
+      var rooms = wrGetRooms();
+      var room = rooms.find(function(r) { return r.id === roomId; });
+      if (!room) return;
+      room.lifecycleStatus = val;
+      room.updatedAt = Date.now();
+      wrSetRooms(rooms);
+      wrDbOpenRoom(roomId);
+    };
+
     function _wrDbBuildDashHtml(id, room) {
       var phases = _wrPhaseGet(room);
       var activeId = room.activePhase || phases[0].id;
@@ -38688,7 +38712,8 @@ ${newsContext}
         + '<div style="flex:1;"></div>'
         + (room.mapScene ? '<button onclick="wrOpenMapScene(\'' + id + '\')" title="지도 열기" style="padding:2px 8px;background:rgba(74,222,128,.1);border:1px solid rgba(74,222,128,.3);border-radius:5px;color:#4ade80;font-size:11px;cursor:pointer;flex-shrink:0;">🗺</button>' : '')
         + '<button onclick="wrCreateNoteFromRoom(\'' + id + '\')" title="분석 노트 만들기" style="padding:2px 7px;background:rgba(17,157,237,.1);border:1px solid rgba(17,157,237,.3);border-radius:5px;color:#119ded;font-size:11px;cursor:pointer;flex-shrink:0;">📓</button>'
-        + '<select onchange="(function(v){var rooms=wrGetRooms();var r=rooms.find(function(x){return x.id===\'' + id + '\';});if(r){r.lifecycleStatus=v;r.updatedAt=Date.now();wrSetRooms(rooms);wrDbOpenRoom(\'' + id + '\');}})(this.value)" title="작업룸 상태" style="padding:2px 6px;background:var(--s2);border:1px solid var(--b1);border-radius:5px;color:var(--mu);font-size:10px;font-weight:700;outline:none;cursor:pointer;flex-shrink:0;">'\n        + (function(){var cur=(function(){var rr=wrGetRooms();var x=rr.find(function(rx){return rx.id===id;});return x?(x.lifecycleStatus||'active'):'active';})();return [['active','활성'],['changed','변경'],['closed','종료']].map(function(p){return '<option value="'+p[0]+'"'+(p[0]===cur?' selected':'')+'>'+p[1]+'</option>';}).join('');})() \n        + '</select>'\n        + '<button onclick="wrDeleteRoom(\'' + id + '\')" title="작업룸 삭제" style="padding:2px 6px;background:rgba(255,77,77,.08);border:1px solid rgba(255,77,77,.2);border-radius:5px;color:#ff6370;font-size:11px;cursor:pointer;flex-shrink:0;">🗑</button>'
+        + _wrDbLifecycleSelect(id, room)
+        + '<button onclick="wrDeleteRoom(\'' + id + '\')" title="작업룸 삭제" style="padding:2px 6px;background:rgba(255,77,77,.08);border:1px solid rgba(255,77,77,.2);border-radius:5px;color:#ff6370;font-size:11px;cursor:pointer;flex-shrink:0;">🗑</button>'
         + '</div>'
 
         // ── 물건 요약 바 ──
