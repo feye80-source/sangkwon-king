@@ -450,8 +450,39 @@
     const SUPABASE_URL = 'https://wtjiemvwxuxdpykrjufl.supabase.co';
     const SUPABASE_KEY = 'sb_publishable_LeUmdjtX2TAtJXMy6fqtSA_Eqg9UVQi';
 
+    // 다른 블록(프록시/Edge Function 호출 등)에서 참조할 수 있도록 전역에도 노출
+    window.SUPABASE_URL = window.SUPABASE_URL || SUPABASE_URL;
+    window.SUPABASE_KEY = window.SUPABASE_KEY || SUPABASE_KEY;
+
+    // Supabase UMD 로드 실패(오프라인/차단 등) 시에도 앱 UI는 동작해야 한다.
+    // (여기서 throw 되면 common.js 전체가 중단되어 "아무것도 클릭이 안 먹는" 상태가 된다)
+    const _sbLib = (typeof window !== 'undefined' && window.supabase)
+      ? window.supabase
+      : (typeof supabase !== 'undefined' ? supabase : null);
+    if (!_sbLib || typeof _sbLib.createClient !== 'function') {
+      console.warn('[SB] supabase-js 미로드: 클라우드 로그인/동기화 비활성 (로컬 모드로 계속)');
+      window._sb = null;
+      // 아래 함수들은 HTML/다른 블록에서 호출될 수 있으니 최소한의 no-op 스텁을 둔다.
+      window._sbRunEntryRefresh = window._sbRunEntryRefresh || (async function() { return null; });
+      window._sbGetSessionShared = window._sbGetSessionShared || (async function() { return { data: { session: null } }; });
+      window._sbGetUserId = window._sbGetUserId || (async function() { return ''; });
+      window._sbInitRecoveryUI = window._sbInitRecoveryUI || function() {};
+      window._sbInitLoad = window._sbInitLoad || (async function() {});
+      window._sbLogin = window._sbLogin || (async function() {
+        try { if (typeof showToast === 'function') showToast('Supabase 로드 실패: 로그인/동기화가 비활성화되었습니다.', 'warn'); } catch (e) {}
+      });
+      window._sbLogout = window._sbLogout || (async function() {});
+      window._sbSendReset = window._sbSendReset || (async function() {
+        try { if (typeof showToast === 'function') showToast('Supabase 로드 실패: 비밀번호 재설정이 비활성화되었습니다.', 'warn'); } catch (e) {}
+      });
+      window._sbApplyRecovery = window._sbApplyRecovery || (async function() {
+        try { if (typeof showToast === 'function') showToast('Supabase 로드 실패: 비밀번호 변경이 비활성화되었습니다.', 'warn'); } catch (e) {}
+      });
+      return;
+    }
+
     // Supabase 클라이언트 초기화
-    window._sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+    window._sb = _sbLib.createClient(SUPABASE_URL, SUPABASE_KEY, {
       auth: {
         persistSession: true,
         autoRefreshToken: true,
