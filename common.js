@@ -32765,32 +32765,256 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
   "물건명": "",
   "공고번호": "",
   "물건번호": "",
+  "경매번호": "",
+  "사건번호": "",
+  "경매구분": "",
   "용도": "",
   "소재지": "",
-  "감정가_만원": 0,
-  "최저입찰가_만원": 0,
-  "입찰보증금_만원": 0,
+  "토지면적_m2": 0,
+  "건물면적_m2": 0,
+  "전용면적_m2": 0,
+  "감정가": 0,
+  "최저가": 0,
+  "청구액": 0,
+  "입찰보증금": 0,
+  "유찰횟수": 0,
   "입찰시작": "",
   "입찰마감": "",
   "개찰일시": "",
+  "매각일": "",
+  "개시결정일": "",
+  "배당요구종기": "",
+  "말소기준등기일": "",
+  "채무자겸소유자": "",
+  "임차인": "",
+  "임차인_보증금": 0,
+  "임차인_월세": 0,
+  "전입일자": "",
+  "사업자등록일": "",
+  "확정일자": "",
+  "배당요구": "",
   "회차": "",
   "상태": "",
+  "기타사항": "",
   "비고": ""
 }`;
     }
-    function _onbidPublicToMan(v) {
+    function _onbidPublicToWon(v) {
       var raw = String(v == null ? '' : v).trim();
       if (!raw) return 0;
-      if (/^\d+$/.test(raw)) {
-        var n0 = parseInt(raw, 10);
-        if (!isFinite(n0) || n0 <= 0) return 0;
-        return n0 >= 1000000 ? Math.round(n0 / 10000) : n0;
+      var hasWon = /원/.test(raw);
+      var eokMatch = raw.match(/([\d.,]+)\s*억/);
+      var manMatch = raw.match(/([\d.,]+)\s*만/);
+      var eok = eokMatch ? parseFloat(String(eokMatch[1]).replace(/,/g, '')) : 0;
+      var man = manMatch ? parseFloat(String(manMatch[1]).replace(/,/g, '')) : 0;
+      if (isFinite(eok) && eok > 0 || isFinite(man) && man > 0) {
+        var won = Math.round((isFinite(eok) ? eok : 0) * 100000000 + (isFinite(man) ? man : 0) * 10000);
+        if (won > 0) return won;
       }
       var digits = raw.replace(/[^0-9]/g, '');
       if (!digits) return 0;
       var n = parseInt(digits, 10);
       if (!isFinite(n) || n <= 0) return 0;
-      return n >= 1000000 ? Math.round(n / 10000) : n;
+      if (hasWon || n >= 1000000) return n;
+      return n * 10000;
+    }
+    function _onbidPublicToMan(v) {
+      var won = _onbidPublicToWon(v);
+      if (!won) return 0;
+      return Math.round(won / 10000);
+    }
+    function _onbidPickFirst() {
+      for (var i = 0; i < arguments.length; i += 1) {
+        var v = arguments[i];
+        if (v == null) continue;
+        var s = String(v).trim();
+        if (!s || s === '-' || s === '—') continue;
+        return s;
+      }
+      return '';
+    }
+    function _onbidLabelKey(v) {
+      return String(v || '').replace(/\s+/g, '').replace(/[()\[\]{}:：·ㆍ]/g, '').trim();
+    }
+    function _onbidAreaToM2(v) {
+      var s = String(v || '');
+      var m = s.match(/([\d,.]+)\s*㎡/);
+      if (!m) m = s.match(/([\d,.]+)/);
+      if (!m) return 0;
+      var n = parseFloat(String(m[1]).replace(/,/g, ''));
+      return isFinite(n) && n > 0 ? n : 0;
+    }
+    function _onbidNormalizeDateTime(v) {
+      var s = String(v || '').trim();
+      if (!s) return '';
+      s = s.replace(/년|\/|\./g, '-').replace(/월/g, '-').replace(/일/g, '').replace(/\s+/g, ' ').trim();
+      s = s.replace(/(20\d{2})-(\d{1,2})-(\d{1,2})/g, function(_, y, m, d) {
+        return y + '-' + String(m).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+      });
+      s = s.replace(/(^|[^0-9])(\d{2})-(\d{1,2})-(\d{1,2})(\s|$)/g, function(_, pre, yy, m, d, post) {
+        return pre + '20' + yy + '-' + String(m).padStart(2, '0') + '-' + String(d).padStart(2, '0') + post;
+      });
+      return s;
+    }
+    function _onbidExtractStructuredData(html, sourceUrl) {
+      var out = {
+        물건명: '', 공고번호: '', 물건번호: '', 경매번호: '', 사건번호: '',
+        경매구분: '', 용도: '', 소재지: '', 토지면적_m2: 0, 건물면적_m2: 0, 전용면적_m2: 0,
+        감정가: 0, 최저가: 0, 청구액: 0, 입찰보증금: 0, 유찰횟수: 0, 입찰시작: '', 입찰마감: '',
+        개찰일시: '', 매각일: '', 개시결정일: '', 배당요구종기: '', 말소기준등기일: '', 채무자겸소유자: '',
+        임차인: '', 임차인_보증금: 0, 임차인_월세: 0, 전입일자: '', 사업자등록일: '', 확정일자: '',
+        배당요구: '', 회차: '', 상태: '', 기타사항: '', 비고: ''
+      };
+      if (!html) return out;
+      var doc = null;
+      try { doc = new DOMParser().parseFromString(String(html), 'text/html'); } catch(e) {}
+      var pairMap = {};
+      function addPair(label, value) {
+        var lk = _onbidLabelKey(label);
+        var vv = String(value || '').replace(/\s+/g, ' ').trim();
+        if (!lk || !vv || vv === '-' || vv === '—') return;
+        if (!pairMap[lk]) pairMap[lk] = [];
+        if (pairMap[lk].indexOf(vv) < 0) pairMap[lk].push(vv);
+      }
+      function findByLabels(labels) {
+        for (var i = 0; i < labels.length; i += 1) {
+          var lk = _onbidLabelKey(labels[i]);
+          if (pairMap[lk] && pairMap[lk].length) return pairMap[lk][0];
+        }
+        var keys = Object.keys(pairMap);
+        for (var j = 0; j < labels.length; j += 1) {
+          var needle = _onbidLabelKey(labels[j]);
+          for (var k = 0; k < keys.length; k += 1) {
+            var key = keys[k];
+            if (key.indexOf(needle) >= 0 || needle.indexOf(key) >= 0) {
+              if (pairMap[key] && pairMap[key].length) return pairMap[key][0];
+            }
+          }
+        }
+        return '';
+      }
+      if (doc && doc.body) {
+        doc.querySelectorAll('script,style,noscript').forEach(function(el){ el.remove(); });
+        doc.querySelectorAll('tr').forEach(function(tr){
+          var cells = Array.prototype.slice.call(tr.children || []).filter(function(el){
+            return /^(TH|TD)$/i.test(el.tagName || '');
+          }).map(function(el){ return String(el.textContent || '').replace(/\s+/g, ' ').trim(); });
+          if (cells.length < 2) return;
+          for (var i = 0; i + 1 < cells.length; i += 2) {
+            var lb = cells[i] || '';
+            var vv = cells[i + 1] || '';
+            if (lb && vv && lb.length <= 22) addPair(lb, vv);
+          }
+        });
+        doc.querySelectorAll('dt').forEach(function(dt){
+          var dd = dt.nextElementSibling;
+          if (dd && dd.tagName && dd.tagName.toUpperCase() === 'DD') addPair(dt.textContent, dd.textContent);
+        });
+        var hidden = function(name) {
+          var el = doc.querySelector('input[name="' + name + '"]');
+          return el ? String(el.value || '').trim() : '';
+        };
+        if (!out.물건번호) out.물건번호 = hidden('onbidCltrno') || hidden('scrnIndctCltrMngNo') || hidden('cltrNo');
+        if (!out.공고번호) out.공고번호 = hidden('onbidPbancNo') || hidden('pbancNo');
+        if (!out.물건명) {
+          var titleEl = doc.querySelector('h1, h2, .title, .subject, .productTit');
+          if (titleEl) out.물건명 = String(titleEl.textContent || '').replace(/\s+/g, ' ').trim();
+        }
+        var bodyText = String(doc.body.innerText || '').replace(/\r/g, '\n');
+        var caseMatch = bodyText.match(/\b20\d{2}-\d{3,4}-\d{4,}\b/);
+        if (caseMatch) {
+          out.경매번호 = caseMatch[0];
+          out.사건번호 = caseMatch[0];
+        }
+        var unsold = bodyText.match(/(\d+)\s*회\s*유찰/);
+        if (unsold) out.유찰횟수 = parseInt(unsold[1], 10) || 0;
+        if (!out.상태) {
+          var statusMatch = bodyText.match(/물건상태\s*[:：]?\s*(낙찰|유찰|진행중|공고중|매각|취소)/);
+          if (statusMatch) out.상태 = statusMatch[1];
+        }
+        doc.querySelectorAll('table').forEach(function(tb){
+          var headers = Array.prototype.slice.call(tb.querySelectorAll('thead th')).map(function(th){
+            return String(th.textContent || '').replace(/\s+/g, ' ').trim();
+          });
+          if (!headers.length) return;
+          var hasBidTable = headers.some(function(h){ return h.indexOf('개찰일시') >= 0 || h.indexOf('최저입찰가') >= 0; });
+          if (!hasBidTable) return;
+          var rows = Array.prototype.slice.call(tb.querySelectorAll('tbody tr'));
+          if (!rows.length) return;
+          var chosen = rows[rows.length - 1];
+          var cols = Array.prototype.slice.call(chosen.querySelectorAll('td')).map(function(td){
+            return String(td.textContent || '').replace(/\s+/g, ' ').trim();
+          });
+          if (!cols.length) return;
+          function colByHeader(keyword) {
+            var idx = headers.findIndex(function(h){ return h.indexOf(keyword) >= 0; });
+            return idx >= 0 ? (cols[idx] || '') : '';
+          }
+          var bidWindow = colByHeader('입찰시작');
+          if (!bidWindow) bidWindow = colByHeader('입찰시작 일시');
+          var openVal = bidWindow;
+          var closeVal = '';
+          if (bidWindow && bidWindow.indexOf('~') >= 0) {
+            var parts = bidWindow.split('~');
+            openVal = String(parts[0] || '').trim();
+            closeVal = String(parts[1] || '').trim();
+          }
+          if (openVal && !out.입찰시작) out.입찰시작 = openVal;
+          if (closeVal && !out.입찰마감) out.입찰마감 = closeVal;
+          var openBid = colByHeader('개찰일시');
+          if (openBid && !out.개찰일시) out.개찰일시 = openBid;
+          var minBid = colByHeader('최저입찰가');
+          if (minBid && !out.최저가) out.최저가 = _onbidPublicToWon(minBid);
+          var roundVal = colByHeader('회차');
+          if (roundVal && !out.회차) out.회차 = roundVal;
+        });
+      }
+      out.소재지 = _onbidPickFirst(out.소재지, findByLabels(['소재지', '소재지주소', '주소']));
+      out.용도 = _onbidPickFirst(out.용도, findByLabels(['물건용도', '용도', '재산종류']));
+      out.경매구분 = _onbidPickFirst(out.경매구분, findByLabels(['경매구분', '물건구분', '재산구분']));
+      out.물건명 = _onbidPickFirst(out.물건명, findByLabels(['물건명', '재산명', '물건상세']));
+      out.공고번호 = _onbidPickFirst(out.공고번호, findByLabels(['공고번호', '입찰번호']));
+      out.물건번호 = _onbidPickFirst(out.물건번호, findByLabels(['물건번호', '재산관리번호', '물건관리번호']));
+      out.감정가 = out.감정가 || _onbidPublicToWon(findByLabels(['감정가', '감정가격', '예정가격']));
+      out.최저가 = out.최저가 || _onbidPublicToWon(findByLabels(['최저입찰가', '최저입찰가격', '최저가']));
+      out.입찰보증금 = out.입찰보증금 || _onbidPublicToWon(findByLabels(['입찰보증금', '보증금']));
+      out.청구액 = out.청구액 || _onbidPublicToWon(findByLabels(['청구액', '채권액합계', '채권합계']));
+      out.토지면적_m2 = out.토지면적_m2 || _onbidAreaToM2(findByLabels(['토지면적']));
+      out.건물면적_m2 = out.건물면적_m2 || _onbidAreaToM2(findByLabels(['건물면적']));
+      out.전용면적_m2 = out.전용면적_m2 || _onbidAreaToM2(findByLabels(['전용면적']));
+      out.입찰시작 = _onbidNormalizeDateTime(_onbidPickFirst(out.입찰시작, findByLabels(['입찰시작일시', '입찰시작'])));
+      out.입찰마감 = _onbidNormalizeDateTime(_onbidPickFirst(out.입찰마감, findByLabels(['입찰마감일시', '입찰마감'])));
+      out.개찰일시 = _onbidNormalizeDateTime(_onbidPickFirst(out.개찰일시, findByLabels(['개찰일시', '개찰결과일시'])));
+      out.매각일 = _onbidNormalizeDateTime(_onbidPickFirst(out.매각일, findByLabels(['매각일', '매각결정일시']), out.입찰마감, out.개찰일시));
+      out.개시결정일 = _onbidNormalizeDateTime(_onbidPickFirst(out.개시결정일, findByLabels(['개시결정일'])));
+      out.배당요구종기 = _onbidNormalizeDateTime(_onbidPickFirst(out.배당요구종기, findByLabels(['배당요구종기', '배당요구종기일'])));
+      out.말소기준등기일 = _onbidNormalizeDateTime(_onbidPickFirst(out.말소기준등기일, findByLabels(['말소기준등기일', '말소기준권리일'])));
+      out.채무자겸소유자 = _onbidPickFirst(out.채무자겸소유자, findByLabels(['채무자겸소유자', '소유자', '채무자']));
+      out.임차인 = _onbidPickFirst(out.임차인, findByLabels(['임차인']));
+      out.임차인_보증금 = out.임차인_보증금 || _onbidPublicToWon(findByLabels(['임차인보증금', '임차보증금']));
+      out.임차인_월세 = out.임차인_월세 || _onbidPublicToMan(findByLabels(['임차인월세', '월세', '차임']));
+      out.전입일자 = _onbidNormalizeDateTime(_onbidPickFirst(out.전입일자, findByLabels(['전입일자'])));
+      out.사업자등록일 = _onbidNormalizeDateTime(_onbidPickFirst(out.사업자등록일, findByLabels(['사업자등록일'])));
+      out.확정일자 = _onbidNormalizeDateTime(_onbidPickFirst(out.확정일자, findByLabels(['확정일자'])));
+      out.배당요구 = _onbidPickFirst(out.배당요구, findByLabels(['배당요구']));
+      out.회차 = _onbidPickFirst(out.회차, findByLabels(['회차']));
+      out.상태 = _onbidPickFirst(out.상태, findByLabels(['물건상태', '상태']));
+      out.기타사항 = _onbidPickFirst(out.기타사항, findByLabels(['기타사항', '비고', '특이사항']));
+      out.비고 = _onbidPickFirst(out.비고, out.기타사항);
+      if (!out.경매번호) out.경매번호 = _onbidPickFirst(findByLabels(['사건번호', '경매번호']), out.공고번호, out.물건번호);
+      if (!out.사건번호) out.사건번호 = out.경매번호;
+      if (sourceUrl && !out.물건번호) {
+        var cltr = String(sourceUrl).match(/onbidCltrno=(\d+)/i);
+        if (cltr) out.물건번호 = cltr[1];
+      }
+      return out;
+    }
+    function _onbidHasUsefulData(parsed) {
+      if (!parsed) return false;
+      return !!(
+        parsed.소재지 || parsed.물건명 || parsed.경매번호 || parsed.공고번호 || parsed.물건번호 ||
+        parsed.감정가 || parsed.최저가 || parsed.입찰마감 || parsed.개찰일시
+      );
     }
     async function collectPublicAuctionFromInput(rawInput, cfg) {
       var input = String(rawInput || '').trim();
@@ -32798,7 +33022,6 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       var isUrl = /^https?:\/\//i.test(input);
       if (!isUrl && input.length < 120) return false;
       var gApiKey = gk ? gk() : '';
-      if (!gApiKey) { showToast('Gemini API 키를 먼저 입력해주세요', 'warn'); return true; }
       _onbidSetStatus(cfg, '⏳ 공매 링크 파싱 중...', '#94a3b8');
       _onbidSetListPlaceholder(cfg.listIds, '<div style="text-align:center;padding:20px 0;color:var(--mu);font-size:11px;">⏳ 링크 파싱 중...</div>');
       try {
@@ -32818,6 +33041,32 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           html = String(fData.html || '');
           if (!html) throw new Error('페이지 본문이 비어 있습니다');
         }
+        if (sourceUrl && /onbid\.co\.kr\/shortcut\.do/i.test(sourceUrl) && !/onbidCltrno|최저입찰가|개찰일시|입찰 정보/i.test(html)) {
+          var redirectMatch = html.match(/location\.href\s*=\s*["']([^"']+)["']/i) || html.match(/content=["']\d+;\s*url=([^"']+)["']/i);
+          if (redirectMatch && redirectMatch[1]) {
+            var redirectUrl = redirectMatch[1].trim();
+            if (redirectUrl && redirectUrl.indexOf('http') !== 0) {
+              try { redirectUrl = new URL(redirectUrl, sourceUrl).toString(); } catch(e) {}
+            }
+            if (/^https?:\/\//i.test(redirectUrl)) {
+              var rResp = await window._proxyFetch(window._getProxyBase() + '/fetch', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url: redirectUrl }),
+                signal: window._skTimeoutSignal(15000)
+              });
+              if (rResp.ok) {
+                var rData = await rResp.json();
+                if (rData.status === 'ok' && rData.html) {
+                  html = String(rData.html || html);
+                  sourceUrl = redirectUrl;
+                  sourceHint = sourceUrl.toLowerCase();
+                }
+              }
+            }
+          }
+        }
+        var deterministic = _onbidExtractStructuredData(html, sourceUrl);
         var clean = html
           .replace(/<script[\s\S]*?<\/script>/gi, ' ')
           .replace(/<style[\s\S]*?<\/style>/gi, ' ')
@@ -32831,56 +33080,105 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           .slice(0, 52000);
         var sourceName = (sourceHint.indexOf('auction1.co.kr') >= 0 || sourceHint.indexOf('/pubauct/') >= 0) ? '옥션원(공매)'
           : (sourceHint.indexOf('onbid.co.kr') >= 0 ? '온비드' : '공매');
-        var prompt = [
-          '당신은 한국 공매(온비드/옥션원) 정보 추출 전문가입니다.',
-          '아래 원문에서 공매 물건 핵심 정보를 JSON으로 추출하세요.',
-          '',
-          clean,
-          '',
-          '규칙:',
-          '- 금액은 반드시 만원 단위 숫자로 변환 (예: 884,000,000원 -> 88400)',
-          '- 날짜/시간은 가능한 한 원문 그대로 (YYYY-MM-DD HH:mm 또는 YYYY-MM-DD)',
-          '- 없거나 확인 불가 값은 빈문자열 "" 또는 0',
-          '- 추정하지 말고 보이는 값만 기록',
-          '',
-          '다음 JSON 형식으로만 출력:',
-          _onbidPublicAuctionSchema()
-        ].join('\n');
-        var parsed = await _a1CallGeminiJson(prompt);
-        var appraisalMan = _onbidPublicToMan(parsed.감정가_만원 || parsed.감정가 || 0);
-        var minMan = _onbidPublicToMan(parsed.최저입찰가_만원 || parsed.최저입찰가 || parsed.최저가_만원 || parsed.최저가 || 0);
-        var depositMan = _onbidPublicToMan(parsed.입찰보증금_만원 || parsed.보증금_만원 || parsed.보증금 || 0);
-        var caseNo = String(parsed.공고번호 || parsed.물건번호 || parsed.사건번호 || '').trim();
+        var parsed = {};
+        if (gApiKey) {
+          try {
+            var prompt = [
+              '당신은 한국 공매(온비드/옥션원) 정보 추출 전문가입니다.',
+              '아래 원문에서 공매 물건 핵심 정보를 JSON으로 추출하세요.',
+              '',
+              clean,
+              '',
+              '[사전 감지된 후보값]',
+              JSON.stringify(deterministic, null, 2),
+              '',
+              '규칙:',
+              '- 금액 필드(감정가/최저가/청구액/입찰보증금/임차인_보증금)는 반드시 원 단위 정수',
+              '- 임차인_월세만 만원 단위 정수',
+              '- 날짜/시간은 원문 표기를 유지하되 가능한 YYYY-MM-DD HH:mm로 정리',
+              '- 없거나 확인 불가 값은 "" 또는 0',
+              '- 추정하지 말고 보이는 값만 기록',
+              '',
+              '다음 JSON 형식으로만 출력:',
+              _onbidPublicAuctionSchema()
+            ].join('\n');
+            parsed = await _a1CallGeminiJson(prompt);
+          } catch (ge) {
+            console.warn('[onbid gemini fallback]', ge);
+            parsed = {};
+          }
+        }
+        var caseNo = _onbidPickFirst(
+          deterministic.경매번호, deterministic.사건번호, deterministic.공고번호, deterministic.물건번호,
+          parsed.경매번호, parsed.사건번호, parsed.공고번호, parsed.물건번호
+        );
+        var appraisalWon = _onbidPublicToWon(_onbidPickFirst(deterministic.감정가, parsed.감정가, parsed.감정가_만원));
+        var minWon = _onbidPublicToWon(_onbidPickFirst(deterministic.최저가, parsed.최저가, parsed.최저입찰가, parsed.최저입찰가_만원, parsed.최저가_만원));
+        var depositWon = _onbidPublicToWon(_onbidPickFirst(deterministic.입찰보증금, parsed.입찰보증금, parsed.입찰보증금_만원, parsed.보증금_만원, parsed.보증금));
+        var claimWon = _onbidPublicToWon(_onbidPickFirst(deterministic.청구액, parsed.청구액, parsed.청구액_만원, parsed.채권합계, parsed.채권액합계));
+        var tenantDepositWon = _onbidPublicToWon(_onbidPickFirst(deterministic.임차인_보증금, parsed.임차인_보증금));
+        var tenantMonthlyMan = _onbidPublicToMan(_onbidPickFirst(deterministic.임차인_월세, parsed.임차인_월세, parsed.월세_만원));
+        var useText = _onbidPickFirst(deterministic.용도, parsed.용도, parsed.물건종류);
+        var addrText = _onbidPickFirst(deterministic.소재지, parsed.소재지, parsed.주소);
+        var titleText = _onbidPickFirst(deterministic.물건명, parsed.물건명, addrText, caseNo, '공매 물건');
+        var bidOpen = _onbidNormalizeDateTime(_onbidPickFirst(deterministic.입찰시작, parsed.입찰시작));
+        var bidClose = _onbidNormalizeDateTime(_onbidPickFirst(deterministic.입찰마감, parsed.입찰마감));
+        var openAt = _onbidNormalizeDateTime(_onbidPickFirst(deterministic.개찰일시, parsed.개찰일시));
+        var saleDate = _onbidNormalizeDateTime(_onbidPickFirst(deterministic.매각일, parsed.매각일, bidClose, openAt));
+        var unsoldCount = parseInt(_onbidPickFirst(deterministic.유찰횟수, parsed.유찰횟수), 10);
+        if (!isFinite(unsoldCount) || unsoldCount < 0) unsoldCount = 0;
+        var dataObj = {
+          '물건명': titleText,
+          '소재지': addrText,
+          '물건번호': _onbidPickFirst(deterministic.물건번호, parsed.물건번호, parsed.onbidCltrno),
+          '공고번호': _onbidPickFirst(deterministic.공고번호, parsed.공고번호),
+          '경매번호': caseNo,
+          '사건번호': caseNo,
+          '경매구분': _onbidPickFirst(deterministic.경매구분, parsed.경매구분, useText),
+          '물건종류': _onbidPickFirst(useText, deterministic.경매구분, parsed.경매구분),
+          '용도': useText,
+          '토지면적_m2': parseFloat(_onbidPickFirst(deterministic.토지면적_m2, parsed.토지면적_m2)) || 0,
+          '건물면적_m2': parseFloat(_onbidPickFirst(deterministic.건물면적_m2, parsed.건물면적_m2)) || 0,
+          '전용면적_m2': parseFloat(_onbidPickFirst(deterministic.전용면적_m2, parsed.전용면적_m2)) || 0,
+          '감정가': appraisalWon || 0,
+          '최저가': minWon || 0,
+          '청구액': claimWon || 0,
+          '입찰보증금': depositWon || 0,
+          '입찰시작': bidOpen,
+          '입찰마감': bidClose,
+          '개찰일시': openAt,
+          '매각기일': saleDate,
+          '매각일': saleDate,
+          '회차': _onbidPickFirst(deterministic.회차, parsed.회차),
+          '유찰횟수': unsoldCount,
+          '상태': _onbidPickFirst(deterministic.상태, parsed.상태),
+          '개시결정일': _onbidNormalizeDateTime(_onbidPickFirst(deterministic.개시결정일, parsed.개시결정일)),
+          '배당요구종기': _onbidNormalizeDateTime(_onbidPickFirst(deterministic.배당요구종기, parsed.배당요구종기, parsed.배당요구종기일)),
+          '배당요구종기일': _onbidNormalizeDateTime(_onbidPickFirst(deterministic.배당요구종기, parsed.배당요구종기일, parsed.배당요구종기)),
+          '말소기준등기일': _onbidNormalizeDateTime(_onbidPickFirst(deterministic.말소기준등기일, parsed.말소기준등기일, parsed.말소기준권리일)),
+          '채무자겸소유자': _onbidPickFirst(deterministic.채무자겸소유자, parsed.채무자겸소유자),
+          '임차인': _onbidPickFirst(deterministic.임차인, parsed.임차인),
+          '임차인_보증금': tenantDepositWon || 0,
+          '임차인_월세': tenantMonthlyMan || 0,
+          '전입일자': _onbidNormalizeDateTime(_onbidPickFirst(deterministic.전입일자, parsed.전입일자)),
+          '사업자등록일': _onbidNormalizeDateTime(_onbidPickFirst(deterministic.사업자등록일, parsed.사업자등록일)),
+          '확정일자': _onbidNormalizeDateTime(_onbidPickFirst(deterministic.확정일자, parsed.확정일자)),
+          '배당요구': _onbidPickFirst(deterministic.배당요구, parsed.배당요구),
+          '기타사항': _onbidPickFirst(deterministic.기타사항, parsed.기타사항, parsed.비고, deterministic.비고),
+          '비고': _onbidPickFirst(deterministic.비고, parsed.비고, parsed.기타사항, deterministic.기타사항),
+          '상세URL': sourceUrl || String(parsed.상세URL || '').trim(),
+          '출처': sourceName
+        };
+        if (typeof _auctionHydrateDataFields === 'function') _auctionHydrateDataFields(dataObj);
+        if (!_onbidHasUsefulData(Object.assign({}, deterministic, parsed, dataObj))) {
+          throw new Error('원문에서 유효한 물건 정보를 찾지 못했습니다');
+        }
         var item = {
           id: Date.now() + '_pub',
-          title: String(parsed.물건명 || parsed.소재지 || caseNo || '공매 물건').trim(),
+          title: String(titleText || '공매 물건').trim(),
           mode: 'auction',
           source: sourceName,
-          data: {
-            '물건명': String(parsed.물건명 || '').trim(),
-            '소재지': String(parsed.소재지 || '').trim(),
-            '물건번호': String(parsed.물건번호 || '').trim(),
-            '공고번호': String(parsed.공고번호 || '').trim(),
-            '경매번호': caseNo,
-            '사건번호': caseNo,
-            '물건종류': String(parsed.용도 || '').trim(),
-            '용도': String(parsed.용도 || '').trim(),
-            '감정가_만원': appraisalMan || null,
-            '최저가_만원': minMan || null,
-            '보증금_만원': depositMan || null,
-            '감정가': appraisalMan ? appraisalMan * 10000 : 0,
-            '최저가': minMan ? minMan * 10000 : 0,
-            '입찰보증금': depositMan ? depositMan * 10000 : 0,
-            '입찰시작': String(parsed.입찰시작 || '').trim(),
-            '입찰마감': String(parsed.입찰마감 || '').trim(),
-            '개찰일시': String(parsed.개찰일시 || '').trim(),
-            '매각기일': String(parsed.입찰마감 || parsed.개찰일시 || '').trim(),
-            '회차': String(parsed.회차 || '').trim(),
-            '상태': String(parsed.상태 || '').trim(),
-            '기타사항': String(parsed.비고 || '').trim(),
-            '상세URL': sourceUrl || String(parsed.상세URL || '').trim(),
-            '출처': sourceName
-          }
+          data: dataObj
         };
         normalizeItem(item);
         if (Array.isArray(results)) {
@@ -32890,8 +33188,9 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           if (typeof renderTabs === 'function') renderTabs();
           if (typeof renderTab === 'function') renderTab(activeTab);
         }
+        var parsedType = gApiKey ? '정밀 파싱' : '기본 파싱';
         _onbidSetStatus(cfg, '✅ 링크 파싱 완료 · 결과 탭에 추가됨', '#4ade80');
-        showToast('공매 링크 파싱 완료 (결과 탭에 추가)', 'ok');
+        showToast('공매 링크 ' + parsedType + ' 완료 (결과 탭에 추가)', 'ok');
         return true;
       } catch (e) {
         console.error(e);
@@ -32915,10 +33214,9 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       }
       // 추출 탭/수집 패널에서는 API 수집을 제거하고 링크 기반만 허용
       if (ctx !== 'guardian') {
-        _onbidSetStatus(cfg, '⚠️ 링크를 입력하세요 (온비드/API 수집은 제거됨)', '#ff8c42');
+        _onbidSetStatus(cfg, '⚠️ 링크를 입력하거나 PDF를 업로드하세요', '#ff8c42');
         _onbidSetListPlaceholder(cfg.listIds, '<div style="padding:12px;border:1px solid rgba(255,140,66,.28);border-radius:8px;background:rgba(255,140,66,.07);font-size:11px;color:var(--tx);line-height:1.7;">'
-          + '온비드 추출은 이제 <b style="color:#ffd166;">링크/원문 기반</b>만 지원합니다.<br>'
-          + 'PDF는 상단 파일 업로드(PDF) 후 <b style="color:#8ab8ff;">추출하기</b>를 사용해주세요.'
+          + '<b style="color:#ffd166;">공매 링크</b>를 입력하거나 <b style="color:#8ab8ff;">PDF 업로드</b> 후 추출하세요.'
           + '</div>');
         return;
       }
@@ -39531,10 +39829,23 @@ ${newsText}
     var radios = document.querySelectorAll('input[name="' + name + '"]');
     if (!radios || !radios.length) return;
     var apply = function() {
-      var checked = document.querySelector('input[name="' + name + '"]:checked');
-      var mode = checked ? checked.value : (defaultMode || 'region');
+      var visibleRadios = Array.prototype.slice.call(radios).filter(function(r){
+        try {
+          if (!r) return false;
+          if (r.offsetParent !== null) return true;
+          if (typeof r.getClientRects === 'function' && r.getClientRects().length > 0) return true;
+          return false;
+        } catch(e) { return false; }
+      });
       var regionWrap = document.getElementById(regionWrapId);
       var mapInfo = document.getElementById(mapInfoId);
+      if (!visibleRadios.length) {
+        if (regionWrap) regionWrap.style.display = 'none';
+        if (mapInfo) mapInfo.style.display = 'none';
+        return;
+      }
+      var checked = document.querySelector('input[name="' + name + '"]:checked');
+      var mode = checked ? checked.value : (defaultMode || 'region');
       if (regionWrap) regionWrap.style.display = (mode === 'region') ? '' : 'none';
       if (mapInfo) mapInfo.style.display = (mode === 'map') ? '' : 'none';
     };
@@ -40688,6 +40999,7 @@ window.addEventListener('DOMContentLoaded', () => {
     var overdue=[], needField=[], needBid=[];
     items.forEach(function(it) {
       if (plSimpleStatusKey(it.status) === 'closed') return;
+      if (it && it.result && String(it.result.won || '').trim()) return;
       var d = daysDiff(it.biddate);
       if (d === null) return;
       if (d < 0) overdue.push(it);
@@ -40697,7 +41009,7 @@ window.addEventListener('DOMContentLoaded', () => {
     var el = document.getElementById('pl-alerts');
     if (!el) return;
     var chips = [];
-    if (overdue.length) chips.push('<span style="padding:6px 14px;border-radius:20px;font-size:12px;font-weight:600;background:#3a0000;color:#ff6b6b;border:1px solid #ff6b6b55;cursor:pointer;" onclick="document.getElementById(\'pl-filter-status\').value=\'\';renderPropertyList()">● 결과 미입력 '+overdue.length+'건 — 기일 지남</span>');
+    if (overdue.length) chips.push('<span style="padding:6px 14px;border-radius:20px;font-size:12px;font-weight:600;background:#3a0000;color:#ff6b6b;border:1px solid #ff6b6b55;cursor:pointer;" onclick="document.getElementById(\'pl-filter-status\').value=\'\';renderPropertyList()">● 결과 미입력 '+overdue.length+'건 — 활성 상태 기일 지남</span>');
     if (needField.length) chips.push('<span style="padding:6px 14px;border-radius:20px;font-size:12px;font-weight:600;background:#3a2e00;color:#f5a623;border:1px solid #f5a62355;">● 임장 필요 '+needField.length+'건 — 7일 이내 & 임장 없음</span>');
     if (needBid.length)   chips.push('<span style="padding:6px 14px;border-radius:20px;font-size:12px;font-weight:600;background:#003050;color:#4f8eff;border:1px solid #4f8eff55;">● 입찰 준비 '+needBid.length+'건 — 3일 이내</span>');
     el.innerHTML = chips.join('');

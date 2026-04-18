@@ -257,6 +257,28 @@
       color: var(--ac);
       border-bottom-color: var(--ac);
     }
+    /* 물건관리 탭 기본 강조점 (탭 진입 전에도 시선 포인트) */
+    #nav4 {
+      position: relative;
+      border-bottom-color: rgba(255, 163, 66, .35);
+      color: #b7c7df;
+    }
+    #nav4::after {
+      content: '';
+      position: absolute;
+      right: 9px;
+      top: 6px;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: rgba(255, 163, 66, .95);
+      box-shadow: 0 0 8px rgba(255, 163, 66, .55);
+      pointer-events: none;
+    }
+    #nav4.on::after {
+      background: rgba(79, 142, 255, .95);
+      box-shadow: 0 0 10px rgba(79, 142, 255, .62);
+    }
 
     .bcnt {
       background: var(--ac);
