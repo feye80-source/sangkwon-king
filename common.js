@@ -4186,28 +4186,20 @@ var _safeLocalSet = function(key, value) {
                     title.className = 'wr2-room-title';
                     title.textContent = r.title || '(제목 없음)';
                     content.appendChild(title);
-                    // 액션 버튼
-                    const actions = document.createElement('div');
-                    actions.className = 'wr2-room-item-actions';
+                    // 활성 아닐 를 메되 상태 뱃지 (버튼 제거, 상태 변경은 우상단 드롭다운)
                     const lifecycle = wr2GetLifecycle(r);
-                    const mkLifecycleBtn = function(key, label) {
-                      const b = document.createElement('button');
-                      b.className = 'wr2-room-act-btn wr2-life-btn' + (lifecycle === key ? ' on' : '');
-                      b.textContent = label;
-                      b.title = '상태를 "' + label + '"으로 변경';
-                      b.onclick = function(e) {
-                        e.stopPropagation();
-                        updateRoom(r.id, { lifecycleStatus: key });
-                      };
-                      return b;
-                    };
-                    actions.appendChild(mkLifecycleBtn('active', '활성'));
-                    actions.appendChild(mkLifecycleBtn('changed', '변경'));
-                    actions.appendChild(mkLifecycleBtn('closed', '종료'));
+                    if (lifecycle !== 'active') {
+                      const badge = document.createElement('span');
+                      badge.style.cssText = 'font-size:10px;padding:1px 6px;border-radius:999px;margin-top:2px;display:inline-block;' +
+                        (lifecycle === 'closed'
+                          ? 'color:#9aa3b2;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.10);'
+                          : 'color:#ffd166;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.30);');
+                      badge.textContent = wr2LifecycleLabel(lifecycle);
+                      content.appendChild(badge);
+                    }
 
                     item.appendChild(handle);
                     item.appendChild(content);
-                    item.appendChild(actions);
                     parentEl.appendChild(item);
                   };
 
@@ -31591,7 +31583,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
       if (scheduleEl) {
         const saleItems = sv
-          .filter(item => item && item.watchStatus && item.mode === 'auction')
+          .filter(item => item && item.mode === 'auction')
           .map(item => {
             const dt = _parseSaleDate(item.data?.매각일 || item.data?.매각기일 || '');
             if (!dt) return null;
@@ -33221,11 +33213,11 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           '회차': _onbidPickFirst(deterministic.회차, parsed.회차),
           '유찰횟수': unsoldCount,
           '상태': _onbidPickFirst(deterministic.상태, parsed.상태),
-          '개시결정일': _onbidNormalizeDateTime(_onbidPickFirst(deterministic.개시결정일, parsed.개시결정일, bidOpen)),
-          '배당종기': _onbidNormalizeDateTime(_onbidPickFirst(deterministic.배당종기, parsed.배당종기, parsed.배당종기일, bidClose, bidOpen)),
-          '배당종기일': _onbidNormalizeDateTime(_onbidPickFirst(deterministic.배당종기, parsed.배당종기일, parsed.배당종기, bidClose, bidOpen)),
-          '배당요구종기': _onbidNormalizeDateTime(_onbidPickFirst(deterministic.배당요구종기, parsed.배당요구종기, parsed.배당요구종기일, bidClose, bidOpen)),
-          '배당요구종기일': _onbidNormalizeDateTime(_onbidPickFirst(deterministic.배당요구종기, parsed.배당요구종기일, parsed.배당요구종기, bidClose, bidOpen)),
+          '개시결정일': _onbidNormalizeDateTime(_onbidPickFirst(deterministic.개시결정일, parsed.개시결정일)),
+          '배당종기': _onbidNormalizeDateTime(_onbidPickFirst(deterministic.배당종기, parsed.배당종기, parsed.배당종기일)),
+          '배당종기일': _onbidNormalizeDateTime(_onbidPickFirst(deterministic.배당종기, parsed.배당종기일, parsed.배당종기)),
+          '배당요구종기': _onbidNormalizeDateTime(_onbidPickFirst(deterministic.배당요구종기, parsed.배당요구종기, parsed.배당요구종기일)),
+          '배당요구종기일': _onbidNormalizeDateTime(_onbidPickFirst(deterministic.배당요구종기, parsed.배당요구종기일, parsed.배당요구종기)),
           '말소기준권리': _onbidPickFirst(deterministic.말소기준권리, parsed.말소기준권리),
           '말소기준등기일': _onbidNormalizeDateTime(_onbidPickFirst(deterministic.말소기준등기일, parsed.말소기준등기일, parsed.말소기준권리일)),
           '채무자겸소유자': _onbidPickFirst(deterministic.채무자겸소유자, parsed.채무자겸소유자),
@@ -38696,7 +38688,7 @@ ${newsContext}
         + '<div style="flex:1;"></div>'
         + (room.mapScene ? '<button onclick="wrOpenMapScene(\'' + id + '\')" title="지도 열기" style="padding:2px 8px;background:rgba(74,222,128,.1);border:1px solid rgba(74,222,128,.3);border-radius:5px;color:#4ade80;font-size:11px;cursor:pointer;flex-shrink:0;">🗺</button>' : '')
         + '<button onclick="wrCreateNoteFromRoom(\'' + id + '\')" title="분석 노트 만들기" style="padding:2px 7px;background:rgba(17,157,237,.1);border:1px solid rgba(17,157,237,.3);border-radius:5px;color:#119ded;font-size:11px;cursor:pointer;flex-shrink:0;">📓</button>'
-        + '<button onclick="wrDeleteRoom(\'' + id + '\')" title="작업룸 삭제" style="padding:2px 6px;background:rgba(255,77,77,.08);border:1px solid rgba(255,77,77,.2);border-radius:5px;color:#ff6370;font-size:11px;cursor:pointer;flex-shrink:0;">🗑</button>'
+        + '<select onchange="(function(v){var rooms=wrGetRooms();var r=rooms.find(function(x){return x.id===\'' + id + '\';});if(r){r.lifecycleStatus=v;r.updatedAt=Date.now();wrSetRooms(rooms);wrDbOpenRoom(\'' + id + '\');}})(this.value)" title="작업룸 상태" style="padding:2px 6px;background:var(--s2);border:1px solid var(--b1);border-radius:5px;color:var(--mu);font-size:10px;font-weight:700;outline:none;cursor:pointer;flex-shrink:0;">'\n        + (function(){var cur=(function(){var rr=wrGetRooms();var x=rr.find(function(rx){return rx.id===id;});return x?(x.lifecycleStatus||'active'):'active';})();return [['active','활성'],['changed','변경'],['closed','종료']].map(function(p){return '<option value="'+p[0]+'"'+(p[0]===cur?' selected':'')+'>'+p[1]+'</option>';}).join('');})() \n        + '</select>'\n        + '<button onclick="wrDeleteRoom(\'' + id + '\')" title="작업룸 삭제" style="padding:2px 6px;background:rgba(255,77,77,.08);border:1px solid rgba(255,77,77,.2);border-radius:5px;color:#ff6370;font-size:11px;cursor:pointer;flex-shrink:0;">🗑</button>'
         + '</div>'
 
         // ── 물건 요약 바 ──
@@ -38920,7 +38912,28 @@ ${newsContext}
       var room = rooms.find(function (r) { return r.id === roomId; });
       if (!room) return;
       room.activePhase = phId;
+      room.status = phId;
       wrSetRooms(rooms);
+      // 연결된 저장목록 watchStatus 동기화
+      var phaseToWatch = { ph_review: 'review', ph_field: 'field', ph_bid: 'bid', ph_won: 'won', ph_sell: 'sell' };
+      var watchKey = phaseToWatch[phId] || phId;
+      var validWatch = ['interest','review','field','bid','won','sell'];
+      if (validWatch.indexOf(watchKey) >= 0) {
+        var sv = (typeof getSv === 'function') ? getSv() : [];
+        var linkedIds = (room.linkedItems || []).concat(room.linkedSavedId ? [room.linkedSavedId] : []);
+        var changed = false;
+        sv.forEach(function(it) {
+          if (linkedIds.map(String).indexOf(String(it.id)) >= 0) {
+            it.watchStatus = watchKey;
+            changed = true;
+          }
+        });
+        if (changed && typeof setSv === 'function') {
+          setSv(sv);
+          if (typeof renderSaved === 'function') renderSaved();
+          if (typeof renderWatchBoard === 'function') setTimeout(renderWatchBoard, 50);
+        }
+      }
       wrDbOpenRoom(roomId);
     };
 
