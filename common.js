@@ -938,6 +938,8 @@
 
     // ─── 동기화 상태 표시 ─────────────────────────────────────
     window._sbSyncStatus = function(msg, ok) {
+      // 물건리스트 편집 중 반복 상태 토스트 차단 (실사용 방해)
+      if (String(msg || '').indexOf('물건리스트 동기화') >= 0) return;
       // 동일 메시지 연속 노출(짧은 시간 내 반복) 방지
       var now = Date.now();
       if (window._sbLastStatusMsg === msg && window._sbLastStatusAt && (now - window._sbLastStatusAt) < 3500) {
@@ -32901,6 +32903,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     }
     async function fetchOnbidItems(context) {
       var cfg = _onbidContextConfig(context);
+      var ctx = String(context || 'guardian');
       var linkVal = '';
       if (cfg.linkInputId) {
         var linkEl = document.getElementById(cfg.linkInputId);
@@ -32909,6 +32912,15 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       if (linkVal) {
         var handled = await collectPublicAuctionFromInput(linkVal, cfg);
         if (handled) return;
+      }
+      // 추출 탭/수집 패널에서는 API 수집을 제거하고 링크 기반만 허용
+      if (ctx !== 'guardian') {
+        _onbidSetStatus(cfg, '⚠️ 링크를 입력하세요 (온비드/API 수집은 제거됨)', '#ff8c42');
+        _onbidSetListPlaceholder(cfg.listIds, '<div style="padding:12px;border:1px solid rgba(255,140,66,.28);border-radius:8px;background:rgba(255,140,66,.07);font-size:11px;color:var(--tx);line-height:1.7;">'
+          + '온비드 추출은 이제 <b style="color:#ffd166;">링크/원문 기반</b>만 지원합니다.<br>'
+          + 'PDF는 상단 파일 업로드(PDF) 후 <b style="color:#8ab8ff;">추출하기</b>를 사용해주세요.'
+          + '</div>');
+        return;
       }
       const key = getOnbidKey(cfg.keyIds);
       if (!key) { showToast('온비드 API 키를 입력해주세요', 'warn'); return; }
@@ -40700,10 +40712,15 @@ window.addEventListener('DOMContentLoaded', () => {
     var showClosed = !!((document.getElementById('pl-show-closed')||{}).checked);
     return (items || []).filter(function(it){
       it = plNormalizeItem(it);
-      if (!showArchived && it.archived) return false;
+      var isArchived = !!it.archived;
       var simple = plSimpleStatusKey(it.status);
-      if (!showClosed && !fs && simple === 'closed') return false;
-      if (fs && simple !== fs) return false;
+      if (fs) {
+        if (simple !== fs) return false;
+      } else {
+        if (!showClosed && simple === 'closed') return false;
+      }
+      // 종료 포함을 켜면 archived(숨김)도 함께 보이게 하여 실제 종료 항목 누락 방지
+      if (!showArchived && !showClosed && isArchived) return false;
       if (q) {
         var hay = [it.addr,it.casenum,it.region,it.feature,it.memo].join(' ').toLowerCase();
         if (hay.indexOf(q) < 0) return false;
@@ -40928,7 +40945,7 @@ window.addEventListener('DOMContentLoaded', () => {
           + '<td style="padding:8px 10px;overflow:hidden;"><div style="font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+plEscHtml(rowName||'')+'">'+plEscHtml(rowName||'—')+'</div>'+resultTag+'</td>'
           + '<td style="padding:8px 10px;overflow:hidden;" onclick="event.stopPropagation()">'+casenumCell+'</td>'
           + '<td style="padding:8px 10px;font-size:12px;color:var(--fg2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+(it.region||'—')+'</td>'
-          + '<td style="padding:8px 10px;font-size:12px;color:var(--fg2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+(it.feature||'')+'">'+(it.feature||'—')+'</td>'
+          + '<td style="padding:8px 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+plEditCellHtml(it.id,'feature',it.feature||'',it.feature||'',{type:'text',align:'left',minw:'100px',placeholder:'특징 입력',empty:'—',spanStyle:'font-size:12px;color:var(--fg2);'})+'</td>'
           + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'appraisal',plDisplayMoney(it.appraisal||''),plDisplayMan(it.appraisal||''),{type:'text',align:'right',minw:'70px',placeholder:'만원'})+'</td>'
           + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'minprice',plDisplayMoney(it.minprice||''),plDisplayMan(it.minprice||''),{type:'text',align:'right',minw:'70px',placeholder:'만원',spanStyle:'color:#fb923c;font-weight:700;'})+'</td>'
           + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'deposit',plDisplayMoney(it.deposit||''),plDisplayMan(it.deposit||''),{type:'text',align:'right',minw:'60px',placeholder:'만원'})+'</td>'
