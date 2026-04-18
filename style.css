@@ -10358,6 +10358,21 @@
 ═══════════════════════════════════════════════════════════════ */
 #page4 {
   display: flex;
+  background:
+    radial-gradient(1200px 380px at 8% -12%, rgba(16,185,129,.08), transparent 68%),
+    radial-gradient(900px 320px at 92% -16%, rgba(79,142,255,.09), transparent 70%);
+}
+#page4 .pm-subtab-btn {
+  transition: color .18s ease, background .18s ease, box-shadow .2s ease;
+  border-radius: 10px 10px 0 0;
+  letter-spacing: -.1px;
+}
+#page4 .pm-subtab-btn.pm-subtab-on {
+  background: linear-gradient(180deg, rgba(79,142,255,.14), rgba(79,142,255,.04) 72%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
+}
+#pm-panel-list {
+  background: linear-gradient(180deg, rgba(10,14,23,.18), rgba(10,14,23,0));
 }
 #pm-panel-work,
 #pm-work-host,

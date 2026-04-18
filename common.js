@@ -938,6 +938,13 @@
 
     // ─── 동기화 상태 표시 ─────────────────────────────────────
     window._sbSyncStatus = function(msg, ok) {
+      // 동일 메시지 연속 노출(짧은 시간 내 반복) 방지
+      var now = Date.now();
+      if (window._sbLastStatusMsg === msg && window._sbLastStatusAt && (now - window._sbLastStatusAt) < 3500) {
+        return;
+      }
+      window._sbLastStatusMsg = msg;
+      window._sbLastStatusAt = now;
       let el = document.getElementById('_sbStatusBar');
       if (!el) {
         el = document.createElement('div');
@@ -32636,10 +32643,16 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     let onbidItems = [];
     let guardianReport = null;
 
-    function getOnbidKey() {
-      return document.getElementById('onbidApiKey')?.value?.trim()
-        || document.getElementById('onbidKeyLocal')?.value?.trim()
-        || localStorage.getItem('onbid_key') || '';
+    function getOnbidKey(extraIds) {
+      var ids = []
+        .concat(extraIds || [])
+        .concat(['onbidApiKey','onbidKeyLocal','onbidKey2','onbidKeyCollect']);
+      for (var i = 0; i < ids.length; i += 1) {
+        var el = document.getElementById(ids[i]);
+        var v = el && el.value ? String(el.value).trim() : '';
+        if (v) return v;
+      }
+      return localStorage.getItem('onbid_key') || '';
     }
 
     function initGuardianTab() {
@@ -32647,12 +32660,16 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       if (saved) {
         const el1 = document.getElementById('onbidApiKey');
         const el2 = document.getElementById('onbidKeyLocal');
+        const el3 = document.getElementById('onbidKey2');
+        const el4 = document.getElementById('onbidKeyCollect');
         if (el1 && !el1.value) el1.value = saved;
         if (el2 && !el2.value) el2.value = saved;
+        if (el3 && !el3.value) el3.value = saved;
+        if (el4 && !el4.value) el4.value = saved;
         const dot = document.getElementById('onbidDot');
         if (dot) dot.classList.add('on');
       }
-      ['onbidApiKey', 'onbidKeyLocal'].forEach(id => {
+      ['onbidApiKey', 'onbidKeyLocal', 'onbidKey2', 'onbidKeyCollect'].forEach(id => {
         const el = document.getElementById(id);
         if (el && !el._guardianInit) {
           el._guardianInit = true;
@@ -32669,18 +32686,242 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         }
       });
     }
-
-    async function fetchOnbidItems() {
-      const key = getOnbidKey();
+    function _onbidContextConfig(context) {
+      var ctx = String(context || 'guardian');
+      if (ctx === 'panel2') {
+        return {
+          keyIds: ['onbidKey2'],
+          ctgrId: 'onbidCtgr2',
+          limitId: 'onbidLimit2',
+          modeName: 'onbidMode2',
+          regionId: 'onbidRegion2',
+          listIds: ['onbidList2'],
+          statusId: 'onbidStat2',
+          linkInputId: 'onbidLink2'
+        };
+      }
+      if (ctx === 'collect') {
+        return {
+          keyIds: ['onbidKeyCollect'],
+          ctgrId: 'onbidCtgrIdCollect',
+          limitId: 'onbidLimitCollect',
+          modeName: 'onbidCollectMode',
+          regionId: 'onbidRegionCollect',
+          listIds: ['onbidCollectList'],
+          statusId: 'onbidCollectStatus',
+          linkInputId: 'onbidLinkCollect'
+        };
+      }
+      return {
+        keyIds: ['onbidKeyLocal', 'onbidApiKey'],
+        ctgrId: 'onbidCtgrId',
+        limitId: 'onbidLimit',
+        modeName: '',
+        regionId: 'onbidRegion',
+        listIds: ['onbidItemList'],
+        statusId: '',
+        linkInputId: ''
+      };
+    }
+    function _onbidSetStatus(cfg, msg, color) {
+      if (!cfg) return;
+      if (cfg.statusId) {
+        var st = document.getElementById(cfg.statusId);
+        if (st) {
+          st.textContent = msg || '';
+          if (color) st.style.color = color;
+        }
+      }
+    }
+    function _onbidSetListPlaceholder(listIds, html) {
+      (listIds || []).forEach(function(id){
+        var el = document.getElementById(id);
+        if (el) el.innerHTML = html;
+      });
+    }
+    async function _onbidResolveRegionByMap() {
+      try {
+        if (!(window.kakao && kakao.maps && kakao.maps.services && window.map)) return '';
+        var c = map.getCenter();
+        if (!c) return '';
+        var geocoder = new kakao.maps.services.Geocoder();
+        var region = await new Promise(function(resolve){
+          geocoder.coord2RegionCode(c.getLng(), c.getLat(), function(result, status){
+            if (status !== kakao.maps.services.Status.OK || !result || !result.length) { resolve(''); return; }
+            var hang = result.find(function(r){ return r.region_type === 'H'; }) || result[0];
+            var name = String(hang.address_name || '').trim();
+            if (!name) { resolve(''); return; }
+            var parts = name.split(/\s+/).slice(0, 2);
+            resolve(parts.join(' '));
+          });
+        });
+        return region || '';
+      } catch(e) { return ''; }
+    }
+    function _onbidPublicAuctionSchema() {
+      return `{
+  "물건명": "",
+  "공고번호": "",
+  "물건번호": "",
+  "용도": "",
+  "소재지": "",
+  "감정가_만원": 0,
+  "최저입찰가_만원": 0,
+  "입찰보증금_만원": 0,
+  "입찰시작": "",
+  "입찰마감": "",
+  "개찰일시": "",
+  "회차": "",
+  "상태": "",
+  "비고": ""
+}`;
+    }
+    function _onbidPublicToMan(v) {
+      var raw = String(v == null ? '' : v).trim();
+      if (!raw) return 0;
+      if (/^\d+$/.test(raw)) {
+        var n0 = parseInt(raw, 10);
+        if (!isFinite(n0) || n0 <= 0) return 0;
+        return n0 >= 1000000 ? Math.round(n0 / 10000) : n0;
+      }
+      var digits = raw.replace(/[^0-9]/g, '');
+      if (!digits) return 0;
+      var n = parseInt(digits, 10);
+      if (!isFinite(n) || n <= 0) return 0;
+      return n >= 1000000 ? Math.round(n / 10000) : n;
+    }
+    async function collectPublicAuctionFromInput(rawInput, cfg) {
+      var input = String(rawInput || '').trim();
+      if (!input) return false;
+      var isUrl = /^https?:\/\//i.test(input);
+      if (!isUrl && input.length < 120) return false;
+      var gApiKey = gk ? gk() : '';
+      if (!gApiKey) { showToast('Gemini API 키를 먼저 입력해주세요', 'warn'); return true; }
+      _onbidSetStatus(cfg, '⏳ 공매 링크 파싱 중...', '#94a3b8');
+      _onbidSetListPlaceholder(cfg.listIds, '<div style="text-align:center;padding:20px 0;color:var(--mu);font-size:11px;">⏳ 링크 파싱 중...</div>');
+      try {
+        var sourceUrl = isUrl ? input : '';
+        var sourceHint = sourceUrl.toLowerCase();
+        var html = input;
+        if (isUrl) {
+          var fResp = await window._proxyFetch(window._getProxyBase() + '/fetch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: sourceUrl }),
+            signal: window._skTimeoutSignal(15000)
+          });
+          if (!fResp.ok) throw new Error('HTTP ' + fResp.status);
+          var fData = await fResp.json();
+          if (fData.status === 'error') throw new Error(fData.message || '링크 불러오기 실패');
+          html = String(fData.html || '');
+          if (!html) throw new Error('페이지 본문이 비어 있습니다');
+        }
+        var clean = html
+          .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+          .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/&nbsp;/g, ' ')
+          .replace(/&gt;/g, '>')
+          .replace(/&lt;/g, '<')
+          .replace(/&amp;/g, '&')
+          .replace(/\s{2,}/g, '\n')
+          .trim()
+          .slice(0, 52000);
+        var sourceName = (sourceHint.indexOf('auction1.co.kr') >= 0 || sourceHint.indexOf('/pubauct/') >= 0) ? '옥션원(공매)'
+          : (sourceHint.indexOf('onbid.co.kr') >= 0 ? '온비드' : '공매');
+        var prompt = [
+          '당신은 한국 공매(온비드/옥션원) 정보 추출 전문가입니다.',
+          '아래 원문에서 공매 물건 핵심 정보를 JSON으로 추출하세요.',
+          '',
+          clean,
+          '',
+          '규칙:',
+          '- 금액은 반드시 만원 단위 숫자로 변환 (예: 884,000,000원 -> 88400)',
+          '- 날짜/시간은 가능한 한 원문 그대로 (YYYY-MM-DD HH:mm 또는 YYYY-MM-DD)',
+          '- 없거나 확인 불가 값은 빈문자열 "" 또는 0',
+          '- 추정하지 말고 보이는 값만 기록',
+          '',
+          '다음 JSON 형식으로만 출력:',
+          _onbidPublicAuctionSchema()
+        ].join('\n');
+        var parsed = await _a1CallGeminiJson(prompt);
+        var appraisalMan = _onbidPublicToMan(parsed.감정가_만원 || parsed.감정가 || 0);
+        var minMan = _onbidPublicToMan(parsed.최저입찰가_만원 || parsed.최저입찰가 || parsed.최저가_만원 || parsed.최저가 || 0);
+        var depositMan = _onbidPublicToMan(parsed.입찰보증금_만원 || parsed.보증금_만원 || parsed.보증금 || 0);
+        var caseNo = String(parsed.공고번호 || parsed.물건번호 || parsed.사건번호 || '').trim();
+        var item = {
+          id: Date.now() + '_pub',
+          title: String(parsed.물건명 || parsed.소재지 || caseNo || '공매 물건').trim(),
+          mode: 'auction',
+          source: sourceName,
+          data: {
+            '물건명': String(parsed.물건명 || '').trim(),
+            '소재지': String(parsed.소재지 || '').trim(),
+            '물건번호': String(parsed.물건번호 || '').trim(),
+            '공고번호': String(parsed.공고번호 || '').trim(),
+            '경매번호': caseNo,
+            '사건번호': caseNo,
+            '물건종류': String(parsed.용도 || '').trim(),
+            '용도': String(parsed.용도 || '').trim(),
+            '감정가_만원': appraisalMan || null,
+            '최저가_만원': minMan || null,
+            '보증금_만원': depositMan || null,
+            '감정가': appraisalMan ? appraisalMan * 10000 : 0,
+            '최저가': minMan ? minMan * 10000 : 0,
+            '입찰보증금': depositMan ? depositMan * 10000 : 0,
+            '입찰시작': String(parsed.입찰시작 || '').trim(),
+            '입찰마감': String(parsed.입찰마감 || '').trim(),
+            '개찰일시': String(parsed.개찰일시 || '').trim(),
+            '매각기일': String(parsed.입찰마감 || parsed.개찰일시 || '').trim(),
+            '회차': String(parsed.회차 || '').trim(),
+            '상태': String(parsed.상태 || '').trim(),
+            '기타사항': String(parsed.비고 || '').trim(),
+            '상세URL': sourceUrl || String(parsed.상세URL || '').trim(),
+            '출처': sourceName
+          }
+        };
+        normalizeItem(item);
+        if (Array.isArray(results)) {
+          results.push(item);
+          activeTab = results.length - 1;
+          editIdx = null;
+          if (typeof renderTabs === 'function') renderTabs();
+          if (typeof renderTab === 'function') renderTab(activeTab);
+        }
+        _onbidSetStatus(cfg, '✅ 링크 파싱 완료 · 결과 탭에 추가됨', '#4ade80');
+        showToast('공매 링크 파싱 완료 (결과 탭에 추가)', 'ok');
+        return true;
+      } catch (e) {
+        console.error(e);
+        _onbidSetStatus(cfg, '❌ 링크 파싱 실패: ' + e.message, '#ff6b6b');
+        _onbidSetListPlaceholder(cfg.listIds, '<div style="padding:12px;background:rgba(255,77,77,0.08);border:1px solid rgba(255,77,77,0.22);border-radius:8px;font-size:11px;color:var(--tx);">⚠️ 링크 파싱 실패: ' + (e.message || 'unknown') + '</div>');
+        showToast('공매 링크 파싱 실패: ' + e.message, 'warn');
+        return true;
+      }
+    }
+    async function fetchOnbidItems(context) {
+      var cfg = _onbidContextConfig(context);
+      var linkVal = '';
+      if (cfg.linkInputId) {
+        var linkEl = document.getElementById(cfg.linkInputId);
+        if (linkEl) linkVal = String(linkEl.value || '').trim();
+      }
+      if (linkVal) {
+        var handled = await collectPublicAuctionFromInput(linkVal, cfg);
+        if (handled) return;
+      }
+      const key = getOnbidKey(cfg.keyIds);
       if (!key) { showToast('온비드 API 키를 입력해주세요', 'warn'); return; }
 
-      const ctgrId = document.getElementById('onbidCtgrId')?.value || '03';
-      const limit = document.getElementById('onbidLimit')?.value || '10';
-      const region = document.getElementById('onbidRegion')?.value?.trim() || '';
-      const listEl = document.getElementById('onbidItemList');
-      const cntEl = document.getElementById('onbidCount');
-
-      if (listEl) listEl.innerHTML = '<div style="color:var(--mu);font-size:11px;text-align:center;padding:20px 0;">⏳ 수집 중...</div>';
+      var ctgrId = document.getElementById(cfg.ctgrId)?.value || '03';
+      var limit = document.getElementById(cfg.limitId)?.value || '10';
+      var mode = cfg.modeName ? (document.querySelector('input[name="' + cfg.modeName + '"]:checked')?.value || 'region') : 'region';
+      var region = document.getElementById(cfg.regionId)?.value?.trim() || '';
+      if (cfg.modeName && mode === 'map') {
+        region = await _onbidResolveRegionByMap();
+      }
+      _onbidSetStatus(cfg, '⏳ API 수집 중...', '#94a3b8');
+      _onbidSetListPlaceholder(cfg.listIds, '<div style="text-align:center;padding:20px 0;color:var(--mu);font-size:11px;">⏳ 수집 중...</div>');
 
       try {
         let rawItems = null;
@@ -32699,7 +32940,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           rawItems = data.data || [];
         } catch (proxyErr) {
           // 2차: 공공데이터 API 직접 호출
-          if (listEl) listEl.innerHTML = '<div style="color:var(--mu);font-size:11px;text-align:center;padding:20px 0;">⏳ 직접 API 호출 중...</div>';
+          _onbidSetListPlaceholder(cfg.listIds, '<div style="text-align:center;padding:20px 0;color:var(--mu);font-size:11px;">⏳ 직접 API 호출 중...</div>');
           const params = new URLSearchParams({ serviceKey: key, pageNo: '1', numOfRows: limit, type: 'json', ctgrId: ctgrId });
           if (region) params.set('ldNm', region);
           const dr = await fetch('https://apis.data.go.kr/B553077/API/SelectBidPblancListInfo/getBidPblancListInfo?' + params);
@@ -32721,49 +32962,56 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           };
         });
 
-        renderOnbidList();
+        renderOnbidList(cfg.listIds);
+        const cntEl = document.getElementById('onbidCount');
         if (cntEl) cntEl.textContent = `(${onbidItems.length}건)`;
         const btn = document.getElementById('guardianAnalyzeBtn');
         if (btn) btn.style.display = onbidItems.length ? '' : 'none';
+        _onbidSetStatus(cfg, `✅ ${onbidItems.length}건 수집 완료`, '#4ade80');
         showToast(`${onbidItems.length}건 수집 완료`, 'ok');
 
       } catch (e) {
         console.error(e);
-        if (listEl) listEl.innerHTML = `<div style="padding:12px;background:rgba(255,77,77,0.08);border:1px solid rgba(255,77,77,0.2);border-radius:8px;font-size:11px;color:var(--tx);">
+        _onbidSetListPlaceholder(cfg.listIds, `<div style="padding:12px;background:rgba(255,77,77,0.08);border:1px solid rgba(255,77,77,0.2);border-radius:8px;font-size:11px;color:var(--tx);">
       <b style="color:#ff4d4d;">⚠️ API 오류: ${e.message}</b><br><br>
       <b>체크리스트:</b><br>
       1️⃣ API 키: 공공데이터포털 <b>Decoding 인증키</b> 사용 여부 확인<br>
       2️⃣ 공공데이터포털에서 <b>온비드(getBidPblancListInfo)</b> 서비스 활용 신청 완료 여부 확인<br>
       3️⃣ 프록시 필요시: <code id="proxyFileNameDisplay">python3 proxy_server.py</code> (포트 8080)
-    </div>`;
+    </div>`);
+        _onbidSetStatus(cfg, '❌ API 수집 실패', '#ff6b6b');
         showToast('온비드 API 오류', 'err');
       }
     }
+    window.fetchOnbidItems = fetchOnbidItems;
 
-    function renderOnbidList() {
-      const el = document.getElementById('onbidItemList');
-      if (!el) return;
-      if (!onbidItems.length) {
-        el.innerHTML = '<div style="color:var(--mu);font-size:11px;text-align:center;padding:20px 0;">수집된 물건 없음</div>';
-        return;
-      }
+    function renderOnbidList(targetListIds) {
+      var ids = (targetListIds && targetListIds.length) ? targetListIds : ['onbidItemList', 'onbidCollectList', 'onbidList2'];
       const sv = getSv();
-      el.innerHTML = onbidItems.map((it, i) => {
-        const saved = sv.some(function (s) { return s.source === '온비드' && s.data && s.data['물건번호'] === it.cltr_no; });
-        const btnStyle = saved
-          ? 'font-size:9px;padding:2px 7px;border-radius:4px;border:1px solid var(--g);background:rgba(0,212,170,0.1);color:var(--g);cursor:default;white-space:nowrap;'
-          : 'font-size:9px;padding:2px 7px;border-radius:4px;border:1px solid rgba(255,140,66,0.5);background:rgba(255,140,66,0.1);color:#ff8c42;cursor:pointer;white-space:nowrap;';
-        const btnClick = saved ? '' : ' onclick="onbidSaveItem(' + i + ')"';
-        const btnText = saved ? '✅ 저장됨' : '+ 저장';
-        return '<div style="padding:8px 10px;background:var(--s2);border-radius:7px;border:1px solid var(--b1);border-left:3px solid #ff8c42;margin-bottom:5px;">'
-          + '<div style="font-size:11px;font-weight:700;color:var(--tx);margin-bottom:2px;">' + it.cltr_nm + '</div>'
-          + '<div style="font-size:10px;color:var(--mu);margin-bottom:5px;">📍 ' + it.nmbs_adrs + '</div>'
-          + '<div style="display:flex;justify-content:space-between;align-items:center;gap:4px;">'
-          + '<span style="font-size:11px;font-weight:700;color:#ff8c42;flex:1;">' + it.aprs_pric + '원</span>'
-          + '<a href="' + (it.onbid_url || '') + '" target="_blank" style="font-size:9px;color:var(--ac);text-decoration:none;background:rgba(79,142,255,0.1);padding:2px 6px;border-radius:4px;white-space:nowrap;">↗ 온비드</a>'
-          + '<button style="' + btnStyle + '"' + btnClick + '>' + btnText + '</button>'
-          + '</div></div>';
-      }).join('');
+      ids.forEach(function(listId){
+        const el = document.getElementById(listId);
+        if (!el) return;
+        if (!onbidItems.length) {
+          el.innerHTML = '<div style="color:var(--mu);font-size:11px;text-align:center;padding:20px 0;">수집된 물건 없음</div>';
+          return;
+        }
+        el.innerHTML = onbidItems.map((it, i) => {
+          const saved = sv.some(function (s) { return s.source === '온비드' && s.data && s.data['물건번호'] === it.cltr_no; });
+          const btnStyle = saved
+            ? 'font-size:9px;padding:2px 7px;border-radius:4px;border:1px solid var(--g);background:rgba(0,212,170,0.1);color:var(--g);cursor:default;white-space:nowrap;'
+            : 'font-size:9px;padding:2px 7px;border-radius:4px;border:1px solid rgba(255,140,66,0.5);background:rgba(255,140,66,0.1);color:#ff8c42;cursor:pointer;white-space:nowrap;';
+          const btnClick = saved ? '' : ' onclick="onbidSaveItem(' + i + ')"';
+          const btnText = saved ? '✅ 저장됨' : '+ 저장';
+          return '<div style="padding:8px 10px;background:var(--s2);border-radius:7px;border:1px solid var(--b1);border-left:3px solid #ff8c42;margin-bottom:5px;">'
+            + '<div style="font-size:11px;font-weight:700;color:var(--tx);margin-bottom:2px;">' + it.cltr_nm + '</div>'
+            + '<div style="font-size:10px;color:var(--mu);margin-bottom:5px;">📍 ' + it.nmbs_adrs + '</div>'
+            + '<div style="display:flex;justify-content:space-between;align-items:center;gap:4px;">'
+            + '<span style="font-size:11px;font-weight:700;color:#ff8c42;flex:1;">' + it.aprs_pric + '원</span>'
+            + '<a href="' + (it.onbid_url || '') + '" target="_blank" style="font-size:9px;color:var(--ac);text-decoration:none;background:rgba(79,142,255,0.1);padding:2px 6px;border-radius:4px;white-space:nowrap;">↗ 온비드</a>'
+            + '<button style="' + btnStyle + '"' + btnClick + '>' + btnText + '</button>'
+            + '</div></div>';
+        }).join('');
+      });
     }
 
     // 온비드 물건 저장목록에 추가 (카카오 Geocoder 활용)
@@ -37572,10 +37820,13 @@ ${newsContext}
     // ── 2. collectOnbid / collectOnbidUnified: fetchOnbidItems 래퍼 ──
     // 구버전 버튼(L2882)과 통합버튼(L2457) 모두 fetchOnbidItems로 연결
     window.collectOnbid = function () {
-      if (typeof fetchOnbidItems === 'function') fetchOnbidItems();
+      if (typeof fetchOnbidItems === 'function') fetchOnbidItems('collect');
       else if (typeof showToast === 'function') showToast('온비드 수집 기능을 찾을 수 없습니다', 'warn');
     };
-    window.collectOnbidUnified = window.collectOnbid;
+    window.collectOnbidUnified = function () {
+      if (typeof fetchOnbidItems === 'function') fetchOnbidItems('panel2');
+      else if (typeof showToast === 'function') showToast('온비드 수집 기능을 찾을 수 없습니다', 'warn');
+    };
 
     // ── 3. sbizToggleLayer: 상권분석 레이어 on/off (renderAccordion 버튼용) ──
     window.sbizToggleLayer = function (catId) {
@@ -39264,6 +39515,28 @@ ${newsText}
       if (dot) dot.classList.add('on');
     }
   };
+  function _onbidBindCollectMode(name, regionWrapId, mapInfoId, defaultMode) {
+    var radios = document.querySelectorAll('input[name="' + name + '"]');
+    if (!radios || !radios.length) return;
+    var apply = function() {
+      var checked = document.querySelector('input[name="' + name + '"]:checked');
+      var mode = checked ? checked.value : (defaultMode || 'region');
+      var regionWrap = document.getElementById(regionWrapId);
+      var mapInfo = document.getElementById(mapInfoId);
+      if (regionWrap) regionWrap.style.display = (mode === 'region') ? '' : 'none';
+      if (mapInfo) mapInfo.style.display = (mode === 'map') ? '' : 'none';
+    };
+    radios.forEach(function(r){ if (!r._onbidModeBound) { r._onbidModeBound = true; r.addEventListener('change', apply); } });
+    apply();
+  }
+  document.addEventListener('DOMContentLoaded', function() {
+    _onbidBindCollectMode('onbidMode2', 'onbidRegionWrap2', 'onbidMapInfo2', 'region');
+    _onbidBindCollectMode('onbidCollectMode', 'onbidRegionWrap', 'onbidMapModeInfo', 'map');
+  });
+  setTimeout(function() {
+    _onbidBindCollectMode('onbidMode2', 'onbidRegionWrap2', 'onbidMapInfo2', 'region');
+    _onbidBindCollectMode('onbidCollectMode', 'onbidRegionWrap', 'onbidMapModeInfo', 'map');
+  }, 350);
 
   // calcNpl: mobile.html에서 소문자로 호출하는 alias
   window.calcNpl = function() {
@@ -39846,6 +40119,7 @@ window.addEventListener('DOMContentLoaded', () => {
   var plSelectedMap = {};
   var plImportSelectedMap = {};
   var _plEditAutoFocus = null;
+  var _plSavedSyncMute = 0;
 
   function plEscHtml(s) {
     return String(s || '')
@@ -39882,6 +40156,7 @@ window.addEventListener('DOMContentLoaded', () => {
       deposit: it.deposit || '',
       monthly: it.monthly || '',
       site: String(it.site || '0'),
+      bidders: it.bidders || '',
       memo: it.memo || '',
       result: it.result || null,
       archived: archived,
@@ -39979,6 +40254,172 @@ window.addEventListener('DOMContentLoaded', () => {
     }
     return fallback || '';
   }
+  function plToManUnit(v) {
+    var raw = String(v == null ? '' : v).replace(/[^0-9]/g, '');
+    if (!raw) return '';
+    var n = parseInt(raw, 10);
+    if (!isFinite(n) || n <= 0) return '';
+    // 저장목록은 원 단위가 많아서 만원 단위로 맞춘다.
+    if (n >= 1000000) return String(Math.round(n / 10000));
+    return String(n);
+  }
+  function plDiffers(a, b) {
+    return String(a == null ? '' : a) !== String(b == null ? '' : b);
+  }
+  function plWithSavedSyncMute(fn) {
+    _plSavedSyncMute += 1;
+    try { return fn(); }
+    finally { _plSavedSyncMute = Math.max(0, _plSavedSyncMute - 1); }
+  }
+  function plGetSavedItems() {
+    try { return (typeof getSv === 'function') ? (getSv() || []) : JSON.parse(localStorage.getItem('re_sv') || '[]'); }
+    catch(e) { return []; }
+  }
+  function plIsPublicAuctionSaved(src) {
+    if (!src) return false;
+    var source = String(src.source || '').toLowerCase();
+    var raw = src.data || {};
+    var detail = String(raw['상세URL'] || raw['온비드URL'] || '').toLowerCase();
+    return source.indexOf('온비드') >= 0
+      || source.indexOf('공매') >= 0
+      || detail.indexOf('onbid.co.kr') >= 0
+      || detail.indexOf('/pubauct/') >= 0;
+  }
+  function plPickSavedDisplayName(src, fallback) {
+    var raw = (src && src.data) || {};
+    return String(
+      plSavedField(src, ['title'], '')
+      || plSavedField(raw, ['물건명','물건명칭','매물명','상품명'], '')
+      || fallback
+      || ''
+    ).trim();
+  }
+  function plBuildPatchFromSaved(src, curItem) {
+    if (!src) return null;
+    var raw = src.data || {};
+    var mapped = plMapSavedToItem(src);
+    var nextType = plIsPublicAuctionSaved(src) ? '공매' : (mapped.type || curItem.type || '경매');
+    var nextName = plPickSavedDisplayName(src, mapped.addr || curItem.addr || '');
+    var nextRegion = mapped.region || plSavedField(raw, ['소재지','주소','address'], '') || curItem.region || '';
+    var nextResult = Object.assign({}, curItem.result || {});
+    var wonFromSaved = plSavedField(raw, ['낙찰가_만원','낙찰가(만원)','낙찰가','최고입찰가_만원'], '');
+    var nextWon = wonFromSaved ? plToManUnit(wonFromSaved) : '';
+    if (nextWon && plDiffers(nextResult.won || '', nextWon)) nextResult.won = nextWon;
+    return {
+      linkedSavedId: String(src.id || curItem.linkedSavedId || ''),
+      type: nextType,
+      addr: nextName || curItem.addr || '',
+      casenum: mapped.casenum || curItem.casenum || '',
+      region: nextRegion,
+      feature: mapped.feature || curItem.feature || '',
+      appraisal: mapped.appraisal || curItem.appraisal || '',
+      minprice: mapped.minprice || curItem.minprice || '',
+      round: mapped.round || curItem.round || '',
+      biddate: mapped.biddate || curItem.biddate || '',
+      estimate: mapped.estimate || curItem.estimate || '',
+      deposit: mapped.deposit || curItem.deposit || '',
+      monthly: mapped.monthly || curItem.monthly || '',
+      result: nextResult
+    };
+  }
+  function plSyncItemToSaved(item) {
+    if (!item || !item.linkedSavedId) return false;
+    if (typeof setSv !== 'function') return false;
+    var sv = plGetSavedItems();
+    var idx = (sv || []).findIndex(function(s){ return String(s && s.id) === String(item.linkedSavedId); });
+    if (idx < 0) return false;
+    var src = sv[idx] || {};
+    src.data = src.data || {};
+    var d = src.data;
+    var changed = false;
+    function putField(key, val) {
+      if (!plDiffers(d[key], val)) return;
+      d[key] = val;
+      changed = true;
+    }
+    var nextTitle = String(item.addr || '').trim();
+    if (nextTitle && plDiffers(src.title, nextTitle)) { src.title = nextTitle; changed = true; }
+    var nextAddr = String(item.region || '').trim();
+    if (nextAddr) {
+      putField('소재지', nextAddr);
+      putField('주소', nextAddr);
+    }
+    if (item.casenum) {
+      putField('경매번호', item.casenum);
+      putField('사건번호', item.casenum);
+    }
+    if (item.appraisal) {
+      putField('감정가_만원', plParseAmountText(item.appraisal));
+      putField('감정가', Number(plParseAmountText(item.appraisal)) * 10000);
+    }
+    if (item.minprice) {
+      putField('최저가_만원', plParseAmountText(item.minprice));
+      putField('최저가', Number(plParseAmountText(item.minprice)) * 10000);
+    }
+    if (item.deposit) putField('보증금_만원', plParseAmountText(item.deposit));
+    if (item.monthly) putField('월세_만원', plParseAmountText(item.monthly));
+    if (item.estimate) putField('예상입찰가_만원', plParseAmountText(item.estimate));
+    if (item.biddate) {
+      putField('입찰기일', item.biddate);
+      putField('매각기일', item.biddate);
+    }
+    if (item.round) putField('유찰회차', item.round);
+    if (item.result && item.result.won) {
+      putField('낙찰가_만원', plParseAmountText(item.result.won));
+      putField('낙찰가', Number(plParseAmountText(item.result.won)) * 10000);
+    }
+    if (item.memo !== undefined && plDiffers(src.memo || '', item.memo || '')) {
+      src.memo = item.memo || '';
+      changed = true;
+    }
+    if (!changed) return false;
+    try { if (typeof normalizeItem === 'function') normalizeItem(src); } catch(e) {}
+    sv[idx] = src;
+    plWithSavedSyncMute(function(){ setSv(sv); });
+    return true;
+  }
+  function plSyncFromSavedItems(savedItems, opts) {
+    if (_plSavedSyncMute > 0) return false;
+    opts = opts || {};
+    var sv = Array.isArray(savedItems) ? savedItems : plGetSavedItems();
+    var byId = {};
+    (sv || []).forEach(function(s){ if (s && s.id != null) byId[String(s.id)] = s; });
+    var items = plLoad();
+    var changed = false;
+    var changedItems = [];
+    items = items.map(function(it){
+      if (!it || !it.linkedSavedId) return it;
+      var src = byId[String(it.linkedSavedId)];
+      if (!src) return it;
+      var patch = plBuildPatchFromSaved(src, it);
+      if (!patch) return it;
+      var next = plNormalizeItem(Object.assign({}, it, patch, { updatedAt: Date.now() }));
+      if (!plDiffers(JSON.stringify(it), JSON.stringify(next))) return it;
+      changed = true;
+      changedItems.push(next);
+      return next;
+    });
+    if (!changed) return false;
+    plSave(items);
+    changedItems.forEach(function(it){ try { syncToWorkroom(it); } catch(e) {} });
+    if (opts.render !== false && typeof renderPropertyList === 'function') renderPropertyList();
+    return true;
+  }
+  function _plWrapSavedListSync() {
+    if (window.__plSetSvWrapped) return;
+    window.__plSetSvWrapped = true;
+    if (typeof window.setSv === 'function') {
+      var _origSetSv = window.setSv;
+      window.setSv = function(arr) {
+        var out = _origSetSv.apply(this, arguments);
+        if (_plSavedSyncMute <= 0) {
+          try { plSyncFromSavedItems(arr, { render: false }); } catch(e) { console.warn('[plSyncFromSaved:setSv]', e); }
+        }
+        return out;
+      };
+    }
+  }
+  window._plSyncFromSavedItems = plSyncFromSavedItems;
 
   // ── 날짜 유틸 ──────────────────────────
   function daysDiff(dateStr) {
@@ -40142,12 +40583,24 @@ window.addEventListener('DOMContentLoaded', () => {
     var changed = false;
     items = items.map(function(it){
       if (String(it.roomId||'') !== String(roomId)) return it;
-      var next = Object.assign({}, it, patch || {}, { updatedAt: Date.now() });
+      var safePatch = Object.assign({}, patch || {});
+      if (safePatch.title && !safePatch.addr) safePatch.addr = safePatch.title;
+      if (safePatch.address && !safePatch.region) safePatch.region = safePatch.address;
+      delete safePatch.title;
+      delete safePatch.address;
+      var next = Object.assign({}, it, safePatch, { updatedAt: Date.now() });
       if (next.status === 'archived') next.archived = true;
-      changed = true;
+      if (JSON.stringify(next) !== JSON.stringify(it)) changed = true;
       return plNormalizeItem(next);
     });
-    if (changed) { plSave(items); if (typeof renderPropertyList === 'function') setTimeout(renderPropertyList, 30); }
+    if (changed) {
+      plSave(items);
+      items.forEach(function(it){
+        if (String(it.roomId || '') !== String(roomId)) return;
+        try { plSyncItemToSaved(it); } catch(e) {}
+      });
+      if (typeof renderPropertyList === 'function') setTimeout(renderPropertyList, 30);
+    }
   }
   function syncToWorkroom(item) {
     if (!item.roomId) return;
@@ -40156,8 +40609,8 @@ window.addEventListener('DOMContentLoaded', () => {
     if (!room) return;
     var newPhase = (item.status === 'archived' ? 'closed' : (item.status || 'review'));
     var patch = { phase: newPhase, status: newPhase, activePhase: newPhase };
-    if (item.addr && !room.title) patch.title = item.addr;
-    if (item.addr && !room.address) patch.address = item.addr;
+    if (item.addr && String(room.title || '') !== String(item.addr || '')) patch.title = item.addr;
+    if (item.region && String(room.address || '') !== String(item.region || '')) patch.address = item.region;
     if (window.updateRoom) {
       window.updateRoom(room.id, patch);
       if (typeof window.wrDbLinkItem === 'function') window.wrDbLinkItem(room.id, item.id);
@@ -40183,8 +40636,13 @@ window.addEventListener('DOMContentLoaded', () => {
       var _origUpdateRoom = window.updateRoom;
       window.updateRoom = function(id, patch, silentRender) {
         var out = _origUpdateRoom(id, patch, silentRender);
-        if (patch && (patch.status || patch.phase)) {
-          syncPropertyFromRoom(id, { status: patch.status || patch.phase, archived: false });
+        if (patch && (patch.status || patch.phase || patch.title !== undefined || patch.address !== undefined)) {
+          syncPropertyFromRoom(id, {
+            status: patch.status || patch.phase,
+            archived: false,
+            title: patch.title,
+            address: patch.address
+          });
         }
         return out;
       };
@@ -40197,9 +40655,11 @@ window.addEventListener('DOMContentLoaded', () => {
     var item = items.find(function(i){return i.id===id;});
     if (!item) return;
     var oldSimple = plSimpleStatusKey(item.status);
+    if (oldSimple === String(simpleStatus || '')) return;
     plApplySimpleStatusToItem(item, simpleStatus);
     plSave(items.map(plNormalizeItem));
     syncToWorkroom(item);
+    try { plSyncItemToSaved(item); } catch(e) {}
     if (simpleStatus === 'closed' && oldSimple !== 'closed') {
       setTimeout(function(){ plOpenResultModal(id); }, 200);
     }
@@ -40286,6 +40746,7 @@ window.addEventListener('DOMContentLoaded', () => {
       if (!plSelectedMap[it.id]) return it;
       plApplySimpleStatusToItem(it, val);
       syncToWorkroom(it);
+      try { plSyncItemToSaved(it); } catch(e) {}
       return plNormalizeItem(it);
     });
     plSave(items.map(plNormalizeItem));
@@ -40301,6 +40762,7 @@ window.addEventListener('DOMContentLoaded', () => {
       if (!plSelectedMap[it.id]) return it;
       it.status = 'archived'; it.archived = true; it.updatedAt = Date.now();
       syncToWorkroom(it);
+      try { plSyncItemToSaved(it); } catch(e) {}
       return plNormalizeItem(it);
     });
     plSave(items.map(plNormalizeItem));
@@ -40319,18 +40781,36 @@ window.addEventListener('DOMContentLoaded', () => {
     if (!changedItem) return null;
     plSave(items);
     syncToWorkroom(changedItem);
+    try { plSyncItemToSaved(changedItem); } catch(e) {}
     return changedItem;
   }
   window.plInlineSet = function(id, field, rawValue) {
+    if (field === 'result_won') {
+      var cur0 = plLoad().find(function(i){ return String(i.id) === String(id); });
+      if (!cur0) return;
+      var wonVal = plParseAmountText(rawValue);
+      var oldWon = cur0.result && cur0.result.won ? String(cur0.result.won) : '';
+      if (String(oldWon) === String(wonVal || '')) return;
+      var nextResult = Object.assign({}, cur0.result || {});
+      nextResult.won = wonVal;
+      plUpdateItem(id, { result: nextResult });
+      renderPropertyList();
+      return;
+    }
     var patch = {};
     var value = rawValue;
     if (['appraisal','minprice','estimate','deposit','monthly'].indexOf(field) >= 0) value = plParseAmountText(rawValue);
     if (field === 'biddate') value = plNormalizeDateInput(rawValue);
+    // 값이 실제로 바뀌지 않으면 저장/동기화 생략 (클릭만 해도 동기화 재시도되는 현상 방지)
+    var cur = plLoad().find(function(i){ return String(i.id) === String(id); });
+    if (cur && String(cur[field] || '') === String(value || '')) return;
     patch[field] = value;
     plUpdateItem(id, patch);
     renderPropertyList();
   };
   window.plInlineSetSelect = function(id, field, value) {
+    var cur = plLoad().find(function(i){ return String(i.id) === String(id); });
+    if (cur && String(cur[field] || '') === String(value || '')) return;
     var patch = {}; patch[field] = value;
     plUpdateItem(id, patch);
     renderPropertyList();
@@ -40379,8 +40859,17 @@ window.addEventListener('DOMContentLoaded', () => {
   }
   // ── 메인 렌더 ──────────────────────────
   window.renderPropertyList = function() {
+    _plWrapSavedListSync();
     _plWrapWorkroomSync();
     var items = plLoad();
+    var savedList = plGetSavedItems();
+    if (!window.__plInitSavedSyncDone) {
+      window.__plInitSavedSyncDone = true;
+      try { plSyncFromSavedItems(savedList, { render: false }); } catch(e) {}
+      items = plLoad();
+    }
+    var savedById = {};
+    (savedList || []).forEach(function(s){ if (s && s.id != null) savedById[String(s.id)] = s; });
     renderAlerts(items.filter(function(it){ return !it.archived; }));
     var filtered = plVisibleItems(items);
     var rooms = getWrRooms();
@@ -40419,6 +40908,9 @@ window.addEventListener('DOMContentLoaded', () => {
           + ((isPast && !isClosed)?'background:rgba(50,52,72,.34);':'')
           + 'border-bottom:1px solid var(--b1);';
         var linkedId = it.linkedSavedId || '';
+        var linkedSaved = linkedId ? savedById[String(linkedId)] : null;
+        var rowName = linkedSaved ? plPickSavedDisplayName(linkedSaved, it.addr || '') : (it.addr || '');
+        if (!rowName) rowName = it.addr || '';
         var casenumCell;
         if (linkedId) {
           casenumCell = '<span onclick="event.stopPropagation();plOpenLinkedCard(\''+plEscHtml(linkedId)+'\')" style="color:#8ab8ff;font-family:monospace;font-size:11px;cursor:pointer;white-space:nowrap;" title="저장목록 카드 열기">'+(it.casenum||'—')+' 📑</span>';
@@ -40433,7 +40925,7 @@ window.addEventListener('DOMContentLoaded', () => {
           + '<td style="padding:8px 10px;" onclick="event.stopPropagation()">'+statusCell(it)+'</td>'
           + '<td style="padding:8px 8px;font-size:12px;color:var(--fg2);white-space:nowrap;" onclick="event.stopPropagation()">'+plSelectCell(it.id,'type',it.type||'경매',[['경매','경매'],['일반','일반'],['온비드','온비드'],['공매','공매'],['NPL','NPL']],{minw:'48px'})+'</td>'
           + '<td style="padding:8px 6px;text-align:center;" onclick="event.stopPropagation()">'+intentCell(it)+'</td>'
-          + '<td style="padding:8px 10px;overflow:hidden;"><div style="font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+(it.addr||'')+'">'+(it.addr||'—')+'</div>'+resultTag+'</td>'
+          + '<td style="padding:8px 10px;overflow:hidden;"><div style="font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+plEscHtml(rowName||'')+'">'+plEscHtml(rowName||'—')+'</div>'+resultTag+'</td>'
           + '<td style="padding:8px 10px;overflow:hidden;" onclick="event.stopPropagation()">'+casenumCell+'</td>'
           + '<td style="padding:8px 10px;font-size:12px;color:var(--fg2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+(it.region||'—')+'</td>'
           + '<td style="padding:8px 10px;font-size:12px;color:var(--fg2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+(it.feature||'')+'">'+(it.feature||'—')+'</td>'
@@ -40449,7 +40941,7 @@ window.addEventListener('DOMContentLoaded', () => {
           + '<td style="padding:8px 10px;text-align:right;"><span style="'+(it.estimate?'background:rgba(255,209,102,.12);border-radius:4px;padding:1px 4px;':'')+'">'+plEditCellHtml(it.id,'estimate',plDisplayMoney(it.estimate||''),plDisplayMan(it.estimate||''),{type:'text',align:'right',minw:'72px',placeholder:'만원',spanStyle:'color:#ffd166;font-weight:700;'})+'</span></td>'
           + '<td style="padding:8px 10px;text-align:center;cursor:pointer;" onclick="event.stopPropagation();plToggleSite(\''+it.id+'\')">'+siteDots(it.site)+'</td>'
           + '<td style="padding:8px 10px;" onclick="event.stopPropagation()">'+wrLink+'</td>'
-          + '<td style="padding:8px 10px;text-align:right;">'+numCell(it.result&&it.result.won?it.result.won:'','#4caf87')+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'result_won',plDisplayMoney((it.result&&it.result.won)||''),plDisplayMan((it.result&&it.result.won)||''),{type:'text',align:'right',minw:'76px',placeholder:'만원',spanStyle:'color:#4caf87;font-weight:700;'})+'</td>'
           + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'bidders',it.bidders||'',it.bidders||'',{type:'text',align:'right',minw:'44px',placeholder:'—',empty:'—',spanStyle:'font-size:11px;'})+'</td>'
           + '<td style="padding:8px 10px;max-width:180px;overflow:hidden;"><div style="overflow-x:auto;white-space:nowrap;max-width:100%;scrollbar-width:thin;">'+plEditMemoCellHtml(it.id,it.memo||'')+'</div></td>'
           + '<td style="padding:8px 6px;text-align:center;"><button onclick="event.stopPropagation();plOpenEdit(\''+it.id+'\')" style="background:none;border:none;color:var(--fg3);cursor:pointer;font-size:15px;padding:2px 4px;">···</button></td>'
@@ -40523,6 +41015,8 @@ window.addEventListener('DOMContentLoaded', () => {
     pipe.style.display = (tab === 'pipeline') ? '' : 'none';
     [[tabList,'list'],[tabWork,'work'],[tabPipe,'pipeline']].forEach(function(entry){
       var el = entry[0], key = entry[1]; if (!el) return;
+      el.classList.add('pm-subtab-btn');
+      el.classList.toggle('pm-subtab-on', tab === key);
       el.style.borderBottomColor = (tab === key ? 'var(--accent,#4f8eff)' : 'transparent');
       el.style.color = (tab === key ? 'var(--fg)' : 'var(--fg2)');
     });
@@ -40768,14 +41262,20 @@ window.addEventListener('DOMContentLoaded', () => {
     if (!item.addr) { alert('물건명/주소를 입력해주세요.'); return; }
     item.archived = false;
     plApplySimpleStatusToItem(item, simpleStatus);
-    if (oldItem) { item.result = oldItem.result; item.linkedSavedId = oldItem.linkedSavedId || ''; } // 결과 보존
+    if (oldItem) {
+      item.result = oldItem.result;
+      item.linkedSavedId = oldItem.linkedSavedId || '';
+      item.bidders = oldItem.bidders || '';
+    } // 결과 보존
     if (id) {
       var idx = items.findIndex(function(i){return i.id===id;}); if (idx>=0) items[idx]=item; else items.push(item);
     } else {
       items.push(item);
     }
-    plSave(items.map(plNormalizeItem));
+    var normalized = items.map(plNormalizeItem);
+    plSave(normalized);
     syncToWorkroom(item);
+    try { plSyncItemToSaved(plNormalizeItem(item)); } catch(e) {}
     // 종료 상태로 저장 시 결과 팝업
     if (item.status === 'closed' && (!oldItem || oldItem.status !== 'closed')) {
       plCloseModal();
@@ -40793,6 +41293,7 @@ window.addEventListener('DOMContentLoaded', () => {
     it.status = 'archived'; it.archived = true; it.updatedAt = Date.now();
     plSave(items);
     syncToWorkroom(it);
+    try { plSyncItemToSaved(it); } catch(e) {}
   };
   window.plDeleteItem = function() {
     var id = document.getElementById('pl-edit-id').value;
@@ -40832,6 +41333,7 @@ window.addEventListener('DOMContentLoaded', () => {
     it.status = 'closed';
     plSave(items.map(plNormalizeItem));
     syncToWorkroom(it);
+    try { plSyncItemToSaved(it); } catch(e) {}
     plCloseResultModal();
     renderPropertyList();
   };
@@ -40854,7 +41356,8 @@ window.addEventListener('DOMContentLoaded', () => {
     var norm = src._norm || {};
     try { if (typeof _auctionHydrateDataFields === 'function') _auctionHydrateDataFields(raw); } catch(e) {}
     var addr = plSavedField(norm, ['소재지'], '') || plSavedField(raw, ['소재지','주소','address'], '') || src.address || src.addr || '';
-    var title = plSavedField(src, ['title'], '') || plSavedField(raw, ['경매번호','사건번호'], '');
+    var title = plPickSavedDisplayName(src, '') || plSavedField(raw, ['경매번호','사건번호'], '');
+    var isPublic = plIsPublicAuctionSaved(src);
     var featureParts = [plSavedField(raw,['용도','물건종류','경매구분'], ''), plSavedField(raw,['해당층'], '') ? (plSavedField(raw,['해당층'], '') + '층') : '', plSavedField(raw,['기타사항','특징'], '')].filter(Boolean);
     var bidDate = plSavedField(raw, ['매각기일','매각일','입찰기일'], '') || plSavedField(norm, ['입찰기일'], '') || src.bidDate || src.biddate || '';
     var appraisal = plSavedField(norm, ['감정가_만원'], '') || (plSavedField(raw, ['감정가'], '') ? String(Math.round(parseInt(String(plSavedField(raw,['감정가'],'')).replace(/[^0-9]/g,''),10)/10000)) : '') || src.appraisal || '';
@@ -40865,10 +41368,10 @@ window.addEventListener('DOMContentLoaded', () => {
     return plNormalizeItem({
       id: 'pl_' + String(src.id || Date.now()),
       linkedSavedId: String(src.id || ''),
-      type: '경매',
+      type: isPublic ? '공매' : '경매',
       status: 'review',
       intent: src.intent || '',
-      addr: title && addr ? (addr) : (title || addr),
+      addr: title || addr,
       casenum: plSavedField(raw,['경매번호','사건번호'], '') || src.caseNo || src.casenum || '',
       region: addr,
       feature: featureParts.join(' / '),
