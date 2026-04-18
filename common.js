@@ -7893,7 +7893,11 @@ window.wr2SummaryCancelEdit = function() {
             }, 280);
           }
         }
-        if (n === 3) onInsightOpen((window.__insActiveTab === 5 || window.__insActiveTab === 8) ? 0 : (window.__insActiveTab || 0));
+        if (n === 3) {
+          // 물건관리에서 이동한 패널들 복원
+          try { if (typeof pmRestoreInsightPanels === 'function') pmRestoreInsightPanels(); } catch(e) {}
+          onInsightOpen((window.__insActiveTab === 5 || window.__insActiveTab === 8) ? 0 : (window.__insActiveTab || 0));
+        }
       });
     }
     window.showPage = showPage;
@@ -39880,7 +39884,7 @@ window.addEventListener('DOMContentLoaded', () => {
       status: archived ? 'archived' : (it.status || 'review'),
       intent: it.intent || '',
       addr: it.addr || '',
-      casenum: it.casenum || '',
+      casenum: String(it.casenum || '').trim(),
       region: it.region || '',
       feature: it.feature || '',
       appraisal: it.appraisal || '',
@@ -40066,10 +40070,12 @@ window.addEventListener('DOMContentLoaded', () => {
       + '</select>';
   }
   function siteDots(n) {
-    n = parseInt(n)||0;
-    return [1,2,3].map(function(i){
-      return '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:2px;background:'+(i<=n?'#1D9E75':'#333')+';" title="'+(i<=n?'임장 완료':'미완료')+'"></span>';
-    }).join('');
+    // 단순화: 임장 여부만 표시 (켜짐=초록, 꺼짐=회색)
+    var visited = parseInt(n) > 0;
+    return '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;'
+      + 'background:' + (visited ? '#22c55e' : '#374151') + ';'
+      + 'box-shadow:' + (visited ? '0 0 5px rgba(34,197,94,.6)' : 'none') + ';"'
+      + ' title="' + (visited ? '임장 완료' : '임장 미완료') + '"></span>';
   }
   function numCell(v, color) {
     if (!v) return '<span style="color:#444;">—</span>';
@@ -40331,6 +40337,17 @@ window.addEventListener('DOMContentLoaded', () => {
     syncToWorkroom(changedItem);
     return changedItem;
   }
+  // ★ 임장 토글 (없음↔완료)
+  window.plToggleSite = function(id) {
+    var items = plLoad();
+    var it = items.find(function(x){ return x.id === id; });
+    if (!it) return;
+    it.site = String(parseInt(it.site||'0') > 0 ? '0' : '1');
+    it.updatedAt = Date.now();
+    plSave(items.map(plNormalizeItem));
+    renderPropertyList();
+  };
+
   window.plInlineSet = function(id, field, rawValue) {
     var patch = {};
     var value = rawValue;
@@ -40366,22 +40383,25 @@ window.addEventListener('DOMContentLoaded', () => {
   function plQuickRoomControlHtml(it, roomOptionsHtml) {
     var itemIdJs = String(it.id || '').replace(/'/g, "\\'");
     var roomIdJs = String(it.roomId || '').replace(/'/g, "\\'");
-    var selectHtml = '<select onchange="event.stopPropagation();plQuickRoomAction(\'' + itemIdJs + '\',this.value);this.value=\'\';" onclick="event.stopPropagation()" '
-      + 'style="max-width:168px;width:100%;padding:4px 8px;border:1px dashed rgba(17,157,237,.45);border-radius:6px;background:rgba(17,157,237,.08);color:#8ab8ff;font-size:11px;cursor:pointer;">'
-      + '<option value="">＋ 연결</option>'
-      + '<option value="__new__">＋ 새 작업룸</option>'
-      + (roomOptionsHtml || '')
-      + '</select>';
-    if (!it.roomId) return selectHtml;
-    // 연결된 작업룸명 표시 + 이동 버튼
+    // 연결 없을 때만 연결 드롭다운 표시
+    if (!it.roomId) {
+      return '<select onchange="event.stopPropagation();plQuickRoomAction(\'' + itemIdJs + '\',this.value);this.value=\'\';" onclick="event.stopPropagation()" '
+        + 'style="max-width:120px;width:100%;padding:3px 6px;border:1px dashed rgba(17,157,237,.4);border-radius:5px;background:rgba(17,157,237,.07);color:#8ab8ff;font-size:11px;cursor:pointer;">'
+        + '<option value="">＋ 연결</option>'
+        + '<option value="__new__">＋ 새 작업룸</option>'
+        + (roomOptionsHtml || '')
+        + '</select>';
+    }
+    // 연결된 경우: 이동버튼 + 연결해제/변경 버튼만
     var rooms = getWrRooms();
     var room = rooms.find(function(r){ return r && r.id === it.roomId; });
-    var roomTitle = room ? ((room.title || room.name || '작업룸').substring(0, 10)) : '작업룸';
-    return '<div style="display:flex;flex-direction:column;gap:3px;min-width:0;">'
+    var roomTitle = room ? ((room.title || room.name || '작업룸').substring(0, 9)) : '작업룸';
+    return '<div style="display:flex;align-items:center;gap:3px;min-width:0;">'
       + '<button onclick="event.stopPropagation();plGoToWorkroom(\'' + roomIdJs + '\')" '
-      + 'style="font-size:11px;padding:3px 8px;border:1px solid rgba(17,157,237,.4);border-radius:5px;background:rgba(17,157,237,.1);color:#60c8ff;cursor:pointer;white-space:nowrap;text-align:left;" '
-      + 'title="작업룸으로 이동">🗂 ' + roomTitle + '</button>'
-      + '<div style="min-width:0;">' + selectHtml + '</div>'
+      + 'style="flex:1;font-size:11px;padding:3px 6px;border:1px solid rgba(17,157,237,.4);border-radius:5px;background:rgba(17,157,237,.1);color:#60c8ff;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;" '
+      + 'title="' + roomTitle + ' 열기">🗂 ' + roomTitle + '</button>'
+      + '<button onclick="event.stopPropagation();plAssignRoomToItem(\'' + itemIdJs + '\',\'\')" '
+      + 'style="flex-shrink:0;padding:3px 5px;border:1px solid rgba(255,99,112,.3);border-radius:5px;background:transparent;color:rgba(255,99,112,.6);font-size:10px;cursor:pointer;" title="연결 해제">✕</button>'
       + '</div>';
   }
   // ── 메인 렌더 ──────────────────────────
@@ -40443,31 +40463,31 @@ window.addEventListener('DOMContentLoaded', () => {
 
         // ★ 기일 지난 항목 음영
         var isPast = (d !== null && d < 0);
-        var rowStyle = it.archived ? 'opacity:.65;' : (isPast ? 'background:rgba(100,100,120,.07);' : '');
-        rowStyle += 'border-bottom:1px solid var(--b1);cursor:pointer;';
+        var rowStyle = 'border-bottom:1px solid var(--b1);cursor:pointer;' + (it.archived ? 'opacity:.65;' : '');
+        var rowClass = isPast ? ' class="pl-row-past"' : '';
 
         // ★ 예상입찰가 스타일 (노란 하이라이트)
         var estimateStyle = it.estimate ? 'background:rgba(255,209,102,.10);border-radius:5px;padding:1px 4px;color:#ffd166;font-weight:700;' : '';
 
-        return '<tr style="'+rowStyle+'" onclick="plOpenEdit(\''+it.id+'\')">'
+        return '<tr'+rowClass+' style="'+rowStyle+'" data-plid="'+it.id+'">'
           + '<td style="padding:8px 8px;text-align:center;" onclick="event.stopPropagation()"><input type="checkbox" '+(plSelectedMap[it.id]?'checked':'')+' onclick="event.stopPropagation();plToggleOne(\''+it.id+'\',this.checked)"></td>'
           + '<td style="padding:6px 8px;" onclick="event.stopPropagation()">'+statusCell(it)+'</td>'
           + '<td style="padding:6px 8px;" onclick="event.stopPropagation()">'+plSelectCell(it.id,'type',it.type||'경매',[['경매','경매'],['일반','일반'],['온비드','온비드'],['공매','공매'],['NPL','NPL']],{minw:'48px'})+'</td>'
           + '<td style="padding:6px 6px;text-align:center;" onclick="event.stopPropagation()">'+intentSelectCell(it)+'</td>'
-          + '<td style="padding:6px 10px;overflow:hidden;" onclick="event.stopPropagation()">'
+          + '<td style="padding:6px 10px;overflow:hidden;" onclick="event.stopPropagation()" title="클릭: 인라인편집 / ··· 클릭: 전체편집">'
           +   plEditCellHtml(it.id,'addr',it.addr||'',it.addr||'',{type:'text',align:'left',minw:'120px',placeholder:'물건명/주소',empty:'—',spanStyle:'font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;'})
           +   resultTag+'</td>'
           + '<td style="padding:6px 8px;overflow:hidden;" onclick="event.stopPropagation()">'+caseLink+'</td>'
           + '<td style="padding:6px 8px;overflow:hidden;" onclick="event.stopPropagation()">'+plEditCellHtml(it.id,'region',it.region||'',it.region||'',{type:'text',align:'left',minw:'60px',placeholder:'지역',empty:'—',spanStyle:'font-size:11px;color:var(--fg2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;'})+'</td>'
           + '<td style="padding:6px 8px;overflow:hidden;" onclick="event.stopPropagation()">'+plEditCellHtml(it.id,'feature',it.feature||'',it.feature||'',{type:'text',align:'left',minw:'80px',placeholder:'특징메모',empty:'—',spanStyle:'font-size:11px;color:var(--fg2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;'})+'</td>'
           + '<td style="padding:6px 8px;text-align:right;" onclick="event.stopPropagation()">'+plEditCellHtml(it.id,'appraisal',plDisplayMoney(it.appraisal||''),plDisplayMan(it.appraisal||''),{type:'text',align:'right',minw:'68px',placeholder:'만원'})+'</td>'
-          + '<td style="padding:6px 8px;text-align:right;" onclick="event.stopPropagation()">'+plEditCellHtml(it.id,'minprice',plDisplayMoney(it.minprice||''),plDisplayMan(it.minprice||''),{type:'text',align:'right',minw:'68px',placeholder:'만원'})+'</td>'
+          + '<td style="padding:6px 8px;text-align:right;" onclick="event.stopPropagation()">'+plEditCellHtml(it.id,'minprice',plDisplayMoney(it.minprice||''),plDisplayMan(it.minprice||''),{type:'text',align:'right',minw:'68px',placeholder:'만원',spanStyle:'color:#fb923c;font-weight:700;'})+'</td>'
           + '<td style="padding:6px 6px;text-align:center;" onclick="event.stopPropagation()">'+plEditCellHtml(it.id,'round',it.round||'',it.round||'',{type:'text',align:'center',minw:'34px',placeholder:'회차',empty:'—',spanStyle:'font-size:11px;color:var(--fg2);'})+'</td>'
           + '<td style="padding:6px 8px;white-space:nowrap;" onclick="event.stopPropagation()">'
           +   '<div>'+plEditCellHtml(it.id,'biddate',it.biddate||'',fmtDate(it.biddate),{type:'date',align:'left',minw:'72px',placeholder:'YYYY-MM-DD',spanStyle:'color:'+(isPast?'#888':'var(--tx)')+';font-size:12px;border-bottom-color:rgba(255,255,255,.10);'})+'</div>'
           +   dTag
           + '</td>'
-          + '<td style="padding:6px 6px;text-align:center;" onclick="event.stopPropagation()">'+plSelectCell(it.id,'site',String(it.site||'0'),[['0','없음'],['1','1회'],['2','2회'],['3','3회+']],{minw:'40px'})+'</td>'
+          + '<td style="padding:6px 6px;text-align:center;cursor:pointer;" onclick="event.stopPropagation();plToggleSite(\''+it.id+'\')">'+siteDots(it.site)+'</td>'
           + '<td style="padding:6px 8px;text-align:right;">'+numCell(it.result&&it.result.won?it.result.won:'','#4caf87')+'</td>'
           + '<td style="padding:6px 8px;text-align:right;" onclick="event.stopPropagation()">'+plEditCellHtml(it.id,'bidders',it.bidders||'',it.bidders||'',{type:'text',align:'right',minw:'44px',placeholder:'인원',empty:'—',spanStyle:'font-size:11px;'})+'</td>'
           + '<td style="padding:6px 8px;text-align:right;" onclick="event.stopPropagation()">'+plEditCellHtml(it.id,'deposit',plDisplayMoney(it.deposit||''),plDisplayMan(it.deposit||''),{type:'text',align:'right',minw:'56px',placeholder:'만원'})+'</td>'
@@ -40475,7 +40495,7 @@ window.addEventListener('DOMContentLoaded', () => {
           + '<td style="padding:6px 8px;text-align:right;" onclick="event.stopPropagation()"><span style="'+estimateStyle+'">'+plEditCellHtml(it.id,'estimate',plDisplayMoney(it.estimate||''),plDisplayMan(it.estimate||''),{type:'text',align:'right',minw:'68px',placeholder:'만원',spanStyle:'color:#ffd166;font-weight:700;'})+'</span></td>'
           + '<td style="padding:6px 8px;" onclick="event.stopPropagation()">'+wrLink+'</td>'
           + '<td style="padding:6px 8px;" onclick="event.stopPropagation()">'+plEditMemoCellHtml(it.id,it.memo||'')+'</td>'
-          + '<td style="padding:6px 4px;text-align:center;" onclick="event.stopPropagation()"><button onclick="plOpenEdit(\''+it.id+'\');event.stopPropagation();" style="background:none;border:none;color:var(--fg3);cursor:pointer;font-size:15px;padding:2px 4px;">···</button></td>'
+          + '<td style="padding:6px 4px;text-align:center;"><button onclick="event.stopPropagation();plOpenEdit(\''+it.id+'\')" style="background:none;border:none;color:var(--fg3);cursor:pointer;font-size:18px;padding:2px 6px;border-radius:4px;" title="전체 편집" onmouseenter="this.style.background=\'rgba(255,255,255,.08)\'" onmouseleave="this.style.background=\'\'">···</button></td>'
           + '</tr>';
       }).join('');
     }
