@@ -1911,7 +1911,6 @@
       } catch (e) {
         console.warn('[SB] savePlItems error', e);
         _markKvDirty('pl_items_v3');
-        // 로그인 안 된 경우 경고 토스트 표시 안 함 (일반 오프라인 사용 방해 방지)
         if (e && e.message !== 'no session') window._sbSyncStatus('⚠️ 물건리스트 동기화 재시도 중', false);
         // 일시 오류(네트워크/타임아웃) 대비 자동 재시도
         try {
@@ -7894,7 +7893,6 @@ window.wr2SummaryCancelEdit = function() {
           }
         }
         if (n === 3) {
-          // 물건관리에서 이동한 패널들 복원
           try { if (typeof pmRestoreInsightPanels === 'function') pmRestoreInsightPanels(); } catch(e) {}
           onInsightOpen((window.__insActiveTab === 5 || window.__insActiveTab === 8) ? 0 : (window.__insActiveTab || 0));
         }
@@ -27311,17 +27309,17 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         ['5','8'].forEach(function(key){
           var panel = document.getElementById('ipage' + key);
           var anchor = window.__pmPanelAnchors && window.__pmPanelAnchors[key];
-          // DOM 원위치 복원
           if (panel && anchor && anchor.parent && anchor.marker && panel.parentNode !== anchor.parent) {
             anchor.parent.insertBefore(panel, anchor.marker.nextSibling);
           }
-          // 반드시 숨기기 - pmMountPanel이 설정한 모든 인라인 스타일 제거
           if (panel) {
+            // pmMountPanel이 설정한 인라인 스타일 모두 초기화
             panel.style.display = 'none';
             panel.style.flex = '';
             panel.style.flexDirection = '';
             panel.style.height = '';
             panel.style.overflow = '';
+            panel.style.minHeight = '';
           }
         });
       } catch (e) { console.warn('[pmRestoreInsightPanels]', e); }
@@ -27336,12 +27334,10 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         var host = document.getElementById(conf.hostId);
         if (!panel || !host) return null;
         if (panel.parentNode !== host) host.appendChild(panel);
-        // 최소한의 인라인 스타일만 - 나머지는 CSS가 담당
-        panel.style.display = '';   // CSS의 display:flex 적용되도록
+        panel.style.display = '';
         panel.style.height = '100%';
+        panel.style.overflow = 'hidden';
         panel.style.border = '0';
-        panel.style.flex = '1';
-        panel.style.minHeight = '0';
         return panel;
       } catch (e) { console.warn('[pmMountPanel]', e); return null; }
     }
@@ -27376,10 +27372,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       if (n === 'cfg') {
         [0, 1, 3, 4, 5, 6, 7, 8, 9].forEach(i => {
           const p = document.getElementById('ipage' + i);
-          if (p) {
-            p.style.display = 'none';
-            if (i === 5 || i === 8) { p.style.flex = ''; p.style.height = ''; }
-          }
+          if (p) p.style.display = 'none';
           const t = document.getElementById('itab' + i);
           if (t) t.classList.remove('on');
         });
@@ -27392,17 +27385,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       [0, 1, 3, 4, 5, 6, 8, 9].forEach(i => {
         const p = document.getElementById('ipage' + i);
         const t = document.getElementById('itab' + i);
-        if (p) {
-          // ipage5/8은 pmMountPanel이 pm-work-host/pm-pipeline-host로 이동시킴
-          // 인사이트탭에서는 반드시 숨김 (위치 무관)
-          if (i === 5 || i === 8) {
-            p.style.display = 'none';
-            p.style.flex = '';
-            p.style.height = '';
-          } else {
-            p.style.display = (i === n) ? '' : 'none';
-          }
-        }
+        if (p) p.style.display = (i === n) ? '' : 'none';
         if (t) t.classList.toggle('on', i === n);
       });
       const labels = { 0: '노트', 1: '계산기', 3: '뉴스 클리핑', 4: '알짜정보', 5: '파이프라인', 6: '사이트', 8: '작업룸', 9: '소상공인 상권' };
@@ -27720,11 +27703,10 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
     // 타입별 아이콘/배지
     const NT_TYPE = {
-      note:     { icon: '📝', label: '노트',    badge: 'nt-badge-note',    type: 'note' },
-      youtube:  { icon: '🎬', label: '유튜브',  badge: 'nt-badge-youtube', type: 'youtube' },
-      article:  { icon: '📰', label: '기사/웹', badge: 'nt-badge-article', type: 'article' },
-      report:   { icon: '📊', label: '리포트',  badge: 'nt-badge-report',  type: 'report' },
-      unified:  { icon: '📝', label: '노트',    badge: 'nt-badge-note',    type: 'note' },
+      note: { icon: '📝', label: '노트', badge: 'nt-badge-note' },
+      youtube: { icon: '🎬', label: '유튜브', badge: 'nt-badge-youtube' },
+      article: { icon: '📰', label: '기사/웹', badge: 'nt-badge-article' },
+      unified: { icon: '📝', label: '노트', badge: 'nt-badge-note' },
     };
 
     // ── 타입메뉴 토글 ──────────────────────────────────
@@ -27848,29 +27830,21 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           badges += `<span class="nt-domain-badge">${NT_DOMAIN_LABELS[n.domain]}</span>`;
         }
 
-        const badgeClass = t.badge || 'nt-badge-note';
-        return `<div class="nt-card${n.id === ntActiveId ? ' active' : ''}" data-ntid="${n.id}" data-type="${t.type || 'note'}" onclick="ntOpen('${n.id}')">
-      <div class="nt-card-inner">
-        <div class="nt-card-header">
-          <div style="display:flex;align-items:center;gap:5px;flex:1;min-width:0;">
-            <span style="font-size:13px;flex-shrink:0;">${t.icon}</span>
-            <span class="nt-card-title">${esc(n.title || '제목 없음')}</span>
-          </div>
-          <div class="nt-card-actions" onclick="event.stopPropagation()">
-            <button class="nt-act-btn" title="위로" onclick="ntMoveNote('${n.id}',-1)">▲</button>
-            <button class="nt-act-btn" title="아래로" onclick="ntMoveNote('${n.id}',1)">▼</button>
-            <button class="nt-act-btn" title="작업룸으로 이동" onclick="ntMoveToRoom('${n.id}')">📁</button>
-            <button class="nt-act-btn" title="이름 변경" onclick="ntRenameNote('${n.id}')">✏️</button>
-            <button class="nt-act-btn nt-act-del" title="삭제" onclick="ntDeleteConfirm('${n.id}')">✕</button>
-          </div>
-        </div>
-        ${preview ? `<div class="nt-card-preview">${esc(preview)}</div>` : ''}
-        <div class="nt-card-footer">
-          <span class="nt-badge ${badgeClass}">${t.label || '노트'}</span>
-          ${badges}
-          <span class="nt-card-date">${dt}</span>
+        return `<div class="nt-card${n.id === ntActiveId ? ' active' : ''}" data-ntid="${n.id}" data-type="${n.type || 'note'}" onclick="ntOpen('${n.id}')">
+      <div style="display:flex;align-items:center;gap:5px;margin-bottom:3px;">
+        <span style="font-size:12px;cursor:pointer;" onclick="ntOpen('${n.id}')">${t.icon}</span>
+        <span class="nt-card-title" style="flex:1;cursor:pointer;" onclick="ntOpen('${n.id}')">${esc(n.title || '제목 없음')}</span>
+        <span style="font-size:10px;color:var(--di);flex-shrink:0;margin-right:4px;">${dt}</span>
+        <div class="nt-card-actions" onclick="event.stopPropagation()">
+          <button class="nt-act-btn" title="위로" onclick="ntMoveNote('${n.id}',-1)">▲</button>
+          <button class="nt-act-btn" title="아래로" onclick="ntMoveNote('${n.id}',1)">▼</button>
+          <button class="nt-act-btn" title="작업룸으로 이동" onclick="ntMoveToRoom('${n.id}')">📁</button>
+          <button class="nt-act-btn" title="이름 변경" onclick="ntRenameNote('${n.id}')">✏️</button>
+          <button class="nt-act-btn nt-act-del" title="삭제" onclick="ntDeleteConfirm('${n.id}')">✕</button>
         </div>
       </div>
+      ${badges ? `<div style="display:flex;gap:3px;flex-wrap:wrap;margin-bottom:3px;" onclick="ntOpen('${n.id}')">${badges}</div>` : ''}
+      <div class="nt-card-preview" onclick="ntOpen('${n.id}')">${esc(preview)}</div>
     </div>`;
       }).join('');
     };
@@ -39897,7 +39871,7 @@ window.addEventListener('DOMContentLoaded', () => {
       status: archived ? 'archived' : (it.status || 'review'),
       intent: it.intent || '',
       addr: it.addr || '',
-      casenum: String(it.casenum || '').trim(),
+      casenum: it.casenum || '',
       region: it.region || '',
       feature: it.feature || '',
       appraisal: it.appraisal || '',
@@ -39907,7 +39881,6 @@ window.addEventListener('DOMContentLoaded', () => {
       estimate: it.estimate || '',
       deposit: it.deposit || '',
       monthly: it.monthly || '',
-      bidders: it.bidders || '',
       site: String(it.site || '0'),
       memo: it.memo || '',
       result: it.result || null,
@@ -40047,29 +40020,46 @@ window.addEventListener('DOMContentLoaded', () => {
     var map = { '상':'#ff6b6b', '중':'#60a5fa', '하':'#4ade80' };
     return '<span style="font-weight:700;color:'+ (map[v]||'#aaa') +';">'+v+'</span>';
   }
-  // 의향 셀렉트: 텍스트처럼 보이는 드롭다운 (테두리·배경 없음)
-  function intentSelectCell(it) {
+  function intentCell(it) {
     var v = it.intent || '';
-    var colorMap = { '상':'#ff6b6b', '중':'#60a5fa', '하':'#4ade80' };
-    var col = colorMap[v] || '#555';
-    var id = it.id;
-    return '<select onchange="event.stopPropagation();plInlineSetSelect(\''+plEscHtml(id)+'\',\'intent\',this.value)" '
-      + 'onclick="event.stopPropagation()" '
-      + 'style="appearance:none;-webkit-appearance:none;border:none;background:transparent;'
-      + 'color:'+col+';font-size:13px;font-weight:800;cursor:pointer;padding:0;width:28px;text-align:center;">'
-      + '<option value="" style="color:#555;"'+(v===''?' selected':'')+'>—</option>'
-      + '<option value="상" style="color:#ff6b6b;"'+(v==='상'?' selected':'')+'>상</option>'
-      + '<option value="중" style="color:#60a5fa;"'+(v==='중'?' selected':'')+'>중</option>'
-      + '<option value="하" style="color:#4ade80;"'+(v==='하'?' selected':'')+'>하</option>'
+    var cm = { '상':'#ff6b6b', '중':'#60a5fa', '하':'#4ade80' };
+    var col = cm[v] || '#555';
+    var idEsc = plEscHtml(it.id);
+    return '<select onclick="event.stopPropagation()" onchange="plInlineSetSelect(\'' + idEsc + '\',\'intent\',this.value);event.stopPropagation()" '
+      + 'style="appearance:none;-webkit-appearance:none;border:none;background:transparent;color:'+col+';font-size:13px;font-weight:800;cursor:pointer;text-align:center;padding:2px;width:100%;">'
+      + '<option value=""'+(v===''?' selected':'')+'>—</option>'
+      + '<option value="상"'+(v==='상'?' selected':'')+' style="color:#ff6b6b">상</option>'
+      + '<option value="중"'+(v==='중'?' selected':'')+' style="color:#60a5fa">중</option>'
+      + '<option value="하"'+(v==='하'?' selected':'')+' style="color:#4ade80">하</option>'
       + '</select>';
   }
-    function siteDots(n) {
-    // 단순화: 임장 여부만 표시 (켜짐=초록, 꺼짐=회색)
-    var visited = parseInt(n) > 0;
-    return '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;'
+  function statusCell(item) {
+    var id = item.id;
+    var simple = plSimpleStatusKey(item.status);
+    var m = STATUS_MAP[simple] || STATUS_MAP.active;
+    var key = plDomKey(id, 'st');
+    return ''
+      + '<span id="'+key+'_s" data-k="'+plEscHtml(key)+'" onclick="event.stopPropagation();plStartInlineEdit(this.dataset.k)" '
+      + 'style="display:inline-flex;align-items:center;gap:6px;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:800;cursor:pointer;'
+      + 'background:'+m.bg+';color:'+m.color+';border:1px solid rgba(255,255,255,.08);white-space:nowrap;">'
+      + m.label
+      + '</span>'
+      + '<select id="'+key+'_i" data-k="'+plEscHtml(key)+'" data-id="'+plEscHtml(id)+'" onchange="event.stopPropagation();plSetSimpleStatus(this.dataset.id,this.value)" '
+      + 'onblur="plCancelInlineEdit(this.dataset.k)" onclick="event.stopPropagation()" '
+      + 'style="display:none;padding:3px 6px;border-radius:999px;font-size:11px;font-weight:800;border:1px solid rgba(255,255,255,.10);'
+      + 'background:rgba(0,0,0,.25);color:var(--tx);cursor:pointer;">'
+      + '<option value="active"'+(simple==='active'?' selected':'')+'>활성</option>'
+      + '<option value="changed"'+(simple==='changed'?' selected':'')+'>변경</option>'
+      + '<option value="closed"'+(simple==='closed'?' selected':'')+'>종료</option>'
+      + '</select>';
+  }
+  function siteDots(n, id) {
+    var visited = parseInt(n||'0') > 0;
+    var dot = '<span style="display:inline-block;width:11px;height:11px;border-radius:50%;'
       + 'background:' + (visited ? '#22c55e' : '#374151') + ';'
-      + 'box-shadow:' + (visited ? '0 0 5px rgba(34,197,94,.6)' : 'none') + ';"'
-      + ' title="' + (visited ? '임장 완료' : '임장 미완료') + '"></span>';
+      + 'box-shadow:' + (visited ? '0 0 6px rgba(34,197,94,.7)' : 'none') + ';'
+      + 'transition:all .2s;cursor:pointer;" title="' + (visited ? '임장 완료 (클릭:취소)' : '임장 미완료 (클릭:완료)') + '"></span>';
+    return dot;
   }
   function numCell(v, color) {
     if (!v) return '<span style="color:#444;">—</span>';
@@ -40331,17 +40321,6 @@ window.addEventListener('DOMContentLoaded', () => {
     syncToWorkroom(changedItem);
     return changedItem;
   }
-  // ★ 임장 토글 (없음↔완료)
-  window.plToggleSite = function(id) {
-    var items = plLoad();
-    var it = items.find(function(x){ return x.id === id; });
-    if (!it) return;
-    it.site = String(parseInt(it.site||'0') > 0 ? '0' : '1');
-    it.updatedAt = Date.now();
-    plSave(items.map(plNormalizeItem));
-    renderPropertyList();
-  };
-
   window.plInlineSet = function(id, field, rawValue) {
     var patch = {};
     var value = rawValue;
@@ -40377,25 +40356,25 @@ window.addEventListener('DOMContentLoaded', () => {
   function plQuickRoomControlHtml(it, roomOptionsHtml) {
     var itemIdJs = String(it.id || '').replace(/'/g, "\\'");
     var roomIdJs = String(it.roomId || '').replace(/'/g, "\\'");
-    // 연결 없을 때만 연결 드롭다운 표시
     if (!it.roomId) {
-      return '<select onchange="event.stopPropagation();plQuickRoomAction(\'' + itemIdJs + '\',this.value);this.value=\'\';" onclick="event.stopPropagation()" '
-        + 'style="max-width:120px;width:100%;padding:3px 6px;border:1px dashed rgba(17,157,237,.4);border-radius:5px;background:rgba(17,157,237,.07);color:#8ab8ff;font-size:11px;cursor:pointer;">'
+      // 연결 없음 → 연결 드롭다운
+      return '<select onchange="event.stopPropagation();plQuickRoomAction(\'' + itemIdJs + '\',this.value);this.value=\'\'" onclick="event.stopPropagation()" '
+        + 'style="max-width:130px;width:100%;padding:3px 6px;border:1px dashed rgba(17,157,237,.4);border-radius:5px;background:rgba(17,157,237,.07);color:#8ab8ff;font-size:11px;cursor:pointer;">'
         + '<option value="">＋ 연결</option>'
         + '<option value="__new__">＋ 새 작업룸</option>'
         + (roomOptionsHtml || '')
         + '</select>';
     }
-    // 연결된 경우: 이동버튼 + 연결해제/변경 버튼만
+    // 연결됨 → 이동 버튼 + 해제 버튼
     var rooms = getWrRooms();
     var room = rooms.find(function(r){ return r && r.id === it.roomId; });
-    var roomTitle = room ? ((room.title || room.name || '작업룸').substring(0, 9)) : '작업룸';
+    var rTitle = room ? (room.title||room.name||'작업룸').substring(0,10) : '작업룸';
     return '<div style="display:flex;align-items:center;gap:3px;min-width:0;">'
       + '<button onclick="event.stopPropagation();plGoToWorkroom(\'' + roomIdJs + '\')" '
-      + 'style="flex:1;font-size:11px;padding:3px 6px;border:1px solid rgba(17,157,237,.4);border-radius:5px;background:rgba(17,157,237,.1);color:#60c8ff;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;" '
-      + 'title="' + roomTitle + ' 열기">🗂 ' + roomTitle + '</button>'
-      + '<button onclick="event.stopPropagation();plAssignRoomToItem(\'' + itemIdJs + '\',\'\')" '
-      + 'style="flex-shrink:0;padding:3px 5px;border:1px solid rgba(255,99,112,.3);border-radius:5px;background:transparent;color:rgba(255,99,112,.6);font-size:10px;cursor:pointer;" title="연결 해제">✕</button>'
+      + 'style="flex:1;min-width:0;font-size:11px;padding:3px 7px;border:1px solid rgba(17,157,237,.35);border-radius:5px;background:rgba(17,157,237,.08);color:#60c8ff;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" '
+      + 'title="' + rTitle + ' 열기">🗂 ' + rTitle + '</button>'
+      + '<button onclick="event.stopPropagation();plAssignRoomToItem(\'' + itemIdJs + '\',\'\' )" '
+      + 'style="flex-shrink:0;padding:3px 5px;border:1px solid rgba(255,80,80,.25);border-radius:5px;background:transparent;color:rgba(255,80,80,.55);font-size:10px;cursor:pointer;" title="연결 해제">✕</button>'
       + '</div>';
   }
   // ── 메인 렌더 ──────────────────────────
@@ -40434,68 +40413,46 @@ window.addEventListener('DOMContentLoaded', () => {
         }
         var resultTag = '';
         if ((it.status === 'closed' || it.status==='archived') && it.result && it.result.won) resultTag = '<div style="font-size:10px;color:#4caf87;margin-top:2px;">낙 '+it.result.won+'</div>';
-        // ★ 경매번호 → linkedSavedId로 저장목록 카드 열기
-        var linkedId = it.linkedSavedId || '';
-        var caseLink = '';
-        if (it.casenum || linkedId) {
-          var casenumDisplay = plEscHtml(it.casenum || '—');
-          if (linkedId) {
-            // 저장목록 연결 있음 → 클릭 시 openPopup으로 카드 열기
-            caseLink = '<div onclick="event.stopPropagation();plOpenLinkedCard(\''+plEscHtml(linkedId)+'\')" '
-              + 'style="cursor:pointer;color:#8ab8ff;font-size:11px;font-family:monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" '
-              + 'title="저장목록 카드 열기">'
-              + casenumDisplay
-              + ' <span style="font-size:9px;opacity:.7;">📑</span></div>';
-          } else if (it.casenum) {
-            // 연결 없음 → 인라인 편집 + 연결 버튼
-            caseLink = plEditCellHtml(it.id,'casenum',it.casenum||'',it.casenum||'',{type:'text',align:'left',minw:'80px',placeholder:'경매번호',empty:'—',spanStyle:'color:var(--fg2);font-size:11px;font-family:monospace;'})
-              + '<div onclick="event.stopPropagation();plLinkByCasenum(\''+it.id+'\')" style="font-size:9px;color:#60a5fa;cursor:pointer;margin-top:1px;" title="저장목록에서 연결">🔗 연결</div>';
-          }
-        } else {
-          caseLink = plEditCellHtml(it.id,'casenum',it.casenum||'',it.casenum||'',{type:'text',align:'left',minw:'80px',placeholder:'경매번호',empty:'—',spanStyle:'color:var(--fg2);font-size:11px;font-family:monospace;'});
-        }
-
-        // ★ 기일 지난 항목 음영
         var isPast = (d !== null && d < 0);
-        var rowStyle = 'border-bottom:1px solid var(--b1);' + (it.archived ? 'opacity:.65;' : '');
-        var rowClass = isPast ? ' class="pl-row-past"' : '';
-
-        // ★ 예상입찰가 스타일 (노란 하이라이트)
-        var estimateStyle = it.estimate ? 'background:rgba(255,209,102,.10);border-radius:5px;padding:1px 4px;color:#ffd166;font-weight:700;' : '';
-
-        return '<tr'+rowClass+' style="'+rowStyle+'" data-plid="'+it.id+'">'
-          + '<td style="padding:8px 8px;text-align:center;" onclick="event.stopPropagation()"><input type="checkbox" '+(plSelectedMap[it.id]?'checked':'')+' onclick="event.stopPropagation();plToggleOne(\''+it.id+'\',this.checked)"></td>'
-          + '<td style="padding:6px 8px;" onclick="event.stopPropagation()">'+statusCell(it)+'</td>'
-          + '<td style="padding:6px 8px;" onclick="event.stopPropagation()">'+plSelectCell(it.id,'type',it.type||'경매',[['경매','경매'],['일반','일반'],['온비드','온비드'],['공매','공매'],['NPL','NPL']],{minw:'48px'})+'</td>'
-          + '<td style="padding:6px 6px;text-align:center;" onclick="event.stopPropagation()">'+intentSelectCell(it)+'</td>'
-          + '<td style="padding:6px 10px;overflow:hidden;" onclick="event.stopPropagation()" title="클릭: 인라인편집 / ··· 클릭: 전체편집">'
-          +   plEditCellHtml(it.id,'addr',it.addr||'',it.addr||'',{type:'text',align:'left',minw:'120px',placeholder:'물건명/주소',empty:'—',spanStyle:'font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;'})
-          +   resultTag+'</td>'
-          + '<td style="padding:6px 8px;overflow:hidden;" onclick="event.stopPropagation()">'+caseLink+'</td>'
-          + '<td style="padding:6px 8px;overflow:hidden;" onclick="event.stopPropagation()">'+plEditCellHtml(it.id,'region',it.region||'',it.region||'',{type:'text',align:'left',minw:'60px',placeholder:'지역',empty:'—',spanStyle:'font-size:11px;color:var(--fg2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;'})+'</td>'
-          + '<td style="padding:6px 8px;overflow:hidden;" onclick="event.stopPropagation()">'+plEditCellHtml(it.id,'feature',it.feature||'',it.feature||'',{type:'text',align:'left',minw:'80px',placeholder:'특징메모',empty:'—',spanStyle:'font-size:11px;color:var(--fg2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;'})+'</td>'
-          + '<td style="padding:6px 8px;text-align:right;" onclick="event.stopPropagation()">'+plEditCellHtml(it.id,'appraisal',plDisplayMoney(it.appraisal||''),plDisplayMan(it.appraisal||''),{type:'text',align:'right',minw:'68px',placeholder:'만원'})+'</td>'
-          + '<td style="padding:6px 8px;text-align:right;" onclick="event.stopPropagation()">'+plEditCellHtml(it.id,'minprice',plDisplayMoney(it.minprice||''),plDisplayMan(it.minprice||''),{type:'text',align:'right',minw:'68px',placeholder:'만원',spanStyle:'color:#fb923c;font-weight:700;'})+'</td>'
-          + '<td style="padding:6px 6px;text-align:center;" onclick="event.stopPropagation()">'+plEditCellHtml(it.id,'round',it.round||'',it.round||'',{type:'text',align:'center',minw:'34px',placeholder:'회차',empty:'—',spanStyle:'font-size:11px;color:var(--fg2);'})+'</td>'
-          + '<td style="padding:6px 8px;white-space:nowrap;" onclick="event.stopPropagation()">'
-          +   '<div>'+plEditCellHtml(it.id,'biddate',it.biddate||'',fmtDate(it.biddate),{type:'date',align:'left',minw:'72px',placeholder:'YYYY-MM-DD',spanStyle:'color:'+(isPast?'#888':'var(--tx)')+';font-size:12px;border-bottom-color:rgba(255,255,255,.10);'})+'</div>'
+        var rowStyle = (it.archived?'opacity:.65;':'') + (isPast?'background:rgba(80,85,110,.1);':'') + 'border-bottom:1px solid var(--b1);';
+        var linkedId = it.linkedSavedId || '';
+        var casenumCell;
+        if (linkedId) {
+          casenumCell = '<span onclick="event.stopPropagation();plOpenLinkedCard(\''+plEscHtml(linkedId)+'\')" style="color:#8ab8ff;font-family:monospace;font-size:11px;cursor:pointer;white-space:nowrap;" title="저장목록 카드 열기">'+(it.casenum||'—')+' 📑</span>';
+        } else if (it.casenum) {
+          casenumCell = '<span style="font-family:monospace;font-size:11px;color:var(--fg2);white-space:nowrap;">'+(it.casenum)+'</span>'
+            + '<div onclick="event.stopPropagation();plLinkByCasenum(\''+it.id+'\')" style="font-size:9px;color:#60a5fa;cursor:pointer;">🔗 연결</div>';
+        } else {
+          casenumCell = '<span style="color:#444;">—</span>';
+        }
+        return '<tr style="'+rowStyle+'" data-plid="'+it.id+'">'
+          + '<td style="padding:8px 8px;text-align:center;"><input type="checkbox" '+(plSelectedMap[it.id]?'checked':'')+' onclick="event.stopPropagation();plToggleOne(\''+it.id+'\',this.checked)"></td>'
+          + '<td style="padding:8px 10px;" onclick="event.stopPropagation()">'+statusCell(it)+'</td>'
+          + '<td style="padding:8px 8px;font-size:12px;color:var(--fg2);white-space:nowrap;" onclick="event.stopPropagation()">'+plSelectCell(it.id,'type',it.type||'경매',[['경매','경매'],['일반','일반'],['온비드','온비드'],['공매','공매'],['NPL','NPL']],{minw:'48px'})+'</td>'
+          + '<td style="padding:8px 6px;text-align:center;" onclick="event.stopPropagation()">'+intentCell(it)+'</td>'
+          + '<td style="padding:8px 10px;max-width:160px;"><div style="font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+(it.addr||'')+'">'+(it.addr||'—')+'</div>'+resultTag+'</td>'
+          + '<td style="padding:8px 10px;" onclick="event.stopPropagation()">'+casenumCell+'</td>'
+          + '<td style="padding:8px 10px;font-size:12px;color:var(--fg2);white-space:nowrap;">'+(it.region||'—')+'</td>'
+          + '<td style="padding:8px 10px;font-size:12px;color:var(--fg2);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+(it.feature||'')+'">'+(it.feature||'—')+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'appraisal',plDisplayMoney(it.appraisal||''),plDisplayMan(it.appraisal||''),{type:'text',align:'right',minw:'78px',placeholder:'만원'})+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'minprice',plDisplayMoney(it.minprice||''),plDisplayMan(it.minprice||''),{type:'text',align:'right',minw:'78px',placeholder:'만원',spanStyle:'color:#fb923c;font-weight:700;'})+'</td>'
+          + '<td style="padding:8px 10px;text-align:center;font-size:12px;">'+(it.round||'—')+'</td>'
+          + '<td style="padding:8px 10px;white-space:nowrap;">'
+          +   '<div style="font-size:13px;">'+plEditCellHtml(it.id,'biddate',it.biddate||'',fmtDate(it.biddate),{type:'text',align:'left',minw:'76px',placeholder:'YYYY-MM-DD',spanStyle:'color:'+(isPast?'#888':'var(--tx)')+';border-bottom-color:rgba(255,255,255,.10);'})+'</div>'
           +   dTag
           + '</td>'
-          + '<td style="padding:6px 6px;text-align:center;cursor:pointer;" onclick="event.stopPropagation();plToggleSite(\''+it.id+'\')">'+siteDots(it.site)+'</td>'
-          + '<td style="padding:6px 8px;text-align:right;">'+numCell(it.result&&it.result.won?it.result.won:'','#4caf87')+'</td>'
-          + '<td style="padding:6px 8px;text-align:right;" onclick="event.stopPropagation()">'+plEditCellHtml(it.id,'bidders',it.bidders||'',it.bidders||'',{type:'text',align:'right',minw:'44px',placeholder:'인원',empty:'—',spanStyle:'font-size:11px;'})+'</td>'
-          + '<td style="padding:6px 8px;text-align:right;" onclick="event.stopPropagation()">'+plEditCellHtml(it.id,'deposit',plDisplayMoney(it.deposit||''),plDisplayMan(it.deposit||''),{type:'text',align:'right',minw:'56px',placeholder:'만원'})+'</td>'
-          + '<td style="padding:6px 6px;text-align:right;" onclick="event.stopPropagation()">'+plEditCellHtml(it.id,'monthly',plDisplayMoney(it.monthly||''),plDisplayMan(it.monthly||''),{type:'text',align:'right',minw:'50px',placeholder:'만원'})+'</td>'
-          + '<td style="padding:6px 8px;text-align:right;" onclick="event.stopPropagation()"><span style="'+estimateStyle+'">'+plEditCellHtml(it.id,'estimate',plDisplayMoney(it.estimate||''),plDisplayMan(it.estimate||''),{type:'text',align:'right',minw:'68px',placeholder:'만원',spanStyle:'color:#ffd166;font-weight:700;'})+'</span></td>'
-          + '<td style="padding:6px 8px;" onclick="event.stopPropagation()">'+wrLink+'</td>'
-          + '<td style="padding:6px 8px;" onclick="event.stopPropagation()">'+plEditMemoCellHtml(it.id,it.memo||'')+'</td>'
-          + '<td style="padding:6px 4px;text-align:center;"><button onclick="event.stopPropagation();plOpenEdit(\''+it.id+'\')" style="background:none;border:none;color:var(--fg3);cursor:pointer;font-size:18px;padding:2px 6px;border-radius:4px;" title="전체 편집" onmouseenter="this.style.background=\'rgba(255,255,255,.08)\'" onmouseleave="this.style.background=\'\'">···</button></td>'
+          + '<td style="padding:8px 10px;text-align:right;"><span style="'+(it.estimate?'background:rgba(255,209,102,.12);border-radius:4px;padding:1px 4px;':'')+'">'+plEditCellHtml(it.id,'estimate',plDisplayMoney(it.estimate||''),plDisplayMan(it.estimate||''),{type:'text',align:'right',minw:'78px',placeholder:'만원',spanStyle:'color:#ffd166;font-weight:700;'})+'</span></td>'
+          + '<td style="padding:8px 10px;text-align:right;">'+numCell(it.result&&it.result.won?it.result.won:'','#4caf87')+'</td>'
+          + '<td style="padding:8px 10px;text-align:center;cursor:pointer;" onclick="event.stopPropagation();plToggleSite(\''+it.id+'\')">'+siteDots(it.site)+'</td>'
+          + '<td style="padding:8px 10px;" onclick="event.stopPropagation()">'+wrLink+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'deposit',plDisplayMoney(it.deposit||''),plDisplayMan(it.deposit||''),{type:'text',align:'right',minw:'70px',placeholder:'만원'})+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'monthly',plDisplayMoney(it.monthly||''),plDisplayMan(it.monthly||''),{type:'text',align:'right',minw:'70px',placeholder:'만원'})+'</td>'
+          + '<td style="padding:8px 10px;">'+plEditMemoCellHtml(it.id,it.memo||'')+'</td>'
+          + '<td style="padding:8px 6px;text-align:center;"><button onclick="event.stopPropagation();plOpenEdit(\''+it.id+'\')" style="background:none;border:none;color:var(--fg3);cursor:pointer;font-size:15px;padding:2px 4px;">···</button></td>'
           + '</tr>';
       }).join('');
     }
     plRenderBulkBar(filtered);
-    // ★ 컬럼 리사이즈 초기화 (렌더 후)
-    setTimeout(plInitColResize, 0);
     var cnt = document.getElementById('pl-count');
     if (cnt) {
       var activeItems = items.filter(function(i){return !i.archived;});
@@ -40558,13 +40515,8 @@ window.addEventListener('DOMContentLoaded', () => {
     var tabPipe = document.getElementById('pm-tab-pipeline');
     if (!list || !work || !pipe) return;
     list.style.display = (tab === 'list') ? '' : 'none';
-    work.style.display = (tab === 'work') ? 'flex' : 'none';
-    pipe.style.display = (tab === 'pipeline') ? 'flex' : 'none';
-    // ipage8/ipage5는 host에 있을 때만 표시, 인사이트탭으로 복원되면 none
-    var wp = document.getElementById('ipage8');
-    var pp = document.getElementById('ipage5');
-    if (wp) wp.style.display = (tab === 'work' && wp.parentNode && wp.parentNode.id === 'pm-work-host') ? 'flex' : 'none';
-    if (pp) pp.style.display = (tab === 'pipeline' && pp.parentNode && pp.parentNode.id === 'pm-pipeline-host') ? '' : 'none';
+    work.style.display = (tab === 'work') ? '' : 'none';
+    pipe.style.display = (tab === 'pipeline') ? '' : 'none';
     [[tabList,'list'],[tabWork,'work'],[tabPipe,'pipeline']].forEach(function(entry){
       var el = entry[0], key = entry[1]; if (!el) return;
       el.style.borderBottomColor = (tab === key ? 'var(--accent,#4f8eff)' : 'transparent');
@@ -40601,80 +40553,72 @@ window.addEventListener('DOMContentLoaded', () => {
   };
 
   // ── 작업룸 이동 ─────────────────────────
-  // ★ 경매번호 클릭 → 저장목록 카드 열기
+  window.plGoToWorkroom = function(roomId) {
+    if (typeof window.showPage === 'function') window.showPage(4);
+    setTimeout(function(){
+      if (typeof window.pmShowTab === 'function') window.pmShowTab('work');
+      setTimeout(function(){
+        if (window.wr2State && roomId) {
+          window.wr2State.activeRoomId = roomId;
+          if (typeof window.wr2Render === 'function') window.wr2Render();
+        }
+      }, 200);
+    }, 80);
+  };
+
+  // 경매번호 → 저장목록 카드 열기
   window.plOpenLinkedCard = function(linkedId) {
     if (!linkedId) return;
-    // 저장목록탭(page1)으로 이동 후 openPopup 호출
-    if (typeof window.openPopup === 'function') {
-      // 현재 페이지가 저장목록이 아니면 이동
-      try {
-        var sv = typeof getSv === 'function' ? getSv() : [];
-        var item = sv.find(function(s){ return String(s.id) === String(linkedId); });
-        if (item) {
-          if (typeof window.showPage === 'function') window.showPage(1);
-          setTimeout(function(){ window.openPopup(linkedId); }, 100);
-          return;
-        }
-      } catch(e) {}
-    }
+    try {
+      var sv = typeof getSv === 'function' ? getSv() : [];
+      var item = sv.find(function(s){ return String(s.id) === String(linkedId); });
+      if (item) {
+        if (typeof window.showPage === 'function') window.showPage(1);
+        setTimeout(function(){ if (typeof window.openPopup === 'function') window.openPopup(linkedId); }, 150);
+        return;
+      }
+    } catch(e) {}
     if (typeof showToast === 'function') showToast('저장목록에서 물건을 찾을 수 없습니다', 'warn');
   };
 
-  // ★ 경매번호로 저장목록에서 연결
+  // 경매번호로 저장목록 자동 연결
   window.plLinkByCasenum = function(itemId) {
     var items = plLoad();
     var it = items.find(function(x){ return x.id === itemId; });
     if (!it) return;
-    var sv = typeof getSv === 'function' ? getSv() : [];
-    // 사건번호로 매칭 시도
     var casenum = String(it.casenum || '').trim();
+    if (!casenum) { if (typeof showToast === 'function') showToast('경매번호가 없습니다', 'warn'); return; }
+    var sv = typeof getSv === 'function' ? getSv() : [];
     var matched = sv.find(function(s){
       if (!s || !s.data) return false;
-      var sCase = String(s.data['사건번호'] || s.data['경매번호'] || s.data['caseNo'] || '').trim();
-      return casenum && sCase && (sCase === casenum || sCase.replace(/\s/g,'') === casenum.replace(/\s/g,''));
+      var sc = String(s.data['사건번호'] || s.data['경매번호'] || s.data['caseNo'] || '').trim().replace(/\s/g,'');
+      return sc && sc === casenum.replace(/\s/g,'');
     });
     if (matched) {
       it.linkedSavedId = String(matched.id);
       plSave(items.map(plNormalizeItem));
       renderPropertyList();
-      if (typeof showToast === 'function') showToast('✅ 저장목록과 연결됐습니다', 'ok');
+      if (typeof showToast === 'function') showToast('✅ 저장목록 물건과 연결됐습니다', 'ok');
     } else {
-      // 수동 연결 모달 열기
-      _plEditAutoFocus = null;
-      window.plOpenEdit(itemId);
-      if (typeof showToast === 'function') showToast('자동 매칭 실패 — 수동으로 저장목록 연결이 필요합니다', 'warn', 3000);
+      if (typeof showToast === 'function') showToast('일치하는 저장목록 물건 없음 — 수동 연결이 필요합니다', 'warn', 3000);
     }
   };
 
-  window.plGoToWorkroom = function(roomId) {
-    if (window.showPage) window.showPage(4);
-    setTimeout(function() {
-      if (typeof window.pmShowTab === 'function') window.pmShowTab('work');
-      setTimeout(function(){
-        if (window.wr2State) {
-          window.wr2State.activeRoomId = roomId;
-          if (typeof window.wr2Render === 'function') window.wr2Render();
-        }
-        // wr2 내부 renderDetail 직접 호출 시도
-        try {
-          var rooms = (window.wr2State && window.wr2State.rooms) || [];
-          var room = rooms.find(function(r){ return r && r.id === roomId; });
-          if (room) {
-            var items = document.querySelectorAll('.wr2-room-item');
-            items.forEach(function(el){
-              el.classList.remove('active');
-              if (el.dataset && el.dataset.id === roomId) el.classList.add('active');
-            });
-          }
-        } catch(e) {}
-      }, 150);
-    }, 50);
+  // 임장 토글
+  window.plToggleSite = function(id) {
+    var items = plLoad();
+    var it = items.find(function(x){ return x.id === id; });
+    if (!it) return;
+    it.site = String(parseInt(it.site||'0') > 0 ? '0' : '1');
+    it.updatedAt = Date.now();
+    plSave(items.map(plNormalizeItem));
+    renderPropertyList();
   };
 
   // ── 모달: 추가 ──────────────────────────
   window.plOpenAdd = function() {
     document.getElementById('pl-modal-title').textContent = '물건 추가';
-    ['pl-f-addr','pl-f-case','pl-f-region','pl-f-feature','pl-f-appraisal','pl-f-minprice','pl-f-round','pl-f-biddate','pl-f-estimate','pl-f-deposit','pl-f-monthly','pl-f-bidders','pl-f-memo'].forEach(function(id){
+    ['pl-f-addr','pl-f-case','pl-f-region','pl-f-feature','pl-f-appraisal','pl-f-minprice','pl-f-round','pl-f-biddate','pl-f-estimate','pl-f-deposit','pl-f-monthly','pl-f-memo'].forEach(function(id){
       var el = document.getElementById(id); if (el) el.value = '';
     });
     var fs = document.getElementById('pl-f-status'); if (fs) fs.value = 'active';
@@ -40713,7 +40657,6 @@ window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('pl-f-estimate').value = plDisplayMoney(it.estimate||'');
     document.getElementById('pl-f-deposit').value = plDisplayMoney(it.deposit||'');
     document.getElementById('pl-f-monthly').value = plDisplayMoney(it.monthly||'');
-    var fb = document.getElementById('pl-f-bidders'); if(fb) fb.value = it.bidders||'';
     document.getElementById('pl-f-site').value = it.site||'0';
     document.getElementById('pl-f-memo').value = it.memo||'';
     var db = document.getElementById('pl-del-btn'); if (db) db.style.display = '';
@@ -40808,7 +40751,6 @@ window.addEventListener('DOMContentLoaded', () => {
       estimate:  plParseAmountText(document.getElementById('pl-f-estimate').value),
       deposit:   plParseAmountText(document.getElementById('pl-f-deposit').value),
       monthly:   plParseAmountText(document.getElementById('pl-f-monthly').value),
-      bidders:   (document.getElementById('pl-f-bidders') || {}).value || '',
       site:      document.getElementById('pl-f-site').value,
       roomId:    document.getElementById('pl-f-roomid').value,
       memo:      document.getElementById('pl-f-memo').value.trim(),
@@ -41025,61 +40967,3 @@ window.addEventListener('DOMContentLoaded', () => {
   }, 60000);
 
 })();
-
-/* ═══════════════════════════════════════════════════════════════
-   물건리스트 컬럼 리사이즈 (Excel 스타일)
-═══════════════════════════════════════════════════════════════ */
-(function() {
-  var _plColWidths = {};
-  try { _plColWidths = JSON.parse(localStorage.getItem('pl_col_widths') || '{}'); } catch(e) {}
-
-  window.plInitColResize = function() {
-    var table = document.getElementById('pl-table');
-    var colgroup = document.getElementById('pl-colgroup');
-    if (!table || !colgroup) return;
-    var cols = colgroup.querySelectorAll('col');
-    var handles = table.querySelectorAll('.pl-rzh');
-
-    // 저장된 너비 복원
-    Object.keys(_plColWidths).forEach(function(id) {
-      var col = document.getElementById(id);
-      if (col) col.style.width = _plColWidths[id] + 'px';
-    });
-
-    handles.forEach(function(handle) {
-      if (handle._plRzBound) return;
-      handle._plRzBound = true;
-      var th = handle.parentElement;
-      var colIdx = Array.from(th.parentElement.children).indexOf(th);
-      // colgroup col 인덱스 (체크박스 col 0 포함)
-      var targetCol = cols[colIdx];
-      if (!targetCol) return;
-      var colId = targetCol.id || ('plc_' + colIdx);
-
-      var startX, startW;
-      handle.addEventListener('mousedown', function(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        startX = e.clientX;
-        startW = th.offsetWidth;
-        handle.classList.add('dragging');
-
-        var onMove = function(e2) {
-          var dx = e2.clientX - startX;
-          var newW = Math.max(40, startW + dx);
-          targetCol.style.width = newW + 'px';
-        };
-        var onUp = function() {
-          handle.classList.remove('dragging');
-          _plColWidths[colId] = parseInt(targetCol.style.width) || startW;
-          try { localStorage.setItem('pl_col_widths', JSON.stringify(_plColWidths)); } catch(ex) {}
-          document.removeEventListener('mousemove', onMove);
-          document.removeEventListener('mouseup', onUp);
-        };
-        document.addEventListener('mousemove', onMove);
-        document.addEventListener('mouseup', onUp);
-      });
-    });
-  };
-})();
-
