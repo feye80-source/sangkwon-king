@@ -27324,10 +27324,20 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         var host = document.getElementById(conf.hostId);
         if (!panel || !host) return null;
         if (panel.parentNode !== host) host.appendChild(panel);
-        panel.style.display = '';
+        panel.style.display = 'flex';
+        panel.style.flexDirection = 'column';
         panel.style.height = '100%';
-        panel.style.overflow = 'hidden';
+        panel.style.overflow = 'hidden';  // 패널 자체는 hidden
         panel.style.border = '0';
+        // 내부 스크롤 영역 활성화 (맥북 트랙패드 스크롤 보장)
+        setTimeout(function() {
+          var scrollEls = panel.querySelectorAll('.wr2-detail, .wr2-tab-body, .wr2-list, .ins-wrap');
+          scrollEls.forEach(function(el) {
+            el.style.overflowY = 'auto';
+            el.style.webkitOverflowScrolling = 'touch';
+            el.style.overscrollBehavior = 'contain';
+          });
+        }, 100);
         return panel;
       } catch (e) { console.warn('[pmMountPanel]', e); return null; }
     }
@@ -40017,8 +40027,23 @@ window.addEventListener('DOMContentLoaded', () => {
   };
   function intentBadge(v) {
     if (!v) return '<span style="color:#555;">—</span>';
-    var map = { '상':'#ff6b6b', '중':'#f5a623', '하':'#4caf87' };
+    var map = { '상':'#ff6b6b', '중':'#60a5fa', '하':'#4ade80' };
     return '<span style="font-weight:700;color:'+ (map[v]||'#aaa') +';">'+v+'</span>';
+  }
+  // 의향 인라인 셀렉트 (화살표 없이 색상으로만 표현)
+  function intentSelectCell(it) {
+    var v = it.intent || '';
+    var colorMap = { '상':'#ff6b6b', '중':'#60a5fa', '하':'#4ade80' };
+    var col = colorMap[v] || 'var(--fg3)';
+    var id = it.id;
+    var key = 'intent_sel_' + id;
+    return '<select id="'+key+'" class="pl-intent-sel" onchange="event.stopPropagation();plInlineSetSelect(\''+plEscHtml(id)+'\',\'intent\',this.value)" onclick="event.stopPropagation()" '
+      + 'style="width:100%;min-width:34px;color:'+col+';">'
+      + '<option value=""'+(v===''?' selected':'')+' style="color:var(--fg3);">—</option>'
+      + '<option value="상"'+(v==='상'?' selected':'')+' style="color:#ff6b6b;">상</option>'
+      + '<option value="중"'+(v==='중'?' selected':'')+' style="color:#60a5fa;">중</option>'
+      + '<option value="하"'+(v==='하'?' selected':'')+' style="color:#4ade80;">하</option>'
+      + '</select>';
   }
   function statusCell(item) {
     var id = item.id;
@@ -40339,8 +40364,8 @@ window.addEventListener('DOMContentLoaded', () => {
       + '</select>';
   }
   function plQuickRoomControlHtml(it, roomOptionsHtml) {
-    var itemIdJs = String(it.id || '').replace(/\\/g, '\\\\').replace(/'/g, '\\\'');
-    var roomIdJs = String(it.roomId || '').replace(/\\/g, '\\\\').replace(/'/g, '\\\'');
+    var itemIdJs = String(it.id || '').replace(/'/g, "\\'");
+    var roomIdJs = String(it.roomId || '').replace(/'/g, "\\'");
     var selectHtml = '<select onchange="event.stopPropagation();plQuickRoomAction(\'' + itemIdJs + '\',this.value);this.value=\'\';" onclick="event.stopPropagation()" '
       + 'style="max-width:168px;width:100%;padding:4px 8px;border:1px dashed rgba(17,157,237,.45);border-radius:6px;background:rgba(17,157,237,.08);color:#8ab8ff;font-size:11px;cursor:pointer;">'
       + '<option value="">＋ 연결</option>'
@@ -40348,9 +40373,15 @@ window.addEventListener('DOMContentLoaded', () => {
       + (roomOptionsHtml || '')
       + '</select>';
     if (!it.roomId) return selectHtml;
-    return '<div style="display:flex;align-items:center;gap:6px;min-width:0;">'
-      + '<button onclick="plGoToWorkroom(\'' + roomIdJs + '\')" style="font-size:11px;padding:2px 8px;border:1px solid var(--b1);border-radius:5px;background:transparent;color:var(--fg2);cursor:pointer;white-space:nowrap;" title="작업룸으로 이동">🗂 이동</button>'
-      + '<div style="min-width:0;flex:1;">' + selectHtml + '</div>'
+    // 연결된 작업룸명 표시 + 이동 버튼
+    var rooms = getWrRooms();
+    var room = rooms.find(function(r){ return r && r.id === it.roomId; });
+    var roomTitle = room ? ((room.title || room.name || '작업룸').substring(0, 10)) : '작업룸';
+    return '<div style="display:flex;flex-direction:column;gap:3px;min-width:0;">'
+      + '<button onclick="event.stopPropagation();plGoToWorkroom(\'' + roomIdJs + '\')" '
+      + 'style="font-size:11px;padding:3px 8px;border:1px solid rgba(17,157,237,.4);border-radius:5px;background:rgba(17,157,237,.1);color:#60c8ff;cursor:pointer;white-space:nowrap;text-align:left;" '
+      + 'title="작업룸으로 이동">🗂 ' + roomTitle + '</button>'
+      + '<div style="min-width:0;">' + selectHtml + '</div>'
       + '</div>';
   }
   // ── 메인 렌더 ──────────────────────────
@@ -40389,51 +40420,62 @@ window.addEventListener('DOMContentLoaded', () => {
         }
         var resultTag = '';
         if ((it.status === 'closed' || it.status==='archived') && it.result && it.result.won) resultTag = '<div style="font-size:10px;color:#4caf87;margin-top:2px;">낙 '+it.result.won+'</div>';
-        // ★ 사건번호 → 물건 원본 링크 생성
+        // ★ 경매번호 → linkedSavedId로 저장목록 카드 열기
+        var linkedId = it.linkedSavedId || '';
         var caseLink = '';
-        if (it.casenum) {
-          var casenumClean = String(it.casenum).replace(/\s/g, '');
-          var caseUrl = 'https://www.courtauction.go.kr/RetrieveRealEstateDetailInqAuct.laf?jiwonNm=&saCaseNumber=' + encodeURIComponent(casenumClean);
-          if (it.type && (it.type.indexOf('온비드') >= 0 || it.type.indexOf('공매') >= 0)) {
-            caseUrl = 'https://www.onbid.co.kr/op/cta/cltf/selectCollateralDetailView.do?keyword=' + encodeURIComponent(casenumClean);
-          } else if (it.linkedSavedId && String(it.linkedSavedId).indexOf('onbid') >= 0) {
-            caseUrl = 'https://www.onbid.co.kr/op/cta/cltf/selectCollateralDetailView.do?keyword=' + encodeURIComponent(casenumClean);
+        if (it.casenum || linkedId) {
+          var casenumDisplay = plEscHtml(it.casenum || '—');
+          if (linkedId) {
+            // 저장목록 연결 있음 → 클릭 시 openPopup으로 카드 열기
+            caseLink = '<div onclick="event.stopPropagation();plOpenLinkedCard(\''+plEscHtml(linkedId)+'\')" '
+              + 'style="cursor:pointer;color:#8ab8ff;font-size:11px;font-family:monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" '
+              + 'title="저장목록 카드 열기">'
+              + casenumDisplay
+              + ' <span style="font-size:9px;opacity:.7;">📑</span></div>';
+          } else if (it.casenum) {
+            // 연결 없음 → 인라인 편집 + 연결 버튼
+            caseLink = plEditCellHtml(it.id,'casenum',it.casenum||'',it.casenum||'',{type:'text',align:'left',minw:'80px',placeholder:'경매번호',empty:'—',spanStyle:'color:var(--fg2);font-size:11px;font-family:monospace;'})
+              + '<div onclick="event.stopPropagation();plLinkByCasenum(\''+it.id+'\')" style="font-size:9px;color:#60a5fa;cursor:pointer;margin-top:1px;" title="저장목록에서 연결">🔗 연결</div>';
           }
-          caseLink = '<a href="' + caseUrl + '" target="_blank" rel="noopener" '
-            + 'onclick="event.stopPropagation()" title="법원경매 물건 상세 보기" '
-            + 'style="color:#8ab8ff;text-decoration:none;font-size:11px;font-family:monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;" '
-            + 'onmouseenter="this.style.textDecoration=\'underline\'" onmouseleave="this.style.textDecoration=\'none\'">'
-            + plEscHtml(it.casenum) + ' ↗</a>';
         } else {
-          caseLink = plEditCellHtml(it.id,'casenum',it.casenum||'',it.casenum||'',{type:'text',align:'left',minw:'80px',placeholder:'사건번호',empty:'—',spanStyle:'color:var(--fg2);font-size:11px;font-family:monospace;'});
+          caseLink = plEditCellHtml(it.id,'casenum',it.casenum||'',it.casenum||'',{type:'text',align:'left',minw:'80px',placeholder:'경매번호',empty:'—',spanStyle:'color:var(--fg2);font-size:11px;font-family:monospace;'});
         }
-        return '<tr style="'+rowHl+'border-bottom:1px solid var(--b1);cursor:pointer;" onclick="plOpenEdit(\''+it.id+'\')">'
+
+        // ★ 기일 지난 항목 음영
+        var isPast = (d !== null && d < 0);
+        var rowStyle = it.archived ? 'opacity:.65;' : (isPast ? 'background:rgba(100,100,120,.07);' : '');
+        rowStyle += 'border-bottom:1px solid var(--b1);cursor:pointer;';
+
+        // ★ 예상입찰가 스타일 (노란 하이라이트)
+        var estimateStyle = it.estimate ? 'background:rgba(255,209,102,.10);border-radius:5px;padding:1px 4px;color:#ffd166;font-weight:700;' : '';
+
+        return '<tr style="'+rowStyle+'" onclick="plOpenEdit(\''+it.id+'\')">'
           + '<td style="padding:8px 8px;text-align:center;" onclick="event.stopPropagation()"><input type="checkbox" '+(plSelectedMap[it.id]?'checked':'')+' onclick="event.stopPropagation();plToggleOne(\''+it.id+'\',this.checked)"></td>'
           + '<td style="padding:6px 8px;" onclick="event.stopPropagation()">'+statusCell(it)+'</td>'
           + '<td style="padding:6px 8px;" onclick="event.stopPropagation()">'+plSelectCell(it.id,'type',it.type||'경매',[['경매','경매'],['일반','일반'],['온비드','온비드'],['공매','공매'],['NPL','NPL']],{minw:'48px'})+'</td>'
-          + '<td style="padding:6px 6px;text-align:center;" onclick="event.stopPropagation()">'+plSelectCell(it.id,'intent',it.intent||'',[['','—'],['상','⬆상'],['중','➡중'],['하','⬇하']],{minw:'38px'})+'</td>'
-          + '<td style="padding:6px 10px;overflow:hidden;"><div style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg);" title="'+(it.addr||'')+'">'
+          + '<td style="padding:6px 6px;text-align:center;" onclick="event.stopPropagation()">'+intentSelectCell(it)+'</td>'
+          + '<td style="padding:6px 10px;overflow:hidden;" onclick="event.stopPropagation()">'
           +   plEditCellHtml(it.id,'addr',it.addr||'',it.addr||'',{type:'text',align:'left',minw:'120px',placeholder:'물건명/주소',empty:'—',spanStyle:'font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;'})
-          +   resultTag+'</div></td>'
+          +   resultTag+'</td>'
           + '<td style="padding:6px 8px;overflow:hidden;" onclick="event.stopPropagation()">'+caseLink+'</td>'
-          + '<td style="padding:6px 8px;overflow:hidden;">'+plEditCellHtml(it.id,'region',it.region||'',it.region||'',{type:'text',align:'left',minw:'60px',placeholder:'지역',empty:'—',spanStyle:'font-size:11px;color:var(--fg2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;'})+'</td>'
-          + '<td style="padding:6px 8px;overflow:hidden;">'+plEditCellHtml(it.id,'feature',it.feature||'',it.feature||'',{type:'text',align:'left',minw:'80px',placeholder:'특징메모',empty:'—',spanStyle:'font-size:11px;color:var(--fg2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;'})+'</td>'
-          + '<td style="padding:6px 8px;text-align:right;">'+plEditCellHtml(it.id,'appraisal',plDisplayMoney(it.appraisal||''),plDisplayMan(it.appraisal||''),{type:'text',align:'right',minw:'68px',placeholder:'만원'})+'</td>'
-          + '<td style="padding:6px 8px;text-align:right;">'+plEditCellHtml(it.id,'minprice',plDisplayMoney(it.minprice||''),plDisplayMan(it.minprice||''),{type:'text',align:'right',minw:'68px',placeholder:'만원'})+'</td>'
-          + '<td style="padding:6px 6px;text-align:center;">'+plEditCellHtml(it.id,'round',it.round||'',it.round||'',{type:'text',align:'center',minw:'34px',placeholder:'회차',empty:'—',spanStyle:'font-size:11px;color:var(--fg2);'})+'</td>'
-          + '<td style="padding:6px 8px;white-space:nowrap;">'
-          +   '<div>'+plEditCellHtml(it.id,'biddate',it.biddate||'',fmtDate(it.biddate),{type:'date',align:'left',minw:'72px',placeholder:'YYYY-MM-DD',spanStyle:'color:var(--tx);font-size:12px;border-bottom-color:rgba(255,255,255,.10);'})+'</div>'
+          + '<td style="padding:6px 8px;overflow:hidden;" onclick="event.stopPropagation()">'+plEditCellHtml(it.id,'region',it.region||'',it.region||'',{type:'text',align:'left',minw:'60px',placeholder:'지역',empty:'—',spanStyle:'font-size:11px;color:var(--fg2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;'})+'</td>'
+          + '<td style="padding:6px 8px;overflow:hidden;" onclick="event.stopPropagation()">'+plEditCellHtml(it.id,'feature',it.feature||'',it.feature||'',{type:'text',align:'left',minw:'80px',placeholder:'특징메모',empty:'—',spanStyle:'font-size:11px;color:var(--fg2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;'})+'</td>'
+          + '<td style="padding:6px 8px;text-align:right;" onclick="event.stopPropagation()">'+plEditCellHtml(it.id,'appraisal',plDisplayMoney(it.appraisal||''),plDisplayMan(it.appraisal||''),{type:'text',align:'right',minw:'68px',placeholder:'만원'})+'</td>'
+          + '<td style="padding:6px 8px;text-align:right;" onclick="event.stopPropagation()">'+plEditCellHtml(it.id,'minprice',plDisplayMoney(it.minprice||''),plDisplayMan(it.minprice||''),{type:'text',align:'right',minw:'68px',placeholder:'만원'})+'</td>'
+          + '<td style="padding:6px 6px;text-align:center;" onclick="event.stopPropagation()">'+plEditCellHtml(it.id,'round',it.round||'',it.round||'',{type:'text',align:'center',minw:'34px',placeholder:'회차',empty:'—',spanStyle:'font-size:11px;color:var(--fg2);'})+'</td>'
+          + '<td style="padding:6px 8px;white-space:nowrap;" onclick="event.stopPropagation()">'
+          +   '<div>'+plEditCellHtml(it.id,'biddate',it.biddate||'',fmtDate(it.biddate),{type:'date',align:'left',minw:'72px',placeholder:'YYYY-MM-DD',spanStyle:'color:'+(isPast?'#888':'var(--tx)')+';font-size:12px;border-bottom-color:rgba(255,255,255,.10);'})+'</div>'
           +   dTag
           + '</td>'
           + '<td style="padding:6px 6px;text-align:center;" onclick="event.stopPropagation()">'+plSelectCell(it.id,'site',String(it.site||'0'),[['0','없음'],['1','1회'],['2','2회'],['3','3회+']],{minw:'40px'})+'</td>'
           + '<td style="padding:6px 8px;text-align:right;">'+numCell(it.result&&it.result.won?it.result.won:'','#4caf87')+'</td>'
-          + '<td style="padding:6px 8px;text-align:right;">'+plEditCellHtml(it.id,'bidders',it.bidders||'',it.bidders||'',{type:'text',align:'right',minw:'44px',placeholder:'인원',empty:'—',spanStyle:'font-size:11px;'})+'</td>'
-          + '<td style="padding:6px 8px;text-align:right;">'+plEditCellHtml(it.id,'deposit',plDisplayMoney(it.deposit||''),plDisplayMan(it.deposit||''),{type:'text',align:'right',minw:'56px',placeholder:'만원'})+'</td>'
-          + '<td style="padding:6px 6px;text-align:right;">'+plEditCellHtml(it.id,'monthly',plDisplayMoney(it.monthly||''),plDisplayMan(it.monthly||''),{type:'text',align:'right',minw:'50px',placeholder:'만원'})+'</td>'
-          + '<td style="padding:6px 8px;text-align:right;">'+plEditCellHtml(it.id,'estimate',plDisplayMoney(it.estimate||''),plDisplayMan(it.estimate||''),{type:'text',align:'right',minw:'68px',placeholder:'만원',spanStyle:'color:#8ab8ff;'})+'</td>'
+          + '<td style="padding:6px 8px;text-align:right;" onclick="event.stopPropagation()">'+plEditCellHtml(it.id,'bidders',it.bidders||'',it.bidders||'',{type:'text',align:'right',minw:'44px',placeholder:'인원',empty:'—',spanStyle:'font-size:11px;'})+'</td>'
+          + '<td style="padding:6px 8px;text-align:right;" onclick="event.stopPropagation()">'+plEditCellHtml(it.id,'deposit',plDisplayMoney(it.deposit||''),plDisplayMan(it.deposit||''),{type:'text',align:'right',minw:'56px',placeholder:'만원'})+'</td>'
+          + '<td style="padding:6px 6px;text-align:right;" onclick="event.stopPropagation()">'+plEditCellHtml(it.id,'monthly',plDisplayMoney(it.monthly||''),plDisplayMan(it.monthly||''),{type:'text',align:'right',minw:'50px',placeholder:'만원'})+'</td>'
+          + '<td style="padding:6px 8px;text-align:right;" onclick="event.stopPropagation()"><span style="'+estimateStyle+'">'+plEditCellHtml(it.id,'estimate',plDisplayMoney(it.estimate||''),plDisplayMan(it.estimate||''),{type:'text',align:'right',minw:'68px',placeholder:'만원',spanStyle:'color:#ffd166;font-weight:700;'})+'</span></td>'
           + '<td style="padding:6px 8px;" onclick="event.stopPropagation()">'+wrLink+'</td>'
-          + '<td style="padding:6px 8px;">'+plEditMemoCellHtml(it.id,it.memo||'')+'</td>'
-          + '<td style="padding:6px 4px;text-align:center;" onclick="event.stopPropagation()"><button onclick="plOpenEdit(\''+it.id+'\')" style="background:none;border:none;color:var(--fg3);cursor:pointer;font-size:15px;padding:2px 4px;">···</button></td>'
+          + '<td style="padding:6px 8px;" onclick="event.stopPropagation()">'+plEditMemoCellHtml(it.id,it.memo||'')+'</td>'
+          + '<td style="padding:6px 4px;text-align:center;" onclick="event.stopPropagation()"><button onclick="plOpenEdit(\''+it.id+'\');event.stopPropagation();" style="background:none;border:none;color:var(--fg3);cursor:pointer;font-size:15px;padding:2px 4px;">···</button></td>'
           + '</tr>';
       }).join('');
     }
@@ -40540,15 +40582,74 @@ window.addEventListener('DOMContentLoaded', () => {
   };
 
   // ── 작업룸 이동 ─────────────────────────
+  // ★ 경매번호 클릭 → 저장목록 카드 열기
+  window.plOpenLinkedCard = function(linkedId) {
+    if (!linkedId) return;
+    // 저장목록탭(page1)으로 이동 후 openPopup 호출
+    if (typeof window.openPopup === 'function') {
+      // 현재 페이지가 저장목록이 아니면 이동
+      try {
+        var sv = typeof getSv === 'function' ? getSv() : [];
+        var item = sv.find(function(s){ return String(s.id) === String(linkedId); });
+        if (item) {
+          if (typeof window.showPage === 'function') window.showPage(1);
+          setTimeout(function(){ window.openPopup(linkedId); }, 100);
+          return;
+        }
+      } catch(e) {}
+    }
+    if (typeof showToast === 'function') showToast('저장목록에서 물건을 찾을 수 없습니다', 'warn');
+  };
+
+  // ★ 경매번호로 저장목록에서 연결
+  window.plLinkByCasenum = function(itemId) {
+    var items = plLoad();
+    var it = items.find(function(x){ return x.id === itemId; });
+    if (!it) return;
+    var sv = typeof getSv === 'function' ? getSv() : [];
+    // 사건번호로 매칭 시도
+    var casenum = String(it.casenum || '').trim();
+    var matched = sv.find(function(s){
+      if (!s || !s.data) return false;
+      var sCase = String(s.data['사건번호'] || s.data['경매번호'] || s.data['caseNo'] || '').trim();
+      return casenum && sCase && (sCase === casenum || sCase.replace(/\s/g,'') === casenum.replace(/\s/g,''));
+    });
+    if (matched) {
+      it.linkedSavedId = String(matched.id);
+      plSave(items.map(plNormalizeItem));
+      renderPropertyList();
+      if (typeof showToast === 'function') showToast('✅ 저장목록과 연결됐습니다', 'ok');
+    } else {
+      // 수동 연결 모달 열기
+      _plEditAutoFocus = null;
+      window.plOpenEdit(itemId);
+      if (typeof showToast === 'function') showToast('자동 매칭 실패 — 수동으로 저장목록 연결이 필요합니다', 'warn', 3000);
+    }
+  };
+
   window.plGoToWorkroom = function(roomId) {
     if (window.showPage) window.showPage(4);
-    if (typeof window.pmShowTab === 'function') window.pmShowTab('work');
-    setTimeout(function(){
-      if (window.wr2State) {
-        window.wr2State.activeRoomId = roomId;
-        if (window.wr2Render) window.wr2Render();
-      }
-    }, 300);
+    setTimeout(function() {
+      if (typeof window.pmShowTab === 'function') window.pmShowTab('work');
+      setTimeout(function(){
+        if (window.wr2State) {
+          window.wr2State.activeRoomId = roomId;
+          if (typeof window.wr2Render === 'function') window.wr2Render();
+        }
+        // wr2 내부 renderDetail 직접 호출 시도
+        try {
+          var rooms = (window.wr2State && window.wr2State.rooms) || [];
+          var room = rooms.find(function(r){ return r && r.id === roomId; });
+          if (room) {
+            var items = document.querySelectorAll('.wr2-room-item');
+            items.forEach(function(el){
+              el.classList.remove('active');
+              if (el.dataset && el.dataset.id === roomId) el.classList.add('active');
+            });
+          }
+        } catch(e) {}
+      }, 150);
+    }, 50);
   };
 
   // ── 모달: 추가 ──────────────────────────

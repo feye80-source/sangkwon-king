@@ -10500,6 +10500,7 @@
   }
 }
 
+
 /* ═══════════════════════════════════════════════════
    물건리스트 테이블 — 컬럼 리사이즈 & 인라인 편집
 ═══════════════════════════════════════════════════ */
@@ -10513,6 +10514,7 @@
   white-space: nowrap;
   position: relative;
   overflow: hidden;
+  background: var(--bg3);
 }
 .pl-th:hover { background: rgba(255,255,255,.025); }
 
@@ -10527,30 +10529,60 @@
   transition: background .12s;
 }
 .pl-rzh:hover, .pl-rzh.dragging {
-  background: rgba(79,142,255,.45);
+  background: rgba(79,142,255,.5);
 }
 
 /* 행 hover */
-#pl-tbody tr:hover td {
-  background: rgba(79,142,255,.035);
+#pl-tbody tr:hover > td {
+  background: rgba(79,142,255,.04);
 }
 
+/* 기일 지난 행 */
+#pl-tbody tr.pl-row-past > td {
+  background: rgba(80,80,100,.07);
+}
+
+/* 예상입찰가 하이라이트 */
+.pl-estimate-hl {
+  background: rgba(255,209,102,.12);
+  border-radius: 5px;
+  padding: 2px 5px;
+  color: #ffd166;
+  font-weight: 700;
+}
+
+/* 의향 select — 화살표 제거 */
+select.pl-intent-sel {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background: transparent !important;
+  border: none !important;
+  font-weight: 800;
+  font-size: 13px;
+  cursor: pointer;
+  text-align: center;
+  padding: 3px 2px;
+}
+select.pl-intent-sel option { background: var(--bg2); }
+
 /* ═══════════════════════════════════════════════════
-   노트 목록 — 상용 앱 수준 카드 디자인
+   노트 목록 — 상용 앱 카드 디자인
 ═══════════════════════════════════════════════════ */
 #ipage0 .nt-list {
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 4px;
   padding: 8px;
   scrollbar-width: thin;
+  min-height: 0;
 }
 
+/* 카드 기본 */
 #ipage0 .nt-card {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
+  display: block;
   padding: 0;
   border-radius: 10px;
   border: 1px solid var(--b1);
@@ -10560,39 +10592,41 @@
   transition: border-color .15s, box-shadow .15s, background .12s;
   position: relative;
 }
+/* 타입별 왼쪽 컬러 바 */
 #ipage0 .nt-card::before {
   content: '';
   position: absolute;
-  left: 0; top: 0; bottom: 0;
+  left: 0; top: 6px; bottom: 6px;
   width: 3px;
-  background: var(--ac);
-  opacity: 0;
-  transition: opacity .15s;
-  border-radius: 10px 0 0 10px;
+  background: #4f8eff;
+  border-radius: 0 3px 3px 0;
+  opacity: .8;
 }
+#ipage0 .nt-card[data-type="youtube"]::before  { background: #ff4444; }
+#ipage0 .nt-card[data-type="article"]::before  { background: #00d4aa; }
+#ipage0 .nt-card[data-type="report"]::before   { background: #eab308; }
+
 #ipage0 .nt-card:hover {
-  border-color: rgba(79,142,255,.4);
-  background: rgba(79,142,255,.04);
-  box-shadow: 0 2px 12px rgba(0,0,0,.25);
+  border-color: rgba(79,142,255,.45);
+  background: rgba(79,142,255,.05);
+  box-shadow: 0 2px 10px rgba(0,0,0,.22);
 }
-#ipage0 .nt-card:hover::before { opacity: 1; }
 #ipage0 .nt-card.active {
-  border-color: var(--ac);
-  background: rgba(79,142,255,.07);
-  box-shadow: 0 0 0 1px rgba(79,142,255,.25);
+  border-color: rgba(79,142,255,.7);
+  background: rgba(79,142,255,.08);
+  box-shadow: 0 0 0 1px rgba(79,142,255,.2);
 }
-#ipage0 .nt-card.active::before { opacity: 1; }
 
 /* 카드 내부 레이아웃 */
 #ipage0 .nt-card-inner {
-  padding: 9px 11px 8px 14px;
+  padding: 8px 10px 7px 14px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
   min-width: 0;
 }
 
-/* 카드 상단: 제목 + 액션 */
+/* 헤더: 아이콘+제목 + 액션 */
 #ipage0 .nt-card-header {
   display: flex;
   align-items: flex-start;
@@ -10617,10 +10651,11 @@
   opacity: 0;
   transition: opacity .15s;
   flex-shrink: 0;
+  align-items: center;
 }
 #ipage0 .nt-card:hover .nt-card-actions { opacity: 1; }
 
-/* 카드 미리보기 */
+/* 미리보기 */
 #ipage0 .nt-card-preview {
   font-size: 11px;
   color: var(--mu);
@@ -10628,15 +10663,18 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   line-height: 1.45;
+  padding-left: 19px;  /* 아이콘 너비 정렬 */
 }
 
-/* 카드 하단: 배지 + 날짜 */
+/* 푸터: 배지 + 날짜 */
 #ipage0 .nt-card-footer {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   flex-wrap: wrap;
   min-width: 0;
+  padding-left: 19px;
+  margin-top: 1px;
 }
 #ipage0 .nt-card-date {
   font-size: 10px;
@@ -10645,12 +10683,6 @@
   white-space: nowrap;
   flex-shrink: 0;
 }
-
-/* 타입별 색상 바 */
-#ipage0 .nt-card[data-type="note"]::before    { background: #4f8eff; }
-#ipage0 .nt-card[data-type="youtube"]::before { background: #ff4444; }
-#ipage0 .nt-card[data-type="article"]::before { background: #00d4aa; }
-#ipage0 .nt-card[data-type="report"]::before  { background: #eab308; }
 
 /* 배지 */
 #ipage0 .nt-badge {
@@ -10661,12 +10693,11 @@
   display: inline-block;
   flex-shrink: 0;
 }
-#ipage0 .nt-badge-note    { background:rgba(79,142,255,.14);color:#4f8eff; }
-#ipage0 .nt-badge-youtube { background:rgba(255,68,68,.14); color:#ff4444; }
-#ipage0 .nt-badge-article { background:rgba(0,212,170,.14); color:#00d4aa; }
-#ipage0 .nt-badge-report  { background:rgba(234,179,8,.14); color:#eab308; }
+#ipage0 .nt-badge-note    { background: rgba(79,142,255,.14); color: #4f8eff; }
+#ipage0 .nt-badge-youtube { background: rgba(255,68,68,.14);  color: #ff4444; }
+#ipage0 .nt-badge-article { background: rgba(0,212,170,.14);  color: #00d4aa; }
+#ipage0 .nt-badge-report  { background: rgba(234,179,8,.14);  color: #eab308; }
 
-/* 아이콘 + 텍스트 배지 */
 #ipage0 .nt-linked-badge,
 #ipage0 .nt-phase-badge,
 #ipage0 .nt-domain-badge {
@@ -10678,20 +10709,9 @@
   gap: 3px;
   flex-shrink: 0;
 }
-#ipage0 .nt-linked-badge { background:rgba(0,212,170,.1); border:1px solid rgba(0,212,170,.25); color:#00d4aa; }
-#ipage0 .nt-phase-badge  { background:rgba(167,139,250,.1);border:1px solid rgba(167,139,250,.25);color:#a78bfa; }
-#ipage0 .nt-domain-badge { background:rgba(79,142,255,.1); border:1px solid rgba(79,142,255,.2); color:#4f8eff; }
-
-/* 태그 칩 */
-#ipage0 .nt-card-tag {
-  font-size: 9px;
-  padding: 1px 5px;
-  background: rgba(167,139,250,.1);
-  border: 1px solid rgba(167,139,250,.2);
-  border-radius: 8px;
-  color: #119ded;
-  flex-shrink: 0;
-}
+#ipage0 .nt-linked-badge { background: rgba(0,212,170,.1); border: 1px solid rgba(0,212,170,.25); color: #00d4aa; }
+#ipage0 .nt-phase-badge  { background: rgba(167,139,250,.1); border: 1px solid rgba(167,139,250,.25); color: #a78bfa; }
+#ipage0 .nt-domain-badge { background: rgba(79,142,255,.1); border: 1px solid rgba(79,142,255,.2); color: #4f8eff; }
 
 /* 빈 상태 */
 #ipage0 .nt-empty-msg {
@@ -10704,4 +10724,32 @@
   font-size: 13px;
   gap: 10px;
   text-align: center;
+}
+
+/* ═══════════════════════════════════════════════════
+   작업룸 패널 스크롤 (맥북 트랙패드 보장)
+═══════════════════════════════════════════════════ */
+.wr2-detail,
+.wr2-tab-body,
+#ipage8 .wr2-detail,
+#ipage8 .wr2-tab-body {
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+.wr2-list {
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+#pm-panel-work,
+#pm-panel-pipeline {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+#ipage8 {
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
 }
