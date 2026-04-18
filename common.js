@@ -40414,7 +40414,7 @@ window.addEventListener('DOMContentLoaded', () => {
         var resultTag = '';
         if ((it.status === 'closed' || it.status==='archived') && it.result && it.result.won) resultTag = '<div style="font-size:10px;color:#4caf87;margin-top:2px;">낙 '+it.result.won+'</div>';
         var isPast = (d !== null && d < 0);
-        var rowStyle = (it.archived?'opacity:.65;':'') + (isPast?'background:rgba(80,85,110,.1);':'') + 'border-bottom:1px solid var(--b1);';
+        var rowStyle = (it.archived?'opacity:.65;':'') + (isPast?'background:rgba(50,52,72,.28);':'') + 'border-bottom:1px solid var(--b1);';
         var linkedId = it.linkedSavedId || '';
         var casenumCell;
         if (linkedId) {
@@ -40430,24 +40430,25 @@ window.addEventListener('DOMContentLoaded', () => {
           + '<td style="padding:8px 10px;" onclick="event.stopPropagation()">'+statusCell(it)+'</td>'
           + '<td style="padding:8px 8px;font-size:12px;color:var(--fg2);white-space:nowrap;" onclick="event.stopPropagation()">'+plSelectCell(it.id,'type',it.type||'경매',[['경매','경매'],['일반','일반'],['온비드','온비드'],['공매','공매'],['NPL','NPL']],{minw:'48px'})+'</td>'
           + '<td style="padding:8px 6px;text-align:center;" onclick="event.stopPropagation()">'+intentCell(it)+'</td>'
-          + '<td style="padding:8px 10px;max-width:160px;"><div style="font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+(it.addr||'')+'">'+(it.addr||'—')+'</div>'+resultTag+'</td>'
-          + '<td style="padding:8px 10px;" onclick="event.stopPropagation()">'+casenumCell+'</td>'
-          + '<td style="padding:8px 10px;font-size:12px;color:var(--fg2);white-space:nowrap;">'+(it.region||'—')+'</td>'
-          + '<td style="padding:8px 10px;font-size:12px;color:var(--fg2);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+(it.feature||'')+'">'+(it.feature||'—')+'</td>'
-          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'appraisal',plDisplayMoney(it.appraisal||''),plDisplayMan(it.appraisal||''),{type:'text',align:'right',minw:'78px',placeholder:'만원'})+'</td>'
-          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'minprice',plDisplayMoney(it.minprice||''),plDisplayMan(it.minprice||''),{type:'text',align:'right',minw:'78px',placeholder:'만원',spanStyle:'color:#fb923c;font-weight:700;'})+'</td>'
+          + '<td style="padding:8px 10px;overflow:hidden;"><div style="font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+(it.addr||'')+'">'+(it.addr||'—')+'</div>'+resultTag+'</td>'
+          + '<td style="padding:8px 10px;overflow:hidden;" onclick="event.stopPropagation()">'+casenumCell+'</td>'
+          + '<td style="padding:8px 10px;font-size:12px;color:var(--fg2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+(it.region||'—')+'</td>'
+          + '<td style="padding:8px 10px;font-size:12px;color:var(--fg2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+(it.feature||'')+'">'+(it.feature||'—')+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'appraisal',plDisplayMoney(it.appraisal||''),plDisplayMan(it.appraisal||''),{type:'text',align:'right',minw:'70px',placeholder:'만원'})+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'minprice',plDisplayMoney(it.minprice||''),plDisplayMan(it.minprice||''),{type:'text',align:'right',minw:'70px',placeholder:'만원',spanStyle:'color:#fb923c;font-weight:700;'})+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'deposit',plDisplayMoney(it.deposit||''),plDisplayMan(it.deposit||''),{type:'text',align:'right',minw:'60px',placeholder:'만원'})+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'monthly',plDisplayMoney(it.monthly||''),plDisplayMan(it.monthly||''),{type:'text',align:'right',minw:'60px',placeholder:'만원'})+'</td>'
           + '<td style="padding:8px 10px;text-align:center;font-size:12px;">'+(it.round||'—')+'</td>'
           + '<td style="padding:8px 10px;white-space:nowrap;">'
-          +   '<div style="font-size:13px;">'+plEditCellHtml(it.id,'biddate',it.biddate||'',fmtDate(it.biddate),{type:'text',align:'left',minw:'76px',placeholder:'YYYY-MM-DD',spanStyle:'color:'+(isPast?'#888':'var(--tx)')+';border-bottom-color:rgba(255,255,255,.10);'})+'</div>'
+          +   '<div style="font-size:13px;">'+plEditCellHtml(it.id,'biddate',it.biddate||'',fmtDate(it.biddate),{type:'text',align:'left',minw:'72px',placeholder:'YYYY-MM-DD',spanStyle:'color:'+(isPast?'#888':'var(--tx)')+';border-bottom-color:rgba(255,255,255,.10);'})+'</div>'
           +   dTag
           + '</td>'
-          + '<td style="padding:8px 10px;text-align:right;"><span style="'+(it.estimate?'background:rgba(255,209,102,.12);border-radius:4px;padding:1px 4px;':'')+'">'+plEditCellHtml(it.id,'estimate',plDisplayMoney(it.estimate||''),plDisplayMan(it.estimate||''),{type:'text',align:'right',minw:'78px',placeholder:'만원',spanStyle:'color:#ffd166;font-weight:700;'})+'</span></td>'
-          + '<td style="padding:8px 10px;text-align:right;">'+numCell(it.result&&it.result.won?it.result.won:'','#4caf87')+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;"><span style="'+(it.estimate?'background:rgba(255,209,102,.12);border-radius:4px;padding:1px 4px;':'')+'">'+plEditCellHtml(it.id,'estimate',plDisplayMoney(it.estimate||''),plDisplayMan(it.estimate||''),{type:'text',align:'right',minw:'72px',placeholder:'만원',spanStyle:'color:#ffd166;font-weight:700;'})+'</span></td>'
           + '<td style="padding:8px 10px;text-align:center;cursor:pointer;" onclick="event.stopPropagation();plToggleSite(\''+it.id+'\')">'+siteDots(it.site)+'</td>'
           + '<td style="padding:8px 10px;" onclick="event.stopPropagation()">'+wrLink+'</td>'
-          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'deposit',plDisplayMoney(it.deposit||''),plDisplayMan(it.deposit||''),{type:'text',align:'right',minw:'70px',placeholder:'만원'})+'</td>'
-          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'monthly',plDisplayMoney(it.monthly||''),plDisplayMan(it.monthly||''),{type:'text',align:'right',minw:'70px',placeholder:'만원'})+'</td>'
-          + '<td style="padding:8px 10px;">'+plEditMemoCellHtml(it.id,it.memo||'')+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;">'+numCell(it.result&&it.result.won?it.result.won:'','#4caf87')+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'bidders',it.bidders||'',it.bidders||'',{type:'text',align:'right',minw:'44px',placeholder:'—',empty:'—',spanStyle:'font-size:11px;'})+'</td>'
+          + '<td style="padding:8px 10px;max-width:180px;overflow:hidden;"><div style="overflow-x:auto;white-space:nowrap;max-width:100%;scrollbar-width:thin;">'+plEditMemoCellHtml(it.id,it.memo||'')+'</div></td>'
           + '<td style="padding:8px 6px;text-align:center;"><button onclick="event.stopPropagation();plOpenEdit(\''+it.id+'\')" style="background:none;border:none;color:var(--fg3);cursor:pointer;font-size:15px;padding:2px 4px;">···</button></td>'
           + '</tr>';
       }).join('');
@@ -40966,4 +40967,80 @@ window.addEventListener('DOMContentLoaded', () => {
     if (document.getElementById('pl-alerts')) renderAlerts(plLoad());
   }, 60000);
 
+})();
+
+/* ═══════════════════════════════════════════════
+   물건리스트 컬럼 너비 드래그 조절 (Excel 스타일)
+═══════════════════════════════════════════════ */
+(function() {
+  'use strict';
+  var _savedWidths = {};
+  try { _savedWidths = JSON.parse(localStorage.getItem('pl_col_w') || '{}'); } catch(e) {}
+
+  function saveWidths() {
+    try { localStorage.setItem('pl_col_w', JSON.stringify(_savedWidths)); } catch(e) {}
+  }
+
+  window.plInitColResize = function() {
+    var table = document.getElementById('pl-table');
+    if (!table) return;
+    var cols = table.querySelectorAll('col');
+    var ths  = table.querySelectorAll('#pl-thead-row th.pl-rz-th');
+
+    // 저장된 너비 복원
+    ths.forEach(function(th, i) {
+      var key = 'c' + i;
+      if (_savedWidths[key]) {
+        var col = cols[i + 1]; // 첫 col은 체크박스
+        if (col) col.style.width = _savedWidths[key] + 'px';
+      }
+    });
+
+    // 각 th에 리사이즈 핸들 추가 (이미 있으면 건너뜀)
+    ths.forEach(function(th, i) {
+      if (th.querySelector('.pl-rz-handle')) return;
+      var handle = document.createElement('div');
+      handle.className = 'pl-rz-handle';
+      handle.title = '드래그하여 너비 조절';
+      th.style.position = 'relative';
+      th.appendChild(handle);
+
+      var startX, startW, col;
+      handle.addEventListener('mousedown', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        col = cols[i + 1];
+        startX = e.clientX;
+        startW = th.offsetWidth;
+        handle.classList.add('dragging');
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+
+        function onMove(e) {
+          var w = Math.max(40, startW + (e.clientX - startX));
+          if (col) col.style.width = w + 'px';
+        }
+        function onUp() {
+          handle.classList.remove('dragging');
+          document.body.style.cursor = '';
+          document.body.style.userSelect = '';
+          _savedWidths['c' + i] = col ? parseInt(col.style.width) : startW;
+          saveWidths();
+          document.removeEventListener('mousemove', onMove);
+          document.removeEventListener('mouseup', onUp);
+        }
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+      });
+    });
+  };
+
+  // renderPropertyList 후 자동 초기화
+  var _origRPL = window.renderPropertyList;
+  if (_origRPL) {
+    window.renderPropertyList = function() {
+      _origRPL.apply(this, arguments);
+      setTimeout(window.plInitColResize, 0);
+    };
+  }
 })();
