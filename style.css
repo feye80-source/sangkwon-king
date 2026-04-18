@@ -10488,16 +10488,19 @@
   border: 1px solid var(--b1);
   border-radius: 14px;
   background: rgba(17,19,24,.84);
-}#ipage0 .nt-card {
-  display: block;
-  padding: 0;
-  border-radius: 10px;
-  border: 1px solid var(--b1);
+}
+
+#ipage0 .nt-card {
+  display: block !important;
+  padding: 0 !important;
+  border-radius: 10px !important;
+  border: 1px solid var(--b1) !important;
   cursor: pointer;
-  background: var(--s2);
-  overflow: hidden;
+  background: var(--s2) !important;
+  overflow: hidden !important;
   transition: border-color .15s, box-shadow .15s, background .12s;
-  position: relative;
+  position: relative !important;
+  margin-bottom: 4px !important;
 }
 /* 타입별 왼쪽 컬러 바 */
 #ipage0 .nt-card::before {
@@ -10634,31 +10637,75 @@
 }
 
 /* ═══════════════════════════════════════════════════
-   작업룸 패널 스크롤 (맥북 트랙패드 보장)
+   작업룸/파이프라인 패널 레이아웃 & 스크롤
 ═══════════════════════════════════════════════════ */
-.wr2-detail,
-.wr2-tab-body,
-#ipage8 .wr2-detail,
-#ipage8 .wr2-tab-body {
-  overflow-y: auto !important;
+
+/* 물건관리 서브탭 호스트 */
+#pm-panel-work {
+  display: none;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+#pm-panel-pipeline {
+  display: none;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+#pm-work-host,
+#pm-pipeline-host {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* ipage8/ipage5 - 작업룸/파이프라인 패널 */
+#ipage8 {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+#ipage5 {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* 작업룸 내부 스크롤 가능 영역 */
+.wr2-tab-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+.wr2-detail {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
 }
 .wr2-list {
-  overflow-y: auto !important;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
 }
-#pm-panel-work,
-#pm-panel-pipeline {
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-#ipage8 {
-  overflow: hidden !important;
-  display: flex !important;
-  flex-direction: column !important;
+.wr2-tab-pane.active {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

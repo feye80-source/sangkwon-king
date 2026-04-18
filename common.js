@@ -27311,10 +27311,18 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         ['5','8'].forEach(function(key){
           var panel = document.getElementById('ipage' + key);
           var anchor = window.__pmPanelAnchors && window.__pmPanelAnchors[key];
+          // DOM 원위치 복원
           if (panel && anchor && anchor.parent && anchor.marker && panel.parentNode !== anchor.parent) {
             anchor.parent.insertBefore(panel, anchor.marker.nextSibling);
           }
-          if (panel) panel.style.display = 'none';
+          // 반드시 숨기기 - pmMountPanel이 설정한 모든 인라인 스타일 제거
+          if (panel) {
+            panel.style.display = 'none';
+            panel.style.flex = '';
+            panel.style.flexDirection = '';
+            panel.style.height = '';
+            panel.style.overflow = '';
+          }
         });
       } catch (e) { console.warn('[pmRestoreInsightPanels]', e); }
     }
@@ -27328,20 +27336,12 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         var host = document.getElementById(conf.hostId);
         if (!panel || !host) return null;
         if (panel.parentNode !== host) host.appendChild(panel);
-        panel.style.display = 'flex';
-        panel.style.flexDirection = 'column';
+        // 최소한의 인라인 스타일만 - 나머지는 CSS가 담당
+        panel.style.display = '';   // CSS의 display:flex 적용되도록
         panel.style.height = '100%';
-        panel.style.overflow = 'hidden';  // 패널 자체는 hidden
         panel.style.border = '0';
-        // 내부 스크롤 영역 활성화 (맥북 트랙패드 스크롤 보장)
-        setTimeout(function() {
-          var scrollEls = panel.querySelectorAll('.wr2-detail, .wr2-tab-body, .wr2-list, .ins-wrap');
-          scrollEls.forEach(function(el) {
-            el.style.overflowY = 'auto';
-            el.style.webkitOverflowScrolling = 'touch';
-            el.style.overscrollBehavior = 'contain';
-          });
-        }, 100);
+        panel.style.flex = '1';
+        panel.style.minHeight = '0';
         return panel;
       } catch (e) { console.warn('[pmMountPanel]', e); return null; }
     }
@@ -27376,7 +27376,10 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       if (n === 'cfg') {
         [0, 1, 3, 4, 5, 6, 7, 8, 9].forEach(i => {
           const p = document.getElementById('ipage' + i);
-          if (p) p.style.display = 'none';
+          if (p) {
+            p.style.display = 'none';
+            if (i === 5 || i === 8) { p.style.flex = ''; p.style.height = ''; }
+          }
           const t = document.getElementById('itab' + i);
           if (t) t.classList.remove('on');
         });
@@ -27389,7 +27392,17 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       [0, 1, 3, 4, 5, 6, 8, 9].forEach(i => {
         const p = document.getElementById('ipage' + i);
         const t = document.getElementById('itab' + i);
-        if (p) p.style.display = (i === n) ? '' : 'none';
+        if (p) {
+          // ipage5/8은 pmMountPanel이 pm-work-host/pm-pipeline-host로 이동시킴
+          // 인사이트탭에서는 반드시 숨김 (위치 무관)
+          if (i === 5 || i === 8) {
+            p.style.display = 'none';
+            p.style.flex = '';
+            p.style.height = '';
+          } else {
+            p.style.display = (i === n) ? '' : 'none';
+          }
+        }
         if (t) t.classList.toggle('on', i === n);
       });
       const labels = { 0: '노트', 1: '계산기', 3: '뉴스 클리핑', 4: '알짜정보', 5: '파이프라인', 6: '사이트', 8: '작업룸', 9: '소상공인 상권' };
@@ -40034,42 +40047,23 @@ window.addEventListener('DOMContentLoaded', () => {
     var map = { '상':'#ff6b6b', '중':'#60a5fa', '하':'#4ade80' };
     return '<span style="font-weight:700;color:'+ (map[v]||'#aaa') +';">'+v+'</span>';
   }
-  // 의향 인라인 셀렉트 (화살표 없이 색상으로만 표현)
+  // 의향 셀렉트: 텍스트처럼 보이는 드롭다운 (테두리·배경 없음)
   function intentSelectCell(it) {
     var v = it.intent || '';
     var colorMap = { '상':'#ff6b6b', '중':'#60a5fa', '하':'#4ade80' };
-    var col = colorMap[v] || 'var(--fg3)';
+    var col = colorMap[v] || '#555';
     var id = it.id;
-    var key = 'intent_sel_' + id;
-    return '<select id="'+key+'" class="pl-intent-sel" onchange="event.stopPropagation();plInlineSetSelect(\''+plEscHtml(id)+'\',\'intent\',this.value)" onclick="event.stopPropagation()" '
-      + 'style="width:100%;min-width:34px;color:'+col+';">'
-      + '<option value=""'+(v===''?' selected':'')+' style="color:var(--fg3);">—</option>'
-      + '<option value="상"'+(v==='상'?' selected':'')+' style="color:#ff6b6b;">상</option>'
-      + '<option value="중"'+(v==='중'?' selected':'')+' style="color:#60a5fa;">중</option>'
-      + '<option value="하"'+(v==='하'?' selected':'')+' style="color:#4ade80;">하</option>'
+    return '<select onchange="event.stopPropagation();plInlineSetSelect(\''+plEscHtml(id)+'\',\'intent\',this.value)" '
+      + 'onclick="event.stopPropagation()" '
+      + 'style="appearance:none;-webkit-appearance:none;border:none;background:transparent;'
+      + 'color:'+col+';font-size:13px;font-weight:800;cursor:pointer;padding:0;width:28px;text-align:center;">'
+      + '<option value="" style="color:#555;"'+(v===''?' selected':'')+'>—</option>'
+      + '<option value="상" style="color:#ff6b6b;"'+(v==='상'?' selected':'')+'>상</option>'
+      + '<option value="중" style="color:#60a5fa;"'+(v==='중'?' selected':'')+'>중</option>'
+      + '<option value="하" style="color:#4ade80;"'+(v==='하'?' selected':'')+'>하</option>'
       + '</select>';
   }
-  function statusCell(item) {
-    var id = item.id;
-    var simple = plSimpleStatusKey(item.status);
-    var m = STATUS_MAP[simple] || STATUS_MAP.active;
-    var key = plDomKey(id, 'st');
-    return ''
-      + '<span id="'+key+'_s" data-k="'+plEscHtml(key)+'" onclick="event.stopPropagation();plStartInlineEdit(this.dataset.k)" '
-      + 'style="display:inline-flex;align-items:center;gap:6px;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:800;cursor:pointer;'
-      + 'background:'+m.bg+';color:'+m.color+';border:1px solid rgba(255,255,255,.08);white-space:nowrap;">'
-      + m.label
-      + '</span>'
-      + '<select id="'+key+'_i" data-k="'+plEscHtml(key)+'" data-id="'+plEscHtml(id)+'" onchange="event.stopPropagation();plSetSimpleStatus(this.dataset.id,this.value)" '
-      + 'onblur="plCancelInlineEdit(this.dataset.k)" onclick="event.stopPropagation()" '
-      + 'style="display:none;padding:3px 6px;border-radius:999px;font-size:11px;font-weight:800;border:1px solid rgba(255,255,255,.10);'
-      + 'background:rgba(0,0,0,.25);color:var(--tx);cursor:pointer;">'
-      + '<option value="active"'+(simple==='active'?' selected':'')+'>활성</option>'
-      + '<option value="changed"'+(simple==='changed'?' selected':'')+'>변경</option>'
-      + '<option value="closed"'+(simple==='closed'?' selected':'')+'>종료</option>'
-      + '</select>';
-  }
-  function siteDots(n) {
+    function siteDots(n) {
     // 단순화: 임장 여부만 표시 (켜짐=초록, 꺼짐=회색)
     var visited = parseInt(n) > 0;
     return '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;'
@@ -40463,7 +40457,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
         // ★ 기일 지난 항목 음영
         var isPast = (d !== null && d < 0);
-        var rowStyle = 'border-bottom:1px solid var(--b1);cursor:pointer;' + (it.archived ? 'opacity:.65;' : '');
+        var rowStyle = 'border-bottom:1px solid var(--b1);' + (it.archived ? 'opacity:.65;' : '');
         var rowClass = isPast ? ' class="pl-row-past"' : '';
 
         // ★ 예상입찰가 스타일 (노란 하이라이트)
@@ -40564,8 +40558,13 @@ window.addEventListener('DOMContentLoaded', () => {
     var tabPipe = document.getElementById('pm-tab-pipeline');
     if (!list || !work || !pipe) return;
     list.style.display = (tab === 'list') ? '' : 'none';
-    work.style.display = (tab === 'work') ? '' : 'none';
-    pipe.style.display = (tab === 'pipeline') ? '' : 'none';
+    work.style.display = (tab === 'work') ? 'flex' : 'none';
+    pipe.style.display = (tab === 'pipeline') ? 'flex' : 'none';
+    // ipage8/ipage5는 host에 있을 때만 표시, 인사이트탭으로 복원되면 none
+    var wp = document.getElementById('ipage8');
+    var pp = document.getElementById('ipage5');
+    if (wp) wp.style.display = (tab === 'work' && wp.parentNode && wp.parentNode.id === 'pm-work-host') ? 'flex' : 'none';
+    if (pp) pp.style.display = (tab === 'pipeline' && pp.parentNode && pp.parentNode.id === 'pm-pipeline-host') ? '' : 'none';
     [[tabList,'list'],[tabWork,'work'],[tabPipe,'pipeline']].forEach(function(entry){
       var el = entry[0], key = entry[1]; if (!el) return;
       el.style.borderBottomColor = (tab === key ? 'var(--accent,#4f8eff)' : 'transparent');
