@@ -10,6 +10,9 @@
       --s1: #111318;
       --s2: #181c24;
       --s3: #1e2330;
+      /* legacy alias vars (index/common inline style 호환) */
+      --bg2: var(--s2);
+      --bg3: var(--s3);
       --b1: #1e2330;
       --b2: #2a3045;
       --ac: #4f8eff;
@@ -48,6 +51,9 @@
       --transaction-c: #eab308;
       --transaction-bg: rgba(234, 179, 8, .08);
       --transaction-border: rgba(234, 179, 8, .30);
+      --fg: var(--tx);
+      --fg2: var(--mu);
+      --fg3: var(--di);
       --other-c: #8b5cf6;
       --other-bg: rgba(139, 92, 246, .10);
       --other-border: rgba(139, 92, 246, .30);
@@ -10589,6 +10595,13 @@ select.intent-no-arrow {
 }
 #pl-table th.pl-th:hover { background: rgba(255,255,255,.025); }
 
+/* 물건 수정/가져오기 모달 카드 — 배경 투명 이슈 방지 */
+.pl-modal-card {
+  background: #121826 !important;
+  border: 1px solid rgba(255,255,255,.1) !important;
+  box-shadow: 0 14px 48px rgba(0,0,0,.55) !important;
+}
+
 /* 리사이즈 핸들 */
 .pl-rz-handle {
   position: absolute;
@@ -10616,6 +10629,10 @@ select.intent-no-arrow {
 #pl-tbody tr[data-plid].pl-past,
 #pl-table tr.pl-past > td {
   background: rgba(45,46,68,.38) !important;
+}
+#pl-table tr.pl-past:not(.pl-closed) {
+  opacity: .62;
+  filter: saturate(.52);
 }
 /* isPast 배경 - inline style로 이미 설정됨, hover 시에도 유지 */
 #pl-tbody tr[style*="rgba(50,52,72"]:hover > td {
@@ -10648,6 +10665,27 @@ select.intent-no-arrow {
   padding: 6px;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+}
+
+/* simple 노트 렌더러(.nt-item) 스타일 */
+.nt-item {
+  display: block;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: rgba(255,255,255,.02);
+  cursor: pointer;
+  transition: border-color .16s ease, background .16s ease, box-shadow .16s ease, transform .12s ease;
+}
+.nt-item:hover {
+  border-color: rgba(79,142,255,.45);
+  background: rgba(79,142,255,.08);
+  box-shadow: 0 3px 12px rgba(0,0,0,.2);
+}
+.nt-item.on {
+  border-color: rgba(79,142,255,.62);
+  background: rgba(79,142,255,.14);
+  box-shadow: 0 0 0 1px rgba(79,142,255,.2) inset;
 }
 
 /* 카드 — 각 노트를 명확히 구분되는 항목으로 */

@@ -40401,7 +40401,6 @@ window.addEventListener('DOMContentLoaded', () => {
           : d<=3 ? '<div style="font-size:10px;color:#ff6b6b;font-weight:700;">D-'+d+'</div>'
           : d<=7 ? '<div style="font-size:10px;color:#f5a623;font-weight:700;">D-'+d+'</div>'
           : '<div style="font-size:10px;color:var(--fg3);">D-'+d+'</div>';
-        var rowHl = it.archived ? 'background:rgba(120,120,120,.05);opacity:.72;' : ((d!==null && d<0 && plSimpleStatusKey(it.status)!=='closed') ? 'background:rgba(255,80,80,.04);' : '');
         var room = it.roomId ? roomById[String(it.roomId)] : null;
         var wrLink = plQuickRoomControlHtml(it, roomOptionsHtml);
         if (room) {
@@ -40414,7 +40413,11 @@ window.addEventListener('DOMContentLoaded', () => {
         var resultTag = '';
         if ((it.status === 'closed' || it.status==='archived') && it.result && it.result.won) resultTag = '<div style="font-size:10px;color:#4caf87;margin-top:2px;">낙 '+it.result.won+'</div>';
         var isPast = (d !== null && d < 0);
-        var rowStyle = (it.archived?'opacity:.65;':'') + (isPast?'background:rgba(50,52,72,.28);':'') + 'border-bottom:1px solid var(--b1);';
+        var isClosed = plSimpleStatusKey(it.status) === 'closed';
+        var rowClass = (isPast ? 'pl-past ' : '') + (isClosed ? 'pl-closed' : '');
+        var rowStyle = (it.archived?'opacity:.65;':'')
+          + ((isPast && !isClosed)?'background:rgba(50,52,72,.34);':'')
+          + 'border-bottom:1px solid var(--b1);';
         var linkedId = it.linkedSavedId || '';
         var casenumCell;
         if (linkedId) {
@@ -40425,7 +40428,7 @@ window.addEventListener('DOMContentLoaded', () => {
         } else {
           casenumCell = '<span style="color:#444;">—</span>';
         }
-        return '<tr style="'+rowStyle+'" data-plid="'+it.id+'">'
+        return '<tr class="'+rowClass+'" style="'+rowStyle+'" data-plid="'+it.id+'">'
           + '<td style="padding:8px 8px;text-align:center;"><input type="checkbox" '+(plSelectedMap[it.id]?'checked':'')+' onclick="event.stopPropagation();plToggleOne(\''+it.id+'\',this.checked)"></td>'
           + '<td style="padding:8px 10px;" onclick="event.stopPropagation()">'+statusCell(it)+'</td>'
           + '<td style="padding:8px 8px;font-size:12px;color:var(--fg2);white-space:nowrap;" onclick="event.stopPropagation()">'+plSelectCell(it.id,'type',it.type||'경매',[['경매','경매'],['일반','일반'],['온비드','온비드'],['공매','공매'],['NPL','NPL']],{minw:'48px'})+'</td>'
@@ -40574,8 +40577,14 @@ window.addEventListener('DOMContentLoaded', () => {
       var sv = typeof getSv === 'function' ? getSv() : [];
       var item = sv.find(function(s){ return String(s.id) === String(linkedId); });
       if (item) {
+        // 물건리스트 탭에서 바로 상세 팝업 오픈 (탭 이동 없음)
+        if (typeof window.openPopup === 'function') {
+          window.openPopup(linkedId);
+          return;
+        }
+        // 안전 폴백: 구버전/초기화 미완료 시에만 저장목록으로 이동
         if (typeof window.showPage === 'function') window.showPage(1);
-        setTimeout(function(){ if (typeof window.openPopup === 'function') window.openPopup(linkedId); }, 150);
+        setTimeout(function(){ if (typeof window.openPopup === 'function') window.openPopup(linkedId); }, 120);
         return;
       }
     } catch(e) {}
