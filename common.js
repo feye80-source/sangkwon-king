@@ -13324,7 +13324,7 @@ window.wr2SummaryCancelEdit = function() {
       const ts = item.timestamp ? new Date(item.timestamp).toLocaleDateString('ko-KR') : '날짜 없음';
       // 관심/검토/입찰 상태
       const ws = item.watchStatus || '';
-      const wsMap = { 'interest': { icon: '👀', label: '관심',  color: '#94a3b8', bg: 'rgba(148,163,184,.15)' }, 'review': { icon: '🔍', label: '검토중', color: '#60a5fa', bg: 'rgba(96,165,250,.15)' }, 'field': { icon: '📍', label: '현장', color: '#fbbf24', bg: 'rgba(251,191,36,.15)' }, 'bid': { icon: '🎯', label: '입찰', color: '#f97316', bg: 'rgba(249,115,22,.15)' }, 'won': { icon: '✅', label: '낙찰', color: '#4ade80', bg: 'rgba(74,222,128,.15)' }, 'pass': { icon: '🚫', label: '패스', color: '#6b7280', bg: 'rgba(107,114,128,.15)' } };
+      const wsMap = { 'interest': { icon: '👀', label: '관심',  color: '#94a3b8', bg: 'rgba(148,163,184,.15)' }, 'review': { icon: '🔍', label: '검토중', color: '#60a5fa', bg: 'rgba(96,165,250,.15)' }, 'field': { icon: '📍', label: '현장', color: '#fbbf24', bg: 'rgba(251,191,36,.15)' }, 'bid': { icon: '🎯', label: '입찰', color: '#f97316', bg: 'rgba(249,115,22,.15)' }, 'won': { icon: '✅', label: '낙찰', color: '#4ade80', bg: 'rgba(74,222,128,.15)' }, 'sell': { icon: '💰', label: '매도', color: '#f472b6', bg: 'rgba(244,114,182,.15)' }, 'pass': { icon: '🚫', label: '패스', color: '#6b7280', bg: 'rgba(107,114,128,.15)' } };
       const wsInfo = wsMap[ws] || null;
       const wsBadge = wsInfo ? `<span onclick="event.stopPropagation();cycleWatchStatus('${item.id}')" title="클릭하여 상태 변경" style="padding:1px 5px;border-radius:4px;font-size:9px;font-weight:600;color:${wsInfo.color};background:${wsInfo.bg};cursor:pointer;white-space:nowrap;">${wsInfo.icon}${wsInfo.label}</span>` : `<span onclick="event.stopPropagation();cycleWatchStatus('${item.id}')" title="관심 표시" style="padding:1px 5px;border-radius:4px;font-size:9px;color:var(--di);background:var(--s2);border:1px dashed var(--di);cursor:pointer;white-space:nowrap;">+검토</span>`;
       // ── source 기준 색상 결정 (mode 기준 제거) ──────────────────
@@ -31530,7 +31530,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     // 🎯 검토 물건함
     // ═══════════════════════════════════════════════════════
 
-    const WATCH_ORDER = ['', 'interest', 'review', 'field', 'bid', 'won'];
+    const WATCH_ORDER = ['', 'interest', 'review', 'field', 'bid', 'won', 'sell'];
 
     window.cycleWatchStatus = function (id) {
       const sv = getSv();
@@ -31544,7 +31544,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       setSv(sv);
       renderSaved();
       updateWatchCnt();
-      const labels = { interest: '👀 관심으로 표시', review: '🔍 검토중으로 이동', field: '📍 현장으로 이동', bid: '🎯 입찰로 이동', won: '✅ 낙찰로 이동', '': '표시 해제' };
+      const labels = { interest: '👀 관심으로 표시', review: '🔍 검토중으로 이동', field: '📍 현장으로 이동', bid: '🎯 입찰로 이동', won: '✅ 낙찰로 이동', sell: '💰 매도로 이동', '': '표시 해제' };
       showToast(labels[next || ''], 'ok', 1800);
     };
 
@@ -31558,10 +31558,10 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     function renderWatchBoard() {
       const sv = getSv();
       const sortKey = document.getElementById('watchSortSel')?.value || 'savedAt';
-      const statuses = ['interest', 'review', 'field', 'bid', 'won'];
-      const cols = ['wCol0','wCol1','wCol2','wCol3','wCol4'].map(id=>document.getElementById(id));
-      const cntEls = ['wCnt0','wCnt1','wCnt2','wCnt3','wCnt4'].map(id=>document.getElementById(id));
-      const emptyEls = ['wEmpty0','wEmpty1','wEmpty2','wEmpty3','wEmpty4'].map(id=>document.getElementById(id));
+      const statuses = ['interest', 'review', 'field', 'bid', 'won', 'sell'];
+      const cols = ['wCol0','wCol1','wCol2','wCol3','wCol4','wCol5'].map(id=>document.getElementById(id));
+      const cntEls = ['wCnt0','wCnt1','wCnt2','wCnt3','wCnt4','wCnt5'].map(id=>document.getElementById(id));
+      const emptyEls = ['wEmpty0','wEmpty1','wEmpty2','wEmpty3','wEmpty4','wEmpty5'].map(id=>document.getElementById(id));
       const rooms = wrGetRooms();
       const scheduleEl = document.getElementById('watchScheduleBoard');
 
@@ -38639,8 +38639,8 @@ ${newsContext}
       }
 
       var ws = mainItem ? (mainItem.watchStatus || '') : '';
-      var wsLabel = { interest: '👀 관심', review: '🔍 검토중', bid: '🎯 입찰예정', '': '—' }[ws] || '—';
-      var wsColor = { interest: '#94a3b8', review: '#60a5fa', field: '#fbbf24', bid: '#f97316', won: '#4ade80', pass: '#6b7280', '': '#4b5563' }[ws] || '#4b5563';
+      var wsLabel = { interest: '👀 관심', review: '🔍 검토중', field: '📍 현장', bid: '🎯 입찰', won: '✅ 낙찰', sell: '💰 매도', pass: '🚫 패스', '': '—' }[ws] || '—';
+      var wsColor = { interest: '#94a3b8', review: '#60a5fa', field: '#fbbf24', bid: '#f97316', won: '#4ade80', sell: '#f472b6', pass: '#6b7280', '': '#4b5563' }[ws] || '#4b5563';
       var st = _wrDbGetSt(room.status);
 
       // 아이템 셀렉트 (경매 + 일반매물 모두 포함)
@@ -40986,10 +40986,16 @@ window.addEventListener('DOMContentLoaded', () => {
       if (safePatch.address && !safePatch.region) safePatch.region = safePatch.address;
       delete safePatch.title;
       delete safePatch.address;
+      // 작업룸 lifecycleStatus → 물건리스트 simpleStatus 반영
+      var simpleOverride = safePatch.simpleStatus;
+      delete safePatch.simpleStatus;
       var next = Object.assign({}, it, safePatch, { updatedAt: Date.now() });
+      if (simpleOverride) {
+        if (typeof plApplySimpleStatusToItem === 'function') plApplySimpleStatusToItem(next, simpleOverride);
+      }
       if (next.status === 'archived') next.archived = true;
       if (JSON.stringify(next) !== JSON.stringify(it)) changed = true;
-      return plNormalizeItem(next);
+      return (typeof plNormalizeItem === 'function') ? plNormalizeItem(next) : next;
     });
     if (changed) {
       plSave(items);
@@ -41006,7 +41012,10 @@ window.addEventListener('DOMContentLoaded', () => {
     var room = rooms.find(function(r){return r.id === item.roomId;});
     if (!room) return;
     var newPhase = (item.status === 'archived' ? 'closed' : (item.status || 'review'));
-    var patch = { phase: newPhase, status: newPhase, activePhase: newPhase };
+    // 물건리스트 lifecycleStatus(활성/변경/종료) → 작업룸 lifecycleStatus 연동
+    var simpleStatus = (typeof plSimpleStatusKey === 'function') ? plSimpleStatusKey(item.status) : '';
+    var newLifecycle = (simpleStatus === 'closed') ? 'closed' : (simpleStatus === 'changed') ? 'changed' : 'active';
+    var patch = { phase: newPhase, status: newPhase, activePhase: newPhase, lifecycleStatus: newLifecycle };
     if (item.addr && String(room.title || '') !== String(item.addr || '')) patch.title = item.addr;
     if (item.region && String(room.address || '') !== String(item.region || '')) patch.address = item.region;
     if (window.updateRoom) {
@@ -41034,13 +41043,20 @@ window.addEventListener('DOMContentLoaded', () => {
       var _origUpdateRoom = window.updateRoom;
       window.updateRoom = function(id, patch, silentRender) {
         var out = _origUpdateRoom(id, patch, silentRender);
-        if (patch && (patch.status || patch.phase || patch.title !== undefined || patch.address !== undefined)) {
-          syncPropertyFromRoom(id, {
+        if (patch && (patch.status || patch.phase || patch.lifecycleStatus || patch.title !== undefined || patch.address !== undefined)) {
+          // lifecycleStatus 변경 시 물건리스트 simpleStatus에도 반영
+          var syncPatch = {
             status: patch.status || patch.phase,
             archived: false,
             title: patch.title,
             address: patch.address
-          });
+          };
+          if (patch.lifecycleStatus) {
+            if (patch.lifecycleStatus === 'closed') syncPatch.simpleStatus = 'closed';
+            else if (patch.lifecycleStatus === 'changed') syncPatch.simpleStatus = 'changed';
+            else syncPatch.simpleStatus = 'active';
+          }
+          syncPropertyFromRoom(id, syncPatch);
         }
         return out;
       };

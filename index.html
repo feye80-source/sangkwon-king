@@ -3811,8 +3811,8 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
                 style="display:none;margin-bottom:10px;flex:1;min-height:0;overflow:auto;background:var(--s1);border-radius:10px;border:1px solid rgba(255,255,255,.1);">
               </div>
 
-              <!-- 칸반 4컬럼 -->
-              <div id="pipelineKanbanBoard" style="display:grid;grid-template-columns:repeat(4,minmax(230px,1fr));gap:8px;flex:1;min-height:0;overflow-x:auto;overflow-y:hidden;padding-bottom:12px;">
+              <!-- 칸반 6컬럼 (관심/검토/현장/입찰/낙찰/매도) -->
+              <div id="pipelineKanbanBoard" style="display:grid;grid-template-columns:repeat(6,minmax(160px,1fr));gap:8px;flex:1;min-height:0;overflow-x:auto;overflow-y:hidden;padding-bottom:12px;">
                 <!-- 칸반: 관심 -->
                 <div style="display:flex;flex-direction:column;background:var(--s1);border-radius:10px;border:1px solid rgba(148,163,184,.25);overflow:hidden;">
                   <div style="padding:8px 10px;background:rgba(148,163,184,.1);border-bottom:1px solid rgba(148,163,184,.2);display:flex;align-items:center;justify-content:space-between;">
@@ -3851,6 +3851,26 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
                   </div>
                   <div id="wCol3" style="flex:1;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:6px;">
                     <div style="text-align:center;color:var(--di);font-size:11px;padding:20px 4px;line-height:1.5;" id="wEmpty3">실제 입찰할<br>물건을 모아두세요</div>
+                  </div>
+                </div>
+                <!-- 칸반: 낙찰 -->
+                <div style="display:flex;flex-direction:column;background:var(--s1);border-radius:10px;border:1px solid rgba(74,222,128,.3);overflow:hidden;">
+                  <div style="padding:8px 10px;background:rgba(74,222,128,.08);border-bottom:1px solid rgba(74,222,128,.2);display:flex;align-items:center;justify-content:space-between;">
+                    <span style="font-size:12px;font-weight:700;color:#4ade80;">✅ 낙찰</span>
+                    <span id="wCnt4" style="font-size:10px;background:rgba(74,222,128,.15);color:#4ade80;padding:1px 6px;border-radius:8px;font-family:'JetBrains Mono',monospace;">0</span>
+                  </div>
+                  <div id="wCol4" style="flex:1;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:6px;">
+                    <div style="text-align:center;color:var(--di);font-size:11px;padding:20px 4px;line-height:1.5;" id="wEmpty4">낙찰 후 진행 중인<br>물건을 모아두세요</div>
+                  </div>
+                </div>
+                <!-- 칸반: 매도 -->
+                <div style="display:flex;flex-direction:column;background:var(--s1);border-radius:10px;border:1px solid rgba(244,114,182,.3);overflow:hidden;">
+                  <div style="padding:8px 10px;background:rgba(244,114,182,.08);border-bottom:1px solid rgba(244,114,182,.2);display:flex;align-items:center;justify-content:space-between;">
+                    <span style="font-size:12px;font-weight:700;color:#f472b6;">💰 매도</span>
+                    <span id="wCnt5" style="font-size:10px;background:rgba(244,114,182,.15);color:#f472b6;padding:1px 6px;border-radius:8px;font-family:'JetBrains Mono',monospace;">0</span>
+                  </div>
+                  <div id="wCol5" style="flex:1;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:6px;">
+                    <div style="text-align:center;color:var(--di);font-size:11px;padding:20px 4px;line-height:1.5;" id="wEmpty5">매도 진행 중인<br>물건을 모아두세요</div>
                   </div>
                 </div>
 
