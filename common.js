@@ -4117,12 +4117,6 @@ var _safeLocalSet = function(key, value) {
                   const emptyEl = document.getElementById('wr2ListEmpty');
                   const countEl = document.getElementById('wr2RoomCount');
                   if (!listEl || !emptyEl) return;
-                  const formatRoomStamp = function(ts) {
-                    if (!ts) return '';
-                    const d = new Date(ts);
-                    if (isNaN(d.getTime())) return '';
-                    return (d.getMonth() + 1) + '.' + String(d.getDate()).padStart(2, '0');
-                  };
 
                   let rooms = wr2State.rooms.filter(r => !r.deletedAt);
                   const q = (wr2State.search || '').trim().toLowerCase();
@@ -4132,7 +4126,8 @@ var _safeLocalSet = function(key, value) {
                     (r.tags || []).some(t => (t || '').toLowerCase().includes(q))
                   );
                   rooms = rooms.filter(r => wr2RoomMatchesLifecycle(r, wr2State.statusFilter));
-                  rooms.sort((a, b) => wr2State.sort === 'created' ? (b.createdAt || 0) - (a.createdAt || 0) : (b.updatedAt || 0) - (a.updatedAt || 0));
+                  wr2State.sort = 'updated';
+                  rooms.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
 
                   listEl.innerHTML = '';
                   // 상태(활성/변경/종료) 스코프 바 렌더
@@ -4190,47 +4185,25 @@ var _safeLocalSet = function(key, value) {
                     const title = document.createElement('div');
                     title.className = 'wr2-room-title';
                     title.textContent = r.title || '(제목 없음)';
-
-                    const meta = document.createElement('div');
-                    meta.className = 'wr2-room-meta';
-                    const badge = document.createElement('span');
-                    const lifecycle = wr2GetLifecycle(r);
-                    badge.className = 'wr2-status-badge ' + lifecycle;
-                    badge.textContent = wr2LifecycleLabel(lifecycle);
-                    badge.title = '클릭: 활성 → 변경 → 종료';
-                    badge.style.cursor = 'pointer';
-                    badge.onclick = function(e) {
-                      e.stopPropagation();
-                      const next = wr2NextLifecycle(wr2GetLifecycle(r));
-                      updateRoom(r.id, { lifecycleStatus: next });
-                    };
-                    meta.appendChild(badge);
-                    var linkedCount = Array.isArray(r.linkedItems) ? r.linkedItems.length : 0;
-                    if (linkedCount > 0) {
-                      const linkedTag = document.createElement('span');
-                      linkedTag.style.cssText = 'padding:1px 6px;border-radius:999px;background:rgba(0,212,170,.12);border:1px solid rgba(0,212,170,.18);color:#63e6be;';
-                      linkedTag.textContent = '🔗 ' + linkedCount;
-                      meta.appendChild(linkedTag);
-                    }
-                    const dateTag = document.createElement('span');
-                    dateTag.textContent = formatRoomStamp(r.updatedAt || r.createdAt || Date.now());
-                    meta.appendChild(dateTag);
                     content.appendChild(title);
-                    content.appendChild(meta);
                     // 액션 버튼
                     const actions = document.createElement('div');
                     actions.className = 'wr2-room-item-actions';
-
-                    const openBtn = document.createElement('button');
-                    openBtn.className = 'wr2-room-act-btn';
-                    openBtn.textContent = '열기';
-                    openBtn.title = '작업룸 열기';
-                    openBtn.onclick = e => {
-                      e.stopPropagation();
-                      setActiveRoom(r.id);
+                    const lifecycle = wr2GetLifecycle(r);
+                    const mkLifecycleBtn = function(key, label) {
+                      const b = document.createElement('button');
+                      b.className = 'wr2-room-act-btn wr2-life-btn' + (lifecycle === key ? ' on' : '');
+                      b.textContent = label;
+                      b.title = '상태를 "' + label + '"으로 변경';
+                      b.onclick = function(e) {
+                        e.stopPropagation();
+                        updateRoom(r.id, { lifecycleStatus: key });
+                      };
+                      return b;
                     };
-
-                    actions.appendChild(openBtn);
+                    actions.appendChild(mkLifecycleBtn('active', '활성'));
+                    actions.appendChild(mkLifecycleBtn('changed', '변경'));
+                    actions.appendChild(mkLifecycleBtn('closed', '종료'));
 
                     item.appendChild(handle);
                     item.appendChild(content);
@@ -14072,8 +14045,14 @@ window.wr2SummaryCancelEdit = function() {
       }
       if (!d.채권합계 && d.채권액합계) d.채권합계 = d.채권액합계;
       if (!d.채권액합계 && d.채권합계) d.채권액합계 = d.채권합계;
+      if (!d.배당종기 && d.배당종기일) d.배당종기 = d.배당종기일;
+      if (!d.배당종기일 && d.배당종기) d.배당종기일 = d.배당종기;
       if (!d.배당요구종기 && d.배당요구종기일) d.배당요구종기 = d.배당요구종기일;
       if (!d.배당요구종기일 && d.배당요구종기) d.배당요구종기일 = d.배당요구종기;
+      if (!d.배당요구종기 && d.배당종기) d.배당요구종기 = d.배당종기;
+      if (!d.배당요구종기일 && d.배당종기일) d.배당요구종기일 = d.배당종기일;
+      if (!d.배당종기 && d.배당요구종기) d.배당종기 = d.배당요구종기;
+      if (!d.배당종기일 && d.배당요구종기일) d.배당종기일 = d.배당요구종기일;
       if (!d.말소기준등기일) d.말소기준등기일 = d.말소기준권리일 || _auctionExtractDateFromText(d.말소기준권리);
       if (!d.말소기준권리일 && d.말소기준등기일) d.말소기준권리일 = d.말소기준등기일;
       if (!d.임차인현황 && d.임차인_요약) d.임차인현황 = d.임차인_요약;
@@ -32783,7 +32762,9 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
   "개찰일시": "",
   "매각일": "",
   "개시결정일": "",
+  "배당종기": "",
   "배당요구종기": "",
+  "말소기준권리": "",
   "말소기준등기일": "",
   "채무자겸소유자": "",
   "임차인": "",
@@ -32861,7 +32842,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         물건명: '', 공고번호: '', 물건번호: '', 경매번호: '', 사건번호: '',
         경매구분: '', 용도: '', 소재지: '', 토지면적_m2: 0, 건물면적_m2: 0, 전용면적_m2: 0,
         감정가: 0, 최저가: 0, 청구액: 0, 입찰보증금: 0, 유찰횟수: 0, 입찰시작: '', 입찰마감: '',
-        개찰일시: '', 매각일: '', 개시결정일: '', 배당요구종기: '', 말소기준등기일: '', 채무자겸소유자: '',
+        개찰일시: '', 매각일: '', 개시결정일: '', 배당종기: '', 배당요구종기: '', 말소기준권리: '', 말소기준등기일: '', 채무자겸소유자: '',
         임차인: '', 임차인_보증금: 0, 임차인_월세: 0, 전입일자: '', 사업자등록일: '', 확정일자: '',
         배당요구: '', 회차: '', 상태: '', 기타사항: '', 비고: ''
       };
@@ -32910,6 +32891,14 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           var dd = dt.nextElementSibling;
           if (dd && dd.tagName && dd.tagName.toUpperCase() === 'DD') addPair(dt.textContent, dd.textContent);
         });
+        // 온비드 상세는 li/div 구조가 많아서 .item 블록도 라벨-값으로 수집
+        doc.querySelectorAll('li.item, .op_tbl_case03 li, .op_tbl_case02 li').forEach(function(li){
+          var lbEl = li.querySelector('.tit01, .detail_list_tit, .left_box .tit, th, dt');
+          if (!lbEl) return;
+          var valEl = li.querySelector('.txt_box01, .txt_box02, .price02, .price01, .txt01, .detail_list_txt, td, dd');
+          if (!valEl) return;
+          addPair(lbEl.textContent, valEl.textContent);
+        });
         var hidden = function(name) {
           var el = doc.querySelector('input[name="' + name + '"]');
           return el ? String(el.value || '').trim() : '';
@@ -32926,6 +32915,59 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           out.경매번호 = caseMatch[0];
           out.사건번호 = caseMatch[0];
         }
+        var appraisalMatch = bodyText.match(/감정평가금액\s*\(원\)\s*([0-9,]+)/);
+        if (appraisalMatch) out.감정가 = _onbidPublicToWon(appraisalMatch[1]);
+        var minBidMatch = bodyText.match(/최저입찰가격\s*\(원\)\s*([0-9,]+)/);
+        if (minBidMatch) out.최저가 = _onbidPublicToWon(minBidMatch[1]);
+        var depositMatch = bodyText.match(/입찰보증금(?:율)?\s*([0-9,]+(?:\.[0-9]+)?\s*[%원만억]*)/);
+        if (depositMatch) out.입찰보증금 = _onbidPublicToWon(depositMatch[1]);
+        var bidRangeMatch = bodyText.match(/입찰기간\s*([0-9]{2,4}[.\-/][0-9]{1,2}[.\-/][0-9]{1,2}\s*[0-9]{1,2}:[0-9]{2})\s*[~\-]\s*([0-9]{2,4}[.\-/][0-9]{1,2}[.\-/][0-9]{1,2}\s*[0-9]{1,2}:[0-9]{2})/);
+        if (bidRangeMatch) {
+          if (!out.입찰시작) out.입찰시작 = bidRangeMatch[1];
+          if (!out.입찰마감) out.입찰마감 = bidRangeMatch[2];
+        }
+        var buildingAreaMatch = bodyText.match(/건물\s*([0-9.,]+)\s*(?:㎡|m²|m2)/i);
+        if (buildingAreaMatch) {
+          var area = _onbidAreaToM2(buildingAreaMatch[1]);
+          if (area > 0) {
+            if (!out.건물면적_m2) out.건물면적_m2 = area;
+            if (!out.전용면적_m2) out.전용면적_m2 = area;
+          }
+        }
+        // raw HTML 보강: 텍스트 분리/줄바꿈 구조에서 누락되는 값 복구
+        if (!out.감정가) {
+          var appraisalHtml = String(html).match(/감정평가금액\s*\(원\)[\s\S]{0,180}?([0-9][0-9,]{3,})/i);
+          if (appraisalHtml) out.감정가 = _onbidPublicToWon(appraisalHtml[1]);
+        }
+        if (!out.최저가) {
+          var minHtml = String(html).match(/최저입찰가격\s*\(원\)[\s\S]{0,180}?([0-9][0-9,]{3,})/i);
+          if (minHtml) out.최저가 = _onbidPublicToWon(minHtml[1]);
+        }
+        if (!out.입찰시작 || !out.입찰마감) {
+          var rangeHtml = String(html).match(/입찰기간[\s\S]{0,260}?([0-9]{2,4}[.\-/][0-9]{1,2}[.\-/][0-9]{1,2}\s*[0-9]{1,2}:[0-9]{2})[\s~\-]+([0-9]{2,4}[.\-/][0-9]{1,2}[.\-/][0-9]{1,2}\s*[0-9]{1,2}:[0-9]{2})/i);
+          if (rangeHtml) {
+            if (!out.입찰시작) out.입찰시작 = rangeHtml[1];
+            if (!out.입찰마감) out.입찰마감 = rangeHtml[2];
+          }
+        }
+        if (!out.건물면적_m2 || !out.전용면적_m2) {
+          var areaHtml = String(html).match(/건물\s*([0-9]+(?:\.[0-9]+)?)\s*(?:㎡|m²|m2)/i);
+          if (areaHtml) {
+            var bh = _onbidAreaToM2(areaHtml[1]);
+            if (bh > 0) {
+              if (!out.건물면적_m2) out.건물면적_m2 = bh;
+              if (!out.전용면적_m2) out.전용면적_m2 = bh;
+            }
+          }
+        }
+        var ownerMatch = bodyText.match(/채무자겸소유자\s*([^\n]+)/);
+        if (ownerMatch && !out.채무자겸소유자) out.채무자겸소유자 = ownerMatch[1].trim();
+        var rightsDateMatch = bodyText.match(/말소기준(?:등기)?(?:권리)?일?\s*([0-9]{2,4}[.\-/][0-9]{1,2}[.\-/][0-9]{1,2})/);
+        if (rightsDateMatch && !out.말소기준등기일) out.말소기준등기일 = rightsDateMatch[1];
+        var rightsMatch = bodyText.match(/말소기준(?:권리|등기)\s*([^\n]+)/);
+        if (rightsMatch && !out.말소기준권리) out.말소기준권리 = rightsMatch[1].trim();
+        var tenantMatch = bodyText.match(/임차인\s*([^\n]+)/);
+        if (tenantMatch && !out.임차인) out.임차인 = tenantMatch[1].trim();
         var unsold = bodyText.match(/(\d+)\s*회\s*유찰/);
         if (unsold) out.유찰횟수 = parseInt(unsold[1], 10) || 0;
         if (!out.상태) {
@@ -32975,22 +33017,28 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       out.물건명 = _onbidPickFirst(out.물건명, findByLabels(['물건명', '재산명', '물건상세']));
       out.공고번호 = _onbidPickFirst(out.공고번호, findByLabels(['공고번호', '입찰번호']));
       out.물건번호 = _onbidPickFirst(out.물건번호, findByLabels(['물건번호', '재산관리번호', '물건관리번호']));
-      out.감정가 = out.감정가 || _onbidPublicToWon(findByLabels(['감정가', '감정가격', '예정가격']));
-      out.최저가 = out.최저가 || _onbidPublicToWon(findByLabels(['최저입찰가', '최저입찰가격', '최저가']));
+      out.감정가 = out.감정가 || _onbidPublicToWon(findByLabels(['감정평가금액(원)', '감정평가금액', '감정가', '감정가격', '예정가격']));
+      out.최저가 = out.최저가 || _onbidPublicToWon(findByLabels(['최저입찰가격(원)', '최저입찰가', '최저입찰가격', '최저가']));
       out.입찰보증금 = out.입찰보증금 || _onbidPublicToWon(findByLabels(['입찰보증금', '보증금']));
       out.청구액 = out.청구액 || _onbidPublicToWon(findByLabels(['청구액', '채권액합계', '채권합계']));
       out.토지면적_m2 = out.토지면적_m2 || _onbidAreaToM2(findByLabels(['토지면적']));
       out.건물면적_m2 = out.건물면적_m2 || _onbidAreaToM2(findByLabels(['건물면적']));
       out.전용면적_m2 = out.전용면적_m2 || _onbidAreaToM2(findByLabels(['전용면적']));
+      if (!out.전용면적_m2 && out.건물면적_m2) out.전용면적_m2 = out.건물면적_m2;
+      if (!out.건물면적_m2 && out.전용면적_m2) out.건물면적_m2 = out.전용면적_m2;
       out.입찰시작 = _onbidNormalizeDateTime(_onbidPickFirst(out.입찰시작, findByLabels(['입찰시작일시', '입찰시작'])));
       out.입찰마감 = _onbidNormalizeDateTime(_onbidPickFirst(out.입찰마감, findByLabels(['입찰마감일시', '입찰마감'])));
       out.개찰일시 = _onbidNormalizeDateTime(_onbidPickFirst(out.개찰일시, findByLabels(['개찰일시', '개찰결과일시'])));
       out.매각일 = _onbidNormalizeDateTime(_onbidPickFirst(out.매각일, findByLabels(['매각일', '매각결정일시']), out.입찰마감, out.개찰일시));
-      out.개시결정일 = _onbidNormalizeDateTime(_onbidPickFirst(out.개시결정일, findByLabels(['개시결정일'])));
-      out.배당요구종기 = _onbidNormalizeDateTime(_onbidPickFirst(out.배당요구종기, findByLabels(['배당요구종기', '배당요구종기일'])));
+      out.개시결정일 = _onbidNormalizeDateTime(_onbidPickFirst(out.개시결정일, findByLabels(['개시결정일']), out.입찰시작));
+      out.배당종기 = _onbidNormalizeDateTime(_onbidPickFirst(out.배당종기, findByLabels(['배당종기', '배당종기일']), out.입찰마감, out.입찰시작));
+      out.배당요구종기 = _onbidNormalizeDateTime(_onbidPickFirst(out.배당요구종기, findByLabels(['배당요구종기', '배당요구종기일']), out.입찰마감, out.입찰시작));
+      if (!out.배당요구종기 && out.배당종기) out.배당요구종기 = out.배당종기;
+      if (!out.배당종기 && out.배당요구종기) out.배당종기 = out.배당요구종기;
+      out.말소기준권리 = _onbidPickFirst(out.말소기준권리, findByLabels(['말소기준권리', '말소기준']));
       out.말소기준등기일 = _onbidNormalizeDateTime(_onbidPickFirst(out.말소기준등기일, findByLabels(['말소기준등기일', '말소기준권리일'])));
       out.채무자겸소유자 = _onbidPickFirst(out.채무자겸소유자, findByLabels(['채무자겸소유자', '소유자', '채무자']));
-      out.임차인 = _onbidPickFirst(out.임차인, findByLabels(['임차인']));
+      out.임차인 = _onbidPickFirst(out.임차인, findByLabels(['임차인', '점유자']));
       out.임차인_보증금 = out.임차인_보증금 || _onbidPublicToWon(findByLabels(['임차인보증금', '임차보증금']));
       out.임차인_월세 = out.임차인_월세 || _onbidPublicToMan(findByLabels(['임차인월세', '월세', '차임']));
       out.전입일자 = _onbidNormalizeDateTime(_onbidPickFirst(out.전입일자, findByLabels(['전입일자'])));
@@ -32999,7 +33047,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       out.배당요구 = _onbidPickFirst(out.배당요구, findByLabels(['배당요구']));
       out.회차 = _onbidPickFirst(out.회차, findByLabels(['회차']));
       out.상태 = _onbidPickFirst(out.상태, findByLabels(['물건상태', '상태']));
-      out.기타사항 = _onbidPickFirst(out.기타사항, findByLabels(['기타사항', '비고', '특이사항']));
+      out.기타사항 = _onbidPickFirst(out.기타사항, findByLabels(['기타사항', '비고', '특이사항', '이용상태', '위치및주위환경']));
       out.비고 = _onbidPickFirst(out.비고, out.기타사항);
       if (!out.경매번호) out.경매번호 = _onbidPickFirst(findByLabels(['사건번호', '경매번호']), out.공고번호, out.물건번호);
       if (!out.사건번호) out.사건번호 = out.경매번호;
@@ -33018,6 +33066,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     }
     async function collectPublicAuctionFromInput(rawInput, cfg) {
       var input = String(rawInput || '').trim();
+      var urlHit = input.match(/https?:\/\/[^\s<>"']+/i);
+      if (urlHit) input = urlHit[0];
       if (!input) return false;
       var isUrl = /^https?:\/\//i.test(input);
       if (!isUrl && input.length < 120) return false;
@@ -33067,7 +33117,24 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           }
         }
         var deterministic = _onbidExtractStructuredData(html, sourceUrl);
-        var clean = html
+        var llHtml = String(html || '');
+        var aiSourceHtml = llHtml;
+        if (/onbid\.co\.kr/i.test(sourceHint) && llHtml.length > 80000) {
+          var marks = ['감정평가금액', '최저입찰가격', '입찰기간', '개찰일시', '권리 정보', '면적정보', '채무자겸소유자', '말소기준', '임차인'];
+          var chunks = [];
+          marks.forEach(function(mk){
+            var idx = llHtml.indexOf(mk);
+            if (idx < 0) return;
+            var st = Math.max(0, idx - 1800);
+            var ed = Math.min(llHtml.length, idx + 4200);
+            var seg = llHtml.slice(st, ed);
+            if (seg && chunks.indexOf(seg) < 0) chunks.push(seg);
+          });
+          if (chunks.length) {
+            aiSourceHtml = chunks.join('\n<!-- SNIP -->\n');
+          }
+        }
+        var clean = aiSourceHtml
           .replace(/<script[\s\S]*?<\/script>/gi, ' ')
           .replace(/<style[\s\S]*?<\/style>/gi, ' ')
           .replace(/<[^>]+>/g, ' ')
@@ -33125,6 +33192,11 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         var bidClose = _onbidNormalizeDateTime(_onbidPickFirst(deterministic.입찰마감, parsed.입찰마감));
         var openAt = _onbidNormalizeDateTime(_onbidPickFirst(deterministic.개찰일시, parsed.개찰일시));
         var saleDate = _onbidNormalizeDateTime(_onbidPickFirst(deterministic.매각일, parsed.매각일, bidClose, openAt));
+        var areaLand = parseFloat(_onbidPickFirst(deterministic.토지면적_m2, parsed.토지면적_m2)) || 0;
+        var areaBuilding = parseFloat(_onbidPickFirst(deterministic.건물면적_m2, parsed.건물면적_m2)) || 0;
+        var areaExclusive = parseFloat(_onbidPickFirst(deterministic.전용면적_m2, parsed.전용면적_m2)) || 0;
+        if (!areaExclusive && areaBuilding) areaExclusive = areaBuilding;
+        if (!areaBuilding && areaExclusive) areaBuilding = areaExclusive;
         var unsoldCount = parseInt(_onbidPickFirst(deterministic.유찰횟수, parsed.유찰횟수), 10);
         if (!isFinite(unsoldCount) || unsoldCount < 0) unsoldCount = 0;
         var dataObj = {
@@ -33137,9 +33209,9 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           '경매구분': _onbidPickFirst(deterministic.경매구분, parsed.경매구분, useText),
           '물건종류': _onbidPickFirst(useText, deterministic.경매구분, parsed.경매구분),
           '용도': useText,
-          '토지면적_m2': parseFloat(_onbidPickFirst(deterministic.토지면적_m2, parsed.토지면적_m2)) || 0,
-          '건물면적_m2': parseFloat(_onbidPickFirst(deterministic.건물면적_m2, parsed.건물면적_m2)) || 0,
-          '전용면적_m2': parseFloat(_onbidPickFirst(deterministic.전용면적_m2, parsed.전용면적_m2)) || 0,
+          '토지면적_m2': areaLand,
+          '건물면적_m2': areaBuilding,
+          '전용면적_m2': areaExclusive,
           '감정가': appraisalWon || 0,
           '최저가': minWon || 0,
           '청구액': claimWon || 0,
@@ -33152,9 +33224,12 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           '회차': _onbidPickFirst(deterministic.회차, parsed.회차),
           '유찰횟수': unsoldCount,
           '상태': _onbidPickFirst(deterministic.상태, parsed.상태),
-          '개시결정일': _onbidNormalizeDateTime(_onbidPickFirst(deterministic.개시결정일, parsed.개시결정일)),
-          '배당요구종기': _onbidNormalizeDateTime(_onbidPickFirst(deterministic.배당요구종기, parsed.배당요구종기, parsed.배당요구종기일)),
-          '배당요구종기일': _onbidNormalizeDateTime(_onbidPickFirst(deterministic.배당요구종기, parsed.배당요구종기일, parsed.배당요구종기)),
+          '개시결정일': _onbidNormalizeDateTime(_onbidPickFirst(deterministic.개시결정일, parsed.개시결정일, bidOpen)),
+          '배당종기': _onbidNormalizeDateTime(_onbidPickFirst(deterministic.배당종기, parsed.배당종기, parsed.배당종기일, bidClose, bidOpen)),
+          '배당종기일': _onbidNormalizeDateTime(_onbidPickFirst(deterministic.배당종기, parsed.배당종기일, parsed.배당종기, bidClose, bidOpen)),
+          '배당요구종기': _onbidNormalizeDateTime(_onbidPickFirst(deterministic.배당요구종기, parsed.배당요구종기, parsed.배당요구종기일, bidClose, bidOpen)),
+          '배당요구종기일': _onbidNormalizeDateTime(_onbidPickFirst(deterministic.배당요구종기, parsed.배당요구종기일, parsed.배당요구종기, bidClose, bidOpen)),
+          '말소기준권리': _onbidPickFirst(deterministic.말소기준권리, parsed.말소기준권리),
           '말소기준등기일': _onbidNormalizeDateTime(_onbidPickFirst(deterministic.말소기준등기일, parsed.말소기준등기일, parsed.말소기준권리일)),
           '채무자겸소유자': _onbidPickFirst(deterministic.채무자겸소유자, parsed.채무자겸소유자),
           '임차인': _onbidPickFirst(deterministic.임차인, parsed.임차인),

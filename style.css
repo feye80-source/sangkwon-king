@@ -9611,14 +9611,10 @@
 	              #ipage8 .wr2-room-item-actions {
 	                display: flex;
 	                gap: 4px;
-	                opacity: 0;
+	                opacity: 1;
 	                flex-shrink: 0;
 	                transition: opacity .15s;
 	              }
-
-              #ipage8 .wr2-room-item:hover .wr2-room-item-actions {
-                opacity: 1;
-              }
 
 	              #ipage8 .wr2-room-act-btn {
 	                padding: 4px 8px;
@@ -9641,6 +9637,20 @@
               #ipage8 .wr2-room-act-btn.del:hover {
                 color: #ef4444;
                 border-color: rgba(239, 68, 68, .35);
+              }
+              #ipage8 .wr2-life-btn {
+                min-width: 38px;
+                padding: 3px 7px;
+                border-radius: 999px;
+                font-size: 10px;
+                color: var(--mu);
+                background: rgba(255,255,255,.03);
+              }
+              #ipage8 .wr2-life-btn.on {
+                color: #4f8eff;
+                border-color: rgba(79,142,255,.45);
+                background: rgba(79,142,255,.14);
+                font-weight: 700;
               }
 
               #ipage8 .wr2-folder-pro-preview {
