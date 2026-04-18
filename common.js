@@ -1444,10 +1444,73 @@
     window._wrFilterActiveRooms = function(arr) {
       return (Array.isArray(arr) ? arr : []).filter(r => r && r.id && !r.deletedAt);
     };
+    function _wrNormalizeRoomTags(tags) {
+      const list = Array.isArray(tags) ? tags : [];
+      const seen = Object.create(null);
+      const out = [];
+      list.forEach(function(tag) {
+        const clean = String(tag || '').replace(/\s+/g, ' ').trim();
+        if (!clean || seen[clean]) return;
+        seen[clean] = true;
+        out.push(clean);
+      });
+      return out;
+    }
+    function _wrNormalizeRoomLifecycle(room) {
+      if (!room || typeof room !== 'object') return room;
+      const next = Object.assign({}, room);
+      const rawLifecycle = String(next.lifecycleStatus || '').trim();
+      let lifecycle = (rawLifecycle === 'active' || rawLifecycle === 'changed' || rawLifecycle === 'closed')
+        ? rawLifecycle
+        : '';
+
+      const rawStatus = String(next.status || '').trim();
+      const rawPhase = String(next.phase || '').trim();
+      const rawActivePhase = String(next.activePhase || '').trim();
+      const statusLooksLikeLifecycle = (rawStatus === 'active' || rawStatus === 'changed' || rawStatus === 'closed');
+      const phaseLooksLikeLifecycle = (rawPhase === 'active' || rawPhase === 'changed' || rawPhase === 'closed');
+      const activePhaseLooksLikeLifecycle = (rawActivePhase === 'active' || rawActivePhase === 'changed' || rawActivePhase === 'closed');
+
+      // 1) lifecycle 추론 (기존 status/phase 호환)
+      if (!lifecycle) {
+        if (statusLooksLikeLifecycle) lifecycle = rawStatus;
+        else if (rawStatus === 'archived') lifecycle = 'closed';
+        else if (rawStatus === 'closed') lifecycle = 'closed';
+        else if (rawStatus === 'changed') lifecycle = 'changed';
+        else lifecycle = 'active';
+      }
+      next.lifecycleStatus = lifecycle;
+
+      // 2) phase 호환 (일부 기기/버전은 status에 lifecycle이 들어가서 단계탭이 깨짐)
+      //    - 단계는 기존 값을 최대한 보존하되, lifecycle 값이 들어간 경우엔 기본값으로 복구
+      const phaseCandidate = rawActivePhase || rawPhase || (statusLooksLikeLifecycle ? '' : rawStatus) || '';
+      const invalidPhase = !phaseCandidate || phaseLooksLikeLifecycle || activePhaseLooksLikeLifecycle || statusLooksLikeLifecycle;
+      const defaultPhase = (lifecycle === 'closed') ? 'closed' : 'review';
+      if (invalidPhase) {
+        next.phase = defaultPhase;
+        next.activePhase = defaultPhase;
+        // status는 단계/호환용으로 유지 (lifecycle과 분리)
+        if (statusLooksLikeLifecycle || !rawStatus) next.status = defaultPhase;
+      } else {
+        next.phase = phaseCandidate;
+        if (!rawActivePhase) next.activePhase = phaseCandidate;
+        if (!rawStatus || statusLooksLikeLifecycle) next.status = phaseCandidate;
+      }
+
+      // 3) 폴더(group) → 태그(tags) 마이그레이션
+      //    - 폴더 구조는 제거하고, 기존 분류 정보는 태그로 보존한다.
+      const legacyGroup = String(next.group || '').replace(/\s+/g, ' ').trim();
+      const tags = _wrNormalizeRoomTags(next.tags);
+      if (legacyGroup && tags.indexOf(legacyGroup) === -1) tags.push(legacyGroup);
+      next.tags = tags;
+      if ('group' in next) delete next.group;
+
+      return next;
+    }
     function _wrStripFreeTableLegacyRoom(room) {
       if (!room || typeof room !== 'object') return room;
       if (!('_freeTables' in room) && !('_freeTable' in room) && !('_freeTable2' in room) && !('__ftDraft' in room)) return room;
-      const next = Object.assign({}, room);
+      const next = _wrNormalizeRoomLifecycle(room);
       delete next._freeTables;
       delete next._freeTable;
       delete next._freeTable2;
@@ -1455,7 +1518,11 @@
       return next;
     }
     function _wrStripFreeTableLegacyRooms(arr) {
-      return (Array.isArray(arr) ? arr : []).map(_wrStripFreeTableLegacyRoom);
+      return (Array.isArray(arr) ? arr : []).map(function(room) {
+        // free_table legacy strip + lifecycle/phase normalization을 항상 통과시켜
+        // 기기/버전 차이로 status 값이 달라져도 동일하게 보이도록 고정한다.
+        return _wrStripFreeTableLegacyRoom(_wrNormalizeRoomLifecycle(room));
+      });
     }
     function _wrCloneFreeTables(tables) {
       return (Array.isArray(tables) ? tables : []).map(tbl => ({
@@ -3212,9 +3279,10 @@ var _safeLocalSet = function(key, value) {
                   activePhase: 'review',
                   sort: 'updated',
                   search: '',
-                  statusFilter: 'all',
-                  folderOpen: {},
-                  folderViewMode: 'rooms'
+                  // lifecycleStatus 기준 필터 (기본: 활성만 → 종료 누적 문제 방지)
+                  statusFilter: 'active',
+                  // 폴더 제거: groupFilter는 레거시 호환용 키만 유지
+                  groupFilter: 'all'
                 };
 
                 function safeJSONParse(raw, fallback) {
@@ -3223,6 +3291,16 @@ var _safeLocalSet = function(key, value) {
 
                 function loadRooms() {
                   const raw = (window._wrGetRoomsCache && window._wrGetRoomsCache()) || ((window._idbCache && window._idbCache[LS_KEY_ROOMS]) || []);
+                  // 기기/버전 혼재 데이터(phase/lifecycle 혼용)를 여기서 한 번 정규화해 캐시를 갱신한다.
+                  try {
+                    if (window._wrPersistRoomCache) {
+                      const persisted = window._wrPersistRoomCache(raw, { syncState: false, keepDeletedInState: true });
+                      wr2State.rooms = persisted && persisted.active
+                        ? persisted.active
+                        : (window._wrFilterActiveRooms ? window._wrFilterActiveRooms(raw) : raw.filter(r => r && !r.deletedAt));
+                      return;
+                    }
+                  } catch (e) {}
                   wr2State.rooms = window._wrFilterActiveRooms ? window._wrFilterActiveRooms(raw) : raw.filter(r => r && !r.deletedAt);
                 }
                 function saveRooms() {
@@ -3241,133 +3319,88 @@ var _safeLocalSet = function(key, value) {
                   else if (window._wrPersistSectionsCache) window._wrPersistSectionsCache(wr2State.sections, { syncState: false });
                 }
                 function loadFolders() {
-                  const raw = safeJSONParse(localStorage.getItem(LS_KEY_FOLDERS), []);
-                  wr2State.folders = Array.isArray(raw) ? raw.filter(Boolean) : [];
-                  hydrateFolderCatalog();
+                  // 폴더 기능 제거: 기존 레거시 키는 정리하고 빈 상태 유지
+                  wr2State.folders = [];
+                  wr2State.groupFilter = 'all';
+                  wr2State.pendingNewRoomFolder = '';
+                  try {
+                    localStorage.removeItem(LS_KEY_FOLDERS);
+                    if (window._idbCache) delete window._idbCache[LS_KEY_FOLDERS];
+                  } catch (e) {}
                 }
                 function saveFolders() {
-                  hydrateFolderCatalog();
-                  try {
-                    localStorage.setItem(LS_KEY_FOLDERS, JSON.stringify(wr2State.folders || []));
-                    if (window._idbCache) window._idbCache[LS_KEY_FOLDERS] = (wr2State.folders || []).slice();
-                  } catch (e) { console.warn('[wr2 saveFolders]', e); }
+                  wr2State.folders = [];
                 }
                 function _normalizeFolderName(name) {
                   return String(name || '').replace(/\s+/g, ' ').trim();
                 }
                 function hydrateFolderCatalog() {
-                  const seen = Object.create(null);
-                  const folders = [];
-                  (wr2State.folders || []).forEach(function(folder, idx) {
-                    const name = _normalizeFolderName(folder && folder.name);
-                    if (!name || seen[name]) return;
-                    seen[name] = true;
-                    folders.push({
-                      id: folder.id || genId('fld'),
-                      name: name,
-                      createdAt: folder.createdAt || Date.now() + idx,
-                      updatedAt: folder.updatedAt || folder.createdAt || Date.now() + idx
-                    });
-                  });
-                  (wr2State.rooms || []).forEach(function(room) {
-                    const name = _normalizeFolderName(room && room.group);
-                    if (!name || seen[name]) return;
-                    seen[name] = true;
-                    folders.push({
-                      id: genId('fld'),
-                      name: name,
-                      createdAt: room.createdAt || Date.now(),
-                      updatedAt: room.updatedAt || room.createdAt || Date.now()
-                    });
-                  });
-                  folders.sort(function(a, b) {
-                    return (a.name || '').localeCompare(b.name || '', 'ko');
-                  });
-                  wr2State.folders = folders;
+                  wr2State.folders = [];
                 }
                 function wr2GetFolderRecords() {
-                  hydrateFolderCatalog();
-                  return (wr2State.folders || []).slice();
+                  return [];
                 }
                 function wr2GetPreferredNewFolder() {
-                  const pending = _normalizeFolderName(wr2State.pendingNewRoomFolder);
-                  if (pending) return pending;
-                  const filtered = _normalizeFolderName((wr2State.groupFilter && wr2State.groupFilter !== 'all' && !wr2IsUngroupedFilter(wr2State.groupFilter)) ? wr2State.groupFilter : '');
-                  if (filtered) return filtered;
-                  const active = wr2State.rooms.find(function(room) { return room && room.id === wr2State.activeRoomId; });
-                  return _normalizeFolderName(active && active.group);
+                  return '';
                 }
                 function wr2RefreshNewRoomFolderOptions(selectedName) {
                   const input = document.getElementById('wr2NewFolder');
                   const list = document.getElementById('wr2NewFolderList');
                   const hint = document.getElementById('wr2NewFolderHint');
-                  const preferred = _normalizeFolderName(selectedName || wr2GetPreferredNewFolder());
-                  const folders = wr2GetFolderRecords();
-                  if (list) {
-                    list.innerHTML = folders.map(function(folder) {
-                      return '<option value="' + esc(folder.name) + '"></option>';
-                    }).join('');
-                  }
+                  if (list) list.innerHTML = '';
                   if (input) {
-                    input.value = preferred || '';
-                    input.placeholder = preferred ? '현재 폴더가 기본 선택되어 있습니다' : '예: 인천 서구 · 강남권';
+                    input.value = '';
+                    input.placeholder = '폴더 기능이 제거되었습니다. 태그를 사용해 구분하세요.';
                   }
-                  if (hint) {
-                    hint.textContent = preferred
-                      ? '기본 폴더: ' + preferred
-                      : '비워두면 미분류로 생성됩니다';
-                  }
+                  if (hint) hint.textContent = '분류는 태그를 사용합니다.';
                 }
-                window.wr2PrepareNewRoomInFolder = function(folderName) {
-                  wr2State.pendingNewRoomFolder = _normalizeFolderName(folderName);
+                window.wr2PrepareNewRoomInFolder = function() {
+                  wr2State.pendingNewRoomFolder = '';
                   showNewModal();
                 };
                 function wr2SetRoomFolder(room, folderName) {
                   if (!room) return '';
                   const clean = _normalizeFolderName(folderName);
-                  if (clean) {
-                    room.group = clean;
-                    room.updatedAt = Date.now();
-                    const existing = (wr2State.folders || []).find(function(folder) { return folder && folder.name === clean; });
-                    if (existing) existing.updatedAt = Date.now();
-                    else (wr2State.folders || (wr2State.folders = [])).push({ id: genId('fld'), name: clean, createdAt: Date.now(), updatedAt: Date.now() });
+                  const tags = Array.isArray(room.tags) ? room.tags.slice() : [];
+                  if (clean && tags.indexOf(clean) === -1) {
+                    tags.push(clean);
+                    room.tags = tags;
+                    wr2PushActivity(room, '폴더 분류를 태그 "' + clean + '"로 전환했습니다', room.phase || room.status);
                   } else {
-                    delete room.group;
-                    room.updatedAt = Date.now();
+                    wr2PushActivity(room, '폴더 기능이 제거되었습니다. 태그를 사용해 분류하세요.', room.phase || room.status);
                   }
-                  wr2PushActivity(room, clean ? ('폴더를 "' + clean + '"로 지정했습니다') : '폴더 지정을 해제했습니다', room.phase || room.status);
-                  hydrateFolderCatalog();
-                  saveFolders();
+                  delete room.group;
+                  room.updatedAt = Date.now();
                   return clean;
                 }
                 function wr2RenameFolder(oldName, newName) {
                   const from = _normalizeFolderName(oldName);
                   const to = _normalizeFolderName(newName);
-                  if (!from || !to) return false;
+                  if (!from || !to || from === to) return false;
+                  let changed = false;
                   wr2State.rooms.forEach(function(room) {
-                    if (room && room.group === from) room.group = to;
+                    if (!room) return;
+                    if (room.group === from) {
+                      delete room.group;
+                      room.tags = (room.tags || []).concat([to]);
+                      changed = true;
+                    }
+                    if (Array.isArray(room.tags) && room.tags.indexOf(from) !== -1) {
+                      room.tags = room.tags.map(function(tag) { return tag === from ? to : tag; });
+                      changed = true;
+                    }
                   });
-                  const folder = (wr2State.folders || []).find(function(entry) { return entry && entry.name === from; });
-                  if (folder) {
-                    folder.name = to;
-                    folder.updatedAt = Date.now();
-                  } else {
-                    wr2State.folders.push({ id: genId('fld'), name: to, createdAt: Date.now(), updatedAt: Date.now() });
-                  }
-                  saveRooms();
-                  saveFolders();
-                  return true;
+                  if (changed) saveRooms();
+                  return changed;
                 }
                 function wr2DeleteFolder(name) {
                   const clean = _normalizeFolderName(name);
                   if (!clean) return;
                   wr2State.rooms.forEach(function(room) {
-                    if (room && room.group === clean) delete room.group;
+                    if (!room) return;
+                    if (room.group === clean) delete room.group;
                   });
-                  wr2State.folders = (wr2State.folders || []).filter(function(folder) { return folder && folder.name !== clean; });
-                  if (wr2State.groupFilter === clean) wr2State.groupFilter = 'all';
                   saveRooms();
-                  saveFolders();
                 }
                 function wr2NormalizePhaseView(phase) {
                   const raw = String(phase || '').trim();
@@ -3393,6 +3426,35 @@ var _safeLocalSet = function(key, value) {
 
                 function genId(prefix) { return prefix + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
                 function getActiveRoom() { return wr2State.rooms.find(r => r.id === wr2State.activeRoomId) || null; }
+
+                // ── lifecycleStatus (활성/변경/종료) ──────────────────────────
+                // phase(관심·검토/현장/입찰...)와 분리된 “작업룸 상태”로,
+                // 기기/버전별 데이터 혼재를 단일 규격으로 정규화한다.
+                function wr2GetLifecycle(room) {
+                  const lifecycle = String((room && room.lifecycleStatus) || '').trim();
+                  if (lifecycle === 'active' || lifecycle === 'changed' || lifecycle === 'closed') return lifecycle;
+                  const raw = String((room && (room.status || room.phase || room.activePhase)) || '').trim();
+                  if (raw === 'closed' || raw === 'archived') return 'closed';
+                  if (raw === 'changed') return 'changed';
+                  return 'active';
+                }
+                function wr2LifecycleLabel(roomOrKey) {
+                  const key = (typeof roomOrKey === 'string') ? roomOrKey : wr2GetLifecycle(roomOrKey);
+                  if (key === 'closed') return '종료';
+                  if (key === 'changed') return '변경';
+                  return '활성';
+                }
+                function wr2RoomMatchesLifecycle(room, filter) {
+                  const key = String(filter || 'active');
+                  if (key === 'all') return true;
+                  return wr2GetLifecycle(room) === key;
+                }
+                function wr2NextLifecycle(key) {
+                  const cur = String(key || 'active');
+                  if (cur === 'active') return 'changed';
+                  if (cur === 'changed') return 'closed';
+                  return 'active';
+                }
 
                 function statusLabel(st) {
                   if (st === 'interest' || st === 'review') return '관심·검토';
@@ -3521,7 +3583,6 @@ var _safeLocalSet = function(key, value) {
                   const listingId = document.getElementById('wr2NewListingId').value.trim();
                   const tagsStr = document.getElementById('wr2NewTags').value.trim();
                   const seed = document.getElementById('wr2NewSeedDefaults').checked;
-                  const folderName = '';
 
                   if (!title) { alert('제목을 입력해주세요.'); return; }
 
@@ -3532,6 +3593,7 @@ var _safeLocalSet = function(key, value) {
                     address,
                     auctionId: auctionId || null,
                     listingId: listingId || null,
+                    lifecycleStatus: 'active',
                     status: 'review',
                     phase: 'review',
                     activePhase: 'review',
@@ -3547,7 +3609,7 @@ var _safeLocalSet = function(key, value) {
                   wr2State.activeRoomId = room.id;
                   wr2State.activePhase = 'review';
                   wr2State.pendingNewRoomFolder = '';
-                  if (folderName) wr2State.groupFilter = folderName;
+                  wr2State.groupFilter = 'all';
 
                   if (seed) seedDefaults(room.id);
 
@@ -4053,8 +4115,6 @@ var _safeLocalSet = function(key, value) {
                     return (d.getMonth() + 1) + '.' + String(d.getDate()).padStart(2, '0');
                   };
 
-                  wr2State.folderOpen = wr2State.folderOpen || {};
-                  wr2State.folderPreviewOpen = wr2State.folderPreviewOpen || {};
                   let rooms = wr2State.rooms.filter(r => !r.deletedAt);
                   const q = (wr2State.search || '').trim().toLowerCase();
                   if (q) rooms = rooms.filter(r =>
@@ -4062,12 +4122,45 @@ var _safeLocalSet = function(key, value) {
                     (r.address || '').toLowerCase().includes(q) ||
                     (r.tags || []).some(t => (t || '').toLowerCase().includes(q))
                   );
-                  if (wr2State.statusFilter !== 'all') rooms = rooms.filter(r => r.status === wr2State.statusFilter);
-                  if (wr2State.groupFilter && wr2State.groupFilter !== 'all') rooms = rooms.filter(r => wr2RoomMatchesGroup(r, wr2State.groupFilter));
+                  rooms = rooms.filter(r => wr2RoomMatchesLifecycle(r, wr2State.statusFilter));
                   rooms.sort((a, b) => wr2State.sort === 'created' ? (b.createdAt || 0) - (a.createdAt || 0) : (b.updatedAt || 0) - (a.updatedAt || 0));
 
                   listEl.innerHTML = '';
-                  const folderRecords = wr2GetFolderRecords();
+                  // 상태(활성/변경/종료) 스코프 바 렌더
+                  try {
+                    const scopeEl = document.getElementById('wr2ListScopeBar');
+                    if (scopeEl) {
+                      const allRooms = wr2State.rooms.filter(r => r && !r.deletedAt);
+                      const cnt = {
+                        active: allRooms.filter(r => wr2GetLifecycle(r) === 'active').length,
+                        changed: allRooms.filter(r => wr2GetLifecycle(r) === 'changed').length,
+                        closed: allRooms.filter(r => wr2GetLifecycle(r) === 'closed').length,
+                        all: allRooms.length
+                      };
+                      const cur = String(wr2State.statusFilter || 'active');
+                      const mkBtn = function(key, label) {
+                        const b = document.createElement('button');
+                        b.type = 'button';
+                        const isOn = cur === key;
+                        b.style.cssText =
+                          'padding:4px 9px;border-radius:999px;border:1px solid ' + (isOn ? 'rgba(79,142,255,.35)' : 'var(--b1)') +
+                          ';background:' + (isOn ? 'rgba(79,142,255,.12)' : 'var(--s2)') +
+                          ';color:' + (isOn ? '#4f8eff' : 'var(--mu)') +
+                          ';font-size:11px;cursor:pointer;white-space:nowrap;';
+                        b.textContent = label + ' ' + (key === 'all' ? cnt.all : cnt[key]);
+                        b.onclick = function() { wr2State.statusFilter = key; wr2Render(); };
+                        return b;
+                      };
+                      scopeEl.innerHTML = '';
+                      scopeEl.style.display = 'flex';
+                      scopeEl.style.gap = '6px';
+                      scopeEl.style.flexWrap = 'wrap';
+                      scopeEl.appendChild(mkBtn('active', '활성'));
+                      scopeEl.appendChild(mkBtn('changed', '변경'));
+                      scopeEl.appendChild(mkBtn('closed', '종료'));
+                      scopeEl.appendChild(mkBtn('all', '전체'));
+                    }
+                  } catch (e) {}
                   const appendRoomItem = (parentEl, r) => {
                     const item = document.createElement('div');
                     item.className = 'wr2-room-item' + (r.id === wr2State.activeRoomId ? ' active' : '');
@@ -4092,15 +4185,17 @@ var _safeLocalSet = function(key, value) {
                     const meta = document.createElement('div');
                     meta.className = 'wr2-room-meta';
                     const badge = document.createElement('span');
-                    badge.className = 'wr2-status-badge ' + (r.status || 'interest');
-                    badge.textContent = statusLabel(r.status);
+                    const lifecycle = wr2GetLifecycle(r);
+                    badge.className = 'wr2-status-badge ' + lifecycle;
+                    badge.textContent = wr2LifecycleLabel(lifecycle);
+                    badge.title = '클릭: 활성 → 변경 → 종료';
+                    badge.style.cursor = 'pointer';
+                    badge.onclick = function(e) {
+                      e.stopPropagation();
+                      const next = wr2NextLifecycle(wr2GetLifecycle(r));
+                      updateRoom(r.id, { lifecycleStatus: next });
+                    };
                     meta.appendChild(badge);
-                    if (r.group && (!wr2State.groupFilter || wr2State.groupFilter === 'all')) {
-                      const folderTag = document.createElement('span');
-                      folderTag.style.cssText = 'padding:1px 6px;border-radius:999px;background:rgba(79,142,255,.12);border:1px solid rgba(79,142,255,.2);color:#8ab2ff;';
-                      folderTag.textContent = '📁 ' + r.group;
-                      meta.appendChild(folderTag);
-                    }
                     var linkedCount = Array.isArray(r.linkedItems) ? r.linkedItems.length : 0;
                     if (linkedCount > 0) {
                       const linkedTag = document.createElement('span');
@@ -4126,18 +4221,7 @@ var _safeLocalSet = function(key, value) {
                       setActiveRoom(r.id);
                     };
 
-                    const moreBtn = document.createElement('button');
-                    moreBtn.className = 'wr2-room-act-btn';
-                    moreBtn.textContent = '폴더';
-                    moreBtn.title = '현재 작업룸 폴더 지정';
-                    moreBtn.onclick = e => {
-                      e.stopPropagation();
-                      setActiveRoom(r.id);
-                      setTimeout(function() { window.wr2OpenRoomGroupEditor(); }, 30);
-                    };
-
                     actions.appendChild(openBtn);
-                    actions.appendChild(moreBtn);
 
                     item.appendChild(handle);
                     item.appendChild(content);
@@ -4145,208 +4229,10 @@ var _safeLocalSet = function(key, value) {
                     parentEl.appendChild(item);
                   };
 
-                  if (wr2State.folderViewMode === 'folders') {
-                    const folderCards = folderRecords.map(function(folder) {
-                      return {
-                        name: folder.name,
-                        rooms: wr2State.rooms.filter(function(room) { return !room.deletedAt && room.group === folder.name; }),
-                        icon: '📁'
-                      };
-                    });
-                    const ungroupedRooms = wr2State.rooms.filter(function(room) { return !room.deletedAt && !room.group; });
-                    if (ungroupedRooms.length) {
-                      folderCards.unshift({
-                        name: '미분류',
-                        rooms: ungroupedRooms,
-                        icon: '🗃'
-                      });
-                    }
-                    folderCards.forEach(function(folder) {
-                      const isUngrouped = folder.name === '미분류';
-                      const active = wr2State.groupFilter === folder.name;
-                      const previewOpen = !!wr2State.folderPreviewOpen[folder.name];
-                      const sortedRooms = folder.rooms.slice().sort(function(a, b) { return (b.updatedAt || 0) - (a.updatedAt || 0); });
-                      const latestRoom = sortedRooms[0] || null;
-                      const latestLabel = latestRoom ? statusLabel(latestRoom.status) : '작업 없음';
-                      const latestStamp = latestRoom ? formatRoomStamp(latestRoom.updatedAt || latestRoom.createdAt || Date.now()) : '';
-                      const card = document.createElement('div');
-                      card.className = 'wr2-folder-pro-card' + (active ? ' active' : '');
-                      card.innerHTML = '<div class="wr2-folder-pro-header">'
-                        + '<button type="button" data-toggle-folder="' + folder.name + '" class="wr2-folder-pro-toggle">' + (previewOpen ? '▾' : '▸') + '</button>'
-                        + '<div class="wr2-folder-pro-main">'
-                        + '<div class="wr2-folder-pro-title-row"><span class="wr2-folder-pro-icon">' + ((active || previewOpen) ? '📂' : folder.icon) + '</span><span class="wr2-folder-pro-title">' + folder.name + '</span><span class="wr2-folder-pro-count">' + folder.rooms.length + '</span></div>'
-                        + '<div class="wr2-folder-pro-meta">' + (latestRoom ? ('최근 업데이트 · ' + latestStamp + ' · ' + latestLabel) : '아직 작업룸이 없습니다') + '</div>'
-                        + '</div>'
-                        + '<div class="wr2-folder-pro-actions">'
-                        + '<button type="button" data-open-folder="' + folder.name + '" class="wr2-folder-pro-btn primary">' + (active ? '열림' : '열기') + '</button>'
-                        + '<button type="button" data-new-folder="' + folder.name + '" class="wr2-folder-pro-btn accent">＋ 작업룸</button>'
-                        + (!isUngrouped ? '<button type="button" data-edit-folder="' + folder.name + '" class="wr2-folder-pro-btn">관리</button>' : '')
-                        + '</div>'
-                        + '</div>';
-                      const toggleBtn = card.querySelector('[data-toggle-folder]');
-                      if (toggleBtn) toggleBtn.onclick = function(e) {
-                        e.stopPropagation();
-                        wr2State.folderPreviewOpen[folder.name] = !wr2State.folderPreviewOpen[folder.name];
-                        renderList();
-                      };
-                      const btn = card.querySelector('[data-open-folder]');
-                      if (btn) btn.onclick = function(e) {
-                        e.stopPropagation();
-                        if (isUngrouped) {
-                          wr2State.groupFilter = 'all';
-                          wr2State.folderViewMode = 'rooms';
-                          if (folder.rooms.length) wr2State.activeRoomId = folder.rooms[0].id;
-                          wr2RenderGroupSelect();
-                          wr2Render();
-                          return;
-                        }
-                        wr2State.groupFilter = folder.name;
-                        wr2State.folderViewMode = 'rooms';
-                        if (folder.rooms.length) wr2State.activeRoomId = folder.rooms[0].id;
-                        wr2RenderGroupSelect();
-                        wr2Render();
-                      };
-                      const editBtn = card.querySelector('[data-edit-folder]');
-                      const newBtn = card.querySelector('[data-new-folder]');
-                      if (newBtn) newBtn.onclick = function(e) {
-                        e.stopPropagation();
-                        window.wr2PrepareNewRoomInFolder(isUngrouped ? '' : folder.name);
-                      };
-                      if (editBtn) editBtn.onclick = function(e) {
-                        e.stopPropagation();
-                        const next = prompt('폴더 이름 변경', folder.name);
-                        if (next === null) return;
-                        const clean = (next || '').trim();
-                        if (!clean) return;
-                        if (clean !== folder.name) window.wr2RenameFolder(folder.name, clean);
-                      };
-                      const preview = document.createElement('div');
-                      preview.className = 'wr2-folder-pro-preview';
-                      preview.style.display = previewOpen ? 'block' : 'none';
-                      if (sortedRooms.length) {
-                        preview.innerHTML = '<div class="wr2-folder-pro-roomlist">'
-                          + sortedRooms.slice(0, 5).map(function(room) {
-                            return '<button type="button" data-room-open="' + room.id + '" class="wr2-folder-pro-room">'
-                              + '<span class="wr2-folder-pro-room-name">' + esc(room.title || '(제목 없음)') + '</span>'
-                              + '<span class="wr2-folder-pro-room-meta">' + statusLabel(room.status) + ' · ' + formatRoomStamp(room.updatedAt || room.createdAt || Date.now()) + '</span>'
-                              + '</button>';
-                          }).join('')
-                          + (sortedRooms.length > 5 ? '<div class="wr2-folder-pro-more">외 ' + (sortedRooms.length - 5) + '개 작업룸</div>' : '')
-                          + '</div>';
-                      } else {
-                        preview.innerHTML = '<div class="wr2-folder-pro-empty">아직 작업룸이 없습니다</div>';
-                      }
-                      preview.querySelectorAll('[data-room-open]').forEach(function(roomBtn) {
-                        roomBtn.onclick = function(e) {
-                          e.stopPropagation();
-                          setActiveRoom(roomBtn.dataset.roomOpen);
-                          wr2State.folderViewMode = 'rooms';
-                          wr2RenderGroupSelect();
-                          wr2Render();
-                        };
-                      });
-                      card.appendChild(preview);
-                      card.onclick = function(e) {
-                        if (e.target.closest('button')) return;
-                        wr2State.folderPreviewOpen[folder.name] = !wr2State.folderPreviewOpen[folder.name];
-                        renderList();
-                      };
-                      listEl.appendChild(card);
-                    });
-                    if (countEl) countEl.textContent = '(' + folderCards.length + ')';
-                    emptyEl.style.display = folderCards.length ? 'none' : 'flex';
-                    return;
-                  }
-
-                  const buckets = [];
-                  const bucketMap = new Map();
-                  folderRecords.forEach(function(folder) {
-                    const key = String(folder.name || '');
-                    if (!key || bucketMap.has(key)) return;
-                    const bucket = { key: key, label: key, rooms: [] };
-                    bucketMap.set(key, bucket);
-                    buckets.push(bucket);
-                  });
-                  rooms.forEach(r => {
-                    const key = String(r.group || '__ungrouped__');
-                    if (!bucketMap.has(key)) {
-                      const bucket = { key, label: key === '__ungrouped__' ? '미분류' : key, rooms: [] };
-                      bucketMap.set(key, bucket);
-                      buckets.push(bucket);
-                    }
-                    bucketMap.get(key).rooms.push(r);
-                  });
-
-                  buckets.forEach(bucket => {
-                    if (bucket.key === '__ungrouped__') {
-                      if (bucket.rooms.length) {
-                        const ungroupedHd = document.createElement('div');
-                        ungroupedHd.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:6px 8px 4px;color:var(--di);font-size:10px;font-weight:700;letter-spacing:.3px;';
-                        ungroupedHd.innerHTML = `<span>미분류 작업룸</span><span>${bucket.rooms.length}</span>`;
-                        listEl.appendChild(ungroupedHd);
-                      }
-                      bucket.rooms.forEach(r => appendRoomItem(listEl, r));
-                      return;
-                    }
-
-                    const hasActive = bucket.rooms.some(r => r.id === wr2State.activeRoomId);
-                    const isOpen = hasActive || wr2State.groupFilter === bucket.label || wr2State.folderOpen[bucket.key] !== false;
-                    wr2State.folderOpen[bucket.key] = isOpen;
-
-                    const section = document.createElement('div');
-                    section.className = 'wr2-folder-section';
-                    section.style.cssText = 'margin-bottom:8px;border:1px solid rgba(79,142,255,.16);border-radius:10px;background:rgba(79,142,255,.04);overflow:hidden;';
-
-                    const header = document.createElement('div');
-                    header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;background:rgba(79,142,255,.08);cursor:pointer;';
-                    header.onclick = () => {
-                      wr2State.folderOpen[bucket.key] = !wr2State.folderOpen[bucket.key];
-                      renderList();
-                    };
-
-                    const left = document.createElement('div');
-                    left.style.cssText = 'display:flex;align-items:center;gap:7px;min-width:0;';
-                    left.innerHTML = `<span style="font-size:12px;color:#4f8eff;">${wr2State.folderOpen[bucket.key] ? '📂' : '📁'}</span><span style="font-size:11px;font-weight:700;color:#dbe7ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${bucket.label}</span><span style="font-size:10px;color:#93a6c9;">${bucket.rooms.length}개</span>`;
-
-                    const right = document.createElement('div');
-                    right.style.cssText = 'display:flex;align-items:center;gap:5px;flex-shrink:0;';
-                    const filterBtn = document.createElement('button');
-                    filterBtn.textContent = wr2State.groupFilter === bucket.label ? '전체' : '집중';
-                    filterBtn.style.cssText = 'padding:3px 8px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:var(--mu);font-size:10px;cursor:pointer;';
-                    filterBtn.onclick = (e) => {
-                      e.stopPropagation();
-                      wr2State.groupFilter = (wr2State.groupFilter === bucket.label) ? 'all' : bucket.label;
-                      wr2RenderGroupSelect();
-                      wr2Render();
-                    };
-                    const addBtn = document.createElement('button');
-                    addBtn.textContent = '＋';
-                    addBtn.title = '현재 작업룸을 이 폴더로 지정';
-                    addBtn.style.cssText = 'width:24px;height:24px;border:none;border-radius:6px;background:rgba(79,142,255,.18);color:#4f8eff;font-size:13px;cursor:pointer;';
-                    addBtn.onclick = (e) => {
-                      e.stopPropagation();
-                      const room = getActiveRoom();
-                      if (!room) { showToast('먼저 작업룸을 선택하세요', 'warn'); return; }
-                      wr2SetRoomFolder(room, bucket.label);
-                      saveRooms();
-                      wr2RenderGroupSelect();
-                      wr2Render();
-                    };
-                    right.appendChild(filterBtn);
-                    right.appendChild(addBtn);
-                    header.appendChild(left);
-                    header.appendChild(right);
-                    section.appendChild(header);
-
-                    const body = document.createElement('div');
-                    body.style.cssText = 'display:' + (wr2State.folderOpen[bucket.key] ? '' : 'none') + ';padding:6px 6px 2px;';
-                    bucket.rooms.forEach(r => appendRoomItem(body, r));
-                    section.appendChild(body);
-                    listEl.appendChild(section);
-                  });
-
+                  // 폴더 기능 제거: 단일 리스트로만 렌더
+                  rooms.forEach(r => appendRoomItem(listEl, r));
                   initListDrag(listEl);
-                  if (countEl) countEl.textContent = '(' + wr2State.rooms.length + ')';
+                  if (countEl) countEl.textContent = '(' + rooms.length + ')';
                   emptyEl.style.display = rooms.length ? 'none' : 'flex';
                 }
 
@@ -4408,7 +4294,17 @@ var _safeLocalSet = function(key, value) {
                   const listingIn = document.getElementById('wr2ListingId');
                   if (titleInput) titleInput.value = room.title || '';
                   if (addrInput) addrInput.value = room.address || '';
-                  if (statusBadge) statusBadge.textContent = wr2PhaseDisplayLabel(room.activePhase || room.phase || room.status || 'review');
+                  if (statusBadge) {
+                    const key = wr2GetLifecycle(room);
+                    statusBadge.textContent = wr2LifecycleLabel(key);
+                    statusBadge.title = '클릭: 활성 → 변경 → 종료';
+                    statusBadge.style.cursor = 'pointer';
+                    statusBadge.onclick = function(e) {
+                      try { e && e.stopPropagation && e.stopPropagation(); } catch (err) {}
+                      const next = wr2NextLifecycle(wr2GetLifecycle(room));
+                      updateRoom(room.id, { lifecycleStatus: next });
+                    };
+                  }
                   if (auctionIn) auctionIn.value = room.auctionId || '';
                   if (listingIn) listingIn.value = room.listingId || '';
 
@@ -4417,7 +4313,6 @@ var _safeLocalSet = function(key, value) {
                   renderSections(room);
                   renderTimeline(room);
                   wr2RenderTagRow(room);
-                  wr2RenderGroupSelect();
                   wr2SwitchView(wr2State.activeView || 'overview');
                 }
 
@@ -6865,25 +6760,19 @@ window.wr2SummaryCancelEdit = function() {
 
                 // 모든 그룹 목록 반환
                 function wr2GetGroups() {
-                  return wr2GetFolderRecords().map(function(folder) { return folder.name; });
+                  return [];
                 }
                 function wr2IsUngroupedFilter(value) {
                   return String(value || '') === '__ungrouped__';
                 }
                 function wr2RoomMatchesGroup(room, groupFilter) {
-                  if (!groupFilter || groupFilter === 'all') return true;
-                  if (wr2IsUngroupedFilter(groupFilter)) return !_normalizeFolderName(room && room.group);
-                  return _normalizeFolderName(room && room.group) === _normalizeFolderName(groupFilter);
+                  return true;
                 }
                 function wr2SetGroupFilter(groupFilter, opts) {
-                  const next = (!groupFilter || groupFilter === 'all')
-                    ? 'all'
-                    : (wr2IsUngroupedFilter(groupFilter) ? '__ungrouped__' : (_normalizeFolderName(groupFilter) || 'all'));
-                  wr2State.groupFilter = next;
-                  wr2State.folderViewMode = 'rooms';
+                  wr2State.groupFilter = 'all';
                   if (opts && opts.activateFirst) {
                     const first = wr2State.rooms.find(function(room) {
-                      return room && !room.deletedAt && wr2RoomMatchesGroup(room, next);
+                      return room && !room.deletedAt;
                     });
                     if (first) wr2State.activeRoomId = first.id;
                   }
@@ -6891,93 +6780,23 @@ window.wr2SummaryCancelEdit = function() {
                   wr2Render();
                 }
                 function wr2RenderFolderFilterBars() {
-                  const entries = [{ key: 'all', label: '전체', icon: '🗂' }];
-                  const ungroupedCount = (wr2State.rooms || []).filter(function(room) { return room && !room.deletedAt && !_normalizeFolderName(room.group); }).length;
-                  entries.push({ key: '__ungrouped__', label: '미분류', icon: '🗃', count: ungroupedCount });
-                  wr2GetFolderRecords().forEach(function(folder) {
-                    const count = (wr2State.rooms || []).filter(function(room) {
-                      return room && !room.deletedAt && _normalizeFolderName(room.group) === folder.name;
-                    }).length;
-                    entries.push({ key: folder.name, label: folder.name, icon: '📁', count: count });
-                  });
-                  function renderInto(el) {
+                  ['wr2FolderFilterBar', 'mb-room-folder-bar'].forEach(function(id) {
+                    const el = document.getElementById(id);
                     if (!el) return;
                     el.innerHTML = '';
-                    entries.forEach(function(entry) {
-                      const btn = document.createElement('button');
-                      btn.type = 'button';
-                      btn.className = (el.id === 'mb-room-folder-bar' ? 'mb-folder-chip' : '');
-                      const active = (wr2State.groupFilter || 'all') === entry.key;
-                      if (el.id !== 'mb-room-folder-bar') {
-                        btn.style.cssText = 'flex:0 0 auto;padding:6px 11px;border-radius:999px;border:1px solid ' + (active ? 'rgba(79,142,255,.32)' : 'var(--b1)') + ';background:' + (active ? 'rgba(79,142,255,.12)' : 'var(--s2)') + ';color:' + (active ? '#4f8eff' : 'var(--mu)') + ';font-size:11px;white-space:nowrap;cursor:pointer;';
-                      } else if (active) {
-                        btn.classList.add('active');
-                      }
-                      btn.textContent = entry.icon + ' ' + entry.label + (typeof entry.count === 'number' ? ' (' + entry.count + ')' : '');
-                      btn.onclick = function() { wr2SetGroupFilter(entry.key, { activateFirst: true }); };
-                      el.appendChild(btn);
-                    });
-                    const create = document.createElement('button');
-                    create.type = 'button';
-                    create.textContent = '＋ 폴더';
-                    create.onclick = function() { if (typeof window.wr2CreateFolderPrompt === 'function') window.wr2CreateFolderPrompt(''); };
-                    if (el.id === 'mb-room-folder-bar') {
-                      create.className = 'mb-folder-chip manage';
-                    } else {
-                      create.style.cssText = 'flex:0 0 auto;padding:6px 11px;border-radius:999px;border:1px solid rgba(79,142,255,.28);background:rgba(79,142,255,.08);color:#4f8eff;font-size:11px;white-space:nowrap;cursor:pointer;';
-                    }
-                    el.appendChild(create);
-
-                    const manage = document.createElement('button');
-                    manage.type = 'button';
-                    manage.textContent = '관리';
-                    manage.onclick = function() { if (typeof window.wr2OpenGroupManager === 'function') window.wr2OpenGroupManager(); };
-                    if (el.id === 'mb-room-folder-bar') {
-                      manage.className = 'mb-folder-chip manage';
-                    } else {
-                      manage.style.cssText = 'flex:0 0 auto;padding:6px 11px;border-radius:999px;border:1px solid var(--b1);background:var(--s2);color:var(--mu);font-size:11px;white-space:nowrap;cursor:pointer;';
-                    }
-                    el.appendChild(manage);
-                  }
-                  renderInto(document.getElementById('wr2FolderFilterBar'));
-                  renderInto(document.getElementById('mb-room-folder-bar'));
+                    el.style.display = 'none';
+                  });
                 }
                 function wr2RenderInlineFolderAssign(room) {
                   const desktop = document.getElementById('wr2RoomFolderInline');
                   const mobile = document.getElementById('mb-room-folder-inline');
                   [desktop, mobile].forEach(function(host) {
                     if (!host) return;
-                    if (!room) { host.innerHTML = ''; return; }
-                    const current = _normalizeFolderName(room.group);
-                    const folders = wr2GetFolderRecords();
-                    const select = document.createElement('select');
-                    select.style.cssText = host.id === 'mb-room-folder-inline'
-                      ? 'height:24px;padding:0 8px;background:rgba(79,142,255,.08);border:1px solid rgba(79,142,255,.22);border-radius:999px;color:#8ab2ff;font-size:10px;outline:none;max-width:132px;'
-                      : 'height:26px;padding:0 9px;background:rgba(79,142,255,.08);border:1px solid rgba(79,142,255,.22);border-radius:999px;color:#8ab2ff;font-size:11px;outline:none;max-width:150px;';
-                    select.innerHTML = '<option value="">폴더 없음</option>' + folders.map(function(folder) {
-                      return '<option value="' + esc(folder.name) + '"' + (current === folder.name ? ' selected' : '') + '>' + esc(folder.name) + '</option>';
-                    }).join('') + '<option value="__new__">＋ 새 폴더</option>';
-                    select.onchange = function(e) {
-                      e.stopPropagation();
-                      if (this.value === '__new__') {
-                        const next = prompt('새 폴더 이름', '');
-                        const clean = _normalizeFolderName(next);
-                        if (!clean) {
-                          this.value = current || '';
-                          return;
-                        }
-                        window.wr2CreateFolder(clean);
-                        window._wr2SetRoomGroup(room.id, clean);
-                        return;
-                      }
-                      window._wr2SetRoomGroup(room.id, this.value || '');
-                    };
                     host.innerHTML = '';
-                    host.appendChild(select);
                   });
                 }
                 window._wr2OpenFolder = function(name, opts) {
-                  wr2SetGroupFilter(name || 'all', { activateFirst: !!(opts && opts.activateFirst) });
+                  wr2SetGroupFilter('all', { activateFirst: !!(opts && opts.activateFirst) });
                 };
                 // 모든 태그 목록 반환
                 function wr2GetAllTags() {
@@ -6989,14 +6808,11 @@ window.wr2SummaryCancelEdit = function() {
                 // 그룹 셀렉트 드롭다운 갱신
                 function wr2RenderGroupSelect() {
                   const sel = document.getElementById('wr2GroupFilter');
-                  const groups = wr2GetGroups();
-                  const cur = wr2State.groupFilter || 'all';
                   if (sel) {
-                    sel.innerHTML = '<option value="all">🗂 전체 폴더</option>' +
-                      (cur === '__ungrouped__' ? '<option value="__ungrouped__" selected>🗃 미분류</option>' : '') +
-                      groups.map(g => `<option value="${g}"${cur === g ? ' selected' : ''}>${g}</option>`).join('');
+                    sel.innerHTML = '<option value="all">분류: 태그 사용</option>';
+                    sel.value = 'all';
                   }
-                  if (!wr2State.groupFilter) wr2State.groupFilter = 'all';
+                  wr2State.groupFilter = 'all';
                   if (typeof window.mbRoomRefreshFolderToggle === 'function') {
                     try { window.mbRoomRefreshFolderToggle(); } catch (e) {}
                   }
@@ -7007,33 +6823,17 @@ window.wr2SummaryCancelEdit = function() {
                   wr2RenderInlineFolderAssign(getActiveRoom());
                 }
                 window.wr2ToggleFolderOnly = function() {
-                  wr2State.folderViewMode = (wr2State.folderViewMode === 'folders') ? 'rooms' : 'folders';
-                  wr2RenderGroupSelect();
-                  wr2Render();
+                  wr2State.groupFilter = 'all';
+                  if (typeof window.mbRoomRefreshSel === 'function') window.mbRoomRefreshSel();
                 };
                 window.wr2RenderGroupSelect = wr2RenderGroupSelect;
                 window.wr2SetGroupFilter = wr2SetGroupFilter;
                 window.wr2CreateFolder = function(name) {
-                  const clean = _normalizeFolderName(name);
-                  if (!clean) return false;
-                  const exists = (wr2State.folders || []).find(function(folder) { return folder && folder.name === clean; });
-                  if (exists) return true;
-                  wr2State.folders.push({ id: genId('fld'), name: clean, createdAt: Date.now(), updatedAt: Date.now() });
-                  saveFolders();
-                  wr2RenderGroupSelect();
-                  return true;
+                  if (typeof showToast === 'function') showToast('폴더 기능은 제거되었습니다. 태그를 사용해 분류하세요.', 'warn');
+                  return false;
                 };
                 window.wr2CreateFolderPrompt = function(defaultName) {
-                  const input = prompt('새 폴더 이름', defaultName || '');
-                  if (input === null) return;
-                  const clean = _normalizeFolderName(input);
-                  if (!clean) { showToast('폴더 이름을 입력하세요', 'warn'); return; }
-                  if (window.wr2CreateFolder(clean)) {
-                    wr2State.groupFilter = clean;
-                    wr2RenderGroupSelect();
-                    wr2Render();
-                    showToast('폴더를 만들었습니다', 'ok');
-                  }
+                  if (typeof showToast === 'function') showToast('폴더 기능은 제거되었습니다. 태그를 사용해 분류하세요.', 'warn');
                 };
                 window.wr2RenameFolder = function(oldName, newName) {
                   const ok = wr2RenameFolder(oldName, newName);
@@ -7059,19 +6859,6 @@ window.wr2SummaryCancelEdit = function() {
                       <span onclick="wr2RemoveTag('${room.id}','${t}')" style="cursor:pointer;opacity:.6;font-size:11px;line-height:1;" title="삭제">×</span>
                     </span>`
                   ).join('');
-                  // 그룹 표시
-                  const row = document.getElementById('wr2TagRow');
-                  if (row) {
-                    const grpSpan = row.querySelector('.wr2-group-chip');
-                    if (grpSpan) grpSpan.remove();
-                    if (room.group) {
-                      const gs = document.createElement('span');
-                      gs.className = 'wr2-group-chip';
-                      gs.style.cssText = 'display:inline-flex;align-items:center;gap:3px;padding:2px 9px;background:rgba(79,142,255,.15);border:1px solid rgba(79,142,255,.35);border-radius:10px;font-size:10px;color:#4f8eff;';
-                      gs.innerHTML = `🗂 ${room.group}`;
-                      chips.insertBefore(gs, chips.firstChild);
-                    }
-                  }
                 }
 
                 // renderList에 그룹 필터 적용
@@ -7083,7 +6870,7 @@ window.wr2SummaryCancelEdit = function() {
                 }
                 // renderList를 확장 버전으로 교체
                 // (직접 wr2State.groupFilter 를 renderList 안에서 체크)
-                wr2State.groupFilter = wr2State.groupFilter || 'all';
+                wr2State.groupFilter = 'all';
 
                 // 작업룸 태그 추가/삭제
                 window.wr2AddTag = function(id, tag) {
@@ -7147,53 +6934,8 @@ window.wr2SummaryCancelEdit = function() {
 
                 // 현재 작업룸 그룹 편집 팝업
                 window.wr2OpenRoomGroupEditor = function() {
-                  const room = getActiveRoom();
-                  if (!room) return;
-                  const groups = wr2GetGroups();
-                  const existing = document.getElementById('wr2RoomGroupModal');
-                  if (existing) { existing.remove(); return; }
-                  const modal = document.createElement('div');
-                  modal.id = 'wr2RoomGroupModal';
-                  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;';
-                  const currentLabel = room.group || '폴더 없음';
-                  modal.innerHTML = `
-                    <div style="background:var(--s1);border:1px solid var(--b1);border-radius:16px;padding:20px;width:360px;max-width:92vw;max-height:82vh;overflow-y:auto;">
-                      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
-                        <span style="font-size:14px;font-weight:800;color:var(--tx);">🗂 폴더 지정</span>
-                        <button onclick="document.getElementById('wr2RoomGroupModal').remove()" style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:16px;">✕</button>
-                      </div>
-                      <div style="padding:11px 12px;border:1px solid var(--b1);border-radius:10px;background:rgba(79,142,255,.06);margin-bottom:12px;">
-                        <div style="font-size:10px;color:var(--mu);margin-bottom:4px;">현재 위치</div>
-                        <div style="font-size:13px;font-weight:700;color:var(--tx);">${currentLabel}</div>
-                      </div>
-                      <div style="display:flex;gap:6px;margin-bottom:12px;">
-                        <input id="wr2RoomGroupInput" placeholder="새 폴더를 만들거나 기존 폴더명을 입력"
-                          style="flex:1;padding:8px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;color:var(--tx);font-size:12px;outline:none;"
-                          value="${room.group || ''}"
-                          onkeydown="if(event.key==='Enter'){window._wr2SetRoomGroup('${room.id}',this.value.trim());document.getElementById('wr2RoomGroupModal').remove();}">
-                        <button onclick="window._wr2SetRoomGroup('${room.id}',document.getElementById('wr2RoomGroupInput').value.trim());document.getElementById('wr2RoomGroupModal').remove();"
-                          style="padding:8px 12px;background:var(--ac);color:#111;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">지정</button>
-                      </div>
-                      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-                        <div style="font-size:11px;font-weight:700;color:var(--mu);">폴더 목록</div>
-                        <button onclick="window._wr2SetRoomGroup('${room.id}','');document.getElementById('wr2RoomGroupModal').remove();" style="padding:5px 10px;background:rgba(255,68,68,.1);border:1px solid #ff4444;border-radius:7px;font-size:11px;color:#ff6370;cursor:pointer;">폴더 해제</button>
-                      </div>
-                      <div style="display:flex;flex-direction:column;gap:6px;">
-                        ${groups.length ? groups.map(g => `
-                          <div style="display:flex;align-items:center;gap:6px;padding:8px 10px;background:${room.group===g?'rgba(79,142,255,.12)':'var(--s2)'};border:1px solid ${room.group===g?'rgba(79,142,255,.38)':'var(--b1)'};border-radius:10px;">
-                            <div style="flex:1;min-width:0;">
-                              <div style="font-size:12px;font-weight:700;color:${room.group===g?'#4f8eff':'var(--tx)'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${g}</div>
-                              <div style="font-size:10px;color:var(--di);">클릭하면 바로 이 폴더로 이동합니다</div>
-                            </div>
-                            <button onclick="window._wr2SetRoomGroup('${room.id}','${g}');document.getElementById('wr2RoomGroupModal').remove();" style="padding:5px 9px;background:rgba(0,212,170,.12);border:1px solid rgba(0,212,170,.3);border-radius:7px;color:#00d4aa;font-size:11px;cursor:pointer;">지정</button>
-                            <button onclick="window._wr2OpenFolder('${g}',{activateFirst:true});document.getElementById('wr2RoomGroupModal').remove();" style="padding:5px 9px;background:rgba(79,142,255,.12);border:1px solid rgba(79,142,255,.3);border-radius:7px;color:#4f8eff;font-size:11px;cursor:pointer;">열기</button>
-                            <button onclick="window.wr2PrepareNewRoomInFolder('${g}');document.getElementById('wr2RoomGroupModal').remove();" style="padding:5px 8px;background:none;border:1px solid rgba(255,255,255,.12);border-radius:7px;color:var(--mu);cursor:pointer;font-size:11px;" title="이 폴더에 새 작업룸">＋</button>
-                          </div>`).join('') : '<div style="font-size:11px;color:var(--di);text-align:center;padding:16px 0;">아직 만든 폴더가 없습니다</div>'}
-                      </div>
-                    </div>`;
-                  document.body.appendChild(modal);
-                  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
-                  setTimeout(() => { const inp = document.getElementById('wr2RoomGroupInput'); if (inp) inp.focus(); }, 50);
+                  if (typeof showToast === 'function') showToast('폴더 기능은 제거되었습니다. 태그로 분류하세요.', 'warn');
+                  if (typeof window.wr2OpenRoomTagEditor === 'function') window.wr2OpenRoomTagEditor();
                 };
                 window._wr2SetRoomGroup = function(id, group) {
                   const room = wr2State.rooms.find(r => r.id === id);
@@ -7206,47 +6948,8 @@ window.wr2SummaryCancelEdit = function() {
 
                 // 그룹 전체 관리 모달 (생성/이름변경/삭제)
                 window.wr2OpenGroupManager = function() {
-                  const existing = document.getElementById('wr2GroupManagerModal');
-                  if (existing) { existing.remove(); return; }
-                  const modal = document.createElement('div');
-                  modal.id = 'wr2GroupManagerModal';
-                  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;';
-                  function renderBody() {
-                    const gs = wr2GetGroups();
-                    modal.querySelector('#wr2GmList').innerHTML = gs.length
-                      ? gs.map(g => {
-                          const cnt = wr2State.rooms.filter(r => !r.deletedAt && r.group === g).length;
-                          return `<div style="display:flex;align-items:center;gap:8px;padding:9px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:10px;margin-bottom:6px;">
-                            <div style="flex:1;min-width:0;">
-                              <div style="font-size:12px;font-weight:700;color:var(--tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${g}</div>
-                              <div style="color:var(--di);font-size:10px;">작업룸 ${cnt}개</div>
-                            </div>
-                            <button onclick="window._wr2OpenFolder('${g}',{activateFirst:true});document.getElementById('wr2GroupManagerModal').remove();" style="padding:5px 9px;background:rgba(79,142,255,.12);border:1px solid rgba(79,142,255,.3);border-radius:7px;color:#4f8eff;font-size:11px;cursor:pointer;" title="이 폴더 보기">열기</button>
-                            <button onclick="window.wr2PrepareNewRoomInFolder('${g}');document.getElementById('wr2GroupManagerModal').remove();" style="padding:5px 9px;background:rgba(255,209,102,.08);border:1px solid rgba(255,209,102,.24);border-radius:7px;color:#ffd166;font-size:11px;cursor:pointer;" title="이 폴더에 새 작업룸">새 작업룸</button>
-                            <button onclick="(function(){const room=getActiveRoom();if(!room){showToast('먼저 작업룸을 선택하세요','warn');return;}window._wr2SetRoomGroup(room.id,'${g}');document.getElementById('wr2GroupManagerModal').remove();})();" style="padding:5px 9px;background:rgba(0,212,170,.12);border:1px solid rgba(0,212,170,.3);border-radius:7px;color:#00d4aa;font-size:11px;cursor:pointer;" title="현재 작업룸에 지정">지정</button>
-                            <button onclick="(function(){const n=prompt('폴더 이름 변경','${g}');if(n&&n.trim()&&n.trim()!=='${g}'){window.wr2RenameFolder('${g}',n.trim());document.getElementById('wr2GroupManagerModal').remove();window.wr2OpenGroupManager();}})();" style="padding:5px 8px;background:none;border:1px solid rgba(255,255,255,.12);border-radius:7px;color:var(--mu);cursor:pointer;font-size:11px;" title="이름 변경">✏️</button>
-                            <button onclick="(function(){if(!confirm('\"${g}\" 폴더를 삭제할까요?\\n(${cnt}개 작업룸의 폴더 지정이 해제됩니다)'))return;window.wr2DeleteFolder('${g}');document.getElementById('wr2GroupManagerModal').remove();window.wr2OpenGroupManager();})();" style="padding:5px 8px;background:none;border:1px solid rgba(255,255,255,.12);border-radius:7px;color:var(--mu);cursor:pointer;font-size:11px;" title="삭제" onmouseover="this.style.color='#ff6370'" onmouseout="this.style.color='var(--mu)'">🗑</button>
-                          </div>`;}).join('')
-                      : '<div style="font-size:11px;color:var(--di);text-align:center;padding:16px;">폴더가 없습니다<br><span style="font-size:10px;">아래에서 빈 폴더를 먼저 만들어 둘 수 있어요</span></div>';
-                  }
-                  modal.innerHTML = `
-                    <div style="background:var(--s1);border:1px solid var(--b1);border-radius:16px;padding:20px;width:360px;max-width:92vw;max-height:82vh;overflow-y:auto;">
-                      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
-                        <span style="font-size:14px;font-weight:800;color:var(--tx);">🗂 폴더 관리</span>
-                        <button onclick="document.getElementById('wr2GroupManagerModal').remove()" style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:16px;">✕</button>
-                      </div>
-                      <div style="display:flex;gap:6px;margin-bottom:12px;">
-                        <input id="wr2FolderCreateInput" placeholder="새 폴더 이름"
-                          style="flex:1;padding:8px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;color:var(--tx);font-size:12px;outline:none;"
-                          onkeydown="if(event.key==='Enter'){const v=this.value.trim();if(v){window.wr2CreateFolder(v);document.getElementById('wr2GroupManagerModal').remove();window.wr2OpenGroupManager();}}">
-                        <button onclick="const inp=document.getElementById('wr2FolderCreateInput');const v=(inp&&inp.value||'').trim();if(v){window.wr2CreateFolder(v);document.getElementById('wr2GroupManagerModal').remove();window.wr2OpenGroupManager();}"
-                          style="padding:8px 12px;background:var(--ac);color:#111;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">생성</button>
-                      </div>
-                      <div id="wr2GmList"></div>
-                    </div>`;
-                  document.body.appendChild(modal);
-                  renderBody();
-                  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+                  if (typeof showToast === 'function') showToast('폴더 기능은 제거되었습니다. 태그 관리만 사용하세요.', 'warn');
+                  if (typeof window.wr2OpenTagManager === 'function') window.wr2OpenTagManager();
                 };
 
                 // 전체 태그 관리 모달
@@ -10462,7 +10165,8 @@ window.wr2SummaryCancelEdit = function() {
           async function _uploadSnapThumb(dataUrl, snapName, parentSnapName) {
             if (!dataUrl) return null;
             try {
-              const { url, path } = await window._sbUploadImage(dataUrl, 'snapshots');
+              // 작업이미지로 통합: 스냅샷 썸네일도 captures로 저장
+              const { url, path } = await window._sbUploadImage(dataUrl, 'captures');
               return { src: url, storagePath: path, savedAt: now, snapName, parentSnapName: parentSnapName || null };
             } catch(e) {
               console.warn('[swSaveToRoom] thumb upload fail — 썸네일 저장 생략', e);
@@ -10550,7 +10254,8 @@ window.wr2SummaryCancelEdit = function() {
       async function _uploadThumb(dataUrl, snapName, parentSnapName) {
         if (!dataUrl) return;
         try {
-          const { url, path } = await window._sbUploadImage(dataUrl, 'snapshots');
+          // 작업이미지로 통합: 스냅샷 썸네일도 captures로 저장
+          const { url, path } = await window._sbUploadImage(dataUrl, 'captures');
           room.captureImages.push({ src: url, storagePath: path, savedAt: now, snapName, parentSnapName: parentSnapName || null });
         } catch(e) {
           // 업로드 실패 시 썸네일 저장 생략 (base64 DB 저장 금지)
@@ -28006,6 +27711,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
     // ── 새 노트 생성 ───────────────────────────────────
     window.ntCreate = function (type) {
+      // 요청사항: 노트탭은 기록 중심(텍스트/이미지/링크)만 남기고 타입/구조를 단순화
+      type = 'unified';
       const m = document.getElementById('ntTypeMenu');
       if (m) m.classList.remove('open');
       // 노트탭이 열려있지 않으면 강제 이동
@@ -28932,6 +28639,218 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const src = window._normalizeLocalAssetUrl ? window._normalizeLocalAssetUrl(att.url || att.data || '') : (att.url || att.data || '');
       if (!src) return;
       if (window._skOpenImageViewer) window._skOpenImageViewer([{ src: src, title: att.name || '첨부 이미지' }], 0, { title: '노트 첨부' });
+    };
+
+    // ── 노트탭 단순화 (텍스트/이미지/링크) ─────────────────────────────
+    // 기존 데이터 구조는 유지하되, UI/사용 흐름을 “기록” 중심으로 단순화한다.
+    function _ntEsc(s) {
+      return String(s || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+    function _ntFmtMmdd(ts) {
+      try {
+        const d = new Date(ts || Date.now());
+        return (d.getMonth() + 1) + '/' + String(d.getDate()).padStart(2, '0');
+      } catch (e) { return ''; }
+    }
+    function _ntEnsureLinks(note) {
+      if (!note) return [];
+      const set = new Set();
+      (Array.isArray(note.links) ? note.links : []).forEach(u => { if (u) set.add(String(u)); });
+      if (note.url) set.add(String(note.url));
+      (note.youtubeUrls || []).forEach(y => { if (y && y.url) set.add(String(y.url)); });
+      (note.articleUrls || []).forEach(a => { if (a && a.url) set.add(String(a.url)); });
+      const out = Array.from(set).map(s => String(s || '').trim()).filter(Boolean);
+      note.links = out;
+      return out;
+    }
+    function _ntIsImg(att) {
+      const type = String(att && att.type || '').toLowerCase();
+      const name = String(att && att.name || '').toLowerCase();
+      return type.startsWith('image/') || /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(name);
+    }
+    function _ntScheduleSave(noteId) {
+      clearTimeout(ntAutoSaveTimer);
+      ntAutoSaveTimer = setTimeout(function() { ntSave(noteId); }, 250);
+    }
+
+    window.ntRender = function () {
+      const q = (document.getElementById('ntSearchInput')?.value || '').toLowerCase().trim();
+      const el = document.getElementById('ntList');
+      if (!el) return;
+      let list = (ntNotes || []).filter(n => n && !n.deletedAt).slice();
+      list.sort((a, b) => (new Date(b.updatedAt || b.createdAt || 0).getTime()) - (new Date(a.updatedAt || a.createdAt || 0).getTime()));
+      if (q) {
+        list = list.filter(n => {
+          const blob = [(n.title || ''), (n.body || ''), (n.excerpt || ''), (n.comment || '')].join(' ').toLowerCase();
+          return blob.indexOf(q) >= 0;
+        });
+      }
+      if (!list.length) {
+        el.innerHTML = '<div style="text-align:center;color:var(--di);font-size:12px;padding:30px 10px;line-height:1.8;">노트가 없습니다</div>';
+        return;
+      }
+      el.innerHTML = list.map(n => {
+        const dt = _ntFmtMmdd(n.updatedAt || n.createdAt);
+        const preview = String(n.body || n.excerpt || '').replace(/\n/g, ' ').trim().slice(0, 48);
+        const isOn = n.id === ntActiveId;
+        const linkCnt = _ntEnsureLinks(n).length;
+        const attCnt = (n.attachments || []).length;
+        return '<div class="nt-item' + (isOn ? ' on' : '') + '" onclick="ntOpen(\'' + _ntEsc(n.id) + '\')">'
+          + '<div style="display:flex;align-items:center;gap:8px;">'
+          +   '<div style="min-width:0;flex:1;">'
+          +     '<div style="font-size:13px;font-weight:700;color:var(--tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + _ntEsc(n.title || '노트') + '</div>'
+          +     '<div style="font-size:11px;color:var(--di);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;">' + _ntEsc(preview || ' ') + '</div>'
+          +   '</div>'
+          +   '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;">'
+          +     '<div style="font-size:10px;color:var(--di);">' + _ntEsc(dt) + '</div>'
+          +     '<div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end;">'
+          +       (linkCnt ? '<span style="font-size:10px;padding:1px 6px;border-radius:999px;background:rgba(79,142,255,.12);border:1px solid rgba(79,142,255,.22);color:#8ab8ff;">🔗 ' + linkCnt + '</span>' : '')
+          +       (attCnt ? '<span style="font-size:10px;padding:1px 6px;border-radius:999px;background:rgba(0,212,170,.10);border:1px solid rgba(0,212,170,.18);color:#63e6be;">🖼 ' + attCnt + '</span>' : '')
+          +     '</div>'
+          +   '</div>'
+          + '</div>'
+          + '</div>';
+      }).join('');
+    };
+
+    window.ntOpen = function (id) {
+      ntActiveId = id;
+      const note = (ntNotes || []).find(n => n && n.id === id);
+      if (!note) return;
+      window.ntRender && window.ntRender();
+      const empty = document.getElementById('ntEmpty');
+      const main = document.getElementById('ntEditorMain');
+      if (empty) empty.style.display = 'none';
+      if (!main) return;
+      main.style.display = 'flex';
+
+      const links = _ntEnsureLinks(note);
+      const atts = Array.isArray(note.attachments) ? note.attachments : (note.attachments = []);
+
+      const imgAtts = atts.filter(_ntIsImg);
+      const fileAtts = atts.filter(a => !_ntIsImg(a));
+
+      main.innerHTML =
+        '<div style="display:flex;flex-direction:column;gap:10px;flex:1;min-height:0;overflow:hidden;">'
+        + '<div style="display:flex;align-items:center;gap:8px;">'
+        +   '<input id="ntSimpleTitle" value="' + _ntEsc(note.title || '') + '" placeholder="제목" style="flex:1;min-width:0;padding:10px 12px;border-radius:10px;border:1px solid var(--b1);background:var(--s2);color:var(--tx);font-size:13px;font-weight:700;outline:none;">'
+        +   '<label style="padding:8px 10px;border-radius:10px;border:1px solid rgba(0,212,170,.22);background:rgba(0,212,170,.08);color:#63e6be;font-size:12px;cursor:pointer;white-space:nowrap;">🖼 첨부'
+        +     '<input id="ntSimpleAttInput" type="file" multiple accept="image/*" style="display:none;">'
+        +   '</label>'
+        +   '<button id="ntSimpleAddLinkBtn" type="button" style="padding:8px 10px;border-radius:10px;border:1px solid rgba(79,142,255,.25);background:rgba(79,142,255,.10);color:#8ab8ff;font-size:12px;cursor:pointer;white-space:nowrap;">🔗 링크</button>'
+        +   '<button id="ntSimpleDelBtn" type="button" style="padding:8px 10px;border-radius:10px;border:1px solid rgba(255,99,112,.35);background:rgba(255,99,112,.10);color:#ff8a8a;font-size:12px;cursor:pointer;white-space:nowrap;">🗑</button>'
+        + '</div>'
+        + '<div id="ntSimpleLinkRow" style="display:none;gap:8px;align-items:center;">'
+        +   '<input id="ntSimpleLinkInput" placeholder="https://..." style="flex:1;min-width:0;padding:9px 12px;border-radius:10px;border:1px solid var(--b1);background:var(--s2);color:var(--tx);font-size:12px;outline:none;">'
+        +   '<button id="ntSimpleLinkAdd" type="button" style="padding:8px 12px;border-radius:10px;border:none;background:var(--ac);color:#111;font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap;">추가</button>'
+        + '</div>'
+        + '<div id="ntSimpleLinks" style="display:flex;flex-wrap:wrap;gap:6px;">'
+        +   (links.length ? links.map(function(u, i){
+              const safe = _ntEsc(u);
+              return '<div class="nt-simple-link-chip" data-idx="' + i + '" data-url="' + safe + '" '
+                + 'style="display:inline-flex;align-items:center;gap:6px;max-width:100%;padding:5px 9px;border-radius:999px;border:1px solid rgba(79,142,255,.22);background:rgba(79,142,255,.10);color:#8ab8ff;font-size:11px;">'
+                + '<span class="nt-simple-link-text" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:260px;cursor:pointer;">' + safe + '</span>'
+                + '<button type="button" class="nt-simple-link-del" style="border:none;background:none;color:rgba(255,255,255,.5);cursor:pointer;font-size:12px;line-height:1;">✕</button>'
+                + '</div>';
+            }).join('') : '<div style="font-size:11px;color:var(--di);padding:2px 0;">링크 없음</div>')
+        + '</div>'
+        + '<textarea id="ntSimpleBody" placeholder="기록을 남기세요…" style="flex:1;min-height:180px;resize:none;padding:12px;border-radius:12px;border:1px solid var(--b1);background:var(--s2);color:var(--tx);font-size:13px;line-height:1.6;outline:none;overflow:auto;">' + _ntEsc(note.body || '') + '</textarea>'
+        + '<div>'
+        +   '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">'
+        +     '<div style="font-size:12px;font-weight:800;color:var(--tx);">첨부 이미지</div>'
+        +     (imgAtts.length ? '<div style="font-size:11px;color:var(--di);">' + imgAtts.length + '개</div>' : '')
+        +   '</div>'
+        +   (imgAtts.length
+            ? ('<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;">'
+              + imgAtts.map(function(att){
+                  const idx = atts.indexOf(att);
+                  const src = _ntEsc((window._sbImgUrl ? window._sbImgUrl(att.url || att.data || '', 320) : (att.url || att.data || '')));
+                  return '<div style="position:relative;border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03);">'
+                    + '<img src="' + src + '" style="width:100%;height:84px;object-fit:cover;display:block;cursor:pointer;" onclick="ntUtPreviewAtt(\'' + _ntEsc(note.id) + '\',' + idx + ')">'
+                    + '<button type="button" style="position:absolute;top:6px;right:6px;width:26px;height:26px;border:none;border-radius:999px;background:rgba(0,0,0,.55);color:#fff;cursor:pointer;" onclick="ntUtRemoveAtt(\'' + _ntEsc(note.id) + '\',' + idx + ')">✕</button>'
+                    + '</div>';
+                }).join('')
+              + '</div>')
+            : '<div style="font-size:11px;color:var(--di);padding:6px 0;">이미지 첨부가 없습니다</div>') 
+        + '</div>'
+        + (fileAtts.length
+          ? ('<div style="margin-top:10px;">'
+            + '<div style="font-size:12px;font-weight:800;color:var(--tx);margin-bottom:6px;">기타 파일</div>'
+            + '<div style="display:flex;flex-direction:column;gap:6px;">'
+            + fileAtts.map(function(att){
+                const idx = atts.indexOf(att);
+                return '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:12px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03);">'
+                  + '<span style="font-size:13px;">📎</span>'
+                  + '<a href="' + _ntEsc(att.url || att.data || '#') + '" target="_blank" rel="noopener noreferrer" style="flex:1;min-width:0;color:var(--tx);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + _ntEsc(att.name || '파일') + '</a>'
+                  + '<button type="button" style="border:none;background:none;color:rgba(255,255,255,.55);cursor:pointer;font-size:14px;" onclick="ntUtRemoveAtt(\'' + _ntEsc(note.id) + '\',' + idx + ')">✕</button>'
+                  + '</div>';
+              }).join('')
+            + '</div></div>')
+          : '')
+        + '</div>';
+
+      const titleEl = document.getElementById('ntSimpleTitle');
+      const bodyEl = document.getElementById('ntSimpleBody');
+      const attInput = document.getElementById('ntSimpleAttInput');
+      const addLinkBtn = document.getElementById('ntSimpleAddLinkBtn');
+      const linkRow = document.getElementById('ntSimpleLinkRow');
+      const linkInput = document.getElementById('ntSimpleLinkInput');
+      const linkAdd = document.getElementById('ntSimpleLinkAdd');
+      const delBtn = document.getElementById('ntSimpleDelBtn');
+      const linkWrap = document.getElementById('ntSimpleLinks');
+
+      if (linkWrap) {
+        linkWrap.querySelectorAll('.nt-simple-link-chip').forEach(function(chip) {
+          chip.addEventListener('click', function(e) {
+            const url = chip.getAttribute('data-url') || '';
+            if (!url) return;
+            if (e && e.target && (e.target.classList && e.target.classList.contains('nt-simple-link-del'))) return;
+            try { window.open(url, '_blank', 'noopener'); } catch (err) {}
+          });
+        });
+        linkWrap.querySelectorAll('.nt-simple-link-del').forEach(function(btn) {
+          btn.addEventListener('click', function(e) {
+            e && e.stopPropagation && e.stopPropagation();
+            const chip = btn.closest('.nt-simple-link-chip');
+            if (!chip) return;
+            const idx = parseInt(chip.getAttribute('data-idx') || '-1', 10);
+            if (idx < 0) return;
+            _ntEnsureLinks(note);
+            note.links.splice(idx, 1);
+            note.updatedAt = new Date().toISOString();
+            ntSave(note.id);
+            ntOpen(note.id);
+          });
+        });
+      }
+
+      if (titleEl) titleEl.oninput = function() { note.title = titleEl.value; note.updatedAt = new Date().toISOString(); _ntScheduleSave(note.id); window.ntRender && window.ntRender(); };
+      if (bodyEl) bodyEl.oninput = function() { note.body = bodyEl.value; note.updatedAt = new Date().toISOString(); _ntScheduleSave(note.id); };
+      if (attInput) attInput.onchange = function() { window.ntUtAddAtt && window.ntUtAddAtt(note.id, attInput); };
+      if (addLinkBtn) addLinkBtn.onclick = function() {
+        if (!linkRow || !linkInput) return;
+        const open = linkRow.style.display !== 'none';
+        linkRow.style.display = open ? 'none' : 'flex';
+        if (!open) setTimeout(function(){ try { linkInput.focus(); } catch(e) {} }, 30);
+      };
+      function _addLink() {
+        if (!linkInput) return;
+        const v = String(linkInput.value || '').trim();
+        if (!v) return;
+        _ntEnsureLinks(note);
+        note.links.push(v);
+        note.updatedAt = new Date().toISOString();
+        ntSave(note.id);
+        ntOpen(note.id);
+      }
+      if (linkAdd) linkAdd.onclick = _addLink;
+      if (linkInput) linkInput.onkeydown = function(e) { if (e.key === 'Enter') { e.preventDefault(); _addLink(); } };
+      if (delBtn) delBtn.onclick = function() { window.ntDeleteConfirm ? window.ntDeleteConfirm(note.id) : window.ntDelete && window.ntDelete(note.id); };
     };
 
     // ── 뉴스 clip JSON 자동 로드 (news_clipper.py 연동) ──
@@ -40023,6 +39942,10 @@ window.addEventListener('DOMContentLoaded', () => {
     var raw = plParseAmountText(v);
     return raw ? Number(raw).toLocaleString('ko-KR') : '';
   }
+  function plDisplayMan(v) {
+    var disp = plDisplayMoney(v);
+    return disp ? (disp + '만') : '';
+  }
   function plNormalizeDateInput(v) {
     var raw = String(v || '').trim();
     if (!raw) return '';
@@ -40114,7 +40037,7 @@ window.addEventListener('DOMContentLoaded', () => {
   }
   function numCell(v, color) {
     if (!v) return '<span style="color:#444;">—</span>';
-    return '<span style="font-family:monospace;font-size:12px;'+(color?'color:'+color+';':'')+'">' + plDisplayMoney(v) + '</span>';
+    return '<span style="font-family:monospace;font-size:12px;'+(color?'color:'+color+';':'')+'">' + plDisplayMan(v) + '</span>';
   }
 
   function plEditCellHtml(id, field, rawValue, displayValue, opts) {
@@ -40404,12 +40327,34 @@ window.addEventListener('DOMContentLoaded', () => {
       + list.map(function(row){ var v=row[0], lb=row[1]; return '<option value="'+v+'"'+(String(v)===String(value)?' selected':'')+'>'+lb+'</option>'; }).join('')
       + '</select>';
   }
+  function plQuickRoomControlHtml(it, roomOptionsHtml) {
+    var itemIdJs = String(it.id || '').replace(/\\/g, '\\\\').replace(/'/g, '\\\'');
+    var roomIdJs = String(it.roomId || '').replace(/\\/g, '\\\\').replace(/'/g, '\\\'');
+    var selectHtml = '<select onchange="event.stopPropagation();plQuickRoomAction(\'' + itemIdJs + '\',this.value);this.value=\'\';" onclick="event.stopPropagation()" '
+      + 'style="max-width:168px;width:100%;padding:4px 8px;border:1px dashed rgba(17,157,237,.45);border-radius:6px;background:rgba(17,157,237,.08);color:#8ab8ff;font-size:11px;cursor:pointer;">'
+      + '<option value="">＋ 연결</option>'
+      + '<option value="__new__">＋ 새 작업룸</option>'
+      + (roomOptionsHtml || '')
+      + '</select>';
+    if (!it.roomId) return selectHtml;
+    return '<div style="display:flex;align-items:center;gap:6px;min-width:0;">'
+      + '<button onclick="plGoToWorkroom(\'' + roomIdJs + '\')" style="font-size:11px;padding:2px 8px;border:1px solid var(--b1);border-radius:5px;background:transparent;color:var(--fg2);cursor:pointer;white-space:nowrap;" title="작업룸으로 이동">🗂 이동</button>'
+      + '<div style="min-width:0;flex:1;">' + selectHtml + '</div>'
+      + '</div>';
+  }
   // ── 메인 렌더 ──────────────────────────
   window.renderPropertyList = function() {
     _plWrapWorkroomSync();
     var items = plLoad();
     renderAlerts(items.filter(function(it){ return !it.archived; }));
     var filtered = plVisibleItems(items);
+    var rooms = getWrRooms();
+    var roomById = {};
+    (rooms || []).forEach(function(r){ if (r && r.id) roomById[String(r.id)] = r; });
+    var roomOptionsHtml = (rooms || []).map(function(r){
+      var title = ((r.title || r.name || '(이름없음)').substring(0, 24));
+      return '<option value="' + plEscHtml(r.id) + '">' + plEscHtml(title) + '</option>';
+    }).join('');
     var tbody = document.getElementById('pl-tbody');
     if (!tbody) return;
     if (!filtered.length) {
@@ -40422,11 +40367,14 @@ window.addEventListener('DOMContentLoaded', () => {
           : d<=7 ? '<div style="font-size:10px;color:#f5a623;font-weight:700;">D-'+d+'</div>'
           : '<div style="font-size:10px;color:var(--fg3);">D-'+d+'</div>';
         var rowHl = it.archived ? 'background:rgba(120,120,120,.05);opacity:.72;' : ((d!==null && d<0 && plSimpleStatusKey(it.status)!=='closed') ? 'background:rgba(255,80,80,.04);' : '');
-        var wrLink = '';
-        if (it.roomId) {
-          var rooms = getWrRooms();
-          var room = rooms.find(function(r){return r.id===it.roomId;});
-          if (room) wrLink = '<button onclick="plGoToWorkroom(\''+it.roomId+'\')" style="font-size:11px;padding:2px 8px;border:1px solid var(--b1);border-radius:5px;background:transparent;color:var(--fg2);cursor:pointer;white-space:nowrap;" title="작업룸으로 이동">🗂 '+((room.title||'').substring(0,8)||'작업룸')+'</button>';
+        var room = it.roomId ? roomById[String(it.roomId)] : null;
+        var wrLink = plQuickRoomControlHtml(it, roomOptionsHtml);
+        if (room) {
+          var roomTitle = ((room.title || room.name || '작업룸').substring(0, 12));
+          wrLink = '<div style="display:flex;flex-direction:column;gap:4px;min-width:0;">'
+            + '<div style="font-size:10px;color:var(--di);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + plEscHtml(roomTitle) + '</div>'
+            + plQuickRoomControlHtml(it, roomOptionsHtml)
+            + '</div>';
         }
         var resultTag = '';
         if ((it.status === 'closed' || it.status==='archived') && it.result && it.result.won) resultTag = '<div style="font-size:10px;color:#4caf87;margin-top:2px;">낙 '+it.result.won+'</div>';
@@ -40439,19 +40387,19 @@ window.addEventListener('DOMContentLoaded', () => {
           + '<td style="padding:8px 10px;font-size:12px;color:var(--fg2);white-space:nowrap;">'+(it.casenum||'—')+'</td>'
           + '<td style="padding:8px 10px;font-size:12px;color:var(--fg2);white-space:nowrap;">'+(it.region||'—')+'</td>'
           + '<td style="padding:8px 10px;font-size:12px;color:var(--fg2);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+(it.feature||'')+'">'+(it.feature||'—')+'</td>'
-          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'appraisal',plDisplayMoney(it.appraisal||''),plDisplayMoney(it.appraisal||''),{type:'text',align:'right',minw:'78px',placeholder:'만원'})+'</td>'
-          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'minprice',plDisplayMoney(it.minprice||''),plDisplayMoney(it.minprice||''),{type:'text',align:'right',minw:'78px',placeholder:'만원'})+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'appraisal',plDisplayMoney(it.appraisal||''),plDisplayMan(it.appraisal||''),{type:'text',align:'right',minw:'78px',placeholder:'만원'})+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'minprice',plDisplayMoney(it.minprice||''),plDisplayMan(it.minprice||''),{type:'text',align:'right',minw:'78px',placeholder:'만원'})+'</td>'
           + '<td style="padding:8px 10px;text-align:center;font-size:12px;">'+(it.round||'—')+'</td>'
           + '<td style="padding:8px 10px;white-space:nowrap;">'
           +   '<div style="font-size:13px;">'+plEditCellHtml(it.id,'biddate',it.biddate||'',fmtDate(it.biddate),{type:'text',align:'left',minw:'76px',placeholder:'YYYY-MM-DD',spanStyle:'color:var(--tx);border-bottom-color:rgba(255,255,255,.10);'})+'</div>'
           +   dTag
           + '</td>'
-          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'estimate',plDisplayMoney(it.estimate||''),plDisplayMoney(it.estimate||''),{type:'text',align:'right',minw:'78px',placeholder:'만원',spanStyle:'color:#8ab8ff;'})+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'estimate',plDisplayMoney(it.estimate||''),plDisplayMan(it.estimate||''),{type:'text',align:'right',minw:'78px',placeholder:'만원',spanStyle:'color:#8ab8ff;'})+'</td>'
           + '<td style="padding:8px 10px;text-align:right;">'+numCell(it.result&&it.result.won?it.result.won:'','#4caf87')+'</td>'
           + '<td style="padding:8px 10px;">'+siteDots(it.site)+'</td>'
-          + '<td style="padding:8px 10px;">'+(wrLink || ('<button type="button" data-id="'+plEscHtml(it.id)+'" onclick="event.stopPropagation();plOpenLinkRoom(this.dataset.id)" style="font-size:11px;padding:2px 8px;border:1px dashed rgba(17,157,237,.45);border-radius:6px;background:rgba(17,157,237,.08);color:#8ab8ff;cursor:pointer;white-space:nowrap;">＋ 연결</button>'))+'</td>'
-          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'deposit',plDisplayMoney(it.deposit||''),plDisplayMoney(it.deposit||''),{type:'text',align:'right',minw:'70px',placeholder:'만원'})+'</td>'
-          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'monthly',plDisplayMoney(it.monthly||''),plDisplayMoney(it.monthly||''),{type:'text',align:'right',minw:'70px',placeholder:'만원'})+'</td>'
+          + '<td style="padding:8px 10px;">'+wrLink+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'deposit',plDisplayMoney(it.deposit||''),plDisplayMan(it.deposit||''),{type:'text',align:'right',minw:'70px',placeholder:'만원'})+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'monthly',plDisplayMoney(it.monthly||''),plDisplayMan(it.monthly||''),{type:'text',align:'right',minw:'70px',placeholder:'만원'})+'</td>'
           + '<td style="padding:8px 10px;">'+plEditMemoCellHtml(it.id,it.memo||'')+'</td>'
           + '<td style="padding:8px 6px;text-align:center;"><button onclick="plOpenEdit(\''+it.id+'\')" style="background:none;border:none;color:var(--fg3);cursor:pointer;font-size:15px;padding:2px 4px;">···</button></td>'
           + '</tr>';
@@ -40470,9 +40418,17 @@ window.addEventListener('DOMContentLoaded', () => {
     _plEditAutoFocus = 'pl-f-roomid';
     window.plOpenEdit(String(itemId));
   };
-  window.plCreateWorkroomFromCurrentItem = function() {
-    var itemId = (document.getElementById('pl-edit-id') || {}).value || '';
-    if (!itemId) { if (typeof showToast === 'function') showToast('물건을 먼저 선택하세요', 'warn'); return; }
+  window.plQuickRoomAction = function(itemId, action) {
+    var val = String(action || '');
+    if (!val) return;
+    if (val === '__new__') {
+      if (typeof window.plCreateWorkroomForItem === 'function') window.plCreateWorkroomForItem(itemId);
+      return;
+    }
+    window.plAssignRoomToItem(String(itemId), val);
+    if (typeof showToast === 'function') showToast('작업룸 연결 완료', 'ok');
+  };
+  window.plCreateWorkroomForItem = function(itemId) {
     var it = plLoad().find(function(x){ return String(x.id) === String(itemId); });
     if (!it) { if (typeof showToast === 'function') showToast('물건을 찾지 못했습니다', 'warn'); return; }
     if (typeof window.showNewModal !== 'function') { if (typeof showToast === 'function') showToast('작업룸 기능이 준비되지 않았습니다', 'warn'); return; }
@@ -40482,8 +40438,13 @@ window.addEventListener('DOMContentLoaded', () => {
       var t = document.getElementById('wr2NewTitle'); if (t && !t.value) t.value = (it.addr || '새 작업룸').trim();
       var a = document.getElementById('wr2NewAddress'); if (a && !a.value) a.value = (it.addr || '').trim();
     } catch (e) {
-      console.warn('[plCreateWorkroomFromCurrentItem]', e);
+      console.warn('[plCreateWorkroomForItem]', e);
     }
+  };
+  window.plCreateWorkroomFromCurrentItem = function() {
+    var itemId = (document.getElementById('pl-edit-id') || {}).value || '';
+    if (!itemId) { if (typeof showToast === 'function') showToast('물건을 먼저 선택하세요', 'warn'); return; }
+    window.plCreateWorkroomForItem(String(itemId));
   };
   window.plAssignRoomToItem = function(itemId, roomId) {
     var items = plLoad();
