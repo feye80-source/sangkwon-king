@@ -40402,7 +40402,7 @@ window.addEventListener('DOMContentLoaded', () => {
           caseLink = '<a href="' + caseUrl + '" target="_blank" rel="noopener" '
             + 'onclick="event.stopPropagation()" title="법원경매 물건 상세 보기" '
             + 'style="color:#8ab8ff;text-decoration:none;font-size:11px;font-family:monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;" '
-            + 'onmouseenter="this.style.textDecoration='underline'" onmouseleave="this.style.textDecoration='none'">'
+            + 'onmouseenter="this.style.textDecoration=\'underline\'" onmouseleave="this.style.textDecoration=\'none\'">'
             + plEscHtml(it.casenum) + ' ↗</a>';
         } else {
           caseLink = plEditCellHtml(it.id,'casenum',it.casenum||'',it.casenum||'',{type:'text',align:'left',minw:'80px',placeholder:'사건번호',empty:'—',spanStyle:'color:var(--fg2);font-size:11px;font-family:monospace;'});
