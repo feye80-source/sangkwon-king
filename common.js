@@ -31726,24 +31726,23 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           </div>`;
             }
 
+            const colColors6 = ['rgba(148,163,184,.6)','rgba(96,165,250,.6)','rgba(251,191,36,.6)','rgba(249,115,22,.6)','rgba(74,222,128,.6)','rgba(244,114,182,.6)'];
             const card = document.createElement('div');
-            card.style.cssText = `background:var(--s2);border-radius:9px;border:1px solid ${linkedRoom ? 'rgba(17,157,237,.25)' : 'var(--b1)'};padding:10px 12px;transition:all .15s;position:relative;`;
-            card.onmouseenter = () => { card.style.borderColor = 'rgba(79,142,255,0.5)'; card.style.background = 'rgba(79,142,255,.04)'; };
-            card.onmouseleave = () => { card.style.borderColor = linkedRoom ? 'rgba(17,157,237,.25)' : 'var(--b1)'; card.style.background = 'var(--s2)'; };
-
-            // 왼쪽 컬럼 색상 바
-            const colColors = ['rgba(148,163,184,.5)','rgba(96,165,250,.5)','rgba(251,191,36,.5)','rgba(249,115,22,.5)','rgba(74,222,128,.5)'];
+            card.style.cssText = `background:var(--s2);border-radius:9px;border:1px solid ${linkedRoom ? 'rgba(17,157,237,.22)' : 'var(--b1)'};padding:10px 12px;transition:all .15s;position:relative;cursor:pointer;`;
+            card.onclick = () => openPopup(item.id);
+            card.onmouseenter = () => { card.style.borderColor = 'rgba(79,142,255,0.45)'; card.style.background = 'rgba(79,142,255,.04)'; };
+            card.onmouseleave = () => { card.style.borderColor = linkedRoom ? 'rgba(17,157,237,.22)' : 'var(--b1)'; card.style.background = 'var(--s2)'; };
             card.innerHTML = `
-          <div style="position:absolute;left:0;top:8px;bottom:8px;width:3px;background:${colColors[ci]};border-radius:0 2px 2px 0;"></div>
-          <div style="padding-left:6px;">
-            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:4px;margin-bottom:4px;">
-              <div style="font-size:12px;font-weight:600;color:var(--tx);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;" onclick="openPopup('${item.id}')">${esc(item.title || d.소재지 || item.id)}</div>
+          <div style="position:absolute;left:0;top:8px;bottom:8px;width:3px;background:${colColors6[ci] || colColors6[0]};border-radius:0 2px 2px 0;"></div>
+          <div style="padding-left:8px;">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:4px;margin-bottom:3px;">
+              <div style="font-size:12px;font-weight:600;color:var(--tx);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(item.title || d.소재지 || '')}">${esc(item.title || d.소재지 || item.id)}</div>
               <div style="display:flex;align-items:center;gap:3px;flex-shrink:0;">
                 ${ddayHtml}
                 <div style="position:relative;display:inline-block;">
-                  <button onclick="event.stopPropagation();this.nextElementSibling.style.display=this.nextElementSibling.style.display==='block'?'none':'block';" title="단계 이동" style="padding:2px 7px;background:none;border:1px solid var(--b1);border-radius:4px;color:var(--di);font-size:10px;cursor:pointer;">↻</button>
+                  <button onclick="event.stopPropagation();this.nextElementSibling.style.display=this.nextElementSibling.style.display==='block'?'none':'block';" title="단계 이동" style="padding:2px 6px;background:none;border:1px solid var(--b1);border-radius:4px;color:var(--di);font-size:10px;cursor:pointer;line-height:1.4;">↻</button>
                   <div onclick="event.stopPropagation();" style="display:none;position:absolute;right:0;top:100%;margin-top:2px;background:#1a1f2e;border:1px solid #2a3045;border-radius:8px;padding:4px;z-index:999;min-width:110px;box-shadow:0 4px 16px rgba(0,0,0,.5);">
-                    ${['interest','review','field','bid','won','pass'].map(k=>{
+                    ${['interest','review','field','bid','won','sell','pass'].map(k=>{
                       const info=UNIFIED_STATUS[k];
                       return `<div onclick="event.stopPropagation();_wbSetStatus('${item.id}','${k}');this.closest('div[style*=position]').style.display='none';" style="padding:5px 8px;border-radius:5px;font-size:11px;cursor:pointer;color:${info.color};white-space:nowrap;" onmouseenter="this.style.background='rgba(255,255,255,.06)'" onmouseleave="this.style.background=''">${info.label}</div>`;
                     }).join('')}
@@ -31752,20 +31751,18 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
               </div>
             </div>
             <div style="font-size:10px;color:var(--mu);margin-bottom:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(String(d.소재지 || ''))}</div>
-            <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
-              <span style="font-size:12px;font-weight:700;color:${ia ? 'var(--auction-c)' : 'var(--listing-c)'};">${priceStr}</span>
-              ${roomStatusHtml}
-              ${noteCnt ? `<span style="font-size:10px;color:var(--ac);">📓${noteCnt}</span>` : ''}
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;">
+              <span style="font-size:12px;font-weight:700;color:${ia ? 'var(--auction-c,#ff9944)' : 'var(--listing-c,#4f8eff)'};">${priceStr}</span>
+              <div style="display:flex;align-items:center;gap:4px;">
+                ${roomStatusHtml}
+                ${noteCnt ? `<span style="font-size:10px;color:var(--ac);">📓${noteCnt}</span>` : ''}
+                ${linkedRoom
+                  ? `<button onclick="event.stopPropagation();_wbGoRoom('${linkedRoom.id}')" title="작업룸 열기" style="padding:2px 7px;background:rgba(17,157,237,.12);border:1px solid rgba(17,157,237,.35);border-radius:5px;color:#119ded;font-size:10px;font-weight:600;cursor:pointer;">🗂</button>`
+                  : `<button onclick="event.stopPropagation();_wbCreateAndLink('${item.id}')" title="작업룸 만들기" style="padding:2px 7px;background:rgba(17,157,237,.06);border:1px dashed rgba(17,157,237,.35);border-radius:5px;color:#119ded;font-size:10px;cursor:pointer;">＋룸</button>`
+                }
+              </div>
             </div>
             ${progressHtml}
-            <div style="display:flex;gap:4px;margin-top:8px;border-top:1px solid var(--b1);padding-top:7px;">
-              ${linkedRoom
-                ? `<button onclick="_wbGoRoom('${linkedRoom.id}')" style="flex:1;padding:4px 3px;background:rgba(17,157,237,.12);border:1px solid rgba(17,157,237,.35);border-radius:5px;color:#119ded;font-size:10px;font-weight:600;cursor:pointer;">🗂 ${esc((linkedRoom.title || linkedRoom.name || '').substring(0, 10))}</button>`
-                : `<button onclick="_wbCreateAndLink('${item.id}')" style="flex:1;padding:4px 3px;background:rgba(17,157,237,.08);border:1px dashed rgba(17,157,237,.4);border-radius:5px;color:#119ded;font-size:10px;cursor:pointer;" title="작업룸을 새로 만들고 바로 연결">＋ 작업룸 만들기</button>`
-              }
-              <button onclick="_wbNote('${item.id}')" style="padding:4px 7px;background:var(--s1);border:1px solid var(--b1);border-radius:5px;color:var(--mu);font-size:10px;cursor:pointer;">📓</button>
-              <button onclick="openPopup('${item.id}')" style="padding:4px 7px;background:var(--s1);border:1px solid var(--b1);border-radius:5px;color:var(--di);font-size:10px;cursor:pointer;">상세</button>
-            </div>
           </div>
         `;
             cols[ci].appendChild(card);
@@ -31784,7 +31781,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         });
         roomOnlyItems.forEach(room => {
           const st = (typeof UNIFIED_STATUS !== 'undefined' ? UNIFIED_STATUS : {})[status] || { color: '#60a5fa' };
-          const colColors = ['rgba(148,163,184,.5)','rgba(96,165,250,.5)','rgba(251,191,36,.5)','rgba(249,115,22,.5)','rgba(74,222,128,.5)'];
+          const colColors6b = ['rgba(148,163,184,.5)','rgba(96,165,250,.5)','rgba(251,191,36,.5)','rgba(249,115,22,.5)','rgba(74,222,128,.5)','rgba(244,114,182,.5)'];
           const card = document.createElement('div');
           card.style.cssText = `background:var(--s2);border-radius:9px;border:1px solid rgba(17,157,237,.25);padding:10px 12px;transition:all .15s;position:relative;cursor:pointer;`;
           card.onmouseenter = () => { card.style.borderColor = 'rgba(17,157,237,.5)'; card.style.background = 'rgba(17,157,237,.04)'; };
@@ -33030,9 +33027,9 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       out.입찰마감 = _onbidNormalizeDateTime(_onbidPickFirst(out.입찰마감, findByLabels(['입찰마감일시', '입찰마감'])));
       out.개찰일시 = _onbidNormalizeDateTime(_onbidPickFirst(out.개찰일시, findByLabels(['개찰일시', '개찰결과일시'])));
       out.매각일 = _onbidNormalizeDateTime(_onbidPickFirst(out.매각일, findByLabels(['매각일', '매각결정일시']), out.입찰마감, out.개찰일시));
-      out.개시결정일 = _onbidNormalizeDateTime(_onbidPickFirst(out.개시결정일, findByLabels(['개시결정일']), out.입찰시작));
-      out.배당종기 = _onbidNormalizeDateTime(_onbidPickFirst(out.배당종기, findByLabels(['배당종기', '배당종기일']), out.입찰마감, out.입찰시작));
-      out.배당요구종기 = _onbidNormalizeDateTime(_onbidPickFirst(out.배당요구종기, findByLabels(['배당요구종기', '배당요구종기일']), out.입찰마감, out.입찰시작));
+      out.개시결정일 = _onbidNormalizeDateTime(_onbidPickFirst(out.개시결정일, findByLabels(['개시결정일'])));
+      out.배당종기 = _onbidNormalizeDateTime(_onbidPickFirst(out.배당종기, findByLabels(['배당종기', '배당종기일'])));
+      out.배당요구종기 = _onbidNormalizeDateTime(_onbidPickFirst(out.배당요구종기, findByLabels(['배당요구종기', '배당요구종기일'])));
       if (!out.배당요구종기 && out.배당종기) out.배당요구종기 = out.배당종기;
       if (!out.배당종기 && out.배당요구종기) out.배당종기 = out.배당요구종기;
       out.말소기준권리 = _onbidPickFirst(out.말소기준권리, findByLabels(['말소기준권리', '말소기준']));

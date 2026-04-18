@@ -4906,6 +4906,74 @@
       background: rgba(245, 158, 11, .10);
     }
 
+    .ctx-map-links {
+      display: flex;
+      gap: 6px;
+      padding: 7px 12px 8px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+      margin-bottom: 3px;
+    }
+
+    .ctx-map-link {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 5px 10px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, .10);
+      background: rgba(255, 255, 255, .05);
+      color: #e8ecf4;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: 'Noto Sans KR', sans-serif;
+      white-space: nowrap;
+      flex: 1;
+      justify-content: center;
+      transition: background .12s, transform .1s;
+    }
+
+    .ctx-map-link:hover {
+      background: rgba(255, 255, 255, .10);
+      transform: translateY(-1px);
+    }
+
+    .ctx-map-icon {
+      font-size: 11px;
+      font-weight: 900;
+      line-height: 1;
+    }
+
+    .ctx-map-naver {
+      color: #4ade80;
+      border-color: rgba(74, 222, 128, .35);
+      background: rgba(74, 222, 128, .08);
+    }
+
+    .ctx-map-naver .ctx-map-icon {
+      color: #4ade80;
+    }
+
+    .ctx-map-land {
+      color: #60a5fa;
+      border-color: rgba(96, 165, 250, .35);
+      background: rgba(96, 165, 250, .08);
+    }
+
+    .ctx-map-land .ctx-map-icon {
+      color: #60a5fa;
+    }
+
+    .ctx-map-kakao {
+      color: #fbbf24;
+      border-color: rgba(251, 191, 36, .35);
+      background: rgba(251, 191, 36, .08);
+    }
+
+    .ctx-map-kakao .ctx-map-icon {
+      color: #fbbf24;
+    }
+
     .ctx-divider {
       height: 1px;
       background: rgba(255, 255, 255, 0.07);
@@ -9603,17 +9671,20 @@
                 background: rgba(79, 142, 255, .08);
               }
 
-              #ipage8 .wr2-room-item-content {
-                flex: 1;
-                min-width: 0;
-              }
-
 	              #ipage8 .wr2-room-item-actions {
-	                display: flex;
+	                display: none;
 	                gap: 4px;
-	                opacity: 1;
 	                flex-shrink: 0;
 	                transition: opacity .15s;
+	              }
+	              #ipage8 .wr2-room-item:hover .wr2-room-item-actions,
+	              #ipage8 .wr2-room-item.active .wr2-room-item-actions {
+	                display: flex;
+	              }
+	              #ipage8 .wr2-room-item-content {
+	                flex: 1;
+	                min-width: 0;
+	                overflow: hidden;
 	              }
 
 	              #ipage8 .wr2-room-act-btn {
