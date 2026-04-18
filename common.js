@@ -1911,7 +1911,8 @@
       } catch (e) {
         console.warn('[SB] savePlItems error', e);
         _markKvDirty('pl_items_v3');
-        window._sbSyncStatus('⚠️ 물건리스트 동기화 재시도 중', false);
+        // 로그인 안 된 경우 경고 토스트 표시 안 함 (일반 오프라인 사용 방해 방지)
+        if (e && e.message !== 'no session') window._sbSyncStatus('⚠️ 물건리스트 동기화 재시도 중', false);
         // 일시 오류(네트워크/타임아웃) 대비 자동 재시도
         try {
           const retryPayload = _sbGetCachedArray('pl_items_v3');
@@ -27692,10 +27693,11 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
     // 타입별 아이콘/배지
     const NT_TYPE = {
-      note: { icon: '📝', label: '노트', badge: 'nt-badge-note' },
-      youtube: { icon: '🎬', label: '유튜브', badge: 'nt-badge-youtube' },
-      article: { icon: '📰', label: '기사/웹', badge: 'nt-badge-article' },
-      unified: { icon: '📝', label: '노트', badge: 'nt-badge-note' },
+      note:     { icon: '📝', label: '노트',    badge: 'nt-badge-note',    type: 'note' },
+      youtube:  { icon: '🎬', label: '유튜브',  badge: 'nt-badge-youtube', type: 'youtube' },
+      article:  { icon: '📰', label: '기사/웹', badge: 'nt-badge-article', type: 'article' },
+      report:   { icon: '📊', label: '리포트',  badge: 'nt-badge-report',  type: 'report' },
+      unified:  { icon: '📝', label: '노트',    badge: 'nt-badge-note',    type: 'note' },
     };
 
     // ── 타입메뉴 토글 ──────────────────────────────────
@@ -27819,21 +27821,29 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           badges += `<span class="nt-domain-badge">${NT_DOMAIN_LABELS[n.domain]}</span>`;
         }
 
-        return `<div class="nt-card${n.id === ntActiveId ? ' active' : ''}" data-ntid="${n.id}">
-      <div style="display:flex;align-items:center;gap:5px;margin-bottom:3px;">
-        <span style="font-size:12px;cursor:pointer;" onclick="ntOpen('${n.id}')">${t.icon}</span>
-        <span class="nt-card-title" style="flex:1;cursor:pointer;" onclick="ntOpen('${n.id}')">${esc(n.title || '제목 없음')}</span>
-        <span style="font-size:10px;color:var(--di);flex-shrink:0;margin-right:4px;">${dt}</span>
-        <div class="nt-card-actions" onclick="event.stopPropagation()">
-          <button class="nt-act-btn" title="위로" onclick="ntMoveNote('${n.id}',-1)">▲</button>
-          <button class="nt-act-btn" title="아래로" onclick="ntMoveNote('${n.id}',1)">▼</button>
-          <button class="nt-act-btn" title="작업룸으로 이동" onclick="ntMoveToRoom('${n.id}')">📁</button>
-          <button class="nt-act-btn" title="이름 변경" onclick="ntRenameNote('${n.id}')">✏️</button>
-          <button class="nt-act-btn nt-act-del" title="삭제" onclick="ntDeleteConfirm('${n.id}')">✕</button>
+        const badgeClass = t.badge || 'nt-badge-note';
+        return `<div class="nt-card${n.id === ntActiveId ? ' active' : ''}" data-ntid="${n.id}" data-type="${t.type || 'note'}" onclick="ntOpen('${n.id}')">
+      <div class="nt-card-inner">
+        <div class="nt-card-header">
+          <div style="display:flex;align-items:center;gap:5px;flex:1;min-width:0;">
+            <span style="font-size:13px;flex-shrink:0;">${t.icon}</span>
+            <span class="nt-card-title">${esc(n.title || '제목 없음')}</span>
+          </div>
+          <div class="nt-card-actions" onclick="event.stopPropagation()">
+            <button class="nt-act-btn" title="위로" onclick="ntMoveNote('${n.id}',-1)">▲</button>
+            <button class="nt-act-btn" title="아래로" onclick="ntMoveNote('${n.id}',1)">▼</button>
+            <button class="nt-act-btn" title="작업룸으로 이동" onclick="ntMoveToRoom('${n.id}')">📁</button>
+            <button class="nt-act-btn" title="이름 변경" onclick="ntRenameNote('${n.id}')">✏️</button>
+            <button class="nt-act-btn nt-act-del" title="삭제" onclick="ntDeleteConfirm('${n.id}')">✕</button>
+          </div>
+        </div>
+        ${preview ? `<div class="nt-card-preview">${esc(preview)}</div>` : ''}
+        <div class="nt-card-footer">
+          <span class="nt-badge ${badgeClass}">${t.label || '노트'}</span>
+          ${badges}
+          <span class="nt-card-date">${dt}</span>
         </div>
       </div>
-      ${badges ? `<div style="display:flex;gap:3px;flex-wrap:wrap;margin-bottom:3px;" onclick="ntOpen('${n.id}')">${badges}</div>` : ''}
-      <div class="nt-card-preview" onclick="ntOpen('${n.id}')">${esc(preview)}</div>
     </div>`;
       }).join('');
     };
@@ -39870,6 +39880,7 @@ window.addEventListener('DOMContentLoaded', () => {
       estimate: it.estimate || '',
       deposit: it.deposit || '',
       monthly: it.monthly || '',
+      bidders: it.bidders || '',
       site: String(it.site || '0'),
       memo: it.memo || '',
       result: it.result || null,
@@ -40378,34 +40389,57 @@ window.addEventListener('DOMContentLoaded', () => {
         }
         var resultTag = '';
         if ((it.status === 'closed' || it.status==='archived') && it.result && it.result.won) resultTag = '<div style="font-size:10px;color:#4caf87;margin-top:2px;">낙 '+it.result.won+'</div>';
-        return '<tr style="'+rowHl+'border-bottom:1px solid var(--b1);">'
-          + '<td style="padding:8px 8px;text-align:center;"><input type="checkbox" '+(plSelectedMap[it.id]?'checked':'')+' onclick="event.stopPropagation();plToggleOne(\''+it.id+'\',this.checked)"></td>'
-          + '<td style="padding:8px 10px;">'+statusCell(it)+'</td>'
-          + '<td style="padding:8px 10px;font-size:12px;color:var(--fg2);white-space:nowrap;">'+(it.type||'경매')+'</td>'
-          + '<td style="padding:8px 10px;text-align:center;">'+intentBadge(it.intent)+'</td>'
-          + '<td style="padding:8px 10px;max-width:160px;"><div style="font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+(it.addr||'')+'">'+(it.addr||'—')+'</div>'+resultTag+'</td>'
-          + '<td style="padding:8px 10px;font-size:12px;color:var(--fg2);white-space:nowrap;">'+(it.casenum||'—')+'</td>'
-          + '<td style="padding:8px 10px;font-size:12px;color:var(--fg2);white-space:nowrap;">'+(it.region||'—')+'</td>'
-          + '<td style="padding:8px 10px;font-size:12px;color:var(--fg2);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+(it.feature||'')+'">'+(it.feature||'—')+'</td>'
-          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'appraisal',plDisplayMoney(it.appraisal||''),plDisplayMan(it.appraisal||''),{type:'text',align:'right',minw:'78px',placeholder:'만원'})+'</td>'
-          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'minprice',plDisplayMoney(it.minprice||''),plDisplayMan(it.minprice||''),{type:'text',align:'right',minw:'78px',placeholder:'만원'})+'</td>'
-          + '<td style="padding:8px 10px;text-align:center;font-size:12px;">'+(it.round||'—')+'</td>'
-          + '<td style="padding:8px 10px;white-space:nowrap;">'
-          +   '<div style="font-size:13px;">'+plEditCellHtml(it.id,'biddate',it.biddate||'',fmtDate(it.biddate),{type:'text',align:'left',minw:'76px',placeholder:'YYYY-MM-DD',spanStyle:'color:var(--tx);border-bottom-color:rgba(255,255,255,.10);'})+'</div>'
+        // ★ 사건번호 → 물건 원본 링크 생성
+        var caseLink = '';
+        if (it.casenum) {
+          var casenumClean = String(it.casenum).replace(/\s/g, '');
+          var caseUrl = 'https://www.courtauction.go.kr/RetrieveRealEstateDetailInqAuct.laf?jiwonNm=&saCaseNumber=' + encodeURIComponent(casenumClean);
+          if (it.type && (it.type.indexOf('온비드') >= 0 || it.type.indexOf('공매') >= 0)) {
+            caseUrl = 'https://www.onbid.co.kr/op/cta/cltf/selectCollateralDetailView.do?keyword=' + encodeURIComponent(casenumClean);
+          } else if (it.linkedSavedId && String(it.linkedSavedId).indexOf('onbid') >= 0) {
+            caseUrl = 'https://www.onbid.co.kr/op/cta/cltf/selectCollateralDetailView.do?keyword=' + encodeURIComponent(casenumClean);
+          }
+          caseLink = '<a href="' + caseUrl + '" target="_blank" rel="noopener" '
+            + 'onclick="event.stopPropagation()" title="법원경매 물건 상세 보기" '
+            + 'style="color:#8ab8ff;text-decoration:none;font-size:11px;font-family:monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;" '
+            + 'onmouseenter="this.style.textDecoration='underline'" onmouseleave="this.style.textDecoration='none'">'
+            + plEscHtml(it.casenum) + ' ↗</a>';
+        } else {
+          caseLink = plEditCellHtml(it.id,'casenum',it.casenum||'',it.casenum||'',{type:'text',align:'left',minw:'80px',placeholder:'사건번호',empty:'—',spanStyle:'color:var(--fg2);font-size:11px;font-family:monospace;'});
+        }
+        return '<tr style="'+rowHl+'border-bottom:1px solid var(--b1);cursor:pointer;" onclick="plOpenEdit(\''+it.id+'\')">'
+          + '<td style="padding:8px 8px;text-align:center;" onclick="event.stopPropagation()"><input type="checkbox" '+(plSelectedMap[it.id]?'checked':'')+' onclick="event.stopPropagation();plToggleOne(\''+it.id+'\',this.checked)"></td>'
+          + '<td style="padding:6px 8px;" onclick="event.stopPropagation()">'+statusCell(it)+'</td>'
+          + '<td style="padding:6px 8px;" onclick="event.stopPropagation()">'+plSelectCell(it.id,'type',it.type||'경매',[['경매','경매'],['일반','일반'],['온비드','온비드'],['공매','공매'],['NPL','NPL']],{minw:'48px'})+'</td>'
+          + '<td style="padding:6px 6px;text-align:center;" onclick="event.stopPropagation()">'+plSelectCell(it.id,'intent',it.intent||'',[['','—'],['상','⬆상'],['중','➡중'],['하','⬇하']],{minw:'38px'})+'</td>'
+          + '<td style="padding:6px 10px;overflow:hidden;"><div style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg);" title="'+(it.addr||'')+'">'
+          +   plEditCellHtml(it.id,'addr',it.addr||'',it.addr||'',{type:'text',align:'left',minw:'120px',placeholder:'물건명/주소',empty:'—',spanStyle:'font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;'})
+          +   resultTag+'</div></td>'
+          + '<td style="padding:6px 8px;overflow:hidden;" onclick="event.stopPropagation()">'+caseLink+'</td>'
+          + '<td style="padding:6px 8px;overflow:hidden;">'+plEditCellHtml(it.id,'region',it.region||'',it.region||'',{type:'text',align:'left',minw:'60px',placeholder:'지역',empty:'—',spanStyle:'font-size:11px;color:var(--fg2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;'})+'</td>'
+          + '<td style="padding:6px 8px;overflow:hidden;">'+plEditCellHtml(it.id,'feature',it.feature||'',it.feature||'',{type:'text',align:'left',minw:'80px',placeholder:'특징메모',empty:'—',spanStyle:'font-size:11px;color:var(--fg2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;'})+'</td>'
+          + '<td style="padding:6px 8px;text-align:right;">'+plEditCellHtml(it.id,'appraisal',plDisplayMoney(it.appraisal||''),plDisplayMan(it.appraisal||''),{type:'text',align:'right',minw:'68px',placeholder:'만원'})+'</td>'
+          + '<td style="padding:6px 8px;text-align:right;">'+plEditCellHtml(it.id,'minprice',plDisplayMoney(it.minprice||''),plDisplayMan(it.minprice||''),{type:'text',align:'right',minw:'68px',placeholder:'만원'})+'</td>'
+          + '<td style="padding:6px 6px;text-align:center;">'+plEditCellHtml(it.id,'round',it.round||'',it.round||'',{type:'text',align:'center',minw:'34px',placeholder:'회차',empty:'—',spanStyle:'font-size:11px;color:var(--fg2);'})+'</td>'
+          + '<td style="padding:6px 8px;white-space:nowrap;">'
+          +   '<div>'+plEditCellHtml(it.id,'biddate',it.biddate||'',fmtDate(it.biddate),{type:'date',align:'left',minw:'72px',placeholder:'YYYY-MM-DD',spanStyle:'color:var(--tx);font-size:12px;border-bottom-color:rgba(255,255,255,.10);'})+'</div>'
           +   dTag
           + '</td>'
-          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'estimate',plDisplayMoney(it.estimate||''),plDisplayMan(it.estimate||''),{type:'text',align:'right',minw:'78px',placeholder:'만원',spanStyle:'color:#8ab8ff;'})+'</td>'
-          + '<td style="padding:8px 10px;text-align:right;">'+numCell(it.result&&it.result.won?it.result.won:'','#4caf87')+'</td>'
-          + '<td style="padding:8px 10px;">'+siteDots(it.site)+'</td>'
-          + '<td style="padding:8px 10px;">'+wrLink+'</td>'
-          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'deposit',plDisplayMoney(it.deposit||''),plDisplayMan(it.deposit||''),{type:'text',align:'right',minw:'70px',placeholder:'만원'})+'</td>'
-          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'monthly',plDisplayMoney(it.monthly||''),plDisplayMan(it.monthly||''),{type:'text',align:'right',minw:'70px',placeholder:'만원'})+'</td>'
-          + '<td style="padding:8px 10px;">'+plEditMemoCellHtml(it.id,it.memo||'')+'</td>'
-          + '<td style="padding:8px 6px;text-align:center;"><button onclick="plOpenEdit(\''+it.id+'\')" style="background:none;border:none;color:var(--fg3);cursor:pointer;font-size:15px;padding:2px 4px;">···</button></td>'
+          + '<td style="padding:6px 6px;text-align:center;" onclick="event.stopPropagation()">'+plSelectCell(it.id,'site',String(it.site||'0'),[['0','없음'],['1','1회'],['2','2회'],['3','3회+']],{minw:'40px'})+'</td>'
+          + '<td style="padding:6px 8px;text-align:right;">'+numCell(it.result&&it.result.won?it.result.won:'','#4caf87')+'</td>'
+          + '<td style="padding:6px 8px;text-align:right;">'+plEditCellHtml(it.id,'bidders',it.bidders||'',it.bidders||'',{type:'text',align:'right',minw:'44px',placeholder:'인원',empty:'—',spanStyle:'font-size:11px;'})+'</td>'
+          + '<td style="padding:6px 8px;text-align:right;">'+plEditCellHtml(it.id,'deposit',plDisplayMoney(it.deposit||''),plDisplayMan(it.deposit||''),{type:'text',align:'right',minw:'56px',placeholder:'만원'})+'</td>'
+          + '<td style="padding:6px 6px;text-align:right;">'+plEditCellHtml(it.id,'monthly',plDisplayMoney(it.monthly||''),plDisplayMan(it.monthly||''),{type:'text',align:'right',minw:'50px',placeholder:'만원'})+'</td>'
+          + '<td style="padding:6px 8px;text-align:right;">'+plEditCellHtml(it.id,'estimate',plDisplayMoney(it.estimate||''),plDisplayMan(it.estimate||''),{type:'text',align:'right',minw:'68px',placeholder:'만원',spanStyle:'color:#8ab8ff;'})+'</td>'
+          + '<td style="padding:6px 8px;" onclick="event.stopPropagation()">'+wrLink+'</td>'
+          + '<td style="padding:6px 8px;">'+plEditMemoCellHtml(it.id,it.memo||'')+'</td>'
+          + '<td style="padding:6px 4px;text-align:center;" onclick="event.stopPropagation()"><button onclick="plOpenEdit(\''+it.id+'\')" style="background:none;border:none;color:var(--fg3);cursor:pointer;font-size:15px;padding:2px 4px;">···</button></td>'
           + '</tr>';
       }).join('');
     }
     plRenderBulkBar(filtered);
+    // ★ 컬럼 리사이즈 초기화 (렌더 후)
+    setTimeout(plInitColResize, 0);
     var cnt = document.getElementById('pl-count');
     if (cnt) {
       var activeItems = items.filter(function(i){return !i.archived;});
@@ -40520,7 +40554,7 @@ window.addEventListener('DOMContentLoaded', () => {
   // ── 모달: 추가 ──────────────────────────
   window.plOpenAdd = function() {
     document.getElementById('pl-modal-title').textContent = '물건 추가';
-    ['pl-f-addr','pl-f-case','pl-f-region','pl-f-feature','pl-f-appraisal','pl-f-minprice','pl-f-round','pl-f-biddate','pl-f-estimate','pl-f-deposit','pl-f-monthly','pl-f-memo'].forEach(function(id){
+    ['pl-f-addr','pl-f-case','pl-f-region','pl-f-feature','pl-f-appraisal','pl-f-minprice','pl-f-round','pl-f-biddate','pl-f-estimate','pl-f-deposit','pl-f-monthly','pl-f-bidders','pl-f-memo'].forEach(function(id){
       var el = document.getElementById(id); if (el) el.value = '';
     });
     var fs = document.getElementById('pl-f-status'); if (fs) fs.value = 'active';
@@ -40559,6 +40593,7 @@ window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('pl-f-estimate').value = plDisplayMoney(it.estimate||'');
     document.getElementById('pl-f-deposit').value = plDisplayMoney(it.deposit||'');
     document.getElementById('pl-f-monthly').value = plDisplayMoney(it.monthly||'');
+    var fb = document.getElementById('pl-f-bidders'); if(fb) fb.value = it.bidders||'';
     document.getElementById('pl-f-site').value = it.site||'0';
     document.getElementById('pl-f-memo').value = it.memo||'';
     var db = document.getElementById('pl-del-btn'); if (db) db.style.display = '';
@@ -40653,6 +40688,7 @@ window.addEventListener('DOMContentLoaded', () => {
       estimate:  plParseAmountText(document.getElementById('pl-f-estimate').value),
       deposit:   plParseAmountText(document.getElementById('pl-f-deposit').value),
       monthly:   plParseAmountText(document.getElementById('pl-f-monthly').value),
+      bidders:   (document.getElementById('pl-f-bidders') || {}).value || '',
       site:      document.getElementById('pl-f-site').value,
       roomId:    document.getElementById('pl-f-roomid').value,
       memo:      document.getElementById('pl-f-memo').value.trim(),
@@ -40869,3 +40905,61 @@ window.addEventListener('DOMContentLoaded', () => {
   }, 60000);
 
 })();
+
+/* ═══════════════════════════════════════════════════════════════
+   물건리스트 컬럼 리사이즈 (Excel 스타일)
+═══════════════════════════════════════════════════════════════ */
+(function() {
+  var _plColWidths = {};
+  try { _plColWidths = JSON.parse(localStorage.getItem('pl_col_widths') || '{}'); } catch(e) {}
+
+  window.plInitColResize = function() {
+    var table = document.getElementById('pl-table');
+    var colgroup = document.getElementById('pl-colgroup');
+    if (!table || !colgroup) return;
+    var cols = colgroup.querySelectorAll('col');
+    var handles = table.querySelectorAll('.pl-rzh');
+
+    // 저장된 너비 복원
+    Object.keys(_plColWidths).forEach(function(id) {
+      var col = document.getElementById(id);
+      if (col) col.style.width = _plColWidths[id] + 'px';
+    });
+
+    handles.forEach(function(handle) {
+      if (handle._plRzBound) return;
+      handle._plRzBound = true;
+      var th = handle.parentElement;
+      var colIdx = Array.from(th.parentElement.children).indexOf(th);
+      // colgroup col 인덱스 (체크박스 col 0 포함)
+      var targetCol = cols[colIdx];
+      if (!targetCol) return;
+      var colId = targetCol.id || ('plc_' + colIdx);
+
+      var startX, startW;
+      handle.addEventListener('mousedown', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        startX = e.clientX;
+        startW = th.offsetWidth;
+        handle.classList.add('dragging');
+
+        var onMove = function(e2) {
+          var dx = e2.clientX - startX;
+          var newW = Math.max(40, startW + dx);
+          targetCol.style.width = newW + 'px';
+        };
+        var onUp = function() {
+          handle.classList.remove('dragging');
+          _plColWidths[colId] = parseInt(targetCol.style.width) || startW;
+          try { localStorage.setItem('pl_col_widths', JSON.stringify(_plColWidths)); } catch(ex) {}
+          document.removeEventListener('mousemove', onMove);
+          document.removeEventListener('mouseup', onUp);
+        };
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+      });
+    });
+  };
+})();
+

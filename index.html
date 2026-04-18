@@ -4579,9 +4579,9 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
           <select id="pl-filter-status" onchange="renderPropertyList()"
             style="height:32px;padding:0 8px;border:1px solid var(--b1);border-radius:6px;background:var(--bg2);color:var(--fg);font-size:13px;">
             <option value="">전체</option>
-            <option value="active">활성</option>
-            <option value="changed">변경</option>
-            <option value="closed">종료</option>
+            <option value="active">🔵 활성</option>
+            <option value="changed">🟡 진행중</option>
+            <option value="closed">⚫ 종료</option>
           </select>
           <label style="display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 10px;border:1px solid var(--b1);border-radius:6px;background:var(--bg2);color:var(--fg2);font-size:12px;cursor:pointer;">
             <input id="pl-show-closed" type="checkbox" onchange="renderPropertyList()"> 종료 포함
@@ -4600,7 +4600,7 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
           <select id="pl-bulk-status" style="height:32px;padding:0 8px;border:1px solid var(--b1);border-radius:6px;background:var(--bg2);color:var(--fg);font-size:12px;">
             <option value="">상태 일괄 변경</option>
             <option value="active">활성</option>
-            <option value="changed">변경</option>
+            <option value="changed">진행중</option>
             <option value="closed">종료</option>
           </select>
           <button onclick="plBulkChangeStatus()" style="height:32px;padding:0 12px;border:1px solid var(--b1);border-radius:6px;background:var(--bg2);color:var(--fg);font-size:12px;cursor:pointer;">적용</button>
@@ -4609,30 +4609,54 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
         </div>
 
         <!-- 테이블 -->
-        <div style="border:1px solid var(--b1);border-radius:10px;overflow-x:auto;">
-          <table style="width:100%;min-width:1320px;border-collapse:collapse;font-size:13px;">
+        <div style="border:1px solid var(--b1);border-radius:10px;overflow-x:auto;" id="pl-table-wrap">
+          <table id="pl-table" style="width:100%;min-width:1400px;border-collapse:collapse;font-size:13px;table-layout:fixed;">
+            <colgroup id="pl-colgroup">
+              <col id="plc-chk" style="width:34px">
+              <col id="plc-st" style="width:72px">
+              <col id="plc-type" style="width:52px">
+              <col id="plc-intent" style="width:44px">
+              <col id="plc-addr" style="width:170px">
+              <col id="plc-case" style="width:128px">
+              <col id="plc-region" style="width:88px">
+              <col id="plc-feature" style="width:110px">
+              <col id="plc-appr" style="width:90px">
+              <col id="plc-minp" style="width:90px">
+              <col id="plc-round" style="width:44px">
+              <col id="plc-bid" style="width:82px">
+              <col id="plc-site" style="width:52px">
+              <col id="plc-won" style="width:80px">
+              <col id="plc-bidders" style="width:60px">
+              <col id="plc-dep" style="width:72px">
+              <col id="plc-mon" style="width:64px">
+              <col id="plc-est" style="width:84px">
+              <col id="plc-room" style="min-width:152px">
+              <col id="plc-memo" style="min-width:140px">
+              <col id="plc-act" style="width:32px">
+            </colgroup>
             <thead>
-              <tr style="background:var(--bg3);">
-                <th style="padding:9px 10px;text-align:center;border-bottom:1px solid var(--b1);width:34px;white-space:nowrap;"><input id="pl-check-all" type="checkbox" onclick="plToggleAllVisible(this.checked)"></th>
-                <th style="padding:9px 12px;text-align:left;font-size:12px;color:var(--fg2);font-weight:500;border-bottom:1px solid var(--b1);white-space:nowrap;">상태</th>
-                <th style="padding:9px 12px;text-align:left;font-size:12px;color:var(--fg2);font-weight:500;border-bottom:1px solid var(--b1);white-space:nowrap;">유형</th>
-                <th style="padding:9px 12px;text-align:left;font-size:12px;color:var(--fg2);font-weight:500;border-bottom:1px solid var(--b1);white-space:nowrap;">의향</th>
-                <th style="padding:9px 12px;text-align:left;font-size:12px;color:var(--fg2);font-weight:500;border-bottom:1px solid var(--b1);white-space:nowrap;">물건명</th>
-                <th style="padding:9px 12px;text-align:left;font-size:12px;color:var(--fg2);font-weight:500;border-bottom:1px solid var(--b1);white-space:nowrap;">사건번호</th>
-                <th style="padding:9px 12px;text-align:left;font-size:12px;color:var(--fg2);font-weight:500;border-bottom:1px solid var(--b1);white-space:nowrap;">지역</th>
-                <th style="padding:9px 12px;text-align:left;font-size:12px;color:var(--fg2);font-weight:500;border-bottom:1px solid var(--b1);white-space:nowrap;">특징</th>
-                <th style="padding:9px 12px;text-align:right;font-size:12px;color:var(--fg2);font-weight:500;border-bottom:1px solid var(--b1);white-space:nowrap;">감정가(만원)</th>
-                <th style="padding:9px 12px;text-align:right;font-size:12px;color:var(--fg2);font-weight:500;border-bottom:1px solid var(--b1);white-space:nowrap;">최저가(만원)</th>
-                <th style="padding:9px 12px;text-align:center;font-size:12px;color:var(--fg2);font-weight:500;border-bottom:1px solid var(--b1);white-space:nowrap;">회차</th>
-                <th style="padding:9px 12px;text-align:left;font-size:12px;color:var(--fg2);font-weight:500;border-bottom:1px solid var(--b1);white-space:nowrap;">입찰기일</th>
-                <th style="padding:9px 12px;text-align:right;font-size:12px;color:var(--fg2);font-weight:500;border-bottom:1px solid var(--b1);white-space:nowrap;">예상입찰가(만원)</th>
-                <th style="padding:9px 12px;text-align:right;font-size:12px;color:var(--fg2);font-weight:500;border-bottom:1px solid var(--b1);white-space:nowrap;">낙찰가(만원)</th>
-                <th style="padding:9px 12px;text-align:left;font-size:12px;color:var(--fg2);font-weight:500;border-bottom:1px solid var(--b1);white-space:nowrap;">임장</th>
-                <th style="padding:9px 12px;text-align:left;font-size:12px;color:var(--fg2);font-weight:500;border-bottom:1px solid var(--b1);white-space:nowrap;">작업룸</th>
-                <th style="padding:9px 12px;text-align:left;font-size:12px;color:var(--fg2);font-weight:500;border-bottom:1px solid var(--b1);white-space:nowrap;">보증금(만원)</th>
-                <th style="padding:9px 12px;text-align:left;font-size:12px;color:var(--fg2);font-weight:500;border-bottom:1px solid var(--b1);white-space:nowrap;">월세(만원)</th>
-                <th style="padding:9px 12px;text-align:left;font-size:12px;color:var(--fg2);font-weight:500;border-bottom:1px solid var(--b1);">메모</th>
-                <th style="border-bottom:1px solid var(--b1);width:32px;"></th>
+              <tr style="background:var(--bg3);user-select:none;" id="pl-thead-row">
+                <th class="pl-th" style="padding:8px 8px;text-align:center;border-bottom:1px solid var(--b1);"><input id="pl-check-all" type="checkbox" onclick="plToggleAllVisible(this.checked)"></th>
+                <th class="pl-th pl-rz" style="padding:8px 10px;text-align:left;font-size:11px;color:var(--fg2);font-weight:600;border-bottom:1px solid var(--b1);white-space:nowrap;position:relative;">상태<span class="pl-rzh"></span></th>
+                <th class="pl-th pl-rz" style="padding:8px 8px;text-align:left;font-size:11px;color:var(--fg2);font-weight:600;border-bottom:1px solid var(--b1);white-space:nowrap;position:relative;">유형<span class="pl-rzh"></span></th>
+                <th class="pl-th pl-rz" style="padding:8px 6px;text-align:center;font-size:11px;color:var(--fg2);font-weight:600;border-bottom:1px solid var(--b1);white-space:nowrap;position:relative;">의향<span class="pl-rzh"></span></th>
+                <th class="pl-th pl-rz" style="padding:8px 10px;text-align:left;font-size:11px;color:var(--fg2);font-weight:600;border-bottom:1px solid var(--b1);white-space:nowrap;position:relative;">물건명<span class="pl-rzh"></span></th>
+                <th class="pl-th pl-rz" style="padding:8px 10px;text-align:left;font-size:11px;color:var(--fg2);font-weight:600;border-bottom:1px solid var(--b1);white-space:nowrap;position:relative;">사건번호<span class="pl-rzh"></span></th>
+                <th class="pl-th pl-rz" style="padding:8px 10px;text-align:left;font-size:11px;color:var(--fg2);font-weight:600;border-bottom:1px solid var(--b1);white-space:nowrap;position:relative;">지역<span class="pl-rzh"></span></th>
+                <th class="pl-th pl-rz" style="padding:8px 10px;text-align:left;font-size:11px;color:var(--fg2);font-weight:600;border-bottom:1px solid var(--b1);white-space:nowrap;position:relative;">특징<span class="pl-rzh"></span></th>
+                <th class="pl-th pl-rz" style="padding:8px 10px;text-align:right;font-size:11px;color:var(--fg2);font-weight:600;border-bottom:1px solid var(--b1);white-space:nowrap;position:relative;">감정가(만)<span class="pl-rzh"></span></th>
+                <th class="pl-th pl-rz" style="padding:8px 10px;text-align:right;font-size:11px;color:var(--fg2);font-weight:600;border-bottom:1px solid var(--b1);white-space:nowrap;position:relative;">최저가(만)<span class="pl-rzh"></span></th>
+                <th class="pl-th pl-rz" style="padding:8px 6px;text-align:center;font-size:11px;color:var(--fg2);font-weight:600;border-bottom:1px solid var(--b1);white-space:nowrap;position:relative;">회차<span class="pl-rzh"></span></th>
+                <th class="pl-th pl-rz" style="padding:8px 10px;text-align:left;font-size:11px;color:var(--fg2);font-weight:600;border-bottom:1px solid var(--b1);white-space:nowrap;position:relative;">입찰기일<span class="pl-rzh"></span></th>
+                <th class="pl-th pl-rz" style="padding:8px 6px;text-align:center;font-size:11px;color:var(--fg2);font-weight:600;border-bottom:1px solid var(--b1);white-space:nowrap;position:relative;">임장<span class="pl-rzh"></span></th>
+                <th class="pl-th pl-rz" style="padding:8px 10px;text-align:right;font-size:11px;color:var(--fg2);font-weight:600;border-bottom:1px solid var(--b1);white-space:nowrap;position:relative;">낙찰가(만)<span class="pl-rzh"></span></th>
+                <th class="pl-th pl-rz" style="padding:8px 8px;text-align:right;font-size:11px;color:var(--fg2);font-weight:600;border-bottom:1px solid var(--b1);white-space:nowrap;position:relative;">입찰인수<span class="pl-rzh"></span></th>
+                <th class="pl-th pl-rz" style="padding:8px 10px;text-align:right;font-size:11px;color:var(--fg2);font-weight:600;border-bottom:1px solid var(--b1);white-space:nowrap;position:relative;">보증금(만)<span class="pl-rzh"></span></th>
+                <th class="pl-th pl-rz" style="padding:8px 8px;text-align:right;font-size:11px;color:var(--fg2);font-weight:600;border-bottom:1px solid var(--b1);white-space:nowrap;position:relative;">월세(만)<span class="pl-rzh"></span></th>
+                <th class="pl-th pl-rz" style="padding:8px 10px;text-align:right;font-size:11px;color:var(--fg2);font-weight:600;border-bottom:1px solid var(--b1);white-space:nowrap;position:relative;">(예상)입찰가<span class="pl-rzh"></span></th>
+                <th class="pl-th pl-rz" style="padding:8px 10px;text-align:left;font-size:11px;color:var(--fg2);font-weight:600;border-bottom:1px solid var(--b1);white-space:nowrap;position:relative;">작업룸<span class="pl-rzh"></span></th>
+                <th class="pl-th" style="padding:8px 10px;text-align:left;font-size:11px;color:var(--fg2);font-weight:600;border-bottom:1px solid var(--b1);">메모</th>
+                <th class="pl-th" style="border-bottom:1px solid var(--b1);width:32px;"></th>
               </tr>
             </thead>
             <tbody id="pl-tbody"></tbody>
@@ -4727,7 +4751,7 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
                 <input id="pl-f-estimate" placeholder="예: 6억7천" style="width:100%;padding:8px 10px;border:1px solid var(--b1);border-radius:6px;background:var(--bg3);color:var(--fg);font-size:13px;box-sizing:border-box;">
               </div>
             </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
               <div>
                 <div style="font-size:11px;color:var(--fg3);margin-bottom:4px;">보증금</div>
                 <input id="pl-f-deposit" placeholder="예: 5000만" style="width:100%;padding:8px 10px;border:1px solid var(--b1);border-radius:6px;background:var(--bg3);color:var(--fg);font-size:13px;box-sizing:border-box;">
@@ -4735,6 +4759,10 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
               <div>
                 <div style="font-size:11px;color:var(--fg3);margin-bottom:4px;">월세</div>
                 <input id="pl-f-monthly" placeholder="예: 330만" style="width:100%;padding:8px 10px;border:1px solid var(--b1);border-radius:6px;background:var(--bg3);color:var(--fg);font-size:13px;box-sizing:border-box;">
+              </div>
+              <div>
+                <div style="font-size:11px;color:var(--fg3);margin-bottom:4px;">입찰인수 <span style="font-size:10px;color:var(--fg3);">(낙찰 후)</span></div>
+                <input id="pl-f-bidders" placeholder="예: 5명" style="width:100%;padding:8px 10px;border:1px solid var(--b1);border-radius:6px;background:var(--bg3);color:var(--fg);font-size:13px;box-sizing:border-box;">
               </div>
             </div>
             <div>
