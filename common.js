@@ -32898,62 +32898,61 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           var titleEl = doc.querySelector('h1, h2, .title, .subject, .productTit');
           if (titleEl) out.물건명 = String(titleEl.textContent || '').replace(/\s+/g, ' ').trim();
         }
-        // ── 온비드 전용: div.txt_box01 > span.txt01 구조에서 입찰기간 파싱 ──
-        // 구조: tit_box01(레이블) + txt_box01(값) 쌍으로 구성
+        // ── 온비드 전용: li.item 구조에서 입찰기간 파싱 ──
+        // PC: li.item > div.tit_box03(레이블) + div.txt_box01 > span.txt01.fw_600 x2
+        // MO: li.item > div.tit_box01(레이블) + div.txt_box01 > span.txt01 x2
         if (doc && doc.body) {
-          doc.querySelectorAll('div.tit_box01, li.item > .tit_box01, .detail_info_area02 .tit_box01').forEach(function(tit) {
-            var label = String(tit.textContent || '').replace(/\s+/g,' ').trim();
-            var val = tit.nextElementSibling;
-            if (!val) return;
-            var valText = String(val.textContent || '').replace(/\s+/g,' ').trim();
-            if (label && valText) addPair(label, valText);
-          });
-          // span.txt01 두 개로 날짜 범위를 표현하는 입찰기간 구조
-          var txtBoxEls = doc.querySelectorAll('div.txt_box01');
-          txtBoxEls.forEach(function(box) {
-            var spans = box.querySelectorAll('span.txt01');
-            if (spans.length >= 2) {
-              var s1 = String(spans[0].textContent || '').replace(/\s+/g,' ').trim();
-              var s2 = String(spans[1].textContent || '').replace(/~/g,'').replace(/\s+/g,' ').trim();
-              var dateRe = /(\d{4}[-./]\d{1,2}[-./]\d{1,2}\s*\d{1,2}:\d{2})/;
-              var m1 = s1.match(dateRe), m2 = s2.match(dateRe);
-              if (m1 && m2) {
-                if (!out.입찰시작) out.입찰시작 = m1[1];
-                if (!out.입찰마감) out.입찰마감 = m2[1];
+          var dateRe = /(\d{4}[-./]\d{1,2}[-./]\d{1,2}\s*\d{1,2}:\d{2})/;
+          // 방법1: li.item 중 레이블에 '입찰기간' 텍스트가 있는 것을 찾아 날짜 추출
+          var allItems = doc.querySelectorAll('li.item');
+          allItems.forEach(function(li) {
+            var titEl = li.querySelector('.tit_box01, .tit_box02, .tit_box03');
+            if (!titEl) return;
+            var lb = String(titEl.textContent||'').replace(/\s+/g,' ').trim();
+            if (lb.indexOf('입찰기간') < 0) return;
+            // txt_box01 안의 span.txt01 또는 직접 텍스트에서 날짜 추출
+            var valBox = li.querySelector('.txt_box01');
+            if (!valBox) return;
+            var spans = valBox.querySelectorAll('span.txt01, span.txt01\\.fw_600');
+            // fw_600 클래스 포함 span도 수집
+            var allSpans = Array.prototype.slice.call(valBox.querySelectorAll('span'));
+            var dateSpans = allSpans.filter(function(sp) {
+              return dateRe.test(String(sp.textContent||'').trim());
+            });
+            if (dateSpans.length >= 2) {
+              var d1 = String(dateSpans[0].textContent||'').match(dateRe);
+              var d2 = String(dateSpans[1].textContent||'').match(dateRe);
+              if (d1 && d2) {
+                if (!out.입찰시작) out.입찰시작 = d1[1];
+                if (!out.입찰마감) out.입찰마감 = d2[1];
               }
-            } else if (spans.length === 1) {
-              var s = String(spans[0].textContent || '').replace(/\s+/g,' ').trim();
-              var parts = s.split(/[~\-]/);
-              if (parts.length >= 2) {
-                var dateRe2 = /(\d{4}[-./]\d{1,2}[-./]\d{1,2}\s*\d{1,2}:\d{2})/;
-                var p1 = parts[0].match(dateRe2), p2 = parts[1].match(dateRe2);
-                if (p1 && p2) {
-                  if (!out.입찰시작) out.입찰시작 = p1[1];
-                  if (!out.입찰마감) out.입찰마감 = p2[1];
-                }
+            } else if (dateSpans.length === 1) {
+              // span 하나에 "시작 ~ 마감" 형태
+              var combined = String(dateSpans[0].textContent||'').replace(/\s+/g,' ').trim();
+              var allDates = combined.match(/\d{4}[-./]\d{1,2}[-./]\d{1,2}\s*\d{1,2}:\d{2}/g);
+              if (allDates && allDates.length >= 2) {
+                if (!out.입찰시작) out.입찰시작 = allDates[0];
+                if (!out.입찰마감) out.입찰마감 = allDates[1];
+              }
+            } else {
+              // span 없이 txt_box01 직접 텍스트
+              var boxText = String(valBox.textContent||'').replace(/\s+/g,' ').trim();
+              var allDates2 = boxText.match(/\d{4}[-./]\d{1,2}[-./]\d{1,2}\s*\d{1,2}:\d{2}/g);
+              if (allDates2 && allDates2.length >= 2) {
+                if (!out.입찰시작) out.입찰시작 = allDates2[0];
+                if (!out.입찰마감) out.입찰마감 = allDates2[1];
               }
             }
           });
-          // tit_box01이 없는 경우 인근 레이블 텍스트로 추정
-          if (!out.입찰시작 || !out.입찰마감) {
-            var allItems = doc.querySelectorAll('li.item');
-            allItems.forEach(function(li) {
-              var lbEl = li.querySelector('.tit01, .tit_box01, th, dt, label');
-              if (!lbEl) return;
-              var lb = String(lbEl.textContent||'').replace(/\s+/g,' ').trim();
-              if (lb.indexOf('입찰') < 0 && lb.indexOf('기간') < 0) return;
-              var spans2 = li.querySelectorAll('span.txt01');
-              if (spans2.length >= 2) {
-                var dateRe3 = /(\d{4}[-./]\d{1,2}[-./]\d{1,2}\s*\d{1,2}:\d{2})/;
-                var d1 = String(spans2[0].textContent||'').match(dateRe3);
-                var d2 = String(spans2[1].textContent||'').replace(/~/g,'').match(dateRe3);
-                if (d1 && d2) {
-                  if (!out.입찰시작) out.입찰시작 = d1[1];
-                  if (!out.입찰마감) out.입찰마감 = d2[1];
-                }
-              }
-            });
-          }
+          // tit_box01 레이블+값 쌍도 pairMap에 추가
+          doc.querySelectorAll('li.item').forEach(function(li) {
+            var titEl = li.querySelector('.tit_box01, .tit_box02, .tit_box03');
+            var valEl = li.querySelector('.txt_box01, .txt_box02');
+            if (!titEl || !valEl) return;
+            var lb = String(titEl.textContent||'').replace(/\s+/g,' ').trim();
+            var vv = String(valEl.textContent||'').replace(/\s+/g,' ').trim();
+            if (lb && vv) addPair(lb, vv);
+          });
         }
 
         var caseMatch = bodyText.match(/\b20\d{2}-\d{3,4}-\d{4,}\b/);
