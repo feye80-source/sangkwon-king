@@ -3625,12 +3625,34 @@ var _safeLocalSet = function(key, value) {
                   const uniqIds = Array.from(new Set(linkedIds.filter(Boolean)));
                   if (!uniqIds.length) return;
 
-                  const lifecycle = wr2GetLifecycle(room);
+                  const allRooms = Array.isArray(wr2State.rooms) ? wr2State.rooms : [];
+                  const prevStatusKey = '__wrPrevWatchStatus';
                   const cs = room.closedSummary || {};
                   const bid = String(cs.finalBidPrice || '').trim();
                   const bidder = String(cs.bidderCount || '').trim();
                   const ctype = String(cs.closedType || '').trim();
                   const memo = String(cs.memo || '').trim();
+
+                  const lifecycleByItem = {};
+                  uniqIds.forEach(itemId => {
+                    const linkedRooms = allRooms.filter(r => {
+                      if (!r) return false;
+                      const ids = [];
+                      if (r.linkedSavedId != null) ids.push(String(r.linkedSavedId));
+                      if (r.auctionId != null) ids.push(String(r.auctionId));
+                      if (r.listingId != null) ids.push(String(r.listingId));
+                      (r.linkedItems || []).forEach(x => ids.push(String(x)));
+                      return ids.indexOf(String(itemId)) >= 0;
+                    });
+                    let finalLife = 'active';
+                    if (linkedRooms.length) {
+                      const lives = linkedRooms.map(r => wr2GetLifecycle(r));
+                      if (lives.includes('active')) finalLife = 'active';
+                      else if (lives.includes('changed')) finalLife = 'changed';
+                      else if (lives.includes('closed')) finalLife = 'closed';
+                    }
+                    lifecycleByItem[String(itemId)] = finalLife;
+                  });
 
                   const sv = getSv() || [];
                   let changed = false;
@@ -3638,7 +3660,20 @@ var _safeLocalSet = function(key, value) {
                     if (!item || uniqIds.indexOf(String(item.id)) < 0) return;
                     if (!item.data || typeof item.data !== 'object') item.data = {};
                     const d = item.data;
-                    if (d['작업룸상태'] !== lifecycle) { d['작업룸상태'] = lifecycle; changed = true; }
+                    const life = lifecycleByItem[String(item.id)] || 'active';
+                    if (d['작업룸상태'] !== life) { d['작업룸상태'] = life; changed = true; }
+
+                    if (life !== 'active') {
+                      if (item.watchStatus && item.watchStatus !== 'pass') item[prevStatusKey] = item.watchStatus;
+                      if (item.watchStatus !== 'pass') { item.watchStatus = 'pass'; changed = true; }
+                    } else {
+                      if (item.watchStatus === 'pass' && item[prevStatusKey]) {
+                        item.watchStatus = item[prevStatusKey];
+                        delete item[prevStatusKey];
+                        changed = true;
+                      }
+                    }
+
                     if (bid && d['낙찰가'] !== bid) { d['낙찰가'] = bid; changed = true; }
                     if (bidder && d['입찰인수'] !== bidder) { d['입찰인수'] = bidder; changed = true; }
                     if (ctype && d['종료유형'] !== ctype) { d['종료유형'] = ctype; changed = true; }
@@ -4545,11 +4580,11 @@ var _safeLocalSet = function(key, value) {
                         + '  <div style="font-size:14px;font-weight:800;letter-spacing:.2px;color:#ffd6dc;">이 물건은 최종 종료되었습니다</div>'
                         + '</div>'
                         + '<div style="display:grid;grid-template-columns:auto auto;column-gap:12px;row-gap:2px;align-items:center;font-size:11px;color:#ffd3d8;">'
-                        + '<div style="opacity:.85;">종료 유형</div><div style="font-weight:700;color:#ffe5e8;">' + escHtml(closeType || '-') + '</div>'
-                        + '<div style="opacity:.85;">낙찰가</div><div style="font-weight:700;color:#ffe5e8;">' + escHtml(bid || '-') + '</div>'
-                        + '<div style="opacity:.85;">낙찰 인원</div><div style="font-weight:700;color:#ffe5e8;">' + escHtml(bidderCount || '-') + '</div>'
-                        + (dt ? ('<div style="opacity:.85;">종료일</div><div style="font-weight:700;color:#ffe5e8;">' + escHtml(dt) + '</div>') : '')
-                        + (memo ? ('<div style="opacity:.85;">복기</div><div style="max-width:360px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escHtml(memo) + '</div>') : '')
+                        + '<div style="opacity:.85;">종료 유형</div><div style="font-weight:700;color:#ffe5e8;">' + esc(closeType || '-') + '</div>'
+                        + '<div style="opacity:.85;">낙찰가</div><div style="font-weight:700;color:#ffe5e8;">' + esc(bid || '-') + '</div>'
+                        + '<div style="opacity:.85;">낙찰 인원</div><div style="font-weight:700;color:#ffe5e8;">' + esc(bidderCount || '-') + '</div>'
+                        + (dt ? ('<div style="opacity:.85;">종료일</div><div style="font-weight:700;color:#ffe5e8;">' + esc(dt) + '</div>') : '')
+                        + (memo ? ('<div style="opacity:.85;">복기</div><div style="max-width:360px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(memo) + '</div>') : '')
                         + '<button id="wr2ClosedEditBtn" type="button" style="margin-top:3px;grid-column:1 / -1;justify-self:end;padding:4px 9px;border-radius:7px;border:1px solid rgba(255,188,196,.32);background:rgba(255,188,196,.12);color:#ffdbe0;font-size:10px;cursor:pointer;">종료 정보 수정</button>'
                         + '</div>';
                       const editBtn = closedStamp.querySelector('#wr2ClosedEditBtn');
@@ -32064,6 +32099,32 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const emptyEls = ['wEmpty0','wEmpty1','wEmpty2','wEmpty3','wEmpty4','wEmpty5'].map(id=>document.getElementById(id));
       const rooms = wrGetRooms();
       const scheduleEl = document.getElementById('watchScheduleBoard');
+      const itemLifecycle = {};
+      const _pickLife = function(room) {
+        const life = String((room && room.lifecycleStatus) || '').trim();
+        if (life === 'active' || life === 'changed' || life === 'closed') return life;
+        const st = String((room && room.status) || '').trim();
+        if (st === 'changed' || st === 'closed') return st;
+        return 'active';
+      };
+      const _rankLife = function(life) {
+        if (life === 'active') return 3;
+        if (life === 'changed') return 2;
+        if (life === 'closed') return 1;
+        return 0;
+      };
+      (rooms || []).forEach(r => {
+        const ids = [];
+        if (r && r.linkedSavedId != null) ids.push(String(r.linkedSavedId));
+        if (r && r.auctionId != null) ids.push(String(r.auctionId));
+        if (r && r.listingId != null) ids.push(String(r.listingId));
+        (r && r.linkedItems || []).forEach(id => ids.push(String(id)));
+        const life = _pickLife(r);
+        ids.forEach(id => {
+          const prev = itemLifecycle[id];
+          if (!prev || _rankLife(life) > _rankLife(prev)) itemLifecycle[id] = life;
+        });
+      });
 
       const _parseSaleDate = function(v) {
         if (!v) return null;
@@ -32167,7 +32228,11 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       }
 
       statuses.forEach((status, ci) => {
-        let items = sv.filter(s => String(s.watchStatus || '').trim() === status);
+        let items = sv.filter(s => {
+          if (String(s.watchStatus || '').trim() !== status) return false;
+          const life = itemLifecycle[String(s.id)] || String((s.data && s.data['작업룸상태']) || '').trim() || 'active';
+          return life === 'active';
+        });
         if (sortKey === 'saledate') {
           items.sort((a, b) => {
             const da = _parseSaleDate(a.data?.매각일 || a.data?.매각기일 || '');
@@ -32228,7 +32293,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             );
             const closeSummary = (linkedRoom && linkedRoom.closedSummary) ? linkedRoom.closedSummary : {};
             const closeBidRaw = String(closeSummary.finalBidPrice || d.낙찰가 || '').trim();
-            const closeBidder = String(closeSummary.bidderCount || d.입찰인수 || d.입찰인원 || '').trim();
+            const closeBidderRaw = String(closeSummary.bidderCount || '').trim();
+            const closeBidder = closeBidderRaw ? (closeBidderRaw.replace(/[^\d명인]/g, '') || closeBidderRaw) : '';
             let closeBid = closeBidRaw;
             try {
               if (typeof _parseWonInput === 'function') {
@@ -32237,9 +32303,9 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
               }
             } catch (e) {}
             const closeMetaHtml = (closeBid || closeBidder)
-              ? `<div style="display:flex;align-items:center;gap:6px;margin-top:4px;font-size:10px;color:#f6d68a;">
-                  ${closeBid ? `<span style="padding:1px 5px;border-radius:999px;border:1px solid rgba(246,214,138,.45);background:rgba(246,214,138,.12);">낙찰가 ${esc(closeBid)}</span>` : ''}
-                  ${closeBidder ? `<span style="padding:1px 5px;border-radius:999px;border:1px solid rgba(143,208,255,.4);background:rgba(17,157,237,.12);color:#8fd0ff;">입찰인수 ${esc(closeBidder)}</span>` : ''}
+              ? `<div style="display:flex;align-items:center;gap:4px;row-gap:4px;flex-wrap:wrap;margin-top:4px;font-size:10px;color:#f6d68a;">
+                  ${closeBid ? `<span style="max-width:100%;padding:1px 5px;border-radius:999px;border:1px solid rgba(246,214,138,.45);background:rgba(246,214,138,.12);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">낙찰가 ${esc(closeBid)}</span>` : ''}
+                  ${closeBidder ? `<span style="max-width:100%;padding:1px 5px;border-radius:999px;border:1px solid rgba(143,208,255,.4);background:rgba(17,157,237,.12);color:#8fd0ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">입찰인수 ${esc(closeBidder)}</span>` : ''}
                 </div>`
               : '';
 
@@ -32249,10 +32315,11 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
               card.style.minHeight = '86px';
             }
             card.dataset.itemId = String(item.id || '');
-            card.onclick = () => {
+            card.addEventListener('click', (evt) => {
+              if (evt && evt.target && evt.target.closest && evt.target.closest('button,a,input,select,textarea')) return;
               if (window.__wbSuppressOpenUntil && Date.now() < window.__wbSuppressOpenUntil) return;
               if (typeof openPopup === 'function') openPopup(item.id);
-            };
+            });
             card.onmouseenter = () => { card.style.borderColor = 'rgba(79,142,255,0.5)'; card.style.background = 'rgba(79,142,255,.04)'; };
             card.onmouseleave = () => { card.style.borderColor = linkedRoom ? 'rgba(17,157,237,.25)' : 'var(--b1)'; card.style.background = 'var(--s2)'; };
 
@@ -32290,6 +32357,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           // 물건 연결 없는 작업룸
           const hasItem = (r.linkedSavedId || r.auctionId || r.listingId || (r.linkedItems||[]).length);
           if (hasItem) return false;
+          const lifecycle = _pickLife(r);
+          if (lifecycle !== 'active') return false;
           const rStatus = typeof _migrateStatus === 'function' ? _migrateStatus(r.status || 'review') : (r.status || 'review');
           return rStatus === status;
         });
