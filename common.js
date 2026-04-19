@@ -7343,6 +7343,7 @@ window.wr2SummaryCancelEdit = function() {
 
     function _getVisualCardClass(type) {
       if (type === 'auction') return 'auction-card';
+      if (type === 'onbid') return 'onbid-card';
       if (type === 'jumpo') return 'jumpo-card';
       if (type === 'nemo') return 'nemo-card';
       if (type === 'assa') return 'assa-card';
@@ -31621,13 +31622,25 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
       if (scheduleEl) {
         const saleItems = sv
-          .filter(item => item && item.mode === 'auction')
+          .filter(item => {
+            if (!item) return false;
+            const d = item.data || {};
+            const hasSaleDate = !!(d.매각일 || d.매각기일);
+            // 경매(auction) 또는 온비드/공매(source) 모두 포함
+            const isAuctionLike = item.mode === 'auction'
+              || item.source === '온비드'
+              || (item.id && item.id.startsWith('onbid_'))
+              || !!(d.경매번호 || d.사건번호 || d.product_id);
+            return hasSaleDate && isAuctionLike;
+          })
           .map(item => {
             const dt = _parseSaleDate(item.data?.매각일 || item.data?.매각기일 || '');
             if (!dt) return null;
             return { item, date: dt, key: _fmtSaleKey(dt), dday: _calcDday(dt) };
           })
           .filter(Boolean)
+          // 이미 지난 날짜 제외 (오늘 포함 이후만)
+          .filter(entry => entry.dday >= 0)
           .sort((a, b) => a.date - b.date);
         if (!saleItems.length) {
           scheduleEl.style.display = 'none';
@@ -39041,6 +39054,7 @@ ${newsContext}
       wrSetRooms(rooms);
       // 연결된 저장목록 watchStatus 동기화
       var phaseToWatch = {
+        ph_interest: 'interest', interest: 'interest',
         ph_review: 'review', review: 'review',
         ph_field: 'field',   field: 'field',
         ph_bid: 'bid',       bid: 'bid',
@@ -39053,7 +39067,10 @@ ${newsContext}
         var linkedIds = (room.linkedItems || []).concat(room.linkedSavedId ? [room.linkedSavedId] : []);
         var changed = false;
         sv.forEach(function(it) {
-          if (linkedIds.map(String).indexOf(String(it.id)) >= 0) {
+          // linkedItems 배열에 있거나, 물건의 roomId가 이 작업룸을 가리키는 경우 모두 업데이트
+          var isLinked = linkedIds.map(String).indexOf(String(it.id)) >= 0
+            || String(it.roomId || '') === String(roomId);
+          if (isLinked) {
             it.watchStatus = watchKey;
             changed = true;
           }
