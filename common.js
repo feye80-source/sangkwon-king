@@ -4186,7 +4186,7 @@ var _safeLocalSet = function(key, value) {
                     title.className = 'wr2-room-title';
                     title.textContent = r.title || '(제목 없음)';
                     content.appendChild(title);
-                    // 활성 아닐 를 메되 상태 뱃지 (버튼 제거, 상태 변경은 우상단 드롭다운)
+                    // 활성 아닐 를 메되 상태 뱃지만 (버튼 제거)
                     const lifecycle = wr2GetLifecycle(r);
                     if (lifecycle !== 'active') {
                       const badge = document.createElement('span');
@@ -38601,7 +38601,6 @@ ${newsContext}
     }
 
     // ── 메인 대시보드 ────────────────────────────────────────
-
     function _wrDbLifecycleSelect(roomId, room) {
       var cur = room.lifecycleStatus || 'active';
       var opts = [['active','활성'],['changed','변경'],['closed','종료']];
@@ -38940,10 +38939,15 @@ ${newsContext}
       room.status = phId;
       wrSetRooms(rooms);
       // 연결된 저장목록 watchStatus 동기화
-      var phaseToWatch = { ph_review: 'review', ph_field: 'field', ph_bid: 'bid', ph_won: 'won', ph_sell: 'sell' };
-      var watchKey = phaseToWatch[phId] || phId;
-      var validWatch = ['interest','review','field','bid','won','sell'];
-      if (validWatch.indexOf(watchKey) >= 0) {
+      var phaseToWatch = {
+        ph_review: 'review', review: 'review',
+        ph_field: 'field',   field: 'field',
+        ph_bid: 'bid',       bid: 'bid',
+        ph_won: 'won',       won: 'won',
+        ph_sell: 'sell',     sell: 'sell'
+      };
+      var watchKey = phaseToWatch[phId];
+      if (watchKey) {
         var sv = (typeof getSv === 'function') ? getSv() : [];
         var linkedIds = (room.linkedItems || []).concat(room.linkedSavedId ? [room.linkedSavedId] : []);
         var changed = false;
@@ -38956,7 +38960,7 @@ ${newsContext}
         if (changed && typeof setSv === 'function') {
           setSv(sv);
           if (typeof renderSaved === 'function') renderSaved();
-          if (typeof renderWatchBoard === 'function') setTimeout(renderWatchBoard, 50);
+          if (typeof renderWatchBoard === 'function') setTimeout(renderWatchBoard, 80);
         }
       }
       wrDbOpenRoom(roomId);
