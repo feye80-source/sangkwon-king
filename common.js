@@ -32183,7 +32183,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         return Math.round((dt - today) / (1000 * 60 * 60 * 24));
       };
 
-      if (scheduleEl) {
+      if (scheduleEl && !window.__skUseEnhancedScheduleBoard) {
         const saleItems = sv
           .filter(item => item && item.watchStatus && item.mode === 'auction')
           .map(item => {
@@ -32436,22 +32436,36 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     window.renderWatchBoard = renderWatchBoard;
 
     // ── 파이프라인 헬퍼 함수들 ────────────────────────────────
+    let _wbRenderTimer = null;
+    function _wbRequestRender(delayMs) {
+      const delay = (typeof delayMs === 'number' && delayMs >= 0) ? delayMs : 40;
+      if (_wbRenderTimer) clearTimeout(_wbRenderTimer);
+      _wbRenderTimer = setTimeout(function() {
+        _wbRenderTimer = null;
+        try { renderWatchBoard(); } catch (e) {}
+      }, delay);
+    }
+    window._wbRequestRender = _wbRequestRender;
+
     window._wbCycleStatus = function (itemId) {
       cycleWatchStatus(itemId);
-      setTimeout(renderWatchBoard, 50);
+      _wbRequestRender(40);
     };
     window._wbSetStatus = function (itemId, status) {
       var sv = typeof getSv === 'function' ? getSv() : [];
       var item = sv.find(function(s){ return s.id === itemId; });
       if (!item) return;
-      if (status === 'pass' || !status) { delete item.watchStatus; }
-      else { item.watchStatus = status; }
+      var nextStatus = (status === 'pass' || !status) ? '' : String(status);
+      var prevStatus = String(item.watchStatus || '');
+      if (nextStatus === prevStatus) return;
+      if (!nextStatus) { delete item.watchStatus; }
+      else { item.watchStatus = nextStatus; }
       if (typeof setSv === 'function') setSv(sv);
       if (typeof renderSaved === 'function') renderSaved();
       if (typeof updateWatchCnt === 'function') updateWatchCnt();
-      var info = (typeof UNIFIED_STATUS !== 'undefined' ? UNIFIED_STATUS[status] : null) || { label: status };
+      var info = (typeof UNIFIED_STATUS !== 'undefined' ? UNIFIED_STATUS[nextStatus] : null) || { label: nextStatus };
       if (typeof showToast === 'function') showToast(info.label + '로 이동했습니다', 'ok', 1500);
-      setTimeout(renderWatchBoard, 50);
+      _wbRequestRender(40);
     };
     window._wbGoRoom = function (roomId, itemId) {
       window.__wbSuppressOpenUntil = Date.now() + 420;
@@ -42848,7 +42862,9 @@ window.addEventListener('DOMContentLoaded', () => {
       syncRoomStatus(roomId, norm, norm === 'field');
       syncLinkedItemsByRoom(roomId, norm);
 
-      if (typeof window.renderWatchBoard === 'function') {
+      if (typeof window._wbRequestRender === 'function') {
+        window._wbRequestRender(30);
+      } else if (typeof window.renderWatchBoard === 'function') {
         setTimeout(function () { try { window.renderWatchBoard(); } catch (e) {} }, 50);
       }
       return ret;
@@ -42885,6 +42901,14 @@ window.addEventListener('DOMContentLoaded', () => {
   function setItemStatus(itemId, status) {
     if (!itemId) return false;
     var norm = normalizeStatus(status);
+    try {
+      if (typeof window.getSv === 'function') {
+        var curSv = window.getSv() || [];
+        var curItem = curSv.find(function (s) { return String(s.id) === String(itemId); });
+        if (!curItem) return false;
+        if (normalizeStatus(curItem.watchStatus) === norm) return false;
+      }
+    } catch (e0) {}
     try {
       if (typeof window._wbSetStatus === 'function') {
         window._wbSetStatus(itemId, norm);
@@ -43085,7 +43109,6 @@ window.addEventListener('DOMContentLoaded', () => {
     if (board.style.display === 'none') return;
 
     if (typeof window.getSv !== 'function') return;
-    syncItemsFromRoomStatuses();
     var sv = window.getSv() || [];
     var rooms = (typeof window.wrGetRooms === 'function') ? (window.wrGetRooms() || []) : [];
     var statusByItem = {};
@@ -43313,10 +43336,12 @@ window.addEventListener('DOMContentLoaded', () => {
     if (typeof window.renderWatchBoard !== 'function') return;
     if (window.renderWatchBoard.__skPatched) return;
     var orig = window.renderWatchBoard;
+    var afterTimer = null;
     window.renderWatchBoard = function () {
-      syncItemsFromRoomStatuses();
       var ret = orig.apply(this, arguments);
-      setTimeout(function () {
+      if (afterTimer) clearTimeout(afterTimer);
+      afterTimer = setTimeout(function () {
+        afterTimer = null;
         enhanceScheduleBoard();
         enhanceKanbanDnD();
         updateColumnTotals();
@@ -43329,7 +43354,7 @@ window.addEventListener('DOMContentLoaded', () => {
     }, 60);
   }
 
-  function applyAllPatches() {
+  function applyAllPatches(lightOnly) {
     ensureStatusMigrate();
     patchPhaseSwitch();
     patchWatchSetter();
@@ -43340,13 +43365,16 @@ window.addEventListener('DOMContentLoaded', () => {
         var norm = normalizeStatus(val);
         var ret = _origWrDbUpdateStatus.call(this, id, norm);
         syncLinkedItemsByRoom(id, norm);
-        if (typeof window.renderWatchBoard === 'function') {
+        if (typeof window._wbRequestRender === 'function') {
+          window._wbRequestRender(30);
+        } else if (typeof window.renderWatchBoard === 'function') {
           setTimeout(function () { try { window.renderWatchBoard(); } catch (e) {} }, 40);
         }
         return ret;
       };
       window.wrDbUpdateStatus.__skPatched = true;
     }
+    if (lightOnly) return;
     enhanceKanbanDnD();
     updateColumnTotals();
     enhanceWorkroomStatusUi();
@@ -43354,21 +43382,25 @@ window.addEventListener('DOMContentLoaded', () => {
 
   function boot() {
     injectStyle();
-    applyAllPatches();
+    window.__skUseEnhancedScheduleBoard = true;
+    applyAllPatches(false);
 
     var tries = 0;
     var t = setInterval(function () {
       tries += 1;
-      applyAllPatches();
-      if (tries > 80) clearInterval(t);
-    }, 400);
+      applyAllPatches(true);
+      if (tries > 12) clearInterval(t);
+    }, 600);
 
     document.addEventListener('click', function (e) {
-      var tab = e.target && e.target.closest && e.target.closest('#pm-tab-pipeline, #plViewKanbanBtn, #plViewListBtn, #plViewCalBtn');
+      var tab = e.target && e.target.closest && e.target.closest('#plViewKanbanBtn, #plViewListBtn, #plViewCalBtn');
       if (tab) {
         setTimeout(function () {
-          try { if (typeof window.renderWatchBoard === 'function') window.renderWatchBoard(); } catch (err) {}
-        }, 80);
+          try {
+            if (typeof window._wbRequestRender === 'function') window._wbRequestRender(20);
+            else if (typeof window.renderWatchBoard === 'function') window.renderWatchBoard();
+          } catch (err) {}
+        }, 40);
       }
       var wrAction = e.target && e.target.closest && e.target.closest('#pm-tab-work, #wrDbRoomList .wr-item-card, .wr2-phase-tab');
       if (wrAction) {
