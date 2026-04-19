@@ -41995,6 +41995,15 @@ window.addEventListener('DOMContentLoaded', () => {
     return Math.round(n / 10000).toLocaleString('ko-KR') + '\ub9cc';
   }
 
+  function escHtml(v) {
+    return String(v == null ? '' : v)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   function injectStyle() {
     if (document.getElementById('sk-pipeline-patch-style')) return;
     var st = document.createElement('style');
@@ -42064,23 +42073,33 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  function syncRoomStatus(roomId, norm, forceFieldPhase) {
+    try {
+      if (!roomId || typeof window.wrGetRooms !== 'function' || typeof window.wrSetRooms !== 'function') return;
+      var rooms = window.wrGetRooms() || [];
+      var room = rooms.find(function (r) { return String(r.id) === String(roomId); });
+      if (!room) return;
+      room.status = norm;
+      room.phase = norm;
+      if (forceFieldPhase || norm === 'field') room.activePhase = 'ph_field';
+      else if (STATUS_KEYS.indexOf(norm) >= 0) room.activePhase = 'ph_' + norm;
+      room.updatedAt = Date.now();
+      window.wrSetRooms(rooms);
+    } catch (e) {}
+  }
+
   function goFieldTab(roomId) {
     try {
-      if (roomId && typeof window.pmOpenWorkroom === 'function') {
+      if (!roomId) return;
+      syncRoomStatus(roomId, 'field', true);
+      if (typeof window.pmOpenWorkroom === 'function') {
         window.pmOpenWorkroom(roomId);
+      } else if (typeof window.showPage === 'function') {
+        window.showPage(4);
       }
-      var selectors = [
-        '#ipage8 .wr2-phase-tab[data-phase="field"]',
-        '#ipage8 [data-phase-id="ph_field"]',
-        '#ipage8 button[data-phase="field"]'
-      ];
-      for (var i = 0; i < selectors.length; i += 1) {
-        var el = document.querySelector(selectors[i]);
-        if (el) { el.click(); return; }
-      }
-      var fallback = Array.prototype.slice.call(document.querySelectorAll('#ipage8 button,#ipage8 .wr2-phase-tab'))
-        .find(function (el) { return /\ud604\uc7a5|\uc784\uc7a5/.test(String(el.textContent || '')); });
-      if (fallback) fallback.click();
+      setTimeout(function () {
+        if (typeof window.wrDbOpenRoom === 'function') window.wrDbOpenRoom(roomId);
+      }, 180);
     } catch (e) {}
   }
 
@@ -42095,25 +42114,9 @@ window.addEventListener('DOMContentLoaded', () => {
 
       var ret = orig.call(this, roomId, nextPhId);
 
-      try {
-        if (roomId && typeof window.wrGetRooms === 'function' && typeof window.wrSetRooms === 'function') {
-          var rooms = window.wrGetRooms() || [];
-          var room = rooms.find(function (r) { return String(r.id) === String(roomId); });
-          if (room) {
-            room.status = norm;
-            room.phase = norm;
-            if (typeof room.activePhase === 'string' && room.activePhase.indexOf('ph_') === 0) {
-              room.activePhase = 'ph_' + norm;
-            }
-            room.updatedAt = Date.now();
-            window.wrSetRooms(rooms);
-          }
-        }
-      } catch (e) {}
+      syncRoomStatus(roomId, norm, norm === 'field');
 
-      if (norm === 'field') {
-        setTimeout(function () { goFieldTab(roomId); }, 30);
-      }
+      if (norm === 'field') setTimeout(function () { goFieldTab(roomId); }, 40);
       if (typeof window.renderWatchBoard === 'function') {
         setTimeout(function () { try { window.renderWatchBoard(); } catch (e) {} }, 50);
       }
@@ -42248,31 +42251,37 @@ window.addEventListener('DOMContentLoaded', () => {
     return modal;
   }
 
-  function openScheduleModal(title, card) {
+  function openScheduleModal(key) {
     injectStyle();
     var modal = ensureScheduleModal();
     var body = modal.querySelector('#skSchedBody');
     var titleEl = modal.querySelector('#skSchedTitle');
-    titleEl.textContent = title || '\ud574\ub2f9 \ub0a0\uc9dc \uc804\uccb4 \ubb3c\uac74';
+    var groups = window.__skSchedGroups || {};
+    var group = groups[key] || null;
+    titleEl.textContent = (key || '\ud574\ub2f9 \ub0a0\uc9dc') + ' \uc804\uccb4 \ubb3c\uac74';
     body.innerHTML = '';
 
-    var buttons = Array.prototype.slice.call(card.querySelectorAll('button'))
-      .filter(function (btn) { return /openPopup\('/.test(btn.getAttribute('onclick') || ''); });
-
-    buttons.forEach(function (srcBtn) {
-      var copy = document.createElement('button');
-      copy.type = 'button';
-      copy.style.cssText = 'width:100%;text-align:left;padding:8px 10px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;color:var(--tx);cursor:pointer;font-size:11px;';
-      copy.textContent = (srcBtn.textContent || '').trim() || '\ubb3c\uac74 \uc0c1\uc138 \ubcf4\uae30';
-      copy.addEventListener('click', function () {
-        var itemId = extractItemIdFromCard(srcBtn.closest('[data-sched-key]')) || (srcBtn.getAttribute('onclick') || '').replace(/.*openPopup\('([^']+)'\).*/, '$1');
-        if (typeof window.openPopup === 'function' && itemId) window.openPopup(itemId);
+    (group && group.items || []).forEach(function (entry) {
+      var it = entry.item || {};
+      var d = it.data || {};
+      var row = document.createElement('button');
+      row.type = 'button';
+      row.style.cssText = 'width:100%;text-align:left;padding:9px 10px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;color:var(--tx);cursor:pointer;font-size:11px;';
+      row.innerHTML = ''
+        + '<div style="font-size:11px;font-weight:700;color:#e8edf5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
+        + escHtml(it.title || d['소재지'] || it.id || '')
+        + '</div>'
+        + '<div style="font-size:10px;color:var(--mu);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
+        + escHtml(d['소재지'] || '')
+        + '</div>';
+      row.addEventListener('click', function () {
+        if (typeof window.openPopup === 'function' && it.id) window.openPopup(it.id);
         modal.style.display = 'none';
       });
-      body.appendChild(copy);
+      body.appendChild(row);
     });
 
-    if (!buttons.length) {
+    if (!(group && group.items && group.items.length)) {
       var empty = document.createElement('div');
       empty.style.cssText = 'padding:10px;color:var(--di);font-size:11px;';
       empty.textContent = '\ud45c\uc2dc\ud560 \ubb3c\uac74\uc774 \uc5c6\uc2b5\ub2c8\ub2e4.';
@@ -42287,74 +42296,134 @@ window.addEventListener('DOMContentLoaded', () => {
     var board = document.getElementById('watchScheduleBoard');
     if (!board || board.style.display === 'none') return;
 
-    var cards = Array.prototype.slice.call(board.querySelectorAll('[data-sched-key]'));
-    if (!cards.length) return;
-
-    cards.forEach(function (card) {
-      var list = card.querySelector('.sk-sched-items') || card.querySelector('div[style*="overflow-y:auto"]');
-      if (list && !list.classList.contains('sk-sched-items')) list.classList.add('sk-sched-items');
-
-      var headerDate = card.querySelector('div > div > div') || card.querySelector('div');
-      if (headerDate && !headerDate.dataset.skModalBound) {
-        headerDate.style.cursor = 'pointer';
-        headerDate.title = '\ud574\ub2f9 \ub0a0\uc9dc \uc804\ccb4 \ubb3c\uac74 \ubcf4\uae30';
-        headerDate.addEventListener('click', function (e) {
-          e.stopPropagation();
-          openScheduleModal((headerDate.textContent || '').trim(), card);
-        });
-        headerDate.dataset.skModalBound = '1';
-      }
-
-      if (!list) return;
-      var itemButtons = Array.prototype.slice.call(list.querySelectorAll('button'));
-      if (itemButtons.length <= 4) return;
-
-      itemButtons.forEach(function (btn, idx) {
-        btn.style.display = idx < 4 ? '' : 'none';
-      });
-
-      if (!card.querySelector('.sk-more-btn')) {
-        var moreBtn = document.createElement('button');
-        moreBtn.type = 'button';
-        moreBtn.className = 'sk-more-btn';
-        moreBtn.textContent = '+' + (itemButtons.length - 4) + '\uac74 \ub354\ubcf4\uae30';
-        moreBtn.addEventListener('click', function (e) {
-          e.stopPropagation();
-          openScheduleModal((headerDate && headerDate.textContent || '').trim(), card);
-        });
-        list.parentNode.appendChild(moreBtn);
-      }
+    if (typeof window.getSv !== 'function') return;
+    var sv = window.getSv() || [];
+    function parseSaleDate(v) {
+      var s = String(v || '').trim();
+      if (!s) return null;
+      var m = s.match(/(20\d{2})[.\-\/년\s]*(\d{1,2})[.\-\/월\s]*(\d{1,2})/);
+      if (!m) return null;
+      var dt = new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10));
+      return isNaN(dt.getTime()) ? null : dt;
+    }
+    function fmtShort(dt) {
+      var week = ['일', '월', '화', '수', '목', '금', '토'][dt.getDay()];
+      return (dt.getMonth() + 1) + '/' + dt.getDate() + ' (' + week + ')';
+    }
+    function calcDday(dt) {
+      var now = new Date();
+      var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      return Math.round((dt - today) / (1000 * 60 * 60 * 24));
+    }
+    var saleItems = sv.filter(function (item) {
+      return item && item.mode === 'auction' && item.watchStatus;
+    }).map(function (item) {
+      var d = item.data || {};
+      var dt = parseSaleDate(d['매각일'] || d['매각기일'] || '');
+      if (!dt) return null;
+      return { item: item, date: dt, key: ymdKey(dt), dday: calcDday(dt) };
+    }).filter(Boolean).sort(function (a, b) {
+      return a.date - b.date;
     });
 
-    var futureScroll = board.querySelector('#schedFutureScroll') || board.querySelector('div[style*="overflow-x:auto"]');
-    if (futureScroll) {
-      var today = ymdKey(new Date());
-      var futureCards = Array.prototype.slice.call(futureScroll.querySelectorAll('[data-sched-key]'));
-      var target = futureCards.find(function (c) { return String(c.dataset.schedKey || '') >= today; }) || futureCards[0] || null;
-      if (target) {
-        target.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'start' });
+    if (!saleItems.length) {
+      board.style.display = 'none';
+      return;
+    }
+    board.style.display = '';
+
+    var groups = [];
+    saleItems.forEach(function (entry) {
+      var last = groups[groups.length - 1];
+      if (!last || last.key !== entry.key) {
+        last = { key: entry.key, date: entry.date, items: [] };
+        groups.push(last);
       }
+      last.items.push(entry);
+    });
 
-      if (futureCards.length > 140 && !board.querySelector('#skRevealAllDays')) {
-        var noteWrap = document.createElement('div');
-        noteWrap.style.cssText = 'font-size:10px;color:var(--di);margin:6px 0 8px;';
-        noteWrap.innerHTML = '\ub0a0\uc9dc \uce7c\ub7fc\uc774 ' + futureCards.length + '\uac1c\ub85c \ub9ce\uc544\uc11c \uc624\ub298 \uae30\uc900 \uad6c\uac04\ub9cc \uba3c\uc800 \ubcf4\uc5ec\uc8fc\uace0 \uc788\uc2b5\ub2c8\ub2e4.';
-        var btn = document.createElement('button');
-        btn.id = 'skRevealAllDays';
-        btn.className = 'sk-reveal-all';
-        btn.textContent = '\uc804\uccb4 \ub0a0\uc9dc \ubcf4\uae30';
-        btn.addEventListener('click', function () {
-          futureCards.forEach(function (c) { c.style.display = ''; });
-          btn.remove();
-        });
-        noteWrap.appendChild(btn);
-        board.insertBefore(noteWrap, board.firstChild.nextSibling || board.firstChild);
+    var groupMap = {};
+    groups.forEach(function (g) { groupMap[g.key] = g; });
+    window.__skSchedGroups = groupMap;
+    window.__skOpenSchedModal = openScheduleModal;
 
-        var todayIdx = futureCards.findIndex(function (c) { return String(c.dataset.schedKey || '') >= today; });
-        if (todayIdx < 0) todayIdx = 0;
-        futureCards.forEach(function (c, idx) {
-          if (Math.abs(idx - todayIdx) > 55) c.style.display = 'none';
-        });
+    var todayKey = ymdKey(new Date());
+    var focusIdx = groups.findIndex(function (g) { return g.key >= todayKey; });
+    if (focusIdx < 0) focusIdx = groups.length - 1;
+    if (focusIdx < 0) focusIdx = 0;
+
+    var showAll = !!window.__skSchedShowAll;
+    var visible = groups.slice();
+    var hiddenCount = 0;
+    if (!showAll && groups.length > 140) {
+      visible = groups.filter(function (_, idx) { return Math.abs(idx - focusIdx) <= 55; });
+      hiddenCount = groups.length - visible.length;
+    }
+
+    board.innerHTML = ''
+      + '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;flex-wrap:wrap;">'
+      + '  <div><div style="font-size:12px;font-weight:700;color:var(--tx);">📅 매각기일 보드</div>'
+      + '  <div style="font-size:10px;color:var(--mu);margin-top:2px;">오늘 기준으로 맞추고, 같은 날짜는 +더보기로 전체 확인합니다.</div></div>'
+      + '  <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--di);">'
+      +      saleItems.length + '건'
+      + (hiddenCount > 0 ? ' · 일부 구간 표시 중' : '')
+      + '  </div>'
+      + '</div>'
+      + '<div id="skSchedScroll" style="display:flex;gap:8px;overflow-x:auto;padding-bottom:2px;">'
+      + visible.map(function (group) {
+        var dday = calcDday(group.date);
+        var color = dday < 0 ? '#8b93a7' : dday === 0 ? '#ff6370' : dday <= 3 ? '#ff8c42' : dday <= 7 ? '#fbbf24' : '#4ade80';
+        var ddayLabel = dday < 0 ? '종료' : (dday === 0 ? 'D-Day' : 'D-' + dday);
+        var lines = group.items.slice(0, 4).map(function (entry) {
+          var it = entry.item || {};
+          var d = it.data || {};
+          var title = escHtml(it.title || d['소재지'] || it.id || '');
+          var addr = escHtml(d['소재지'] || '');
+          var itemId = String(it.id || '').replace(/'/g, "\\'");
+          return '<button onclick="openPopup(\'' + itemId + '\')" style="width:100%;text-align:left;padding:7px 8px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);border-radius:8px;color:var(--tx);cursor:pointer;">'
+            + '<div style="font-size:11px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + title + '</div>'
+            + '<div style="font-size:10px;color:var(--mu);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + addr + '</div>'
+            + '</button>';
+        }).join('');
+        var more = group.items.length > 4
+          ? '<button type="button" class="sk-more-btn" onclick="event.stopPropagation();window.__skOpenSchedModal && window.__skOpenSchedModal(\'' + group.key + '\')">+' + (group.items.length - 4) + '건 더보기</button>'
+          : '';
+        return '<div data-sched-key="' + group.key + '" style="min-width:220px;max-width:220px;background:rgba(14,17,24,.92);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:10px;">'
+          + '<div onclick="window.__skOpenSchedModal && window.__skOpenSchedModal(\'' + group.key + '\')" style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:8px;cursor:pointer;">'
+          + '<div><div style="font-size:13px;font-weight:700;color:#e8edf5;">' + fmtShort(group.date) + '</div><div style="font-size:10px;color:var(--mu);margin-top:2px;">' + group.key + ' · ' + group.items.length + '건</div></div>'
+          + '<span style="flex-shrink:0;font-size:10px;font-weight:700;color:' + color + ';background:' + color + '18;border:1px solid ' + color + '33;padding:2px 7px;border-radius:999px;">' + ddayLabel + '</span>'
+          + '</div>'
+          + '<div style="display:flex;flex-direction:column;gap:6px;">' + lines + more + '</div>'
+          + '</div>';
+      }).join('')
+      + '</div>'
+      + (groups.length > 140 ? '<div style="margin-top:7px;font-size:10px;color:var(--di);">'
+        + (showAll
+          ? '<button id="skFocusDays" class="sk-reveal-all">오늘 기준 구간 보기</button>'
+          : '<button id="skRevealAllDays" class="sk-reveal-all">전체 날짜 보기</button>')
+        + '</div>' : '');
+
+    var revealBtn = board.querySelector('#skRevealAllDays');
+    if (revealBtn) {
+      revealBtn.addEventListener('click', function () {
+        window.__skSchedShowAll = true;
+        enhanceScheduleBoard();
+      });
+    }
+    var focusBtn = board.querySelector('#skFocusDays');
+    if (focusBtn) {
+      focusBtn.addEventListener('click', function () {
+        window.__skSchedShowAll = false;
+        enhanceScheduleBoard();
+      });
+    }
+
+    var scroll = board.querySelector('#skSchedScroll');
+    if (scroll) {
+      var key = (visible.find(function (g) { return g.key >= todayKey; }) || visible[visible.length - 1] || {}).key;
+      if (key) {
+        var target = scroll.querySelector('[data-sched-key="' + key + '"]');
+        if (target) target.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'start' });
       }
     }
   }
@@ -42442,4 +42511,3 @@ window.addEventListener('DOMContentLoaded', () => {
     boot();
   }
 })();
-
