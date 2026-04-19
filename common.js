@@ -4562,7 +4562,7 @@ var _safeLocalSet = function(key, value) {
                     if (!closedStamp) {
                       closedStamp = document.createElement('div');
                       closedStamp.id = 'wr2ClosedStamp';
-                      closedStamp.style.cssText = 'display:none;margin:10px 10px 0;padding:12px 14px;border:1px solid rgba(255,102,120,.36);border-radius:12px;background:linear-gradient(180deg,rgba(255,88,106,.14),rgba(255,88,106,.06));color:#ffadb7;align-items:center;justify-content:space-between;gap:12px;';
+                      closedStamp.style.cssText = 'display:none;margin:10px 10px 0;padding:16px 18px;border:1px solid rgba(255,102,120,.36);border-radius:12px;background:linear-gradient(180deg,rgba(255,88,106,.14),rgba(255,88,106,.06));color:#ffadb7;align-items:center;justify-content:space-between;gap:16px;';
                       hdrBar.insertAdjacentElement('afterend', closedStamp);
                     }
                     const lifecycle = wr2GetLifecycle(room);
@@ -4581,18 +4581,36 @@ var _safeLocalSet = function(key, value) {
                       closedStamp.style.justifyContent = 'space-between';
                       closedStamp.style.display = 'flex';
                       closedStamp.innerHTML = ''
-                        + '<div style="display:flex;align-items:center;gap:12px;min-width:280px;">'
-                        + '  <div style="border:2px solid rgba(255,126,136,.78);border-radius:10px;padding:6px 12px;font-size:13px;font-weight:900;letter-spacing:2px;color:#ffb6bf;transform:rotate(-7deg);">종료</div>'
-                        + '  <div style="font-size:16px;font-weight:800;letter-spacing:.2px;color:#ffd6dc;line-height:1.25;">이 물건은 최종 종료되었습니다</div>'
+                        + '<div style="display:flex;align-items:center;gap:14px;min-width:290px;flex:0 0 auto;">'
+                        + '  <div style="border:2px solid rgba(255,126,136,.82);border-radius:10px;padding:7px 13px;font-size:13px;font-weight:900;letter-spacing:2px;color:#ffb6bf;transform:rotate(-7deg);">종료</div>'
+                        + '  <div style="font-size:18px;font-weight:800;letter-spacing:.2px;color:#ffd6dc;line-height:1.25;">이 물건은 최종 종료되었습니다</div>'
                         + '</div>'
-                        + '<div style="flex:1;display:grid;grid-template-columns:110px 1fr;column-gap:14px;row-gap:4px;align-items:center;font-size:12px;color:#ffd3d8;max-width:620px;margin-left:auto;">'
-                        + '<div style="opacity:.85;">종료 유형</div><div style="font-weight:700;color:#ffe5e8;">' + esc(closeType || '-') + '</div>'
-                        + '<div style="opacity:.85;">낙찰가</div><div style="font-weight:700;color:#ffe5e8;">' + esc(bid || '-') + '</div>'
-                        + '<div style="opacity:.85;">낙찰 인원</div><div style="font-weight:700;color:#ffe5e8;">' + esc(bidderCount || '-') + '</div>'
-                        + (dt ? ('<div style="opacity:.85;">종료일</div><div style="font-weight:700;color:#ffe5e8;">' + esc(dt) + '</div>') : '')
-                        + (memo ? ('<div style="opacity:.85;">복기</div><div style="max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(memo) + '</div>') : '')
-                        + '<button id="wr2ClosedEditBtn" type="button" style="margin-top:4px;grid-column:1 / -1;justify-self:end;padding:5px 10px;border-radius:7px;border:1px solid rgba(255,188,196,.32);background:rgba(255,188,196,.12);color:#ffdbe0;font-size:11px;cursor:pointer;">종료 정보 수정</button>'
-                        + '</div>';
+                        + '<div style="flex:1;display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px 10px;align-items:stretch;min-width:0;">'
+                        +   '<div style="padding:8px 10px;border-radius:8px;background:rgba(255,188,196,.08);border:1px solid rgba(255,188,196,.24);">'
+                        +     '<div style="font-size:11px;opacity:.8;">종료 유형</div>'
+                        +     '<div style="margin-top:3px;font-size:14px;font-weight:700;color:#ffe8eb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(closeType || '-') + '</div>'
+                        +   '</div>'
+                        +   '<div style="padding:8px 10px;border-radius:8px;background:rgba(255,188,196,.08);border:1px solid rgba(255,188,196,.24);">'
+                        +     '<div style="font-size:11px;opacity:.8;">낙찰가</div>'
+                        +     '<div style="margin-top:3px;font-size:14px;font-weight:700;color:#ffe8eb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(bid || '-') + '</div>'
+                        +   '</div>'
+                        +   '<div style="padding:8px 10px;border-radius:8px;background:rgba(255,188,196,.08);border:1px solid rgba(255,188,196,.24);">'
+                        +     '<div style="font-size:11px;opacity:.8;">낙찰 인원</div>'
+                        +     '<div style="margin-top:3px;font-size:14px;font-weight:700;color:#ffe8eb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(bidderCount || '-') + '</div>'
+                        +   '</div>'
+                        +   (dt ? ('<div style="padding:8px 10px;border-radius:8px;background:rgba(255,188,196,.08);border:1px solid rgba(255,188,196,.24);">'
+                        +     '<div style="font-size:11px;opacity:.8;">종료일</div>'
+                        +     '<div style="margin-top:3px;font-size:14px;font-weight:700;color:#ffe8eb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(dt) + '</div>'
+                        +   '</div>') : '')
+                        +   (memo ? ('<div style="grid-column:1 / -1;padding:8px 10px;border-radius:8px;background:rgba(255,188,196,.08);border:1px solid rgba(255,188,196,.24);">'
+                        +     '<div style="font-size:11px;opacity:.8;">복기 메모</div>'
+                        +     '<div style="margin-top:3px;font-size:13px;color:#ffe8eb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(memo) + '</div>'
+                        +   '</div>') : '')
+                        + '</div>'
+                        + '<div style="display:flex;align-items:flex-end;justify-content:flex-end;flex:0 0 auto;">'
+                        +   '<button id="wr2ClosedEditBtn" type="button" style="padding:6px 11px;border-radius:8px;border:1px solid rgba(255,188,196,.32);background:rgba(255,188,196,.12);color:#ffdbe0;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;">종료 정보 수정</button>'
+                        + '</div>'
+                        + '';
                       const editBtn = closedStamp.querySelector('#wr2ClosedEditBtn');
                       if (editBtn) {
                         editBtn.onclick = function(evt) {
@@ -27692,15 +27710,21 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       } catch (e) { console.warn('[pmMountPanel]', e); return null; }
     }
     window.pmOpenWorkroom = function(roomId) {
-      if (typeof window.showPage === 'function') window.showPage(4);
-      setTimeout(function(){
-        if (typeof window.pmShowTab === 'function') window.pmShowTab('work');
-        if (roomId) setTimeout(function(){ if (typeof window.wrDbOpenRoom === 'function') window.wrDbOpenRoom(roomId); }, 120);
-      }, 40);
+      window.__pmPendingTab = 'work';
+      window.__pmPendingRoomId = roomId ? String(roomId) : '';
+      if (typeof window.showPage === 'function') {
+        window.showPage(4);
+      } else if (typeof window.pmShowTab === 'function') {
+        window.pmShowTab('work');
+      }
     };
     window.pmOpenPipeline = function() {
-      if (typeof window.showPage === 'function') window.showPage(4);
-      setTimeout(function(){ if (typeof window.pmShowTab === 'function') window.pmShowTab('pipeline'); }, 40);
+      window.__pmPendingTab = 'pipeline';
+      if (typeof window.showPage === 'function') {
+        window.showPage(4);
+      } else if (typeof window.pmShowTab === 'function') {
+        window.pmShowTab('pipeline');
+      }
     };
 
     // ── 인사이트 탭 열릴 때 초기화 ─────────────────────
@@ -42033,6 +42057,8 @@ window.addEventListener('DOMContentLoaded', () => {
     var tabWork = document.getElementById('pm-tab-work');
     var tabPipe = document.getElementById('pm-tab-pipeline');
     if (!list || !work || !pipe) return;
+    if (tab !== 'list' && tab !== 'work' && tab !== 'pipeline') tab = 'list';
+    window.__pmActiveTab = tab;
     list.style.display = (tab === 'list') ? '' : 'none';
     work.style.display = (tab === 'work') ? '' : 'none';
     pipe.style.display = (tab === 'pipeline') ? '' : 'none';
@@ -42058,14 +42084,22 @@ window.addEventListener('DOMContentLoaded', () => {
       pmMountPanel('work');
       try { if (!window.__wr2Inited && typeof window.wr2Init === 'function') { window.__wr2Inited = true; window.wr2Init(); } } catch(e) {}
       if (window.wr2State) window.wr2State.activeView = 'overview';
+      const pendingRoomId = String(window.__pmPendingRoomId || '').trim();
+      if (pendingRoomId && window.wr2State) {
+        window.wr2State.activeRoomId = pendingRoomId;
+      }
       if (window._sbRunEntryRefresh && typeof window._wrRefreshFromCloud === 'function') {
         window._sbRunEntryRefresh('workrooms', window._wrRefreshFromCloud, { render: true, label: 'workrooms', force: true })
           .then(function(payload) {
+            if (window.wr2State && pendingRoomId) {
+              window.wr2State.activeRoomId = pendingRoomId;
+            }
             if (!payload && typeof window.wr2Render === 'function') window.wr2Render();
           });
       } else if (typeof window.wr2Render === 'function') {
         window.wr2Render();
       }
+      window.__pmPendingRoomId = '';
     }
     if (tab === 'pipeline') {
       pmMountPanel('pipeline');
@@ -42075,16 +42109,16 @@ window.addEventListener('DOMContentLoaded', () => {
 
   // ── 작업룸 이동 ─────────────────────────
   window.plGoToWorkroom = function(roomId) {
+    if (typeof window.pmOpenWorkroom === 'function') {
+      window.pmOpenWorkroom(roomId);
+      return;
+    }
     if (typeof window.showPage === 'function') window.showPage(4);
-    setTimeout(function(){
-      if (typeof window.pmShowTab === 'function') window.pmShowTab('work');
-      setTimeout(function(){
-        if (window.wr2State && roomId) {
-          window.wr2State.activeRoomId = roomId;
-          if (typeof window.wr2Render === 'function') window.wr2Render();
-        }
-      }, 200);
-    }, 80);
+    if (typeof window.pmShowTab === 'function') window.pmShowTab('work');
+    if (window.wr2State && roomId) {
+      window.wr2State.activeRoomId = roomId;
+      if (typeof window.wr2Render === 'function') window.wr2Render();
+    }
   };
 
   // 경매번호 → 저장목록 카드 열기
@@ -42493,7 +42527,18 @@ window.addEventListener('DOMContentLoaded', () => {
   if (_origShowPage) {
     window.showPage = function(n) {
       _origShowPage(n);
-      if (n === 4) setTimeout(function(){ _plWrapWorkroomSync(); pmShowTab('list'); renderPropertyList(); }, 50);
+      if (n !== 4) return;
+      setTimeout(function() {
+        _plWrapWorkroomSync();
+        var desiredTab = String(window.__pmPendingTab || window.__pmActiveTab || 'list');
+        if (desiredTab !== 'list' && desiredTab !== 'work' && desiredTab !== 'pipeline') desiredTab = 'list';
+        window.__pmPendingTab = '';
+        if (typeof window.pmShowTab === 'function') {
+          window.pmShowTab(desiredTab);
+        } else if (desiredTab === 'list' && typeof window.renderPropertyList === 'function') {
+          window.renderPropertyList();
+        }
+      }, 0);
     };
   }
 
