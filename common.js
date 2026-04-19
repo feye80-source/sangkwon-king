@@ -31524,6 +31524,42 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
     const WATCH_ORDER = ['', 'interest', 'review', 'field', 'bid', 'won', 'sell'];
 
+    // watchStatus → 작업룸 activePhase 역방향 동기화 헬퍼
+    function _syncWatchStatusToRoom(itemId, watchStatus) {
+      var watchToPhase = {
+        interest: 'ph_interest', review: 'ph_review',
+        field: 'ph_field', bid: 'ph_bid',
+        won: 'ph_won', sell: 'ph_sell'
+      };
+      var newPhase = watchToPhase[watchStatus];
+      if (!newPhase) return;
+      var rooms = (typeof wrGetRooms === 'function') ? wrGetRooms() : [];
+      var changed = false;
+      rooms.forEach(function(room) {
+        var linked = (room.linkedItems || []).concat(room.linkedSavedId ? [room.linkedSavedId] : []);
+        if (linked.map(String).indexOf(String(itemId)) < 0) return;
+        if (room.activePhase === newPhase) return;
+        room.activePhase = newPhase;
+        room.status = newPhase;
+        changed = true;
+      });
+      if (changed && typeof wrSetRooms === 'function') {
+        wrSetRooms(rooms);
+        // 열려있는 작업룸이 이 room이면 재렌더
+        if (typeof wrDbOpenRoom === 'function') {
+          rooms.forEach(function(room) {
+            var linked = (room.linkedItems || []).concat(room.linkedSavedId ? [room.linkedSavedId] : []);
+            if (linked.map(String).indexOf(String(itemId)) >= 0) {
+              var openEl = document.getElementById('wr2-room-detail');
+              if (openEl && openEl.dataset.roomId === String(room.id)) {
+                setTimeout(function() { wrDbOpenRoom(room.id); }, 50);
+              }
+            }
+          });
+        }
+      }
+    }
+
     window.cycleWatchStatus = function (id) {
       const sv = getSv();
       const item = sv.find(s => s.id === id);
@@ -31534,6 +31570,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       item.watchStatus = next || undefined;
       if (!next) delete item.watchStatus;
       setSv(sv);
+      // 역방향: watchStatus → 연결된 작업룸 phase 업데이트
+      if (next) _syncWatchStatusToRoom(id, next);
       renderSaved();
       updateWatchCnt();
       const labels = { interest: '👀 관심으로 표시', review: '🔍 검토중으로 이동', field: '📍 현장으로 이동', bid: '🎯 입찰로 이동', won: '✅ 낙찰로 이동', sell: '💰 매도로 이동', '': '표시 해제' };
@@ -31817,6 +31855,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       if (status === 'pass' || !status) { delete item.watchStatus; }
       else { item.watchStatus = status; }
       if (typeof setSv === 'function') setSv(sv);
+      // 역방향: watchStatus → 연결된 작업룸 phase 업데이트
+      if (status && status !== 'pass') _syncWatchStatusToRoom(itemId, status);
       if (typeof renderSaved === 'function') renderSaved();
       if (typeof updateWatchCnt === 'function') updateWatchCnt();
       var info = (typeof UNIFIED_STATUS !== 'undefined' ? UNIFIED_STATUS[status] : null) || { label: status };
@@ -32903,48 +32943,52 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         // MO: li.item > div.tit_box01(레이블) + div.txt_box01 > span.txt01 x2
         if (doc && doc.body) {
           var dateRe = /(\d{4}[-./]\d{1,2}[-./]\d{1,2}\s*\d{1,2}:\d{2})/;
-          // 방법1: li.item 중 레이블에 '입찰기간' 텍스트가 있는 것을 찾아 날짜 추출
-          var allItems = doc.querySelectorAll('li.item');
-          allItems.forEach(function(li) {
-            var titEl = li.querySelector('.tit_box01, .tit_box02, .tit_box03');
-            if (!titEl) return;
-            var lb = String(titEl.textContent||'').replace(/\s+/g,' ').trim();
-            if (lb.indexOf('입찰기간') < 0) return;
-            // txt_box01 안의 span.txt01 또는 직접 텍스트에서 날짜 추출
-            var valBox = li.querySelector('.txt_box01');
-            if (!valBox) return;
-            var spans = valBox.querySelectorAll('span.txt01, span.txt01\\.fw_600');
-            // fw_600 클래스 포함 span도 수집
-            var allSpans = Array.prototype.slice.call(valBox.querySelectorAll('span'));
-            var dateSpans = allSpans.filter(function(sp) {
-              return dateRe.test(String(sp.textContent||'').trim());
-            });
-            if (dateSpans.length >= 2) {
-              var d1 = String(dateSpans[0].textContent||'').match(dateRe);
-              var d2 = String(dateSpans[1].textContent||'').match(dateRe);
-              if (d1 && d2) {
-                if (!out.입찰시작) out.입찰시작 = d1[1];
-                if (!out.입찰마감) out.입찰마감 = d2[1];
-              }
-            } else if (dateSpans.length === 1) {
-              // span 하나에 "시작 ~ 마감" 형태
-              var combined = String(dateSpans[0].textContent||'').replace(/\s+/g,' ').trim();
-              var allDates = combined.match(/\d{4}[-./]\d{1,2}[-./]\d{1,2}\s*\d{1,2}:\d{2}/g);
-              if (allDates && allDates.length >= 2) {
-                if (!out.입찰시작) out.입찰시작 = allDates[0];
-                if (!out.입찰마감) out.입찰마감 = allDates[1];
-              }
-            } else {
-              // span 없이 txt_box01 직접 텍스트
-              var boxText = String(valBox.textContent||'').replace(/\s+/g,' ').trim();
-              var allDates2 = boxText.match(/\d{4}[-./]\d{1,2}[-./]\d{1,2}\s*\d{1,2}:\d{2}/g);
-              if (allDates2 && allDates2.length >= 2) {
-                if (!out.입찰시작) out.입찰시작 = allDates2[0];
-                if (!out.입찰마감) out.입찰마감 = allDates2[1];
-              }
+
+          // ① 최우선: hidden input에서 정확한 현재 회차 날짜 추출
+          // sndMailFrm 또는 srchCltrDtlFrm에 pbctBgngDt/pbctLastDdlnDt가 있음
+          var hiddenStart = doc.querySelector('input[id="pbctBgngDt"], input[name="pbctBgngDt"]');
+          var hiddenEnd   = doc.querySelector('input[id="pbctLastDdlnDt"], input[name="pbctLastDdlnDt"]');
+          if (hiddenStart && hiddenEnd) {
+            var hs = String(hiddenStart.value||'').trim();
+            var he = String(hiddenEnd.value||'').trim();
+            if (dateRe.test(hs) && dateRe.test(he)) {
+              out.입찰시작 = hs;
+              out.입찰마감 = he;
             }
-          });
-          // tit_box01 레이블+값 쌍도 pairMap에 추가
+          }
+
+          // ② 상단 요약 li.item 중 '입찰기간' 레이블이 있는 것
+          if (!out.입찰시작 || !out.입찰마감) {
+            var allItems = doc.querySelectorAll('li.item');
+            allItems.forEach(function(li) {
+              if (out.입찰시작 && out.입찰마감) return; // 이미 찾았으면 스킵
+              var titEl = li.querySelector('.tit_box01, .tit_box02, .tit_box03');
+              if (!titEl) return;
+              var lb = String(titEl.textContent||'').replace(/\s+/g,' ').trim();
+              if (lb.indexOf('입찰기간') < 0) return;
+              var valBox = li.querySelector('.txt_box01');
+              if (!valBox) return;
+              var allSpans = Array.prototype.slice.call(valBox.querySelectorAll('span'));
+              var dateSpans = allSpans.filter(function(sp) {
+                return dateRe.test(String(sp.textContent||'').trim());
+              });
+              if (dateSpans.length >= 2) {
+                var d1 = String(dateSpans[0].textContent||'').match(dateRe);
+                var d2 = String(dateSpans[1].textContent||'').match(dateRe);
+                if (d1 && d2) { out.입찰시작 = d1[1]; out.입찰마감 = d2[1]; }
+              } else if (dateSpans.length === 1) {
+                var combined = String(dateSpans[0].textContent||'').replace(/\s+/g,' ').trim();
+                var allDates = combined.match(/\d{4}[-./]\d{1,2}[-./]\d{1,2}\s*\d{1,2}:\d{2}/g);
+                if (allDates && allDates.length >= 2) { out.입찰시작 = allDates[0]; out.입찰마감 = allDates[1]; }
+              } else {
+                var boxText = String(valBox.textContent||'').replace(/\s+/g,' ').trim();
+                var allDates2 = boxText.match(/\d{4}[-./]\d{1,2}[-./]\d{1,2}\s*\d{1,2}:\d{2}/g);
+                if (allDates2 && allDates2.length >= 2) { out.입찰시작 = allDates2[0]; out.입찰마감 = allDates2[1]; }
+              }
+            });
+          }
+
+          // tit_box 레이블+값 쌍 pairMap 추가
           doc.querySelectorAll('li.item').forEach(function(li) {
             var titEl = li.querySelector('.tit_box01, .tit_box02, .tit_box03');
             var valEl = li.querySelector('.txt_box01, .txt_box02');
@@ -32955,6 +32999,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           });
         }
 
+        var bodyText = String(doc.body.innerText || '').replace(/\r/g, '\n');
         var caseMatch = bodyText.match(/\b20\d{2}-\d{3,4}-\d{4,}\b/);
         if (caseMatch) {
           out.경매번호 = caseMatch[0];
