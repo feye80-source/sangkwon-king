@@ -3488,9 +3488,11 @@ var _safeLocalSet = function(key, value) {
                         + '    <button type="button" id="wr2CloseSummaryCancelX" style="border:none;background:transparent;color:#ffd3d8;font-size:20px;cursor:pointer;line-height:1;">×</button>'
                         + '  </div>'
                         + '  <div style="padding:14px 16px 12px;">'
-                        + '    <div style="font-size:11px;color:var(--mu);margin-bottom:10px;">낙찰가/복기는 선택 입력입니다. 비워두고 종료만 처리할 수도 있습니다.</div>'
+                        + '    <div style="font-size:11px;color:var(--mu);margin-bottom:10px;">낙찰가/낙찰인원/복기는 선택 입력입니다. 비워두고 종료만 처리할 수도 있습니다.</div>'
                         + '    <label style="display:block;font-size:11px;color:#ffbcc4;margin-bottom:5px;">최종 낙찰가 (선택)</label>'
                         + '    <input id="wr2CloseBidInput" type="text" placeholder="예: 3억 2,500만" style="width:100%;padding:9px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--tx);outline:none;box-sizing:border-box;">'
+                        + '    <label style="display:block;font-size:11px;color:#ffbcc4;margin:10px 0 5px;">낙찰 인원 (선택)</label>'
+                        + '    <input id="wr2CloseBidderInput" type="text" placeholder="예: 7명" style="width:100%;padding:9px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--tx);outline:none;box-sizing:border-box;">'
                         + '    <label style="display:block;font-size:11px;color:#ffbcc4;margin:11px 0 5px;">복기 메모 (선택)</label>'
                         + '    <textarea id="wr2CloseMemoInput" rows="3" placeholder="예: 낙찰가는 높았지만 입지/공실 위험 확인됨" style="width:100%;padding:9px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--tx);outline:none;box-sizing:border-box;resize:vertical;"></textarea>'
                         + '  </div>'
@@ -3502,11 +3504,13 @@ var _safeLocalSet = function(key, value) {
                       document.body.appendChild(modal);
                     }
                     const bidIn = document.getElementById('wr2CloseBidInput');
+                    const bidderIn = document.getElementById('wr2CloseBidderInput');
                     const memoIn = document.getElementById('wr2CloseMemoInput');
                     const closeModal = function() {
                       modal.style.display = 'none';
                     };
                     if (bidIn) bidIn.value = String(base.finalBidPrice || '').trim();
+                    if (bidderIn) bidderIn.value = String(base.bidderCount || '').trim();
                     if (memoIn) memoIn.value = String(base.memo || '').trim();
                     const cancel = function() {
                       closeModal();
@@ -3523,13 +3527,16 @@ var _safeLocalSet = function(key, value) {
                     if (btnSkip) btnSkip.onclick = function() {
                       completeWith({
                         finalBidPrice: String(base.finalBidPrice || '').trim(),
+                        bidderCount: String(base.bidderCount || '').trim(),
                         memo: String(base.memo || '').trim(),
                         closedAt: Date.now()
                       });
                     };
                     if (btnSave) btnSave.onclick = function() {
+                      const bidderIn = document.getElementById('wr2CloseBidderInput');
                       completeWith({
                         finalBidPrice: String((bidIn && bidIn.value) || '').trim(),
+                        bidderCount: String((bidderIn && bidderIn.value) || '').trim(),
                         memo: String((memoIn && memoIn.value) || '').trim(),
                         closedAt: Date.now()
                       });
@@ -3541,18 +3548,21 @@ var _safeLocalSet = function(key, value) {
                     setTimeout(function() { if (bidIn) bidIn.focus(); }, 30);
                     return;
                   }
-                  const want = confirm('종료 기록(낙찰가/복기 메모)을 입력할까요?');
+                  const want = confirm('종료 기록(낙찰가/낙찰인원/복기 메모)을 입력할까요?');
                   if (!want) {
                     return {
                       finalBidPrice: String(base.finalBidPrice || '').trim(),
+                      bidderCount: String(base.bidderCount || '').trim(),
                       memo: String(base.memo || '').trim(),
                       closedAt: Date.now()
                     };
                   }
                   const price = prompt('종료 기록 - 낙찰가(선택)\n예: 3억 2,500만', base.finalBidPrice || '') || '';
+                  const bidder = prompt('종료 기록 - 낙찰 인원(선택)\n예: 7명', base.bidderCount || '') || '';
                   const memo = prompt('종료 복기 메모(선택)', base.memo || '') || '';
                   return {
                     finalBidPrice: String(price || '').trim(),
+                    bidderCount: String(bidder || '').trim(),
                     memo: String(memo || '').trim(),
                     closedAt: Date.now()
                   };
@@ -4289,11 +4299,9 @@ var _safeLocalSet = function(key, value) {
                     const linked = svItems.find(it => linkedIds.includes(String(it.id))) || null;
                     const m = linked && linked.data ? linked.data : {};
                     const no = String(m['사건번호'] || m['경매번호'] || m['물건번호'] || r.auctionId || r.listingId || linked && linked.id || '').trim();
-                    const addr = String(m['소재지'] || m['도로명주소'] || m['지번주소'] || r.address || '').trim();
-                    const cat = String(m['유형'] || m['재산유형'] || m['용도'] || r.type || '').trim();
                     const meta = document.createElement('div');
                     meta.className = 'wr2-room-meta';
-                    meta.textContent = [no, cat, addr].filter(Boolean).join(' · ') || '연결 정보 없음';
+                    meta.textContent = no ? ('경매번호 ' + no) : '연결 정보 없음';
                     content.appendChild(meta);
                     item.appendChild(handle);
                     item.appendChild(content);
@@ -4446,6 +4454,7 @@ var _safeLocalSet = function(key, value) {
                       const d = cs.closedAt ? new Date(cs.closedAt) : null;
                       const dt = d && !isNaN(d.getTime()) ? (d.getFullYear() + '.' + String(d.getMonth()+1).padStart(2,'0') + '.' + String(d.getDate()).padStart(2,'0')) : '';
                       const bid = String(cs.finalBidPrice || '').trim();
+                      const bidderCount = String(cs.bidderCount || '').trim();
                       const memo = String(cs.memo || '').trim();
                       closedStamp.style.display = 'flex';
                       closedStamp.innerHTML = ''
@@ -4455,6 +4464,7 @@ var _safeLocalSet = function(key, value) {
                         + '</div>'
                         + '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;font-size:11px;color:#ffd3d8;">'
                         + (bid ? ('<div>낙찰가 <b style="color:#ffe5e8;">' + escHtml(bid) + '</b></div>') : '')
+                        + (bidderCount ? ('<div>낙찰 인원 <b style="color:#ffe5e8;">' + escHtml(bidderCount) + '</b></div>') : '')
                         + (memo ? ('<div style="max-width:360px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">복기: ' + escHtml(memo) + '</div>') : '')
                         + (dt ? ('<div style="opacity:.85;">종료일 ' + dt + '</div>') : '')
                         + '</div>';
@@ -4982,6 +4992,7 @@ var _safeLocalSet = function(key, value) {
 
                   const primaryAddr = d['소재지'] || d['도로명주소'] || d['지번주소'] || d['주소'] || room.address || '-';
                   const pdfDoc = _getPrimaryPdfDoc(item);
+                  const sourceUrl = String(d['상세URL'] || d['옥션원URL'] || d['온비드URL'] || '').trim();
                   let html = '';
 
                   // 소재지 / 물건종류
@@ -4989,6 +5000,9 @@ var _safeLocalSet = function(key, value) {
                   html += `<div class="wr2-info-row"><span class="wr2-info-lbl">소재지</span><span class="wr2-info-val" style="display:flex;align-items:center;justify-content:space-between;gap:8px;"><span style="flex:1;min-width:0;word-break:break-word;">${primaryAddr}</span>${primaryAddr && primaryAddr !== '-' ? `<span style="display:flex;align-items:center;gap:6px;flex-shrink:0;"><button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();wr2CopyText('${_addrEsc}','주소를 복사했어요')">주소복사</button>${item && item.id ? `<button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();goToMapFromCard('${String(item.id).replace(/'/g, "\\'")}')">지도열기</button>` : ''}</span>` : ''}</span></div>`;
                   if (pdfDoc && item && item.id) {
                     html += `<div class="wr2-info-row"><span class="wr2-info-lbl">원본자료</span><span class="wr2-info-val" style="display:flex;justify-content:flex-end;gap:6px;flex-wrap:wrap;"><button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();wr2OpenPrimaryPdf('${String(item.id).replace(/'/g, "\\'")}')">PDF 보기</button><button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();wr2DownloadPrimaryPdf('${String(item.id).replace(/'/g, "\\'")}')">PDF 다운로드</button></span></div>`;
+                  }
+                  if (sourceUrl) {
+                    html += `<div class="wr2-info-row"><span class="wr2-info-lbl">원본 링크</span><span class="wr2-info-val" style="display:flex;justify-content:flex-end;"><a class="wr2-mini-btn" href="${esc(sourceUrl)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">옥션원/온비드 열기</a></span></div>`;
                   }
                   if (d['물건종류'] || d['용도']) html += `<div class="wr2-info-row"><span class="wr2-info-lbl">물건종류</span><span class="wr2-info-val">${d['물건종류']||d['용도']}</span></div>`;
 
@@ -31846,10 +31860,12 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         if (emptyEls[ci]) emptyEls[ci].style.display = items.length ? 'none' : '';
 
         if (cols[ci]) {
-          if (ci === 0) {
+          if (ci === 0 || ci === 1) {
             cols[ci].style.display = 'grid';
-            cols[ci].style.gridTemplateColumns = 'repeat(2,minmax(0,1fr))';
+            cols[ci].style.gridTemplateColumns = 'repeat(auto-fill,minmax(212px,212px))';
+            cols[ci].style.justifyContent = 'start';
             cols[ci].style.alignContent = 'start';
+            cols[ci].style.gap = '6px';
           } else {
             cols[ci].style.display = 'flex';
             cols[ci].style.flexDirection = 'column';
@@ -31884,21 +31900,10 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
               (r.listingId && String(r.listingId) === itemIdStr) ||
               ((r.linkedItems || []).map(String).includes(itemIdStr))
             );
-            // 작업룸 상태 동기화 배지
-            const roomStatusHtml = linkedRoom ? (() => {
-              let key = typeof _migrateStatus === 'function' ? _migrateStatus(linkedRoom.status) : (linkedRoom.status || 'review');
-              const info = (typeof UNIFIED_STATUS !== 'undefined' ? UNIFIED_STATUS : {})[key] || { label: linkedRoom.status, color: '#60a5fa' };
-              return `<span style="font-size:9px;padding:1px 5px;border-radius:3px;background:${info.color}18;color:${info.color};border:1px solid ${info.color}44;">${info.label}</span>`;
-            })() : '';
-
-            const curStatus = (typeof _migrateStatus === 'function') ? _migrateStatus(item.watchStatus || status) : (item.watchStatus || status);
-            const statusLabelMap = { interest: '개요', review: '검토', field: '현장', bid: '입찰', won: '낙찰', sell: '매도', pass: '제외' };
-            const statusOptions = ['interest','review','field','bid','won','sell','pass'].map(k =>
-              `<option value="${k}" ${curStatus === k ? 'selected' : ''}>${statusLabelMap[k] || k}</option>`
-            ).join('');
-
             const card = document.createElement('div');
-            card.style.cssText = `background:var(--s2);border-radius:9px;border:1px solid ${linkedRoom ? 'rgba(17,157,237,.25)' : 'var(--b1)'};padding:8px 10px;transition:all .15s;position:relative;`;
+            card.style.cssText = `background:var(--s2);border-radius:9px;border:1px solid ${linkedRoom ? 'rgba(17,157,237,.25)' : 'var(--b1)'};padding:8px 10px;transition:all .15s;position:relative;cursor:pointer;width:100%;max-width:212px;align-self:flex-start;`;
+            card.dataset.itemId = String(item.id || '');
+            card.onclick = () => { if (typeof openPopup === 'function') openPopup(item.id); };
             card.onmouseenter = () => { card.style.borderColor = 'rgba(79,142,255,0.5)'; card.style.background = 'rgba(79,142,255,.04)'; };
             card.onmouseleave = () => { card.style.borderColor = linkedRoom ? 'rgba(17,157,237,.25)' : 'var(--b1)'; card.style.background = 'var(--s2)'; };
 
@@ -31908,32 +31913,25 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           <div style="position:absolute;left:0;top:8px;bottom:8px;width:3px;background:${colColors[ci]};border-radius:0 2px 2px 0;"></div>
           <div style="padding-left:6px;">
             <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:4px;margin-bottom:3px;">
-              <div style="font-size:12px;font-weight:600;color:var(--tx);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;" onclick="openPopup('${item.id}')">${esc(item.title || d.소재지 || item.id)}</div>
+              <div style="font-size:12px;font-weight:600;color:var(--tx);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(item.title || d.소재지 || item.id)}</div>
               <div style="display:flex;align-items:center;gap:3px;flex-shrink:0;">
                 ${ddayHtml}
               </div>
             </div>
             <div style="font-size:10px;color:var(--mu);margin-bottom:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(String(d.소재지 || ''))}</div>
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:6px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
               <span style="font-size:12px;font-weight:700;color:${ia ? 'var(--auction-c)' : 'var(--listing-c)'};">${priceStr}</span>
-              ${roomStatusHtml}
-            </div>
-            <div style="display:flex;gap:4px;margin-top:2px;">
-              <select onchange="_wbSetStatus('${item.id}',this.value)" style="flex:0 0 74px;padding:4px 6px;background:var(--s1);border:1px solid var(--b1);border-radius:6px;color:var(--tx);font-size:10px;cursor:pointer;outline:none;">
-                ${statusOptions}
-              </select>
               ${linkedRoom
-                ? `<button onclick="_wbGoRoom('${linkedRoom.id}')" style="flex:1;padding:4px 6px;background:rgba(17,157,237,.12);border:1px solid rgba(17,157,237,.35);border-radius:6px;color:#119ded;font-size:10px;font-weight:600;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">🗂 ${esc((linkedRoom.title || linkedRoom.name || '작업룸').substring(0, 8))}</button>`
-                : `<button onclick="_wbCreateAndLink('${item.id}')" style="flex:1;padding:4px 6px;background:rgba(17,157,237,.08);border:1px dashed rgba(17,157,237,.4);border-radius:6px;color:#119ded;font-size:10px;cursor:pointer;">＋ 연결</button>`
+                ? `<button onclick="event.stopPropagation();_wbGoRoom('${linkedRoom.id}')" style="padding:4px 8px;background:rgba(17,157,237,.12);border:1px solid rgba(17,157,237,.35);border-radius:6px;color:#8fd0ff;font-size:10px;font-weight:700;cursor:pointer;">작업룸</button>`
+                : `<button onclick="event.stopPropagation();_wbCreateAndLink('${item.id}')" style="padding:4px 8px;background:rgba(17,157,237,.08);border:1px dashed rgba(17,157,237,.4);border-radius:6px;color:#8fd0ff;font-size:10px;font-weight:700;cursor:pointer;">작업룸+</button>`
               }
-              <button onclick="openPopup('${item.id}')" style="padding:4px 7px;background:var(--s1);border:1px solid var(--b1);border-radius:6px;color:var(--di);font-size:10px;cursor:pointer;">상세</button>
             </div>
           </div>
         `;
             cols[ci].appendChild(card);
           });
         }
-        if (emptyEls[ci] && ci === 0) emptyEls[ci].style.gridColumn = '1 / -1';
+        if (emptyEls[ci] && (ci === 0 || ci === 1)) emptyEls[ci].style.gridColumn = '1 / -1';
       });
       // ── 물건 없는 작업룸도 가상 카드로 표시 ──
       statuses.forEach((status, ci) => {
@@ -31948,7 +31946,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         roomOnlyItems.forEach(room => {
           const colColors = ['rgba(148,163,184,.5)','rgba(96,165,250,.5)','rgba(251,191,36,.5)','rgba(249,115,22,.5)','rgba(74,222,128,.5)','rgba(244,114,182,.55)'];
           const card = document.createElement('div');
-          card.style.cssText = `background:var(--s2);border-radius:9px;border:1px solid rgba(17,157,237,.25);padding:10px 12px;transition:all .15s;position:relative;cursor:pointer;`;
+          card.style.cssText = `background:var(--s2);border-radius:9px;border:1px solid rgba(17,157,237,.25);padding:10px 12px;transition:all .15s;position:relative;cursor:pointer;width:100%;max-width:212px;align-self:flex-start;`;
           card.onmouseenter = () => { card.style.borderColor = 'rgba(17,157,237,.5)'; card.style.background = 'rgba(17,157,237,.04)'; };
           card.onmouseleave = () => { card.style.borderColor = 'rgba(17,157,237,.25)'; card.style.background = 'var(--s2)'; };
           card.onclick = () => _wbGoRoom(room.id);

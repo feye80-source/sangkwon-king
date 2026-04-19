@@ -9699,10 +9699,11 @@
               #ipage8 .wr2-room-meta {
                 margin-top: 2px;
                 font-size: 10px;
-                color: var(--di);
+                color: #8ea7c9;
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
+                letter-spacing: .1px;
               }
 
 	              #ipage8 .wr2-room-act-btn {
