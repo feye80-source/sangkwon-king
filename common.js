@@ -42073,6 +42073,73 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  function getRoomLinkedItemIds(room) {
+    var ids = [];
+    if (!room) return ids;
+    if (room.linkedSavedId != null) ids.push(String(room.linkedSavedId));
+    if (room.auctionId != null) ids.push(String(room.auctionId));
+    if (room.listingId != null) ids.push(String(room.listingId));
+    if (Array.isArray(room.linkedItems)) {
+      room.linkedItems.forEach(function (id) { ids.push(String(id)); });
+    }
+    return Array.from(new Set(ids.filter(Boolean)));
+  }
+
+  function syncLinkedItemsByRoom(roomId, norm) {
+    try {
+      if (!roomId || typeof window.wrGetRooms !== 'function' || typeof window.getSv !== 'function' || typeof window.setSv !== 'function') return false;
+      var rooms = window.wrGetRooms() || [];
+      var room = rooms.find(function (r) { return String(r.id) === String(roomId); });
+      if (!room) return false;
+      var ids = getRoomLinkedItemIds(room);
+      if (!ids.length) return false;
+      var sv = window.getSv() || [];
+      var changed = false;
+      sv.forEach(function (it) {
+        if (!it || ids.indexOf(String(it.id)) < 0) return;
+        var cur = normalizeStatus(it.watchStatus);
+        if (cur !== norm) {
+          it.watchStatus = norm;
+          changed = true;
+        }
+      });
+      if (changed) window.setSv(sv);
+      return changed;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function syncItemsFromRoomStatuses() {
+    try {
+      if (typeof window.wrGetRooms !== 'function' || typeof window.getSv !== 'function' || typeof window.setSv !== 'function') return false;
+      var rooms = window.wrGetRooms() || [];
+      var byItem = {};
+      rooms.forEach(function (room) {
+        var norm = normalizeStatus(room && (room.status || room.phase || room.activePhase));
+        if (!norm || norm === 'pass') return;
+        getRoomLinkedItemIds(room).forEach(function (id) { byItem[id] = norm; });
+      });
+      var sv = window.getSv() || [];
+      var changed = false;
+      sv.forEach(function (it) {
+        if (!it) return;
+        var id = String(it.id);
+        var roomStatus = byItem[id];
+        if (!roomStatus) return;
+        var cur = normalizeStatus(it.watchStatus);
+        if (cur !== roomStatus) {
+          it.watchStatus = roomStatus;
+          changed = true;
+        }
+      });
+      if (changed) window.setSv(sv);
+      return changed;
+    } catch (e) {
+      return false;
+    }
+  }
+
   function syncRoomStatus(roomId, norm, forceFieldPhase) {
     try {
       if (!roomId || typeof window.wrGetRooms !== 'function' || typeof window.wrSetRooms !== 'function') return;
@@ -42115,6 +42182,7 @@ window.addEventListener('DOMContentLoaded', () => {
       var ret = orig.call(this, roomId, nextPhId);
 
       syncRoomStatus(roomId, norm, norm === 'field');
+      syncLinkedItemsByRoom(roomId, norm);
 
       if (norm === 'field') setTimeout(function () { goFieldTab(roomId); }, 40);
       if (typeof window.renderWatchBoard === 'function') {
@@ -42131,8 +42199,9 @@ window.addEventListener('DOMContentLoaded', () => {
     window._wbSetStatus = function (itemId, status) {
       var norm = normalizeStatus(status);
       var ret = orig.call(this, itemId, norm);
+      var roomId = findLinkedRoomId(itemId);
+      if (roomId) syncRoomStatus(roomId, norm, norm === 'field');
       if (norm === 'field') {
-        var roomId = findLinkedRoomId(itemId);
         if (roomId) setTimeout(function () { goFieldTab(roomId); }, 30);
       }
       return ret;
@@ -42297,7 +42366,15 @@ window.addEventListener('DOMContentLoaded', () => {
     if (!board || board.style.display === 'none') return;
 
     if (typeof window.getSv !== 'function') return;
+    syncItemsFromRoomStatuses();
     var sv = window.getSv() || [];
+    var rooms = (typeof window.wrGetRooms === 'function') ? (window.wrGetRooms() || []) : [];
+    var statusByItem = {};
+    rooms.forEach(function (room) {
+      var norm = normalizeStatus(room && (room.status || room.phase || room.activePhase));
+      if (!norm || norm === 'pass') return;
+      getRoomLinkedItemIds(room).forEach(function (id) { statusByItem[id] = norm; });
+    });
     function parseSaleDate(v) {
       var s = String(v || '').trim();
       if (!s) return null;
@@ -42316,7 +42393,11 @@ window.addEventListener('DOMContentLoaded', () => {
       return Math.round((dt - today) / (1000 * 60 * 60 * 24));
     }
     var saleItems = sv.filter(function (item) {
-      return item && item.mode === 'auction' && item.watchStatus;
+      if (!item) return false;
+      var id = String(item.id || '');
+      var effectiveStatus = normalizeStatus(item.watchStatus || statusByItem[id]);
+      if (!effectiveStatus || effectiveStatus === 'pass') return false;
+      return true;
     }).map(function (item) {
       var d = item.data || {};
       var dt = parseSaleDate(d['매각일'] || d['매각기일'] || '');
@@ -42461,6 +42542,7 @@ window.addEventListener('DOMContentLoaded', () => {
     if (window.renderWatchBoard.__skPatched) return;
     var orig = window.renderWatchBoard;
     window.renderWatchBoard = function () {
+      syncItemsFromRoomStatuses();
       var ret = orig.apply(this, arguments);
       setTimeout(function () {
         enhanceScheduleBoard();
@@ -42480,6 +42562,19 @@ window.addEventListener('DOMContentLoaded', () => {
     patchPhaseSwitch();
     patchWatchSetter();
     patchRenderWatchBoard();
+    if (typeof window.wrDbUpdateStatus === 'function' && !window.wrDbUpdateStatus.__skPatched) {
+      var _origWrDbUpdateStatus = window.wrDbUpdateStatus;
+      window.wrDbUpdateStatus = function (id, val) {
+        var norm = normalizeStatus(val);
+        var ret = _origWrDbUpdateStatus.call(this, id, norm);
+        syncLinkedItemsByRoom(id, norm);
+        if (typeof window.renderWatchBoard === 'function') {
+          setTimeout(function () { try { window.renderWatchBoard(); } catch (e) {} }, 40);
+        }
+        return ret;
+      };
+      window.wrDbUpdateStatus.__skPatched = true;
+    }
     enhanceKanbanDnD();
     updateColumnTotals();
   }
