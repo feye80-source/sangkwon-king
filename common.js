@@ -4241,7 +4241,13 @@ var _safeLocalSet = function(key, value) {
                   let rooms = wr2State.rooms.filter(r => !r.deletedAt);
                   const svItems = (typeof getSv === 'function') ? (getSv() || []) : [];
                   const fmtMetaPrice = function(raw) {
-                    const n = parseInt(String(raw || '').replace(/[^0-9]/g, ''), 10) || 0;
+                    let n = 0;
+                    try {
+                      if (typeof _parseWonInput === 'function') {
+                        n = Math.round(_parseWonInput(raw) || 0);
+                      }
+                    } catch (e) {}
+                    if (!n) n = parseInt(String(raw || '').replace(/[^0-9]/g, ''), 10) || 0;
                     if (!n) return '';
                     if (n >= 100000000) {
                       const e = n / 100000000;
@@ -4331,7 +4337,11 @@ var _safeLocalSet = function(key, value) {
                     const m = linked && linked.data ? linked.data : {};
                     const no = String(m['사건번호'] || m['경매번호'] || m['물건번호'] || r.auctionId || r.listingId || linked && linked.id || '').trim();
                     const addr = String(m['소재지'] || m['도로명주소'] || m['지번주소'] || r.address || '').trim();
-                    const price = fmtMetaPrice(m['최저가'] || m['감정가'] || m['매매가'] || m['매매가_만원']);
+                    const priceRaw = m['최저가'] || m['감정가'] || m['낙찰가'] || m['매매가'] || m['매매가_만원']
+                      || (r.calcState && (r.calcState.price || r.calcState.deposit))
+                      || (r.closedSummary && r.closedSummary.finalBidPrice)
+                      || '';
+                    const price = fmtMetaPrice(priceRaw) || String(priceRaw || '').trim();
                     const meta = document.createElement('div');
                     meta.className = 'wr2-room-meta';
                     meta.textContent = [no ? ('경매번호 ' + no) : '', addr, price].filter(Boolean).join(' · ') || '연결 정보 없음';
@@ -4496,13 +4506,24 @@ var _safeLocalSet = function(key, value) {
                         + '  <div style="border:2px solid rgba(255,126,136,.78);border-radius:10px;padding:4px 10px;font-size:12px;font-weight:900;letter-spacing:2px;color:#ffb6bf;transform:rotate(-8deg);">종료</div>'
                         + '  <div style="font-size:14px;font-weight:800;letter-spacing:.2px;color:#ffd6dc;">이 물건은 최종 종료되었습니다</div>'
                         + '</div>'
-                        + '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;font-size:11px;color:#ffd3d8;">'
-                        + (closeType ? ('<div>종료 유형 <b style="color:#ffe5e8;">' + escHtml(closeType) + '</b></div>') : '')
-                        + (bid ? ('<div>낙찰가 <b style="color:#ffe5e8;">' + escHtml(bid) + '</b></div>') : '')
-                        + (bidderCount ? ('<div>낙찰 인원 <b style="color:#ffe5e8;">' + escHtml(bidderCount) + '</b></div>') : '')
-                        + (memo ? ('<div style="max-width:360px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">복기: ' + escHtml(memo) + '</div>') : '')
-                        + (dt ? ('<div style="opacity:.85;">종료일 ' + dt + '</div>') : '')
+                        + '<div style="display:grid;grid-template-columns:auto auto;column-gap:12px;row-gap:2px;align-items:center;font-size:11px;color:#ffd3d8;">'
+                        + '<div style="opacity:.85;">종료 유형</div><div style="font-weight:700;color:#ffe5e8;">' + escHtml(closeType || '-') + '</div>'
+                        + '<div style="opacity:.85;">낙찰가</div><div style="font-weight:700;color:#ffe5e8;">' + escHtml(bid || '-') + '</div>'
+                        + '<div style="opacity:.85;">낙찰 인원</div><div style="font-weight:700;color:#ffe5e8;">' + escHtml(bidderCount || '-') + '</div>'
+                        + (dt ? ('<div style="opacity:.85;">종료일</div><div style="font-weight:700;color:#ffe5e8;">' + escHtml(dt) + '</div>') : '')
+                        + (memo ? ('<div style="opacity:.85;">복기</div><div style="max-width:360px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escHtml(memo) + '</div>') : '')
+                        + '<button id="wr2ClosedEditBtn" type="button" style="margin-top:3px;grid-column:1 / -1;justify-self:end;padding:4px 9px;border-radius:7px;border:1px solid rgba(255,188,196,.32);background:rgba(255,188,196,.12);color:#ffdbe0;font-size:10px;cursor:pointer;">종료 정보 수정</button>'
                         + '</div>';
+                      const editBtn = closedStamp.querySelector('#wr2ClosedEditBtn');
+                      if (editBtn) {
+                        editBtn.onclick = function(evt) {
+                          evt.preventDefault();
+                          evt.stopPropagation();
+                          wr2CollectCloseSummary(cs, function(nextSummary) {
+                            updateRoom(room.id, { lifecycleStatus: 'closed', closedSummary: nextSummary });
+                          });
+                        };
+                      }
                     } else if (lifecycle === 'changed') {
                       closedStamp.style.display = 'flex';
                       closedStamp.style.border = '1px solid rgba(251,191,36,.35)';
@@ -31813,24 +31834,76 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
     const _PIPELINE_VIEW_KEY = 'wr_pipeline_view_v1';
     function _plEsc(v) { return (typeof esc === 'function') ? esc(v) : String(v || ''); }
+    function _plParseAuctionDate(v) {
+      const s = String(v || '').trim();
+      if (!s) return null;
+      const m = s.match(/(20\d{2})[.\-\/년\s]*(\d{1,2})[.\-\/월\s]*(\d{1,2})/);
+      if (!m) return null;
+      const dt = new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10));
+      return isNaN(dt.getTime()) ? null : dt;
+    }
+    function _plToWon(raw, fallbackMan) {
+      let n = 0;
+      if (raw !== undefined && raw !== null && String(raw).trim() !== '') {
+        try {
+          if (typeof _parseWonInput === 'function') {
+            const parsed = _parseWonInput(raw);
+            if (parsed && isFinite(parsed)) n = Math.round(parsed);
+          }
+        } catch (e) {}
+        if (!n) {
+          const onlyNum = parseInt(String(raw).replace(/[^0-9]/g, ''), 10) || 0;
+          if (onlyNum > 0) n = onlyNum;
+        }
+      }
+      if (!n && fallbackMan) {
+        const man = parseInt(String(fallbackMan || '').replace(/[^0-9]/g, ''), 10) || 0;
+        if (man) n = man * 10000;
+      }
+      return n > 0 ? n : 0;
+    }
+    function _plFmtMoneyWon(raw, fallbackMan) {
+      const n = _plToWon(raw, fallbackMan);
+      return n ? (n.toLocaleString('ko-KR') + '원') : '-';
+    }
+    function _plFmtMonthTitle(y, m) {
+      return y + '년 ' + m + '월';
+    }
+    function _plDdayColor(dt) {
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const dday = Math.round((dt - today) / 86400000);
+      if (dday < 0) return '#8b93a7';
+      if (dday === 0) return '#ff6370';
+      if (dday <= 3) return '#ff8c42';
+      if (dday <= 7) return '#fbbf24';
+      return '#4ade80';
+    }
     function renderPipelineListBoard() {
       const listEl = document.getElementById('pipelineListBoard');
       if (!listEl) return;
       const sv = getSv();
-      const rows = sv.filter(it => it && it.watchStatus && it.watchStatus !== 'pass');
-      const statusMap = { interest: '개요', review: '검토', field: '현장', bid: '입찰', won: '낙찰', sell: '매도' };
-      const sortKey = document.getElementById('watchSortSel')?.value || 'savedAt';
-      if (sortKey === 'price') {
-        rows.sort((a, b) => {
-          const pa = parseInt(String(a.data?.감정가 || a.data?.매매가 || 0).replace(/[^0-9]/g, ''), 10) || 0;
-          const pb = parseInt(String(b.data?.감정가 || b.data?.매매가 || 0).replace(/[^0-9]/g, ''), 10) || 0;
-          return pb - pa;
-        });
-      }
-      const body = rows.map(it => {
+      const rows = sv.filter(it => it && it.watchStatus && it.watchStatus !== 'pass').map(it => {
         const d = it.data || {};
-        const price = d.감정가 || d.최저가 || d.매매가 || '-';
-        const saleDate = d.매각일 || d.매각기일 || '-';
+        const saleDt = _plParseAuctionDate(d.매각일 || d.매각기일 || '');
+        return { item: it, saleDt: saleDt };
+      });
+      const statusMap = { interest: '개요', review: '검토', field: '현장', bid: '입찰', won: '낙찰', sell: '매도' };
+      rows.sort((a, b) => {
+        const da = a.saleDt ? a.saleDt.getTime() : Number.MAX_SAFE_INTEGER;
+        const db = b.saleDt ? b.saleDt.getTime() : Number.MAX_SAFE_INTEGER;
+        if (da !== db) return da - db;
+        const ta = String(a.item?.title || '').toLowerCase();
+        const tb = String(b.item?.title || '').toLowerCase();
+        return ta.localeCompare(tb);
+      });
+      const body = rows.map(entry => {
+        const it = entry.item;
+        const d = it.data || {};
+        const price = _plFmtMoneyWon(d.최저가 || d.감정가 || d.매매가, d.매매가_만원);
+        const saleDate = entry.saleDt
+          ? (entry.saleDt.getFullYear() + '.' + String(entry.saleDt.getMonth() + 1).padStart(2, '0') + '.' + String(entry.saleDt.getDate()).padStart(2, '0'))
+          : (d.매각일 || d.매각기일 || '-');
         const st = statusMap[it.watchStatus] || it.watchStatus;
         return `<tr onclick="openPopup('${String(it.id).replace(/'/g, "\\'")}')" style="cursor:pointer;">
           <td style="padding:8px 10px;border-bottom:1px solid var(--b1);color:var(--tx);white-space:nowrap;">${_plEsc(st)}</td>
@@ -31854,6 +31927,73 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           <tbody>${body || `<tr><td colspan="5" style="padding:22px;text-align:center;color:var(--di);">표시할 물건이 없습니다.</td></tr>`}</tbody>
         </table>`;
     }
+    function renderPipelineCalendarBoard() {
+      const host = document.getElementById('pipelineListBoard');
+      if (!host) return;
+      const sv = getSv();
+      const items = sv.filter(it => it && it.watchStatus && it.watchStatus !== 'pass').map(it => {
+        const d = it.data || {};
+        const saleDt = _plParseAuctionDate(d.매각일 || d.매각기일 || '');
+        if (!saleDt) return null;
+        return { item: it, date: saleDt };
+      }).filter(Boolean).sort((a, b) => a.date - b.date);
+      if (!items.length) {
+        host.innerHTML = '<div style="padding:28px;text-align:center;color:var(--di);font-size:12px;">달력에 표시할 기일 데이터가 없습니다.</div>';
+        return;
+      }
+      const weekHeads = ['일', '월', '화', '수', '목', '금', '토'];
+      const byDay = new Map();
+      items.forEach(entry => {
+        const key = entry.date.getFullYear() + '-' + String(entry.date.getMonth() + 1).padStart(2, '0') + '-' + String(entry.date.getDate()).padStart(2, '0');
+        if (!byDay.has(key)) byDay.set(key, []);
+        byDay.get(key).push(entry);
+      });
+
+      const firstDate = items[0].date;
+      const lastDate = items[items.length - 1].date;
+      const months = [];
+      let cursor = new Date(firstDate.getFullYear(), firstDate.getMonth(), 1);
+      const monthEnd = new Date(lastDate.getFullYear(), lastDate.getMonth(), 1);
+      while (cursor <= monthEnd) {
+        months.push({ y: cursor.getFullYear(), m: cursor.getMonth() + 1 });
+        cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+      }
+
+      host.innerHTML = months.map(mm => {
+        const first = new Date(mm.y, mm.m - 1, 1);
+        const startWeek = first.getDay();
+        const monthLast = new Date(mm.y, mm.m, 0).getDate();
+        const totalCells = Math.ceil((startWeek + monthLast) / 7) * 7;
+        let dayCells = '';
+        for (let idx = 0; idx < totalCells; idx++) {
+          const dayNum = idx - startWeek + 1;
+          if (dayNum < 1 || dayNum > monthLast) {
+            dayCells += '<div style="min-height:122px;border:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.01);border-radius:8px;"></div>';
+            continue;
+          }
+          const dayKey = mm.y + '-' + String(mm.m).padStart(2, '0') + '-' + String(dayNum).padStart(2, '0');
+          const rows = byDay.get(dayKey) || [];
+          const chips = rows.slice(0, 3).map(entry => {
+            const it = entry.item;
+            const raw = ((it.data || {}).최저가 || (it.data || {}).감정가 || (it.data || {}).매매가 || (it.data || {}).매매가_만원 || '');
+            const labelPrice = _plFmtMoneyWon(raw, (it.data || {}).매매가_만원).replace('원', '');
+            const color = _plDdayColor(entry.date);
+            return `<button onclick="event.stopPropagation();openPopup('${String(it.id).replace(/'/g, "\\'")}')" style="display:block;width:100%;text-align:left;padding:5px 6px;background:${color}14;border:1px solid ${color}55;border-radius:7px;color:var(--tx);font-size:10px;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${_plEsc(it.title || (it.data||{}).소재지 || it.id)} · ${_plEsc(labelPrice)}</button>`;
+          }).join('');
+          const more = rows.length > 3 ? `<div style="font-size:10px;color:var(--di);padding:0 2px;">+${rows.length - 3}건</div>` : '';
+          dayCells += `<div style="min-height:122px;border:1px solid rgba(255,255,255,.08);background:rgba(12,16,24,.72);border-radius:8px;padding:6px;display:flex;flex-direction:column;gap:5px;">
+            <div style="font-size:11px;font-weight:700;color:#d8e2ff;">${dayNum}</div>
+            ${chips || '<div style="flex:1;"></div>'}
+            ${more}
+          </div>`;
+        }
+        return `<div style="margin-bottom:14px;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:10px;background:rgba(12,16,24,.62);">
+          <div style="font-size:13px;font-weight:800;color:var(--tx);margin-bottom:8px;">${_plFmtMonthTitle(mm.y, mm.m)}</div>
+          <div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;margin-bottom:6px;">${weekHeads.map(w => `<div style="font-size:11px;color:var(--di);text-align:center;">${w}</div>`).join('')}</div>
+          <div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;">${dayCells}</div>
+        </div>`;
+      }).join('');
+    }
 
     window.wr2PipelineSetView = function(view) {
       const next = (view === 'list' || view === 'calendar') ? view : 'kanban';
@@ -31863,8 +32003,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const list = document.getElementById('pipelineListBoard');
       const sched = document.getElementById('watchScheduleBoard');
       if (kanban) kanban.style.display = (next === 'kanban') ? 'grid' : 'none';
-      if (list) list.style.display = (next === 'list') ? '' : 'none';
-      if (sched) sched.style.display = (next === 'list') ? 'none' : '';
+      if (list) list.style.display = (next === 'kanban') ? 'none' : '';
+      if (sched) sched.style.display = (next === 'kanban') ? '' : 'none';
       const btnK = document.getElementById('plViewKanbanBtn');
       const btnL = document.getElementById('plViewListBtn');
       const btnC = document.getElementById('plViewCalBtn');
@@ -31873,7 +32013,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       if (next === 'list' && btnL) btnL.classList.add('active');
       if (next === 'calendar' && btnC) btnC.classList.add('active');
       if (next === 'list') renderPipelineListBoard();
-      if (next === 'calendar' && typeof window.enhanceScheduleBoard === 'function') setTimeout(window.enhanceScheduleBoard, 0);
+      if (next === 'calendar') renderPipelineCalendarBoard();
     };
 
     function renderWatchBoard() {
@@ -31939,7 +32079,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             + '<div style="font-size:10px;color:var(--di);">' + saleItems.length + '건</div>'
             + '</div>'
             + '<div id="skSchedScrollRaw" style="display:flex;gap:8px;overflow-x:auto;padding-bottom:2px;">'
-            + grouped.slice(0, 12).map(group => {
+            + grouped.map(group => {
               const dday = _calcDday(group.date);
               const color = dday < 0 ? '#8b93a7' : dday === 0 ? '#ff6370' : dday <= 3 ? '#ff8c42' : dday <= 7 ? '#fbbf24' : '#4ade80';
               const ddayLabel = dday < 0 ? '종료' : (dday === 0 ? 'D-Day' : 'D-' + dday);
@@ -32007,9 +32147,11 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
         if (cols[ci]) {
           if (ci === 0 || ci === 1) {
+            const dualCol = (cols[ci].clientWidth || 0) >= 430;
             cols[ci].style.display = 'grid';
-            cols[ci].style.gridTemplateColumns = 'repeat(auto-fit,minmax(188px,1fr))';
+            cols[ci].style.gridTemplateColumns = dualCol ? 'repeat(2,minmax(0,1fr))' : 'minmax(0,1fr)';
             cols[ci].style.alignContent = 'start';
+            cols[ci].style.alignItems = 'start';
             cols[ci].style.gap = '6px';
           } else {
             cols[ci].style.display = 'flex';
@@ -32047,6 +32189,9 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             );
             const card = document.createElement('div');
             card.style.cssText = `background:var(--s2);border-radius:9px;border:1px solid ${linkedRoom ? 'rgba(17,157,237,.25)' : 'var(--b1)'};padding:8px 10px;transition:all .15s;position:relative;cursor:pointer;width:100%;`;
+            if (ci === 0 || ci === 1) {
+              card.style.minHeight = '86px';
+            }
             card.dataset.itemId = String(item.id || '');
             card.onclick = () => { if (typeof openPopup === 'function') openPopup(item.id); };
             card.onmouseenter = () => { card.style.borderColor = 'rgba(79,142,255,0.5)'; card.style.background = 'rgba(79,142,255,.04)'; };
@@ -32092,6 +32237,9 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           const colColors = ['rgba(148,163,184,.5)','rgba(96,165,250,.5)','rgba(251,191,36,.5)','rgba(249,115,22,.5)','rgba(74,222,128,.5)','rgba(244,114,182,.55)'];
           const card = document.createElement('div');
           card.style.cssText = `background:var(--s2);border-radius:9px;border:1px solid rgba(17,157,237,.25);padding:10px 12px;transition:all .15s;position:relative;cursor:pointer;width:100%;`;
+          if (ci === 0 || ci === 1) {
+            card.style.minHeight = '86px';
+          }
           card.onmouseenter = () => { card.style.borderColor = 'rgba(17,157,237,.5)'; card.style.background = 'rgba(17,157,237,.04)'; };
           card.onmouseleave = () => { card.style.borderColor = 'rgba(17,157,237,.25)'; card.style.background = 'var(--s2)'; };
           card.onclick = () => _wbGoRoom(room.id);
@@ -42671,7 +42819,16 @@ window.addEventListener('DOMContentLoaded', () => {
   function enhanceScheduleBoard() {
     injectStyle();
     var board = document.getElementById('watchScheduleBoard');
-    if (!board || board.style.display === 'none') return;
+    if (!board) return;
+    var currentView = 'kanban';
+    try {
+      currentView = window.__wrPipelineView || localStorage.getItem('wr_pipeline_view_v1') || 'kanban';
+    } catch (e) {}
+    if (currentView !== 'kanban') {
+      board.style.display = 'none';
+      return;
+    }
+    if (board.style.display === 'none') return;
 
     if (typeof window.getSv !== 'function') return;
     syncItemsFromRoomStatuses();
