@@ -3423,7 +3423,7 @@ var _safeLocalSet = function(key, value) {
                 function wr2PhaseDisplayLabel(phase) {
                   const normalized = wr2NormalizePhaseView(phase);
                   const map = {
-                    review: '관심·검토',
+                    review: '검토',
                     field: '현장',
                     bid: '입찰',
                     won: '낙찰',
@@ -3466,7 +3466,7 @@ var _safeLocalSet = function(key, value) {
                 }
 
                 function statusLabel(st) {
-                  if (st === 'interest' || st === 'review') return '관심·검토';
+                  if (st === 'interest' || st === 'review') return '검토';
                   if (st === 'field') return '현장';
                   if (st === 'bid') return '입찰';
                   if (st === 'won') return '낙찰';
@@ -3477,8 +3477,8 @@ var _safeLocalSet = function(key, value) {
 
                 function phaseHint(phase) {
                   const map = {
-                    interest: '관심·검토 단계: 후보를 선별하고 권리·임대차·수익률·핵심 리스크를 함께 정리하는 구간',
-                    review: '관심·검토 단계: 후보를 선별하고 권리·임대차·수익률·핵심 리스크를 함께 정리하는 구간',
+                    interest: '검토 단계: 후보를 선별하고 권리·임대차·수익률·핵심 리스크를 함께 정리하는 구간',
+                    review: '검토 단계: 후보를 선별하고 권리·임대차·수익률·핵심 리스크를 함께 정리하는 구간',
                     field: '현장 단계: 현황/임차인/주변/동선/하자/민원 등 “눈으로 본 사실”을 남기는 구간',
                     bid: '입찰 단계: 서류·보증금·대리·입찰가 전략 등 실수를 막는 체크 중심 구간',
                     won: '낙찰 단계: 잔금·명도·대출·세금·인허가 등 실행/정리 구간',
@@ -3490,7 +3490,7 @@ var _safeLocalSet = function(key, value) {
                 function setActiveRoom(id) {
                   wr2State.activeRoomId = id;
                   const r = getActiveRoom();
-                  if (r && (r.activePhase || r.phase || r.status)) wr2State.activePhase = wr2NormalizePhaseView(r.activePhase || r.phase || r.status);
+                  if (r && (r.activePhase || r.phase)) wr2State.activePhase = wr2NormalizePhaseView(r.activePhase || r.phase);
                   wr2State.activeView = 'overview';
                   wr2Render();
                 }
@@ -3582,7 +3582,7 @@ var _safeLocalSet = function(key, value) {
                   mkLog('sell', '매도/협상 로그');
 
                   saveSections();
-                  wr2State.activePhase = wr2NormalizePhaseView(r.activePhase || r.phase || r.status || 'review');
+                  wr2State.activePhase = wr2NormalizePhaseView(r.activePhase || r.phase || 'review');
                 }
 
                 function createRoomFromModal() {
@@ -4186,28 +4186,8 @@ var _safeLocalSet = function(key, value) {
                     title.className = 'wr2-room-title';
                     title.textContent = r.title || '(제목 없음)';
                     content.appendChild(title);
-                    // 액션 버튼
-                    const actions = document.createElement('div');
-                    actions.className = 'wr2-room-item-actions';
-                    const lifecycle = wr2GetLifecycle(r);
-                    const mkLifecycleBtn = function(key, label) {
-                      const b = document.createElement('button');
-                      b.className = 'wr2-room-act-btn wr2-life-btn' + (lifecycle === key ? ' on' : '');
-                      b.textContent = label;
-                      b.title = '상태를 "' + label + '"으로 변경';
-                      b.onclick = function(e) {
-                        e.stopPropagation();
-                        updateRoom(r.id, { lifecycleStatus: key });
-                      };
-                      return b;
-                    };
-                    actions.appendChild(mkLifecycleBtn('active', '활성'));
-                    actions.appendChild(mkLifecycleBtn('changed', '변경'));
-                    actions.appendChild(mkLifecycleBtn('closed', '종료'));
-
                     item.appendChild(handle);
                     item.appendChild(content);
-                    item.appendChild(actions);
                     parentEl.appendChild(item);
                   };
 
@@ -4277,15 +4257,55 @@ var _safeLocalSet = function(key, value) {
                   if (titleInput) titleInput.value = room.title || '';
                   if (addrInput) addrInput.value = room.address || '';
                   if (statusBadge) {
-                    const key = wr2GetLifecycle(room);
-                    statusBadge.textContent = wr2LifecycleLabel(key);
-                    statusBadge.title = '클릭: 활성 → 변경 → 종료';
-                    statusBadge.style.cursor = 'pointer';
-                    statusBadge.onclick = function(e) {
-                      try { e && e.stopPropagation && e.stopPropagation(); } catch (err) {}
-                      const next = wr2NextLifecycle(wr2GetLifecycle(room));
-                      updateRoom(room.id, { lifecycleStatus: next });
-                    };
+                    statusBadge.textContent = wr2LifecycleLabel(room);
+                    statusBadge.title = '현재 라이프사이클 상태';
+                    statusBadge.style.cursor = 'default';
+                    statusBadge.onclick = null;
+                    const host = statusBadge.parentElement;
+                    if (host) {
+                      let lifeSel = document.getElementById('wr2LifecycleSelect');
+                      if (!lifeSel) {
+                        lifeSel = document.createElement('select');
+                        lifeSel.id = 'wr2LifecycleSelect';
+                        lifeSel.className = 'wr2-hd-btn';
+                        lifeSel.style.padding = '4px 7px';
+                        lifeSel.style.minWidth = '68px';
+                        lifeSel.innerHTML = ''
+                          + '<option value="active">활성</option>'
+                          + '<option value="changed">변경</option>'
+                          + '<option value="closed">종료</option>';
+                        host.insertBefore(lifeSel, statusBadge.nextSibling);
+                      }
+                      lifeSel.value = wr2GetLifecycle(room);
+                      lifeSel.onchange = function(e) {
+                        const next = String(e.target.value || 'active');
+                        updateRoom(room.id, { lifecycleStatus: next });
+                      };
+
+                      let progSel = document.getElementById('wr2ProgressSelect');
+                      if (!progSel) {
+                        progSel = document.createElement('select');
+                        progSel.id = 'wr2ProgressSelect';
+                        progSel.className = 'wr2-hd-btn';
+                        progSel.style.padding = '4px 7px';
+                        progSel.style.minWidth = '74px';
+                        progSel.innerHTML = ''
+                          + '<option value="review">검토</option>'
+                          + '<option value="field">현장</option>'
+                          + '<option value="bid">입찰</option>'
+                          + '<option value="won">낙찰</option>'
+                          + '<option value="sell">매도</option>';
+                        host.insertBefore(progSel, lifeSel.nextSibling);
+                      }
+                      const curProg = wr2NormalizePhaseView(room.status || room.phase || room.activePhase || 'review');
+                      progSel.value = (curProg === 'interest' ? 'review' : curProg);
+                      progSel.onchange = function(e) {
+                        const next = wr2NormalizePhaseView(e.target.value || 'review');
+                        wr2PushActivity(room, '진행 상태를 "' + wr2PhaseDisplayLabel(next) + '"로 변경했습니다', next);
+                        updateRoom(room.id, { status: next });
+                        if (typeof renderWatchBoard === 'function') setTimeout(renderWatchBoard, 50);
+                      };
+                    }
                   }
                   if (auctionIn) auctionIn.value = room.auctionId || '';
                   if (listingIn) listingIn.value = room.listingId || '';
@@ -4304,13 +4324,13 @@ var _safeLocalSet = function(key, value) {
                   if (!el) return;
                   const tabs = [
                     { id: 'overview', label: '📊 개요', kind: 'view' },
-                    { id: 'review', label: '👀 관심·검토', kind: 'phase' },
+                    { id: 'review', label: '🔍 검토', kind: 'phase' },
                     { id: 'field', label: '📍 현장', kind: 'phase' },
                     { id: 'bid', label: '🎯 입찰', kind: 'phase' },
                     { id: 'won', label: '✅ 낙찰', kind: 'phase' },
                     { id: 'sell', label: '💰 매도', kind: 'phase' }
                   ];
-                  if (!wr2State.activePhase) wr2State.activePhase = wr2NormalizePhaseView(room.activePhase || room.phase || room.status || 'review');
+                  if (!wr2State.activePhase) wr2State.activePhase = wr2NormalizePhaseView(room.activePhase || room.phase || 'review');
                   if (!wr2State.activeView) wr2State.activeView = 'overview';
 
                   el.innerHTML = '';
@@ -4329,12 +4349,11 @@ var _safeLocalSet = function(key, value) {
                         return;
                       }
                       const nextPhase = tab.id;
-                      const curPhase = wr2NormalizePhaseView(room.activePhase || room.phase || room.status || 'review');
+                      const curPhase = wr2NormalizePhaseView(room.activePhase || room.phase || 'review');
                       wr2State.activePhase = nextPhase;
                       wr2State.activeView = 'phase';
                       if (curPhase !== nextPhase) {
-                        wr2PushActivity(room, '단계를 "' + wr2PhaseDisplayLabel(nextPhase) + '"로 변경했습니다', nextPhase);
-                        updateRoom(room.id, { phase: nextPhase, status: nextPhase, activePhase: nextPhase });
+                        updateRoom(room.id, { phase: nextPhase, activePhase: nextPhase });
                         return;
                       }
                       wr2SwitchView('phase');
@@ -6698,7 +6717,7 @@ window.wr2SummaryCancelEdit = function() {
                   saveRooms();
 
                   wr2State.activeRoomId = room.id;
-                  wr2State.activePhase = wr2NormalizePhaseView(room.activePhase || room.phase || room.status || 'review');
+                  wr2State.activePhase = wr2NormalizePhaseView(room.activePhase || room.phase || 'review');
 
                   // 기본 템플릿 자동 생성
                   try { seedDefaults(room.id); } catch (e) { }
@@ -10518,7 +10537,7 @@ window.wr2SummaryCancelEdit = function() {
       if (!window.wr2State) return;
       window.wr2State.activeRoomId = id;
       var r = window.wrGetRoom(id);
-      if (r && (r.activePhase || r.phase || r.status)) window.wr2State.activePhase = wr2NormalizePhaseView(r.activePhase || r.phase || r.status);
+      if (r && (r.activePhase || r.phase)) window.wr2State.activePhase = wr2NormalizePhaseView(r.activePhase || r.phase);
       if (typeof window.wr2Render === 'function') window.wr2Render();
     };
     window.wrOpenRoom = function (id) { window.wrDbOpenRoom(id); };
@@ -31530,13 +31549,14 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     // 🎯 검토 물건함
     // ═══════════════════════════════════════════════════════
 
-    const WATCH_ORDER = ['', 'interest', 'review', 'field', 'bid', 'won', 'sell'];
+    const WATCH_ORDER = ['', 'review', 'field', 'bid', 'won', 'sell'];
 
     window.cycleWatchStatus = function (id) {
       const sv = getSv();
       const item = sv.find(s => s.id === id);
       if (!item) return;
-      const cur = item.watchStatus || '';
+      const curRaw = item.watchStatus || '';
+      const cur = (curRaw === 'interest') ? 'review' : curRaw;
       const idx = WATCH_ORDER.indexOf(cur);
       const next = WATCH_ORDER[(idx + 1) % WATCH_ORDER.length];
       item.watchStatus = next || undefined;
@@ -31558,10 +31578,10 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     function renderWatchBoard() {
       const sv = getSv();
       const sortKey = document.getElementById('watchSortSel')?.value || 'savedAt';
-      const statuses = ['interest', 'review', 'field', 'bid', 'won', 'sell'];
-      const cols = ['wCol0','wCol1','wCol2','wCol3','wCol4','wCol5'].map(id=>document.getElementById(id));
-      const cntEls = ['wCnt0','wCnt1','wCnt2','wCnt3','wCnt4','wCnt5'].map(id=>document.getElementById(id));
-      const emptyEls = ['wEmpty0','wEmpty1','wEmpty2','wEmpty3','wEmpty4','wEmpty5'].map(id=>document.getElementById(id));
+      const statuses = ['review', 'field', 'bid', 'won', 'sell'];
+      const cols = ['wCol0','wCol1','wCol2','wCol3','wCol4'].map(id=>document.getElementById(id));
+      const cntEls = ['wCnt0','wCnt1','wCnt2','wCnt3','wCnt4'].map(id=>document.getElementById(id));
+      const emptyEls = ['wEmpty0','wEmpty1','wEmpty2','wEmpty3','wEmpty4'].map(id=>document.getElementById(id));
       const rooms = wrGetRooms();
       const scheduleEl = document.getElementById('watchScheduleBoard');
 
@@ -31654,7 +31674,11 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       }
 
       statuses.forEach((status, ci) => {
-        let items = sv.filter(s => s.watchStatus === status);
+        let items = sv.filter(s => {
+          const st = String(s.watchStatus || '').trim();
+          if (status === 'review') return (st === 'review' || st === 'interest');
+          return st === status;
+        });
         if (sortKey === 'saledate') {
           items.sort((a, b) => {
             const da = _parseSaleDate(a.data?.매각일 || a.data?.매각기일 || '');
@@ -31704,14 +31728,15 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             );
             // 작업룸 상태 동기화 배지
             const roomStatusHtml = linkedRoom ? (() => {
-              const key = typeof _migrateStatus === 'function' ? _migrateStatus(linkedRoom.status) : (linkedRoom.status || 'review');
+              let key = typeof _migrateStatus === 'function' ? _migrateStatus(linkedRoom.status) : (linkedRoom.status || 'review');
+              if (key === 'interest') key = 'review';
               const info = (typeof UNIFIED_STATUS !== 'undefined' ? UNIFIED_STATUS : {})[key] || { label: linkedRoom.status, color: '#60a5fa' };
               return `<span style="font-size:9px;padding:1px 5px;border-radius:3px;background:${info.color}18;color:${info.color};border:1px solid ${info.color}44;">${info.label}</span>`;
             })() : '';
 
             const curStatus = (typeof _migrateStatus === 'function') ? _migrateStatus(item.watchStatus || status) : (item.watchStatus || status);
             const statusLabelMap = { interest: '관심', review: '검토', field: '현장', bid: '입찰', won: '낙찰', sell: '매도', pass: '제외' };
-            const statusOptions = ['interest','review','field','bid','won','sell','pass'].map(k =>
+            const statusOptions = ['review','field','bid','won','sell','pass'].map(k =>
               `<option value="${k}" ${curStatus === k ? 'selected' : ''}>${statusLabelMap[k] || k}</option>`
             ).join('');
 
@@ -31721,7 +31746,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             card.onmouseleave = () => { card.style.borderColor = linkedRoom ? 'rgba(17,157,237,.25)' : 'var(--b1)'; card.style.background = 'var(--s2)'; };
 
             // 왼쪽 컬럼 색상 바
-            const colColors = ['rgba(148,163,184,.5)','rgba(96,165,250,.5)','rgba(251,191,36,.5)','rgba(249,115,22,.5)','rgba(74,222,128,.5)','rgba(244,114,182,.55)'];
+            const colColors = ['rgba(96,165,250,.5)','rgba(251,191,36,.5)','rgba(249,115,22,.5)','rgba(74,222,128,.5)','rgba(244,114,182,.55)'];
             card.innerHTML = `
           <div style="position:absolute;left:0;top:8px;bottom:8px;width:3px;background:${colColors[ci]};border-radius:0 2px 2px 0;"></div>
           <div style="padding-left:6px;">
@@ -31763,7 +31788,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           return rStatus === status;
         });
         roomOnlyItems.forEach(room => {
-          const colColors = ['rgba(148,163,184,.5)','rgba(96,165,250,.5)','rgba(251,191,36,.5)','rgba(249,115,22,.5)','rgba(74,222,128,.5)','rgba(244,114,182,.55)'];
+          const colColors = ['rgba(96,165,250,.5)','rgba(251,191,36,.5)','rgba(249,115,22,.5)','rgba(74,222,128,.5)','rgba(244,114,182,.55)'];
           const card = document.createElement('div');
           card.style.cssText = `background:var(--s2);border-radius:9px;border:1px solid rgba(17,157,237,.25);padding:10px 12px;transition:all .15s;position:relative;cursor:pointer;`;
           card.onmouseenter = () => { card.style.borderColor = 'rgba(17,157,237,.5)'; card.style.background = 'rgba(17,157,237,.04)'; };
@@ -31804,6 +31829,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       var sv = typeof getSv === 'function' ? getSv() : [];
       var item = sv.find(function(s){ return s.id === itemId; });
       if (!item) return;
+      if (status === 'interest') status = 'review';
       if (status === 'pass' || !status) { delete item.watchStatus; }
       else { item.watchStatus = status; }
       if (typeof setSv === 'function') setSv(sv);
@@ -41946,7 +41972,7 @@ window.addEventListener('DOMContentLoaded', () => {
   'use strict';
 
   var STATUS_KEYS = ['interest', 'review', 'field', 'bid', 'won', 'sell', 'pass'];
-  var COL_STATUS = ['interest', 'review', 'field', 'bid', 'won', 'sell'];
+  var COL_STATUS = ['review', 'field', 'bid', 'won', 'sell'];
 
   function normalizeStatus(v) {
     var s = String(v == null ? '' : v).trim().toLowerCase();
@@ -42504,7 +42530,12 @@ window.addEventListener('DOMContentLoaded', () => {
       try {
         if (typeof window.getSv === 'function') {
           var sv = window.getSv() || [];
-          sv.filter(function (it) { return it && String(it.watchStatus || '') === status; }).forEach(function (it) {
+          sv.filter(function (it) {
+            if (!it) return false;
+            var st = String(it.watchStatus || '');
+            if (status === 'review') return (st === 'review' || st === 'interest');
+            return st === status;
+          }).forEach(function (it) {
             var d = (it && it.data) || {};
             var raw = d['\ucd5c\uc800\uac00'] || d['\uac10\uc815\uac00'] || d['\ub9e4\ub9e4\uac00'] || 0;
             var n = parseInt(String(raw).replace(/[^0-9]/g, ''), 10) || 0;
@@ -42534,7 +42565,6 @@ window.addEventListener('DOMContentLoaded', () => {
       bar.innerHTML = ''
         + '<span style="font-size:11px;color:var(--di);font-weight:700;">진행 상태</span>'
         + '<select id="skRoomStatusSelect" style="padding:5px 8px;background:var(--s2);border:1px solid var(--b1);border-radius:7px;color:var(--tx);font-size:11px;outline:none;min-width:90px;">'
-        + '  <option value="interest">관심</option>'
         + '  <option value="review">검토</option>'
         + '  <option value="field">현장</option>'
         + '  <option value="bid">입찰</option>'
