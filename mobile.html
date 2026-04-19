@@ -534,6 +534,7 @@ body {
   display: flex; align-items: center; justify-content: space-between;
   padding: 0 16px;
   cursor: pointer;
+  touch-action: none;
 }
 #mb-map-panel-handle::before {
   content: '';
@@ -550,6 +551,7 @@ body {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   padding: 0 12px 16px;
+  overscroll-behavior: contain;
 }
 
 /* 지도 패널 내부 섹션 */
@@ -1087,7 +1089,7 @@ body {
     z-index:73;
   }
   #mb-room-tabs::-webkit-scrollbar { display:none; }
-  .mb-rtab { flex:0 0 auto;padding:9px 11px;font-size:12px;background:transparent;border:none;color:var(--mu);cursor:pointer;font-family:'Noto Sans KR',sans-serif;transition:all .15s;border-radius:9px;white-space:nowrap;min-width:fit-content; }
+  .mb-rtab { flex:0 0 auto;padding:10px 12px;font-size:12px;background:transparent;border:none;color:var(--mu);cursor:pointer;font-family:'Noto Sans KR',sans-serif;transition:all .15s;border-radius:9px;white-space:nowrap;min-width:fit-content;touch-action:manipulation; }
   .mb-rtab.active { color:#4f8eff;font-weight:700;background:rgba(79,142,255,.12); }
   .mb-rtab[data-room-phase="review"].active { color:#60a5fa;border-bottom-color:#60a5fa;background:rgba(96,165,250,.08); }
   .mb-rtab[data-room-phase="field"].active { color:#fbbf24;border-bottom-color:#fbbf24;background:rgba(251,191,36,.08); }
@@ -1107,6 +1109,46 @@ body {
     overflow:hidden !important;
     visibility:hidden !important;
     pointer-events:none !important;
+  }
+  .mb-room-option {
+    padding:10px 12px;
+    cursor:pointer;
+    border-bottom:1px solid rgba(255,255,255,.05);
+  }
+  .mb-room-option-title {
+    font-size:13px;
+    font-weight:700;
+    color:var(--tx);
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  .mb-room-option-meta {
+    margin-top:4px;
+    display:flex;
+    align-items:center;
+    gap:6px;
+    min-width:0;
+  }
+  .mb-room-option-case {
+    font-size:10px;
+    color:#8ab8ff;
+    white-space:nowrap;
+    flex-shrink:0;
+  }
+  .mb-room-option-price {
+    font-size:10px;
+    color:#ff9f43;
+    white-space:nowrap;
+    flex-shrink:0;
+  }
+  .mb-room-option-addr {
+    margin-top:4px;
+    font-size:10px;
+    color:var(--mu);
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
   }
   .mb-folder-chip {
     flex:0 0 auto;
@@ -3141,7 +3183,7 @@ body {
 <script>if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
 
 <!-- 공통 로직 -->
-<script src="common.js?v=202604200005"></script>
+<script src="common.js?v=202604200930"></script>
 
 <!-- ════════════════════════════════════════════════════════
      mobile.js — 모바일 전용 초기화 및 UI 제어
@@ -3295,6 +3337,15 @@ body {
       : !panel.classList.contains('open');
     panel.classList.toggle('open', open);
     if (arrow) arrow.textContent = open ? '▼ 닫기' : '▲ 열기';
+    if (open) {
+      setTimeout(function() {
+        try {
+          if (window.map && window.kakao) {
+            kakao.maps.event.trigger(window.map, 'resize');
+          }
+        } catch (e) {}
+      }, 120);
+    }
   };
 
   (function initMbMapPanelGestures() {
@@ -3306,15 +3357,24 @@ body {
     panel.dataset.dragBound = '1';
 
     var drag = null;
+    var closedOffset = function() {
+      var h = panel.offsetHeight || 0;
+      var hh = handle.offsetHeight || 50;
+      return Math.max(0, h - hh);
+    };
     var closeIfOpen = function() {
       if (panel.classList.contains('open')) window.mbToggleMapPanel(false);
     };
 
     handle.addEventListener('touchstart', function(e) {
-      if (!panel.classList.contains('open')) return;
       var t = e.touches && e.touches[0];
       if (!t) return;
-      drag = { startY: t.clientY, lastY: t.clientY };
+      drag = {
+        startY: t.clientY,
+        lastY: t.clientY,
+        moved: false,
+        startOpen: panel.classList.contains('open')
+      };
       panel.style.transition = 'none';
     }, { passive: true });
 
@@ -3323,18 +3383,25 @@ body {
       var t = e.touches && e.touches[0];
       if (!t) return;
       drag.lastY = t.clientY;
-      var delta = Math.max(0, t.clientY - drag.startY);
-      panel.style.transform = 'translateY(' + delta + 'px)';
+      var dy = t.clientY - drag.startY;
+      if (Math.abs(dy) > 5) drag.moved = true;
+      var base = drag.startOpen ? 0 : closedOffset();
+      var next = Math.max(0, Math.min(closedOffset(), base + dy));
+      panel.style.transform = 'translateY(' + next + 'px)';
     }, { passive: true });
 
     handle.addEventListener('touchend', function() {
       if (!drag) return;
-      var delta = Math.max(0, (drag.lastY || drag.startY) - drag.startY);
+      var dy = (drag.lastY || drag.startY) - drag.startY;
       panel.style.transition = '';
       panel.style.transform = '';
-      if (delta > 64) {
+      if (drag.moved) {
         window._mbMapPanelDragSuppressUntil = Date.now() + 220;
-        window.mbToggleMapPanel(false);
+      }
+      if (drag.startOpen) {
+        window.mbToggleMapPanel(!(dy > 56));
+      } else {
+        window.mbToggleMapPanel(dy < -44);
       }
       drag = null;
     });
@@ -4850,6 +4917,18 @@ body {
     }
   };
 
+  function _mbEnsureActiveRoomTabVisible(tabKey) {
+    var wrap = document.getElementById('mb-room-tabs');
+    var btn = document.getElementById('mb-rtab-' + tabKey);
+    if (!wrap || !btn) return;
+    try {
+      btn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    } catch (e) {
+      var left = btn.offsetLeft - Math.max(0, (wrap.clientWidth - btn.clientWidth) / 2);
+      wrap.scrollLeft = Math.max(0, left);
+    }
+  }
+
   window.mbRoomTab = function(tab) {
     var requested = tab || 'overview';
     var panelTab = _mbNormalizeRoomTab(requested);
@@ -4892,6 +4971,7 @@ body {
       var btn = document.getElementById('mb-rtab-' + t);
       if (btn) btn.classList.toggle('active', t === panelTab);
     });
+    _mbEnsureActiveRoomTabVisible(panelTab);
     if (panelTab === 'overview') {
       var room = window._mbCurrentRoom;
       if (room) _mbRenderOverviewTab(room);
@@ -6608,6 +6688,41 @@ body {
       var groupFilter = (window.wr2State && window.wr2State.groupFilter && window.wr2State.groupFilter !== 'all') ? window.wr2State.groupFilter : '';
       var visibleRooms = groupFilter ? rooms.filter(function(r) { return (r.group || '') === groupFilter; }) : rooms.slice();
       var sorted = visibleRooms.slice().sort(function(a,b){ return (b.updatedAt||b.createdAt||0)-(a.updatedAt||a.createdAt||0); });
+      var savedMap = {};
+      try {
+        if (typeof getSv === 'function') {
+          (getSv() || []).forEach(function(it) {
+            if (it && it.id != null) savedMap[String(it.id)] = it;
+          });
+        }
+      } catch (e) {}
+      var roomMetaCache = {};
+      var moneyFormat = function(raw) {
+        var n = parseInt(String(raw || '').replace(/[^0-9]/g, ''), 10) || 0;
+        if (!n) return '';
+        if (n >= 100000000) return (n / 100000000).toFixed(1) + '억';
+        return Math.round(n / 10000).toLocaleString('ko-KR') + '만';
+      };
+      var getRoomMeta = function(room) {
+        if (!room || !room.id) return { caseNo: '', addr: '', price: '' };
+        if (roomMetaCache[room.id]) return roomMetaCache[room.id];
+        var linkedIds = [];
+        if (room.linkedSavedId != null) linkedIds.push(String(room.linkedSavedId));
+        if (room.auctionId != null) linkedIds.push(String(room.auctionId));
+        if (room.listingId != null) linkedIds.push(String(room.listingId));
+        (room.linkedItems || []).forEach(function(id) { linkedIds.push(String(id)); });
+        linkedIds = linkedIds.filter(function(id, idx) { return !!id && linkedIds.indexOf(id) === idx; });
+        var linked = null;
+        for (var i = 0; i < linkedIds.length; i++) {
+          if (savedMap[linkedIds[i]]) { linked = savedMap[linkedIds[i]]; break; }
+        }
+        var d = (linked && linked.data) || {};
+        var caseNo = String(d['경매번호'] || d['사건번호'] || room.caseNo || room.casenum || '').trim();
+        var addr = String((linked && (linked.title || d['소재지'])) || room.address || room.addr || '').trim();
+        var price = moneyFormat(d['최저가'] || d['감정가'] || d['매매가'] || d['매매가_만원'] || room.price || '');
+        roomMetaCache[room.id] = { caseNo: caseNo, addr: addr, price: price };
+        return roomMetaCache[room.id];
+      };
       var buckets = [];
       var bucketMap = {};
       (((window.wr2State && window.wr2State.folders) || [])).forEach(function(folder) {
@@ -6659,7 +6774,18 @@ body {
             var header = '<div style="padding:8px 12px 6px;font-size:10px;font-weight:700;color:#4f8eff;background:rgba(79,142,255,.06);border-bottom:1px solid rgba(79,142,255,.12);">' + (bucket.label === '미분류' ? '미분류 작업룸' : '📁 ' + bucket.label) + '</div>';
             var rows = bucketRooms.map(function(r) {
               var title = (r.title||r.name||'이름 없음').replace(/'/g, "&#39;");
-              return '<div onclick="mbRoomDropSelect(\'' + r.id + '\',\'' + title + '\')" style="padding:10px 14px;font-size:13px;color:var(--tx);cursor:pointer;border-bottom:1px solid rgba(255,255,255,.04);active:background:var(--s3);">' + (r.title||r.name||'이름 없음') + '</div>';
+              var meta = getRoomMeta(r);
+              var caseNo = meta.caseNo ? meta.caseNo.replace(/'/g, '&#39;') : '';
+              var price = meta.price ? meta.price.replace(/'/g, '&#39;') : '';
+              var addr = meta.addr ? meta.addr.replace(/'/g, '&#39;') : '';
+              return '<div onclick="mbRoomDropSelect(\'' + r.id + '\',\'' + title + '\')" class="mb-room-option">'
+                + '<div class="mb-room-option-title">' + (r.title||r.name||'이름 없음') + '</div>'
+                + '<div class="mb-room-option-meta">'
+                + (caseNo ? '<span class="mb-room-option-case">' + caseNo + '</span>' : '')
+                + (price ? '<span class="mb-room-option-price">' + price + '</span>' : '')
+                + '</div>'
+                + (addr ? '<div class="mb-room-option-addr">' + addr + '</div>' : '')
+                + '</div>';
             }).join('');
             return header + rows;
           }).join('');

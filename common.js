@@ -32373,8 +32373,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
               <span style="font-size:12px;font-weight:700;color:${ia ? 'var(--auction-c)' : 'var(--listing-c)'};">${priceStr}</span>
               ${linkedRoom
-                ? `<button onclick="event.preventDefault();event.stopPropagation();if(event.stopImmediatePropagation)event.stopImmediatePropagation();_wbGoRoom('${linkedRoom.id}','${String(item.id || '').replace(/'/g, "\\'")}');return false;" style="position:relative;z-index:2;padding:4px 8px;background:rgba(17,157,237,.12);border:1px solid rgba(17,157,237,.35);border-radius:6px;color:#8fd0ff;font-size:10px;font-weight:700;cursor:pointer;">작업룸</button>`
-                : `<button onclick="event.preventDefault();event.stopPropagation();if(event.stopImmediatePropagation)event.stopImmediatePropagation();_wbCreateAndLink('${item.id}');return false;" style="position:relative;z-index:2;padding:4px 8px;background:rgba(17,157,237,.08);border:1px dashed rgba(17,157,237,.4);border-radius:6px;color:#8fd0ff;font-size:10px;font-weight:700;cursor:pointer;">작업룸+</button>`
+                ? `<button type="button" onpointerdown="event.stopPropagation();if(event.stopImmediatePropagation)event.stopImmediatePropagation();" onclick="event.preventDefault();event.stopPropagation();if(event.stopImmediatePropagation)event.stopImmediatePropagation();_wbGoRoom('${linkedRoom.id}','${String(item.id || '').replace(/'/g, "\\'")}');return false;" style="position:relative;z-index:2;padding:4px 8px;background:rgba(17,157,237,.12);border:1px solid rgba(17,157,237,.35);border-radius:6px;color:#8fd0ff;font-size:10px;font-weight:700;cursor:pointer;">작업룸</button>`
+                : `<button type="button" onpointerdown="event.stopPropagation();if(event.stopImmediatePropagation)event.stopImmediatePropagation();" onclick="event.preventDefault();event.stopPropagation();if(event.stopImmediatePropagation)event.stopImmediatePropagation();_wbCreateAndLink('${item.id}');return false;" style="position:relative;z-index:2;padding:4px 8px;background:rgba(17,157,237,.08);border:1px dashed rgba(17,157,237,.4);border-radius:6px;color:#8fd0ff;font-size:10px;font-weight:700;cursor:pointer;">작업룸+</button>`
               }
             </div>
             ${closeMetaHtml}
@@ -32418,7 +32418,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
               </div>
               <div style="font-size:9px;color:#119ded;margin-bottom:6px;">물건 미연결 작업룸</div>
               <div style="display:flex;gap:4px;border-top:1px solid var(--b1);padding-top:6px;">
-                <button onclick="event.preventDefault();event.stopPropagation();if(event.stopImmediatePropagation)event.stopImmediatePropagation();_wbGoRoom('${room.id}');return false;" style="flex:1;padding:4px;background:rgba(17,157,237,.12);border:1px solid rgba(17,157,237,.35);border-radius:5px;color:#119ded;font-size:10px;font-weight:600;cursor:pointer;">🗂 작업룸 열기</button>
+                <button type="button" onpointerdown="event.stopPropagation();if(event.stopImmediatePropagation)event.stopImmediatePropagation();" onclick="event.preventDefault();event.stopPropagation();if(event.stopImmediatePropagation)event.stopImmediatePropagation();_wbGoRoom('${room.id}');return false;" style="flex:1;padding:4px;background:rgba(17,157,237,.12);border:1px solid rgba(17,157,237,.35);border-radius:5px;color:#119ded;font-size:10px;font-weight:600;cursor:pointer;">🗂 작업룸 열기</button>
               </div>
             </div>`;
           cols[ci].appendChild(card);
@@ -32469,7 +32469,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     };
     window._wbGoRoom = function (roomId, itemId) {
       window.__wbSuppressOpenUntil = Date.now() + 420;
-      window.__wbForceRoomNavUntil = Date.now() + 1200;
+      window.__wbForceRoomNavUntil = Date.now() + 1800;
       let targetRoomId = roomId ? String(roomId) : '';
       if (!targetRoomId && itemId && typeof window.wrGetRooms === 'function') {
         const rooms = window.wrGetRooms() || [];
@@ -32483,15 +32483,25 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0] || null;
         if (hit) targetRoomId = String(hit.id);
       }
-      if (targetRoomId && typeof window.pmOpenWorkroom === 'function') {
-        window.pmOpenWorkroom(targetRoomId);
+      if (typeof window.pmOpenWorkroom === 'function') {
+        window.pmOpenWorkroom(targetRoomId || '');
+        setTimeout(function () {
+          try {
+            if (typeof window.pmShowTab === 'function') window.pmShowTab('work');
+            if (targetRoomId && window.wr2State) {
+              window.wr2State.activeRoomId = targetRoomId;
+              if (typeof window.wr2Render === 'function') window.wr2Render();
+            }
+          } catch (e) {}
+        }, 40);
         return;
       }
       if (itemId && typeof window.wr2OpenOrCreateFromSavedId === 'function') {
         window.wr2OpenOrCreateFromSavedId(itemId);
         return;
       }
-      if (typeof window.pmOpenWorkroom === 'function') window.pmOpenWorkroom();
+      if (typeof window.showPage === 'function') window.showPage(4);
+      if (typeof window.pmShowTab === 'function') window.pmShowTab('work');
     };
     window._wbCreateAndLink = function (itemId) {
       if (typeof window.wr2OpenOrCreateFromSavedId === 'function') {
@@ -42682,6 +42692,35 @@ window.addEventListener('DOMContentLoaded', () => {
       .replace(/'/g, '&#39;');
   }
 
+  var STATUS_LABELS = {
+    interest: '개요',
+    review: '검토중',
+    field: '현장',
+    bid: '입찰',
+    won: '낙찰',
+    sell: '매도',
+    pass: '패스'
+  };
+
+  function isTouchLikeDevice() {
+    try {
+      if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) return true;
+    } catch (e) {}
+    return (('ontouchstart' in window) || ((navigator && navigator.maxTouchPoints) || 0) > 0);
+  }
+
+  function isPipelineKanbanVisible() {
+    var page = document.getElementById('page4');
+    if (page && page.style.display === 'none') return false;
+    var pipePanel = document.getElementById('pm-panel-pipeline');
+    if (pipePanel && pipePanel.style.display === 'none') return false;
+    var kanban = document.getElementById('pipelineKanbanBoard');
+    if (!kanban) return false;
+    if (kanban.style.display === 'none') return false;
+    if (window.__wrPipelineView && window.__wrPipelineView !== 'kanban') return false;
+    return true;
+  }
+
   function injectStyle() {
     if (document.getElementById('sk-pipeline-patch-style')) return;
     var st = document.createElement('style');
@@ -42697,7 +42736,15 @@ window.addEventListener('DOMContentLoaded', () => {
       '.sk-sched-title{font-size:13px;font-weight:700;color:#e8edf5;margin-bottom:10px;}' +
       '.sk-sched-close{margin-left:auto;padding:4px 10px;border-radius:7px;border:1px solid #2d3b5a;background:#1a2335;color:#9fb2da;cursor:pointer;font-size:11px;}' +
       '.sk-sched-close:hover{border-color:#4f8eff;color:#cbe0ff;}' +
-      '.sk-reveal-all{margin-left:8px;padding:3px 7px;border-radius:6px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.04);color:var(--di);font-size:10px;cursor:pointer;}';
+      '.sk-reveal-all{margin-left:8px;padding:3px 7px;border-radius:6px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.04);color:var(--di);font-size:10px;cursor:pointer;}' +
+      '.sk-touch-move-btn{position:absolute;top:8px;right:8px;z-index:4;padding:2px 7px;border-radius:999px;border:1px solid rgba(79,142,255,.36);background:rgba(79,142,255,.14);color:#9ec4ff;font-size:10px;font-weight:700;line-height:1.3;}' +
+      '.sk-touch-sheet{position:fixed;inset:0;z-index:12020;background:rgba(0,0,0,.58);display:flex;align-items:flex-end;justify-content:center;padding:16px;}' +
+      '.sk-touch-sheet-panel{width:min(520px,96vw);max-height:70vh;overflow:auto;background:#121a2a;border:1px solid #314160;border-radius:14px;padding:12px;box-shadow:0 18px 42px rgba(0,0,0,.5);}' +
+      '.sk-touch-sheet-title{font-size:12px;font-weight:700;color:#e8edf5;margin-bottom:8px;}' +
+      '.sk-touch-sheet-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}' +
+      '.sk-touch-sheet-btn{padding:9px 8px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:#dbe6ff;font-size:12px;font-weight:700;cursor:pointer;}' +
+      '.sk-touch-sheet-btn[disabled]{opacity:.45;cursor:default;}' +
+      '.sk-touch-sheet-close{margin-top:10px;width:100%;padding:8px 10px;border-radius:10px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.05);color:#b9c4db;font-size:11px;cursor:pointer;}';
     document.head.appendChild(st);
   }
 
@@ -42931,14 +42978,81 @@ window.addEventListener('DOMContentLoaded', () => {
     return false;
   }
 
+  function ensureTouchStatusSheet() {
+    var modal = document.getElementById('skTouchStatusSheet');
+    if (modal) return modal;
+    modal = document.createElement('div');
+    modal.id = 'skTouchStatusSheet';
+    modal.className = 'sk-touch-sheet';
+    modal.style.display = 'none';
+    modal.innerHTML = ''
+      + '<div class="sk-touch-sheet-panel">'
+      + '  <div id="skTouchStatusTitle" class="sk-touch-sheet-title">단계 이동</div>'
+      + '  <div id="skTouchStatusList" class="sk-touch-sheet-list"></div>'
+      + '  <button type="button" class="sk-touch-sheet-close" id="skTouchStatusClose">닫기</button>'
+      + '</div>';
+    modal.addEventListener('click', function (e) {
+      if (e.target === modal) modal.style.display = 'none';
+    });
+    document.body.appendChild(modal);
+    var closeBtn = modal.querySelector('#skTouchStatusClose');
+    if (closeBtn) {
+      closeBtn.addEventListener('click', function () {
+        modal.style.display = 'none';
+      });
+    }
+    return modal;
+  }
+
+  function openTouchStatusSheet(itemId, currentStatus) {
+    injectStyle();
+    var modal = ensureTouchStatusSheet();
+    var title = modal.querySelector('#skTouchStatusTitle');
+    var list = modal.querySelector('#skTouchStatusList');
+    if (!list) return;
+
+    var item = null;
+    try {
+      if (typeof window.getSv === 'function') {
+        var sv = window.getSv() || [];
+        item = sv.find(function (s) { return String(s.id) === String(itemId); }) || null;
+      }
+    } catch (e) {}
+    if (title) title.textContent = ((item && (item.title || (item.data && item.data['소재지']))) || '물건') + ' · 단계 이동';
+
+    var cur = normalizeStatus(currentStatus);
+    list.innerHTML = COL_STATUS.map(function (status) {
+      var label = STATUS_LABELS[status] || status;
+      var disabled = (status === cur) ? ' disabled' : '';
+      return '<button type="button" class="sk-touch-sheet-btn" data-status="' + status + '"' + disabled + '>' + label + '</button>';
+    }).join('');
+
+    Array.prototype.slice.call(list.querySelectorAll('[data-status]')).forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.preventDefault();
+        var next = btn.getAttribute('data-status') || '';
+        if (!next || next === cur) return;
+        window.__wbSuppressOpenUntil = Date.now() + 420;
+        var ok = setItemStatus(itemId, next);
+        if (ok && typeof window.showToast === 'function') {
+          window.showToast((STATUS_LABELS[next] || next) + '로 이동했습니다', 'ok', 1200);
+        }
+        modal.style.display = 'none';
+      });
+    });
+
+    modal.style.display = 'flex';
+  }
+
   function enhanceKanbanDnD() {
     injectStyle();
+    var touchMode = isTouchLikeDevice();
     COL_STATUS.forEach(function (status, idx) {
       var col = document.getElementById('wCol' + idx);
       if (!col) return;
       col.dataset.skStatus = status;
 
-      if (!col.dataset.skDropBound) {
+      if (!touchMode && !col.dataset.skDropBound) {
         col.addEventListener('dragover', function (e) {
           e.preventDefault();
           col.classList.add('sk-drop-over');
@@ -42952,8 +43066,7 @@ window.addEventListener('DOMContentLoaded', () => {
           window.__wbSuppressOpenUntil = Date.now() + 380;
           var ok = setItemStatus(itemId, status);
           if (ok && typeof window.showToast === 'function') {
-            var labels = { interest:'\uac1c\uc694', review:'\uac80\ud1a0\uc911', field:'\ud604\uc7a5', bid:'\uc785\ucc30', won:'\ub099\ucc30', sell:'\ub9e4\ub3c4', pass:'\ud328\uc2a4' };
-            window.showToast((labels[status] || status) + '\uc73c\ub85c \uc774\ub3d9\ub410\uc2b5\ub2c8\ub2e4', 'ok', 1200);
+            window.showToast((STATUS_LABELS[status] || status) + '\uc73c\ub85c \uc774\ub3d9\ub410\uc2b5\ub2c8\ub2e4', 'ok', 1200);
           }
         });
         col.dataset.skDropBound = '1';
@@ -42964,21 +43077,66 @@ window.addEventListener('DOMContentLoaded', () => {
         if (card.dataset && card.dataset.skDragBound === '1') return;
         var itemId = extractItemIdFromCard(card);
         if (!itemId) return;
-        card.draggable = true;
+        card.draggable = !touchMode;
         var dragMoved = false;
-        card.addEventListener('dragstart', function (e) {
-          if (!e.dataTransfer) return;
-          e.dataTransfer.setData('text/sk-item-id', itemId);
-          e.dataTransfer.effectAllowed = 'move';
-          card.classList.add('sk-dragging');
-          dragMoved = true;
-        });
-        card.addEventListener('dragend', function () {
-          card.classList.remove('sk-dragging');
-          document.querySelectorAll('.sk-drop-over').forEach(function (el) { el.classList.remove('sk-drop-over'); });
-          if (dragMoved) window.__wbSuppressOpenUntil = Date.now() + 320;
-          dragMoved = false;
-        });
+        if (!touchMode) {
+          card.addEventListener('dragstart', function (e) {
+            if (!e.dataTransfer) return;
+            e.dataTransfer.setData('text/sk-item-id', itemId);
+            e.dataTransfer.effectAllowed = 'move';
+            card.classList.add('sk-dragging');
+            dragMoved = true;
+          });
+          card.addEventListener('dragend', function () {
+            card.classList.remove('sk-dragging');
+            document.querySelectorAll('.sk-drop-over').forEach(function (el) { el.classList.remove('sk-drop-over'); });
+            if (dragMoved) window.__wbSuppressOpenUntil = Date.now() + 320;
+            dragMoved = false;
+          });
+        }
+
+        if (touchMode && card.dataset && card.dataset.skTouchMoveBound !== '1') {
+          var moveBtn = document.createElement('button');
+          moveBtn.type = 'button';
+          moveBtn.className = 'sk-touch-move-btn';
+          moveBtn.textContent = '이동';
+          moveBtn.addEventListener('pointerdown', function (e) {
+            e.stopPropagation();
+          });
+          moveBtn.addEventListener('click', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            openTouchStatusSheet(itemId, status);
+          });
+          card.appendChild(moveBtn);
+          card.dataset.skTouchMoveBound = '1';
+        }
+
+        if (card.dataset && card.dataset.skPointerBound !== '1') {
+          var ptr = { down: false, x: 0, y: 0, moved: false };
+          card.addEventListener('pointerdown', function (e) {
+            ptr.down = true;
+            ptr.moved = false;
+            ptr.x = e.clientX;
+            ptr.y = e.clientY;
+          }, { passive: true });
+          card.addEventListener('pointermove', function (e) {
+            if (!ptr.down) return;
+            if (Math.abs(e.clientX - ptr.x) > 7 || Math.abs(e.clientY - ptr.y) > 7) {
+              ptr.moved = true;
+            }
+          }, { passive: true });
+          var onPointerEnd = function () {
+            if (!ptr.down) return;
+            ptr.down = false;
+            if (ptr.moved) window.__wbSuppressOpenUntil = Date.now() + 260;
+            ptr.moved = false;
+          };
+          card.addEventListener('pointerup', onPointerEnd, { passive: true });
+          card.addEventListener('pointercancel', onPointerEnd, { passive: true });
+          card.dataset.skPointerBound = '1';
+        }
+
         if (card.dataset) card.dataset.skDragBound = '1';
       });
     });
@@ -43337,15 +43495,20 @@ window.addEventListener('DOMContentLoaded', () => {
     if (window.renderWatchBoard.__skPatched) return;
     var orig = window.renderWatchBoard;
     var afterTimer = null;
+    var lastEnhanceAt = 0;
     window.renderWatchBoard = function () {
       var ret = orig.apply(this, arguments);
+      if (!isPipelineKanbanVisible()) return ret;
       if (afterTimer) clearTimeout(afterTimer);
       afterTimer = setTimeout(function () {
         afterTimer = null;
+        var now = Date.now();
+        if (now - lastEnhanceAt < 120) return;
+        lastEnhanceAt = now;
         enhanceScheduleBoard();
         enhanceKanbanDnD();
         updateColumnTotals();
-      }, 0);
+      }, 16);
       return ret;
     };
     window.renderWatchBoard.__skPatched = true;
@@ -43389,8 +43552,8 @@ window.addEventListener('DOMContentLoaded', () => {
     var t = setInterval(function () {
       tries += 1;
       applyAllPatches(true);
-      if (tries > 12) clearInterval(t);
-    }, 600);
+      if (tries > 4) clearInterval(t);
+    }, 900);
 
     document.addEventListener('click', function (e) {
       var tab = e.target && e.target.closest && e.target.closest('#plViewKanbanBtn, #plViewListBtn, #plViewCalBtn');
