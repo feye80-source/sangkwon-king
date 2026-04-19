@@ -31626,7 +31626,6 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             if (!item) return false;
             const d = item.data || {};
             const hasSaleDate = !!(d.매각일 || d.매각기일);
-            // 경매(auction) 또는 온비드/공매(source) 모두 포함
             const isAuctionLike = item.mode === 'auction'
               || item.source === '온비드'
               || (item.id && item.id.startsWith('onbid_'))
@@ -31639,8 +31638,6 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             return { item, date: dt, key: _fmtSaleKey(dt), dday: _calcDday(dt) };
           })
           .filter(Boolean)
-          // 이미 지난 날짜 제외 (오늘 포함 이후만)
-          .filter(entry => entry.dday >= 0)
           .sort((a, b) => a.date - b.date);
         if (!saleItems.length) {
           scheduleEl.style.display = 'none';
@@ -39067,7 +39064,6 @@ ${newsContext}
         var linkedIds = (room.linkedItems || []).concat(room.linkedSavedId ? [room.linkedSavedId] : []);
         var changed = false;
         sv.forEach(function(it) {
-          // linkedItems 배열에 있거나, 물건의 roomId가 이 작업룸을 가리키는 경우 모두 업데이트
           var isLinked = linkedIds.map(String).indexOf(String(it.id)) >= 0
             || String(it.roomId || '') === String(roomId);
           if (isLinked) {
@@ -39078,9 +39074,10 @@ ${newsContext}
         if (changed && typeof setSv === 'function') {
           setSv(sv);
           if (typeof renderSaved === 'function') renderSaved();
-          if (typeof renderWatchBoard === 'function') setTimeout(renderWatchBoard, 80);
         }
       }
+      // 연결 물건 유무 관계없이 항상 파이프라인 재렌더
+      if (typeof renderWatchBoard === 'function') setTimeout(renderWatchBoard, 80);
       wrDbOpenRoom(roomId);
     };
 
