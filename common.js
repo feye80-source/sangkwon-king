@@ -31530,7 +31530,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     // 🎯 검토 물건함
     // ═══════════════════════════════════════════════════════
 
-    const WATCH_ORDER = ['', 'interest', 'review', 'field', 'bid', 'won'];
+    const WATCH_ORDER = ['', 'interest', 'review', 'field', 'bid', 'won', 'sell'];
 
     window.cycleWatchStatus = function (id) {
       const sv = getSv();
@@ -31544,7 +31544,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       setSv(sv);
       renderSaved();
       updateWatchCnt();
-      const labels = { interest: '👀 관심으로 표시', review: '🔍 검토중으로 이동', field: '📍 현장으로 이동', bid: '🎯 입찰로 이동', won: '✅ 낙찰로 이동', '': '표시 해제' };
+      const labels = { interest: '👀 관심으로 표시', review: '🔍 검토중으로 이동', field: '📍 현장으로 이동', bid: '🎯 입찰로 이동', won: '✅ 낙찰로 이동', sell: '💰 매도로 이동', '': '표시 해제' };
       showToast(labels[next || ''], 'ok', 1800);
     };
 
@@ -31558,10 +31558,10 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     function renderWatchBoard() {
       const sv = getSv();
       const sortKey = document.getElementById('watchSortSel')?.value || 'savedAt';
-      const statuses = ['interest', 'review', 'field', 'bid', 'won'];
-      const cols = ['wCol0','wCol1','wCol2','wCol3','wCol4'].map(id=>document.getElementById(id));
-      const cntEls = ['wCnt0','wCnt1','wCnt2','wCnt3','wCnt4'].map(id=>document.getElementById(id));
-      const emptyEls = ['wEmpty0','wEmpty1','wEmpty2','wEmpty3','wEmpty4'].map(id=>document.getElementById(id));
+      const statuses = ['interest', 'review', 'field', 'bid', 'won', 'sell'];
+      const cols = ['wCol0','wCol1','wCol2','wCol3','wCol4','wCol5'].map(id=>document.getElementById(id));
+      const cntEls = ['wCnt0','wCnt1','wCnt2','wCnt3','wCnt4','wCnt5'].map(id=>document.getElementById(id));
+      const emptyEls = ['wEmpty0','wEmpty1','wEmpty2','wEmpty3','wEmpty4','wEmpty5'].map(id=>document.getElementById(id));
       const rooms = wrGetRooms();
       const scheduleEl = document.getElementById('watchScheduleBoard');
 
@@ -31709,62 +31709,42 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
               return `<span style="font-size:9px;padding:1px 5px;border-radius:3px;background:${info.color}18;color:${info.color};border:1px solid ${info.color}44;">${info.label}</span>`;
             })() : '';
 
-            // 노트 수
-            const noteCnt = (typeof insNotes !== 'undefined' ? insNotes : ((window._idbCache && window._idbCache['nt_notes'] || []))).filter(n => n.linkedItemId === item.id).length;
-
-            // 분석 진행도 (연결된 작업룸 기준)
-            let progressHtml = '';
-            if (linkedRoom) {
-              const done = (linkedRoom.checklist || []).filter(c => c.done).length;
-              const total = 8; // WR_ANALYSIS_ITEMS.length
-              const pct = Math.round(done / total * 100);
-              progressHtml = `<div style="margin-top:6px;display:flex;align-items:center;gap:5px;">
-            <div style="flex:1;height:3px;background:var(--b1);border-radius:2px;overflow:hidden;">
-              <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#4f8eff,#00d4aa);"></div>
-            </div>
-            <span style="font-size:9px;color:var(--di);">분석 ${done}/${total}</span>
-          </div>`;
-            }
+            const curStatus = (typeof _migrateStatus === 'function') ? _migrateStatus(item.watchStatus || status) : (item.watchStatus || status);
+            const statusLabelMap = { interest: '관심', review: '검토', field: '현장', bid: '입찰', won: '낙찰', sell: '매도', pass: '제외' };
+            const statusOptions = ['interest','review','field','bid','won','sell','pass'].map(k =>
+              `<option value="${k}" ${curStatus === k ? 'selected' : ''}>${statusLabelMap[k] || k}</option>`
+            ).join('');
 
             const card = document.createElement('div');
-            card.style.cssText = `background:var(--s2);border-radius:9px;border:1px solid ${linkedRoom ? 'rgba(17,157,237,.25)' : 'var(--b1)'};padding:10px 12px;transition:all .15s;position:relative;`;
+            card.style.cssText = `background:var(--s2);border-radius:9px;border:1px solid ${linkedRoom ? 'rgba(17,157,237,.25)' : 'var(--b1)'};padding:8px 10px;transition:all .15s;position:relative;`;
             card.onmouseenter = () => { card.style.borderColor = 'rgba(79,142,255,0.5)'; card.style.background = 'rgba(79,142,255,.04)'; };
             card.onmouseleave = () => { card.style.borderColor = linkedRoom ? 'rgba(17,157,237,.25)' : 'var(--b1)'; card.style.background = 'var(--s2)'; };
 
             // 왼쪽 컬럼 색상 바
-            const colColors = ['rgba(148,163,184,.5)','rgba(96,165,250,.5)','rgba(251,191,36,.5)','rgba(249,115,22,.5)','rgba(74,222,128,.5)'];
+            const colColors = ['rgba(148,163,184,.5)','rgba(96,165,250,.5)','rgba(251,191,36,.5)','rgba(249,115,22,.5)','rgba(74,222,128,.5)','rgba(244,114,182,.55)'];
             card.innerHTML = `
           <div style="position:absolute;left:0;top:8px;bottom:8px;width:3px;background:${colColors[ci]};border-radius:0 2px 2px 0;"></div>
           <div style="padding-left:6px;">
-            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:4px;margin-bottom:4px;">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:4px;margin-bottom:3px;">
               <div style="font-size:12px;font-weight:600;color:var(--tx);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;" onclick="openPopup('${item.id}')">${esc(item.title || d.소재지 || item.id)}</div>
               <div style="display:flex;align-items:center;gap:3px;flex-shrink:0;">
                 ${ddayHtml}
-                <div style="position:relative;display:inline-block;">
-                  <button onclick="event.stopPropagation();this.nextElementSibling.style.display=this.nextElementSibling.style.display==='block'?'none':'block';" title="단계 이동" style="padding:2px 7px;background:none;border:1px solid var(--b1);border-radius:4px;color:var(--di);font-size:10px;cursor:pointer;">↻</button>
-                  <div onclick="event.stopPropagation();" style="display:none;position:absolute;right:0;top:100%;margin-top:2px;background:#1a1f2e;border:1px solid #2a3045;border-radius:8px;padding:4px;z-index:999;min-width:110px;box-shadow:0 4px 16px rgba(0,0,0,.5);">
-                    ${['interest','review','field','bid','won','pass'].map(k=>{
-                      const info=UNIFIED_STATUS[k];
-                      return `<div onclick="event.stopPropagation();_wbSetStatus('${item.id}','${k}');this.closest('div[style*=position]').style.display='none';" style="padding:5px 8px;border-radius:5px;font-size:11px;cursor:pointer;color:${info.color};white-space:nowrap;" onmouseenter="this.style.background='rgba(255,255,255,.06)'" onmouseleave="this.style.background=''">${info.label}</div>`;
-                    }).join('')}
-                  </div>
-                </div>
               </div>
             </div>
             <div style="font-size:10px;color:var(--mu);margin-bottom:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(String(d.소재지 || ''))}</div>
-            <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:6px;">
               <span style="font-size:12px;font-weight:700;color:${ia ? 'var(--auction-c)' : 'var(--listing-c)'};">${priceStr}</span>
               ${roomStatusHtml}
-              ${noteCnt ? `<span style="font-size:10px;color:var(--ac);">📓${noteCnt}</span>` : ''}
             </div>
-            ${progressHtml}
-            <div style="display:flex;gap:4px;margin-top:8px;border-top:1px solid var(--b1);padding-top:7px;">
+            <div style="display:flex;gap:4px;margin-top:2px;">
+              <select onchange="_wbSetStatus('${item.id}',this.value)" style="flex:0 0 74px;padding:4px 6px;background:var(--s1);border:1px solid var(--b1);border-radius:6px;color:var(--tx);font-size:10px;cursor:pointer;outline:none;">
+                ${statusOptions}
+              </select>
               ${linkedRoom
-                ? `<button onclick="_wbGoRoom('${linkedRoom.id}')" style="flex:1;padding:4px 3px;background:rgba(17,157,237,.12);border:1px solid rgba(17,157,237,.35);border-radius:5px;color:#119ded;font-size:10px;font-weight:600;cursor:pointer;">🗂 ${esc((linkedRoom.title || linkedRoom.name || '').substring(0, 10))}</button>`
-                : `<button onclick="_wbCreateAndLink('${item.id}')" style="flex:1;padding:4px 3px;background:rgba(17,157,237,.08);border:1px dashed rgba(17,157,237,.4);border-radius:5px;color:#119ded;font-size:10px;cursor:pointer;" title="작업룸을 새로 만들고 바로 연결">＋ 작업룸 만들기</button>`
+                ? `<button onclick="_wbGoRoom('${linkedRoom.id}')" style="flex:1;padding:4px 6px;background:rgba(17,157,237,.12);border:1px solid rgba(17,157,237,.35);border-radius:6px;color:#119ded;font-size:10px;font-weight:600;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">🗂 ${esc((linkedRoom.title || linkedRoom.name || '작업룸').substring(0, 8))}</button>`
+                : `<button onclick="_wbCreateAndLink('${item.id}')" style="flex:1;padding:4px 6px;background:rgba(17,157,237,.08);border:1px dashed rgba(17,157,237,.4);border-radius:6px;color:#119ded;font-size:10px;cursor:pointer;">＋ 연결</button>`
               }
-              <button onclick="_wbNote('${item.id}')" style="padding:4px 7px;background:var(--s1);border:1px solid var(--b1);border-radius:5px;color:var(--mu);font-size:10px;cursor:pointer;">📓</button>
-              <button onclick="openPopup('${item.id}')" style="padding:4px 7px;background:var(--s1);border:1px solid var(--b1);border-radius:5px;color:var(--di);font-size:10px;cursor:pointer;">상세</button>
+              <button onclick="openPopup('${item.id}')" style="padding:4px 7px;background:var(--s1);border:1px solid var(--b1);border-radius:6px;color:var(--di);font-size:10px;cursor:pointer;">상세</button>
             </div>
           </div>
         `;
@@ -31783,8 +31763,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           return rStatus === status;
         });
         roomOnlyItems.forEach(room => {
-          const st = (typeof UNIFIED_STATUS !== 'undefined' ? UNIFIED_STATUS : {})[status] || { color: '#60a5fa' };
-          const colColors = ['rgba(148,163,184,.5)','rgba(96,165,250,.5)','rgba(251,191,36,.5)','rgba(249,115,22,.5)','rgba(74,222,128,.5)'];
+          const colColors = ['rgba(148,163,184,.5)','rgba(96,165,250,.5)','rgba(251,191,36,.5)','rgba(249,115,22,.5)','rgba(74,222,128,.5)','rgba(244,114,182,.55)'];
           const card = document.createElement('div');
           card.style.cssText = `background:var(--s2);border-radius:9px;border:1px solid rgba(17,157,237,.25);padding:10px 12px;transition:all .15s;position:relative;cursor:pointer;`;
           card.onmouseenter = () => { card.style.borderColor = 'rgba(17,157,237,.5)'; card.style.background = 'rgba(17,157,237,.04)'; };
@@ -42537,6 +42516,47 @@ window.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  function enhanceWorkroomStatusUi() {
+    try {
+      var detail = document.getElementById('wrDbDetail');
+      var roomId = window._wrDb && window._wrDb.activeId;
+      if (!detail || !roomId || typeof window.wrGetRoom !== 'function') return;
+      var room = window.wrGetRoom(roomId);
+      if (!room) return;
+      var cur = normalizeStatus(room.status || room.phase || room.activePhase);
+      var bar = detail.querySelector('#skRoomStatusQuick');
+      if (!bar) {
+        bar = document.createElement('div');
+        bar.id = 'skRoomStatusQuick';
+        bar.style.cssText = 'position:sticky;top:0;z-index:8;display:flex;align-items:center;gap:6px;padding:8px 10px;margin:0 0 8px 0;background:rgba(11,15,24,.92);border:1px solid rgba(255,255,255,.08);border-radius:10px;backdrop-filter:blur(8px);';
+        detail.insertBefore(bar, detail.firstChild);
+      }
+      bar.innerHTML = ''
+        + '<span style="font-size:11px;color:var(--di);font-weight:700;">진행 상태</span>'
+        + '<select id="skRoomStatusSelect" style="padding:5px 8px;background:var(--s2);border:1px solid var(--b1);border-radius:7px;color:var(--tx);font-size:11px;outline:none;min-width:90px;">'
+        + '  <option value="interest">관심</option>'
+        + '  <option value="review">검토</option>'
+        + '  <option value="field">현장</option>'
+        + '  <option value="bid">입찰</option>'
+        + '  <option value="won">낙찰</option>'
+        + '  <option value="sell">매도</option>'
+        + '</select>'
+        + '<button id="skRoomStatusApply" type="button" style="padding:5px 10px;background:rgba(79,142,255,.15);border:1px solid rgba(79,142,255,.35);border-radius:7px;color:#8ab8ff;font-size:11px;cursor:pointer;">적용</button>';
+      var sel = bar.querySelector('#skRoomStatusSelect');
+      if (sel) sel.value = cur;
+      var applyBtn = bar.querySelector('#skRoomStatusApply');
+      if (applyBtn) {
+        applyBtn.onclick = function () {
+          var next = sel ? sel.value : cur;
+          if (!next) return;
+          if (typeof window._wrPhaseSwitch === 'function') window._wrPhaseSwitch(roomId, 'ph_' + next);
+          else if (typeof window.wrDbUpdateStatus === 'function') window.wrDbUpdateStatus(roomId, next);
+          if (typeof window.renderWatchBoard === 'function') setTimeout(function () { window.renderWatchBoard(); }, 60);
+        };
+      }
+    } catch (e) {}
+  }
+
   function patchRenderWatchBoard() {
     if (typeof window.renderWatchBoard !== 'function') return;
     if (window.renderWatchBoard.__skPatched) return;
@@ -42577,6 +42597,7 @@ window.addEventListener('DOMContentLoaded', () => {
     }
     enhanceKanbanDnD();
     updateColumnTotals();
+    enhanceWorkroomStatusUi();
   }
 
   function boot() {
@@ -42596,6 +42617,10 @@ window.addEventListener('DOMContentLoaded', () => {
         setTimeout(function () {
           try { if (typeof window.renderWatchBoard === 'function') window.renderWatchBoard(); } catch (err) {}
         }, 80);
+      }
+      var wrAction = e.target && e.target.closest && e.target.closest('#pm-tab-work, #wrDbRoomList .wr-item-card, .wr2-phase-tab');
+      if (wrAction) {
+        setTimeout(function () { enhanceWorkroomStatusUi(); }, 120);
       }
     }, true);
   }
