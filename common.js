@@ -3644,13 +3644,8 @@ var _safeLocalSet = function(key, value) {
                       (r.linkedItems || []).forEach(x => ids.push(String(x)));
                       return ids.indexOf(String(itemId)) >= 0;
                     });
-                    let finalLife = 'active';
-                    if (linkedRooms.length) {
-                      const lives = linkedRooms.map(r => wr2GetLifecycle(r));
-                      if (lives.includes('active')) finalLife = 'active';
-                      else if (lives.includes('changed')) finalLife = 'changed';
-                      else if (lives.includes('closed')) finalLife = 'closed';
-                    }
+                    const latestRoom = linkedRooms.slice().sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0] || null;
+                    let finalLife = latestRoom ? wr2GetLifecycle(latestRoom) : 'active';
                     lifecycleByItem[String(itemId)] = finalLife;
                   });
 
@@ -4414,7 +4409,16 @@ var _safeLocalSet = function(key, value) {
                     const price = fmtMetaPrice(priceRaw) || String(priceRaw || '').trim();
                     const meta = document.createElement('div');
                     meta.className = 'wr2-room-meta';
-                    meta.textContent = [no ? ('경매번호 ' + no) : '', addr, price].filter(Boolean).join(' · ') || '연결 정보 없음';
+                    if (no || addr || price) {
+                      meta.innerHTML = ''
+                        + '<div style="display:flex;align-items:center;gap:6px;line-height:1.25;">'
+                        + (no ? ('<span style="color:#7bb4ff;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px;">' + esc(no) + '</span>') : '')
+                        + (price ? ('<span style="color:#ffb36c;white-space:nowrap;">' + esc(price) + '</span>') : '')
+                        + '</div>'
+                        + (addr ? ('<div style="margin-top:2px;color:#8ea7c9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(addr) + '</div>') : '');
+                    } else {
+                      meta.textContent = '연결 정보 없음';
+                    }
                     content.appendChild(meta);
                     item.appendChild(handle);
                     item.appendChild(content);
@@ -4573,19 +4577,21 @@ var _safeLocalSet = function(key, value) {
                       closedStamp.style.border = '1px solid rgba(255,102,120,.36)';
                       closedStamp.style.background = 'linear-gradient(180deg,rgba(255,88,106,.14),rgba(255,88,106,.06))';
                       closedStamp.style.color = '#ffadb7';
+                      closedStamp.style.alignItems = 'stretch';
+                      closedStamp.style.justifyContent = 'space-between';
                       closedStamp.style.display = 'flex';
                       closedStamp.innerHTML = ''
-                        + '<div style="display:flex;align-items:center;gap:10px;">'
-                        + '  <div style="border:2px solid rgba(255,126,136,.78);border-radius:10px;padding:4px 10px;font-size:12px;font-weight:900;letter-spacing:2px;color:#ffb6bf;transform:rotate(-8deg);">종료</div>'
-                        + '  <div style="font-size:14px;font-weight:800;letter-spacing:.2px;color:#ffd6dc;">이 물건은 최종 종료되었습니다</div>'
+                        + '<div style="display:flex;align-items:center;gap:12px;min-width:280px;">'
+                        + '  <div style="border:2px solid rgba(255,126,136,.78);border-radius:10px;padding:6px 12px;font-size:13px;font-weight:900;letter-spacing:2px;color:#ffb6bf;transform:rotate(-7deg);">종료</div>'
+                        + '  <div style="font-size:16px;font-weight:800;letter-spacing:.2px;color:#ffd6dc;line-height:1.25;">이 물건은 최종 종료되었습니다</div>'
                         + '</div>'
-                        + '<div style="display:grid;grid-template-columns:auto auto;column-gap:12px;row-gap:2px;align-items:center;font-size:11px;color:#ffd3d8;">'
+                        + '<div style="flex:1;display:grid;grid-template-columns:110px 1fr;column-gap:14px;row-gap:4px;align-items:center;font-size:12px;color:#ffd3d8;max-width:620px;margin-left:auto;">'
                         + '<div style="opacity:.85;">종료 유형</div><div style="font-weight:700;color:#ffe5e8;">' + esc(closeType || '-') + '</div>'
                         + '<div style="opacity:.85;">낙찰가</div><div style="font-weight:700;color:#ffe5e8;">' + esc(bid || '-') + '</div>'
                         + '<div style="opacity:.85;">낙찰 인원</div><div style="font-weight:700;color:#ffe5e8;">' + esc(bidderCount || '-') + '</div>'
                         + (dt ? ('<div style="opacity:.85;">종료일</div><div style="font-weight:700;color:#ffe5e8;">' + esc(dt) + '</div>') : '')
-                        + (memo ? ('<div style="opacity:.85;">복기</div><div style="max-width:360px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(memo) + '</div>') : '')
-                        + '<button id="wr2ClosedEditBtn" type="button" style="margin-top:3px;grid-column:1 / -1;justify-self:end;padding:4px 9px;border-radius:7px;border:1px solid rgba(255,188,196,.32);background:rgba(255,188,196,.12);color:#ffdbe0;font-size:10px;cursor:pointer;">종료 정보 수정</button>'
+                        + (memo ? ('<div style="opacity:.85;">복기</div><div style="max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(memo) + '</div>') : '')
+                        + '<button id="wr2ClosedEditBtn" type="button" style="margin-top:4px;grid-column:1 / -1;justify-self:end;padding:5px 10px;border-radius:7px;border:1px solid rgba(255,188,196,.32);background:rgba(255,188,196,.12);color:#ffdbe0;font-size:11px;cursor:pointer;">종료 정보 수정</button>'
                         + '</div>';
                       const editBtn = closedStamp.querySelector('#wr2ClosedEditBtn');
                       if (editBtn) {
@@ -4602,6 +4608,8 @@ var _safeLocalSet = function(key, value) {
                       closedStamp.style.border = '1px solid rgba(251,191,36,.35)';
                       closedStamp.style.background = 'linear-gradient(180deg,rgba(251,191,36,.14),rgba(251,191,36,.06))';
                       closedStamp.style.color = '#f7d47d';
+                      closedStamp.style.alignItems = 'center';
+                      closedStamp.style.justifyContent = 'space-between';
                       closedStamp.innerHTML = ''
                         + '<div style="display:flex;align-items:center;gap:10px;">'
                         + '  <div style="border:2px solid rgba(251,191,36,.75);border-radius:10px;padding:4px 10px;font-size:12px;font-weight:900;letter-spacing:2px;color:#f7d47d;transform:rotate(-8deg);">변경</div>'
@@ -4611,6 +4619,8 @@ var _safeLocalSet = function(key, value) {
                       closedStamp.style.border = '1px solid rgba(255,102,120,.36)';
                       closedStamp.style.background = 'linear-gradient(180deg,rgba(255,88,106,.14),rgba(255,88,106,.06))';
                       closedStamp.style.color = '#ffadb7';
+                      closedStamp.style.alignItems = 'center';
+                      closedStamp.style.justifyContent = 'space-between';
                       closedStamp.style.display = 'none';
                     }
                   }
@@ -15669,6 +15679,7 @@ ${inputDesc.substring(0, 3000)}
       input.onkeypress = function (e) { if (e.key === 'Enter') this.blur(); };
     };
     function openPopup(id) {
+      if (window.__wbForceRoomNavUntil && Date.now() < window.__wbForceRoomNavUntil) return;
       const item = getSv().find(s => String(s?.id) === String(id));
       if (!item) return;
 
@@ -32100,18 +32111,13 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const rooms = wrGetRooms();
       const scheduleEl = document.getElementById('watchScheduleBoard');
       const itemLifecycle = {};
+      const itemLifecycleTs = {};
       const _pickLife = function(room) {
         const life = String((room && room.lifecycleStatus) || '').trim();
         if (life === 'active' || life === 'changed' || life === 'closed') return life;
         const st = String((room && room.status) || '').trim();
         if (st === 'changed' || st === 'closed') return st;
         return 'active';
-      };
-      const _rankLife = function(life) {
-        if (life === 'active') return 3;
-        if (life === 'changed') return 2;
-        if (life === 'closed') return 1;
-        return 0;
       };
       (rooms || []).forEach(r => {
         const ids = [];
@@ -32120,9 +32126,12 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         if (r && r.listingId != null) ids.push(String(r.listingId));
         (r && r.linkedItems || []).forEach(id => ids.push(String(id)));
         const life = _pickLife(r);
+        const ts = r && r.updatedAt ? Number(r.updatedAt) : 0;
         ids.forEach(id => {
-          const prev = itemLifecycle[id];
-          if (!prev || _rankLife(life) > _rankLife(prev)) itemLifecycle[id] = life;
+          if (itemLifecycleTs[id] === undefined || ts >= itemLifecycleTs[id]) {
+            itemLifecycleTs[id] = ts;
+            itemLifecycle[id] = life;
+          }
         });
       });
 
@@ -32278,19 +32287,21 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
               const dDay = _saleDt ? _calcDday(_saleDt) : null;
               if (dDay != null) {
                 const dColor = dDay < 0 ? 'var(--di)' : dDay <= 3 ? '#ff6370' : dDay <= 7 ? 'var(--or)' : '#4ade80';
-                const dLabel = dDay < 0 ? '종료' : (dDay === 0 ? 'D-Day' : 'D-' + dDay);
+                const dLabel = dDay < 0 ? '기일지남' : (dDay === 0 ? 'D-Day' : 'D-' + dDay);
                 ddayHtml = `<span style="font-size:10px;font-weight:700;color:${dColor};background:${dColor}18;padding:1px 5px;border-radius:4px;">${dLabel}</span>`;
               }
             }
 
             // 연결 작업룸
             var itemIdStr = String(item.id);
-            const linkedRoom = rooms.find(r =>
-              (r.linkedSavedId && String(r.linkedSavedId) === itemIdStr) ||
-              (r.auctionId && String(r.auctionId) === itemIdStr) ||
-              (r.listingId && String(r.listingId) === itemIdStr) ||
-              ((r.linkedItems || []).map(String).includes(itemIdStr))
-            );
+            const linkedRoom = rooms
+              .filter(r =>
+                (r.linkedSavedId && String(r.linkedSavedId) === itemIdStr) ||
+                (r.auctionId && String(r.auctionId) === itemIdStr) ||
+                (r.listingId && String(r.listingId) === itemIdStr) ||
+                ((r.linkedItems || []).map(String).includes(itemIdStr))
+              )
+              .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0] || null;
             const closeSummary = (linkedRoom && linkedRoom.closedSummary) ? linkedRoom.closedSummary : {};
             const closeBidRaw = String(closeSummary.finalBidPrice || d.낙찰가 || '').trim();
             const closeBidderRaw = String(closeSummary.bidderCount || '').trim();
@@ -32338,8 +32349,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
               <span style="font-size:12px;font-weight:700;color:${ia ? 'var(--auction-c)' : 'var(--listing-c)'};">${priceStr}</span>
               ${linkedRoom
-                ? `<button onclick="event.stopPropagation();_wbGoRoom('${linkedRoom.id}','${String(item.id || '').replace(/'/g, "\\'")}')" style="padding:4px 8px;background:rgba(17,157,237,.12);border:1px solid rgba(17,157,237,.35);border-radius:6px;color:#8fd0ff;font-size:10px;font-weight:700;cursor:pointer;">작업룸</button>`
-                : `<button onclick="event.stopPropagation();_wbCreateAndLink('${item.id}')" style="padding:4px 8px;background:rgba(17,157,237,.08);border:1px dashed rgba(17,157,237,.4);border-radius:6px;color:#8fd0ff;font-size:10px;font-weight:700;cursor:pointer;">작업룸+</button>`
+                ? `<button onclick="event.preventDefault();event.stopPropagation();if(event.stopImmediatePropagation)event.stopImmediatePropagation();_wbGoRoom('${linkedRoom.id}','${String(item.id || '').replace(/'/g, "\\'")}');return false;" style="position:relative;z-index:2;padding:4px 8px;background:rgba(17,157,237,.12);border:1px solid rgba(17,157,237,.35);border-radius:6px;color:#8fd0ff;font-size:10px;font-weight:700;cursor:pointer;">작업룸</button>`
+                : `<button onclick="event.preventDefault();event.stopPropagation();if(event.stopImmediatePropagation)event.stopImmediatePropagation();_wbCreateAndLink('${item.id}');return false;" style="position:relative;z-index:2;padding:4px 8px;background:rgba(17,157,237,.08);border:1px dashed rgba(17,157,237,.4);border-radius:6px;color:#8fd0ff;font-size:10px;font-weight:700;cursor:pointer;">작업룸+</button>`
               }
             </div>
             ${closeMetaHtml}
@@ -32383,7 +32394,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
               </div>
               <div style="font-size:9px;color:#119ded;margin-bottom:6px;">물건 미연결 작업룸</div>
               <div style="display:flex;gap:4px;border-top:1px solid var(--b1);padding-top:6px;">
-                <button onclick="event.stopPropagation();_wbGoRoom('${room.id}')" style="flex:1;padding:4px;background:rgba(17,157,237,.12);border:1px solid rgba(17,157,237,.35);border-radius:5px;color:#119ded;font-size:10px;font-weight:600;cursor:pointer;">🗂 작업룸 열기</button>
+                <button onclick="event.preventDefault();event.stopPropagation();if(event.stopImmediatePropagation)event.stopImmediatePropagation();_wbGoRoom('${room.id}');return false;" style="flex:1;padding:4px;background:rgba(17,157,237,.12);border:1px solid rgba(17,157,237,.35);border-radius:5px;color:#119ded;font-size:10px;font-weight:600;cursor:pointer;">🗂 작업룸 열기</button>
               </div>
             </div>`;
           cols[ci].appendChild(card);
@@ -32420,15 +32431,18 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     };
     window._wbGoRoom = function (roomId, itemId) {
       window.__wbSuppressOpenUntil = Date.now() + 420;
+      window.__wbForceRoomNavUntil = Date.now() + 1200;
       let targetRoomId = roomId ? String(roomId) : '';
       if (!targetRoomId && itemId && typeof window.wrGetRooms === 'function') {
         const rooms = window.wrGetRooms() || [];
-        const hit = rooms.find(r =>
-          (r.linkedSavedId && String(r.linkedSavedId) === String(itemId)) ||
-          (r.auctionId && String(r.auctionId) === String(itemId)) ||
-          (r.listingId && String(r.listingId) === String(itemId)) ||
-          ((r.linkedItems || []).map(String).includes(String(itemId)))
-        );
+        const hit = rooms
+          .filter(r =>
+            (r.linkedSavedId && String(r.linkedSavedId) === String(itemId)) ||
+            (r.auctionId && String(r.auctionId) === String(itemId)) ||
+            (r.listingId && String(r.listingId) === String(itemId)) ||
+            ((r.linkedItems || []).map(String).includes(String(itemId)))
+          )
+          .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0] || null;
         if (hit) targetRoomId = String(hit.id);
       }
       if (targetRoomId && typeof window.pmOpenWorkroom === 'function') {
