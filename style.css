@@ -8202,6 +8202,14 @@
 	                background: rgba(255, 255, 255, .03);
 	                border-color: rgba(255, 255, 255, .08);
 	              }
+              #ipage8 .wr2-room-item[data-life="changed"] {
+                border-color: rgba(251, 191, 36, .28);
+                background: rgba(251, 191, 36, .06);
+              }
+              #ipage8 .wr2-room-item[data-life="closed"] {
+                border-color: rgba(255, 99, 112, .26);
+                background: rgba(255, 99, 112, .05);
+              }
 
               #ipage8 .wr2-room-item.active {
                 background: rgba(167, 139, 250, .12);
