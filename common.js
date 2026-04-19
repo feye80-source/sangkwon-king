@@ -3615,11 +3615,46 @@ var _safeLocalSet = function(key, value) {
                   wr2Render();
                 }
 
+                function wr2SyncClosedSummaryToLinkedItems(room) {
+                  if (!room || typeof getSv !== 'function' || typeof setSv !== 'function') return;
+                  const linkedIds = [];
+                  if (room.linkedSavedId != null) linkedIds.push(String(room.linkedSavedId));
+                  if (room.auctionId != null) linkedIds.push(String(room.auctionId));
+                  if (room.listingId != null) linkedIds.push(String(room.listingId));
+                  (room.linkedItems || []).forEach(id => linkedIds.push(String(id)));
+                  const uniqIds = Array.from(new Set(linkedIds.filter(Boolean)));
+                  if (!uniqIds.length) return;
+
+                  const lifecycle = wr2GetLifecycle(room);
+                  const cs = room.closedSummary || {};
+                  const bid = String(cs.finalBidPrice || '').trim();
+                  const bidder = String(cs.bidderCount || '').trim();
+                  const ctype = String(cs.closedType || '').trim();
+                  const memo = String(cs.memo || '').trim();
+
+                  const sv = getSv() || [];
+                  let changed = false;
+                  sv.forEach(item => {
+                    if (!item || uniqIds.indexOf(String(item.id)) < 0) return;
+                    if (!item.data || typeof item.data !== 'object') item.data = {};
+                    const d = item.data;
+                    if (d['작업룸상태'] !== lifecycle) { d['작업룸상태'] = lifecycle; changed = true; }
+                    if (bid && d['낙찰가'] !== bid) { d['낙찰가'] = bid; changed = true; }
+                    if (bidder && d['입찰인수'] !== bidder) { d['입찰인수'] = bidder; changed = true; }
+                    if (ctype && d['종료유형'] !== ctype) { d['종료유형'] = ctype; changed = true; }
+                    if (memo && d['종료메모'] !== memo) { d['종료메모'] = memo; changed = true; }
+                  });
+                  if (changed) setSv(sv);
+                }
+
                 const _wr2RoomPersistTimers = {};
                 function updateRoom(id, patch, silentRender) {
                   const idx = wr2State.rooms.findIndex(r => r.id === id);
                   if (idx === -1) return;
                   wr2State.rooms[idx] = Object.assign({}, wr2State.rooms[idx], patch, { updatedAt: Date.now() });
+                  if (patch && (Object.prototype.hasOwnProperty.call(patch, 'closedSummary') || Object.prototype.hasOwnProperty.call(patch, 'lifecycleStatus'))) {
+                    try { wr2SyncClosedSummaryToLinkedItems(wr2State.rooms[idx]); } catch (e) {}
+                  }
                   if (silentRender) {
                     clearTimeout(_wr2RoomPersistTimers[id]);
                     _wr2RoomPersistTimers[id] = setTimeout(function() {
@@ -4500,6 +4535,9 @@ var _safeLocalSet = function(key, value) {
                       const closeType = String(cs.closedType || '').trim();
                       const bidderCount = String(cs.bidderCount || '').trim();
                       const memo = String(cs.memo || '').trim();
+                      closedStamp.style.border = '1px solid rgba(255,102,120,.36)';
+                      closedStamp.style.background = 'linear-gradient(180deg,rgba(255,88,106,.14),rgba(255,88,106,.06))';
+                      closedStamp.style.color = '#ffadb7';
                       closedStamp.style.display = 'flex';
                       closedStamp.innerHTML = ''
                         + '<div style="display:flex;align-items:center;gap:10px;">'
@@ -5121,8 +5159,9 @@ var _safeLocalSet = function(key, value) {
                     html += `<div class="wr2-info-row"><span class="wr2-info-lbl">임차인명</span><span class="wr2-info-val"><b>${tenant}</b></span></div>`;
                   }
 
-                  // 사건번호
-                  if (d['사건번호'] || d['caseNo']) html += `<div class="wr2-info-row"><span class="wr2-info-lbl">사건번호</span><span class="wr2-info-val">${d['사건번호']||d['caseNo']}</span></div>`;
+                  // 경매번호/사건번호
+                  const auctionNo = d['경매번호'] || d['사건번호'] || d['caseNo'] || '';
+                  if (auctionNo) html += `<div class="wr2-info-row"><span class="wr2-info-lbl">경매번호</span><span class="wr2-info-val">${auctionNo}</span></div>`;
 
                   // 매각기일
                   const saleDate = d['매각기일'] || d['매각일'] || d['경매일'] || '';
@@ -32187,13 +32226,33 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
               (r.listingId && String(r.listingId) === itemIdStr) ||
               ((r.linkedItems || []).map(String).includes(itemIdStr))
             );
+            const closeSummary = (linkedRoom && linkedRoom.closedSummary) ? linkedRoom.closedSummary : {};
+            const closeBidRaw = String(closeSummary.finalBidPrice || d.낙찰가 || '').trim();
+            const closeBidder = String(closeSummary.bidderCount || d.입찰인수 || d.입찰인원 || '').trim();
+            let closeBid = closeBidRaw;
+            try {
+              if (typeof _parseWonInput === 'function') {
+                const won = Math.round(_parseWonInput(closeBidRaw) || 0);
+                if (won > 0) closeBid = won.toLocaleString('ko-KR') + '원';
+              }
+            } catch (e) {}
+            const closeMetaHtml = (closeBid || closeBidder)
+              ? `<div style="display:flex;align-items:center;gap:6px;margin-top:4px;font-size:10px;color:#f6d68a;">
+                  ${closeBid ? `<span style="padding:1px 5px;border-radius:999px;border:1px solid rgba(246,214,138,.45);background:rgba(246,214,138,.12);">낙찰가 ${esc(closeBid)}</span>` : ''}
+                  ${closeBidder ? `<span style="padding:1px 5px;border-radius:999px;border:1px solid rgba(143,208,255,.4);background:rgba(17,157,237,.12);color:#8fd0ff;">입찰인수 ${esc(closeBidder)}</span>` : ''}
+                </div>`
+              : '';
+
             const card = document.createElement('div');
             card.style.cssText = `background:var(--s2);border-radius:9px;border:1px solid ${linkedRoom ? 'rgba(17,157,237,.25)' : 'var(--b1)'};padding:8px 10px;transition:all .15s;position:relative;cursor:pointer;width:100%;`;
             if (ci === 0 || ci === 1) {
               card.style.minHeight = '86px';
             }
             card.dataset.itemId = String(item.id || '');
-            card.onclick = () => { if (typeof openPopup === 'function') openPopup(item.id); };
+            card.onclick = () => {
+              if (window.__wbSuppressOpenUntil && Date.now() < window.__wbSuppressOpenUntil) return;
+              if (typeof openPopup === 'function') openPopup(item.id);
+            };
             card.onmouseenter = () => { card.style.borderColor = 'rgba(79,142,255,0.5)'; card.style.background = 'rgba(79,142,255,.04)'; };
             card.onmouseleave = () => { card.style.borderColor = linkedRoom ? 'rgba(17,157,237,.25)' : 'var(--b1)'; card.style.background = 'var(--s2)'; };
 
@@ -32212,10 +32271,11 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
               <span style="font-size:12px;font-weight:700;color:${ia ? 'var(--auction-c)' : 'var(--listing-c)'};">${priceStr}</span>
               ${linkedRoom
-                ? `<button onclick="event.stopPropagation();_wbGoRoom('${linkedRoom.id}')" style="padding:4px 8px;background:rgba(17,157,237,.12);border:1px solid rgba(17,157,237,.35);border-radius:6px;color:#8fd0ff;font-size:10px;font-weight:700;cursor:pointer;">작업룸</button>`
+                ? `<button onclick="event.stopPropagation();_wbGoRoom('${linkedRoom.id}','${String(item.id || '').replace(/'/g, "\\'")}')" style="padding:4px 8px;background:rgba(17,157,237,.12);border:1px solid rgba(17,157,237,.35);border-radius:6px;color:#8fd0ff;font-size:10px;font-weight:700;cursor:pointer;">작업룸</button>`
                 : `<button onclick="event.stopPropagation();_wbCreateAndLink('${item.id}')" style="padding:4px 8px;background:rgba(17,157,237,.08);border:1px dashed rgba(17,157,237,.4);border-radius:6px;color:#8fd0ff;font-size:10px;font-weight:700;cursor:pointer;">작업룸+</button>`
               }
             </div>
+            ${closeMetaHtml}
           </div>
         `;
             cols[ci].appendChild(card);
@@ -32289,8 +32349,28 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       if (typeof showToast === 'function') showToast(info.label + '로 이동했습니다', 'ok', 1500);
       setTimeout(renderWatchBoard, 50);
     };
-    window._wbGoRoom = function (roomId) {
-      if (typeof window.pmOpenWorkroom === 'function') { window.pmOpenWorkroom(roomId); }
+    window._wbGoRoom = function (roomId, itemId) {
+      window.__wbSuppressOpenUntil = Date.now() + 420;
+      let targetRoomId = roomId ? String(roomId) : '';
+      if (!targetRoomId && itemId && typeof window.wrGetRooms === 'function') {
+        const rooms = window.wrGetRooms() || [];
+        const hit = rooms.find(r =>
+          (r.linkedSavedId && String(r.linkedSavedId) === String(itemId)) ||
+          (r.auctionId && String(r.auctionId) === String(itemId)) ||
+          (r.listingId && String(r.listingId) === String(itemId)) ||
+          ((r.linkedItems || []).map(String).includes(String(itemId)))
+        );
+        if (hit) targetRoomId = String(hit.id);
+      }
+      if (targetRoomId && typeof window.pmOpenWorkroom === 'function') {
+        window.pmOpenWorkroom(targetRoomId);
+        return;
+      }
+      if (itemId && typeof window.wr2OpenOrCreateFromSavedId === 'function') {
+        window.wr2OpenOrCreateFromSavedId(itemId);
+        return;
+      }
+      if (typeof window.pmOpenWorkroom === 'function') window.pmOpenWorkroom();
     };
     window._wbCreateAndLink = function (itemId) {
       if (typeof window.wr2OpenOrCreateFromSavedId === 'function') {
@@ -42640,7 +42720,6 @@ window.addEventListener('DOMContentLoaded', () => {
       syncRoomStatus(roomId, norm, norm === 'field');
       syncLinkedItemsByRoom(roomId, norm);
 
-      if (norm === 'field') setTimeout(function () { goFieldTab(roomId); }, 40);
       if (typeof window.renderWatchBoard === 'function') {
         setTimeout(function () { try { window.renderWatchBoard(); } catch (e) {} }, 50);
       }
@@ -42657,9 +42736,6 @@ window.addEventListener('DOMContentLoaded', () => {
       var ret = orig.call(this, itemId, norm);
       var roomId = findLinkedRoomId(itemId);
       if (roomId) syncRoomStatus(roomId, norm, norm === 'field');
-      if (norm === 'field') {
-        if (roomId) setTimeout(function () { goFieldTab(roomId); }, 30);
-      }
       return ret;
     };
     window._wbSetStatus.__skPatched = true;
@@ -42721,6 +42797,7 @@ window.addEventListener('DOMContentLoaded', () => {
           col.classList.remove('sk-drop-over');
           var itemId = (e.dataTransfer && e.dataTransfer.getData('text/sk-item-id')) || '';
           if (!itemId) return;
+          window.__wbSuppressOpenUntil = Date.now() + 380;
           var ok = setItemStatus(itemId, status);
           if (ok && typeof window.showToast === 'function') {
             var labels = { interest:'\uac1c\uc694', review:'\uac80\ud1a0\uc911', field:'\ud604\uc7a5', bid:'\uc785\ucc30', won:'\ub099\ucc30', sell:'\ub9e4\ub3c4', pass:'\ud328\uc2a4' };
@@ -42736,15 +42813,19 @@ window.addEventListener('DOMContentLoaded', () => {
         var itemId = extractItemIdFromCard(card);
         if (!itemId) return;
         card.draggable = true;
+        var dragMoved = false;
         card.addEventListener('dragstart', function (e) {
           if (!e.dataTransfer) return;
           e.dataTransfer.setData('text/sk-item-id', itemId);
           e.dataTransfer.effectAllowed = 'move';
           card.classList.add('sk-dragging');
+          dragMoved = true;
         });
         card.addEventListener('dragend', function () {
           card.classList.remove('sk-dragging');
           document.querySelectorAll('.sk-drop-over').forEach(function (el) { el.classList.remove('sk-drop-over'); });
+          if (dragMoved) window.__wbSuppressOpenUntil = Date.now() + 320;
+          dragMoved = false;
         });
         if (card.dataset) card.dataset.skDragBound = '1';
       });
@@ -42814,6 +42895,51 @@ window.addEventListener('DOMContentLoaded', () => {
     }
 
     modal.style.display = 'flex';
+  }
+
+  function bindScheduleDragScroll(scrollEl) {
+    if (!scrollEl || scrollEl.dataset.skDragScrollBound === '1') return;
+    var state = { down: false, moved: false, startX: 0, startY: 0, startLeft: 0 };
+    var start = function (clientX, clientY) {
+      state.down = true;
+      state.moved = false;
+      state.startX = clientX;
+      state.startY = clientY;
+      state.startLeft = scrollEl.scrollLeft;
+      scrollEl.style.cursor = 'grabbing';
+      scrollEl.style.userSelect = 'none';
+    };
+    var move = function (clientX, clientY) {
+      if (!state.down) return;
+      var dx = clientX - state.startX;
+      var dy = clientY - state.startY;
+      if (Math.abs(dx) > 5 || Math.abs(dy) > 5) state.moved = true;
+      if (Math.abs(dx) >= Math.abs(dy)) scrollEl.scrollLeft = state.startLeft - dx;
+    };
+    var end = function () {
+      if (!state.down) return;
+      state.down = false;
+      if (state.moved) window.__wbSuppressOpenUntil = Date.now() + 260;
+      scrollEl.style.cursor = '';
+      scrollEl.style.userSelect = '';
+      setTimeout(function(){ state.moved = false; }, 0);
+    };
+    scrollEl.addEventListener('mousedown', function (e) { start(e.clientX, e.clientY); });
+    window.addEventListener('mousemove', function (e) { move(e.clientX, e.clientY); });
+    window.addEventListener('mouseup', end);
+    scrollEl.addEventListener('mouseleave', end);
+    scrollEl.addEventListener('touchstart', function (e) {
+      if (!e.touches || !e.touches.length) return;
+      var t = e.touches[0];
+      start(t.clientX, t.clientY);
+    }, { passive: true });
+    scrollEl.addEventListener('touchmove', function (e) {
+      if (!state.down || !e.touches || !e.touches.length) return;
+      var t = e.touches[0];
+      move(t.clientX, t.clientY);
+    }, { passive: true });
+    scrollEl.addEventListener('touchend', end);
+    scrollEl.dataset.skDragScrollBound = '1';
   }
 
   function enhanceScheduleBoard() {
@@ -42972,6 +43098,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
     var scroll = board.querySelector('#skSchedScroll');
     if (scroll) {
+      bindScheduleDragScroll(scroll);
       var key = (visible.find(function (g) { return g.key >= todayKey; }) || visible[visible.length - 1] || {}).key;
       if (key) {
         var target = scroll.querySelector('[data-sched-key="' + key + '"]');
