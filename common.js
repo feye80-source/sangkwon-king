@@ -13558,6 +13558,13 @@ window.wr2SummaryCancelEdit = function() {
       }
 
       const ts = item.timestamp ? new Date(item.timestamp).toLocaleDateString('ko-KR') : '날짜 없음';
+      const originalUrl = String(d.상세URL || '').trim();
+      const auctionSiteUrl = String(
+        d.상세URL ||
+        d.옥션원URL ||
+        d.온비드URL ||
+        (d.product_id ? `https://auction1.co.kr/auction/ca_view.php?product_id=${encodeURIComponent(d.product_id)}` : '')
+      ).trim();
       // 관심/검토/입찰 상태
       const ws = item.watchStatus || '';
       const wsMap = { 'interest': { icon: '👀', label: '관심',  color: '#94a3b8', bg: 'rgba(148,163,184,.15)' }, 'review': { icon: '🔍', label: '검토중', color: '#60a5fa', bg: 'rgba(96,165,250,.15)' }, 'field': { icon: '📍', label: '현장', color: '#fbbf24', bg: 'rgba(251,191,36,.15)' }, 'bid': { icon: '🎯', label: '입찰', color: '#f97316', bg: 'rgba(249,115,22,.15)' }, 'won': { icon: '✅', label: '낙찰', color: '#4ade80', bg: 'rgba(74,222,128,.15)' }, 'pass': { icon: '🚫', label: '패스', color: '#6b7280', bg: 'rgba(107,114,128,.15)' } };
@@ -13597,19 +13604,18 @@ window.wr2SummaryCancelEdit = function() {
       <div class="sc-foot">
         <span onclick="event.stopPropagation();delSv('${item.id}')" style="color:var(--di);font-size:13px;cursor:pointer;padding:1px 3px;" title="삭제">×</span>
         <div class="sc-foot-btns">
-          <button onclick="event.stopPropagation();openPopup('${item.id}')" class="sc-btn sc-btn-detail" style="background:rgba(79,142,255,.12);color:#4f8eff;border-color:rgba(79,142,255,.32);">📑 상세</button>
-          ${src === '디스코' && d.상세URL ? `<a href="${esc(d.상세URL)}" target="_blank" onclick="event.stopPropagation()" class="sc-btn sc-btn-detail" style="background:rgba(203,89,255,.12);color:#cb59ff;border-color:rgba(203,89,255,.4);">🔗 원본</a>` : (d.상세URL && src !== '디스코') ? (_isAssaSource(src) ? `<button onclick="event.stopPropagation();assaOpenDetail('${esc(d.상세URL)}')" class="sc-btn sc-btn-detail">🔗 원본</button>` : `<a href="${esc(d.상세URL)}" target="_blank" onclick="event.stopPropagation()" class="sc-btn sc-btn-detail">🔗 원본</a>`) : ''}
+          ${src === '디스코' && originalUrl ? `<a href="${esc(originalUrl)}" target="_blank" onclick="event.stopPropagation()" class="sc-btn sc-btn-detail" style="background:rgba(203,89,255,.12);color:#cb59ff;border-color:rgba(203,89,255,.4);">🔗 원본</a>` : (originalUrl && src !== '디스코') ? (_isAssaSource(src) ? `<button onclick="event.stopPropagation();assaOpenDetail('${esc(originalUrl)}')" class="sc-btn sc-btn-detail">🔗 원본</button>` : `<a href="${esc(originalUrl)}" target="_blank" onclick="event.stopPropagation()" class="sc-btn sc-btn-detail">🔗 원본</a>`) : `<button onclick="event.stopPropagation();promptSavedOriginalUrl('${item.id}')" class="sc-btn sc-btn-detail" style="background:rgba(255,255,255,.05);color:var(--di);border-style:dashed;">🔗 원본없음</button>`}
           ${src === '점포라인' ? `<a href="https://map.jumpoline.com/main" target="_blank" onclick="event.stopPropagation()" class="sc-btn sc-btn-map">🗺️ 지도</a>` : ''}
           ${(src === '네이버부동산' || src === '네이버' || src === 'naver') ? `<a href="${(() => { const lat = d.lat || item.lat; const lng = d.lng || item.lng; return (lat && lng) ? `https://new.land.naver.com/offices?ms=${lat},${lng},17&a=SG:SMS:APTHGJ&e=RETAIL` : `https://new.land.naver.com/`; })()}" target="_blank" onclick="event.stopPropagation()" class="sc-btn sc-btn-map">🗺️ 지도</a>` : ''}
           ${_isAssaSource(src) ? `<a href="https://xn--v69ap5so3hsnb81e1wfh6z.com/map" target="_blank" onclick="event.stopPropagation()" class="sc-btn sc-btn-map">🗺️ 지도</a>` : ''}
           ${src === '부동산플래닛' ? `<button onclick="event.stopPropagation();(()=>{const _a=(item.data&&item.data.소재지)||d.소재지||'';if(_a){try{navigator.clipboard.writeText(_a);}catch(e){}const ta=document.createElement('textarea');ta.value=_a;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.focus();ta.select();try{document.execCommand('copy');}catch(e){}document.body.removeChild(ta);}window.open('https://www.bdsplanet.com/map/realprice_map.ytp','_blank');})()" class="sc-btn sc-btn-map" style="background:rgba(17,157,237,.12);color:#119ded;border-color:rgba(17,157,237,.4);" title="${esc(String((item.data && item.data.소재지) || d.소재지 || ''))}">🌍 플래닛</button>` : ''}
-          ${ia ? `<a href="#" target="_blank" onclick="event.stopPropagation()" class="sc-btn sc-btn-detail" style="background:rgba(255,140,66,.1);color:#ff8c42;border-color:rgba(255,140,66,.4);" title="경매 사이트로 이동">⚖️ 경매사이트</a>` : ''}
-          ${(!d.상세URL && d.소재지 && d.소재지.trim().length >= 3 && item.mode !== 'transaction' && src !== '디스코' && src !== '부동산플래닛') ? `<a href="https://map.naver.com/v5/search/${encodeURIComponent(d.소재지.trim())}" target="_blank" onclick="event.stopPropagation()" class="sc-btn" style="background:rgba(4,222,91,.12);color:#04de5b;border-color:rgba(4,222,91,.4);">🗺️ 지도</a>` : ''}
-          ${(!d.상세URL && d.소재지 && d.소재지.trim().length >= 3 && item.mode !== 'transaction' && src !== '디스코' && src !== '부동산플래닛') ? `<a href="https://new.land.naver.com/offices?query=${encodeURIComponent(d.소재지.trim())}&a=SG:SMS:APTHGJ&e=RETAIL" target="_blank" onclick="event.stopPropagation()" class="sc-btn" style="background:rgba(4,222,91,.12);color:#04de5b;border-color:rgba(4,222,91,.4);">🏠 부동산</a>` : ''}
+          ${ia ? `<button onclick="event.stopPropagation();openAuctionLinkOrPdf('${item.id}','${esc(auctionSiteUrl)}')" class="sc-btn sc-btn-detail" style="background:rgba(255,140,66,.1);color:#ff8c42;border-color:rgba(255,140,66,.4);" title="경매 사이트로 이동">⚖️ 경매사이트</button>` : ''}
+          ${(ia && d.소재지 && d.소재지.trim().length >= 3) ? `<a href="https://map.naver.com/v5/search/${encodeURIComponent(d.소재지.trim())}" target="_blank" onclick="event.stopPropagation()" class="sc-btn" style="background:rgba(4,222,91,.12);color:#04de5b;border-color:rgba(4,222,91,.4);">🗺️ 지도</a>` : ''}
+          ${(ia && d.소재지 && d.소재지.trim().length >= 3) ? `<a href="https://new.land.naver.com/offices?query=${encodeURIComponent(d.소재지.trim())}&a=SG:SMS:APTHGJ&e=RETAIL" target="_blank" onclick="event.stopPropagation()" class="sc-btn" style="background:rgba(4,222,91,.12);color:#04de5b;border-color:rgba(4,222,91,.4);">🏠 부동산</a>` : ''}
+          ${(!ia && !d.상세URL && d.소재지 && d.소재지.trim().length >= 3 && item.mode !== 'transaction' && src !== '디스코' && src !== '부동산플래닛') ? `<a href="https://map.naver.com/v5/search/${encodeURIComponent(d.소재지.trim())}" target="_blank" onclick="event.stopPropagation()" class="sc-btn" style="background:rgba(4,222,91,.12);color:#04de5b;border-color:rgba(4,222,91,.4);">🗺️ 지도</a>` : ''}
+          ${(!ia && !d.상세URL && d.소재지 && d.소재지.trim().length >= 3 && item.mode !== 'transaction' && src !== '디스코' && src !== '부동산플래닛') ? `<a href="https://new.land.naver.com/offices?query=${encodeURIComponent(d.소재지.trim())}&a=SG:SMS:APTHGJ&e=RETAIL" target="_blank" onclick="event.stopPropagation()" class="sc-btn" style="background:rgba(4,222,91,.12);color:#04de5b;border-color:rgba(4,222,91,.4);">🏠 부동산</a>` : ''}
           ${_hasItemMapTarget(item) ? `<button onclick="event.stopPropagation();goToMapFromCard('${item.id}')" class="sc-btn sc-btn-mymap">📍 내 지도</button>` : ''}
           <button onclick="event.stopPropagation();wr2OpenOrCreateFromSavedId('${item.id}')" class="sc-btn" style="background:rgba(17,157,237,.1);color:#119ded;border-color:rgba(17,157,237,.3);" title="작업룸에 연결">🗂 룸</button>
-          <button onclick="event.stopPropagation();ntViewLinked('${item.id}')" class="sc-btn" style="background:rgba(0,212,170,.1);color:#00d4aa;border-color:rgba(0,212,170,.3);" title="연결된 노트 보기">📓 노트</button>
-          <button onclick="event.stopPropagation();ntCreateLinked('${item.id}','${esc(item.title || d.소재지 || item.id)}','${esc(String(d.소재지 || ''))}','${esc(item.group || '기본')}')" class="sc-btn" style="background:rgba(0,212,170,.06);color:#00d4aa;border-color:rgba(0,212,170,.2);" title="이 물건 노트 추가">＋ 노트</button>
           <span style="font-size:9px;color:var(--di);white-space:nowrap;">${ts}</span>
         </div>
       </div>
@@ -16129,6 +16135,20 @@ ${inputDesc.substring(0, 3000)}
       showToast('🔗 URL 저장됨', 'ok');
       // 팝업 다시 열기
       openPopup(id);
+    };
+    window.promptSavedOriginalUrl = function(id) {
+      const sv = getSv();
+      const item = sv.find(s => String(s.id) === String(id));
+      if (!item) return;
+      const cur = String((item.data && item.data.상세URL) || '').trim();
+      const next = prompt('원본 사이트 URL을 입력하세요', cur || 'https://');
+      if (next == null) return;
+      const url = String(next || '').trim();
+      item.data = item.data || {};
+      item.data.상세URL = url;
+      setSv(sv);
+      renderSaved();
+      showToast(url ? '🔗 원본 링크 저장됨' : '원본 링크를 비웠습니다', 'ok');
     };
 
     function savePopupItem() {
