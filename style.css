@@ -9696,6 +9696,14 @@
 	                min-width: 0;
 	                overflow: hidden;
 	              }
+              #ipage8 .wr2-room-meta {
+                margin-top: 2px;
+                font-size: 10px;
+                color: var(--di);
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+              }
 
 	              #ipage8 .wr2-room-act-btn {
 	                padding: 4px 8px;
