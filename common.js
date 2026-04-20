@@ -42781,16 +42781,16 @@ window.addEventListener('DOMContentLoaded', () => {
       var old = byLinked[sid];
       if (old) {
         old.type = mapped.type || old.type;
-        old.addr = old.addr || mapped.addr;
-        old.casenum = old.casenum || mapped.casenum;
-        old.region = old.region || mapped.region;
-        old.feature = old.feature || mapped.feature;
-        old.appraisal = old.appraisal || mapped.appraisal;
-        old.minprice = old.minprice || mapped.minprice;
-        old.round = old.round || mapped.round;
-        old.biddate = old.biddate || mapped.biddate;
-        old.deposit = old.deposit || mapped.deposit;
-        old.monthly = old.monthly || mapped.monthly;
+        if (mapped.addr) old.addr = mapped.addr;
+        if (mapped.casenum) old.casenum = mapped.casenum;
+        if (mapped.region) old.region = mapped.region;
+        if (mapped.feature) old.feature = mapped.feature;
+        if (mapped.appraisal) old.appraisal = mapped.appraisal;
+        if (mapped.minprice) old.minprice = mapped.minprice;
+        if (mapped.round) old.round = mapped.round;
+        if (mapped.biddate) old.biddate = mapped.biddate;
+        if (mapped.deposit) old.deposit = mapped.deposit;
+        if (mapped.monthly) old.monthly = mapped.monthly;
         old.archived = false;
         if (old.status === 'archived') old.status = 'review';
         old.updatedAt = Date.now();
