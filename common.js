@@ -8080,14 +8080,16 @@ window.wr2SummaryCancelEdit = function() {
     function _normalizeSavedFieldValue(key, rawValue) {
       const wonFields = {
         '감정가': true, '최저가': true, '청구액': true, '입찰보증금': true,
-        '채권합계': true, '채권액합계': true, '보증금': true, '임차인_보증금': true
+        '채권합계': true, '채권액합계': true, '보증금': true, '임차인_보증금': true,
+        '낙찰가': true, '차순위금액': true
       };
       const numericFields = {
         '매매가': true, '매매가_만원': true, '기보증금_만원': true, '보증금_만원': true,
         '전세가_만원': true, '월세_만원': true, '임차인_월세': true, '관리비_만원': true,
         '권리금_만원': true, '평당가_만원': true, '월수익_만원': true, '월매출_만원': true,
         '전용면적_m2': true, '계약면적_m2': true, '공급면적_m2': true, '건물면적_m2': true,
-        '토지면적_m2': true, '유찰횟수': true
+        '토지면적_m2': true, '유찰횟수': true,
+        '감정가_만원': true, '최저가_만원': true, '낙찰가_만원': true, '차순위금액_만원': true
       };
       if (rawValue == null || rawValue === '') return rawValue;
       if (wonFields[key]) {
@@ -8100,6 +8102,77 @@ window.wr2SummaryCancelEdit = function() {
         return key === '유찰횟수' ? Math.round(num) : num;
       }
       return rawValue;
+    }
+
+    function _normalizeSavedDateValue(rawValue) {
+      const src = String(rawValue == null ? '' : rawValue).trim();
+      if (!src) return '';
+      const m = src.match(/^(\d{4})[.\-/년\s]*(\d{1,2})[.\-/월\s]*(\d{1,2})(?:[일\s]+(\d{1,2})[:시](\d{1,2}))?/);
+      if (m) {
+        const y = m[1];
+        const mm = String(m[2]).padStart(2, '0');
+        const dd = String(m[3]).padStart(2, '0');
+        const hh = (m[4] != null) ? String(m[4]).padStart(2, '0') : '';
+        const mi = (m[5] != null) ? String(m[5]).padStart(2, '0') : '';
+        return hh && mi ? `${y}-${mm}-${dd} ${hh}:${mi}` : `${y}-${mm}-${dd}`;
+      }
+      const digits = src.replace(/[^0-9]/g, '');
+      if (digits.length >= 8) {
+        return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`;
+      }
+      return src;
+    }
+
+    function _isAuctionScheduleField(key) {
+      return key === '매각기일' || key === '매각일' || key === '입찰기일';
+    }
+
+    function _syncAuctionScheduleAliases(d, rawValue) {
+      if (!d || typeof d !== 'object') return;
+      const normalized = _normalizeSavedDateValue(rawValue);
+      if (!normalized) {
+        delete d.매각기일;
+        delete d.매각일;
+        delete d.입찰기일;
+        return;
+      }
+      d.매각기일 = normalized;
+      d.매각일 = normalized;
+      d.입찰기일 = normalized;
+    }
+
+    function _syncAuctionMoneyAliases(d, key, normalizedValue) {
+      if (!d || typeof d !== 'object') return;
+      const wonToMan = function(v) {
+        const n = Number(String(v == null ? '' : v).replace(/[^0-9.-]/g, ''));
+        if (!isFinite(n) || n <= 0) return '';
+        return Math.round(n / 10000);
+      };
+      const manToWon = function(v) {
+        const n = Number(String(v == null ? '' : v).replace(/[^0-9.-]/g, ''));
+        if (!isFinite(n) || n <= 0) return '';
+        return Math.round(n * 10000);
+      };
+      const syncWonToMan = function(wonKey, manKey) {
+        if (normalizedValue == null || normalizedValue === '') { delete d[manKey]; return; }
+        const man = wonToMan(normalizedValue);
+        if (man === '') delete d[manKey];
+        else d[manKey] = man;
+      };
+      const syncManToWon = function(manKey, wonKey) {
+        if (normalizedValue == null || normalizedValue === '') { delete d[wonKey]; return; }
+        const won = manToWon(normalizedValue);
+        if (won === '') delete d[wonKey];
+        else d[wonKey] = won;
+      };
+      if (key === '감정가') syncWonToMan('감정가', '감정가_만원');
+      else if (key === '최저가') syncWonToMan('최저가', '최저가_만원');
+      else if (key === '낙찰가') syncWonToMan('낙찰가', '낙찰가_만원');
+      else if (key === '차순위금액') syncWonToMan('차순위금액', '차순위금액_만원');
+      else if (key === '감정가_만원') syncManToWon('감정가_만원', '감정가');
+      else if (key === '최저가_만원') syncManToWon('최저가_만원', '최저가');
+      else if (key === '낙찰가_만원') syncManToWon('낙찰가_만원', '낙찰가');
+      else if (key === '차순위금액_만원') syncManToWon('차순위금액_만원', '차순위금액');
     }
 
     function _recalcSavedUnitPriceFromArea(item, changedKey) {
@@ -8157,11 +8230,14 @@ window.wr2SummaryCancelEdit = function() {
         _syncDirectionAliases(d, nextDir);
         if (isEmpty) delete item.direction;
         else item.direction = nextDir;
+      } else if (_isAuctionScheduleField(key)) {
+        _syncAuctionScheduleAliases(d, rawValue);
       } else {
         const normalizedValue = _normalizeSavedFieldValue(key, rawValue);
         const isEmpty = normalizedValue == null || normalizedValue === '';
         if (isEmpty) delete d[key];
         else d[key] = normalizedValue;
+        _syncAuctionMoneyAliases(d, key, normalizedValue);
       }
       _recalcSavedUnitPriceFromArea(item, key);
       if (options.normalize !== false) _ensureNormalizedItem(item);
@@ -16407,6 +16483,34 @@ ${inputDesc.substring(0, 3000)}
       if (window._idbCache) window._idbCache['re_sv'] = empty;
       return empty;
     }
+    function _syncAfterSavedMutation(itemId, sv, opts) {
+      const options = opts || {};
+      const list = Array.isArray(sv) ? sv : getSv();
+      try {
+        if (typeof window._plSyncFromSavedItems === 'function') {
+          window._plSyncFromSavedItems(list, { render: false });
+        }
+      } catch (e) { console.warn('[syncAfterSavedMutation:plSaved]', e); }
+      try {
+        if (typeof window._plSyncFromWorkrooms === 'function') {
+          window._plSyncFromWorkrooms({ render: false, savedItems: list });
+        }
+      } catch (e) { console.warn('[syncAfterSavedMutation:plWork]', e); }
+      try {
+        if (typeof currentPage !== 'undefined' && currentPage === 4) {
+          if (window.__pmActiveTab === 'work' && typeof window.wr2Render === 'function') window.wr2Render();
+          if (window.__pmActiveTab === 'list' && typeof window.renderPropertyList === 'function') window.renderPropertyList();
+          if (window.__pmActiveTab === 'pipeline' && typeof window.renderWatchBoard === 'function') window.renderWatchBoard();
+        }
+      } catch (e) { console.warn('[syncAfterSavedMutation:render]', e); }
+      if (options.skipMapRefresh) return;
+      try { if (itemId && typeof refreshMapCardData === 'function') refreshMapCardData(itemId); } catch (e) {}
+      try {
+        if (typeof currentPage !== 'undefined' && currentPage === 2 && typeof refreshMapView === 'function') {
+          refreshMapView();
+        }
+      } catch (e) {}
+    }
     window._savedDraftInput = function(itemId, field, rawValue, opts) {
       const sv = _getSavedDraftWorkingSet();
       const item = sv.find(function(s) { return s && String(s.id) === String(itemId); });
@@ -16436,6 +16540,7 @@ ${inputDesc.substring(0, 3000)}
       }
       _ensureNormalizedItem(item);
       setSv(sv);
+      _syncAfterSavedMutation(itemId, sv, { skipMapRefresh: false });
     };
 
     function _popEditField(label, field, val, itemId, type) {
@@ -17171,21 +17276,7 @@ ${combinedText}
         // ✅ 좌측 저장목록/트리 즉시 반영
         if (typeof renderSaved === 'function') renderSaved();
         if (typeof updSvCnt === 'function') updSvCnt();
-        // ✅ 지도에 떠있는 같은 카드도 즉시 갱신
-        try {
-          if (typeof refreshMapView === 'function') refreshMapView();
-        } catch (e) { }
-        // ✅ 카드 내용(값)도 즉시 갱신
-        try {
-          if (typeof refreshMapCardData === 'function') refreshMapCardData(popupId);
-        } catch (e) { }
-        try {
-          if (typeof currentPage !== 'undefined' && currentPage === 4) {
-            if (window.__pmActiveTab === 'work' && typeof window.wr2Render === 'function') window.wr2Render();
-            if (window.__pmActiveTab === 'list' && typeof window.renderPropertyList === 'function') window.renderPropertyList();
-            if (window.__pmActiveTab === 'pipeline' && typeof window.renderWatchBoard === 'function') window.renderWatchBoard();
-          }
-        } catch (e) {}
+        _syncAfterSavedMutation(popupId, sv, { skipMapRefresh: false });
       }
     }
 
@@ -17391,8 +17482,11 @@ ${combinedText}
       const em = val == null || val === '';
       const isE = isPopup ? popupEditMode : (editIdx === idx);
       let dv = '', cl = '';
-      const onChange = isPopup ? `updPopupF('${key}',this.value)` : `updF(${idx},'${key}',this.value)`;
-      const onEditAttr = isPopup ? `oninput="${onChange}"` : `onchange="${onChange}"`;
+      const onChange = isPopup ? `window._savedDraftInput('${popupId}','${key}',this.value)` : `updF(${idx},'${key}',this.value)`;
+      const onBlur = isPopup ? `window._savedDraftCommit('${popupId}','${key}',this.value)` : '';
+      const onEditAttr = isPopup
+        ? `oninput="${onChange}" onblur="${onBlur}" onkeydown="if(event.key==='Enter'){this.blur();}"`
+        : `onchange="${onChange}"`;
 
       if (type === 'money') { cl = 'money'; dv = em ? '-' : fW(val); }
       else if (type === 'money_raw') { cl = 'money'; dv = em ? '-' : fWC(val); }
@@ -17576,7 +17670,7 @@ ${fi(d.기타사항, '기타사항', 'text', idx, '기타사항', isPopup)}
       // ── 수정 모드용 인라인 input 스타일 ──
       const _inS = `background:rgba(255,255,255,.07);border:1px solid rgba(79,142,255,.5);border-radius:5px;color:#e0e6ff;outline:none;font-family:'Noto Sans KR',sans-serif;`;
       const _isE = isPopup ? popupEditMode : (editIdx === idx);
-      const _onChg = (key) => isPopup ? `updPopupF('${key}',this.value)` : `updF(${idx},'${key}',this.value)`;
+      const _onChg = (key) => isPopup ? `window._savedDraftCommit('${popupId}','${key}',this.value)` : `updF(${idx},'${key}',this.value)`;
 
       // 매물유형 행
       const _rowType = `<div style="display:flex;gap:8px;align-items:center;">
@@ -41750,9 +41844,11 @@ window.addEventListener('DOMContentLoaded', () => {
     if (item.deposit) putField('보증금_만원', plParseAmountText(item.deposit));
     if (item.monthly) putField('월세_만원', plParseAmountText(item.monthly));
     if (item.estimate) putField('예상입찰가_만원', plParseAmountText(item.estimate));
-    if (item.biddate) {
-      putField('입찰기일', item.biddate);
-      putField('매각기일', item.biddate);
+    {
+      var bidDateNorm = String(item.biddate || '').trim();
+      putField('입찰기일', bidDateNorm);
+      putField('매각기일', bidDateNorm);
+      putField('매각일', bidDateNorm);
     }
     if (item.round) putField('유찰회차', item.round);
     if (item.result && item.result.won) {
