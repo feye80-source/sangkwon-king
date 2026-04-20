@@ -5298,7 +5298,7 @@ var _safeLocalSet = function(key, value) {
                           id="wr2SumEdt_${key}" placeholder="${label} 입력 (원 단위)">
                       </div>`;
                     }
-                    return `<div class="wr2-info-row" title="클릭으로 수정" onclick="wr2SummaryStartEdit('${key}')">
+                    return `<div class="wr2-info-row" title="클릭으로 수정" onclick="wr2SummaryStartEdit('${key}');event.stopPropagation();" style="cursor:text;">
                       <span class="wr2-info-lbl">${label}</span>
                       <span class="wr2-info-val">${valHtml}<span class="wr2-edit-hint">✏️</span></span>
                     </div>`;
@@ -5405,6 +5405,7 @@ var _safeLocalSet = function(key, value) {
                 // 물건요약 수동편집
                 window.wr2SummaryStartEdit = function(key) {
                   const room = getActiveRoom(); if (!room) return;
+                  if (room._summaryEditing === key) return;
                   room._summaryEditing = key;
                   renderItemSummary(room);
                 };
