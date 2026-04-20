@@ -6531,23 +6531,22 @@ window.wr2SummaryCancelEdit = function() {
                   if (window._skOpenImageViewer) window._skOpenImageViewer(images, imageIdx || 0, { title: '첨부 이미지' });
                 };
 
-                // ★ 갤러리 슬라이더 상태 관리
+                // ★ 갤러리 상태
                 if (!window._wr2GalleryIdx) window._wr2GalleryIdx = {};
-                window.wr2GalleryGoto = function(noteKey, dir) {
-                  const room = (typeof getActiveRoom === 'function') ? getActiveRoom() : null;
+                window.wr2GalleryGoto = function(nk, dir) {
+                  const room = (typeof getActiveRoom==='function') ? getActiveRoom() : null;
                   if (!room) return;
                   const note = _wrGetActiveNote(room);
-                  const imgs = ((note && note.attachments) || []).filter(f => String(f.type||'').startsWith('image') || f.type==='image');
-                  const total = imgs.length;
-                  if (!total) return;
-                  const cur = window._wr2GalleryIdx[noteKey] || 0;
-                  window._wr2GalleryIdx[noteKey] = (cur + dir + total) % total;
+                  const imgs = ((note&&note.attachments)||[]).filter(f=>String(f.type||'').startsWith('image')||f.type==='image');
+                  if (!imgs.length) return;
+                  const cur = window._wr2GalleryIdx[nk]||0;
+                  window._wr2GalleryIdx[nk] = (cur+dir+imgs.length)%imgs.length;
                   renderAttachments(room);
                 };
-                window.wr2GallerySet = function(noteKey, idx) {
-                  const room = (typeof getActiveRoom === 'function') ? getActiveRoom() : null;
+                window.wr2GallerySet = function(nk, idx) {
+                  const room = (typeof getActiveRoom==='function') ? getActiveRoom() : null;
                   if (!room) return;
-                  window._wr2GalleryIdx[noteKey] = idx;
+                  window._wr2GalleryIdx[nk] = idx;
                   renderAttachments(room);
                 };
                 function renderAttachments(room) {
@@ -6556,63 +6555,56 @@ window.wr2SummaryCancelEdit = function() {
                   const note = _wrGetActiveNote(room);
                   const files = (note && note.attachments) || [];
                   if (!note) {
-                    el.innerHTML = '<div class="wr2-attach-empty">노트가 없어도 파일을 바로 끌어다 놓을 수 있어요.</div>'
+                    el.innerHTML = '<div class="wr2-attach-empty">노트가 없어도 파일을 끌어다 놓을 수 있어요.</div>'
                       + '<button type="button" id="wr2AttachDropZone" class="wr2-attach-drop">'
                       + '<span style="font-size:16px;">📎</span>'
                       + '<span>파일을 끌어놓거나 눌러서 첨부 (드래그앤드롭 지원)</span>'
                       + '<span class="wr2-attach-drop-meta">이미지, PDF, 문서</span>'
                       + '</button>';
-                    initWr2AttachmentDropZone();
-                    initWr2NoteDropZone();
+                    initWr2AttachmentDropZone(); initWr2NoteDropZone();
                     return;
                   }
-                  const images    = files.filter(f => String(f.type||'').startsWith('image') || f.type==='image');
-                  const others    = files.filter(f => !(String(f.type||'').startsWith('image') || f.type==='image'));
-                  const noteKey   = note.id || 'default';
-                  let curIdx      = window._wr2GalleryIdx[noteKey] || 0;
-                  if (curIdx >= images.length) curIdx = 0;
-                  let galleryHtml = '';
-                  if (images.length > 0) {
-                    const total  = images.length;
-                    const cur    = images[curIdx];
-                    const curSrc = window._normalizeLocalAssetUrl ? window._normalizeLocalAssetUrl(cur.url || cur.data || '') : (cur.url || cur.data || '');
-                    const curFi  = files.indexOf(cur);
-                    galleryHtml =
+                  const images   = files.filter(f=>String(f.type||'').startsWith('image')||f.type==='image');
+                  const others   = files.filter(f=>!(String(f.type||'').startsWith('image')||f.type==='image'));
+                  const nk       = note.id||'def';
+                  let curIdx     = window._wr2GalleryIdx[nk]||0;
+                  if (curIdx>=images.length) curIdx=0;
+                  let ghHtml = '';
+                  if (images.length>0) {
+                    const total=images.length, cur=images[curIdx];
+                    const src = window._normalizeLocalAssetUrl ? window._normalizeLocalAssetUrl(cur.url||cur.data||'') : (cur.url||cur.data||'');
+                    const cfi = files.indexOf(cur);
+                    ghHtml =
                       `<div class="wr2-gallery-wrap">` +
                         `<div class="wr2-gallery-main">` +
-                          `<img class="wr2-gallery-main-img" src="${curSrc}" onclick="wr2OpenAttachImage(${curIdx})" title="클릭하여 크게 보기">` +
-                          (total > 1 ? `<button class="wr2-gallery-nav prev" onclick="wr2GalleryGoto('${noteKey}',-1)">&#8249;</button>` +
-                                       `<button class="wr2-gallery-nav next" onclick="wr2GalleryGoto('${noteKey}',1)">&#8250;</button>` +
-                                       `<div class="wr2-gallery-counter">${curIdx+1} / ${total}</div>` : '') +
-                          `<button class="wr2-attach-del wr2-gallery-del" onclick="wr2DelAttach(${curFi})">&#x2715;</button>` +
+                          `<img class="wr2-gallery-main-img" src="${src}" onclick="wr2OpenAttachImage(${curIdx})" title="클릭하여 크게 보기">` +
+                          (total>1
+                            ? `<button class="wr2-gallery-nav prev" onclick="wr2GalleryGoto('${nk}',-1)">&#8249;</button>` +
+                              `<button class="wr2-gallery-nav next" onclick="wr2GalleryGoto('${nk}',1)">&#8250;</button>` +
+                              `<div class="wr2-gallery-counter">${curIdx+1} / ${total}</div>` : '') +
+                          `<button class="wr2-attach-del wr2-gallery-del" onclick="wr2DelAttach(${cfi})">&#x2715;</button>` +
                         `</div>`;
-                    if (total > 1) {
-                      galleryHtml += `<div class="wr2-gallery-strip">`;
-                      images.forEach((img, i) => {
-                        const ts  = window._normalizeLocalAssetUrl ? window._normalizeLocalAssetUrl(img.url || img.data || '') : (img.url || img.data || '');
-                        const fi2 = files.indexOf(img);
-                        galleryHtml +=
-                          `<div class="wr2-gallery-thumb${i===curIdx?' active':''}" onclick="wr2GallerySet('${noteKey}',${i})">` +
-                            `<img src="${ts}" style="width:100%;height:100%;object-fit:cover;">` +
-                            `<button class="wr2-gallery-thumb-del" onclick="event.stopPropagation();wr2DelAttach(${fi2})">&#x2715;</button>` +
-                          `</div>`;
+                    if (total>1) {
+                      ghHtml += `<div class="wr2-gallery-strip">`;
+                      images.forEach((img,i)=>{
+                        const ts=window._normalizeLocalAssetUrl ? window._normalizeLocalAssetUrl(img.url||img.data||'') : (img.url||img.data||'');
+                        const fi2=files.indexOf(img);
+                        ghHtml += `<div class="wr2-gallery-thumb${i===curIdx?' active':''}" onclick="wr2GallerySet('${nk}',${i})"><img src="${ts}" style="width:100%;height:100%;object-fit:cover;"><button class="wr2-gallery-thumb-del" onclick="event.stopPropagation();wr2DelAttach(${fi2})">&#x2715;</button></div>`;
                       });
-                      galleryHtml += `</div>`;
+                      ghHtml += `</div>`;
                     }
-                    galleryHtml += `</div>`;
+                    ghHtml += `</div>`;
                   }
-                  const filesHtml = others.map(f => {
-                    const src = window._normalizeLocalAssetUrl ? window._normalizeLocalAssetUrl(f.url||f.data||'') : (f.url||f.data||'');
-                    const fi2 = files.indexOf(f);
-                    return `<div class="wr2-attach-item"><a class="wr2-attach-file" href="${src}" target="_blank" rel="noopener">📎 ${f.name}</a><button class="wr2-attach-del" onclick="wr2DelAttach(${fi2})">&#x2715;</button></div>`;
+                  const fHtml = others.map(f=>{
+                    const src=window._normalizeLocalAssetUrl?window._normalizeLocalAssetUrl(f.url||f.data||''):(f.url||f.data||'');
+                    return `<div class="wr2-attach-item"><a class="wr2-attach-file" href="${src}" target="_blank" rel="noopener">📎 ${f.name}</a><button class="wr2-attach-del" onclick="wr2DelAttach(${files.indexOf(f)})">&#x2715;</button></div>`;
                   }).join('');
-                  const emptyHtml = files.length ? '' : '<div class="wr2-attach-empty">첨부된 파일이 없습니다. 아래에 끌어놓거나 눌러서 추가하세요.</div>';
+                  const emptyHtml = files.length?'':`<div class="wr2-attach-empty">첨부된 파일이 없습니다.</div>`;
                   const dropHtml  = files.length
-                    ? '<div id="wr2AttachDropZone" class="wr2-attach-drop compact" style="width:100%;margin-top:8px;padding:7px 10px;"><span style="font-size:13px;">📎</span><span>이곳에 끌어놓아 추가 (드래그앤드롭)</span></div>'
-                    : '<button type="button" id="wr2AttachDropZone" class="wr2-attach-drop"><span style="font-size:16px;">📎</span><span>파일을 끌어놓거나 눌러서 첨부 (드래그앤드롭)</span><span class="wr2-attach-drop-meta">노트 안에 바로 저장됩니다</span></button>';
-                  el.innerHTML = galleryHtml + (filesHtml ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;">${filesHtml}</div>` : '') + emptyHtml + dropHtml;
-                  initWr2AttachmentDropZone();
-                  initWr2NoteDropZone();
+                    ? `<div id="wr2AttachDropZone" class="wr2-attach-drop compact" style="width:100%;margin-top:8px;padding:7px 10px;"><span style="font-size:13px;">📎</span><span>이곳에 끌어놓아 추가 (드래그앤드롭)</span></div>`
+                    : `<button type="button" id="wr2AttachDropZone" class="wr2-attach-drop"><span style="font-size:16px;">📎</span><span>파일을 끌어놓거나 눌러서 첨부</span><span class="wr2-attach-drop-meta">노트 안에 바로 저장됩니다</span></button>`;
+                  el.innerHTML = ghHtml + (fHtml?`<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;">${fHtml}</div>`:'') + emptyHtml + dropHtml;
+                  initWr2AttachmentDropZone(); initWr2NoteDropZone();
                 }
                 function initWr2AttachmentDropZone() {
                   const zone = document.getElementById('wr2AttachDropZone');
@@ -6627,20 +6619,15 @@ window.wr2SummaryCancelEdit = function() {
                 // ★ 노트 전체 영역 드래그앤드롭
                 function initWr2NoteDropZone() {
                   const zone = document.getElementById('wr2NoteDropZone');
-                  if (!zone || zone._skNoteDropBound) return;
-                  zone._skNoteDropBound = true;
-                  zone.addEventListener('dragover', function(e) {
-                    e.preventDefault(); e.stopPropagation();
-                    zone.classList.add('drag-over');
-                  });
-                  zone.addEventListener('dragleave', function(e) {
-                    if (!zone.contains(e.relatedTarget)) zone.classList.remove('drag-over');
-                  });
-                  zone.addEventListener('drop', function(e) {
+                  if (!zone || zone._skNDBound) return;
+                  zone._skNDBound = true;
+                  zone.addEventListener('dragover', function(e){ e.preventDefault(); e.stopPropagation(); zone.classList.add('drag-over'); });
+                  zone.addEventListener('dragleave', function(e){ if(!zone.contains(e.relatedTarget)) zone.classList.remove('drag-over'); });
+                  zone.addEventListener('drop', function(e){
                     e.preventDefault(); e.stopPropagation();
                     zone.classList.remove('drag-over');
-                    const files = Array.from((e.dataTransfer && e.dataTransfer.files) || []);
-                    if (files.length && typeof wr2HandleFilesArray === 'function') wr2HandleFilesArray(files);
+                    const fs = Array.from((e.dataTransfer&&e.dataTransfer.files)||[]);
+                    if (fs.length && typeof wr2HandleFilesArray==='function') wr2HandleFilesArray(fs);
                   });
                 }
 
@@ -14068,7 +14055,7 @@ window.wr2SummaryCancelEdit = function() {
       </div>
       <div class="sc-head" style="min-width:175px;max-width:200px;">
         <div style="display:flex;align-items:center;gap:4px;margin-bottom:3px;flex-wrap:nowrap;overflow:hidden;">
-          <span class="sc-mode ${modeClsChar}">${modeLabel}</span>
+          <span class="sc-mode ${modeClsChar}" style="flex-shrink:0;">${modeLabel}</span>
           ${caseNoBadge}
           ${wsBadge}
           ${item.memo ? '<span style="font-size:10px;flex-shrink:0;">📝</span>' : ''}
@@ -16114,8 +16101,8 @@ ${inputDesc.substring(0, 3000)}
       else if (isBds) { badgeCls = 'popup-badge'; badgeTxt = '🌍 플래닛'; }
       else if (isTrans) { badgeCls = 'popup-badge'; badgeTxt = '📊 실거래'; }
 
-      const _peb = document.getElementById('popEditBtn');
-      if (_peb) { _peb.className = 'popup-editbtn'; _peb.textContent = '✏️ 수정'; }
+      document.getElementById('popEditBtn').className = 'popup-editbtn';
+      document.getElementById('popEditBtn').textContent = '✏️ 수정';
 
       // ── 팝업 topbar 소스 탭 렌더링 (v121 스타일) ──────────────
       (function () {
@@ -16238,7 +16225,6 @@ ${inputDesc.substring(0, 3000)}
       let body = '';
       try {
         if (item.mode === 'auction') {
-          // ★ fi()가 팝업 클릭-인라인 처리 — isE 불필요
           body = buildAuction(item.data || {}, 'pop', false, true);
         } else if (isDisco || isBds || isTrans) {
           body = buildGenericDetail(item, true);
@@ -16247,7 +16233,7 @@ ${inputDesc.substring(0, 3000)}
         }
       } catch (e) {
         console.error('[renderPopup error]', e);
-        body = buildGenericDetail(item, true); // fallback
+        body = buildGenericDetail(item, true);
       }
       const note = (item.data?.분析메모 || item.data?.分析메모) ? `<div class="analysis"><h4>🤖 AI 권리 분석</h4><p>${esc(item.data.分析메모 || item.data.분析메모 || '').replace(/\n/g, '<br>')}</p></div>` : '';
 
@@ -16498,7 +16484,8 @@ ${inputDesc.substring(0, 3000)}
     function togglePopupEdit() {
       popupEditMode = !popupEditMode;
       const btn = document.getElementById('popEditBtn');
-      if (btn) { btn.className = 'popup-editbtn' + (popupEditMode ? ' on' : ''); btn.textContent = popupEditMode ? '✓ 완료' : '✏️ 수정'; }
+      btn.className = 'popup-editbtn' + (popupEditMode ? ' on' : '');
+      btn.textContent = popupEditMode ? '✓ 완료' : '✏️ 수정';
 
       const titleEl = document.getElementById('popTitle');
       const sv = getSv(); const item = sv.find(s => s.id === popupId);
@@ -17537,7 +17524,6 @@ ${combinedText}
     // 필드 렌더
     // ===================================================
     function fi(val, label, type, idx, key, isPopup) {
-      // ★ 객체/배열이 오면 JSON 문자열로 변환하여 [object Object] 방지
       if (val !== null && val !== undefined && typeof val === 'object') {
         if (Array.isArray(val)) {
           val = val.map(v => (typeof v === 'object' ? JSON.stringify(v) : String(v))).join(', ');
@@ -17546,11 +17532,9 @@ ${combinedText}
         }
       }
       const em = val == null || val === '';
-      // ★ 수집탭 편집모드는 기존 방식 유지 / 팝업은 항상 텍스트 (클릭 시 해당 항목만 input 전환)
       const isE = isPopup ? false : (editIdx === idx);
       let dv = '', cl = '';
       const onChange = isPopup ? `window._savedDraftInput('${popupId}','${key}',this.value)` : `updF(${idx},'${key}',this.value)`;
-      // 팝업: oninput으로 즉시 반영, 수집탭: onchange
       const onEditAttr = isPopup
         ? `oninput="${onChange}" onkeydown="if(event.key==='Enter'){this.blur();}"`
         : `onchange="${onChange}"`;
@@ -17573,23 +17557,23 @@ ${combinedText}
       if (em && !isE) cl += ' empty';
       if (typeof dv === 'string') dv = dv.replace(/만원만원/g, '만원');
 
-      // ★ 팝업 전용: 텍스트(span) 표시 → 클릭 시 해당 항목만 input 전환 → blur 시 즉시 저장 후 복귀
-      // 레이아웃 이동 없음: span/input 동일 min-height, display 토글만
+      // ★ 팝업: position:relative 래퍼로 span/input 같은 자리 - 레이아웃 이동 없음
       if (isPopup) {
         const _pid = String(popupId || '');
-        // 특수문자 이스케이프
         const _sk = key.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
         const _sp = _pid.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
         const _fid = ('fip_' + key + '_' + _pid).replace(/[^a-zA-Z0-9_]/g, '_');
         const _rv = em ? '' : esc(String(val));
-        // 클릭: span 숨기고 input 표시 후 포커스
-        const _click = `(function(sp){var i=document.getElementById('${_fid}_i');if(!i)return;sp.style.display='none';i.style.display='';i.focus();i.select();})(this)`;
-        // blur: 즉시 저장 후 input 숨기고 span 업데이트
-        const _blur  = `(function(inp){var v=inp.value;window._savedDraftCommit('${_sp}','${_sk}',v);inp.style.display='none';var sp=document.getElementById('${_fid}_sp');if(sp){sp.textContent=(v||'-');sp.style.display='';}})(this)`;
-        const _style = 'min-height:20px;padding:2px 0;';
+        // 클릭: span 숨기고 input 표시
+        const _click = `(function(sp){var i=document.getElementById('${_fid}_i');if(!i)return;sp.style.visibility='hidden';i.style.display='block';i.focus();i.select();})(this)`;
+        // blur: 저장 후 input 숨기고 span 업데이트
+        const _blur  = `(function(inp){var v=inp.value;window._savedDraftCommit('${_sp}','${_sk}',v);inp.style.display='none';var sp=document.getElementById('${_fid}_sp');if(sp){sp.textContent=(v||'-');sp.style.visibility='visible';}})(this)`;
+        // position:relative 래퍼 - 두 요소가 같은 공간 차지
         return `<div class="fi${key==='분析메모'?' full':''}"><div class="fl">${label}</div>` +
-          `<div id="${_fid}_sp" class="fv ${cl}" onclick="${_click}" title="클릭하여 수정" style="cursor:text;${_style}border-bottom:1px dashed rgba(255,255,255,.07);">${dv}</div>` +
-          `<input id="${_fid}_i" class="fv-in" value="${_rv}" ${onEditAttr} onblur="${_blur}" placeholder="${label}" style="display:none;${_style}"/></div>`;
+          `<div class="fv-wrap" style="position:relative;min-height:22px;">` +
+          `<div id="${_fid}_sp" class="fv ${cl}" onclick="${_click}" title="클릭하여 수정" style="cursor:text;border-bottom:1px dashed rgba(255,255,255,.1);">${dv}</div>` +
+          `<input id="${_fid}_i" class="fv-in" value="${_rv}" ${onEditAttr} onblur="${_blur}" placeholder="${label}" style="display:none;position:absolute;top:0;left:0;width:100%;box-sizing:border-box;"/>` +
+          `</div></div>`;
       }
 
       return `<div class="fi${key === '분析메모' ? ' full' : ''}"><div class="fl">${label}</div>${isE ? `<input class="fv-in" value="${em ? '' : esc(String(val))}" ${onEditAttr} placeholder="${label}"/>` : `<div class="fv ${cl}">${dv}</div>`}</div>`;

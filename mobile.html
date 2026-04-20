@@ -2188,7 +2188,7 @@ body {
     <!-- 작업룸 패널 -->
     <div id="mb-ins-room" class="mb-ins-panel active">
 
-      <!-- ★ 뷰A: 카드 목록 화면 -->
+      <!-- 뷰A: 카드 목록 -->
       <div id="mb-room-view-list" style="display:flex;flex-direction:column;height:100%;overflow:hidden;">
         <div style="display:flex;gap:8px;align-items:center;padding:10px 12px 6px;flex-shrink:0;background:var(--bg);">
           <input id="mb-room-list-search" type="text" placeholder="🔍 작업룸 검색..."
@@ -2199,22 +2199,17 @@ body {
         <div id="mb-room-cards" style="flex:1;overflow-y:auto;padding:4px 10px 24px;-webkit-overflow-scrolling:touch;"></div>
       </div>
 
-      <!-- ★ 뷰B: 작업룸 상세 화면 -->
+      <!-- 뷰B: 작업룸 상세 -->
       <div id="mb-room-view-detail" style="display:none;flex-direction:column;height:100%;overflow:hidden;">
-
       <div id="mb-room-topstack">
-      <!-- 상단: 뒤로가기 + 룸 이름 + 상태 + 삭제 -->
       <div style="display:flex;gap:8px;align-items:center;padding:8px 10px 4px;flex-shrink:0;background:var(--bg);border-bottom:1px solid var(--b1);">
         <button onclick="mbRoomBackToList()" style="height:30px;padding:0 10px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;color:var(--tx);font-size:13px;cursor:pointer;flex-shrink:0;">‹ 목록</button>
         <span id="mb-room-name" style="font-size:14px;font-weight:700;color:var(--tx);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
         <select id="mb-room-lifecycle" onchange="mbRoomSetLifecycle(this.value)" style="padding:3px 6px;background:var(--s2);border:1px solid var(--b1);border-radius:6px;color:var(--mu);font-size:10px;font-weight:700;outline:none;cursor:pointer;flex-shrink:0;">
-          <option value="active">활성</option>
-          <option value="changed">변경</option>
-          <option value="closed">종료</option>
+          <option value="active">활성</option><option value="changed">변경</option><option value="closed">종료</option>
         </select>
         <button class="mb-btn" style="height:28px;padding:0 8px;font-size:11px;color:var(--red);border-color:rgba(255,77,77,.3);flex-shrink:0;" onclick="mbRoomDelete()">🗑</button>
       </div>
-      <!-- 주소 + 태그 -->
       <div id="mb-room-header" style="padding:3px 12px 5px;background:var(--bg);">
         <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
           <span id="mb-room-desc" style="font-size:10px;color:var(--mu);flex-shrink:0;max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
@@ -2223,9 +2218,7 @@ body {
         </div>
       </div>
       <div id="mb-room-folder-bar" class="mb-folder-chipbar" style="display:none !important;margin:0 0 8px;"></div>
-
-      <!-- 단계 탭 -->
-      <div id="mb-room-tabs-wrap" style="">
+      <div id="mb-room-tabs-wrap">
         <div id="mb-room-tabs">
           <button id="mb-rtab-overview" class="mb-rtab active" onclick="mbRoomTab('overview')">📊 개요</button>
           <button id="mb-rtab-review" data-room-phase="review" class="mb-rtab" onclick="mbRoomTab('review')">👀 관심·검토</button>
@@ -2236,8 +2229,7 @@ body {
         </div>
       </div>
       </div>
-
-      <!-- 숨겨진 호환용 엘리먼트들 -->
+      <!-- 호환용 숨김 엘리먼트 -->
       <select id="mb-room-sel" style="display:none;" onchange="mbRoomLoad(this.value,{cloud:true})"><option value="">--</option></select>
       <div id="mb-room-sel-wrap" style="display:none;"><div id="mb-room-sel-btn"></div><div id="mb-room-sel-list"></div><span id="mb-room-sel-label"></span></div>
       <select id="wr2GroupFilter" style="display:none;" onchange="if(window.wr2State)wr2State.groupFilter=this.value;if(typeof mbRoomRefreshSel==='function')mbRoomRefreshSel();"><option value="all">전체</option></select>
@@ -2266,7 +2258,6 @@ body {
             </div>
           </div>
           <div id="mb-room-note-list" class="mb-room-note-strip"></div>
-          <!-- ★ 이미지/첨부를 textarea 위에 -->
           <div id="mb-room-note-attachments" style="padding:0 12px 6px;"></div>
           <div id="mb-room-note-drop" class="mb-room-dropzone" style="margin:0 12px 8px;">파일을 끌어놓거나 눌러서 첨부<small>이미지, PDF, 문서를 바로 붙일 수 있어요</small></div>
           <div style="padding:0 12px 12px;">
@@ -3470,14 +3461,13 @@ body {
     }
     // 작업룸 탭: 목록 뷰 표시
     if (name === 'room') {
-      // ★ 목록 화면 표시, 상세 화면 닫기
-      var _lv = document.getElementById('mb-room-view-list');
-      var _dv = document.getElementById('mb-room-view-detail');
-      if (_lv) _lv.style.display = 'flex';
-      if (_dv) _dv.style.display = 'none';
+      var _lv=document.getElementById('mb-room-view-list');
+      var _dv=document.getElementById('mb-room-view-detail');
+      if(_lv)_lv.style.display='flex';
+      if(_dv)_dv.style.display='none';
       mbRoomRefreshSel();
-      if (typeof window.mbRoomListRender === 'function') window.mbRoomListRender();
-      if (false) {
+      if(typeof window.mbRoomListRender==='function')window.mbRoomListRender();
+      if(false){
       var _runRoomRefresh = function() {
         if (!window._wrRefreshFromCloud) return Promise.resolve(null);
         if (window._sbRunEntryRefresh) {
@@ -3500,15 +3490,14 @@ body {
     if (name === 'pipe') {
       if (typeof window.mbRenderPipeline === 'function') window.mbRenderPipeline();
     }
-    // 물건리스트 탭 - 클라우드에서 최신 데이터 로드 후 렌더
+    // 물건리스트 탭 - 클라우드 최신 데이터 로드 후 렌더
     if (name === 'plist') {
-      var _doPlistRender = function() { if (typeof window.mbPlistRender === 'function') window.mbPlistRender(); };
-      if (window._sbRunEntryRefresh && typeof window._plRefreshFromCloud === 'function') {
-        window._sbRunEntryRefresh('properties', window._plRefreshFromCloud, { render: false, force: true })
-          .then(_doPlistRender).catch(_doPlistRender);
-      } else if (typeof window._plRefreshFromCloud === 'function') {
-        window._plRefreshFromCloud({ render: false, force: true }).then(_doPlistRender).catch(_doPlistRender);
-      } else { _doPlistRender(); }
+      var _rpl = function(){ if (typeof window.mbPlistRender==='function') window.mbPlistRender(); };
+      if (window._sbRunEntryRefresh && typeof window._plRefreshFromCloud==='function') {
+        window._sbRunEntryRefresh('properties',window._plRefreshFromCloud,{render:false,force:true}).then(_rpl).catch(_rpl);
+      } else if (typeof window._plRefreshFromCloud==='function') {
+        window._plRefreshFromCloud({render:false,force:true}).then(_rpl).catch(_rpl);
+      } else { _rpl(); }
     }
     if (name === 'site') {
       if (typeof window._siteHydrateKeysFromIdb === 'function') {
@@ -5193,46 +5182,42 @@ body {
       _mbBindRoomNoteDropZone();
       return;
     }
-    if (!window._mbNoteGallIdx) window._mbNoteGallIdx = {};
-    var imgs = files.filter(function(att){ return _mbIsRoomImage(att); });
-    var otherFiles = files.filter(function(att){ return !_mbIsRoomImage(att); });
-    var nKey = (note && note.id) ? 'mnk_' + note.id : 'mnk_def';
-    var curIdx = window._mbNoteGallIdx[nKey] || 0;
-    if (curIdx >= imgs.length) curIdx = 0;
-    var gHtml = '';
-    if (imgs.length > 0) {
-      var mainSrc = _mbNormRoomAsset(imgs[curIdx].url || imgs[curIdx].data || '');
-      var total = imgs.length;
-      var mainFi = files.indexOf(imgs[curIdx]);
-      gHtml = '<div style="position:relative;width:100%;border-radius:12px;overflow:hidden;background:var(--s1);margin-bottom:8px;">'
-        + '<img src="' + mainSrc + '" onclick="mbRoomOpenAttachImage(' + curIdx + ')" style="width:100%;max-height:260px;object-fit:cover;display:block;cursor:pointer;">'
-        + (total > 1
-            ? '<button onclick="event.stopPropagation();(function(){window._mbNoteGallIdx[\''  + nKey + '\']=Math.max(0,' + curIdx + '-1);var r=window._mbLastNoteRoom;if(r)_mbRenderNoteAttachments(r);})()" style="position:absolute;left:8px;top:50%;transform:translateY(-50%);width:32px;height:32px;border-radius:50%;border:none;background:rgba(0,0,0,.55);color:#fff;font-size:18px;cursor:pointer;">‹</button>'
-            + '<button onclick="event.stopPropagation();(function(){window._mbNoteGallIdx[\''  + nKey + '\']=Math.min(' + (total-1) + ',' + curIdx + '+1);var r=window._mbLastNoteRoom;if(r)_mbRenderNoteAttachments(r);})()" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);width:32px;height:32px;border-radius:50%;border:none;background:rgba(0,0,0,.55);color:#fff;font-size:18px;cursor:pointer;">›</button>'
-            + '<div style="position:absolute;bottom:8px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.55);color:#fff;font-size:11px;padding:2px 9px;border-radius:99px;">' + (curIdx+1) + ' / ' + total + '</div>'
-            : '')
-        + '<button onclick="event.stopPropagation();mbRoomDelAttach(' + mainFi + ')" style="position:absolute;top:8px;right:8px;width:24px;height:24px;border-radius:50%;border:none;background:rgba(0,0,0,.65);color:#fff;font-size:13px;cursor:pointer;">✕</button>'
-        + '</div>';
-      if (total > 1) {
-        gHtml += '<div style="display:flex;gap:5px;overflow-x:auto;padding-bottom:4px;margin-bottom:6px;">';
-        imgs.forEach(function(img, i) {
-          var ts = _mbNormRoomAsset(img.url || img.data || '');
-          gHtml += '<div onclick="(function(){window._mbNoteGallIdx[\''  + nKey + '\']= ' + i + ';var r=window._mbLastNoteRoom;if(r)_mbRenderNoteAttachments(r);})()" style="width:52px;height:52px;flex-shrink:0;border-radius:8px;overflow:hidden;cursor:pointer;border:2px solid ' + (i===curIdx?'#4f8eff':'transparent') + ';background:var(--s1);">'
-            + '<img src="' + ts + '" style="width:100%;height:100%;object-fit:cover;">'
-            + '</div>';
+    if(!window._mbNGIdx)window._mbNGIdx={};
+    var imgs=files.filter(function(a){return _mbIsRoomImage(a);});
+    var oths=files.filter(function(a){return !_mbIsRoomImage(a);});
+    var nk=(note&&note.id)?'n_'+note.id:'n_d';
+    var ci=window._mbNGIdx[nk]||0; if(ci>=imgs.length)ci=0;
+    var gh='';
+    if(imgs.length>0){
+      var tot=imgs.length,ms=_mbNormRoomAsset(imgs[ci].url||imgs[ci].data||''),mfi=files.indexOf(imgs[ci]);
+      gh='<div style="position:relative;width:100%;border-radius:12px;overflow:hidden;background:var(--s1);margin-bottom:8px;">'
+        +'<img src="'+ms+'" onclick="mbRoomOpenAttachImage('+ci+')" style="width:100%;max-height:260px;object-fit:cover;display:block;cursor:pointer;">'
+        +(tot>1
+          ?'<button onclick="event.stopPropagation();(function(){window._mbNGIdx[\''  +nk+ '\']=Math.max(0,'+ci+'-1);var r=window._mbLastNR;if(r)_mbRenderNoteAttachments(r);})()" style="position:absolute;left:8px;top:50%;transform:translateY(-50%);width:32px;height:32px;border-radius:50%;border:none;background:rgba(0,0,0,.55);color:#fff;font-size:18px;cursor:pointer;">&#8249;</button>'
+           +'<button onclick="event.stopPropagation();(function(){window._mbNGIdx[\''  +nk+ '\']=Math.min('+(tot-1)+','+ci+'+1);var r=window._mbLastNR;if(r)_mbRenderNoteAttachments(r);})()" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);width:32px;height:32px;border-radius:50%;border:none;background:rgba(0,0,0,.55);color:#fff;font-size:18px;cursor:pointer;">&#8250;</button>'
+           +'<div style="position:absolute;bottom:8px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.55);color:#fff;font-size:11px;padding:2px 9px;border-radius:99px;">'+( ci+1)+' / '+tot+'</div>'
+           :'')
+        +'<button onclick="event.stopPropagation();mbRoomDelAttach('+mfi+')" style="position:absolute;top:8px;right:8px;width:24px;height:24px;border-radius:50%;border:none;background:rgba(0,0,0,.65);color:#fff;font-size:13px;cursor:pointer;">&#x2715;</button>'
+        +'</div>';
+      if(tot>1){
+        gh+='<div style="display:flex;gap:5px;overflow-x:auto;padding-bottom:4px;margin-bottom:6px;">';
+        imgs.forEach(function(img,i){
+          var ts=_mbNormRoomAsset(img.url||img.data||'');
+          gh+='<div onclick="(function(){window._mbNGIdx[\''  +nk+ '\']='+i+';var r=window._mbLastNR;if(r)_mbRenderNoteAttachments(r);})()" style="width:52px;height:52px;flex-shrink:0;border-radius:8px;overflow:hidden;cursor:pointer;border:2px solid '+(i===ci?'#4f8eff':'transparent')+';background:var(--s1);">'
+            +'<img src="'+ts+'" style="width:100%;height:100%;object-fit:cover;"></div>';
         });
-        gHtml += '</div>';
+        gh+='</div>';
       }
     }
-    var fHtml = otherFiles.map(function(att) {
-      var fidx = files.indexOf(att);
+    var fh=oths.map(function(att){
+      var fi2=files.indexOf(att);
       return '<div style="position:relative;display:flex;align-items:center;gap:6px;max-width:100%;padding:8px 30px 8px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:10px;margin-bottom:4px;">'
-        + '<button onclick="mbRoomOpenAttachFile(' + fidx + ')" style="border:none;background:none;padding:0;font-size:11px;color:#4f8eff;cursor:pointer;overflow:hidden;text-overflow:ellipsis;max-width:200px;">📎 ' + (att.name||'첨부파일') + '</button>'
-        + '<button onclick="event.stopPropagation();mbRoomDelAttach(' + fidx + ')" style="position:absolute;top:7px;right:8px;border:none;background:none;color:var(--mu);font-size:13px;cursor:pointer;">✕</button>'
-        + '</div>';
+        +'<button onclick="mbRoomOpenAttachFile('+fi2+')" style="border:none;background:none;padding:0;font-size:11px;color:#4f8eff;cursor:pointer;overflow:hidden;text-overflow:ellipsis;max-width:200px;">📎 '+(att.name||'첨부파일')+'</button>'
+        +'<button onclick="event.stopPropagation();mbRoomDelAttach('+fi2+')" style="position:absolute;top:7px;right:8px;border:none;background:none;color:var(--mu);font-size:13px;cursor:pointer;">&#x2715;</button>'
+        +'</div>';
     }).join('');
-    window._mbLastNoteRoom = room;
-    wrap.innerHTML = gHtml + fHtml;
+    window._mbLastNR=room;
+    wrap.innerHTML=gh+fh;
     _mbBindRoomNoteDropZone();
   }
 
@@ -6341,22 +6326,13 @@ body {
     var options = opts || {};
     var shouldCloudRefresh = options.cloud === true;
     var prevRoomId = _mbActiveRoomId;
-    // ★ roomId 없으면 목록 뷰로 전환
     if (!roomId) {
-      var _lv2 = document.getElementById('mb-room-view-list');
-      var _dv2 = document.getElementById('mb-room-view-detail');
-      if (_lv2) _lv2.style.display = 'flex';
-      if (_dv2) _dv2.style.display = 'none';
-      if (typeof window.mbRoomListRender === 'function') window.mbRoomListRender();
+      var _l=document.getElementById('mb-room-view-list'),_d=document.getElementById('mb-room-view-detail');
+      if(_l)_l.style.display='flex';if(_d)_d.style.display='none';
+      if(typeof window.mbRoomListRender==='function')window.mbRoomListRender();
       return;
     }
-    // ★ roomId 있으면 상세 뷰 표시
-    (function(){
-      var _lv2 = document.getElementById('mb-room-view-list');
-      var _dv2 = document.getElementById('mb-room-view-detail');
-      if (_lv2) _lv2.style.display = 'none';
-      if (_dv2) _dv2.style.display = 'flex';
-    })();
+    (function(){var _l=document.getElementById('mb-room-view-list'),_d=document.getElementById('mb-room-view-detail');if(_l)_l.style.display='none';if(_d)_d.style.display='flex';})();
     // wr2Init 안전 호출 (wr2State 초기화)
     if (window.wr2Init && !window.__wr2Inited) {
       try { window.__wr2Inited = true; window.wr2Init(); } catch(e0) {}
@@ -6606,12 +6582,10 @@ body {
           var dt = parseSaleDate((it.data||{})['매각일'] || (it.data||{})['매각기일']);
           return dt ? { it: it, dt: dt, dday: calcDday(dt) } : null;
         }).filter(Boolean).sort(function(a,b){
-          // 오늘 이후(미래) 가까운 순 / 과거는 뒤로
-          var now = new Date(); now.setHours(0,0,0,0);
-          var af = a.dt >= now, bf = b.dt >= now;
-          if (af && !bf) return -1;
-          if (!af && bf) return 1;
-          return a.dt - b.dt;
+          var now=new Date();now.setHours(0,0,0,0);
+          var af=a.dt>=now,bf=b.dt>=now;
+          if(af&&!bf)return -1;if(!af&&bf)return 1;
+          return a.dt-b.dt;
         });
       if (!auctionItems.length) {
         scheduleEl.style.display = 'none';
@@ -6739,83 +6713,69 @@ body {
     mbRoomLoad('', { cloud: false });
   };
 
-  // ★ 작업룸 목록 → 상세 전환
+  // ★ 작업룸 뷰 전환
   window.mbRoomBackToList = function() {
-    var lv = document.getElementById('mb-room-view-list');
-    var dv = document.getElementById('mb-room-view-detail');
-    if (lv) lv.style.display = 'flex';
-    if (dv) dv.style.display = 'none';
-    _mbActiveRoomId = null;
-    if (typeof window.mbRoomListRender === 'function') window.mbRoomListRender();
+    var l=document.getElementById('mb-room-view-list'),d=document.getElementById('mb-room-view-detail');
+    if(l)l.style.display='flex';if(d)d.style.display='none';
+    _mbActiveRoomId=null;
+    if(typeof window.mbRoomListRender==='function')window.mbRoomListRender();
   };
-
   window.mbRoomCardSelect = function(roomId) {
-    var lv = document.getElementById('mb-room-view-list');
-    var dv = document.getElementById('mb-room-view-detail');
-    if (lv) lv.style.display = 'none';
-    if (dv) dv.style.display = 'flex';
+    var l=document.getElementById('mb-room-view-list'),d=document.getElementById('mb-room-view-detail');
+    if(l)l.style.display='none';if(d)d.style.display='flex';
     mbRoomRefreshSel();
-    mbRoomLoad(roomId, { cloud: false });
+    mbRoomLoad(roomId,{cloud:false});
   };
-
   window.mbRoomListRender = function() {
-    var wrap = document.getElementById('mb-room-cards');
-    if (!wrap) return;
-    var q = ((document.getElementById('mb-room-list-search') || {}).value || '').toLowerCase();
-    var rooms = _mbGetRoomsArray();
-    var savedMap = {};
-    try { if (typeof getSv === 'function') { (getSv()||[]).forEach(function(it){ if(it&&it.id!=null) savedMap[String(it.id)]=it; }); } } catch(e) {}
-    var sorted = rooms.slice().sort(function(a,b){ return (b.updatedAt||b.createdAt||0)-(a.updatedAt||a.createdAt||0); });
-    if (q) sorted = sorted.filter(function(r){ return ((r.title||'')+(r.address||'')).toLowerCase().indexOf(q) >= 0; });
-    var LC_LBL = {active:'활성',changed:'변경',closed:'종료'};
-    var LC_CLR = {active:'#8ab8ff',changed:'#ffd166',closed:'#9aa3b2'};
-    var LC_BG  = {active:'rgba(79,142,255,.12)',changed:'rgba(245,158,11,.12)',closed:'rgba(255,255,255,.06)'};
-    function fmtPrc(v){ var n=parseInt(String(v||'').replace(/[^0-9]/g,''),10)||0; return n>=100000000?(n/100000000).toFixed(1)+'억':n>0?Math.round(n/10000)+'만':''; }
-    if (!sorted.length) {
-      wrap.innerHTML = '<div style="text-align:center;padding:40px 16px;color:var(--di);font-size:12px;">'+(q?'검색 결과 없음':'작업룸이 없습니다')+'<br><button class="mb-btn mb-btn-gold" onclick="mbRoomNew()" style="margin-top:14px;padding:0 16px;height:36px;">＋ 첫 작업룸 만들기</button></div>';
+    var wrap=document.getElementById('mb-room-cards'); if(!wrap)return;
+    var q=((document.getElementById('mb-room-list-search')||{}).value||'').toLowerCase();
+    var rooms=_mbGetRoomsArray();
+    var sv={}; try{if(typeof getSv==='function')(getSv()||[]).forEach(function(it){if(it&&it.id!=null)sv[String(it.id)]=it;});}catch(e){}
+    var sorted=rooms.slice().sort(function(a,b){return(b.updatedAt||b.createdAt||0)-(a.updatedAt||a.createdAt||0);});
+    if(q)sorted=sorted.filter(function(r){return((r.title||'')+(r.address||'')).toLowerCase().indexOf(q)>=0;});
+    var LC={active:{l:'활성',c:'#8ab8ff',b:'rgba(79,142,255,.12)'},changed:{l:'변경',c:'#ffd166',b:'rgba(245,158,11,.12)'},closed:{l:'종료',c:'#9aa3b2',b:'rgba(255,255,255,.06)'}};
+    function fp(v){var n=parseInt(String(v||'').replace(/[^0-9]/g,''),10)||0;return n>=100000000?(n/100000000).toFixed(1)+'억':n>0?Math.round(n/10000)+'만':'';}
+    if(!sorted.length){
+      wrap.innerHTML='<div style="text-align:center;padding:40px 16px;color:var(--di);font-size:12px;">'+(q?'검색 결과 없음':'작업룸이 없습니다')+'<br><button class="mb-btn mb-btn-gold" onclick="mbRoomNew()" style="margin-top:14px;height:36px;padding:0 16px;">＋ 첫 작업룸 만들기</button></div>';
       return;
     }
-    // 폴더별 그루핑
-    var buckets={}, bOrder=[];
-    sorted.forEach(function(r){ var k=r.group||'__none__'; if(!buckets[k]){buckets[k]=[];bOrder.push(k);} buckets[k].push(r); });
+    var bk={},bo=[];
+    sorted.forEach(function(r){var k=r.group||'__';if(!bk[k]){bk[k]=[];bo.push(k);}bk[k].push(r);});
     var html='';
-    bOrder.forEach(function(k){
-      if(k!=='__none__') html+='<div style="font-size:10px;font-weight:700;color:#4f8eff;padding:10px 4px 4px;letter-spacing:.4px;">📁 '+k+'</div>';
-      buckets[k].forEach(function(r){
+    bo.forEach(function(k){
+      if(k!=='__')html+='<div style="font-size:10px;font-weight:700;color:#4f8eff;padding:10px 4px 4px;">📁 '+k+'</div>';
+      bk[k].forEach(function(r){
         var lc=String(r.lifecycleStatus||r.status||'active');
-        var lcL=LC_LBL[lc]||'활성', lcC=LC_CLR[lc]||'#8ab8ff', lcB=LC_BG[lc]||'rgba(79,142,255,.12)';
-        var linkedIds=[];
-        if(r.linkedSavedId) linkedIds.push(String(r.linkedSavedId));
-        if(r.auctionId) linkedIds.push(String(r.auctionId));
-        (r.linkedItems||[]).forEach(function(id){linkedIds.push(String(id));});
-        var linked=null;
-        for(var i=0;i<linkedIds.length;i++){if(savedMap[linkedIds[i]]){linked=savedMap[linkedIds[i]];break;}}
-        var d=(linked&&linked.data)||{};
-        var caseNo=String(d['경매번호']||d['사건번호']||'').trim();
-        var price=fmtPrc(d['최저가']||d['감정가']||d['매매가']||'');
-        var addr=String((linked&&(linked.title||d['소재지']))||r.address||'').trim();
+        var lm=LC[lc]||LC.active;
+        var ids=[];
+        if(r.linkedSavedId)ids.push(String(r.linkedSavedId));
+        if(r.auctionId)ids.push(String(r.auctionId));
+        (r.linkedItems||[]).forEach(function(id){ids.push(String(id));});
+        var lnk=null;for(var i=0;i<ids.length;i++){if(sv[ids[i]]){lnk=sv[ids[i]];break;}}
+        var d=(lnk&&lnk.data)||{};
+        var cn=String(d['경매번호']||d['사건번호']||'').trim();
+        var pr=fp(d['최저가']||d['감정가']||d['매매가']||'');
+        var ad=String((lnk&&(lnk.title||d['소재지']))||r.address||'').trim();
         var upd=r.updatedAt?new Date(r.updatedAt).toLocaleDateString('ko-KR',{month:'numeric',day:'numeric'}):'';
         var rid=String(r.id||'').replace(/'/g,"\'");
         html+='<div onclick="mbRoomCardSelect(''+rid+'')" style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:12px;margin-bottom:7px;cursor:pointer;">';
         html+='<div style="flex:1;min-width:0;">';
         html+='<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;">';
         html+='<span style="font-size:13px;font-weight:700;color:var(--tx);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+(r.title||r.name||'이름없음')+'</span>';
-        html+='<span style="font-size:10px;font-weight:700;padding:1px 7px;border-radius:99px;background:'+lcB+';color:'+lcC+';flex-shrink:0;">'+lcL+'</span>';
+        html+='<span style="font-size:10px;font-weight:700;padding:1px 7px;border-radius:99px;background:'+lm.b+';color:'+lm.c+';flex-shrink:0;">'+lm.l+'</span>';
         html+='</div>';
-        if(caseNo||price||addr){
+        if(cn||pr||ad){
           html+='<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">';
-          if(caseNo) html+='<span style="font-size:10px;color:#8ab8ff;font-family:monospace;">'+caseNo+'</span>';
-          if(price)  html+='<span style="font-size:11px;font-weight:700;color:#ff9944;">'+price+'</span>';
-          if(addr)   html+='<span style="font-size:10px;color:var(--mu);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px;">'+addr+'</span>';
+          if(cn)html+='<span style="font-size:10px;color:#8ab8ff;font-family:monospace;">'+cn+'</span>';
+          if(pr)html+='<span style="font-size:11px;font-weight:700;color:#ff9944;">'+pr+'</span>';
+          if(ad)html+='<span style="font-size:10px;color:var(--mu);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px;">'+ad+'</span>';
           html+='</div>';
         }
-        if(upd) html+='<div style="font-size:9px;color:var(--di);margin-top:2px;">수정 '+upd+'</div>';
-        html+='</div>';
-        html+='<span style="font-size:20px;color:var(--b2);">›</span>';
-        html+='</div>';
+        if(upd)html+='<div style="font-size:9px;color:var(--di);margin-top:2px;">수정 '+upd+'</div>';
+        html+='</div><span style="font-size:20px;color:var(--b2);">›</span></div>';
       });
     });
-    wrap.innerHTML = html;
+    wrap.innerHTML=html;
   };
 
     function mbRoomRefreshSel() {
