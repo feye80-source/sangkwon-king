@@ -41434,12 +41434,43 @@ window.addEventListener('DOMContentLoaded', () => {
       updatedAt: it.updatedAt || it.timestamp || Date.now()
     };
   }
-  function plLoad() { try { return JSON.parse(localStorage.getItem(PL_KEY) || '[]').map(plNormalizeItem); } catch(e) { return []; } }
+  function plLoad() {
+    try {
+      var cached = (typeof _sbGetCachedArray === 'function') ? _sbGetCachedArray(PL_KEY) : null;
+      var legacy = JSON.parse(localStorage.getItem(PL_KEY) || '[]');
+      var hasCached = Array.isArray(cached);
+      var hasLegacy = Array.isArray(legacy);
+      if (hasCached && hasLegacy) {
+        var merged = [];
+        var byId = {};
+        cached.forEach(function(it){
+          if (!it || !it.id) return;
+          byId[String(it.id)] = plNormalizeItem(it);
+        });
+        legacy.forEach(function(it){
+          if (!it || !it.id) return;
+          var id = String(it.id);
+          var prev = byId[id];
+          var next = plNormalizeItem(it);
+          if (!prev) { byId[id] = next; return; }
+          var prevTs = Number(prev.updatedAt || prev.createdAt || 0);
+          var nextTs = Number(next.updatedAt || next.createdAt || 0);
+          if (nextTs > prevTs) byId[id] = next;
+        });
+        Object.keys(byId).forEach(function(id){ merged.push(byId[id]); });
+        return merged;
+      }
+      if (hasCached) return cached.map(plNormalizeItem);
+      if (hasLegacy) return legacy.map(plNormalizeItem);
+      return [];
+    } catch(e) { return []; }
+  }
   function plSave(arr) {
     var full = (arr || []).map(plNormalizeItem);
-    localStorage.setItem(PL_KEY, JSON.stringify(full));
+    if (typeof _sbPersistCachedArray === 'function') _sbPersistCachedArray(PL_KEY, full, { delay: 120 });
+    else localStorage.setItem(PL_KEY, JSON.stringify(full));
     if (typeof window._sbMarkKvDirty === 'function') window._sbMarkKvDirty(PL_KEY);
-    if (typeof window._sbScheduleSavePlItems === 'function') window._sbScheduleSavePlItems(full);
+    if (typeof window._sbScheduleSavePlItems === 'function') window._sbScheduleSavePlItems(full, 260);
   }
   window.plForcePush = async function() {
     try {
@@ -41714,9 +41745,24 @@ window.addEventListener('DOMContentLoaded', () => {
   // ── 상태(단순화: 활성/변경/종료) ──────────────────────────
   function plSimpleStatusKey(status) {
     var s = String(status || '');
-    if (s === 'closed' || s === 'archived') return 'closed';
-    if (s === 'field' || s === 'bid' || s === 'won') return 'changed';
+    if (s === 'active' || s === 'changed' || s === 'closed') return s;
+    if (s === 'archived') return 'closed';
+    if (s === 'field' || s === 'bid' || s === 'won' || s === 'sell') return 'changed';
     return 'active';
+  }
+  function plEffectiveSimpleStatus(item, roomById) {
+    var it = plNormalizeItem(item || {});
+    var simple = plSimpleStatusKey(it.status);
+    if (!roomById || !it.roomId) return simple;
+    var room = roomById[String(it.roomId)] || null;
+    if (!room) return simple;
+    var source = String(room.lifecycleStatus || room.status || room.phase || '');
+    if (!source) return simple;
+    var roomSimple = plSimpleStatusKey(source);
+    if (roomSimple === 'closed') return 'closed';
+    if (roomSimple === 'changed') return (simple === 'closed' ? 'closed' : 'changed');
+    if (roomSimple === 'active') return (simple === 'closed' ? 'closed' : 'active');
+    return simple;
   }
   function plApplySimpleStatusToItem(item, simple) {
     if (!item) return;
@@ -41753,9 +41799,9 @@ window.addEventListener('DOMContentLoaded', () => {
       + '<option value="하"'+(v==='하'?' selected':'')+' style="color:#4ade80">하</option>'
       + '</select>';
   }
-  function statusCell(item) {
+  function statusCell(item, forcedSimple) {
     var id = item.id;
-    var simple = plSimpleStatusKey(item.status);
+    var simple = forcedSimple || plSimpleStatusKey(item.status);
     var m = STATUS_MAP[simple] || STATUS_MAP.active;
     var key = plDomKey(id, 'st');
     return ''
@@ -41808,11 +41854,13 @@ window.addEventListener('DOMContentLoaded', () => {
   function plEditMemoCellHtml(id, rawValue) {
     var key = plDomKey(id, 'memo');
     var txt = String(rawValue || '');
-    var display = txt ? txt : '—';
+    var display = txt ? txt.replace(/\s+/g, ' ').trim() : '—';
     return ''
       + '<div id="'+key+'_s" data-k="'+plEscHtml(key)+'" onclick="event.stopPropagation();plStartInlineEdit(this.dataset.k)" '
       + 'style="cursor:pointer;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.02);border-radius:8px;padding:6px 8px;'
-      + 'white-space:pre-wrap;line-height:1.35;min-height:28px;max-width:260px;color:var(--fg2);">'
+      + 'white-space:nowrap;line-height:1.35;height:28px;max-width:260px;color:var(--fg2);'
+      + 'overflow:hidden;text-overflow:ellipsis;" '
+      + 'title="'+plEscHtml(txt)+'">'
       + plEscHtml(display)
       + '</div>'
       + '<textarea id="'+key+'_i" data-k="'+plEscHtml(key)+'" data-id="'+plEscHtml(id)+'" data-field="memo" rows="2" '
@@ -41997,10 +42045,10 @@ window.addEventListener('DOMContentLoaded', () => {
   };
 
   // ── 알람 렌더 ──────────────────────────
-  function renderAlerts(items) {
+  function renderAlerts(items, roomById) {
     var overdue=[], needField=[], needBid=[];
     items.forEach(function(it) {
-      if (plSimpleStatusKey(it.status) === 'closed') return;
+      if (plEffectiveSimpleStatus(it, roomById) === 'closed') return;
       if (it && it.result && String(it.result.won || '').trim()) return;
       var d = daysDiff(it.biddate);
       if (d === null) return;
@@ -42016,10 +42064,27 @@ window.addEventListener('DOMContentLoaded', () => {
     if (needBid.length)   chips.push('<span style="padding:6px 14px;border-radius:20px;font-size:12px;font-weight:600;background:#003050;color:#4f8eff;border:1px solid #4f8eff55;">● 입찰 준비 '+needBid.length+'건 — 3일 이내</span>');
     el.innerHTML = chips.join('');
   }
+  function plEnsureListCloudRefresh() {
+    if (window.__plListRefreshRunning) return;
+    if (typeof window._plRefreshFromCloud !== 'function') return;
+    var now = Date.now();
+    var last = Number(window.__plListRefreshAt || 0);
+    if (last && (now - last) < 12000) return;
+    window.__plListRefreshAt = now;
+    window.__plListRefreshRunning = true;
+    Promise.resolve(window._plRefreshFromCloud({ render: false, force: true, sync: true }))
+      .then(function() {
+        if (typeof currentPage !== 'undefined' && currentPage === 4 && window.__pmActiveTab === 'list' && typeof renderPropertyList === 'function') {
+          renderPropertyList();
+        }
+      })
+      .catch(function(e){ console.warn('[plEnsureListCloudRefresh]', e); })
+      .finally(function(){ window.__plListRefreshRunning = false; });
+  }
 
 
   // ── 선택/일괄 처리 ──────────────────────
-  function plVisibleItems(items) {
+  function plVisibleItems(items, roomById) {
     var q = ((document.getElementById('pl-search')||{}).value||'').toLowerCase();
     var fs = (document.getElementById('pl-filter-status')||{}).value||'';
     var showArchived = !!((document.getElementById('pl-show-archived')||{}).checked);
@@ -42027,7 +42092,7 @@ window.addEventListener('DOMContentLoaded', () => {
     return (items || []).filter(function(it){
       it = plNormalizeItem(it);
       var isArchived = !!it.archived;
-      var simple = plSimpleStatusKey(it.status);
+      var simple = plEffectiveSimpleStatus(it, roomById);
       if (fs) {
         if (simple !== fs) return false;
       } else {
@@ -42051,7 +42116,10 @@ window.addEventListener('DOMContentLoaded', () => {
     renderPropertyList();
   };
   window.plToggleAllVisible = function(checked) {
-    plVisibleItems(plLoad()).forEach(function(it){ if (checked) plSelectedMap[it.id]=true; else delete plSelectedMap[it.id]; });
+    var rooms = getWrRooms();
+    var roomById = {};
+    (rooms || []).forEach(function(r){ if (r && r.id) roomById[String(r.id)] = r; });
+    plVisibleItems(plLoad(), roomById).forEach(function(it){ if (checked) plSelectedMap[it.id]=true; else delete plSelectedMap[it.id]; });
     renderPropertyList();
   };
   window.plClearSelection = function() { plSelectedMap = {}; renderPropertyList(); };
@@ -42192,6 +42260,7 @@ window.addEventListener('DOMContentLoaded', () => {
   window.renderPropertyList = function() {
     _plWrapSavedListSync();
     _plWrapWorkroomSync();
+    plEnsureListCloudRefresh();
     var items = plLoad();
     var savedList = plGetSavedItems();
     if (!window.__plInitSavedSyncDone) {
@@ -42199,13 +42268,13 @@ window.addEventListener('DOMContentLoaded', () => {
       try { plSyncFromSavedItems(savedList, { render: false }); } catch(e) {}
       items = plLoad();
     }
-    var savedById = {};
-    (savedList || []).forEach(function(s){ if (s && s.id != null) savedById[String(s.id)] = s; });
-    renderAlerts(items.filter(function(it){ return !it.archived; }));
-    var filtered = plVisibleItems(items);
     var rooms = getWrRooms();
     var roomById = {};
     (rooms || []).forEach(function(r){ if (r && r.id) roomById[String(r.id)] = r; });
+    var savedById = {};
+    (savedList || []).forEach(function(s){ if (s && s.id != null) savedById[String(s.id)] = s; });
+    renderAlerts(items.filter(function(it){ return !it.archived; }), roomById);
+    var filtered = plVisibleItems(items, roomById);
     var roomOptionsHtml = (rooms || []).map(function(r){
       var title = ((r.title || r.name || '(이름없음)').substring(0, 24));
       return '<option value="' + plEscHtml(r.id) + '">' + plEscHtml(title) + '</option>';
@@ -42222,6 +42291,7 @@ window.addEventListener('DOMContentLoaded', () => {
           : d<=7 ? '<div style="font-size:10px;color:#f5a623;font-weight:700;">D-'+d+'</div>'
           : '<div style="font-size:10px;color:var(--fg3);">D-'+d+'</div>';
         var room = it.roomId ? roomById[String(it.roomId)] : null;
+        var simpleStatus = plEffectiveSimpleStatus(it, roomById);
         var wrLink = plQuickRoomControlHtml(it, roomOptionsHtml);
         if (room) {
           var roomTitle = ((room.title || room.name || '작업룸').substring(0, 12));
@@ -42231,9 +42301,9 @@ window.addEventListener('DOMContentLoaded', () => {
             + '</div>';
         }
         var resultTag = '';
-        if ((it.status === 'closed' || it.status==='archived') && it.result && it.result.won) resultTag = '<div style="font-size:10px;color:#4caf87;margin-top:2px;">낙 '+it.result.won+'</div>';
+        if (simpleStatus === 'closed' && it.result && it.result.won) resultTag = '<div style="font-size:10px;color:#4caf87;margin-top:2px;">낙 '+it.result.won+'</div>';
         var isPast = (d !== null && d < 0);
-        var isClosed = plSimpleStatusKey(it.status) === 'closed';
+        var isClosed = simpleStatus === 'closed';
         var rowClass = (isPast ? 'pl-past ' : '') + (isClosed ? 'pl-closed' : '');
         var rowStyle = (it.archived?'opacity:.65;':'')
           + ((isPast && !isClosed)?'background:rgba(50,52,72,.34);':'')
@@ -42253,7 +42323,7 @@ window.addEventListener('DOMContentLoaded', () => {
         }
         return '<tr class="'+rowClass+'" style="'+rowStyle+'" data-plid="'+it.id+'">'
           + '<td style="padding:8px 8px;text-align:center;"><input type="checkbox" '+(plSelectedMap[it.id]?'checked':'')+' onclick="event.stopPropagation();plToggleOne(\''+it.id+'\',this.checked)"></td>'
-          + '<td style="padding:8px 10px;" onclick="event.stopPropagation()">'+statusCell(it)+'</td>'
+          + '<td style="padding:8px 10px;" onclick="event.stopPropagation()">'+statusCell(it, simpleStatus)+'</td>'
           + '<td style="padding:8px 8px;font-size:12px;color:var(--fg2);white-space:nowrap;" onclick="event.stopPropagation()">'+plSelectCell(it.id,'type',it.type||'경매',[['경매','경매'],['일반','일반'],['온비드','온비드'],['공매','공매'],['NPL','NPL']],{minw:'48px'})+'</td>'
           + '<td style="padding:8px 6px;text-align:center;" onclick="event.stopPropagation()">'+intentCell(it)+'</td>'
           + '<td style="padding:8px 10px;overflow:hidden;"><div style="font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+plEscHtml(rowName||'')+'">'+plEscHtml(rowName||'—')+'</div>'+resultTag+'</td>'
@@ -42274,7 +42344,7 @@ window.addEventListener('DOMContentLoaded', () => {
           + '<td style="padding:8px 10px;" onclick="event.stopPropagation()">'+wrLink+'</td>'
           + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'result_won',plDisplayMoney((it.result&&it.result.won)||''),plDisplayMan((it.result&&it.result.won)||''),{type:'text',align:'right',minw:'76px',placeholder:'만원',spanStyle:'color:#4caf87;font-weight:700;'})+'</td>'
           + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'bidders',it.bidders||'',it.bidders||'',{type:'text',align:'right',minw:'44px',placeholder:'—',empty:'—',spanStyle:'font-size:11px;'})+'</td>'
-          + '<td style="padding:8px 10px;max-width:180px;overflow:hidden;"><div style="overflow-x:auto;white-space:nowrap;max-width:100%;scrollbar-width:thin;">'+plEditMemoCellHtml(it.id,it.memo||'')+'</div></td>'
+          + '<td style="padding:8px 10px;max-width:180px;overflow:hidden;">'+plEditMemoCellHtml(it.id,it.memo||'')+'</td>'
           + '<td style="padding:8px 6px;text-align:center;"><button onclick="event.stopPropagation();plOpenEdit(\''+it.id+'\')" style="background:none;border:none;color:var(--fg3);cursor:pointer;font-size:15px;padding:2px 4px;">···</button></td>'
           + '</tr>';
       }).join('');
@@ -42283,7 +42353,7 @@ window.addEventListener('DOMContentLoaded', () => {
     var cnt = document.getElementById('pl-count');
     if (cnt) {
       var activeItems = items.filter(function(i){return !i.archived;});
-      cnt.textContent = '총 '+activeItems.length+'건 · 진행중 '+activeItems.filter(function(i){return plSimpleStatusKey(i.status) !== 'closed';}).length+'건';
+      cnt.textContent = '총 '+activeItems.length+'건 · 진행중 '+activeItems.filter(function(i){return plEffectiveSimpleStatus(i, roomById) !== 'closed';}).length+'건';
     }
   };
 
