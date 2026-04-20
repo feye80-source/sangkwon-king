@@ -4543,7 +4543,7 @@ var _safeLocalSet = function(key, value) {
                         + (no ? ('<span style="color:#7bb4ff;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px;">' + esc(no) + '</span>') : '')
                         + (price ? ('<span style="color:#ffb36c;white-space:nowrap;font-weight:700;">' + esc(price) + '</span>') : '')
                         + (ddayLabel ? ('<span style="color:#ff6b6b;white-space:nowrap;font-weight:700;">' + esc(ddayLabel) + '</span>') : '')
-                        + (saleOverdueNeedsAction ? ('<span style="padding:1px 6px;border-radius:999px;border:1px solid rgba(255,107,122,.42);background:rgba(255,107,122,.14);color:#ff94a1;font-size:10px;font-weight:700;white-space:nowrap;">⚠ 기일지남</span>') : '')
+                        + (saleOverdueNeedsAction ? ('<span style="padding:1px 6px;border-radius:999px;border:1px solid rgba(255,107,122,.52);background:rgba(255,107,122,.16);color:#ff9eab;font-size:10px;font-weight:800;white-space:nowrap;">⚠ 기일지남 · 수정필요</span>') : '')
                         + '</div>'
                         + (addr ? ('<div style="margin-top:2px;color:#8ea7c9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(addr) + '</div>') : '');
                     } else {
@@ -5282,7 +5282,7 @@ var _safeLocalSet = function(key, value) {
                   const saleDday = wr2CalcDdayFromDate(saleDateObj);
                   const saleDdayLabel = (saleDday == null)
                     ? ''
-                    : (saleDday < 0 ? '기일지남' : (saleDday === 0 ? 'D-Day' : 'D-' + saleDday));
+                    : (saleDday < 0 ? '기일지남·수정필요' : (saleDday === 0 ? 'D-Day' : 'D-' + saleDday));
                   const lifecycle = wr2GetLifecycle(room);
                   const saleOverdueNeedsAction = !!(saleDateRaw && saleDday != null && saleDday < 0 && lifecycle !== 'closed');
                   const warnTone = saleOverdueNeedsAction ? '#ff6b7a' : '#ff8c42';
@@ -5382,7 +5382,7 @@ var _safeLocalSet = function(key, value) {
                   }
                   if (saleOverdueNeedsAction) {
                     html += `<div class="wr2-summary-alert" style="margin:6px 0 2px;padding:8px 10px;border-radius:8px;border:1px solid rgba(255,107,122,.36);background:rgba(255,107,122,.1);font-size:11px;line-height:1.45;color:#ffd5da;">
-                      ⚠ 매각기일이 지났습니다. 매각 완료면 <b>종료</b> 처리, 유찰이면 <b>다음 금액/다음 매각기일</b>을 업데이트하세요.
+                      ⚠ 매각기일이 지났습니다. <b>자동 갱신되지 않으므로</b> 매각 완료면 <b>종료</b>, 유찰이면 <b>다음 금액/다음 매각기일</b>을 수동 업데이트하세요.
                     </div>`;
                   }
 
@@ -7866,6 +7866,7 @@ window.wr2SummaryCancelEdit = function() {
 
     function _getVisualCardClass(type) {
       if (type === 'auction') return 'auction-card';
+      if (type === 'onbid') return 'onbid-card';
       if (type === 'jumpo') return 'jumpo-card';
       if (type === 'nemo') return 'nemo-card';
       if (type === 'assa') return 'assa-card';
@@ -7878,6 +7879,7 @@ window.wr2SummaryCancelEdit = function() {
 
     function _getVisualModeChar(type) {
       if (type === 'auction') return 'a';
+      if (type === 'onbid') return 'p';
       if (type === 'disco') return 'd';
       if (type === 'bds') return 'b';
       if (type === 'transaction') return 't';
@@ -7890,6 +7892,7 @@ window.wr2SummaryCancelEdit = function() {
 
     function _getVisualLineColor(type) {
       if (type === 'auction') return '#ff8c00';
+      if (type === 'onbid') return '#d97706';
       if (type === 'jumpo') return '#8dc21f';
       if (type === 'nemo') return '#fe2c54';
       if (type === 'assa') return '#2046d8';
@@ -7961,9 +7964,9 @@ window.wr2SummaryCancelEdit = function() {
       onbid: {
         type: 'onbid',
         label: '🛡️ 온비드',
-        color: 'var(--or)',
-        bg: 'rgba(255,140,66,.10)',
-        border: 'rgba(255,140,66,.25)'
+        color: 'var(--onbid-c)',
+        bg: 'var(--onbid-bg)',
+        border: 'var(--onbid-border)'
       },
       disco: {
         type: 'disco',
@@ -13763,7 +13766,9 @@ window.wr2SummaryCancelEdit = function() {
         if (n.평당가_만원) extraRows += _sied('평당가', '평당가_만원', (function (v) { const nv = Math.round(v); if (nv >= 10000) { const e = Math.floor(nv / 10000), m = nv % 10000; return m ? e + '억 ' + m.toLocaleString() + '만원/평' : e + '억원/평'; } return nv.toLocaleString() + '만원/평'; })(n.평당가_만원), n.평당가_만원, true);
         if (saleDateRaw) {
           const tone = isSaleOverdue ? '#ff6b7a' : (saleDday != null && saleDday <= 3 ? '#ff8c42' : '#4ade80');
-          const saleText = saleDdayLabel ? `${saleDateRaw} (${saleDdayLabel})` : saleDateRaw;
+          const saleText = saleDdayLabel
+            ? `${saleDateRaw} (${saleDdayLabel}${isSaleOverdue ? ' · 수동수정' : ''})`
+            : saleDateRaw;
           extraRows += _sied('매각일', '매각기일', saleText, saleDateRaw, true, `color:${tone};font-weight:700;`);
         }
         if (n.유찰횟수 != null && n.유찰횟수 !== '') extraRows += _sied('유찰', '유찰횟수', n.유찰횟수 + '회', n.유찰횟수, true);
@@ -13883,6 +13888,28 @@ window.wr2SummaryCancelEdit = function() {
       const wsMap = { 'interest': { icon: '👀', label: '관심',  color: '#94a3b8', bg: 'rgba(148,163,184,.15)' }, 'review': { icon: '🔍', label: '검토중', color: '#60a5fa', bg: 'rgba(96,165,250,.15)' }, 'field': { icon: '📍', label: '현장', color: '#fbbf24', bg: 'rgba(251,191,36,.15)' }, 'bid': { icon: '🎯', label: '입찰', color: '#f97316', bg: 'rgba(249,115,22,.15)' }, 'won': { icon: '✅', label: '낙찰', color: '#4ade80', bg: 'rgba(74,222,128,.15)' }, 'pass': { icon: '🚫', label: '패스', color: '#6b7280', bg: 'rgba(107,114,128,.15)' } };
       const wsInfo = wsMap[ws] || null;
       const wsBadge = wsInfo ? `<span onclick="event.stopPropagation();cycleWatchStatus('${item.id}')" title="클릭하여 상태 변경" style="padding:1px 5px;border-radius:4px;font-size:9px;font-weight:600;color:${wsInfo.color};background:${wsInfo.bg};cursor:pointer;white-space:nowrap;">${wsInfo.icon}${wsInfo.label}</span>` : `<span onclick="event.stopPropagation();cycleWatchStatus('${item.id}')" title="관심 표시" style="padding:1px 5px;border-radius:4px;font-size:9px;color:var(--di);background:var(--s2);border:1px dashed var(--di);cursor:pointer;white-space:nowrap;">+검토</span>`;
+      const itemIdJs = String(item.id || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+      const linkedRoom = (function(){
+        try {
+          const rooms = (typeof wrGetRooms === 'function') ? (wrGetRooms() || []) : [];
+          const itemIdStr = String(item.id || '');
+          return rooms
+            .filter(r => r && (
+              (r.linkedSavedId && String(r.linkedSavedId) === itemIdStr) ||
+              (r.auctionId && String(r.auctionId) === itemIdStr) ||
+              (r.listingId && String(r.listingId) === itemIdStr) ||
+              ((r.linkedItems || []).map(String).includes(itemIdStr))
+            ))
+            .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0] || null;
+        } catch (e) {
+          return null;
+        }
+      })();
+      const linkedRoomIdJs = linkedRoom ? String(linkedRoom.id || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'") : '';
+      const linkedRoomTitle = linkedRoom ? String(linkedRoom.title || linkedRoom.name || '작업룸') : '';
+      const roomBtnHtml = linkedRoom
+        ? `<button onclick="event.stopPropagation();if(typeof pmOpenWorkroom==='function'){pmOpenWorkroom('${linkedRoomIdJs}');}else if(typeof wr2OpenOrCreateFromSavedId==='function'){wr2OpenOrCreateFromSavedId('${itemIdJs}');}" class="sc-btn" style="background:rgba(74,222,128,.12);color:#8fffd0;border-color:rgba(74,222,128,.42);" title="연결됨: ${esc(linkedRoomTitle)}">🗂 연결됨</button>`
+        : `<button onclick="event.stopPropagation();wr2OpenOrCreateFromSavedId('${itemIdJs}')" class="sc-btn" style="background:rgba(17,157,237,.1);color:#119ded;border-color:rgba(17,157,237,.3);" title="작업룸 생성/연결">🗂 룸</button>`;
       // ── source 기준 색상 결정 (mode 기준 제거) ──────────────────
       // CSV 실거래만 노란색, 디스코→보라, 플래닛→하늘색, 나머지는 출처별
       const visualMeta = _getSavedItemVisualMeta(item, item.propertyType);
@@ -13902,7 +13929,6 @@ window.wr2SummaryCancelEdit = function() {
         <div style="display:flex;align-items:center;gap:4px;margin-bottom:3px;">
           <span class="sc-mode ${modeClsChar}">${modeLabel}</span>
           ${wsBadge}
-          ${(() => { const k = inferDealKind(d); return k === 'sale' ? '<span style="font-size:9px;background:rgba(79,142,255,.15);color:#4f8eff;border:1px solid rgba(79,142,255,.3);border-radius:3px;padding:0 4px;">💙매매</span>' : k === 'rent' ? '<span style="font-size:9px;background:rgba(255,140,66,.15);color:#ff8c42;border:1px solid rgba(255,140,66,.3);border-radius:3px;padding:0 4px;">🧡임대</span>' : ''; })()}
           ${item.memo ? '<span style="font-size:10px;">📝</span>' : ''}
         </div>
         <div style="display:flex;align-items:center;gap:4px;">
@@ -13920,18 +13946,25 @@ window.wr2SummaryCancelEdit = function() {
       <div class="sc-foot">
         <span onclick="event.stopPropagation();delSv('${item.id}')" style="color:var(--di);font-size:13px;cursor:pointer;padding:1px 3px;" title="삭제">×</span>
         <div class="sc-foot-btns">
-          ${src === '디스코' && originalUrl ? `<a href="${esc(originalUrl)}" target="_blank" onclick="event.stopPropagation()" class="sc-btn sc-btn-detail" style="background:rgba(203,89,255,.12);color:#cb59ff;border-color:rgba(203,89,255,.4);">🔗 원본</a>` : (originalUrl && src !== '디스코') ? (_isAssaSource(src) ? `<button onclick="event.stopPropagation();assaOpenDetail('${esc(originalUrl)}')" class="sc-btn sc-btn-detail">🔗 원본</button>` : `<a href="${esc(originalUrl)}" target="_blank" onclick="event.stopPropagation()" class="sc-btn sc-btn-detail">🔗 원본</a>`) : `<button onclick="event.stopPropagation();promptSavedOriginalUrl('${item.id}')" class="sc-btn sc-btn-detail" style="background:rgba(255,255,255,.05);color:var(--di);border-style:dashed;">🔗 원본없음</button>`}
+          ${ia
+            ? `<button onclick="event.stopPropagation();openAuctionLinkOrPdf('${itemIdJs}','${esc(auctionSiteUrl)}')" class="sc-btn sc-btn-detail" style="background:rgba(255,140,66,.1);color:#ff8c42;border-color:rgba(255,140,66,.4);" title="원본/경매 페이지 열기">🔗 원본</button>`
+            : (src === '디스코' && originalUrl
+              ? `<a href="${esc(originalUrl)}" target="_blank" onclick="event.stopPropagation()" class="sc-btn sc-btn-detail" style="background:rgba(203,89,255,.12);color:#cb59ff;border-color:rgba(203,89,255,.4);">🔗 원본</a>`
+              : (originalUrl && src !== '디스코')
+                ? (_isAssaSource(src)
+                  ? `<button onclick="event.stopPropagation();assaOpenDetail('${esc(originalUrl)}')" class="sc-btn sc-btn-detail">🔗 원본</button>`
+                  : `<a href="${esc(originalUrl)}" target="_blank" onclick="event.stopPropagation()" class="sc-btn sc-btn-detail">🔗 원본</a>`)
+                : `<button onclick="event.stopPropagation();promptSavedOriginalUrl('${item.id}')" class="sc-btn sc-btn-detail" style="background:rgba(255,255,255,.05);color:var(--di);border-style:dashed;">🔗 원본없음</button>`)}
           ${src === '점포라인' ? `<a href="https://map.jumpoline.com/main" target="_blank" onclick="event.stopPropagation()" class="sc-btn sc-btn-map">🗺️ 지도</a>` : ''}
           ${(src === '네이버부동산' || src === '네이버' || src === 'naver') ? `<a href="${(() => { const lat = d.lat || item.lat; const lng = d.lng || item.lng; return (lat && lng) ? `https://new.land.naver.com/offices?ms=${lat},${lng},17&a=SG:SMS:APTHGJ&e=RETAIL` : `https://new.land.naver.com/`; })()}" target="_blank" onclick="event.stopPropagation()" class="sc-btn sc-btn-map">🗺️ 지도</a>` : ''}
           ${_isAssaSource(src) ? `<a href="https://xn--v69ap5so3hsnb81e1wfh6z.com/map" target="_blank" onclick="event.stopPropagation()" class="sc-btn sc-btn-map">🗺️ 지도</a>` : ''}
           ${src === '부동산플래닛' ? `<button onclick="event.stopPropagation();(()=>{const _a=(item.data&&item.data.소재지)||d.소재지||'';if(_a){try{navigator.clipboard.writeText(_a);}catch(e){}const ta=document.createElement('textarea');ta.value=_a;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.focus();ta.select();try{document.execCommand('copy');}catch(e){}document.body.removeChild(ta);}window.open('https://www.bdsplanet.com/map/realprice_map.ytp','_blank');})()" class="sc-btn sc-btn-map" style="background:rgba(17,157,237,.12);color:#119ded;border-color:rgba(17,157,237,.4);" title="${esc(String((item.data && item.data.소재지) || d.소재지 || ''))}">🌍 플래닛</button>` : ''}
-          ${ia ? `<button onclick="event.stopPropagation();openAuctionLinkOrPdf('${item.id}','${esc(auctionSiteUrl)}')" class="sc-btn sc-btn-detail" style="background:rgba(255,140,66,.1);color:#ff8c42;border-color:rgba(255,140,66,.4);" title="경매 사이트로 이동">⚖️ 경매사이트</button>` : ''}
           ${(ia && d.소재지 && d.소재지.trim().length >= 3) ? `<a href="https://map.naver.com/v5/search/${encodeURIComponent(d.소재지.trim())}" target="_blank" onclick="event.stopPropagation()" class="sc-btn" style="background:rgba(4,222,91,.12);color:#04de5b;border-color:rgba(4,222,91,.4);">🗺️ 지도</a>` : ''}
           ${(ia && d.소재지 && d.소재지.trim().length >= 3) ? `<a href="https://new.land.naver.com/offices?query=${encodeURIComponent(d.소재지.trim())}&a=SG:SMS:APTHGJ&e=RETAIL" target="_blank" onclick="event.stopPropagation()" class="sc-btn" style="background:rgba(4,222,91,.12);color:#04de5b;border-color:rgba(4,222,91,.4);">🏠 부동산</a>` : ''}
           ${(!ia && !d.상세URL && d.소재지 && d.소재지.trim().length >= 3 && item.mode !== 'transaction' && src !== '디스코' && src !== '부동산플래닛') ? `<a href="https://map.naver.com/v5/search/${encodeURIComponent(d.소재지.trim())}" target="_blank" onclick="event.stopPropagation()" class="sc-btn" style="background:rgba(4,222,91,.12);color:#04de5b;border-color:rgba(4,222,91,.4);">🗺️ 지도</a>` : ''}
           ${(!ia && !d.상세URL && d.소재지 && d.소재지.trim().length >= 3 && item.mode !== 'transaction' && src !== '디스코' && src !== '부동산플래닛') ? `<a href="https://new.land.naver.com/offices?query=${encodeURIComponent(d.소재지.trim())}&a=SG:SMS:APTHGJ&e=RETAIL" target="_blank" onclick="event.stopPropagation()" class="sc-btn" style="background:rgba(4,222,91,.12);color:#04de5b;border-color:rgba(4,222,91,.4);">🏠 부동산</a>` : ''}
           ${_hasItemMapTarget(item) ? `<button onclick="event.stopPropagation();goToMapFromCard('${item.id}')" class="sc-btn sc-btn-mymap">📍 내 지도</button>` : ''}
-          <button onclick="event.stopPropagation();wr2OpenOrCreateFromSavedId('${item.id}')" class="sc-btn" style="background:rgba(17,157,237,.1);color:#119ded;border-color:rgba(17,157,237,.3);" title="작업룸에 연결">🗂 룸</button>
+          ${roomBtnHtml}
           <span style="font-size:9px;color:var(--di);white-space:nowrap;">${ts}</span>
         </div>
       </div>
@@ -32563,7 +32596,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
               const dDay = _saleDt ? _calcDday(_saleDt) : null;
               if (dDay != null) {
                 const dColor = dDay < 0 ? 'var(--di)' : dDay <= 3 ? '#ff6370' : dDay <= 7 ? 'var(--or)' : '#4ade80';
-                const dLabel = dDay < 0 ? '기일지남' : (dDay === 0 ? 'D-Day' : 'D-' + dDay);
+                const dLabel = dDay < 0 ? '기일지남·수정' : (dDay === 0 ? 'D-Day' : 'D-' + dDay);
                 ddayHtml = `<span style="font-size:10px;font-weight:700;color:${dColor};background:${dColor}18;padding:1px 5px;border-radius:4px;">${dLabel}</span>`;
               }
             }
@@ -41783,6 +41816,150 @@ window.addEventListener('DOMContentLoaded', () => {
   }
   window._plSyncFromSavedItems = plSyncFromSavedItems;
 
+  function plComparableSnapshot(item) {
+    var norm = plNormalizeItem(item || {});
+    delete norm.createdAt;
+    delete norm.updatedAt;
+    return JSON.stringify(norm);
+  }
+  function plResolveRoomLinkedSavedId(room, savedById) {
+    if (!room) return '';
+    var candidates = [];
+    function push(v) {
+      if (v === null || v === undefined) return;
+      var s = String(v).trim();
+      if (!s) return;
+      if (candidates.indexOf(s) < 0) candidates.push(s);
+    }
+    push(room.linkedSavedId);
+    push(room.auctionId);
+    push(room.listingId);
+    (room.linkedItems || []).forEach(push);
+    for (var i = 0; i < candidates.length; i += 1) {
+      if (!savedById || savedById[candidates[i]]) return candidates[i];
+    }
+    return candidates[0] || '';
+  }
+  function plStatusFromRoom(room, fallbackStatus) {
+    var base = String(fallbackStatus || 'review');
+    var lifeRaw = String((room && (room.lifecycleStatus || room.status || room.phase)) || '');
+    var simple = plSimpleStatusKey(lifeRaw);
+    if (simple === 'closed') return 'closed';
+    if (simple === 'changed') {
+      if (base === 'field' || base === 'bid' || base === 'won' || base === 'sell') return base;
+      return 'field';
+    }
+    if (simple === 'active') {
+      if (base === 'closed' || base === 'archived') return 'review';
+      return base || 'review';
+    }
+    return base || 'review';
+  }
+  function plBuildFromRoom(room, savedItem, prevItem, resolvedSavedId) {
+    var prev = plNormalizeItem(prevItem || {});
+    var next = plNormalizeItem(prev);
+    var baseSavedPatch = savedItem ? plBuildPatchFromSaved(savedItem, next) : null;
+    if (baseSavedPatch) next = plNormalizeItem(Object.assign({}, next, baseSavedPatch));
+
+    if (room && room.id) next.roomId = String(room.id);
+    if (resolvedSavedId || (savedItem && savedItem.id != null)) {
+      next.linkedSavedId = String((savedItem && savedItem.id != null) ? savedItem.id : resolvedSavedId);
+    }
+
+    var roomTitle = String((room && (room.title || room.name)) || '').trim();
+    var roomAddr = String((room && room.address) || '').trim();
+    if (roomTitle) next.addr = roomTitle;
+    if (roomAddr) next.region = roomAddr;
+
+    next.status = plStatusFromRoom(room, next.status || 'review');
+    next.archived = (next.status === 'archived');
+
+    var closeSummary = (room && room.closedSummary) ? room.closedSummary : null;
+    if (closeSummary) {
+      var finalBid = String(closeSummary.finalBidPrice || '').trim();
+      var bidderCount = String(closeSummary.bidderCount || '').trim();
+      var closeMemo = String(closeSummary.memo || '').trim();
+      if (finalBid) {
+        var wonMan = plParseAmountText(finalBid);
+        next.result = Object.assign({}, next.result || {}, { won: wonMan || finalBid });
+      }
+      if (bidderCount) next.bidders = bidderCount;
+      if (closeMemo) next.memo = closeMemo;
+    }
+    return plNormalizeItem(next);
+  }
+  function plSyncFromWorkrooms(opts) {
+    opts = opts || {};
+    var rooms = getWrRooms().filter(function(r){ return r && r.id && !r.deletedAt; });
+    if (!rooms.length) return false;
+
+    var savedItems = Array.isArray(opts.savedItems) ? opts.savedItems : plGetSavedItems();
+    var savedById = {};
+    (savedItems || []).forEach(function(s){ if (s && s.id != null) savedById[String(s.id)] = s; });
+
+    var items = plLoad();
+    var nextItems = items.slice();
+    var byRoom = {};
+    var byLinked = {};
+    nextItems.forEach(function(it) {
+      if (!it) return;
+      if (it.roomId) byRoom[String(it.roomId)] = it;
+      if (it.linkedSavedId && !byLinked[String(it.linkedSavedId)]) byLinked[String(it.linkedSavedId)] = it;
+    });
+
+    var changed = false;
+    var usedExisting = {};
+
+    rooms.forEach(function(room) {
+      var roomId = String(room.id);
+      var linkedSavedId = plResolveRoomLinkedSavedId(room, savedById);
+      var savedItem = linkedSavedId ? savedById[linkedSavedId] : null;
+
+      var existing = byRoom[roomId] || null;
+      if (!existing && linkedSavedId) existing = byLinked[linkedSavedId] || null;
+      if (existing && usedExisting[String(existing.id)]) existing = null;
+      if (existing) usedExisting[String(existing.id)] = true;
+
+      var fallbackBase = existing || plNormalizeItem({
+        id: 'pl_room_' + roomId,
+        roomId: roomId,
+        linkedSavedId: linkedSavedId || '',
+        status: 'review',
+        type: savedItem && plIsPublicAuctionSaved(savedItem) ? '공매' : '경매',
+        addr: room.title || room.name || '',
+        region: room.address || '',
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      });
+
+      var built = plBuildFromRoom(room, savedItem, fallbackBase, linkedSavedId);
+      built.id = String((existing && existing.id) || fallbackBase.id || ('pl_room_' + roomId));
+      built.createdAt = (existing && existing.createdAt) || fallbackBase.createdAt || Date.now();
+
+      if (!existing) {
+        built.updatedAt = Date.now();
+        nextItems.push(plNormalizeItem(built));
+        changed = true;
+        return;
+      }
+
+      var before = plComparableSnapshot(existing);
+      var after = plComparableSnapshot(built);
+      if (before !== after) {
+        built.updatedAt = Date.now();
+        var idx = nextItems.findIndex(function(it){ return String(it && it.id) === String(existing.id); });
+        if (idx >= 0) nextItems[idx] = plNormalizeItem(built);
+        changed = true;
+      }
+    });
+
+    if (!changed) return false;
+    plSave(nextItems.map(plNormalizeItem));
+    if (opts.render !== false && typeof renderPropertyList === 'function') renderPropertyList();
+    return true;
+  }
+  window._plSyncFromWorkrooms = plSyncFromWorkrooms;
+
   // ── 날짜 유틸 ──────────────────────────
   function daysDiff(dateStr) {
     if (!dateStr) return null;
@@ -42047,6 +42224,7 @@ window.addEventListener('DOMContentLoaded', () => {
       window.wrDbUpdateStatus = function(id, val) {
         _origWrDbUpdateStatus(id, val);
         syncPropertyFromRoom(id, { status: val, archived: false });
+        try { plSyncFromWorkrooms({ render: false }); } catch (e) {}
       };
     }
     if (typeof window.updateRoom === 'function') {
@@ -42068,6 +42246,7 @@ window.addEventListener('DOMContentLoaded', () => {
             lifecycleStatus: patch.lifecycleStatus,
             closedSummary: patch.closedSummary
           });
+          try { plSyncFromWorkrooms({ render: false }); } catch (e) {}
         }
         return out;
       };
@@ -42111,7 +42290,7 @@ window.addEventListener('DOMContentLoaded', () => {
     var el = document.getElementById('pl-alerts');
     if (!el) return;
     var chips = [];
-    if (overdue.length) chips.push('<span style="padding:6px 14px;border-radius:20px;font-size:12px;font-weight:600;background:#3a0000;color:#ff6b6b;border:1px solid #ff6b6b55;cursor:pointer;" onclick="document.getElementById(\'pl-filter-status\').value=\'\';renderPropertyList()">● 결과 미입력 '+overdue.length+'건 — 활성 상태 기일 지남</span>');
+    if (overdue.length) chips.push('<span style="padding:6px 14px;border-radius:20px;font-size:12px;font-weight:700;background:#3a0000;color:#ff8e9a;border:1px solid #ff6b6b66;cursor:pointer;" onclick="document.getElementById(\'pl-filter-status\').value=\'\';renderPropertyList()">⚠ 기일지남 '+overdue.length+'건 — 자동갱신 없음 · 수동 수정 필요</span>');
     if (needField.length) chips.push('<span style="padding:6px 14px;border-radius:20px;font-size:12px;font-weight:600;background:#3a2e00;color:#f5a623;border:1px solid #f5a62355;">● 임장 필요 '+needField.length+'건 — 7일 이내 & 임장 없음</span>');
     if (needBid.length)   chips.push('<span style="padding:6px 14px;border-radius:20px;font-size:12px;font-weight:600;background:#003050;color:#4f8eff;border:1px solid #4f8eff55;">● 입찰 준비 '+needBid.length+'건 — 3일 이내</span>');
     el.innerHTML = chips.join('');
@@ -42143,6 +42322,9 @@ window.addEventListener('DOMContentLoaded', () => {
     var showClosed = !!((document.getElementById('pl-show-closed')||{}).checked);
     return (items || []).filter(function(it){
       it = plNormalizeItem(it);
+      // 물건리스트는 작업룸 기반으로만 노출 (작업룸=물건리스트)
+      if (!it.roomId) return false;
+      if (roomById && !roomById[String(it.roomId)]) return false;
       var isArchived = !!it.archived;
       var simple = plEffectiveSimpleStatus(it, roomById);
       if (fs) {
@@ -42313,19 +42495,22 @@ window.addEventListener('DOMContentLoaded', () => {
     _plWrapSavedListSync();
     _plWrapWorkroomSync();
     plEnsureListCloudRefresh();
-    var items = plLoad();
     var savedList = plGetSavedItems();
+    var items = plLoad();
     if (!window.__plInitSavedSyncDone) {
       window.__plInitSavedSyncDone = true;
       try { plSyncFromSavedItems(savedList, { render: false }); } catch(e) {}
-      items = plLoad();
     }
+    try { plSyncFromWorkrooms({ render: false, savedItems: savedList }); } catch(e) {}
+    items = plLoad();
     var rooms = getWrRooms();
     var roomById = {};
     (rooms || []).forEach(function(r){ if (r && r.id) roomById[String(r.id)] = r; });
     var savedById = {};
     (savedList || []).forEach(function(s){ if (s && s.id != null) savedById[String(s.id)] = s; });
-    renderAlerts(items.filter(function(it){ return !it.archived; }), roomById);
+    renderAlerts(items.filter(function(it){
+      return it && !it.archived && it.roomId && roomById[String(it.roomId)];
+    }), roomById);
     var filtered = plVisibleItems(items, roomById);
     var roomOptionsHtml = (rooms || []).map(function(r){
       var title = ((r.title || r.name || '(이름없음)').substring(0, 24));
@@ -42334,11 +42519,11 @@ window.addEventListener('DOMContentLoaded', () => {
     var tbody = document.getElementById('pl-tbody');
     if (!tbody) return;
     if (!filtered.length) {
-      tbody.innerHTML = '<tr><td colspan="20" style="padding:40px;text-align:center;color:var(--fg3);">물건이 없어요. + 물건 추가 또는 저장목록 경매 가져오기로 시작하세요.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="20" style="padding:40px;text-align:center;color:var(--fg3);">작업룸에 연결된 물건이 없어요. 작업룸을 만들거나 물건을 연결하면 자동으로 여기에 반영됩니다.</td></tr>';
     } else {
       tbody.innerHTML = filtered.map(function(it){
         var d = daysDiff(it.biddate);
-        var dTag = d===null ? '' : d<0 ? '<div style="font-size:10px;color:#888;">기일지남</div>'
+        var dTag = d===null ? '' : d<0 ? '<div style="font-size:10px;color:#ff6b7a;font-weight:800;">지난 기일 · 수정필요</div>'
           : d<=3 ? '<div style="font-size:10px;color:#ff6b6b;font-weight:700;">D-'+d+'</div>'
           : d<=7 ? '<div style="font-size:10px;color:#f5a623;font-weight:700;">D-'+d+'</div>'
           : '<div style="font-size:10px;color:var(--fg3);">D-'+d+'</div>';
@@ -42356,9 +42541,8 @@ window.addEventListener('DOMContentLoaded', () => {
         if (simpleStatus === 'closed' && it.result && it.result.won) resultTag = '<div style="font-size:10px;color:#4caf87;margin-top:2px;">낙 '+(plDisplayMan(it.result.won) || it.result.won)+'</div>';
         var isPast = (d !== null && d < 0);
         var isClosed = simpleStatus === 'closed';
-        var rowClass = (isPast ? 'pl-past ' : '') + (isClosed ? 'pl-closed' : '');
+        var rowClass = (isClosed ? 'pl-closed' : '');
         var rowStyle = (it.archived?'opacity:.65;':'')
-          + ((isPast && !isClosed)?'background:rgba(50,52,72,.34);':'')
           + 'border-bottom:1px solid var(--b1);';
         var linkedId = it.linkedSavedId || '';
         var linkedSaved = linkedId ? savedById[String(linkedId)] : null;
@@ -42388,7 +42572,7 @@ window.addEventListener('DOMContentLoaded', () => {
           + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'monthly',plDisplayMoney(it.monthly||''),plDisplayMan(it.monthly||''),{type:'text',align:'right',minw:'60px',placeholder:'만원'})+'</td>'
           + '<td style="padding:8px 10px;text-align:center;font-size:12px;">'+(it.round||'—')+'</td>'
           + '<td style="padding:8px 10px;white-space:nowrap;">'
-          +   '<div style="font-size:13px;">'+plEditCellHtml(it.id,'biddate',it.biddate||'',fmtDate(it.biddate),{type:'text',align:'left',minw:'72px',placeholder:'YYYY-MM-DD',spanStyle:'color:'+(isPast?'#888':'var(--tx)')+';border-bottom-color:rgba(255,255,255,.10);'})+'</div>'
+          +   '<div style="font-size:13px;">'+plEditCellHtml(it.id,'biddate',it.biddate||'',fmtDate(it.biddate),{type:'text',align:'left',minw:'72px',placeholder:'YYYY-MM-DD',spanStyle:'color:'+(isPast?'#ff6b7a':'var(--tx)')+';font-weight:'+(isPast?'700':'500')+';border-bottom-color:rgba(255,255,255,.10);'})+'</div>'
           +   dTag
           + '</td>'
           + '<td style="padding:8px 10px;text-align:right;"><span style="'+(it.estimate?'background:rgba(255,209,102,.12);border-radius:4px;padding:1px 4px;':'')+'">'+plEditCellHtml(it.id,'estimate',plDisplayMoney(it.estimate||''),plDisplayMan(it.estimate||''),{type:'text',align:'right',minw:'72px',placeholder:'만원',spanStyle:'color:#ffd166;font-weight:700;'})+'</span></td>'
@@ -42404,7 +42588,9 @@ window.addEventListener('DOMContentLoaded', () => {
     plRenderBulkBar(filtered);
     var cnt = document.getElementById('pl-count');
     if (cnt) {
-      var activeItems = items.filter(function(i){return !i.archived;});
+      var activeItems = items.filter(function(i){
+        return i && !i.archived && i.roomId && roomById[String(i.roomId)];
+      });
       cnt.textContent = '총 '+activeItems.length+'건 · 진행중 '+activeItems.filter(function(i){return plEffectiveSimpleStatus(i, roomById) !== 'closed';}).length+'건';
     }
   };

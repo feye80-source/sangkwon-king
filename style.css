@@ -48,6 +48,9 @@
       --bds-c: #119ded;
       --bds-bg: rgba(17, 157, 237, .08);
       --bds-border: rgba(17, 157, 237, .30);
+      --onbid-c: #d97706;
+      --onbid-bg: rgba(217, 119, 6, .11);
+      --onbid-border: rgba(217, 119, 6, .32);
       --transaction-c: #eab308;
       --transaction-bg: rgba(234, 179, 8, .08);
       --transaction-border: rgba(234, 179, 8, .30);
@@ -257,27 +260,48 @@
       color: var(--ac);
       border-bottom-color: var(--ac);
     }
-    /* 물건관리 탭 기본 강조점 (탭 진입 전에도 시선 포인트) */
+    /* 물건관리 탭 강조: 밑줄/점 대신 주 메뉴 느낌의 배지형 스타일 */
     #nav4 {
       position: relative;
-      border-bottom-color: rgba(255, 163, 66, .35);
-      color: #b7c7df;
+      margin-left: 4px;
+      border: 1px solid rgba(255, 163, 66, .28);
+      border-bottom-color: rgba(255, 163, 66, .28) !important;
+      border-radius: 9px;
+      background: linear-gradient(180deg, rgba(255, 163, 66, .12), rgba(255, 163, 66, .04));
+      color: #ffd7ad;
+      box-shadow: inset 0 0 0 1px rgba(255, 163, 66, .08);
+    }
+    #nav4:hover {
+      border-color: rgba(255, 187, 119, .42);
+      background: linear-gradient(180deg, rgba(255, 177, 102, .16), rgba(255, 163, 66, .06));
+      color: #ffe5c6;
+    }
+    #nav4.on {
+      border-color: rgba(79, 142, 255, .58);
+      border-bottom-color: rgba(79, 142, 255, .58) !important;
+      background: linear-gradient(180deg, rgba(79, 142, 255, .28), rgba(79, 142, 255, .10));
+      color: #dbe9ff;
+      box-shadow: 0 0 0 1px rgba(79, 142, 255, .2), 0 6px 16px rgba(17, 35, 78, .35);
     }
     #nav4::after {
-      content: '';
+      content: 'MAIN';
       position: absolute;
-      right: 9px;
-      top: 6px;
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: rgba(255, 163, 66, .95);
-      box-shadow: 0 0 8px rgba(255, 163, 66, .55);
+      top: -7px;
+      right: 8px;
+      font-size: 8px;
+      font-weight: 700;
+      letter-spacing: .3px;
+      padding: 1px 5px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 163, 66, .38);
+      background: rgba(255, 163, 66, .16);
+      color: #ffd7ad;
       pointer-events: none;
     }
     #nav4.on::after {
-      background: rgba(79, 142, 255, .95);
-      box-shadow: 0 0 10px rgba(79, 142, 255, .62);
+      border-color: rgba(79, 142, 255, .55);
+      background: rgba(79, 142, 255, .2);
+      color: #dbe9ff;
     }
 
     .bcnt {
@@ -1311,8 +1335,8 @@
     }
 
     .sc.onbid-card {
-      border-left: 3px solid var(--auction-c);
-      background: var(--auction-bg);
+      border-left: 3px solid var(--onbid-c);
+      background: var(--onbid-bg);
     }
 
     .sc.listing-card {
@@ -1378,6 +1402,11 @@
       background: rgba(141, 194, 31, .12);
     }
 
+    .sc:hover.onbid-card {
+      box-shadow: 0 5px 18px rgba(56, 189, 248, .2);
+      background: rgba(56, 189, 248, .14);
+    }
+
     .sc:hover.assa-card {
       box-shadow: 0 5px 18px rgba(24, 94, 248, .15);
       background: rgba(24, 94, 248, .12);
@@ -1441,6 +1470,10 @@
 
     .sc-mode.a {
       color: var(--auction-c);
+    }
+
+    .sc-mode.p {
+      color: var(--onbid-c);
     }
 
     .sc-mode.l {
@@ -2396,6 +2429,10 @@
       stroke: var(--auction-c);
     }
 
+    .onbid-card .conn-line {
+      stroke: var(--onbid-c);
+    }
+
     .listing-card .conn-line {
       stroke: var(--listing-c);
     }
@@ -2452,8 +2489,8 @@
     }
 
     .map-card.onbid-card {
-      border-color: var(--auction-c);
-      box-shadow: 0 4px 15px rgba(0,0,0,.5), 0 0 0 1px rgba(255,140,66,.25), inset 0 0 0 1px rgba(255,140,66,.12);
+      border-color: var(--onbid-c);
+      box-shadow: 0 4px 15px rgba(0,0,0,.5), 0 0 0 1px rgba(56,189,248,.25), inset 0 0 0 1px rgba(56,189,248,.12);
     }
 
     .map-card.listing-card {
@@ -2658,6 +2695,10 @@
 
     .map-card.auction-card .map-card-header {
       background: var(--auction-c);
+    }
+
+    .map-card.onbid-card .map-card-header {
+      background: var(--onbid-c);
     }
 
     .map-card.listing-card .map-card-header {
@@ -2974,6 +3015,10 @@
 
     .map-card.listing-card .map-card-price {
       color: #ff4444;
+    }
+
+    .map-card.onbid-card .map-card-price {
+      color: var(--onbid-c);
     }
 
     .map-card.transaction-card .map-card-price {
