@@ -17564,9 +17564,7 @@ ${combinedText}
           sp.style.padding = '';
           sp.dataset.fiRaw = v;
         });
-        inp.addEventListener('input', function() {
-          window._savedDraftInput(pid, key, inp.value);
-        });
+        // oninput 저장 제거 → blur에서만 커밋 (딜레이 없음)
         sp.appendChild(inp);
         inp.focus();
         inp.select();
