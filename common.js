@@ -17523,6 +17523,56 @@ ${combinedText}
     // ===================================================
     // 필드 렌더
     // ===================================================
+    // ★ 팝업 인라인 편집 - data 속성 이벤트 위임 방식 (onclick 인라인 문자열 없음)
+    // popBody에 클릭 리스너 1개만 등록, 각 셀은 data-* 속성으로 정보 전달
+    (function() {
+      if (window._fiPopupListenerBound) return;
+      window._fiPopupListenerBound = true;
+      document.addEventListener('click', function(e) {
+        const sp = e.target.closest('.fi-popup-sp');
+        if (!sp) return;
+        e.stopPropagation();
+        const key = sp.dataset.fiKey;
+        const pid = sp.dataset.fiPid;
+        const rawVal = sp.dataset.fiRaw || '';
+        if (!key || !pid) return;
+        // 이미 편집 중이면 무시
+        if (sp.querySelector('input')) return;
+        // span 내용을 input으로 교체
+        const origText = sp.textContent;
+        sp.innerHTML = '';
+        sp.style.padding = '0';
+        const inp = document.createElement('input');
+        inp.type = 'text';
+        inp.className = 'fv-in';
+        inp.value = rawVal;
+        inp.style.cssText = 'width:100%;box-sizing:border-box;margin:0;';
+        inp.addEventListener('click', function(ev) { ev.stopPropagation(); });
+        inp.addEventListener('keydown', function(ev) {
+          if (ev.key === 'Enter') { ev.preventDefault(); inp.blur(); }
+          if (ev.key === 'Escape') {
+            ev.preventDefault();
+            sp.innerHTML = origText;
+            sp.style.padding = '';
+          }
+        });
+        inp.addEventListener('blur', function() {
+          const v = inp.value;
+          window._savedDraftCommit(pid, key, v);
+          // input → 텍스트 복원
+          sp.innerHTML = v || '-';
+          sp.style.padding = '';
+          sp.dataset.fiRaw = v;
+        });
+        inp.addEventListener('input', function() {
+          window._savedDraftInput(pid, key, inp.value);
+        });
+        sp.appendChild(inp);
+        inp.focus();
+        inp.select();
+      });
+    })();
+
     function fi(val, label, type, idx, key, isPopup) {
       if (val !== null && val !== undefined && typeof val === 'object') {
         if (Array.isArray(val)) {
@@ -17534,49 +17584,58 @@ ${combinedText}
       const em = val == null || val === '';
       const isE = isPopup ? false : (editIdx === idx);
       let dv = '', cl = '';
-      const onChange = isPopup ? `window._savedDraftInput('${popupId}','${key}',this.value)` : `updF(${idx},'${key}',this.value)`;
+      const onChange = isPopup
+        ? `window._savedDraftInput('${popupId}','${key}',this.value)`
+        : `updF(${idx},'${key}',this.value)`;
       const onEditAttr = isPopup
         ? `oninput="${onChange}" onkeydown="if(event.key==='Enter'){this.blur();}"`
         : `onchange="${onChange}"`;
 
-      if (type === 'money') { cl = 'money'; dv = em ? '-' : fW(val); }
+      if (type === 'money')     { cl = 'money'; dv = em ? '-' : fW(val); }
       else if (type === 'money_raw') { cl = 'money'; dv = em ? '-' : fWC(val); }
-      else if (type === 'money_m') { cl = 'money'; dv = em ? '-' : fM(val); }
-      else if (type === 'big') { cl = 'big'; dv = em ? '-' : fW(val); }
-      else if (type === 'big_m') { cl = 'big'; dv = em ? '-' : fM(val); }
+      else if (type === 'money_m')   { cl = 'money'; dv = em ? '-' : fM(val); }
+      else if (type === 'big')  { cl = 'big'; dv = em ? '-' : fW(val); }
+      else if (type === 'big_m'){ cl = 'big'; dv = em ? '-' : fM(val); }
       else if (type === 'area') {
         const _aNum = parseFloat(val);
-        dv = em ? '-' : '전용 ' + numFmt(val) + '㎡' + ((!isNaN(_aNum) && _aNum > 0) ? ' (' + (_aNum / 3.3058).toFixed(1) + '평)' : '');
+        dv = em ? '-' : '전용 ' + numFmt(val) + '㎡' +
+          ((!isNaN(_aNum) && _aNum > 0) ? ' (' + (_aNum/3.3058).toFixed(1) + '평)' : '');
       }
-      else if (type === 'num') { dv = em ? '-' : numFmt(val); }
+      else if (type === 'num')  { dv = em ? '-' : numFmt(val); }
       else if (type === 'text') { dv = em ? '-' : esc(String(val)); }
-      else if (type === 'pos') { cl = 'pos'; dv = em ? '-' : esc(String(val)); }
+      else if (type === 'pos')  { cl = 'pos';  dv = em ? '-' : esc(String(val)); }
       else if (type === 'warn') { cl = 'warn'; dv = em ? '-' : esc(String(val)); }
       else { dv = em ? '-' : esc(String(val)); }
 
       if (em && !isE) cl += ' empty';
       if (typeof dv === 'string') dv = dv.replace(/만원만원/g, '만원');
 
-      // ★ 팝업: position:relative 래퍼로 span/input 같은 자리 - 레이아웃 이동 없음
+      // ★ 팝업: data 속성으로 정보 저장, 이벤트 위임으로 클릭 처리
+      // → onclick 인라인 문자열 없음 → 따옴표 이스케이프 문제 없음
+      // → 클릭한 셀 자신(sp)만 변경 → 다른 셀에 영향 없음
       if (isPopup) {
         const _pid = String(popupId || '');
-        const _sk = key.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
-        const _sp = _pid.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
-        const _fid = ('fip_' + key + '_' + _pid).replace(/[^a-zA-Z0-9_]/g, '_');
-        const _rv = em ? '' : esc(String(val));
-        // 클릭: span 숨기고 input 표시
-        const _click = `(function(sp){var i=document.getElementById('${_fid}_i');if(!i)return;sp.style.visibility='hidden';i.style.display='block';i.focus();i.select();})(this)`;
-        // blur: 저장 후 input 숨기고 span 업데이트
-        const _blur  = `(function(inp){var v=inp.value;window._savedDraftCommit('${_sp}','${_sk}',v);inp.style.display='none';var sp=document.getElementById('${_fid}_sp');if(sp){sp.textContent=(v||'-');sp.style.visibility='visible';}})(this)`;
-        // position:relative 래퍼 - 두 요소가 같은 공간 차지
-        return `<div class="fi${key==='분析메모'?' full':''}"><div class="fl">${label}</div>` +
-          `<div class="fv-wrap" style="position:relative;min-height:22px;">` +
-          `<div id="${_fid}_sp" class="fv ${cl}" onclick="${_click}" title="클릭하여 수정" style="cursor:text;border-bottom:1px dashed rgba(255,255,255,.1);">${dv}</div>` +
-          `<input id="${_fid}_i" class="fv-in" value="${_rv}" ${onEditAttr} onblur="${_blur}" placeholder="${label}" style="display:none;position:absolute;top:0;left:0;width:100%;box-sizing:border-box;"/>` +
-          `</div></div>`;
+        const _rv  = em ? '' : String(val);
+        const _dv  = dv; // 이미 esc 처리된 표시값
+        return `<div class="fi${key==='분析메모'?' full':''}">` +
+          `<div class="fl">${label}</div>` +
+          `<div class="fv ${cl} fi-popup-sp"` +
+            ` data-fi-key="${esc(key)}"` +
+            ` data-fi-pid="${esc(_pid)}"` +
+            ` data-fi-raw="${esc(_rv)}"` +
+            ` title="클릭하여 수정"` +
+            ` style="cursor:text;border-bottom:1px dashed rgba(255,255,255,.1);min-height:20px;"` +
+          `>${_dv}</div>` +
+          `</div>`;
       }
 
-      return `<div class="fi${key === '분析메모' ? ' full' : ''}"><div class="fl">${label}</div>${isE ? `<input class="fv-in" value="${em ? '' : esc(String(val))}" ${onEditAttr} placeholder="${label}"/>` : `<div class="fv ${cl}">${dv}</div>`}</div>`;
+      return `<div class="fi${key==='분析메모'?' full':''}">` +
+        `<div class="fl">${label}</div>` +
+        `${isE
+          ? `<input class="fv-in" value="${em ? '' : esc(String(val))}" ${onEditAttr} placeholder="${label}"/>`
+          : `<div class="fv ${cl}">${dv}</div>`
+        }` +
+        `</div>`;
     }
 
     // ===================================================
