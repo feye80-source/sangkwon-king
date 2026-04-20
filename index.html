@@ -4586,7 +4586,7 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
           <select id="pl-filter-status" onchange="renderPropertyList()"
             style="height:32px;padding:0 8px;border:1px solid var(--b1);border-radius:6px;background:var(--bg2);color:var(--fg);font-size:13px;">
             <option value="">전체</option>
-            <option value="active" selected>활성</option>
+            <option value="active">활성</option>
             <option value="changed">변경</option>
             <option value="closed">종료</option>
           </select>
@@ -4872,7 +4872,7 @@ mapMarkers = [             // 현재 지도에 표시된 마커 (메모리에 �
     <div class="popup-topbar">
       <div class="popup-title" id="popTitle"></div>
       <div class="popup-src-tabs" id="popSrcTabs"></div>
-      <button class="popup-editbtn" id="popEditBtn" onclick="togglePopupEdit()">✏️ 수정</button>
+      <button class="popup-editbtn" id="popEditBtn" onclick="togglePopupEdit()" style="display:none;">✏️ 수정</button>
       <button class="popup-savebtn" id="popSaveBtn" onclick="savePopupItem()">💾 저장</button>
       <button class="popup-delbtn" id="popDelBtn" onclick="deletePopupItem()"
         style="margin-left:6px;background:#ff4d4d;color:#fff;border:none;border-radius:10px;padding:6px 10px;font-weight:800;font-size:12px;cursor:pointer;">🗑
