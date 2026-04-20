@@ -5298,7 +5298,7 @@ var _safeLocalSet = function(key, value) {
                           id="wr2SumEdt_${key}" placeholder="${label} 입력 (원 단위)">
                       </div>`;
                     }
-                    return `<div class="wr2-info-row" title="클릭으로 수정" onclick="wr2SummaryStartEdit('${key}');event.stopPropagation();" style="cursor:text;">
+                    return `<div class="wr2-info-row" title="클릭으로 수정" onclick="wr2SummaryStartEdit('${key}')">
                       <span class="wr2-info-lbl">${label}</span>
                       <span class="wr2-info-val">${valHtml}<span class="wr2-edit-hint">✏️</span></span>
                     </div>`;
@@ -5405,7 +5405,6 @@ var _safeLocalSet = function(key, value) {
                 // 물건요약 수동편집
                 window.wr2SummaryStartEdit = function(key) {
                   const room = getActiveRoom(); if (!room) return;
-                  if (room._summaryEditing === key) return;
                   room._summaryEditing = key;
                   renderItemSummary(room);
                 };
@@ -41850,6 +41849,8 @@ window.addEventListener('DOMContentLoaded', () => {
     return '';
   }
   function plDisplayDate(v) {
+    var raw = String(v || '').trim();
+    if (raw === '미정') return raw;
     var iso = plNormalizeDateInput(v);
     if (!iso) return '';
     var parts = iso.split('-');
@@ -41917,6 +41918,9 @@ window.addEventListener('DOMContentLoaded', () => {
     var hasCloseMemo = Object.prototype.hasOwnProperty.call(raw, '종료메모');
     var nextMemo = hasCloseMemo ? String(raw['종료메모'] || '') : String(src.memo || curItem.memo || '');
     var nextBidders = String(plSavedField(raw, ['입찰인수','입찰인원'], curItem.bidders || '') || '').trim();
+    var curSimpleStatus = typeof plSimpleStatusKey === 'function' ? plSimpleStatusKey(curItem && curItem.status) : String(curItem && curItem.status || '');
+    var curBiddate = String(curItem && curItem.biddate || '').trim();
+    var preserveManualBiddate = (curSimpleStatus === 'changed' || curSimpleStatus === 'closed') && (curBiddate === '' || curBiddate === '미정');
     return {
       linkedSavedId: String(src.id || curItem.linkedSavedId || ''),
       type: nextType,
@@ -41927,7 +41931,7 @@ window.addEventListener('DOMContentLoaded', () => {
       appraisal: mapped.appraisal || curItem.appraisal || '',
       minprice: mapped.minprice || curItem.minprice || '',
       round: mapped.round || curItem.round || '',
-      biddate: mapped.biddate || curItem.biddate || '',
+      biddate: preserveManualBiddate ? curBiddate : (mapped.biddate || curItem.biddate || ''),
       estimate: mapped.estimate || curItem.estimate || '',
       deposit: mapped.deposit || curItem.deposit || '',
       monthly: mapped.monthly || curItem.monthly || '',
@@ -42220,13 +42224,16 @@ window.addEventListener('DOMContentLoaded', () => {
   }
   function plApplySimpleStatusToItem(item, simple) {
     if (!item) return;
-    if (simple === 'closed') item.status = 'closed';
-    else if (simple === 'changed') {
+    if (simple === 'closed') {
+      item.status = 'closed';
+    } else if (simple === 'changed') {
       var s = String(item.status || '');
       if (s === 'field' || s === 'bid' || s === 'won') item.status = s;
       else item.status = 'field';
+      item.biddate = '미정';
+    } else {
+      item.status = 'review';
     }
-    else item.status = 'review';
     item.archived = false;
     item.updatedAt = Date.now();
   }
