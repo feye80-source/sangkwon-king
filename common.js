@@ -13964,6 +13964,10 @@ window.wr2SummaryCancelEdit = function() {
       const wsMap = { 'interest': { icon: '👀', label: '관심',  color: '#94a3b8', bg: 'rgba(148,163,184,.15)' }, 'review': { icon: '🔍', label: '검토중', color: '#60a5fa', bg: 'rgba(96,165,250,.15)' }, 'field': { icon: '📍', label: '현장', color: '#fbbf24', bg: 'rgba(251,191,36,.15)' }, 'bid': { icon: '🎯', label: '입찰', color: '#f97316', bg: 'rgba(249,115,22,.15)' }, 'won': { icon: '✅', label: '낙찰', color: '#4ade80', bg: 'rgba(74,222,128,.15)' }, 'pass': { icon: '🚫', label: '패스', color: '#6b7280', bg: 'rgba(107,114,128,.15)' } };
       const wsInfo = wsMap[ws] || null;
       const wsBadge = wsInfo ? `<span onclick="event.stopPropagation();cycleWatchStatus('${item.id}')" title="클릭하여 상태 변경" style="padding:1px 5px;border-radius:4px;font-size:9px;font-weight:600;color:${wsInfo.color};background:${wsInfo.bg};cursor:pointer;white-space:nowrap;">${wsInfo.icon}${wsInfo.label}</span>` : `<span onclick="event.stopPropagation();cycleWatchStatus('${item.id}')" title="관심 표시" style="padding:1px 5px;border-radius:4px;font-size:9px;color:var(--di);background:var(--s2);border:1px dashed var(--di);cursor:pointer;white-space:nowrap;">+검토</span>`;
+      const caseNo = String(d.경매번호 || d.사건번호 || '').trim();
+      const caseNoBadge = caseNo
+        ? `<span title="경매번호: ${esc(caseNo)}" style="display:inline-block;max-width:96px;padding:1px 5px;border-radius:4px;font-size:9px;font-weight:600;color:#8ab8ff;background:rgba(79,142,255,.12);border:1px solid rgba(79,142,255,.32);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(caseNo)}</span>`
+        : '';
       const itemIdJs = String(item.id || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
       const linkedRoom = (function(){
         try {
@@ -14005,6 +14009,7 @@ window.wr2SummaryCancelEdit = function() {
         <div style="display:flex;align-items:center;gap:4px;margin-bottom:3px;">
           <span class="sc-mode ${modeClsChar}">${modeLabel}</span>
           ${wsBadge}
+          ${caseNoBadge}
           ${item.memo ? '<span style="font-size:10px;">📝</span>' : ''}
         </div>
         <div style="display:flex;align-items:center;gap:4px;">
