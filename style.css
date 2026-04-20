@@ -8949,6 +8949,12 @@
               #ipage8 .wr2-info-row:last-child {
                 border-bottom: none;
               }
+              #ipage8 .wr2-info-row.wr2-info-overdue {
+                background: rgba(255,107,122,.06);
+                border-color: rgba(255,107,122,.22);
+                border-radius: 6px;
+                padding: 5px 6px;
+              }
 
               #ipage8 .wr2-info-lbl {
                 color: var(--mu);

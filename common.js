@@ -3469,6 +3469,32 @@ var _safeLocalSet = function(key, value) {
                   if (cur === 'changed') return 'closed';
                   return 'active';
                 }
+                function wr2ParseSaleDateLoose(v) {
+                  const s = String(v || '').trim();
+                  if (!s) return null;
+                  const m = s.match(/(20\d{2})[.\-\/년\s]*(\d{1,2})[.\-\/월\s]*(\d{1,2})/);
+                  let y, mo, d;
+                  if (m) {
+                    y = parseInt(m[1], 10);
+                    mo = parseInt(m[2], 10);
+                    d = parseInt(m[3], 10);
+                  } else {
+                    const m2 = s.match(/(\d{1,2})[.\-\/월\s]*(\d{1,2})/);
+                    if (!m2) return null;
+                    const now = new Date();
+                    y = now.getFullYear();
+                    mo = parseInt(m2[1], 10);
+                    d = parseInt(m2[2], 10);
+                  }
+                  const dt = new Date(y, mo - 1, d);
+                  return isNaN(dt.getTime()) ? null : dt;
+                }
+                function wr2CalcDdayFromDate(dt) {
+                  if (!dt || isNaN(dt.getTime())) return null;
+                  const now = new Date();
+                  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                  return Math.round((dt - today) / (1000 * 60 * 60 * 24));
+                }
 
                 function wr2CollectCloseSummary(prevSummary, onDone, onCancel) {
                   const base = Object.assign({}, prevSummary || {});
@@ -3488,11 +3514,13 @@ var _safeLocalSet = function(key, value) {
                         + '    <button type="button" id="wr2CloseSummaryCancelX" style="border:none;background:transparent;color:#ffd3d8;font-size:20px;cursor:pointer;line-height:1;">×</button>'
                         + '  </div>'
                         + '  <div style="padding:14px 16px 12px;">'
-                        + '    <div style="font-size:11px;color:var(--mu);margin-bottom:10px;">낙찰가/낙찰인원/복기는 선택 입력입니다. 비워두고 종료만 처리할 수도 있습니다.</div>'
+                        + '    <div style="font-size:11px;color:var(--mu);margin-bottom:10px;">낙찰가/낙찰인원/차순위금액/복기는 선택 입력입니다. 비워두고 종료만 처리할 수도 있습니다.</div>'
                         + '    <label style="display:block;font-size:11px;color:#ffbcc4;margin-bottom:5px;">최종 낙찰가 (선택)</label>'
                         + '    <input id="wr2CloseBidInput" type="text" placeholder="예: 3억 2,500만" style="width:100%;padding:9px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--tx);outline:none;box-sizing:border-box;">'
                         + '    <label style="display:block;font-size:11px;color:#ffbcc4;margin:10px 0 5px;">낙찰 인원 (선택)</label>'
                         + '    <input id="wr2CloseBidderInput" type="text" placeholder="예: 7명" style="width:100%;padding:9px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--tx);outline:none;box-sizing:border-box;">'
+                        + '    <label style="display:block;font-size:11px;color:#ffbcc4;margin:10px 0 5px;">차순위금액 (선택)</label>'
+                        + '    <input id="wr2CloseSecondBidInput" type="text" placeholder="예: 3억 1,900만" style="width:100%;padding:9px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--tx);outline:none;box-sizing:border-box;">'
                         + '    <label style="display:block;font-size:11px;color:#ffbcc4;margin:10px 0 5px;">종료 유형 (선택)</label>'
                         + '    <select id="wr2CloseTypeInput" style="width:100%;padding:9px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--tx);outline:none;box-sizing:border-box;">'
                         + '      <option value="">선택 안 함</option>'
@@ -3513,6 +3541,7 @@ var _safeLocalSet = function(key, value) {
                     }
                     const bidIn = document.getElementById('wr2CloseBidInput');
                     const bidderIn = document.getElementById('wr2CloseBidderInput');
+                    const secondBidIn = document.getElementById('wr2CloseSecondBidInput');
                     const typeIn = document.getElementById('wr2CloseTypeInput');
                     const memoIn = document.getElementById('wr2CloseMemoInput');
                     const closeModal = function() {
@@ -3520,6 +3549,7 @@ var _safeLocalSet = function(key, value) {
                     };
                     if (bidIn) bidIn.value = String(base.finalBidPrice || '').trim();
                     if (bidderIn) bidderIn.value = String(base.bidderCount || '').trim();
+                    if (secondBidIn) secondBidIn.value = String(base.secondBidPrice || '').trim();
                     if (typeIn) typeIn.value = String(base.closedType || '').trim();
                     if (memoIn) memoIn.value = String(base.memo || '').trim();
                     const cancel = function() {
@@ -3538,6 +3568,7 @@ var _safeLocalSet = function(key, value) {
                       completeWith({
                         finalBidPrice: String(base.finalBidPrice || '').trim(),
                         bidderCount: String(base.bidderCount || '').trim(),
+                        secondBidPrice: String(base.secondBidPrice || '').trim(),
                         closedType: String(base.closedType || '').trim(),
                         memo: String(base.memo || '').trim(),
                         closedAt: Date.now()
@@ -3545,10 +3576,12 @@ var _safeLocalSet = function(key, value) {
                     };
                     if (btnSave) btnSave.onclick = function() {
                       const bidderIn = document.getElementById('wr2CloseBidderInput');
+                      const secondBidIn = document.getElementById('wr2CloseSecondBidInput');
                       const typeIn = document.getElementById('wr2CloseTypeInput');
                       completeWith({
                         finalBidPrice: String((bidIn && bidIn.value) || '').trim(),
                         bidderCount: String((bidderIn && bidderIn.value) || '').trim(),
+                        secondBidPrice: String((secondBidIn && secondBidIn.value) || '').trim(),
                         closedType: String((typeIn && typeIn.value) || '').trim(),
                         memo: String((memoIn && memoIn.value) || '').trim(),
                         closedAt: Date.now()
@@ -3561,11 +3594,12 @@ var _safeLocalSet = function(key, value) {
                     setTimeout(function() { if (bidIn) bidIn.focus(); }, 30);
                     return;
                   }
-                  const want = confirm('종료 기록(낙찰가/낙찰인원/복기 메모)을 입력할까요?');
+                  const want = confirm('종료 기록(낙찰가/낙찰인원/차순위금액/복기 메모)을 입력할까요?');
                   if (!want) {
                     return {
                       finalBidPrice: String(base.finalBidPrice || '').trim(),
                       bidderCount: String(base.bidderCount || '').trim(),
+                      secondBidPrice: String(base.secondBidPrice || '').trim(),
                       closedType: String(base.closedType || '').trim(),
                       memo: String(base.memo || '').trim(),
                       closedAt: Date.now()
@@ -3573,11 +3607,13 @@ var _safeLocalSet = function(key, value) {
                   }
                   const price = prompt('종료 기록 - 낙찰가(선택)\n예: 3억 2,500만', base.finalBidPrice || '') || '';
                   const bidder = prompt('종료 기록 - 낙찰 인원(선택)\n예: 7명', base.bidderCount || '') || '';
+                  const second = prompt('종료 기록 - 차순위금액(선택)\n예: 3억 1,900만', base.secondBidPrice || '') || '';
                   const ctype = prompt('종료 기록 - 종료 유형(선택)\n매각 / 패찰 / 낙찰 / 기타', base.closedType || '') || '';
                   const memo = prompt('종료 복기 메모(선택)', base.memo || '') || '';
                   return {
                     finalBidPrice: String(price || '').trim(),
                     bidderCount: String(bidder || '').trim(),
+                    secondBidPrice: String(second || '').trim(),
                     closedType: String(ctype || '').trim(),
                     memo: String(memo || '').trim(),
                     closedAt: Date.now()
@@ -3630,6 +3666,7 @@ var _safeLocalSet = function(key, value) {
                   const cs = room.closedSummary || {};
                   const bid = String(cs.finalBidPrice || '').trim();
                   const bidder = String(cs.bidderCount || '').trim();
+                  const secondBid = String(cs.secondBidPrice || '').trim();
                   const ctype = String(cs.closedType || '').trim();
                   const memo = String(cs.memo || '').trim();
 
@@ -3669,12 +3706,18 @@ var _safeLocalSet = function(key, value) {
                       }
                     }
 
-                    if (bid && d['낙찰가'] !== bid) { d['낙찰가'] = bid; changed = true; }
-                    if (bidder && d['입찰인수'] !== bidder) { d['입찰인수'] = bidder; changed = true; }
-                    if (ctype && d['종료유형'] !== ctype) { d['종료유형'] = ctype; changed = true; }
-                    if (memo && d['종료메모'] !== memo) { d['종료메모'] = memo; changed = true; }
+                    if (d['낙찰가'] !== bid) { d['낙찰가'] = bid; changed = true; }
+                    if (d['입찰인수'] !== bidder) { d['입찰인수'] = bidder; changed = true; }
+                    if (d['차순위금액'] !== secondBid) { d['차순위금액'] = secondBid; changed = true; }
+                    if (d['종료유형'] !== ctype) { d['종료유형'] = ctype; changed = true; }
+                    if (d['종료메모'] !== memo) { d['종료메모'] = memo; changed = true; }
                   });
-                  if (changed) setSv(sv);
+                  if (changed) {
+                    setSv(sv);
+                    try {
+                      if (typeof window._plSyncFromSavedItems === 'function') window._plSyncFromSavedItems(sv, { render: false });
+                    } catch (e) {}
+                  }
                 }
 
                 const _wr2RoomPersistTimers = {};
@@ -4320,6 +4363,24 @@ var _safeLocalSet = function(key, value) {
                     }
                     return Math.round(n / 10000).toLocaleString('ko-KR') + '만';
                   };
+                  const getRoomLinkedMeta = function(r) {
+                    const linkedIds = [];
+                    if (r.linkedSavedId != null) linkedIds.push(String(r.linkedSavedId));
+                    if (r.auctionId != null) linkedIds.push(String(r.auctionId));
+                    if (r.listingId != null) linkedIds.push(String(r.listingId));
+                    (r.linkedItems || []).forEach(id => linkedIds.push(String(id)));
+                    const linked = svItems.find(it => linkedIds.includes(String(it.id))) || null;
+                    const m = linked && linked.data ? linked.data : {};
+                    const saleRaw = String(m['매각기일'] || m['매각일'] || '').trim();
+                    const saleDt = wr2ParseSaleDateLoose(saleRaw);
+                    const saleDday = wr2CalcDdayFromDate(saleDt);
+                    return { linked: linked, data: m, saleRaw: saleRaw, saleDt: saleDt, saleDday: saleDday };
+                  };
+                  const sortRankByDday = function(dday) {
+                    if (dday == null) return 2; // 날짜 없음은 맨 아래
+                    if (dday >= 0) return 0;    // 남은 기일 우선
+                    return 1;                   // 지난 기일은 그 다음
+                  };
                   const q = (wr2State.search || '').trim().toLowerCase();
                   if (q) rooms = rooms.filter(r =>
                     (r.title || '').toLowerCase().includes(q) ||
@@ -4327,8 +4388,22 @@ var _safeLocalSet = function(key, value) {
                     (r.tags || []).some(t => (t || '').toLowerCase().includes(q))
                   );
                   rooms = rooms.filter(r => wr2RoomMatchesLifecycle(r, wr2State.statusFilter));
-                  wr2State.sort = 'updated';
-                  rooms.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+                  rooms.sort((a, b) => {
+                    const ma = getRoomLinkedMeta(a);
+                    const mb = getRoomLinkedMeta(b);
+                    const ra = sortRankByDday(ma.saleDday);
+                    const rb = sortRankByDday(mb.saleDday);
+                    if (ra !== rb) return ra - rb;
+                    if (ra === 0) { // 남은 기일: D-1, D-2 순
+                      if (ma.saleDday !== mb.saleDday) return ma.saleDday - mb.saleDday;
+                    } else if (ra === 1) { // 지난 기일: 최근 지난 것 우선
+                      if (ma.saleDday !== mb.saleDday) return mb.saleDday - ma.saleDday;
+                    }
+                    const ta = ma.saleDt ? ma.saleDt.getTime() : Number.MAX_SAFE_INTEGER;
+                    const tb = mb.saleDt ? mb.saleDt.getTime() : Number.MAX_SAFE_INTEGER;
+                    if (ta !== tb) return ta - tb;
+                    return (b.updatedAt || 0) - (a.updatedAt || 0);
+                  });
 
                   listEl.innerHTML = '';
                   // 상태(활성/변경/종료) 스코프 바 렌더
@@ -4393,27 +4468,31 @@ var _safeLocalSet = function(key, value) {
                     title.className = 'wr2-room-title';
                     title.textContent = r.title || '(제목 없음)';
                     content.appendChild(title);
-                    const linkedIds = [];
-                    if (r.linkedSavedId != null) linkedIds.push(String(r.linkedSavedId));
-                    if (r.auctionId != null) linkedIds.push(String(r.auctionId));
-                    if (r.listingId != null) linkedIds.push(String(r.listingId));
-                    (r.linkedItems || []).forEach(id => linkedIds.push(String(id)));
-                    const linked = svItems.find(it => linkedIds.includes(String(it.id))) || null;
-                    const m = linked && linked.data ? linked.data : {};
+                    const metaInfo = getRoomLinkedMeta(r);
+                    const linked = metaInfo.linked;
+                    const m = metaInfo.data || {};
                     const no = String(m['사건번호'] || m['경매번호'] || m['물건번호'] || r.auctionId || r.listingId || linked && linked.id || '').trim();
                     const addr = String(m['소재지'] || m['도로명주소'] || m['지번주소'] || r.address || '').trim();
+                    const saleRaw = metaInfo.saleRaw;
+                    const saleDday = metaInfo.saleDday;
+                    const saleOverdueNeedsAction = !!(saleRaw && saleDday != null && saleDday < 0 && wr2GetLifecycle(r) !== 'closed');
                     const priceRaw = m['최저가'] || m['감정가'] || m['낙찰가'] || m['매매가'] || m['매매가_만원']
                       || (r.calcState && (r.calcState.price || r.calcState.deposit))
                       || (r.closedSummary && r.closedSummary.finalBidPrice)
                       || '';
                     const price = fmtMetaPrice(priceRaw) || String(priceRaw || '').trim();
+                    const ddayLabel = (saleDday == null)
+                      ? ''
+                      : (saleDday < 0 ? ('D+' + Math.abs(saleDday)) : (saleDday === 0 ? 'D-Day' : ('D-' + saleDday)));
                     const meta = document.createElement('div');
                     meta.className = 'wr2-room-meta';
                     if (no || addr || price) {
                       meta.innerHTML = ''
                         + '<div style="display:flex;align-items:center;gap:6px;line-height:1.25;">'
                         + (no ? ('<span style="color:#7bb4ff;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px;">' + esc(no) + '</span>') : '')
-                        + (price ? ('<span style="color:#ffb36c;white-space:nowrap;">' + esc(price) + '</span>') : '')
+                        + (price ? ('<span style="color:#ffb36c;white-space:nowrap;font-weight:700;">' + esc(price) + '</span>') : '')
+                        + (ddayLabel ? ('<span style="color:#ff6b6b;white-space:nowrap;font-weight:700;">' + esc(ddayLabel) + '</span>') : '')
+                        + (saleOverdueNeedsAction ? ('<span style="padding:1px 6px;border-radius:999px;border:1px solid rgba(255,107,122,.42);background:rgba(255,107,122,.14);color:#ff94a1;font-size:10px;font-weight:700;white-space:nowrap;">⚠ 기일지남</span>') : '')
                         + '</div>'
                         + (addr ? ('<div style="margin-top:2px;color:#8ea7c9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(addr) + '</div>') : '');
                     } else {
@@ -4573,6 +4652,7 @@ var _safeLocalSet = function(key, value) {
                       const bid = String(cs.finalBidPrice || '').trim();
                       const closeType = String(cs.closedType || '').trim();
                       const bidderCount = String(cs.bidderCount || '').trim();
+                      const secondBid = String(cs.secondBidPrice || '').trim();
                       const memo = String(cs.memo || '').trim();
                       closedStamp.style.border = '1px solid rgba(255,102,120,.36)';
                       closedStamp.style.background = 'linear-gradient(180deg,rgba(255,88,106,.14),rgba(255,88,106,.06))';
@@ -4598,13 +4678,17 @@ var _safeLocalSet = function(key, value) {
                         +     '<div style="font-size:11px;opacity:.8;">낙찰 인원</div>'
                         +     '<div style="margin-top:3px;font-size:14px;font-weight:700;color:#ffe8eb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(bidderCount || '-') + '</div>'
                         +   '</div>'
+                        +   '<div style="padding:8px 10px;border-radius:8px;background:rgba(255,188,196,.08);border:1px solid rgba(255,188,196,.24);">'
+                        +     '<div style="font-size:11px;opacity:.8;">차순위금액</div>'
+                        +     '<div style="margin-top:3px;font-size:14px;font-weight:700;color:#ffe8eb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(secondBid || '-') + '</div>'
+                        +   '</div>'
                         +   (dt ? ('<div style="padding:8px 10px;border-radius:8px;background:rgba(255,188,196,.08);border:1px solid rgba(255,188,196,.24);">'
                         +     '<div style="font-size:11px;opacity:.8;">종료일</div>'
                         +     '<div style="margin-top:3px;font-size:14px;font-weight:700;color:#ffe8eb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(dt) + '</div>'
                         +   '</div>') : '')
                         +   (memo ? ('<div style="grid-column:1 / -1;padding:8px 10px;border-radius:8px;background:rgba(255,188,196,.08);border:1px solid rgba(255,188,196,.24);">'
                         +     '<div style="font-size:11px;opacity:.8;">복기 메모</div>'
-                        +     '<div style="margin-top:3px;font-size:13px;color:#ffe8eb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(memo) + '</div>'
+                        +     '<div style="margin-top:4px;font-size:13px;color:#ffe8eb;white-space:pre-wrap;word-break:break-word;line-height:1.45;max-height:108px;overflow:auto;padding-right:2px;">' + esc(memo) + '</div>'
                         +   '</div>') : '')
                         + '</div>'
                         + '<div style="display:flex;align-items:flex-end;justify-content:flex-end;flex:0 0 auto;">'
@@ -5091,8 +5175,15 @@ var _safeLocalSet = function(key, value) {
                   const openBtn = document.getElementById('wr2OpenSavedBtn');
                   if (!el) return;
                   const sv = (typeof getSv === 'function') ? getSv() : (() => { try { return (window._idbCache && window._idbCache['re_sv'] || []); } catch (e) { return []; } })();
-                  const linkedId = room.linkedSavedId || room.auctionId;
-                  const item = linkedId ? sv.find(s => String(s.id) === String(linkedId)) : null;
+                  const linkedCandidates = [];
+                  if (room.linkedSavedId != null) linkedCandidates.push(String(room.linkedSavedId));
+                  if (room.auctionId != null) linkedCandidates.push(String(room.auctionId));
+                  if (room.listingId != null) linkedCandidates.push(String(room.listingId));
+                  (room.linkedItems || []).forEach(id => linkedCandidates.push(String(id)));
+                  const uniqLinkedIds = Array.from(new Set(linkedCandidates.filter(Boolean)));
+                  const item = uniqLinkedIds.length
+                    ? (sv.find(s => uniqLinkedIds.includes(String(s && s.id))) || null)
+                    : null;
 
                   if (openBtn) openBtn.style.display = item ? '' : 'none';
                   if (openBtn && item) { openBtn.onclick = () => { if (typeof openPopup === 'function') openPopup(item.id); }; }
@@ -5142,6 +5233,15 @@ var _safeLocalSet = function(key, value) {
 
                   // ── 임차인 표시
                   const tenant    = (occupancy && occupancy.tenantName) || d['현재임차인'] || d['임차인명'] || '';
+                  const saleDateRaw = String(d['매각기일'] || d['매각일'] || d['경매일'] || '').trim();
+                  const saleDateObj = wr2ParseSaleDateLoose(saleDateRaw);
+                  const saleDday = wr2CalcDdayFromDate(saleDateObj);
+                  const saleDdayLabel = (saleDday == null)
+                    ? ''
+                    : (saleDday < 0 ? '기일지남' : (saleDday === 0 ? 'D-Day' : 'D-' + saleDday));
+                  const lifecycle = wr2GetLifecycle(room);
+                  const saleOverdueNeedsAction = !!(saleDateRaw && saleDday != null && saleDday < 0 && lifecycle !== 'closed');
+                  const warnTone = saleOverdueNeedsAction ? '#ff6b7a' : '#ff8c42';
 
                   // ── 수동편집 행
                   const editRow = (key, label, valHtml, rawVal) => {
@@ -5191,7 +5291,7 @@ var _safeLocalSet = function(key, value) {
                     html += `<div class="wr2-info-row">
                       <span class="wr2-info-lbl">최저가</span>
                       <span class="wr2-info-val">
-                        <span class="wr2-info-highlight">${fmtW(minVal)}</span>
+                        <span class="wr2-info-highlight" style="${saleOverdueNeedsAction ? 'color:#ff6b7a;' : ''}">${fmtW(minVal)}</span>
                         ${minPy ? `<span class="wr2-sub-py">${minPy}</span>` : ''}
                       </span>
                     </div>`;
@@ -5227,8 +5327,20 @@ var _safeLocalSet = function(key, value) {
                   if (auctionNo) html += `<div class="wr2-info-row"><span class="wr2-info-lbl">경매번호</span><span class="wr2-info-val">${auctionNo}</span></div>`;
 
                   // 매각기일
-                  const saleDate = d['매각기일'] || d['매각일'] || d['경매일'] || '';
-                  if (saleDate) html += `<div class="wr2-info-row"><span class="wr2-info-lbl">매각기일</span><span class="wr2-info-val">${saleDate}</span></div>`;
+                  if (saleDateRaw) {
+                    const badge = saleDdayLabel
+                      ? `<span style="display:inline-block;margin-left:6px;padding:1px 6px;border-radius:999px;font-size:10px;font-weight:700;border:1px solid ${warnTone}66;background:${warnTone}18;color:${warnTone};">${saleDdayLabel}</span>`
+                      : '';
+                    html += `<div class="wr2-info-row${saleOverdueNeedsAction ? ' wr2-info-overdue' : ''}">
+                      <span class="wr2-info-lbl">매각기일</span>
+                      <span class="wr2-info-val" style="${saleOverdueNeedsAction ? 'color:#ff6b7a;font-weight:800;' : ''}">${saleDateRaw}${badge}</span>
+                    </div>`;
+                  }
+                  if (saleOverdueNeedsAction) {
+                    html += `<div class="wr2-summary-alert" style="margin:6px 0 2px;padding:8px 10px;border-radius:8px;border:1px solid rgba(255,107,122,.36);background:rgba(255,107,122,.1);font-size:11px;line-height:1.45;color:#ffd5da;">
+                      ⚠ 매각기일이 지났습니다. 매각 완료면 <b>종료</b> 처리, 유찰이면 <b>다음 금액/다음 매각기일</b>을 업데이트하세요.
+                    </div>`;
+                  }
 
                   // ── 자동계산 하단 바 (면적+가격 있을 때)
                   if (areaPy > 0 || priceVal > 0 || rentVal > 0) {
@@ -13518,6 +13630,36 @@ window.wr2SummaryCancelEdit = function() {
       // ★ _norm 안전장치: 구 데이터 자동 정규화
       _ensureNormalizedItem(item);
       const n = item._norm || {};
+      const saleDateRaw = String(d.매각일 || d.매각기일 || '').trim();
+      const saleDateObj = (function(v){
+        const s = String(v || '').trim();
+        if (!s) return null;
+        const m = s.match(/(20\d{2})[.\-\/년\s]*(\d{1,2})[.\-\/월\s]*(\d{1,2})/);
+        let y, mo, d;
+        if (m) {
+          y = parseInt(m[1], 10);
+          mo = parseInt(m[2], 10);
+          d = parseInt(m[3], 10);
+        } else {
+          const m2 = s.match(/(\d{1,2})[.\-\/월\s]*(\d{1,2})/);
+          if (!m2) return null;
+          const now = new Date();
+          y = now.getFullYear();
+          mo = parseInt(m2[1], 10);
+          d = parseInt(m2[2], 10);
+        }
+        const dt = new Date(y, mo - 1, d);
+        return isNaN(dt.getTime()) ? null : dt;
+      })(saleDateRaw);
+      const saleDday = saleDateObj
+        ? (function(dt){
+            const now = new Date();
+            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            return Math.round((dt - today) / (1000 * 60 * 60 * 24));
+          })(saleDateObj)
+        : null;
+      const isSaleOverdue = !!(saleDateRaw && saleDday != null && saleDday < 0);
+      const saleDdayLabel = saleDday == null ? '' : (saleDday < 0 ? '기일지남' : (saleDday === 0 ? 'D-Day' : 'D-' + saleDday));
 
       // ── 아싸 상세URL /item/{id} → /item/view/{id} 자동 교정 ──
       if (d.상세URL && d.상세URL.includes('/item/') && !d.상세URL.includes('/item/view/') && !d.상세URL.includes('/item/get_item_json')) {
@@ -13575,7 +13717,11 @@ window.wr2SummaryCancelEdit = function() {
       if (ia) {
         if (n.감정가_만원) extraRows += _sied('감정가', '감정가', fM(n.감정가_만원), d.감정가, true);
         if (n.평당가_만원) extraRows += _sied('평당가', '평당가_만원', (function (v) { const nv = Math.round(v); if (nv >= 10000) { const e = Math.floor(nv / 10000), m = nv % 10000; return m ? e + '억 ' + m.toLocaleString() + '만원/평' : e + '억원/평'; } return nv.toLocaleString() + '만원/평'; })(n.평당가_만원), n.평당가_만원, true);
-        if (d.매각일 || d.매각기일) extraRows += _sied('매각일', '매각기일', d.매각일 || d.매각기일, d.매각일 || d.매각기일, true);
+        if (saleDateRaw) {
+          const tone = isSaleOverdue ? '#ff6b7a' : (saleDday != null && saleDday <= 3 ? '#ff8c42' : '#4ade80');
+          const saleText = saleDdayLabel ? `${saleDateRaw} (${saleDdayLabel})` : saleDateRaw;
+          extraRows += _sied('매각일', '매각기일', saleText, saleDateRaw, true, `color:${tone};font-weight:700;`);
+        }
         if (n.유찰횟수 != null && n.유찰횟수 !== '') extraRows += _sied('유찰', '유찰횟수', n.유찰횟수 + '회', n.유찰횟수, true);
       } else {
         const 면적py = n.면적_m2 ? n.면적_m2 / 3.3058 : 0;
@@ -13700,8 +13846,11 @@ window.wr2SummaryCancelEdit = function() {
       const cardCls = _getVisualCardClass(visualType);
       const modeClsChar = _getVisualModeChar(visualType);
       const modeLabel = visualMeta.label;
-      const priceColor = visualMeta.color;
-      return `<div class="sc ${cardCls}${ws ? ' watch-' + ws : ''}" id="svcard_${item.id}" onclick="openPopup('${item.id}')">
+      const priceColor = (ia && isSaleOverdue) ? '#ff6b7a' : visualMeta.color;
+      const overdueCardStyle = (ia && isSaleOverdue)
+        ? 'box-shadow:inset 0 0 0 1px rgba(255,107,122,.36);'
+        : '';
+      return `<div class="sc ${cardCls}${ws ? ' watch-' + ws : ''}" id="svcard_${item.id}" onclick="openPopup('${item.id}')" style="${overdueCardStyle}">
       <div style="display:flex;align-items:flex-start;padding:6px 0 0 8px;flex-shrink:0;">
         <input type="checkbox" class="sv-item-chk" data-id="${item.id}" onclick="event.stopPropagation();updateSelectCount()" style="accent-color:var(--ac);width:15px;height:15px;cursor:pointer;margin-top:4px;">
       </div>
@@ -32380,18 +32529,23 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             const closeSummary = (linkedRoom && linkedRoom.closedSummary) ? linkedRoom.closedSummary : {};
             const closeBidRaw = String(closeSummary.finalBidPrice || d.낙찰가 || '').trim();
             const closeBidderRaw = String(closeSummary.bidderCount || '').trim();
+            const closeSecondBidRaw = String(closeSummary.secondBidPrice || d.차순위금액 || '').trim();
             const closeBidder = closeBidderRaw ? (closeBidderRaw.replace(/[^\d명인]/g, '') || closeBidderRaw) : '';
             let closeBid = closeBidRaw;
+            let closeSecondBid = closeSecondBidRaw;
             try {
               if (typeof _parseWonInput === 'function') {
                 const won = Math.round(_parseWonInput(closeBidRaw) || 0);
                 if (won > 0) closeBid = won.toLocaleString('ko-KR') + '원';
+                const secondWon = Math.round(_parseWonInput(closeSecondBidRaw) || 0);
+                if (secondWon > 0) closeSecondBid = secondWon.toLocaleString('ko-KR') + '원';
               }
             } catch (e) {}
-            const closeMetaHtml = (closeBid || closeBidder)
+            const closeMetaHtml = (closeBid || closeBidder || closeSecondBid)
               ? `<div style="display:flex;align-items:center;gap:4px;row-gap:4px;flex-wrap:wrap;margin-top:4px;font-size:10px;color:#f6d68a;">
                   ${closeBid ? `<span style="max-width:100%;padding:1px 5px;border-radius:999px;border:1px solid rgba(246,214,138,.45);background:rgba(246,214,138,.12);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">낙찰가 ${esc(closeBid)}</span>` : ''}
                   ${closeBidder ? `<span style="max-width:100%;padding:1px 5px;border-radius:999px;border:1px solid rgba(143,208,255,.4);background:rgba(17,157,237,.12);color:#8fd0ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">입찰인수 ${esc(closeBidder)}</span>` : ''}
+                  ${closeSecondBid ? `<span style="max-width:100%;padding:1px 5px;border-radius:999px;border:1px solid rgba(255,165,94,.42);background:rgba(255,165,94,.12);color:#ffbe88;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">차순위 ${esc(closeSecondBid)}</span>` : ''}
                 </div>`
               : '';
 
@@ -41421,6 +41575,9 @@ window.addEventListener('DOMContentLoaded', () => {
     var wonFromSaved = plSavedField(raw, ['낙찰가_만원','낙찰가(만원)','낙찰가','최고입찰가_만원'], '');
     var nextWon = wonFromSaved ? plToManUnit(wonFromSaved) : '';
     if (nextWon && plDiffers(nextResult.won || '', nextWon)) nextResult.won = nextWon;
+    var hasCloseMemo = Object.prototype.hasOwnProperty.call(raw, '종료메모');
+    var nextMemo = hasCloseMemo ? String(raw['종료메모'] || '') : String(src.memo || curItem.memo || '');
+    var nextBidders = String(plSavedField(raw, ['입찰인수','입찰인원'], curItem.bidders || '') || '').trim();
     return {
       linkedSavedId: String(src.id || curItem.linkedSavedId || ''),
       type: nextType,
@@ -41435,7 +41592,9 @@ window.addEventListener('DOMContentLoaded', () => {
       estimate: mapped.estimate || curItem.estimate || '',
       deposit: mapped.deposit || curItem.deposit || '',
       monthly: mapped.monthly || curItem.monthly || '',
-      result: nextResult
+      result: nextResult,
+      bidders: nextBidders,
+      memo: nextMemo
     };
   }
   function plSyncItemToSaved(item) {
@@ -41484,10 +41643,14 @@ window.addEventListener('DOMContentLoaded', () => {
       putField('낙찰가_만원', plParseAmountText(item.result.won));
       putField('낙찰가', Number(plParseAmountText(item.result.won)) * 10000);
     }
-    if (item.memo !== undefined && plDiffers(src.memo || '', item.memo || '')) {
-      src.memo = item.memo || '';
-      changed = true;
+    if (item.memo !== undefined) {
+      if (plDiffers(src.memo || '', item.memo || '')) {
+        src.memo = item.memo || '';
+        changed = true;
+      }
+      putField('종료메모', item.memo || '');
     }
+    if (item.bidders !== undefined) putField('입찰인수', item.bidders || '');
     if (!changed) return false;
     try { if (typeof normalizeItem === 'function') normalizeItem(src); } catch(e) {}
     sv[idx] = src;
@@ -41700,10 +41863,28 @@ window.addEventListener('DOMContentLoaded', () => {
     items = items.map(function(it){
       if (String(it.roomId||'') !== String(roomId)) return it;
       var safePatch = Object.assign({}, patch || {});
+      if (safePatch.closedSummary) {
+        var cs = safePatch.closedSummary || {};
+        if (safePatch.memo === undefined) safePatch.memo = String(cs.memo || '');
+        if (safePatch.bidders === undefined) safePatch.bidders = String(cs.bidderCount || '');
+        var won = plParseAmountText(cs.finalBidPrice || '');
+        if (won || (it.result && it.result.won)) {
+          var nextResult = Object.assign({}, it.result || {});
+          nextResult.won = won || '';
+          safePatch.result = nextResult;
+        }
+      }
+      if (safePatch.lifecycleStatus) {
+        if (safePatch.lifecycleStatus === 'closed') safePatch.status = 'closed';
+        else if (safePatch.lifecycleStatus === 'changed') safePatch.status = (safePatch.status || 'field');
+        else if (safePatch.lifecycleStatus === 'active' && !safePatch.status) safePatch.status = 'review';
+      }
       if (safePatch.title && !safePatch.addr) safePatch.addr = safePatch.title;
       if (safePatch.address && !safePatch.region) safePatch.region = safePatch.address;
       delete safePatch.title;
       delete safePatch.address;
+      delete safePatch.closedSummary;
+      delete safePatch.lifecycleStatus;
       var next = Object.assign({}, it, safePatch, { updatedAt: Date.now() });
       if (next.status === 'archived') next.archived = true;
       if (JSON.stringify(next) !== JSON.stringify(it)) changed = true;
@@ -41723,15 +41904,35 @@ window.addEventListener('DOMContentLoaded', () => {
     var rooms = getWrRooms();
     var room = rooms.find(function(r){return r.id === item.roomId;});
     if (!room) return;
+    var simple = plSimpleStatusKey(item.status);
     var newPhase = (item.status === 'archived' ? 'closed' : (item.status || 'review'));
-    var patch = { phase: newPhase, status: newPhase, activePhase: newPhase };
+    var patch = {
+      phase: newPhase,
+      status: newPhase,
+      activePhase: newPhase,
+      lifecycleStatus: (simple === 'closed' ? 'closed' : (simple === 'changed' ? 'changed' : 'active'))
+    };
     if (item.addr && String(room.title || '') !== String(item.addr || '')) patch.title = item.addr;
     if (item.region && String(room.address || '') !== String(item.region || '')) patch.address = item.region;
+    if (simple === 'closed') {
+      var nextSummary = Object.assign({}, room.closedSummary || {});
+      var csChanged = false;
+      var won = String((item.result && item.result.won) || '').trim();
+      var bidders = String(item.bidders || '').trim();
+      var memo = String(item.memo || '').trim();
+      if (String(nextSummary.finalBidPrice || '') !== won) { nextSummary.finalBidPrice = won; csChanged = true; }
+      if (String(nextSummary.bidderCount || '') !== bidders) { nextSummary.bidderCount = bidders; csChanged = true; }
+      if (String(nextSummary.memo || '') !== memo) { nextSummary.memo = memo; csChanged = true; }
+      if (!nextSummary.closedAt) { nextSummary.closedAt = Date.now(); csChanged = true; }
+      if (csChanged) patch.closedSummary = nextSummary;
+    }
     if (window.updateRoom) {
       window.updateRoom(room.id, patch);
       if (typeof window.wrDbLinkItem === 'function') window.wrDbLinkItem(room.id, item.id);
     } else {
       room.phase = newPhase; room.status = newPhase; room.activePhase = newPhase;
+      room.lifecycleStatus = patch.lifecycleStatus;
+      if (patch.closedSummary) room.closedSummary = patch.closedSummary;
       room.updatedAt = Date.now();
       if (!room.linkedItems) room.linkedItems = [];
       if (room.linkedItems.indexOf(item.id) < 0) room.linkedItems.push(item.id);
@@ -41752,12 +41953,20 @@ window.addEventListener('DOMContentLoaded', () => {
       var _origUpdateRoom = window.updateRoom;
       window.updateRoom = function(id, patch, silentRender) {
         var out = _origUpdateRoom(id, patch, silentRender);
-        if (patch && (patch.status || patch.phase || patch.title !== undefined || patch.address !== undefined)) {
+        if (patch && (patch.status || patch.phase || patch.lifecycleStatus || patch.closedSummary || patch.title !== undefined || patch.address !== undefined)) {
+          var nextStatus = patch.status || patch.phase;
+          if (!nextStatus && patch.lifecycleStatus) {
+            nextStatus = patch.lifecycleStatus === 'closed'
+              ? 'closed'
+              : (patch.lifecycleStatus === 'changed' ? 'field' : 'review');
+          }
           syncPropertyFromRoom(id, {
-            status: patch.status || patch.phase,
+            status: nextStatus,
             archived: false,
             title: patch.title,
-            address: patch.address
+            address: patch.address,
+            lifecycleStatus: patch.lifecycleStatus,
+            closedSummary: patch.closedSummary
           });
         }
         return out;
