@@ -5256,9 +5256,7 @@ var _safeLocalSet = function(key, value) {
 
                   // ── 감정가/최저가 평당
                   const appraiseVal = fmtN(d['감정가'] || 0);
-                  // ★ 최저가도 수동 오버라이드 지원
-                  const minValBase  = fmtN(d['최저가']  || 0);
-                  const minVal      = ovr.minprice !== undefined ? ovr.minprice : minValBase;
+                  const minVal      = fmtN(d['최저가']  || 0);
                   const appPy = (appraiseVal > 0 && areaPy > 0) ? fmtPy(appraiseVal / areaPy) : '';
                   const minPy = (minVal > 0 && areaPy > 0)      ? fmtPy(minVal / areaPy)       : '';
 
@@ -5332,24 +5330,22 @@ var _safeLocalSet = function(key, value) {
                       </span>
                     </div>`;
                   }
-                  // ★ 최저가 — 더블클릭 수동편집 가능 (물건리스트 연동값 덮어쓰기)
-                  if (minVal > 0 || ovr.minprice !== undefined) {
-                    const minDisplayVal = minVal > 0 ? minVal : 0;
-                    const minHighlightStyle = saleOverdueNeedsAction ? 'color:#ff6b7a;font-weight:600;' : 'color:var(--wr2-hl,#ff8c42);font-weight:600;';
-                    html += editRow('minprice', '최저가',
-                      `<span style="${minHighlightStyle}">${fmtW(minDisplayVal)||'미입력'}</span>${minPy ? `<span class="wr2-sub-py">${minPy}</span>` : ''}`,
-                      minDisplayVal || ''
-                    );
+                  // 최저가 + 평당
+                  if (minVal > 0) {
+                    html += `<div class="wr2-info-row">
+                      <span class="wr2-info-lbl">최저가</span>
+                      <span class="wr2-info-val">
+                        <span class="wr2-info-highlight" style="${saleOverdueNeedsAction ? 'color:#ff6b7a;' : ''}">${fmtW(minVal)}</span>
+                        ${minPy ? `<span class="wr2-sub-py">${minPy}</span>` : ''}
+                      </span>
+                    </div>`;
                   }
 
                   // 면적 (㎡ + 평)
                   if (areaM2 > 0) html += `<div class="wr2-info-row"><span class="wr2-info-lbl">${areaLabel}</span><span class="wr2-info-val">${areaStr}</span></div>`;
 
-                  // ★ 나의 입찰가 — 확정 금액이 아닌 검토용 금액 (괄호 안내)
-                  html += editRow('price', '나의 입찰가',
-                    `<span style="color:#ff4444;font-weight:600;">${priceVal ? fmtW(priceVal) : '<span style="color:var(--mu);font-size:11px;">(미정 — 더블클릭 입력)</span>'}</span>`,
-                    priceVal || ''
-                  );
+                  // 매매가 (수동편집)
+                  html += editRow('price', '입찰가', `<span style="color:#ff4444;font-weight:600;">${fmtW(priceVal)||'미입력'}</span>`, priceVal||'');
 
                   // 보증금 (임차인 기보증금 자동 — 수동편집 가능)
                   {
@@ -5419,32 +5415,6 @@ var _safeLocalSet = function(key, value) {
                   room._summaryOverride[key] = isNaN(n) ? 0 : n;
                   room._summaryEditing = null;
                   room.updatedAt = Date.now(); saveRooms();
-
-                  // ★ minprice(최저가) 수정 시 저장목록 + 물건리스트에 반영
-                  if (key === 'minprice' && !isNaN(n)) {
-                    try {
-                      // 저장목록 연동
-                      const linkedId = room.linkedSavedId || room.auctionId || room.listingId
-                        || ((room.linkedItems || [])[0] ? String((room.linkedItems || [])[0]) : null);
-                      if (linkedId && typeof getSv === 'function' && typeof setSv === 'function') {
-                        const sv = getSv();
-                        const linked = sv.find(s => String(s && s.id) === String(linkedId));
-                        if (linked) {
-                          linked.data = linked.data || {};
-                          // 원 단위로 저장 (n이 원 단위)
-                          linked.data['최저가'] = n;
-                          linked.data['최저가_만원'] = Math.round(n / 10000);
-                          if (typeof normalizeItem === 'function') normalizeItem(linked);
-                          setSv(sv);
-                        }
-                      }
-                      // 물건리스트 연동
-                      if (typeof window.plSyncFromSavedItems === 'function' && typeof getSv === 'function') {
-                        window.plSyncFromSavedItems(getSv(), { render: false });
-                      }
-                    } catch(_e) { console.warn('[wr2SummaryEditSave minprice sync]', _e); }
-                  }
-
                   renderItemSummary(room);
                 };
                                 // ── phase별 체크리스트 렌더/조작 헬퍼 ──────────────────
@@ -6561,46 +6531,98 @@ window.wr2SummaryCancelEdit = function() {
                   if (window._skOpenImageViewer) window._skOpenImageViewer(images, imageIdx || 0, { title: '첨부 이미지' });
                 };
 
+                // ★ 노트 갤러리 슬라이더 상태
+                if (!window._wr2GalleryIdx) window._wr2GalleryIdx = {};
+
+                window.wr2GalleryGoto = function(noteKey, idx, total) {
+                  window._wr2GalleryIdx[noteKey] = Math.max(0, Math.min(idx, total - 1));
+                  const room = (typeof getActiveRoom === 'function') ? getActiveRoom() : null;
+                  if (room) renderAttachments(room);
+                };
+
                 function renderAttachments(room) {
                   const el = document.getElementById('wr2Attachments');
                   if (!el) return;
                   const note = _wrGetActiveNote(room);
                   const files = (note && note.attachments) || [];
+
                   if (!note) {
                     el.innerHTML = '<div class="wr2-attach-empty">노트가 아직 없어도 파일을 바로 떨어뜨릴 수 있어요. 첨부하면 노트가 자동 생성됩니다.</div>'
                       + '<button type="button" id="wr2AttachDropZone" class="wr2-attach-drop">'
                       + '<span style="font-size:16px;">📎</span>'
-                      + '<span>파일을 끌어놓거나 눌러서 첨부</span>'
+                      + '<span>파일을 끌어놓거나 눌러서 첨부 (드래그앤드롭 지원)</span>'
                       + '<span class="wr2-attach-drop-meta">이미지, PDF, 문서</span>'
                       + '</button>';
                     initWr2AttachmentDropZone();
                     return;
                   }
-                  let imageIdx = 0;
-                  const itemsHtml = files.map((f, i) => {
-                    const src = window._normalizeLocalAssetUrl ? window._normalizeLocalAssetUrl(f.url || f.data || '') : (f.url || f.data || '');
-                    const isImage = String(f.type || '').startsWith('image') || f.type === 'image';
-                    if (isImage) {
-                      const curImageIdx = imageIdx++;
-                      return `<div class="wr2-attach-item"><img class="wr2-attach-img" src="${src}" title="${f.name}" onclick="wr2OpenAttachImage(${curImageIdx})"><button class="wr2-attach-del" onclick="wr2DelAttach(${i})">✕</button></div>`;
+
+                  const images = files.filter(f => String(f.type || '').startsWith('image') || f.type === 'image');
+                  const otherFiles = files.filter(f => !(String(f.type || '').startsWith('image') || f.type === 'image'));
+                  const noteKey = note.id || 'default';
+                  let curIdx = window._wr2GalleryIdx[noteKey] || 0;
+                  if (curIdx >= images.length) curIdx = 0;
+
+                  let galleryHtml = '';
+                  if (images.length > 0) {
+                    const imgSrc = window._normalizeLocalAssetUrl
+                      ? window._normalizeLocalAssetUrl(images[curIdx].url || images[curIdx].data || '')
+                      : (images[curIdx].url || images[curIdx].data || '');
+                    const total = images.length;
+                    const hasMultiple = total > 1;
+                    // 메인 이미지
+                    galleryHtml += '<div class="wr2-gallery-wrap">'
+                      + '<div class="wr2-gallery-main">'
+                      + `<img src="${imgSrc}" class="wr2-gallery-main-img" onclick="wr2OpenAttachImage(${curIdx})" title="클릭하여 크게 보기">`
+                      + (hasMultiple
+                        ? `<button class="wr2-gallery-nav prev" onclick="wr2GalleryGoto('${noteKey}',${curIdx - 1},${total})">‹</button>`
+                        + `<button class="wr2-gallery-nav next" onclick="wr2GalleryGoto('${noteKey}',${curIdx + 1},${total})">›</button>`
+                        + `<div class="wr2-gallery-counter">${curIdx + 1} / ${total}</div>`
+                        : '')
+                      + `<button class="wr2-attach-del wr2-gallery-del" onclick="wr2DelAttach(${files.indexOf(images[curIdx])})">✕</button>`
+                      + '</div>';
+                    // 썸네일 스트립 (복수일 때만)
+                    if (hasMultiple) {
+                      galleryHtml += '<div class="wr2-gallery-strip">';
+                      images.forEach((img, i) => {
+                        const ts = window._normalizeLocalAssetUrl
+                          ? window._normalizeLocalAssetUrl(img.url || img.data || '')
+                          : (img.url || img.data || '');
+                        const fileIdx = files.indexOf(img);
+                        galleryHtml += `<div class="wr2-gallery-thumb${i === curIdx ? ' active' : ''}" onclick="wr2GalleryGoto('${noteKey}',${i},${total})">`
+                          + `<img src="${ts}" style="width:100%;height:100%;object-fit:cover;">`
+                          + `<button class="wr2-gallery-thumb-del" onclick="event.stopPropagation();wr2DelAttach(${fileIdx})">✕</button>`
+                          + '</div>';
+                      });
+                      galleryHtml += '</div>';
                     }
-                    return `<div class="wr2-attach-item"><a class="wr2-attach-file" href="${src}" target="_blank" rel="noopener">📎 ${f.name}</a><button class="wr2-attach-del" onclick="wr2DelAttach(${i})">✕</button></div>`;
+                    galleryHtml += '</div>';
+                  }
+
+                  // 비이미지 파일
+                  const filesHtml = otherFiles.map((f) => {
+                    const src = window._normalizeLocalAssetUrl ? window._normalizeLocalAssetUrl(f.url || f.data || '') : (f.url || f.data || '');
+                    const fileIdx = files.indexOf(f);
+                    return `<div class="wr2-attach-item"><a class="wr2-attach-file" href="${src}" target="_blank" rel="noopener">📎 ${f.name}</a><button class="wr2-attach-del" onclick="wr2DelAttach(${fileIdx})">✕</button></div>`;
                   }).join('');
+
                   const emptyHtml = files.length ? '' : '<div class="wr2-attach-empty">첨부된 파일이 없습니다. 아래 박스에 끌어놓거나 눌러서 추가하세요.</div>';
                   const dropHtml = files.length
                     ? '<div id="wr2AttachDropZone" class="wr2-attach-drop compact" style="width:100%;margin-top:8px;min-width:0;min-height:0;padding:7px 10px;">'
                         + '<span style="font-size:13px;">📎</span>'
-                        + '<span>이곳에 끌어놓아 추가</span>'
+                        + '<span>이곳에 끌어놓아 추가 (드래그앤드롭)</span>'
                         + '<span class="wr2-attach-drop-meta">또는 상단 파일 추가 버튼 사용</span>'
                       + '</div>'
-                    : `
-                    <button type="button" id="wr2AttachDropZone" class="wr2-attach-drop">
-                      <span style="font-size:16px;">📎</span>
-                      <span>파일을 끌어놓거나 눌러서 첨부</span>
-                      <span class="wr2-attach-drop-meta">노트 안에 바로 저장됩니다</span>
-                    </button>`;
-                  el.innerHTML = itemsHtml + emptyHtml + dropHtml;
+                    : '<button type="button" id="wr2AttachDropZone" class="wr2-attach-drop">'
+                      + '<span style="font-size:16px;">📎</span>'
+                      + '<span>파일을 끌어놓거나 눌러서 첨부 (드래그앤드롭)</span>'
+                      + '<span class="wr2-attach-drop-meta">노트 안에 바로 저장됩니다</span>'
+                      + '</button>';
+
+                  el.innerHTML = galleryHtml + (filesHtml ? '<div class="wr2-attachments-files" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;">' + filesHtml + '</div>' : '') + emptyHtml + dropHtml;
                   initWr2AttachmentDropZone();
+                  // ★ 노트 전체 영역도 드래그앤드롭 지원
+                  initWr2NoteDropZone();
                 }
 
                 function initWr2AttachmentDropZone() {
@@ -6610,6 +6632,26 @@ window.wr2SummaryCancelEdit = function() {
                     activeClass: 'drag-over',
                     clickTarget: 'wr2FileInput',
                     onFiles: function(files) { wr2HandleFilesArray(files); }
+                  });
+                }
+
+                // ★ 노트 전체 영역 드래그앤드롭 (NoteDropZone)
+                function initWr2NoteDropZone() {
+                  const zone = document.getElementById('wr2NoteDropZone');
+                  if (!zone || zone._skDropBound) return;
+                  zone._skDropBound = true;
+                  zone.addEventListener('dragover', function(e) {
+                    e.preventDefault(); e.stopPropagation();
+                    zone.classList.add('drag-over');
+                  });
+                  zone.addEventListener('dragleave', function(e) {
+                    if (!zone.contains(e.relatedTarget)) zone.classList.remove('drag-over');
+                  });
+                  zone.addEventListener('drop', function(e) {
+                    e.preventDefault(); e.stopPropagation();
+                    zone.classList.remove('drag-over');
+                    const files = Array.from(e.dataTransfer.files || []);
+                    if (files.length) wr2HandleFilesArray(files);
                   });
                 }
 
@@ -13996,7 +14038,7 @@ window.wr2SummaryCancelEdit = function() {
       const wsBadge = wsInfo ? `<span onclick="event.stopPropagation();cycleWatchStatus('${item.id}')" title="클릭하여 상태 변경" style="padding:1px 5px;border-radius:4px;font-size:9px;font-weight:600;color:${wsInfo.color};background:${wsInfo.bg};cursor:pointer;white-space:nowrap;">${wsInfo.icon}${wsInfo.label}</span>` : `<span onclick="event.stopPropagation();cycleWatchStatus('${item.id}')" title="관심 표시" style="padding:1px 5px;border-radius:4px;font-size:9px;color:var(--di);background:var(--s2);border:1px dashed var(--di);cursor:pointer;white-space:nowrap;">+검토</span>`;
       const caseNo = String(d.경매번호 || d.사건번호 || '').trim();
       const caseNoBadge = caseNo
-        ? `<span title="경매번호: ${esc(caseNo)}" style="display:inline-block;max-width:130px;padding:1px 5px;border-radius:4px;font-size:10px;font-weight:600;color:#8ab8ff;background:rgba(79,142,255,.12);border:1px solid rgba(79,142,255,.32);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(caseNo)}</span>`
+        ? `<span title="경매번호: ${esc(caseNo)}" style="display:inline-block;max-width:96px;padding:1px 5px;border-radius:4px;font-size:9px;font-weight:600;color:#8ab8ff;background:rgba(79,142,255,.12);border:1px solid rgba(79,142,255,.32);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(caseNo)}</span>`
         : '';
       const itemIdJs = String(item.id || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
       const linkedRoom = (function(){
@@ -14035,12 +14077,12 @@ window.wr2SummaryCancelEdit = function() {
       <div style="display:flex;align-items:flex-start;padding:6px 0 0 8px;flex-shrink:0;">
         <input type="checkbox" class="sv-item-chk" data-id="${item.id}" onclick="event.stopPropagation();updateSelectCount()" style="accent-color:var(--ac);width:15px;height:15px;cursor:pointer;margin-top:4px;">
       </div>
-      <div class="sc-head" style="min-width:175px;max-width:195px;">
-        <div style="display:flex;align-items:center;gap:4px;margin-bottom:3px;flex-wrap:nowrap;overflow:hidden;">
-          <span class="sc-mode ${modeClsChar}" style="flex-shrink:0;">${modeLabel}</span>
+      <div class="sc-head" style="min-width:155px;max-width:175px;">
+        <div style="display:flex;align-items:center;gap:4px;margin-bottom:3px;">
+          <span class="sc-mode ${modeClsChar}">${modeLabel}</span>
+          ${wsBadge}
           ${caseNoBadge}
-          ${wsInfo ? wsBadge : ''}
-          ${item.memo ? '<span style="font-size:10px;flex-shrink:0;">📝</span>' : ''}
+          ${item.memo ? '<span style="font-size:10px;">📝</span>' : ''}
         </div>
         <div style="display:flex;align-items:center;gap:4px;">
           <div style="font-size:12px;font-weight:600;color:var(--tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;" title="${esc(item.title || d.소재지 || '')}">
@@ -16083,9 +16125,8 @@ ${inputDesc.substring(0, 3000)}
       else if (isBds) { badgeCls = 'popup-badge'; badgeTxt = '🌍 플래닛'; }
       else if (isTrans) { badgeCls = 'popup-badge'; badgeTxt = '📊 실거래'; }
 
-      // ★ 수정버튼은 항상 인라인 편집으로 대체 — null 방어
-      const _editBtn = document.getElementById('popEditBtn');
-      if (_editBtn) { _editBtn.className = 'popup-editbtn'; _editBtn.textContent = '✏️ 수정'; }
+      document.getElementById('popEditBtn').className = 'popup-editbtn';
+      document.getElementById('popEditBtn').textContent = '✏️ 수정';
 
       // ── 팝업 topbar 소스 탭 렌더링 (v121 스타일) ──────────────
       (function () {
@@ -16205,21 +16246,19 @@ ${inputDesc.substring(0, 3000)}
       const isBds = src === '부동산플래닛';
       const isTrans = item.mode === 'transaction';
 
-      // ★ 팝업은 항상 편집 가능 (수정버튼 불필요 — 인라인 즉시 수정)
-      const _popupIsEditable = true;
-
       let body = '';
       try {
         if (item.mode === 'auction') {
-          body = buildAuction(item.data || {}, 'pop', _popupIsEditable, true);
+          // ★ isE=false: fi() 내부에서 클릭-인라인 방식으로 처리
+          body = buildAuction(item.data || {}, 'pop', false, true);
         } else if (isDisco || isBds || isTrans) {
-          body = buildGenericDetail(item, _popupIsEditable);
+          body = buildGenericDetail(item, true);
         } else {
-          body = buildListing(item.data || {}, 'pop', _popupIsEditable, true, item);
+          body = buildListing(item.data || {}, 'pop', false, true, item);
         }
       } catch (e) {
         console.error('[renderPopup error]', e);
-        body = buildGenericDetail(item, _popupIsEditable); // fallback
+        body = buildGenericDetail(item, true); // fallback
       }
       const note = (item.data?.분析메모 || item.data?.分析메모) ? `<div class="analysis"><h4>🤖 AI 권리 분석</h4><p>${esc(item.data.分析메모 || item.data.분析메모 || '').replace(/\n/g, '<br>')}</p></div>` : '';
 
@@ -16470,10 +16509,8 @@ ${inputDesc.substring(0, 3000)}
     function togglePopupEdit() {
       popupEditMode = !popupEditMode;
       const btn = document.getElementById('popEditBtn');
-      if (btn) {
-        btn.className = 'popup-editbtn' + (popupEditMode ? ' on' : '');
-        btn.textContent = popupEditMode ? '✓ 완료' : '✏️ 수정';
-      }
+      btn.className = 'popup-editbtn' + (popupEditMode ? ' on' : '');
+      btn.textContent = popupEditMode ? '✓ 완료' : '✏️ 수정';
 
       const titleEl = document.getElementById('popTitle');
       const sv = getSv(); const item = sv.find(s => s.id === popupId);
@@ -17521,20 +17558,19 @@ ${combinedText}
         }
       }
       const em = val == null || val === '';
-      // ★ 팝업은 항상 편집 가능 (popupEditMode 무관)
-      const isE = isPopup ? true : (editIdx === idx);
+      // 수집탭(리스트) 편집모드는 기존 방식 유지
+      const isE = isPopup ? false : (editIdx === idx);
       let dv = '', cl = '';
       const onChange = isPopup ? `window._savedDraftInput('${popupId}','${key}',this.value)` : `updF(${idx},'${key}',this.value)`;
-      const onBlur = isPopup ? `window._savedDraftCommit('${popupId}','${key}',this.value)` : '';
       const onEditAttr = isPopup
-        ? `oninput="${onChange}" onblur="${onBlur}" onkeydown="if(event.key==='Enter'){this.blur();}"`
+        ? `oninput="${onChange}" onkeydown="if(event.key==='Enter'){this.blur();}"`
         : `onchange="${onChange}"`;
 
       if (type === 'money') { cl = 'money'; dv = em ? '-' : fW(val); }
       else if (type === 'money_raw') { cl = 'money'; dv = em ? '-' : fWC(val); }
       else if (type === 'money_m') { cl = 'money'; dv = em ? '-' : fM(val); }
-      else if (type === 'big') { cl = 'big'; dv = em ? '-' : fW(val); }    // 원단위 (경매 감정가/최저가 등)
-      else if (type === 'big_m') { cl = 'big'; dv = em ? '-' : fM(val); }  // 만원단위 (매물 매매가)
+      else if (type === 'big') { cl = 'big'; dv = em ? '-' : fW(val); }
+      else if (type === 'big_m') { cl = 'big'; dv = em ? '-' : fM(val); }
       else if (type === 'area') { const _aNum = parseFloat(val); dv = em ? '-' : '전용 ' + numFmt(val) + '㎡' + ((!isNaN(_aNum) && _aNum > 0) ? ' (' + (_aNum / 3.3058).toFixed(1) + '평)' : ''); }
       else if (type === 'num') { dv = em ? '-' : numFmt(val); }
       else if (type === 'text') { dv = em ? '-' : esc(String(val)); }
@@ -17543,11 +17579,21 @@ ${combinedText}
       else { dv = em ? '-' : esc(String(val)); }
 
       if (em && !isE) cl += ' empty';
-
-      // ✅ 단위 중복 안전장치: '만원만원' 같은 잘못된 표기를 자동 정리
       if (typeof dv === 'string') dv = dv.replace(/만원만원/g, '만원');
 
-      return `<div class="fi${key === '분석메모' ? ' full' : ''}"><div class="fl">${label}</div>${isE ? `<input class="fv-in" value="${em ? '' : esc(String(val))}" ${onEditAttr} placeholder="${label}"/>` : `<div class="fv ${cl}">${dv}</div>`}</div>`;
+      // ★ 팝업: 텍스트로 표시 -> 클릭 시 해당 항목만 input 전환 -> blur 시 저장 후 텍스트 복귀
+      if (isPopup) {
+        const _pid = String(popupId || '');
+        const _safeKey = key.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+        const _safePid = _pid.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+        const _fid = ('fip_' + key + '_' + _pid).replace(/[^a-zA-Z0-9_]/g, '_');
+        const _rawVal = em ? '' : esc(String(val));
+        const _clickJs = `(function(sp){sp.style.display='none';var i=document.getElementById('${_fid}_i');if(i){i.style.display='';i.focus();i.select();}})(this)`;
+        const _blurJs = `(function(i){var v=i.value;window._savedDraftCommit('${_safePid}','${_safeKey}',v);i.style.display='none';var sp=document.getElementById('${_fid}_sp');if(sp){sp.textContent=(v||'-');sp.style.display='';}})(this)`;
+        return `<div class="fi${key==='분석메모'?' full':''}"><div class="fl">${label}</div><div id="${_fid}_sp" class="fv ${cl}" onclick="${_clickJs}" title="클릭하여 수정" style="cursor:text;min-height:16px;border-bottom:1px dashed rgba(255,255,255,.07);">${dv}</div><input id="${_fid}_i" class="fv-in" value="${_rawVal}" ${onEditAttr} onblur="${_blurJs}" placeholder="${label}" style="display:none;"/></div>`;
+      }
+
+      return `<div class="fi${key === '분析메모' ? ' full' : ''}"><div class="fl">${label}</div>${isE ? `<input class="fv-in" value="${em ? '' : esc(String(val))}" ${onEditAttr} placeholder="${label}"/>` : `<div class="fv ${cl}">${dv}</div>`}</div>`;
     }
 
     // ===================================================
