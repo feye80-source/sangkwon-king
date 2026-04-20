@@ -32123,7 +32123,58 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       if (next === 'calendar' && btnC) btnC.classList.add('active');
       if (next === 'list') renderPipelineListBoard();
       if (next === 'calendar') renderPipelineCalendarBoard();
+      if (next === 'kanban') {
+        requestAnimationFrame(function() {
+          if (typeof window._wbApplyKanbanLayout === 'function') window._wbApplyKanbanLayout();
+        });
+      }
     };
+
+    function applyPipelineKanbanLayout() {
+      const board = document.getElementById('pipelineKanbanBoard');
+      if (!board) return;
+      if (board.style.display === 'none') return;
+      const boardWidth = board.clientWidth || board.getBoundingClientRect().width || 0;
+      if (!boardWidth || boardWidth < 320) return;
+
+      // 6개 컬럼: 개요/검토는 2카드, 나머지 4개는 1카드.
+      // 카드 너비를 동일하게 유지하면서 화면 폭을 최대한 채우도록 계산한다.
+      const boardGap = 10;      // column gap
+      const colPad = 16;        // column body horizontal padding sum (8 + 8)
+      const dualInnerGap = 6;   // overview/review inner card gap
+      const fixedOverhead = (boardGap * 5) + (colPad * 6) + (dualInnerGap * 2); // 158
+      const minCardWidth = 176;
+
+      let cardWidth = (boardWidth - fixedOverhead) / 8;
+      if (!isFinite(cardWidth) || cardWidth < minCardWidth) cardWidth = minCardWidth;
+
+      const dualCol = (cardWidth * 2) + colPad + dualInnerGap;
+      const singleCol = cardWidth + colPad;
+      const px = function(v) { return Number(v).toFixed(3) + 'px'; };
+
+      board.style.gridTemplateColumns = [
+        px(dualCol), px(dualCol),
+        px(singleCol), px(singleCol), px(singleCol), px(singleCol)
+      ].join(' ');
+      board.style.gap = boardGap + 'px';
+      board.style.width = '100%';
+      board.style.boxSizing = 'border-box';
+      board.dataset.cardWidth = String(cardWidth);
+    }
+    window._wbApplyKanbanLayout = applyPipelineKanbanLayout;
+
+    if (!window.__wbKanbanResizeBound) {
+      window.__wbKanbanResizeBound = true;
+      let _wbLayoutRaf = null;
+      window.addEventListener('resize', function() {
+        if ((window.__wrPipelineView || 'kanban') !== 'kanban') return;
+        if (_wbLayoutRaf) cancelAnimationFrame(_wbLayoutRaf);
+        _wbLayoutRaf = requestAnimationFrame(function() {
+          _wbLayoutRaf = null;
+          applyPipelineKanbanLayout();
+        });
+      }, { passive: true });
+    }
 
     function renderWatchBoard() {
       const sv = getSv();
@@ -32134,6 +32185,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const emptyEls = ['wEmpty0','wEmpty1','wEmpty2','wEmpty3','wEmpty4','wEmpty5'].map(id=>document.getElementById(id));
       const rooms = wrGetRooms();
       const scheduleEl = document.getElementById('watchScheduleBoard');
+      applyPipelineKanbanLayout();
       const itemLifecycle = {};
       const itemLifecycleTs = {};
       const _pickLife = function(room) {
@@ -32284,9 +32336,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
         if (cols[ci]) {
           if (ci === 0 || ci === 1) {
-            const dualCol = (cols[ci].clientWidth || 0) >= 430;
             cols[ci].style.display = 'grid';
-            cols[ci].style.gridTemplateColumns = dualCol ? 'repeat(2,minmax(0,1fr))' : 'minmax(0,1fr)';
+            cols[ci].style.gridTemplateColumns = 'repeat(2,minmax(0,1fr))';
             cols[ci].style.alignContent = 'start';
             cols[ci].style.alignItems = 'start';
             cols[ci].style.gap = '6px';
