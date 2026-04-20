@@ -5298,7 +5298,7 @@ var _safeLocalSet = function(key, value) {
                           id="wr2SumEdt_${key}" placeholder="${label} 입력 (원 단위)">
                       </div>`;
                     }
-                    return `<div class="wr2-info-row" title="클릭으로 수정" onclick="wr2SummaryStartEdit('${key}')">
+                    return `<div class="wr2-info-row" title="클릭으로 수정" onclick="wr2SummaryStartEdit('${key}');event.stopPropagation();">
                       <span class="wr2-info-lbl">${label}</span>
                       <span class="wr2-info-val">${valHtml}<span class="wr2-edit-hint">✏️</span></span>
                     </div>`;
@@ -41728,7 +41728,7 @@ window.addEventListener('DOMContentLoaded', () => {
       appraisal: it.appraisal || '',
       minprice: it.minprice || '',
       round: it.round || '',
-      biddate: it.biddate || '',
+      biddate: _plNormalizeBiddateValue(it.biddate || ''),
       estimate: it.estimate || '',
       deposit: it.deposit || '',
       monthly: it.monthly || '',
@@ -41843,16 +41843,20 @@ window.addEventListener('DOMContentLoaded', () => {
   function plNormalizeDateInput(v) {
     var raw = String(v || '').trim();
     if (!raw) return '';
+    if (_plIsUndecidedDate(raw)) return '미정';
     if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
     var m = raw.match(/(\d{4})[^0-9]?(\d{1,2})[^0-9]?(\d{1,2})/);
-    if (m) return m[1] + '-' + String(m[2]).padStart(2, '0') + '-' + String(m[3]).padStart(2, '0');
+    if (m) {
+      var iso = m[1] + '-' + String(m[2]).padStart(2, '0') + '-' + String(m[3]).padStart(2, '0');
+      var dt = new Date(iso);
+      return isNaN(dt.getTime()) ? '' : iso;
+    }
     return '';
   }
   function plDisplayDate(v) {
-    var raw = String(v || '').trim();
-    if (raw === '미정') return raw;
     var iso = plNormalizeDateInput(v);
     if (!iso) return '';
+    if (iso === '미정') return '미정';
     var parts = iso.split('-');
     return parts[0] + '.' + parts[1] + '.' + parts[2];
   }
@@ -41918,9 +41922,6 @@ window.addEventListener('DOMContentLoaded', () => {
     var hasCloseMemo = Object.prototype.hasOwnProperty.call(raw, '종료메모');
     var nextMemo = hasCloseMemo ? String(raw['종료메모'] || '') : String(src.memo || curItem.memo || '');
     var nextBidders = String(plSavedField(raw, ['입찰인수','입찰인원'], curItem.bidders || '') || '').trim();
-    var curSimpleStatus = typeof plSimpleStatusKey === 'function' ? plSimpleStatusKey(curItem && curItem.status) : String(curItem && curItem.status || '');
-    var curBiddate = String(curItem && curItem.biddate || '').trim();
-    var preserveManualBiddate = (curSimpleStatus === 'changed' || curSimpleStatus === 'closed') && (curBiddate === '' || curBiddate === '미정');
     return {
       linkedSavedId: String(src.id || curItem.linkedSavedId || ''),
       type: nextType,
@@ -41931,7 +41932,13 @@ window.addEventListener('DOMContentLoaded', () => {
       appraisal: mapped.appraisal || curItem.appraisal || '',
       minprice: mapped.minprice || curItem.minprice || '',
       round: mapped.round || curItem.round || '',
-      biddate: preserveManualBiddate ? curBiddate : (mapped.biddate || curItem.biddate || ''),
+      biddate: (function(){
+        var currentBid = _plNormalizeBiddateValue(curItem.biddate || '');
+        var mappedBid = _plNormalizeBiddateValue(mapped.biddate || '');
+        var simple = plSimpleStatusKey(curItem.status || '');
+        if ((simple === 'changed' || simple === 'closed') && currentBid === '미정') return '미정';
+        return mappedBid || currentBid || '';
+      })(),
       estimate: mapped.estimate || curItem.estimate || '',
       deposit: mapped.deposit || curItem.deposit || '',
       monthly: mapped.monthly || curItem.monthly || '',
@@ -42190,13 +42197,31 @@ window.addEventListener('DOMContentLoaded', () => {
   window._plSyncFromWorkrooms = plSyncFromWorkrooms;
 
   // ── 날짜 유틸 ──────────────────────────
+  function _plIsUndecidedDate(v) {
+    var s = String(v || '').trim();
+    if (!s) return false;
+    return s === '미정' || /^nan(?:[-./ ]?nan){0,2}$/i.test(s);
+  }
+  function _plNormalizeBiddateValue(v) {
+    var raw = String(v || '').trim();
+    if (!raw) return '';
+    if (_plIsUndecidedDate(raw)) return '미정';
+    var iso = plNormalizeDateInput(raw);
+    return iso || '';
+  }
   function daysDiff(dateStr) {
-    if (!dateStr) return null;
-    return Math.ceil((new Date(dateStr) - new Date()) / 86400000);
+    var normalized = _plNormalizeBiddateValue(dateStr);
+    if (!normalized || normalized === '미정') return null;
+    var dt = new Date(normalized);
+    if (isNaN(dt.getTime())) return null;
+    return Math.ceil((dt - new Date()) / 86400000);
   }
   function fmtDate(dateStr) {
-    if (!dateStr) return '—';
-    var d = new Date(dateStr);
+    var normalized = _plNormalizeBiddateValue(dateStr);
+    if (!normalized) return '—';
+    if (normalized === '미정') return '미정';
+    var d = new Date(normalized);
+    if (isNaN(d.getTime())) return '미정';
     return (d.getMonth()+1) + '.' + d.getDate();
   }
 
@@ -42224,15 +42249,16 @@ window.addEventListener('DOMContentLoaded', () => {
   }
   function plApplySimpleStatusToItem(item, simple) {
     if (!item) return;
-    if (simple === 'closed') {
-      item.status = 'closed';
-    } else if (simple === 'changed') {
+    if (simple === 'closed') item.status = 'closed';
+    else if (simple === 'changed') {
       var s = String(item.status || '');
       if (s === 'field' || s === 'bid' || s === 'won') item.status = s;
       else item.status = 'field';
       item.biddate = '미정';
-    } else {
+    }
+    else {
       item.status = 'review';
+      if (_plIsUndecidedDate(item.biddate || '')) item.biddate = '';
     }
     item.archived = false;
     item.updatedAt = Date.now();
@@ -42266,7 +42292,7 @@ window.addEventListener('DOMContentLoaded', () => {
     var m = STATUS_MAP[simple] || STATUS_MAP.active;
     var key = plDomKey(id, 'st');
     return ''
-      + '<span id="'+key+'_s" data-k="'+plEscHtml(key)+'" onclick="event.stopPropagation();plStartInlineEdit(this.dataset.k)" '
+      + '<span id="'+key+'_s" data-k="'+plEscHtml(key)+'" onpointerdown="event.preventDefault();event.stopPropagation();plStartInlineEdit(this.dataset.k)" onclick="event.preventDefault();event.stopPropagation();" '
       + 'style="display:inline-flex;align-items:center;gap:6px;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:800;cursor:pointer;'
       + 'background:'+m.bg+';color:'+m.color+';border:1px solid rgba(255,255,255,.08);white-space:nowrap;">'
       + m.label
@@ -42302,7 +42328,7 @@ window.addEventListener('DOMContentLoaded', () => {
     var placeholder = opts.placeholder || '';
     var spanText = (displayValue === null || displayValue === undefined || displayValue === '') ? (opts.empty || '—') : displayValue;
     return ''
-      + '<span id="'+key+'_s" data-k="'+plEscHtml(key)+'" onclick="event.stopPropagation();plStartInlineEdit(this.dataset.k)" '
+      + '<span id="'+key+'_s" data-k="'+plEscHtml(key)+'" onpointerdown="event.preventDefault();event.stopPropagation();plStartInlineEdit(this.dataset.k)" onclick="event.preventDefault();event.stopPropagation();" '
       + 'style="display:inline-block;min-width:'+(opts.minw||'40px')+';cursor:pointer;border-bottom:1px dashed rgba(255,255,255,.14);'
       + 'text-align:'+align+';'+spanStyle+'">'+plEscHtml(spanText)+'</span>'
       + '<input id="'+key+'_i" data-k="'+plEscHtml(key)+'" data-id="'+plEscHtml(id)+'" data-field="'+plEscHtml(field)+'" type="'+type+'" value="'+plEscHtml(rawValue||'')+'" '
@@ -42317,7 +42343,7 @@ window.addEventListener('DOMContentLoaded', () => {
     var txt = String(rawValue || '');
     var display = txt ? txt.replace(/\s+/g, ' ').trim() : '—';
     return ''
-      + '<div id="'+key+'_s" data-k="'+plEscHtml(key)+'" onclick="event.stopPropagation();plStartInlineEdit(this.dataset.k)" '
+      + '<div id="'+key+'_s" data-k="'+plEscHtml(key)+'" onpointerdown="event.preventDefault();event.stopPropagation();plStartInlineEdit(this.dataset.k)" onclick="event.preventDefault();event.stopPropagation();" '
       + 'style="cursor:pointer;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.02);border-radius:8px;padding:6px 8px;'
       + 'white-space:nowrap;line-height:1.35;height:28px;max-width:260px;color:var(--fg2);'
       + 'overflow:hidden;text-overflow:ellipsis;" '

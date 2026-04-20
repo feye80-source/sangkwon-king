@@ -3435,7 +3435,6 @@ body {
       if (tab)   tab.classList.toggle('active', n === name);
       if (panel) panel.classList.toggle('active', n === name);
     });
-    // 알짜정보 탭
     if (name === 'kcard') {
       if (typeof window._kcardsSyncFromCache === 'function') window._kcardsSyncFromCache();
       if (typeof window.mbRenderKcards === 'function') window.mbRenderKcards();
@@ -3445,7 +3444,6 @@ body {
         window._kcRefreshFromCloud({ render: true }).catch(function(){});
       }
     }
-    // 노트 탭
     if (name === 'note') {
       if (typeof window.ntInit === 'function') {
         try { window.ntInit(); } catch(e) {}
@@ -3458,22 +3456,34 @@ body {
         window._ntRefreshFromCloud({ render: true }).catch(function(){});
       }
     }
-    // 작업룸 탭: 목록 뷰 표시
     if (name === 'room') {
       var _lv=document.getElementById('mb-room-view-list');
       var _dv=document.getElementById('mb-room-view-detail');
       if(_lv)_lv.style.display='flex';
       if(_dv)_dv.style.display='none';
       if (typeof window.mbRoomRefreshSel === 'function') window.mbRoomRefreshSel();
-      setTimeout(function(){
-        if(typeof window.mbRoomListRender==='function')window.mbRoomListRender();
-      }, 50);
+      setTimeout(function(){ if(typeof window.mbRoomListRender==='function')window.mbRoomListRender(); }, 50);
+      var _runRoomRefresh = function() {
+        if (!window._wrRefreshFromCloud) return Promise.resolve(null);
+        if (window._sbRunEntryRefresh) {
+          return window._sbRunEntryRefresh('workrooms', window._wrRefreshFromCloud, { render: false, label: 'workrooms', force: true });
+        }
+        return window._wrRefreshFromCloud({ render: false });
+      };
+      _runRoomRefresh().then(function(payload) {
+        if (!payload) return;
+        var activeRooms = (window.wr2State && Array.isArray(window.wr2State.rooms))
+          ? window.wr2State.rooms
+          : ((window._wrFilterActiveRooms && window._wrFilterActiveRooms(window._wrGetRoomsCache && window._wrGetRoomsCache())) || []);
+        if (typeof window.mbRoomRefreshSel === 'function') window.mbRoomRefreshSel();
+        var sel2 = document.getElementById('mb-room-sel');
+        if (sel2 && sel2.value && activeRooms.find(function(r) { return r && r.id === sel2.value; })) mbRoomLoad(sel2.value, { cloud: false });
+        else mbRoomLoad('', { cloud: false });
+      }).catch(function(){});
     }
-    // 파이프라인 탭
     if (name === 'pipe') {
       if (typeof window.mbRenderPipeline === 'function') window.mbRenderPipeline();
     }
-    // 물건리스트 탭 - 클라우드 최신 데이터 로드 후 렌더
     if (name === 'plist') {
       var _rpl = function(){ if (typeof window.mbPlistRender==='function') window.mbPlistRender(); };
       if (window._sbRunEntryRefresh && typeof window._plRefreshFromCloud==='function') {
@@ -4853,6 +4863,60 @@ body {
     _mbOpenAssetViewer(items, startIdx || 0, '작업 이미지');
   };
 
+
+  window.mbRoomRefreshSel = function() {
+    var sel = document.getElementById('mb-room-sel');
+    var labelEl = document.getElementById('mb-room-sel-label');
+    var list = document.getElementById('mb-room-sel-list');
+    var wrap = document.getElementById('mb-room-sel-wrap');
+    var btn = document.getElementById('mb-room-sel-btn');
+    var rooms = [];
+    try { rooms = _mbGetRoomsArray(); } catch (e) { rooms = []; }
+    rooms = (rooms || []).filter(function(r){ return r && r.id && !r.deletedAt; }).sort(function(a,b){ return (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0); });
+
+    if (sel) {
+      sel.innerHTML = '<option value="">-- 작업룸 선택 --</option>' + rooms.map(function(r){
+        return '<option value="' + String(r.id).replace(/&/g,'&amp;').replace(/"/g,'&quot;') + '">' + String(r.title || r.name || '이름없음').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</option>';
+      }).join('');
+    }
+    if (wrap) wrap.style.display = 'none';
+    if (btn) btn.onclick = null;
+
+    if (!rooms.length) {
+      if (labelEl) labelEl.textContent = '-- 작업룸 선택 --';
+      if (list) {
+        list.innerHTML = '<div style="padding:12px 14px;font-size:12px;color:var(--mu);">작업룸이 없습니다.</div>'
+          + '<div onclick="mbRoomNew()" style="padding:12px 14px;font-size:13px;color:#f59e0b;cursor:pointer;border-top:1px solid var(--b1);">＋ 새 작업룸 만들기</div>';
+      }
+      if (typeof window.mbRoomListRender === 'function') setTimeout(window.mbRoomListRender, 0);
+      return;
+    }
+
+    var activeId = String((_mbActiveRoomId || (sel && sel.value) || '') || '');
+    var active = rooms.find(function(r){ return String(r.id) === activeId; }) || rooms[0];
+    if (sel) sel.value = active ? active.id : '';
+    if (labelEl) labelEl.textContent = active ? (active.title || active.name || '이름없음') : '-- 작업룸 선택 --';
+    if (list) {
+      list.innerHTML = rooms.map(function(r){
+        var isOn = active && String(active.id) === String(r.id);
+        var name = String(r.title || r.name || '이름없음').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        var addr = String(r.address || '').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        return '<div data-roomid="' + String(r.id).replace(/&/g,'&amp;').replace(/"/g,'&quot;') + '" style="padding:12px 14px;border-bottom:1px solid var(--b1);cursor:pointer;background:' + (isOn ? 'rgba(79,142,255,.10)' : 'transparent') + ';">'
+          + '<div style="font-size:13px;font-weight:700;color:' + (isOn ? '#8ab8ff' : 'var(--tx)') + ';">' + name + '</div>'
+          + (addr ? '<div style="font-size:10px;color:var(--mu);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + addr + '</div>' : '')
+          + '</div>';
+      }).join('') + '<div onclick="mbRoomNew()" style="padding:12px 14px;font-size:13px;color:#f59e0b;cursor:pointer;">＋ 새 작업룸 만들기</div>';
+      list.onclick = function(e) {
+        var row = e.target.closest('[data-roomid]');
+        if (!row) return;
+        var roomId = row.getAttribute('data-roomid') || '';
+        if (sel) sel.value = roomId;
+        if (typeof window.mbRoomLoad === 'function') window.mbRoomLoad(roomId, { cloud: false });
+      };
+    }
+    if (typeof window.mbRoomListRender === 'function') setTimeout(window.mbRoomListRender, 0);
+  };
+
   window.mbRoomRefreshFolderToggle = function() {
     var btn = document.getElementById('mbFolderOnlyBtn');
     if (!btn) return;
@@ -4869,64 +4933,6 @@ body {
     mbRoomRefreshSel();
     var list = document.getElementById('mb-room-sel-list');
     if (list) list.style.display = 'block';
-  };
-
-
-  window.mbRoomRefreshSel = function() {
-    var sel = document.getElementById('mb-room-sel');
-    var labelEl = document.getElementById('mb-room-sel-label');
-    var btn = document.getElementById('mb-room-sel-btn');
-    var list = document.getElementById('mb-room-sel-list');
-    var wrap = document.getElementById('mb-room-sel-wrap');
-    var rooms = [];
-    try { rooms = _mbGetRoomsArray(); } catch (e) {}
-    if (!rooms.length && window._idbCache && Array.isArray(window._idbCache['wr2_rooms'])) rooms = window._idbCache['wr2_rooms'];
-    if (!rooms.length) {
-      try { rooms = JSON.parse(localStorage.getItem('wr2_rooms') || '[]'); } catch (e) {}
-    }
-    rooms = (rooms || []).filter(function(r) { return r && r.id && !r.deletedAt; }).sort(function(a, b) {
-      return (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0);
-    });
-    if (sel) {
-      sel.innerHTML = '<option value="">--</option>' + rooms.map(function(r) {
-        var title = (r.title || r.name || '이름 없음').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-        return '<option value="' + r.id + '">' + title + '</option>';
-      }).join('');
-    }
-    var activeId = String(_mbActiveRoomId || (sel && sel.value) || (rooms[0] && rooms[0].id) || '');
-    var active = rooms.find(function(r) { return String(r.id) === activeId; }) || rooms[0] || null;
-    if (active) activeId = String(active.id);
-    if (sel) sel.value = activeId;
-    if (labelEl) labelEl.textContent = active ? (active.title || active.name || '이름 없음') : '작업룸 없음';
-    if (btn) {
-      btn.innerHTML = '<button type="button" class="mb-btn" style="height:32px;padding:0 10px;font-size:12px;" onclick="var l=document.getElementById('mb-room-sel-list'); if(l) l.style.display = (l.style.display==='block' ? 'none' : 'block');">🗂 ' + (active ? (active.title || active.name || '이름 없음') : '작업룸 선택') + '</button>';
-    }
-    if (list) {
-      if (!rooms.length) {
-        list.innerHTML = '<div style="padding:10px 12px;color:var(--di);font-size:12px;">작업룸이 없습니다</div>';
-      } else {
-        list.innerHTML = rooms.map(function(r) {
-          var title = (r.title || r.name || '이름 없음').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-          var isActive = String(r.id) === activeId;
-          return '<button type="button" data-roomid="' + r.id + '" style="display:flex;width:100%;padding:10px 12px;background:' + (isActive ? 'rgba(79,142,255,.12)' : 'transparent') + ';border:none;border-bottom:1px solid rgba(255,255,255,.06);color:var(--tx);font-size:12px;text-align:left;">' + title + '</button>';
-        }).join('');
-        list.onclick = function(e) {
-          var target = e.target && e.target.closest ? e.target.closest('[data-roomid]') : null;
-          if (!target) return;
-          var roomId = target.getAttribute('data-roomid') || '';
-          if (sel) sel.value = roomId;
-          _mbActiveRoomId = roomId || null;
-          if (labelEl) {
-            var found = rooms.find(function(r) { return String(r.id) === String(roomId); });
-            labelEl.textContent = found ? (found.title || found.name || '이름 없음') : '작업룸 없음';
-          }
-          list.style.display = 'none';
-          if (typeof window.mbRoomCardSelect === 'function') window.mbRoomCardSelect(roomId);
-        };
-      }
-    }
-    if (wrap) wrap.style.display = rooms.length ? '' : 'none';
-    return rooms;
   };
 
   window.mbRoomOpenFolder = function(folderName) {
@@ -6872,9 +6878,9 @@ body {
 
     wrap.innerHTML = rows.join('');
 
-    // ★ 카드 클릭 핸들러는 렌더마다 교체 (중복 바인딩 방지)
+    // ★ 클릭 핸들러 중복 누적 방지
     wrap.onclick = function(e) {
-      var card = e.target && e.target.closest ? e.target.closest('.mb-room-card-item') : null;
+      var card = e.target.closest('.mb-room-card-item');
       if (!card) return;
       var roomId = card.getAttribute('data-roomid');
       if (roomId && typeof mbRoomCardSelect === 'function') mbRoomCardSelect(roomId);
