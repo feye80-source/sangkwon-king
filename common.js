@@ -6531,100 +6531,89 @@ window.wr2SummaryCancelEdit = function() {
                   if (window._skOpenImageViewer) window._skOpenImageViewer(images, imageIdx || 0, { title: '첨부 이미지' });
                 };
 
-                // ★ 노트 갤러리 슬라이더 상태
+                // ★ 갤러리 슬라이더 상태 관리
                 if (!window._wr2GalleryIdx) window._wr2GalleryIdx = {};
-
-                window.wr2GalleryGoto = function(noteKey, idx, total) {
-                  window._wr2GalleryIdx[noteKey] = Math.max(0, Math.min(idx, total - 1));
+                window.wr2GalleryGoto = function(noteKey, dir) {
                   const room = (typeof getActiveRoom === 'function') ? getActiveRoom() : null;
-                  if (room) renderAttachments(room);
+                  if (!room) return;
+                  const note = _wrGetActiveNote(room);
+                  const imgs = ((note && note.attachments) || []).filter(f => String(f.type||'').startsWith('image') || f.type==='image');
+                  const total = imgs.length;
+                  if (!total) return;
+                  const cur = window._wr2GalleryIdx[noteKey] || 0;
+                  window._wr2GalleryIdx[noteKey] = (cur + dir + total) % total;
+                  renderAttachments(room);
                 };
-
+                window.wr2GallerySet = function(noteKey, idx) {
+                  const room = (typeof getActiveRoom === 'function') ? getActiveRoom() : null;
+                  if (!room) return;
+                  window._wr2GalleryIdx[noteKey] = idx;
+                  renderAttachments(room);
+                };
                 function renderAttachments(room) {
                   const el = document.getElementById('wr2Attachments');
                   if (!el) return;
                   const note = _wrGetActiveNote(room);
                   const files = (note && note.attachments) || [];
-
                   if (!note) {
-                    el.innerHTML = '<div class="wr2-attach-empty">노트가 아직 없어도 파일을 바로 떨어뜨릴 수 있어요. 첨부하면 노트가 자동 생성됩니다.</div>'
+                    el.innerHTML = '<div class="wr2-attach-empty">노트가 없어도 파일을 바로 끌어다 놓을 수 있어요.</div>'
                       + '<button type="button" id="wr2AttachDropZone" class="wr2-attach-drop">'
                       + '<span style="font-size:16px;">📎</span>'
                       + '<span>파일을 끌어놓거나 눌러서 첨부 (드래그앤드롭 지원)</span>'
                       + '<span class="wr2-attach-drop-meta">이미지, PDF, 문서</span>'
                       + '</button>';
                     initWr2AttachmentDropZone();
+                    initWr2NoteDropZone();
                     return;
                   }
-
-                  const images = files.filter(f => String(f.type || '').startsWith('image') || f.type === 'image');
-                  const otherFiles = files.filter(f => !(String(f.type || '').startsWith('image') || f.type === 'image'));
-                  const noteKey = note.id || 'default';
-                  let curIdx = window._wr2GalleryIdx[noteKey] || 0;
+                  const images    = files.filter(f => String(f.type||'').startsWith('image') || f.type==='image');
+                  const others    = files.filter(f => !(String(f.type||'').startsWith('image') || f.type==='image'));
+                  const noteKey   = note.id || 'default';
+                  let curIdx      = window._wr2GalleryIdx[noteKey] || 0;
                   if (curIdx >= images.length) curIdx = 0;
-
                   let galleryHtml = '';
                   if (images.length > 0) {
-                    const imgSrc = window._normalizeLocalAssetUrl
-                      ? window._normalizeLocalAssetUrl(images[curIdx].url || images[curIdx].data || '')
-                      : (images[curIdx].url || images[curIdx].data || '');
-                    const total = images.length;
-                    const hasMultiple = total > 1;
-                    // 메인 이미지
-                    galleryHtml += '<div class="wr2-gallery-wrap">'
-                      + '<div class="wr2-gallery-main">'
-                      + `<img src="${imgSrc}" class="wr2-gallery-main-img" onclick="wr2OpenAttachImage(${curIdx})" title="클릭하여 크게 보기">`
-                      + (hasMultiple
-                        ? `<button class="wr2-gallery-nav prev" onclick="wr2GalleryGoto('${noteKey}',${curIdx - 1},${total})">‹</button>`
-                        + `<button class="wr2-gallery-nav next" onclick="wr2GalleryGoto('${noteKey}',${curIdx + 1},${total})">›</button>`
-                        + `<div class="wr2-gallery-counter">${curIdx + 1} / ${total}</div>`
-                        : '')
-                      + `<button class="wr2-attach-del wr2-gallery-del" onclick="wr2DelAttach(${files.indexOf(images[curIdx])})">✕</button>`
-                      + '</div>';
-                    // 썸네일 스트립 (복수일 때만)
-                    if (hasMultiple) {
-                      galleryHtml += '<div class="wr2-gallery-strip">';
+                    const total  = images.length;
+                    const cur    = images[curIdx];
+                    const curSrc = window._normalizeLocalAssetUrl ? window._normalizeLocalAssetUrl(cur.url || cur.data || '') : (cur.url || cur.data || '');
+                    const curFi  = files.indexOf(cur);
+                    galleryHtml =
+                      `<div class="wr2-gallery-wrap">` +
+                        `<div class="wr2-gallery-main">` +
+                          `<img class="wr2-gallery-main-img" src="${curSrc}" onclick="wr2OpenAttachImage(${curIdx})" title="클릭하여 크게 보기">` +
+                          (total > 1 ? `<button class="wr2-gallery-nav prev" onclick="wr2GalleryGoto('${noteKey}',-1)">&#8249;</button>` +
+                                       `<button class="wr2-gallery-nav next" onclick="wr2GalleryGoto('${noteKey}',1)">&#8250;</button>` +
+                                       `<div class="wr2-gallery-counter">${curIdx+1} / ${total}</div>` : '') +
+                          `<button class="wr2-attach-del wr2-gallery-del" onclick="wr2DelAttach(${curFi})">&#x2715;</button>` +
+                        `</div>`;
+                    if (total > 1) {
+                      galleryHtml += `<div class="wr2-gallery-strip">`;
                       images.forEach((img, i) => {
-                        const ts = window._normalizeLocalAssetUrl
-                          ? window._normalizeLocalAssetUrl(img.url || img.data || '')
-                          : (img.url || img.data || '');
-                        const fileIdx = files.indexOf(img);
-                        galleryHtml += `<div class="wr2-gallery-thumb${i === curIdx ? ' active' : ''}" onclick="wr2GalleryGoto('${noteKey}',${i},${total})">`
-                          + `<img src="${ts}" style="width:100%;height:100%;object-fit:cover;">`
-                          + `<button class="wr2-gallery-thumb-del" onclick="event.stopPropagation();wr2DelAttach(${fileIdx})">✕</button>`
-                          + '</div>';
+                        const ts  = window._normalizeLocalAssetUrl ? window._normalizeLocalAssetUrl(img.url || img.data || '') : (img.url || img.data || '');
+                        const fi2 = files.indexOf(img);
+                        galleryHtml +=
+                          `<div class="wr2-gallery-thumb${i===curIdx?' active':''}" onclick="wr2GallerySet('${noteKey}',${i})">` +
+                            `<img src="${ts}" style="width:100%;height:100%;object-fit:cover;">` +
+                            `<button class="wr2-gallery-thumb-del" onclick="event.stopPropagation();wr2DelAttach(${fi2})">&#x2715;</button>` +
+                          `</div>`;
                       });
-                      galleryHtml += '</div>';
+                      galleryHtml += `</div>`;
                     }
-                    galleryHtml += '</div>';
+                    galleryHtml += `</div>`;
                   }
-
-                  // 비이미지 파일
-                  const filesHtml = otherFiles.map((f) => {
-                    const src = window._normalizeLocalAssetUrl ? window._normalizeLocalAssetUrl(f.url || f.data || '') : (f.url || f.data || '');
-                    const fileIdx = files.indexOf(f);
-                    return `<div class="wr2-attach-item"><a class="wr2-attach-file" href="${src}" target="_blank" rel="noopener">📎 ${f.name}</a><button class="wr2-attach-del" onclick="wr2DelAttach(${fileIdx})">✕</button></div>`;
+                  const filesHtml = others.map(f => {
+                    const src = window._normalizeLocalAssetUrl ? window._normalizeLocalAssetUrl(f.url||f.data||'') : (f.url||f.data||'');
+                    const fi2 = files.indexOf(f);
+                    return `<div class="wr2-attach-item"><a class="wr2-attach-file" href="${src}" target="_blank" rel="noopener">📎 ${f.name}</a><button class="wr2-attach-del" onclick="wr2DelAttach(${fi2})">&#x2715;</button></div>`;
                   }).join('');
-
-                  const emptyHtml = files.length ? '' : '<div class="wr2-attach-empty">첨부된 파일이 없습니다. 아래 박스에 끌어놓거나 눌러서 추가하세요.</div>';
-                  const dropHtml = files.length
-                    ? '<div id="wr2AttachDropZone" class="wr2-attach-drop compact" style="width:100%;margin-top:8px;min-width:0;min-height:0;padding:7px 10px;">'
-                        + '<span style="font-size:13px;">📎</span>'
-                        + '<span>이곳에 끌어놓아 추가 (드래그앤드롭)</span>'
-                        + '<span class="wr2-attach-drop-meta">또는 상단 파일 추가 버튼 사용</span>'
-                      + '</div>'
-                    : '<button type="button" id="wr2AttachDropZone" class="wr2-attach-drop">'
-                      + '<span style="font-size:16px;">📎</span>'
-                      + '<span>파일을 끌어놓거나 눌러서 첨부 (드래그앤드롭)</span>'
-                      + '<span class="wr2-attach-drop-meta">노트 안에 바로 저장됩니다</span>'
-                      + '</button>';
-
-                  el.innerHTML = galleryHtml + (filesHtml ? '<div class="wr2-attachments-files" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;">' + filesHtml + '</div>' : '') + emptyHtml + dropHtml;
+                  const emptyHtml = files.length ? '' : '<div class="wr2-attach-empty">첨부된 파일이 없습니다. 아래에 끌어놓거나 눌러서 추가하세요.</div>';
+                  const dropHtml  = files.length
+                    ? '<div id="wr2AttachDropZone" class="wr2-attach-drop compact" style="width:100%;margin-top:8px;padding:7px 10px;"><span style="font-size:13px;">📎</span><span>이곳에 끌어놓아 추가 (드래그앤드롭)</span></div>'
+                    : '<button type="button" id="wr2AttachDropZone" class="wr2-attach-drop"><span style="font-size:16px;">📎</span><span>파일을 끌어놓거나 눌러서 첨부 (드래그앤드롭)</span><span class="wr2-attach-drop-meta">노트 안에 바로 저장됩니다</span></button>';
+                  el.innerHTML = galleryHtml + (filesHtml ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;">${filesHtml}</div>` : '') + emptyHtml + dropHtml;
                   initWr2AttachmentDropZone();
-                  // ★ 노트 전체 영역도 드래그앤드롭 지원
                   initWr2NoteDropZone();
                 }
-
                 function initWr2AttachmentDropZone() {
                   const zone = document.getElementById('wr2AttachDropZone');
                   if (!zone) return;
@@ -6635,11 +6624,11 @@ window.wr2SummaryCancelEdit = function() {
                   });
                 }
 
-                // ★ 노트 전체 영역 드래그앤드롭 (NoteDropZone)
+                // ★ 노트 전체 영역 드래그앤드롭
                 function initWr2NoteDropZone() {
                   const zone = document.getElementById('wr2NoteDropZone');
-                  if (!zone || zone._skDropBound) return;
-                  zone._skDropBound = true;
+                  if (!zone || zone._skNoteDropBound) return;
+                  zone._skNoteDropBound = true;
                   zone.addEventListener('dragover', function(e) {
                     e.preventDefault(); e.stopPropagation();
                     zone.classList.add('drag-over');
@@ -6650,8 +6639,8 @@ window.wr2SummaryCancelEdit = function() {
                   zone.addEventListener('drop', function(e) {
                     e.preventDefault(); e.stopPropagation();
                     zone.classList.remove('drag-over');
-                    const files = Array.from(e.dataTransfer.files || []);
-                    if (files.length) wr2HandleFilesArray(files);
+                    const files = Array.from((e.dataTransfer && e.dataTransfer.files) || []);
+                    if (files.length && typeof wr2HandleFilesArray === 'function') wr2HandleFilesArray(files);
                   });
                 }
 
@@ -14035,10 +14024,10 @@ window.wr2SummaryCancelEdit = function() {
       const ws = item.watchStatus || '';
       const wsMap = { 'interest': { icon: '👀', label: '관심',  color: '#94a3b8', bg: 'rgba(148,163,184,.15)' }, 'review': { icon: '🔍', label: '검토중', color: '#60a5fa', bg: 'rgba(96,165,250,.15)' }, 'field': { icon: '📍', label: '현장', color: '#fbbf24', bg: 'rgba(251,191,36,.15)' }, 'bid': { icon: '🎯', label: '입찰', color: '#f97316', bg: 'rgba(249,115,22,.15)' }, 'won': { icon: '✅', label: '낙찰', color: '#4ade80', bg: 'rgba(74,222,128,.15)' }, 'pass': { icon: '🚫', label: '패스', color: '#6b7280', bg: 'rgba(107,114,128,.15)' } };
       const wsInfo = wsMap[ws] || null;
-      const wsBadge = wsInfo ? `<span onclick="event.stopPropagation();cycleWatchStatus('${item.id}')" title="클릭하여 상태 변경" style="padding:1px 5px;border-radius:4px;font-size:9px;font-weight:600;color:${wsInfo.color};background:${wsInfo.bg};cursor:pointer;white-space:nowrap;">${wsInfo.icon}${wsInfo.label}</span>` : `<span onclick="event.stopPropagation();cycleWatchStatus('${item.id}')" title="관심 표시" style="padding:1px 5px;border-radius:4px;font-size:9px;color:var(--di);background:var(--s2);border:1px dashed var(--di);cursor:pointer;white-space:nowrap;">+검토</span>`;
+      const wsBadge = wsInfo ? `<span onclick="event.stopPropagation();cycleWatchStatus('${item.id}')" title="클릭하여 상태 변경" style="padding:1px 5px;border-radius:4px;font-size:9px;font-weight:600;color:${wsInfo.color};background:${wsInfo.bg};cursor:pointer;white-space:nowrap;">${wsInfo.icon}${wsInfo.label}</span>` : '';
       const caseNo = String(d.경매번호 || d.사건번호 || '').trim();
       const caseNoBadge = caseNo
-        ? `<span title="경매번호: ${esc(caseNo)}" style="display:inline-block;max-width:96px;padding:1px 5px;border-radius:4px;font-size:9px;font-weight:600;color:#8ab8ff;background:rgba(79,142,255,.12);border:1px solid rgba(79,142,255,.32);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(caseNo)}</span>`
+        ? `<span title="경매번호: ${esc(caseNo)}" style="display:inline-block;max-width:130px;padding:1px 5px;border-radius:4px;font-size:10px;font-weight:600;color:#8ab8ff;background:rgba(79,142,255,.12);border:1px solid rgba(79,142,255,.32);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(caseNo)}</span>`
         : '';
       const itemIdJs = String(item.id || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
       const linkedRoom = (function(){
@@ -14077,12 +14066,12 @@ window.wr2SummaryCancelEdit = function() {
       <div style="display:flex;align-items:flex-start;padding:6px 0 0 8px;flex-shrink:0;">
         <input type="checkbox" class="sv-item-chk" data-id="${item.id}" onclick="event.stopPropagation();updateSelectCount()" style="accent-color:var(--ac);width:15px;height:15px;cursor:pointer;margin-top:4px;">
       </div>
-      <div class="sc-head" style="min-width:155px;max-width:175px;">
-        <div style="display:flex;align-items:center;gap:4px;margin-bottom:3px;">
+      <div class="sc-head" style="min-width:175px;max-width:200px;">
+        <div style="display:flex;align-items:center;gap:4px;margin-bottom:3px;flex-wrap:nowrap;overflow:hidden;">
           <span class="sc-mode ${modeClsChar}">${modeLabel}</span>
-          ${wsBadge}
           ${caseNoBadge}
-          ${item.memo ? '<span style="font-size:10px;">📝</span>' : ''}
+          ${wsBadge}
+          ${item.memo ? '<span style="font-size:10px;flex-shrink:0;">📝</span>' : ''}
         </div>
         <div style="display:flex;align-items:center;gap:4px;">
           <div style="font-size:12px;font-weight:600;color:var(--tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;" title="${esc(item.title || d.소재지 || '')}">
@@ -16125,8 +16114,8 @@ ${inputDesc.substring(0, 3000)}
       else if (isBds) { badgeCls = 'popup-badge'; badgeTxt = '🌍 플래닛'; }
       else if (isTrans) { badgeCls = 'popup-badge'; badgeTxt = '📊 실거래'; }
 
-      document.getElementById('popEditBtn').className = 'popup-editbtn';
-      document.getElementById('popEditBtn').textContent = '✏️ 수정';
+      const _peb = document.getElementById('popEditBtn');
+      if (_peb) { _peb.className = 'popup-editbtn'; _peb.textContent = '✏️ 수정'; }
 
       // ── 팝업 topbar 소스 탭 렌더링 (v121 스타일) ──────────────
       (function () {
@@ -16249,7 +16238,7 @@ ${inputDesc.substring(0, 3000)}
       let body = '';
       try {
         if (item.mode === 'auction') {
-          // ★ isE=false: fi() 내부에서 클릭-인라인 방식으로 처리
+          // ★ fi()가 팝업 클릭-인라인 처리 — isE 불필요
           body = buildAuction(item.data || {}, 'pop', false, true);
         } else if (isDisco || isBds || isTrans) {
           body = buildGenericDetail(item, true);
@@ -16509,8 +16498,7 @@ ${inputDesc.substring(0, 3000)}
     function togglePopupEdit() {
       popupEditMode = !popupEditMode;
       const btn = document.getElementById('popEditBtn');
-      btn.className = 'popup-editbtn' + (popupEditMode ? ' on' : '');
-      btn.textContent = popupEditMode ? '✓ 완료' : '✏️ 수정';
+      if (btn) { btn.className = 'popup-editbtn' + (popupEditMode ? ' on' : ''); btn.textContent = popupEditMode ? '✓ 완료' : '✏️ 수정'; }
 
       const titleEl = document.getElementById('popTitle');
       const sv = getSv(); const item = sv.find(s => s.id === popupId);
@@ -17558,10 +17546,11 @@ ${combinedText}
         }
       }
       const em = val == null || val === '';
-      // 수집탭(리스트) 편집모드는 기존 방식 유지
+      // ★ 수집탭 편집모드는 기존 방식 유지 / 팝업은 항상 텍스트 (클릭 시 해당 항목만 input 전환)
       const isE = isPopup ? false : (editIdx === idx);
       let dv = '', cl = '';
       const onChange = isPopup ? `window._savedDraftInput('${popupId}','${key}',this.value)` : `updF(${idx},'${key}',this.value)`;
+      // 팝업: oninput으로 즉시 반영, 수집탭: onchange
       const onEditAttr = isPopup
         ? `oninput="${onChange}" onkeydown="if(event.key==='Enter'){this.blur();}"`
         : `onchange="${onChange}"`;
@@ -17571,7 +17560,10 @@ ${combinedText}
       else if (type === 'money_m') { cl = 'money'; dv = em ? '-' : fM(val); }
       else if (type === 'big') { cl = 'big'; dv = em ? '-' : fW(val); }
       else if (type === 'big_m') { cl = 'big'; dv = em ? '-' : fM(val); }
-      else if (type === 'area') { const _aNum = parseFloat(val); dv = em ? '-' : '전용 ' + numFmt(val) + '㎡' + ((!isNaN(_aNum) && _aNum > 0) ? ' (' + (_aNum / 3.3058).toFixed(1) + '평)' : ''); }
+      else if (type === 'area') {
+        const _aNum = parseFloat(val);
+        dv = em ? '-' : '전용 ' + numFmt(val) + '㎡' + ((!isNaN(_aNum) && _aNum > 0) ? ' (' + (_aNum / 3.3058).toFixed(1) + '평)' : '');
+      }
       else if (type === 'num') { dv = em ? '-' : numFmt(val); }
       else if (type === 'text') { dv = em ? '-' : esc(String(val)); }
       else if (type === 'pos') { cl = 'pos'; dv = em ? '-' : esc(String(val)); }
@@ -17581,16 +17573,23 @@ ${combinedText}
       if (em && !isE) cl += ' empty';
       if (typeof dv === 'string') dv = dv.replace(/만원만원/g, '만원');
 
-      // ★ 팝업: 텍스트로 표시 -> 클릭 시 해당 항목만 input 전환 -> blur 시 저장 후 텍스트 복귀
+      // ★ 팝업 전용: 텍스트(span) 표시 → 클릭 시 해당 항목만 input 전환 → blur 시 즉시 저장 후 복귀
+      // 레이아웃 이동 없음: span/input 동일 min-height, display 토글만
       if (isPopup) {
         const _pid = String(popupId || '');
-        const _safeKey = key.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
-        const _safePid = _pid.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+        // 특수문자 이스케이프
+        const _sk = key.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+        const _sp = _pid.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
         const _fid = ('fip_' + key + '_' + _pid).replace(/[^a-zA-Z0-9_]/g, '_');
-        const _rawVal = em ? '' : esc(String(val));
-        const _clickJs = `(function(sp){sp.style.display='none';var i=document.getElementById('${_fid}_i');if(i){i.style.display='';i.focus();i.select();}})(this)`;
-        const _blurJs = `(function(i){var v=i.value;window._savedDraftCommit('${_safePid}','${_safeKey}',v);i.style.display='none';var sp=document.getElementById('${_fid}_sp');if(sp){sp.textContent=(v||'-');sp.style.display='';}})(this)`;
-        return `<div class="fi${key==='분석메모'?' full':''}"><div class="fl">${label}</div><div id="${_fid}_sp" class="fv ${cl}" onclick="${_clickJs}" title="클릭하여 수정" style="cursor:text;min-height:16px;border-bottom:1px dashed rgba(255,255,255,.07);">${dv}</div><input id="${_fid}_i" class="fv-in" value="${_rawVal}" ${onEditAttr} onblur="${_blurJs}" placeholder="${label}" style="display:none;"/></div>`;
+        const _rv = em ? '' : esc(String(val));
+        // 클릭: span 숨기고 input 표시 후 포커스
+        const _click = `(function(sp){var i=document.getElementById('${_fid}_i');if(!i)return;sp.style.display='none';i.style.display='';i.focus();i.select();})(this)`;
+        // blur: 즉시 저장 후 input 숨기고 span 업데이트
+        const _blur  = `(function(inp){var v=inp.value;window._savedDraftCommit('${_sp}','${_sk}',v);inp.style.display='none';var sp=document.getElementById('${_fid}_sp');if(sp){sp.textContent=(v||'-');sp.style.display='';}})(this)`;
+        const _style = 'min-height:20px;padding:2px 0;';
+        return `<div class="fi${key==='분析메모'?' full':''}"><div class="fl">${label}</div>` +
+          `<div id="${_fid}_sp" class="fv ${cl}" onclick="${_click}" title="클릭하여 수정" style="cursor:text;${_style}border-bottom:1px dashed rgba(255,255,255,.07);">${dv}</div>` +
+          `<input id="${_fid}_i" class="fv-in" value="${_rv}" ${onEditAttr} onblur="${_blur}" placeholder="${label}" style="display:none;${_style}"/></div>`;
       }
 
       return `<div class="fi${key === '분析메모' ? ' full' : ''}"><div class="fl">${label}</div>${isE ? `<input class="fv-in" value="${em ? '' : esc(String(val))}" ${onEditAttr} placeholder="${label}"/>` : `<div class="fv ${cl}">${dv}</div>`}</div>`;
