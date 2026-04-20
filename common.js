@@ -1183,6 +1183,13 @@
         try { if (typeof renderSaved === 'function') renderSaved(); } catch (e) {}
         try { if (typeof mbRenderSaved === 'function') mbRenderSaved(); } catch (e) {}
         try { if (typeof updSvCnt === 'function') updSvCnt(); } catch (e) {}
+        try {
+          if (typeof currentPage !== 'undefined' && currentPage === 4) {
+            if (window.__pmActiveTab === 'work' && typeof wr2Render === 'function') wr2Render();
+            if (window.__pmActiveTab === 'list' && typeof renderPropertyList === 'function') renderPropertyList();
+            if (window.__pmActiveTab === 'pipeline' && typeof renderWatchBoard === 'function') renderWatchBoard();
+          }
+        } catch (e) {}
       };
       if (options.list !== false && !_svListRenderQueued) {
         _svListRenderQueued = true;
@@ -1965,7 +1972,13 @@
       }
       const cloudItems = window._sbLoadPlItems ? await window._sbLoadPlItems() : [];
       const localItems = _sbGetCachedArray('pl_items_v3');
-      const merged = _sbMergeById(cloudItems, localItems).filter(it => it && it.id);
+      let merged = _sbMergeById(cloudItems, localItems).filter(it => it && it.id);
+      // 강제 새로고침에서는 클라우드를 우선한다.
+      // (기기별 오래된 로컬 캐시가 최신 클라우드를 덮어쓰는 현상 방지)
+      if (options.force === true) {
+        const cloudOnly = _sbTakeCloudArray(cloudItems);
+        if (cloudOnly.length) merged = cloudOnly;
+      }
       _sbPersistCachedArray('pl_items_v3', merged);
       // 로컬이 더 최신/풍부한 경우 클라우드로 역전파(backfill)하여 기기간 빈 목록 불일치 방지
       if (options.sync !== false && window._sbSavePlItems) {
@@ -3495,6 +3508,48 @@ var _safeLocalSet = function(key, value) {
                   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
                   return Math.round((dt - today) / (1000 * 60 * 60 * 24));
                 }
+                function wr2BuildPlLinkedMap() {
+                  const map = {};
+                  try {
+                    if (typeof plLoad !== 'function') return map;
+                    const items = plLoad();
+                    (items || []).forEach(function(it) {
+                      if (!it || !it.id || !it.linkedSavedId) return;
+                      map[String(it.id)] = String(it.linkedSavedId);
+                    });
+                  } catch (e) {}
+                  return map;
+                }
+                function wr2ResolveLinkedSavedItem(room, svItems, plLinkedMap) {
+                  const sv = Array.isArray(svItems) ? svItems : [];
+                  if (!room || !sv.length) return null;
+                  const byId = {};
+                  sv.forEach(function(it) { if (it && it.id != null) byId[String(it.id)] = it; });
+                  const pushed = {};
+                  const candidates = [];
+                  const pushCandidate = function(raw) {
+                    const id = String(raw || '').trim();
+                    if (!id || pushed[id]) return;
+                    pushed[id] = true;
+                    candidates.push(id);
+                  };
+                  pushCandidate(room.linkedSavedId);
+                  pushCandidate(room.auctionId);
+                  pushCandidate(room.listingId);
+                  (room.linkedItems || []).forEach(function(raw) {
+                    const id = String(raw || '').trim();
+                    if (!id) return;
+                    if (byId[id]) { pushCandidate(id); return; }
+                    if (plLinkedMap && plLinkedMap[id]) {
+                      pushCandidate(plLinkedMap[id]);
+                    }
+                  });
+                  for (let i = 0; i < candidates.length; i += 1) {
+                    const found = byId[candidates[i]];
+                    if (found) return found;
+                  }
+                  return null;
+                }
 
                 function wr2CollectCloseSummary(prevSummary, onDone, onCancel) {
                   const base = Object.assign({}, prevSummary || {});
@@ -4348,6 +4403,7 @@ var _safeLocalSet = function(key, value) {
 
                   let rooms = wr2State.rooms.filter(r => !r.deletedAt);
                   const svItems = (typeof getSv === 'function') ? (getSv() || []) : [];
+                  const plLinkedMap = wr2BuildPlLinkedMap();
                   const fmtMetaPrice = function(raw) {
                     let n = 0;
                     try {
@@ -4364,12 +4420,7 @@ var _safeLocalSet = function(key, value) {
                     return Math.round(n / 10000).toLocaleString('ko-KR') + '만';
                   };
                   const getRoomLinkedMeta = function(r) {
-                    const linkedIds = [];
-                    if (r.linkedSavedId != null) linkedIds.push(String(r.linkedSavedId));
-                    if (r.auctionId != null) linkedIds.push(String(r.auctionId));
-                    if (r.listingId != null) linkedIds.push(String(r.listingId));
-                    (r.linkedItems || []).forEach(id => linkedIds.push(String(id)));
-                    const linked = svItems.find(it => linkedIds.includes(String(it.id))) || null;
+                    const linked = wr2ResolveLinkedSavedItem(r, svItems, plLinkedMap);
                     const m = linked && linked.data ? linked.data : {};
                     const saleRaw = String(m['매각기일'] || m['매각일'] || '').trim();
                     const saleDt = wr2ParseSaleDateLoose(saleRaw);
@@ -5175,15 +5226,8 @@ var _safeLocalSet = function(key, value) {
                   const openBtn = document.getElementById('wr2OpenSavedBtn');
                   if (!el) return;
                   const sv = (typeof getSv === 'function') ? getSv() : (() => { try { return (window._idbCache && window._idbCache['re_sv'] || []); } catch (e) { return []; } })();
-                  const linkedCandidates = [];
-                  if (room.linkedSavedId != null) linkedCandidates.push(String(room.linkedSavedId));
-                  if (room.auctionId != null) linkedCandidates.push(String(room.auctionId));
-                  if (room.listingId != null) linkedCandidates.push(String(room.listingId));
-                  (room.linkedItems || []).forEach(id => linkedCandidates.push(String(id)));
-                  const uniqLinkedIds = Array.from(new Set(linkedCandidates.filter(Boolean)));
-                  const item = uniqLinkedIds.length
-                    ? (sv.find(s => uniqLinkedIds.includes(String(s && s.id))) || null)
-                    : null;
+                  const plLinkedMap = wr2BuildPlLinkedMap();
+                  const item = wr2ResolveLinkedSavedItem(room, sv, plLinkedMap);
 
                   if (openBtn) openBtn.style.display = item ? '' : 'none';
                   if (openBtn && item) { openBtn.onclick = () => { if (typeof openPopup === 'function') openPopup(item.id); }; }
@@ -17102,6 +17146,13 @@ ${combinedText}
         try {
           if (typeof refreshMapCardData === 'function') refreshMapCardData(popupId);
         } catch (e) { }
+        try {
+          if (typeof currentPage !== 'undefined' && currentPage === 4) {
+            if (window.__pmActiveTab === 'work' && typeof window.wr2Render === 'function') window.wr2Render();
+            if (window.__pmActiveTab === 'list' && typeof window.renderPropertyList === 'function') window.renderPropertyList();
+            if (window.__pmActiveTab === 'pipeline' && typeof window.renderWatchBoard === 'function') window.renderWatchBoard();
+          }
+        } catch (e) {}
       }
     }
 
@@ -17308,6 +17359,7 @@ ${combinedText}
       const isE = isPopup ? popupEditMode : (editIdx === idx);
       let dv = '', cl = '';
       const onChange = isPopup ? `updPopupF('${key}',this.value)` : `updF(${idx},'${key}',this.value)`;
+      const onEditAttr = isPopup ? `oninput="${onChange}"` : `onchange="${onChange}"`;
 
       if (type === 'money') { cl = 'money'; dv = em ? '-' : fW(val); }
       else if (type === 'money_raw') { cl = 'money'; dv = em ? '-' : fWC(val); }
@@ -17326,7 +17378,7 @@ ${combinedText}
       // ✅ 단위 중복 안전장치: '만원만원' 같은 잘못된 표기를 자동 정리
       if (typeof dv === 'string') dv = dv.replace(/만원만원/g, '만원');
 
-      return `<div class="fi${key === '분석메모' ? ' full' : ''}"><div class="fl">${label}</div>${isE ? `<input class="fv-in" value="${em ? '' : esc(String(val))}" onchange="${onChange}" placeholder="${label}"/>` : `<div class="fv ${cl}">${dv}</div>`}</div>`;
+      return `<div class="fi${key === '분석메모' ? ' full' : ''}"><div class="fl">${label}</div>${isE ? `<input class="fv-in" value="${em ? '' : esc(String(val))}" ${onEditAttr} placeholder="${label}"/>` : `<div class="fv ${cl}">${dv}</div>`}</div>`;
     }
 
     // ===================================================
@@ -42301,7 +42353,7 @@ window.addEventListener('DOMContentLoaded', () => {
             + '</div>';
         }
         var resultTag = '';
-        if (simpleStatus === 'closed' && it.result && it.result.won) resultTag = '<div style="font-size:10px;color:#4caf87;margin-top:2px;">낙 '+it.result.won+'</div>';
+        if (simpleStatus === 'closed' && it.result && it.result.won) resultTag = '<div style="font-size:10px;color:#4caf87;margin-top:2px;">낙 '+(plDisplayMan(it.result.won) || it.result.won)+'</div>';
         var isPast = (d !== null && d < 0);
         var isClosed = simpleStatus === 'closed';
         var rowClass = (isPast ? 'pl-past ' : '') + (isClosed ? 'pl-closed' : '');
@@ -42896,10 +42948,43 @@ window.addEventListener('DOMContentLoaded', () => {
     };
   }
 
+  // 물건리스트 탭 진입 전에도 저장목록↔물건리스트 동기화 래퍼를 선적용
+  // (저장목록에서 수정했는데 작업룸/물건리스트에 즉시 반영 안 되는 문제 방지)
+  setTimeout(function() {
+    try { _plWrapSavedListSync(); } catch (e) {}
+    try { _plWrapWorkroomSync(); } catch (e) {}
+  }, 0);
+
   // ── 주기적 알람 체크 (1분마다) ───────────
   setInterval(function() {
-    if (document.getElementById('pl-alerts')) renderAlerts(plLoad());
+    if (document.getElementById('pl-alerts')) {
+      var rooms = getWrRooms();
+      var roomById = {};
+      (rooms || []).forEach(function(r){ if (r && r.id) roomById[String(r.id)] = r; });
+      renderAlerts(plLoad(), roomById);
+    }
   }, 60000);
+  // 기기간 불일치 완화: page4에서 주기적으로 물건리스트를 클라우드 기준으로 동기화
+  setInterval(function() {
+    try {
+      if (typeof currentPage === 'undefined' || currentPage !== 4) return;
+      if (window.__pmActiveTab !== 'list' && window.__pmActiveTab !== 'work' && window.__pmActiveTab !== 'pipeline') return;
+      var ae = document.activeElement;
+      var typing = !!(ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable));
+      if (typing) return;
+      if (typeof window._plRefreshFromCloud === 'function') {
+        window._plRefreshFromCloud({ render: false, force: true, sync: true }).then(function() {
+          if (window.__pmActiveTab === 'list' && typeof window.renderPropertyList === 'function') window.renderPropertyList();
+        }).catch(function(){});
+      }
+      if (typeof window._svRefreshFromCloud === 'function') {
+        window._svRefreshFromCloud({ render: false }).then(function() {
+          if (window.__pmActiveTab === 'work' && typeof window.wr2Render === 'function') window.wr2Render();
+          if (window.__pmActiveTab === 'pipeline' && typeof window.renderWatchBoard === 'function') window.renderWatchBoard();
+        }).catch(function(){});
+      }
+    } catch (e) {}
+  }, 20000);
 
 })();
 
