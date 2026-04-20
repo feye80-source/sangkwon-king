@@ -3325,12 +3325,24 @@ var _safeLocalSet = function(key, value) {
                   } catch (e) {}
                   wr2State.rooms = window._wrFilterActiveRooms ? window._wrFilterActiveRooms(raw) : raw.filter(r => r && !r.deletedAt);
                 }
-                function saveRooms() {
+                var _wr2SaveRoomsTimer = null;
+                function saveRooms(opts) {
+                  var options = opts || {};
                   if (wr2State && wr2State.activeRoomId && window._sbMarkRoomDirty) {
                     window._sbMarkRoomDirty(wr2State.activeRoomId);
                   }
-                  if (window._wrPersistRooms) window._wrPersistRooms(wr2State.rooms, { keepDeletedInState: true, syncState: false });
-                  else if (window._wrPersistRooms) window._wrPersistRooms(wr2State.rooms, { keepDeletedInState: true, syncState: false });
+                  var runner = function() {
+                    _wr2SaveRoomsTimer = null;
+                    if (window._wrPersistRooms) window._wrPersistRooms(wr2State.rooms, { keepDeletedInState: true, syncState: false });
+                    else if (window._wrPersistRoomCache) window._wrPersistRoomCache(wr2State.rooms, { keepDeletedInState: true, syncState: false });
+                  };
+                  if (options.immediate) {
+                    clearTimeout(_wr2SaveRoomsTimer);
+                    runner();
+                    return;
+                  }
+                  clearTimeout(_wr2SaveRoomsTimer);
+                  _wr2SaveRoomsTimer = setTimeout(runner, 90);
                 }
                 function loadSections() {
                   const raw = (window._wrGetSectionsCache && window._wrGetSectionsCache()) || ((window._idbCache && window._idbCache[LS_KEY_SECTIONS]) || []);
@@ -5414,8 +5426,9 @@ var _safeLocalSet = function(key, value) {
                   const n = parseFloat(String(val).replace(/[^0-9.]/g,''));
                   room._summaryOverride[key] = isNaN(n) ? 0 : n;
                   room._summaryEditing = null;
-                  room.updatedAt = Date.now(); saveRooms();
+                  room.updatedAt = Date.now();
                   renderItemSummary(room);
+                  saveRooms();
                 };
                                 // ── phase별 체크리스트 렌더/조작 헬퍼 ──────────────────
                 function renderPhaseChecklistBody(el, clData, phase, room) {
@@ -7087,7 +7100,9 @@ window.wr2SummaryCancelEdit = function() {
                     if (id === 'wr2ListingId') patch.listingId = el.value.trim() || null;
                     patch.updatedAt = Date.now();
                     Object.assign(r, patch);
-                    saveRooms(); wr2Render();
+                    saveRooms();
+                    var raf = window.requestAnimationFrame || function(cb) { return setTimeout(cb, 16); };
+                    raf(function() { try { wr2Render(); } catch (e) {} });
                   };
 
                   if (titleInput) { titleInput.oninput = e => { const r = getActiveRoom(); if (r) updateRoom(r.id, { title: e.target.value }, true); }; titleInput.onblur = makeCommit('wr2Title'); }

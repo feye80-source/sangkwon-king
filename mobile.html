@@ -3464,9 +3464,10 @@ body {
       var _dv=document.getElementById('mb-room-view-detail');
       if(_lv)_lv.style.display='flex';
       if(_dv)_dv.style.display='none';
-      mbRoomRefreshSel();
+      if (typeof window.mbRoomRefreshSel==='function') window.mbRoomRefreshSel();
       // 데이터 로드 후 렌더 (타이밍 보장)
       setTimeout(function(){
+        if(typeof window.mbRoomRefreshSel==='function')window.mbRoomRefreshSel();
         if(typeof window.mbRoomListRender==='function')window.mbRoomListRender();
       }, 50);
       if(false){
@@ -4888,6 +4889,62 @@ body {
     mbRoomRefreshSel();
     var list = document.getElementById('mb-room-sel-list');
     if (list) list.style.display = 'block';
+  };
+
+  window.mbRoomRefreshSel = function() {
+    if (window.wr2Init && !window.__wr2Inited) {
+      try { window.__wr2Inited = true; window.wr2Init(); } catch (e) {}
+    }
+    var rooms = [];
+    try { rooms = _mbGetRoomsArray(); } catch (e) { console.warn('[mbRoomRefreshSel]', e); }
+    rooms = (rooms || []).filter(function(r) { return r && r.id && !r.deletedAt; })
+      .sort(function(a, b) { return (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0); });
+
+    var sel = document.getElementById('mb-room-sel');
+    var labelEl = document.getElementById('mb-room-sel-label');
+    var list = document.getElementById('mb-room-sel-list');
+    var btn = document.getElementById('mb-room-sel-btn');
+    var cards = document.getElementById('mb-room-cards');
+    var currentId = _mbActiveRoomId || (sel && sel.value) || '';
+    var currentRoom = currentId ? rooms.find(function(r) { return r.id === currentId; }) : null;
+
+    if (sel) {
+      sel.innerHTML = '<option value="">-- 작업룸 선택 --</option>'
+        + rooms.map(function(r) {
+          var title = (r.title || r.name || '이름없음').replace(/"/g, '&quot;');
+          return '<option value="' + r.id + '"' + (currentId === r.id ? ' selected' : '') + '>' + title + '</option>';
+        }).join('');
+      if (currentRoom) sel.value = currentRoom.id;
+    }
+    if (labelEl) labelEl.textContent = currentRoom ? (currentRoom.title || currentRoom.name || '이름없음') : '-- 작업룸 선택 --';
+    if (btn) {
+      btn.textContent = currentRoom ? (currentRoom.title || currentRoom.name || '작업룸 선택') : '작업룸 선택';
+      btn.onclick = function() {
+        if (!list) return;
+        list.style.display = (list.style.display === 'block') ? 'none' : 'block';
+      };
+    }
+    if (list) {
+      list.innerHTML = rooms.length
+        ? rooms.map(function(r) {
+            var title = (r.title || r.name || '이름없음');
+            var addr = (r.address || '').trim();
+            return '<div class="mb-room-option" data-roomid="' + r.id + '">'
+              + '<div class="mb-room-option-title">' + title + '</div>'
+              + (addr ? '<div class="mb-room-option-addr">' + addr + '</div>' : '')
+              + '</div>';
+          }).join('')
+        : '<div style="padding:12px 14px;font-size:12px;color:var(--mu);border-bottom:1px solid var(--b1);">작업룸이 없습니다.</div>'
+          + '<div onclick="mbRoomNew()" style="padding:12px 14px;font-size:13px;color:#f59e0b;cursor:pointer;">＋ 새 작업룸 만들기</div>';
+      list.onclick = function(e) {
+        var opt = e.target.closest('.mb-room-option');
+        if (!opt) return;
+        var roomId = opt.getAttribute('data-roomid');
+        list.style.display = 'none';
+        if (roomId) mbRoomLoad(roomId, { cloud: false });
+      };
+    }
+    if (cards) cards.style.pointerEvents = 'auto';
   };
 
   window.mbRoomOpenFolder = function(folderName) {
@@ -6724,6 +6781,7 @@ body {
     var l=document.getElementById('mb-room-view-list'),d=document.getElementById('mb-room-view-detail');
     if(l)l.style.display='flex';if(d)d.style.display='none';
     _mbActiveRoomId=null;
+    if(typeof window.mbRoomRefreshSel==='function')window.mbRoomRefreshSel();
     if(typeof window.mbRoomListRender==='function')window.mbRoomListRender();
   };
   window.mbRoomCardSelect = function(roomId) {
@@ -6733,6 +6791,9 @@ body {
     mbRoomLoad(roomId,{cloud:false});
   };
   window.mbRoomListRender = function() {
+    if (window.wr2Init && !window.__wr2Inited) {
+      try { window.__wr2Inited = true; window.wr2Init(); } catch (e) {}
+    }
     var wrap = document.getElementById('mb-room-cards');
     if (!wrap) return;
     var q = ((document.getElementById('mb-room-list-search') || {}).value || '').toLowerCase();
@@ -6832,12 +6893,12 @@ body {
 
     wrap.innerHTML = rows.join('');
 
-    // ★ 이벤트 위임으로 카드 클릭 처리 (onclick 인라인 없음)
-    wrap.addEventListener('click', function(e) {
+    // ★ 이벤트 위임으로 카드 클릭 처리 (중복 바인딩 방지)
+    wrap.onclick = function(e) {
       var card = e.target.closest('.mb-room-card-item');
       if (!card) return;
       var roomId = card.getAttribute('data-roomid');
       if (roomId && typeof mbRoomCardSelect === 'function') mbRoomCardSelect(roomId);
-    });
+    };
   };
 
