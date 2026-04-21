@@ -3521,6 +3521,31 @@ var _safeLocalSet = function(key, value) {
                   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
                   return Math.round((dt - today) / (1000 * 60 * 60 * 24));
                 }
+                function wr2GetDdayTone(dday) {
+                  if (dday == null) return '#8b93a7';
+                  if (dday < 0) return '#8b93a7';
+                  if (dday === 0) return '#ff6370';
+                  if (dday <= 3) return '#ff8c42';
+                  if (dday <= 7) return '#fbbf24';
+                  return '#4ade80';
+                }
+                function wr2ApplyLinkedTitle(room, nextTitle) {
+                  const raw = String(nextTitle == null ? '' : nextTitle).trim();
+                  if (!room) return raw;
+                  room.title = raw;
+                  const sv = (typeof getSv === 'function') ? getSv() : [];
+                  const linked = wr2ResolveLinkedSavedItem(room, sv, wr2BuildPlLinkedMap());
+                  if (linked) {
+                    linked.title = raw || String(linked.title || '').trim() || String(room.title || '').trim();
+                    linked.data = linked.data || {};
+                    if (raw) {
+                      linked.data['물건명'] = raw;
+                      linked.data['물건명칭'] = raw;
+                    }
+                    if (typeof setSv === 'function') setSv(sv);
+                  }
+                  return raw;
+                }
                 function wr2BuildPlLinkedMap() {
                   const map = {};
                   try {
@@ -4573,8 +4598,7 @@ var _safeLocalSet = function(key, value) {
                     const saleRaw = metaInfo.saleRaw;
                     const saleDday = metaInfo.saleDday;
                     const roomLifecycle = wr2GetLifecycle(r);
-                    const saleOverdueNeedsAction = !!(saleRaw && saleDday != null && saleDday < 0 && roomLifecycle !== 'closed');
-                    const saleNeedsResultInput = !!(saleRaw && saleDday === 0 && roomLifecycle !== 'closed');
+                    const saleNeedsResultInput = !!(saleRaw && saleDday != null && saleDday <= 0 && roomLifecycle !== 'closed');
                     const priceRaw = m['최저가'] || m['감정가'] || m['낙찰가'] || m['매매가'] || m['매매가_만원']
                       || (r.calcState && (r.calcState.price || r.calcState.deposit))
                       || (r.closedSummary && r.closedSummary.finalBidPrice)
@@ -4583,16 +4607,16 @@ var _safeLocalSet = function(key, value) {
                     const ddayLabel = (saleDday == null)
                       ? ''
                       : (saleDday < 0 ? ('D+' + Math.abs(saleDday)) : (saleDday === 0 ? 'D-Day' : ('D-' + saleDday)));
+                    const ddayTone = wr2GetDdayTone(saleDday);
                     const meta = document.createElement('div');
                     meta.className = 'wr2-room-meta';
                     if (no || addr || price) {
                       meta.innerHTML = ''
-                        + '<div style="display:flex;align-items:center;gap:6px;line-height:1.25;">'
+                        + '<div style="display:flex;align-items:center;gap:6px;line-height:1.25;flex-wrap:wrap;min-width:0;">'
                         + (no ? ('<span style="color:#7bb4ff;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px;">' + esc(no) + '</span>') : '')
                         + (price ? ('<span style="color:#ffb36c;white-space:nowrap;font-weight:700;">' + esc(price) + '</span>') : '')
-                        + (ddayLabel ? ('<span style="display:inline-flex;align-items:center;padding:1px 8px;border-radius:999px;border:1px solid rgba(255,107,122,.38);background:rgba(255,107,122,.12);color:#ff8d98;white-space:nowrap;font-weight:800;font-size:10px;">' + esc(ddayLabel) + '</span>') : '')
-                        + (saleNeedsResultInput ? ('<span style="color:#ff7f8d;white-space:nowrap;font-weight:800;font-size:10px;">(결과 입력)</span>') : '')
-                        + (saleOverdueNeedsAction ? ('<span style="color:#ff9eab;white-space:nowrap;font-weight:800;font-size:10px;">(결과 업데이트)</span>') : '')
+                        + (ddayLabel ? ('<span style="display:inline-flex;align-items:center;padding:1px 8px;border-radius:999px;border:1px solid ' + ddayTone + '55;background:' + ddayTone + '18;color:' + ddayTone + ';white-space:nowrap;font-weight:800;font-size:10px;">' + esc(ddayLabel) + '</span>') : '')
+                        + (saleNeedsResultInput ? ('<span style="color:#ff8d98;white-space:nowrap;font-weight:800;font-size:10px;">(결과 입력)</span>') : '')
                         + '</div>'
                         + (addr ? ('<div style="margin-top:2px;color:#8ea7c9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(addr) + '</div>') : '');
                     } else {
@@ -5339,10 +5363,11 @@ var _safeLocalSet = function(key, value) {
                   const saleDday = wr2CalcDdayFromDate(saleDateObj);
                   const saleDdayLabel = (saleDday == null)
                     ? ''
-                    : (saleDday < 0 ? '기일지남·수정필요' : (saleDday === 0 ? 'D-Day' : 'D-' + saleDday));
+                    : (saleDday < 0 ? ('D+' + Math.abs(saleDday)) : (saleDday === 0 ? 'D-Day' : 'D-' + saleDday));
                   const lifecycle = wr2GetLifecycle(room);
                   const saleOverdueNeedsAction = !!(saleDateRaw && saleDday != null && saleDday < 0 && lifecycle !== 'closed');
-                  const warnTone = saleOverdueNeedsAction ? '#ff6b7a' : '#ff8c42';
+                  const saleNeedsResultInput = !!(saleDateRaw && saleDday != null && saleDday <= 0 && lifecycle !== 'closed');
+                  const warnTone = wr2GetDdayTone(saleDday);
 
                   // ── 수동편집 행
                   const editRow = (key, label, valHtml, rawVal) => {
@@ -5489,18 +5514,7 @@ var _safeLocalSet = function(key, value) {
                   const room = getActiveRoom(); if (!room) return;
                   const raw = String(val == null ? '' : val).trim();
                   if (key === 'title') {
-                    const sv = (typeof getSv === 'function') ? getSv() : [];
-                    const linkedId = String(room.linkedSavedId || room.savedId || room.listingId || '').trim();
-                    const item = linkedId ? sv.find(function(s){ return String(s.id) === linkedId; }) : null;
-                    if (item) {
-                      item.title = raw || (item.title || room.title || '');
-                      if (!item.title) {
-                        const d = item.data || {};
-                        item.title = d['물건명'] || d['물건명칭'] || d['소재지'] || d['주소'] || '';
-                      }
-                      if (typeof setSv === 'function') setSv(sv);
-                    }
-                    if (raw) room.title = raw;
+                    wr2ApplyLinkedTitle(room, raw);
                     room._summaryEditing = null;
                     room.updatedAt = Date.now();
                     saveRooms();
@@ -7178,7 +7192,10 @@ window.wr2SummaryCancelEdit = function() {
                     const el = document.getElementById(id); if (!el) return;
                     const r = getActiveRoom(); if (!r) return;
                     const patch = {};
-                    if (id === 'wr2Title') patch.title = el.value;
+                    if (id === 'wr2Title') {
+                      patch.title = el.value;
+                      wr2ApplyLinkedTitle(r, el.value);
+                    }
                     if (id === 'wr2Address') patch.address = el.value;
                     if (id === 'wr2AuctionId') patch.auctionId = el.value.trim() || null;
                     if (id === 'wr2ListingId') patch.listingId = el.value.trim() || null;
