@@ -3521,31 +3521,6 @@ var _safeLocalSet = function(key, value) {
                   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
                   return Math.round((dt - today) / (1000 * 60 * 60 * 24));
                 }
-                function wr2GetDdayTone(dday) {
-                  if (dday == null) return '#8b93a7';
-                  if (dday < 0) return '#8b93a7';
-                  if (dday === 0) return '#ff6370';
-                  if (dday <= 3) return '#ff8c42';
-                  if (dday <= 7) return '#fbbf24';
-                  return '#4ade80';
-                }
-                function wr2ApplyLinkedTitle(room, nextTitle) {
-                  const raw = String(nextTitle == null ? '' : nextTitle).trim();
-                  if (!room) return raw;
-                  room.title = raw;
-                  const sv = (typeof getSv === 'function') ? getSv() : [];
-                  const linked = wr2ResolveLinkedSavedItem(room, sv, wr2BuildPlLinkedMap());
-                  if (linked) {
-                    linked.title = raw || String(linked.title || '').trim() || String(room.title || '').trim();
-                    linked.data = linked.data || {};
-                    if (raw) {
-                      linked.data['물건명'] = raw;
-                      linked.data['물건명칭'] = raw;
-                    }
-                    if (typeof setSv === 'function') setSv(sv);
-                  }
-                  return raw;
-                }
                 function wr2BuildPlLinkedMap() {
                   const map = {};
                   try {
@@ -4597,8 +4572,7 @@ var _safeLocalSet = function(key, value) {
                     const addr = String(m['소재지'] || m['도로명주소'] || m['지번주소'] || r.address || '').trim();
                     const saleRaw = metaInfo.saleRaw;
                     const saleDday = metaInfo.saleDday;
-                    const roomLifecycle = wr2GetLifecycle(r);
-                    const saleNeedsResultInput = !!(saleRaw && saleDday != null && saleDday <= 0 && roomLifecycle !== 'closed');
+                    const saleOverdueNeedsAction = !!(saleRaw && saleDday != null && saleDday < 0 && wr2GetLifecycle(r) !== 'closed');
                     const priceRaw = m['최저가'] || m['감정가'] || m['낙찰가'] || m['매매가'] || m['매매가_만원']
                       || (r.calcState && (r.calcState.price || r.calcState.deposit))
                       || (r.closedSummary && r.closedSummary.finalBidPrice)
@@ -4607,16 +4581,15 @@ var _safeLocalSet = function(key, value) {
                     const ddayLabel = (saleDday == null)
                       ? ''
                       : (saleDday < 0 ? ('D+' + Math.abs(saleDday)) : (saleDday === 0 ? 'D-Day' : ('D-' + saleDday)));
-                    const ddayTone = wr2GetDdayTone(saleDday);
                     const meta = document.createElement('div');
                     meta.className = 'wr2-room-meta';
                     if (no || addr || price) {
                       meta.innerHTML = ''
-                        + '<div style="display:flex;align-items:center;gap:6px;line-height:1.25;flex-wrap:wrap;min-width:0;">'
+                        + '<div style="display:flex;align-items:center;gap:6px;line-height:1.25;">'
                         + (no ? ('<span style="color:#7bb4ff;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px;">' + esc(no) + '</span>') : '')
                         + (price ? ('<span style="color:#ffb36c;white-space:nowrap;font-weight:700;">' + esc(price) + '</span>') : '')
-                        + (ddayLabel ? ('<span style="display:inline-flex;align-items:center;padding:1px 8px;border-radius:999px;border:1px solid ' + ddayTone + '55;background:' + ddayTone + '18;color:' + ddayTone + ';white-space:nowrap;font-weight:800;font-size:10px;">' + esc(ddayLabel) + '</span>') : '')
-                        + (saleNeedsResultInput ? ('<span style="color:#ff8d98;white-space:nowrap;font-weight:800;font-size:10px;">(결과 입력)</span>') : '')
+                        + (ddayLabel ? ('<span style="color:#ff6b6b;white-space:nowrap;font-weight:700;">' + esc(ddayLabel) + '</span>') : '')
+                        + (saleOverdueNeedsAction ? ('<span style="padding:1px 6px;border-radius:999px;border:1px solid rgba(255,107,122,.52);background:rgba(255,107,122,.16);color:#ff9eab;font-size:10px;font-weight:800;white-space:nowrap;">⚠ 기일지남 · 수정필요</span>') : '')
                         + '</div>'
                         + (addr ? ('<div style="margin-top:2px;color:#8ea7c9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(addr) + '</div>') : '');
                     } else {
@@ -5363,11 +5336,10 @@ var _safeLocalSet = function(key, value) {
                   const saleDday = wr2CalcDdayFromDate(saleDateObj);
                   const saleDdayLabel = (saleDday == null)
                     ? ''
-                    : (saleDday < 0 ? ('D+' + Math.abs(saleDday)) : (saleDday === 0 ? 'D-Day' : 'D-' + saleDday));
+                    : (saleDday < 0 ? '기일지남·수정필요' : (saleDday === 0 ? 'D-Day' : 'D-' + saleDday));
                   const lifecycle = wr2GetLifecycle(room);
                   const saleOverdueNeedsAction = !!(saleDateRaw && saleDday != null && saleDday < 0 && lifecycle !== 'closed');
-                  const saleNeedsResultInput = !!(saleDateRaw && saleDday != null && saleDday <= 0 && lifecycle !== 'closed');
-                  const warnTone = wr2GetDdayTone(saleDday);
+                  const warnTone = saleOverdueNeedsAction ? '#ff6b7a' : '#ff8c42';
 
                   // ── 수동편집 행
                   const editRow = (key, label, valHtml, rawVal) => {
@@ -5385,24 +5357,6 @@ var _safeLocalSet = function(key, value) {
                       <span class="wr2-info-val">${valHtml}<span class="wr2-edit-hint">✏️</span></span>
                     </div>`;
                   };
-                  const editTextRow = (key, label, rawVal, placeholder) => {
-                    const safeVal = String(rawVal || '');
-                    const safeDisplay = esc(safeVal || '-');
-                    const safePlaceholder = esc(placeholder || (label + ' 입력'));
-                    if (room._summaryEditing === key) {
-                      return `<div class="wr2-info-row wr2-info-editing">
-                        <span class="wr2-info-lbl">${label}</span>
-                        <input class="wr2-info-edit-inp" value="${esc(safeVal)}"
-                          onblur="wr2SummaryEditSave('${key}',this.value)"
-                          onkeydown="if(event.key==='Enter')this.blur();if(event.key==='Escape')wr2SummaryCancelEdit();"
-                          id="wr2SumEdt_${key}" placeholder="${safePlaceholder}">
-                      </div>`;
-                    }
-                    return `<div class="wr2-info-row" title="클릭으로 수정" onclick="wr2SummaryStartEdit('${key}');event.stopPropagation();">
-                      <span class="wr2-info-lbl">${label}</span>
-                      <span class="wr2-info-val">${safeDisplay}<span class="wr2-edit-hint">✏️</span></span>
-                    </div>`;
-                  };
 
                   const primaryAddr = d['소재지'] || d['도로명주소'] || d['지번주소'] || d['주소'] || room.address || '-';
                   const pdfDoc = _getPrimaryPdfDoc(item);
@@ -5410,9 +5364,7 @@ var _safeLocalSet = function(key, value) {
                   let html = '';
 
                   // 소재지 / 물건종류
-                  const itemTitle = String(item.title || d['물건명'] || d['물건명칭'] || primaryAddr || room.title || '').trim();
                   const _addrEsc = String(primaryAddr || '').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
-                  html += editTextRow('title', '물건명', itemTitle, '물건 제목 입력');
                   html += `<div class="wr2-info-row"><span class="wr2-info-lbl">소재지</span><span class="wr2-info-val" style="display:flex;align-items:center;justify-content:space-between;gap:8px;"><span style="flex:1;min-width:0;word-break:break-word;">${primaryAddr}</span>${primaryAddr && primaryAddr !== '-' ? `<span style="display:flex;align-items:center;gap:6px;flex-shrink:0;"><button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();wr2CopyText('${_addrEsc}','주소를 복사했어요')">주소복사</button>${item && item.id ? `<button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();goToMapFromCard('${String(item.id).replace(/'/g, "\\'")}')">지도열기</button>` : ''}</span>` : ''}</span></div>`;
                   if (pdfDoc && item && item.id) {
                     html += `<div class="wr2-info-row"><span class="wr2-info-lbl">원본자료</span><span class="wr2-info-val" style="display:flex;justify-content:flex-end;gap:6px;flex-wrap:wrap;"><button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();wr2OpenPrimaryPdf('${String(item.id).replace(/'/g, "\\'")}')">PDF 보기</button><button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();wr2DownloadPrimaryPdf('${String(item.id).replace(/'/g, "\\'")}')">PDF 다운로드</button></span></div>`;
@@ -5512,15 +5464,6 @@ var _safeLocalSet = function(key, value) {
                 };
                 window.wr2SummaryEditSave = function(key, val) {
                   const room = getActiveRoom(); if (!room) return;
-                  const raw = String(val == null ? '' : val).trim();
-                  if (key === 'title') {
-                    wr2ApplyLinkedTitle(room, raw);
-                    room._summaryEditing = null;
-                    room.updatedAt = Date.now();
-                    saveRooms();
-                    wr2Render();
-                    return;
-                  }
                   room._summaryOverride = room._summaryOverride || {};
                   const n = parseFloat(String(val).replace(/[^0-9.]/g,''));
                   room._summaryOverride[key] = isNaN(n) ? 0 : n;
@@ -7192,10 +7135,7 @@ window.wr2SummaryCancelEdit = function() {
                     const el = document.getElementById(id); if (!el) return;
                     const r = getActiveRoom(); if (!r) return;
                     const patch = {};
-                    if (id === 'wr2Title') {
-                      patch.title = el.value;
-                      wr2ApplyLinkedTitle(r, el.value);
-                    }
+                    if (id === 'wr2Title') patch.title = el.value;
                     if (id === 'wr2Address') patch.address = el.value;
                     if (id === 'wr2AuctionId') patch.auctionId = el.value.trim() || null;
                     if (id === 'wr2ListingId') patch.listingId = el.value.trim() || null;
@@ -9902,7 +9842,7 @@ window.wr2SummaryCancelEdit = function() {
     </div>
   </div>`;
 
-      const body = a ? buildAuction(data, idx, isE, isPopup) : buildListing(data, idx, isE, isPopup, item);
+      const body = a ? buildAuction(data, idx, isE, isPopup, item) : buildListing(data, idx, isE, isPopup, item);
 
       // 추가 문서 업로드 섹션 (팝업이 아닐 때만)
       let docsSection = '';
@@ -16340,7 +16280,7 @@ ${inputDesc.substring(0, 3000)}
       let body = '';
       try {
         if (item.mode === 'auction') {
-          body = buildAuction(item.data || {}, 'pop', false, true);
+          body = buildAuction(item.data || {}, 'pop', false, true, item);
         } else if (isDisco || isBds || isTrans) {
           body = buildGenericDetail(item, true);
         } else {
@@ -16476,8 +16416,13 @@ ${inputDesc.substring(0, 3000)}
       const floorValue = nG.층 ?? d.해당층 ?? d.층수 ?? d.층 ?? d.floor ?? null;
       const floorLabel = _formatFloorLabel(floorValue, d.총층);
       const directionValue = d.방향 || d.direction || '';
+      const _displayTitle = item.title || d.매물명 || d.물건명 || d.물건명칭 || d.상품명 || d.소재지 || '';
       const 요약헤더 = `<div style="background:var(--s2);border-radius:8px;padding:12px 14px;margin-bottom:12px;border-left:3px solid ${color};">
     <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px;">${srcBadge}${srcLinkBtn}</div>
+    ${isEdit
+          ? `<input value="${esc(_displayTitle)}" placeholder="제목명" style="${_inS}font-size:14px;font-weight:800;margin-bottom:6px;" oninput="window._savedDraftInput('${item.id}','매물명',this.value)" onblur="window._savedDraftCommit('${item.id}','매물명',this.value)" onmousedown="event.stopPropagation()">`
+          : (_displayTitle ? `<div style="font-size:14px;font-weight:800;color:#f0f4ff;margin-bottom:6px;">${esc(_displayTitle)}</div>` : '')
+        }
     ${isEdit
           ? `<input value="${esc(d.매물유형 || d.거래유형 || '')}" placeholder="매물유형" style="${_inS}font-size:13px;font-weight:700;color:${color};margin-bottom:4px;" oninput="${_onInput('매물유형')}" onblur="${_onBlur('매물유형')}" onmousedown="event.stopPropagation()">`
           : (d.매물유형 || d.거래유형 ? `<div style="font-size:13px;font-weight:700;color:${color};margin-bottom:4px;">${esc(d.매물유형 || '')}${d.거래유형 && d.매물유형 ? ' · ' : ''} ${esc(d.거래유형 || '')}</div>` : '')
@@ -16683,11 +16628,21 @@ ${inputDesc.substring(0, 3000)}
       const sv = _getSavedDraftWorkingSet();
       const item = sv.find(function(s) { return s && String(s.id) === String(itemId); });
       if (!item) return;
+      const value = String(rawValue == null ? '' : rawValue);
       if (opts && opts.title) {
-        item.title = rawValue;
+        item.title = value;
       } else {
         _applySavedFieldMutation(item, field, rawValue, { normalize: false });
+        if (['물건명','물건명칭','매물명','상품명'].includes(String(field || '')) && value.trim()) {
+          item.title = value.trim();
+        }
       }
+      try {
+        if (String(popupId || '') === String(itemId || '')) {
+          const popTitleEl = document.getElementById('popTitle');
+          if (popTitleEl && !popupEditMode) popTitleEl.textContent = item.title || '';
+        }
+      } catch (e) {}
       _debounce('svdraft_light_' + itemId, function() {
         const persist = function() { _persistSavedDraftSnapshot(sv); };
         if (typeof window.requestIdleCallback === 'function') {
@@ -16701,13 +16656,23 @@ ${inputDesc.substring(0, 3000)}
       const sv = _getSavedDraftWorkingSet();
       const item = sv.find(function(s) { return s && String(s.id) === String(itemId); });
       if (!item) return;
+      const value = String(rawValue == null ? '' : rawValue).trim();
       if (opts && opts.title) {
-        item.title = rawValue;
+        item.title = value;
       } else {
         _applySavedFieldMutation(item, field, rawValue, { normalize: false });
+        if (['물건명','물건명칭','매물명','상품명'].includes(String(field || '')) && value) {
+          item.title = value;
+        }
       }
       _ensureNormalizedItem(item);
       setSv(sv);
+      try {
+        if (String(popupId || '') === String(itemId || '')) {
+          const popTitleEl = document.getElementById('popTitle');
+          if (popTitleEl && !popupEditMode) popTitleEl.textContent = item.title || '';
+        }
+      } catch (e) {}
       _syncAfterSavedMutation(itemId, sv, { skipMapRefresh: false });
     };
 
@@ -17754,7 +17719,7 @@ ${combinedText}
     // ===================================================
     // 경매 카드
     // ===================================================
-    function buildAuction(d, idx, isE, isPopup) {
+    function buildAuction(d, idx, isE, isPopup, item) {
       if (typeof _auctionHydrateDataFields === 'function') _auctionHydrateDataFields(d);
       // 층수: 해당층 우선, 없으면 소재지 주소에서 추출
       let 층수표시 = null;
@@ -17770,7 +17735,13 @@ ${combinedText}
         const area = parseFloat(d.전용면적_m2 || d.건물면적_m2 || 0);
         if (area > 0) 평당가 = Math.round((parseInt(d.최저가) / 10000) / (area / 3.3058) * 10) / 10;
       }
+      const _titleFieldHtml = isPopup
+        ? `<div class="fi"><div class="lb">물건명</div><div class="va">${popupEditMode
+            ? `<input value="${esc(String((item && item.title) || d.물건명 || d.물건명칭 || d.경매번호 || ''))}" style="width:100%;box-sizing:border-box;padding:6px 8px;background:rgba(255,255,255,.07);border:1px solid rgba(79,142,255,.5);border-radius:6px;color:#e0e6ff;outline:none;font-family:'Noto Sans KR',sans-serif;" oninput="window._savedDraftInput('${popupId}','물건명',this.value)" onblur="window._savedDraftCommit('${popupId}','물건명',this.value)" onmousedown="event.stopPropagation()">`
+            : `<span>${esc(String((item && item.title) || d.물건명 || d.물건명칭 || d.경매번호 || '-'))}</span>`}</div></div>`
+        : '';
       return `<div class="shdr">📋 경매 정보</div><div class="fgrid">
+${_titleFieldHtml}
 ${fi(d.경매번호, '경매번호', 'text', idx, '경매번호', isPopup)}
 ${fi(d.소재지, '소재지', 'text', idx, '소재지', isPopup)}
 ${fi(d.경매구분, '경매구분', 'text', idx, '경매구분', isPopup)}
