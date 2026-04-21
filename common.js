@@ -16216,6 +16216,7 @@ ${inputDesc.substring(0, 3000)}
           } else {
             html += `<a href="${esc(_detailURL)}" target="_blank" class="popup-src-btn" style="${bStyle}">🔗 상세</a>`;
           }
+          html += `<button class="popup-src-btn" id="popEditUrlBtn" style="background:rgba(255,255,255,.06);color:#aab4cc;border-color:rgba(255,255,255,.2);" onclick="showPopupUrlInput('${id}')">✏️ 링크수정</button>`;
         }
         if (_siteMapURL === 'copy_planet') {
           const _addr = d.소재지 || '';
@@ -16560,9 +16561,11 @@ ${inputDesc.substring(0, 3000)}
       } else {
         // 완료: 제목 저장
         const inp = document.getElementById('popTitleInput');
-        if (inp) { const sv2 = getSv(); const it = sv2.find(s => s.id === popupId); if (it) { it.title = inp.value; setSv(sv2); } }
-        titleEl.textContent = (getSv().find(s => s.id === popupId) || {}).title || '';
+        if (inp) window._savedDraftCommit(popupId, 'title', inp.value, { title:true });
+        const fresh = (getSv().find(s => s.id === popupId) || {});
+        titleEl.textContent = fresh.title || '';
       }
+      try { if (typeof renderSaved === 'function') renderSaved(); } catch (e) {}
       // renderPopup이 popupEditMode 상태를 읽어 기본헤더를 input/text로 분기 렌더링
       renderPopup(popupId);
     }
@@ -16631,6 +16634,11 @@ ${inputDesc.substring(0, 3000)}
       const value = String(rawValue == null ? '' : rawValue);
       if (opts && opts.title) {
         item.title = value;
+        item.data = item.data || {};
+        if (item.mode === 'auction' || Object.prototype.hasOwnProperty.call(item.data, '물건명')) item.data.물건명 = value;
+        else if (Object.prototype.hasOwnProperty.call(item.data, '물건명칭')) item.data.물건명칭 = value;
+        else if (Object.prototype.hasOwnProperty.call(item.data, '매물명')) item.data.매물명 = value;
+        else if (Object.prototype.hasOwnProperty.call(item.data, '상품명')) item.data.상품명 = value;
       } else {
         _applySavedFieldMutation(item, field, rawValue, { normalize: false });
         if (['물건명','물건명칭','매물명','상품명'].includes(String(field || '')) && value.trim()) {
@@ -16659,6 +16667,11 @@ ${inputDesc.substring(0, 3000)}
       const value = String(rawValue == null ? '' : rawValue).trim();
       if (opts && opts.title) {
         item.title = value;
+        item.data = item.data || {};
+        if (item.mode === 'auction' || Object.prototype.hasOwnProperty.call(item.data, '물건명')) item.data.물건명 = value;
+        else if (Object.prototype.hasOwnProperty.call(item.data, '물건명칭')) item.data.물건명칭 = value;
+        else if (Object.prototype.hasOwnProperty.call(item.data, '매물명')) item.data.매물명 = value;
+        else if (Object.prototype.hasOwnProperty.call(item.data, '상품명')) item.data.상품명 = value;
       } else {
         _applySavedFieldMutation(item, field, rawValue, { normalize: false });
         if (['물건명','물건명칭','매물명','상품명'].includes(String(field || '')) && value) {
@@ -16667,6 +16680,7 @@ ${inputDesc.substring(0, 3000)}
       }
       _ensureNormalizedItem(item);
       setSv(sv);
+      try { if (typeof renderSaved === 'function') renderSaved(); } catch (e) {}
       try {
         if (String(popupId || '') === String(itemId || '')) {
           const popTitleEl = document.getElementById('popTitle');
@@ -16689,39 +16703,42 @@ ${inputDesc.substring(0, 3000)}
   </div>`;
     }
 
-    // URL 추가 팝업 함수
+    // URL 추가/수정 팝업 함수
     window.showPopupUrlInput = function (id) {
-      let wrap = document.getElementById('popUrlInputWrap');
+      var host = document.getElementById('popSrcTabs');
+      if (!host) return;
+      var sv = getSv();
+      var item = sv.find(s => String(s.id) === String(id));
+      var existUrl = (item && item.data && item.data.상세URL) || '';
+      var wrap = document.getElementById('popUrlInputWrap');
       if (!wrap) {
         wrap = document.createElement('div');
         wrap.id = 'popUrlInputWrap';
-        const sv = getSv(); const item = sv.find(s => s.id === id);
-        const existUrl = (item && item.data && item.data.상세URL) || '';
-        wrap.innerHTML = `<div style="display:flex;gap:6px;align-items:center;margin-top:6px;">
-      <input id="popUrlInput" type="text" value="${existUrl}" placeholder="https://new.land.naver.com/..."
-        style="flex:1;padding:6px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.2);border-radius:6px;color:#e0e6ff;font-size:11px;outline:none;"
-        onkeydown="if(event.key==='Enter')window.savePopupUrl('${id}')">
-      <button onclick="window.savePopupUrl('${id}')" style="padding:5px 12px;background:rgba(79,142,255,.2);color:#7aa8ff;border:1px solid rgba(79,142,255,.4);border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;">저장</button>
-      <button onclick="document.getElementById('popUrlInputWrap').remove()" style="padding:5px 10px;background:none;color:#6b7590;border:1px solid rgba(255,255,255,.15);border-radius:6px;font-size:11px;cursor:pointer;">취소</button>
-    </div>`;
-        document.getElementById('popSrcTabs').appendChild(wrap);
-      } else {
-        wrap.style.display = wrap.style.display === 'none' ? '' : 'none';
+        host.appendChild(wrap);
       }
-      setTimeout(() => { const inp = document.getElementById('popUrlInput'); if (inp) inp.focus(); }, 50);
+      wrap.style.cssText = 'display:block;margin-top:6px;width:100%;';
+      wrap.innerHTML = `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+        <input id="popUrlInput" type="text" value="${String(existUrl).replace(/"/g, '&quot;')}" placeholder="https://new.land.naver.com/..."
+          style="flex:1;min-width:240px;padding:6px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.2);border-radius:6px;color:#e0e6ff;font-size:11px;outline:none;"
+          oninput="this.style.borderColor=this.value?'rgba(79,142,255,.6)':'rgba(255,255,255,.2)'"
+          onkeydown="if(event.key==='Enter')window.savePopupUrl('${id}')">
+        <button onclick="window.savePopupUrl('${id}')" style="padding:5px 12px;background:rgba(79,142,255,.2);color:#7aa8ff;border:1px solid rgba(79,142,255,.4);border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;">저장</button>
+        <button onclick="document.getElementById('popUrlInputWrap').style.display='none'" style="padding:5px 10px;background:none;color:#6b7590;border:1px solid rgba(255,255,255,.15);border-radius:6px;font-size:11px;cursor:pointer;">취소</button>
+      </div>`;
+      setTimeout(function(){ var inp = document.getElementById('popUrlInput'); if (inp) { inp.focus(); inp.select && inp.select(); } }, 30);
     };
 
     window.savePopupUrl = function (id) {
       const inp = document.getElementById('popUrlInput');
       if (!inp) return;
       const url = inp.value.trim();
-      const sv = getSv(); const item = sv.find(s => s.id === id);
+      const sv = getSv(); const item = sv.find(s => String(s.id) === String(id));
       if (!item) return;
       item.data = item.data || {};
       item.data.상세URL = url;
       setSv(sv);
-      showToast('🔗 URL 저장됨', 'ok');
-      // 팝업 다시 열기
+      try { if (typeof renderSaved === 'function') renderSaved(); } catch (e) {}
+      showToast(url ? '🔗 원본 링크 저장됨' : '원본 링크를 비웠습니다', 'ok');
       openPopup(id);
     };
     window.promptSavedOriginalUrl = function(id) {
@@ -17735,13 +17752,7 @@ ${combinedText}
         const area = parseFloat(d.전용면적_m2 || d.건물면적_m2 || 0);
         if (area > 0) 평당가 = Math.round((parseInt(d.최저가) / 10000) / (area / 3.3058) * 10) / 10;
       }
-      const _titleFieldHtml = isPopup
-        ? `<div class="fi"><div class="lb">물건명</div><div class="va">${popupEditMode
-            ? `<input value="${esc(String((item && item.title) || d.물건명 || d.물건명칭 || d.경매번호 || ''))}" style="width:100%;box-sizing:border-box;padding:6px 8px;background:rgba(255,255,255,.07);border:1px solid rgba(79,142,255,.5);border-radius:6px;color:#e0e6ff;outline:none;font-family:'Noto Sans KR',sans-serif;" oninput="window._savedDraftInput('${popupId}','물건명',this.value)" onblur="window._savedDraftCommit('${popupId}','물건명',this.value)" onmousedown="event.stopPropagation()">`
-            : `<span>${esc(String((item && item.title) || d.물건명 || d.물건명칭 || d.경매번호 || '-'))}</span>`}</div></div>`
-        : '';
       return `<div class="shdr">📋 경매 정보</div><div class="fgrid">
-${_titleFieldHtml}
 ${fi(d.경매번호, '경매번호', 'text', idx, '경매번호', isPopup)}
 ${fi(d.소재지, '소재지', 'text', idx, '소재지', isPopup)}
 ${fi(d.경매구분, '경매구분', 'text', idx, '경매구분', isPopup)}
