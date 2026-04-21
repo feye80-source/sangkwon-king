@@ -3811,7 +3811,18 @@ var _safeLocalSet = function(key, value) {
                 function updateRoom(id, patch, silentRender) {
                   const idx = wr2State.rooms.findIndex(r => r.id === id);
                   if (idx === -1) return;
-                  wr2State.rooms[idx] = Object.assign({}, wr2State.rooms[idx], patch, { updatedAt: Date.now() });
+                  var prevRoom = wr2State.rooms[idx] || {};
+                  var safePatch = Object.assign({}, patch || {});
+                  var prevLife = String((prevRoom && prevRoom.lifecycleStatus) || '').trim();
+                  var nextLife = String((safePatch && safePatch.lifecycleStatus) || '').trim();
+                  if (prevLife === 'closed' && nextLife && nextLife !== 'closed' && safePatch.__forceLifecycleChange !== true) {
+                    delete safePatch.lifecycleStatus;
+                    delete safePatch.status;
+                    delete safePatch.phase;
+                    delete safePatch.activePhase;
+                  }
+                  delete safePatch.__forceLifecycleChange;
+                  wr2State.rooms[idx] = Object.assign({}, prevRoom, safePatch, { updatedAt: Date.now() });
                   if (patch && (Object.prototype.hasOwnProperty.call(patch, 'closedSummary') || Object.prototype.hasOwnProperty.call(patch, 'lifecycleStatus'))) {
                     try { wr2SyncClosedSummaryToLinkedItems(wr2State.rooms[idx]); } catch (e) {}
                   }
@@ -4689,13 +4700,13 @@ var _safeLocalSet = function(key, value) {
                         const next = String(e.target.value || 'active');
                         if (next === 'closed' && prev !== 'closed') {
                           wr2CollectCloseSummary(room.closedSummary, function(closedSummary) {
-                            updateRoom(room.id, { lifecycleStatus: next, closedSummary: closedSummary });
+                            updateRoom(room.id, { lifecycleStatus: next, closedSummary: closedSummary, __forceLifecycleChange: true });
                           }, function() {
                             lifeSel.value = prev;
                           });
                           return;
                         }
-                        updateRoom(room.id, { lifecycleStatus: next });
+                        updateRoom(room.id, { lifecycleStatus: next, __forceLifecycleChange: true });
                       };
 
                       let progSel = document.getElementById('wr2ProgressSelect');
@@ -25239,6 +25250,18 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       _activeInlineCancelFn = null;
     }, true);
 
+    window._scheduleSavedRender = window._scheduleSavedRender || (function() {
+      let timer = null;
+      return function(delay) {
+        clearTimeout(timer);
+        timer = setTimeout(function() {
+          timer = null;
+          try { if (typeof renderSaved === 'function') renderSaved(); } catch (e) {}
+          try { if (typeof updSvCnt === 'function') updSvCnt(); } catch (e) {}
+        }, typeof delay === 'number' ? delay : 90);
+      };
+    })();
+
     window.inlineEditSavedField = function (itemId, field, currentVal, e) {
       if (e) e.stopPropagation();
       const spanId = 'svied_' + field + '_' + itemId;
@@ -25303,7 +25326,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           }
           _applySavedFieldMutation(it, field, nextVal);
           setSv(sv2);
-          if (typeof renderSaved === 'function') renderSaved();
+          if (typeof window._scheduleSavedRender === 'function') window._scheduleSavedRender(90);
           showToast('✅ ' + field + ' 저장됨', 'ok');
         } else {
           dispEl.textContent = origText;
@@ -25396,8 +25419,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           const nextVal = (isPrice && numVal !== null) ? numVal : newVal;
           _applySavedFieldMutation(it, field, nextVal);
           setSv(sv2);
-          if (typeof renderSaved === 'function') renderSaved();
-          if (typeof updSvCnt === 'function') updSvCnt();
+          if (typeof window._scheduleSavedRender === 'function') window._scheduleSavedRender(90);
           const cardEl = document.getElementById(itemId);
           if (cardEl) { const bodyEl = cardEl.querySelector('.map-card-body'); if (bodyEl) bodyEl.innerHTML = buildMapCardBodyHTML(it); }
           showToast('✅ ' + fieldLabel + ' 저장됨', 'ok');
@@ -25463,8 +25485,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             dispEl.textContent = newVal || '-';
           }
           setSv(sv);
-          if (typeof renderSaved === 'function') renderSaved();
-          if (typeof updSvCnt === 'function') updSvCnt();
+          if (typeof window._scheduleSavedRender === 'function') window._scheduleSavedRender(90);
           showToast('✅ ' + (field === 'floor' ? '층수' : '방향') + ' 저장됨', 'ok');
         } else {
           dispEl.textContent = curText;
@@ -41981,6 +42002,21 @@ window.addEventListener('DOMContentLoaded', () => {
     var hasCloseMemo = Object.prototype.hasOwnProperty.call(raw, '종료메모');
     var nextMemo = hasCloseMemo ? String(raw['종료메모'] || '') : String(src.memo || curItem.memo || '');
     var nextBidders = String(plSavedField(raw, ['입찰인수','입찰인원'], curItem.bidders || '') || '').trim();
+    var savedLife = String(raw['작업룸상태'] || '').trim();
+    var nextSimple = (savedLife === 'active' || savedLife === 'changed' || savedLife === 'closed')
+      ? savedLife
+      : plSimpleStatusKey(curItem.status || '');
+    var nextStatus = (function(){
+      var base = String(curItem.status || 'review');
+      if (nextSimple === 'closed') return 'closed';
+      if (nextSimple === 'changed') {
+        if (base === 'field' || base === 'bid' || base === 'won' || base === 'sell') return base;
+        return 'field';
+      }
+      if (base === 'closed' || base === 'archived') return 'review';
+      return base || 'review';
+    })();
+
     return {
       linkedSavedId: String(src.id || curItem.linkedSavedId || ''),
       type: nextType,
@@ -41991,12 +42027,12 @@ window.addEventListener('DOMContentLoaded', () => {
       appraisal: mapped.appraisal || curItem.appraisal || '',
       minprice: mapped.minprice || curItem.minprice || '',
       round: mapped.round || curItem.round || '',
+      status: nextStatus,
       biddate: (function(){
         var currentBid = _plNormalizeBiddateValue(curItem.biddate || '');
         var mappedBid = _plNormalizeBiddateValue(mapped.biddate || '');
-        var simple = plSimpleStatusKey(curItem.status || '');
-        // 종료/변경 상태면 항상 '미정'으로 고정 (저장 데이터의 오래된 기일로 덮어써지는 문제 방지)
-        if (simple === 'changed' || simple === 'closed') return '미정';
+        // 저장목록의 작업룸상태를 우선 반영해, 종료/변경이 과거 기일/상태로 되돌아가지 않게 한다.
+        if (nextSimple === 'changed' || nextSimple === 'closed') return '미정';
         return mappedBid || currentBid || '';
       })(),
       estimate: mapped.estimate || curItem.estimate || '',
@@ -42559,6 +42595,13 @@ window.addEventListener('DOMContentLoaded', () => {
       activePhase: newPhase,
       lifecycleStatus: (simple === 'closed' ? 'closed' : (simple === 'changed' ? 'changed' : 'active'))
     };
+    var roomLifeNow = String((room && room.lifecycleStatus) || '').trim();
+    if (roomLifeNow === 'closed' && patch.lifecycleStatus !== 'closed' && !(item && item.__allowLifecycleReopen)) {
+      patch.phase = 'closed';
+      patch.status = 'closed';
+      patch.activePhase = 'closed';
+      patch.lifecycleStatus = 'closed';
+    }
     if (item.addr && String(room.title || '') !== String(item.addr || '')) patch.title = item.addr;
     if (item.region && String(room.address || '') !== String(item.region || '')) patch.address = item.region;
     if (simple === 'closed') {
@@ -42631,8 +42674,10 @@ window.addEventListener('DOMContentLoaded', () => {
     var oldSimple = plSimpleStatusKey(item.status);
     if (oldSimple === String(simpleStatus || '')) return;
     plApplySimpleStatusToItem(item, simpleStatus);
+    item.__allowLifecycleReopen = true;
     plSave(items.map(plNormalizeItem));
     syncToWorkroom(item);
+    try { delete item.__allowLifecycleReopen; } catch(e) {}
     try { plSyncItemToSaved(item); } catch(e) {}
     if (simpleStatus === 'closed' && oldSimple !== 'closed') {
       setTimeout(function(){ plOpenResultModal(id); }, 200);
@@ -42822,6 +42867,17 @@ window.addEventListener('DOMContentLoaded', () => {
     try { plSyncItemToSaved(changedItem); } catch(e) {}
     return changedItem;
   }
+  window._plScheduleRender = window._plScheduleRender || (function() {
+    var timer = null;
+    return function(delay) {
+      clearTimeout(timer);
+      timer = setTimeout(function() {
+        timer = null;
+        try { if (typeof renderPropertyList === 'function') renderPropertyList(); } catch(e) {}
+      }, typeof delay === 'number' ? delay : 80);
+    };
+  })();
+
   window.plInlineSet = function(id, field, rawValue) {
     if (field === 'result_won') {
       var cur0 = plLoad().find(function(i){ return String(i.id) === String(id); });
@@ -42832,7 +42888,7 @@ window.addEventListener('DOMContentLoaded', () => {
       var nextResult = Object.assign({}, cur0.result || {});
       nextResult.won = wonVal;
       plUpdateItem(id, { result: nextResult });
-      renderPropertyList();
+      if (typeof window._plScheduleRender === 'function') window._plScheduleRender(80);
       return;
     }
     var patch = {};
@@ -42844,14 +42900,14 @@ window.addEventListener('DOMContentLoaded', () => {
     if (cur && String(cur[field] || '') === String(value || '')) return;
     patch[field] = value;
     plUpdateItem(id, patch);
-    renderPropertyList();
+    if (typeof window._plScheduleRender === 'function') window._plScheduleRender(80);
   };
   window.plInlineSetSelect = function(id, field, value) {
     var cur = plLoad().find(function(i){ return String(i.id) === String(id); });
     if (cur && String(cur[field] || '') === String(value || '')) return;
     var patch = {}; patch[field] = value;
     plUpdateItem(id, patch);
-    renderPropertyList();
+    if (typeof window._plScheduleRender === 'function') window._plScheduleRender(80);
   };
   function plInputCell(id, field, value, opts) {
     opts = opts || {};
