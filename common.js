@@ -3329,9 +3329,22 @@ var _safeLocalSet = function(key, value) {
                   if (wr2State && wr2State.activeRoomId && window._sbMarkRoomDirty) {
                     window._sbMarkRoomDirty(wr2State.activeRoomId);
                   }
-                  if (window._wrPersistRooms) window._wrPersistRooms(wr2State.rooms, { keepDeletedInState: true, syncState: false });
-                  else if (window._wrPersistRooms) window._wrPersistRooms(wr2State.rooms, { keepDeletedInState: true, syncState: false });
+                  // 성능 개선: 빈번한 저장은 180ms debounce로 묶어서 처리
+                  // (키 입력마다 저장 파이프라인이 트리거되어 렉 발생하던 문제 해결)
+                  clearTimeout(window.__wr2SaveRoomsTimer);
+                  window.__wr2SaveRoomsTimer = setTimeout(function() {
+                    window.__wr2SaveRoomsTimer = null;
+                    if (window._wrPersistRooms) window._wrPersistRooms(wr2State.rooms, { keepDeletedInState: true, syncState: false });
+                  }, 180);
                 }
+                // 즉시 저장이 필요한 경우(탭 이동, 종료 등)에 flush
+                window.__wr2FlushSaveRooms = function() {
+                  if (window.__wr2SaveRoomsTimer) {
+                    clearTimeout(window.__wr2SaveRoomsTimer);
+                    window.__wr2SaveRoomsTimer = null;
+                    if (window._wrPersistRooms) window._wrPersistRooms(wr2State.rooms, { keepDeletedInState: true, syncState: false });
+                  }
+                };
                 function loadSections() {
                   const raw = (window._wrGetSectionsCache && window._wrGetSectionsCache()) || ((window._idbCache && window._idbCache[LS_KEY_SECTIONS]) || []);
                   wr2State.sections = window._wrFilterActiveSections ? window._wrFilterActiveSections(raw) : raw.filter(s => s && !s.deletedAt);
@@ -3647,6 +3660,25 @@ var _safeLocalSet = function(key, value) {
                     };
                     modal.style.display = 'flex';
                     setTimeout(function() { if (bidIn) bidIn.focus(); }, 30);
+                    // 금액 input에 천단위 콤마 자동 적용 (한 번만 바인딩)
+                    [bidIn, secondBidIn].forEach(function(el){
+                      if (!el || el.dataset.boundMoneyFmt) return;
+                      el.dataset.boundMoneyFmt = '1';
+                      el.setAttribute('inputmode', 'numeric');
+                      el.addEventListener('input', function(){
+                        // "3억 2,500만" 같은 한글 표기도 허용하되, 순수 숫자일 때만 콤마 포맷
+                        var v = String(this.value || '');
+                        if (/^[\d,]*$/.test(v) && typeof window.plInlineMoneyFormat === 'function') {
+                          window.plInlineMoneyFormat(this);
+                        }
+                      });
+                    });
+                    // 초기값이 순수 숫자면 콤마로 표시
+                    [bidIn, secondBidIn].forEach(function(el){
+                      if (!el) return;
+                      var v = String(el.value || '').replace(/,/g,'');
+                      if (/^\d+$/.test(v)) el.value = Number(v).toLocaleString('ko-KR');
+                    });
                     return;
                   }
                   const want = confirm('종료 기록(낙찰가/낙찰인원/차순위금액/복기 메모)을 입력할까요?');
@@ -3994,9 +4026,23 @@ var _safeLocalSet = function(key, value) {
 
                 // RENDER
                 function wr2Render() {
-                  renderList();
-                  renderDetail();
+                  // 성능 개선: 같은 프레임 내 다중 호출은 한 번으로 합침
+                  if (window.__wr2RenderRaf) return;
+                  window.__wr2RenderRaf = (window.requestAnimationFrame || function(cb){ return setTimeout(cb, 16); })(function() {
+                    window.__wr2RenderRaf = null;
+                    try { renderList(); } catch (e) { console.warn('[wr2Render:list]', e); }
+                    try { renderDetail(); } catch (e) { console.warn('[wr2Render:detail]', e); }
+                  });
                 }
+                // 즉시 렌더가 필요한 경우(탭 전환 등)
+                window.__wr2RenderNow = function() {
+                  if (window.__wr2RenderRaf) {
+                    (window.cancelAnimationFrame || clearTimeout)(window.__wr2RenderRaf);
+                    window.__wr2RenderRaf = null;
+                  }
+                  try { renderList(); } catch (e) {}
+                  try { renderDetail(); } catch (e) {}
+                };
                 window.wr2Render = wr2Render;
                 window.wr2State = wr2State; // 전역 노출 (스냅샷 브리지용)
 
@@ -4700,10 +4746,18 @@ var _safeLocalSet = function(key, value) {
                       const cs = room.closedSummary || {};
                       const d = cs.closedAt ? new Date(cs.closedAt) : null;
                       const dt = d && !isNaN(d.getTime()) ? (d.getFullYear() + '.' + String(d.getMonth()+1).padStart(2,'0') + '.' + String(d.getDate()).padStart(2,'0')) : '';
-                      const bid = String(cs.finalBidPrice || '').trim();
+                      // 숫자만 있는 값이면 천단위 콤마로 포맷 (한글 단위 표기는 그대로 유지)
+                      const _fmtMoney = function(s){
+                        var str = String(s || '').trim();
+                        if (!str) return '';
+                        var plain = str.replace(/,/g, '');
+                        if (/^\d+$/.test(plain)) return Number(plain).toLocaleString('ko-KR') + '원';
+                        return str;
+                      };
+                      const bid = _fmtMoney(cs.finalBidPrice);
                       const closeType = String(cs.closedType || '').trim();
                       const bidderCount = String(cs.bidderCount || '').trim();
-                      const secondBid = String(cs.secondBidPrice || '').trim();
+                      const secondBid = _fmtMoney(cs.secondBidPrice);
                       const memo = String(cs.memo || '').trim();
                       closedStamp.style.border = '1px solid rgba(255,102,120,.36)';
                       closedStamp.style.background = 'linear-gradient(180deg,rgba(255,88,106,.14),rgba(255,88,106,.06))';
@@ -7537,12 +7591,13 @@ window.wr2SummaryCancelEdit = function() {
                   bindEventsOnce();
                   initResizeHandle();
                   if (!wr2State.activeView) wr2State.activeView = 'overview';
-                  // 최근 수정 룸 자동 선택
-                  if (!wr2State.activeRoomId && wr2State.rooms.length) {
-                    const sorted = wr2State.rooms.slice().sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-                    wr2State.activeRoomId = sorted[0].id;
-                    wr2State.activePhase = wr2NormalizePhaseView(sorted[0].activePhase || sorted[0].phase || sorted[0].status || 'review');
+                  // ★ 첫 진입 시: 필터는 '활성'으로 기본 설정, 방 자동 선택 없음 (빈 상태 안내 표시)
+                  // 통상적인 상용 프로그램 방식: 왼쪽 목록에서 사용자가 선택하도록 유도
+                  if (!wr2State.statusFilter || wr2State.statusFilter === 'all') {
+                    wr2State.statusFilter = 'active';
                   }
+                  // activeRoomId를 강제로 비우지는 않음 (페이지 내 탭 전환 시 유지는 자연스러움).
+                  // 단, 자동 선택 로직은 제거.
                   wr2Render();
                 };
 
@@ -32944,6 +32999,10 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       updateWatchCnt();
       const preferredView = window.__wrPipelineView || (function(){ try { return localStorage.getItem(_PIPELINE_VIEW_KEY) || 'kanban'; } catch(e){ return 'kanban'; } })();
       if (window.wr2PipelineSetView) window.wr2PipelineSetView(preferredView);
+      // 드래그 리사이저 상태 갱신 (보드 표시 여부 변경 반영)
+      if (typeof window.__pmInitPipelineResizer === 'function') {
+        setTimeout(function(){ window.__pmInitPipelineResizer(); }, 20);
+      }
     }
     window.renderWatchBoard = renderWatchBoard;
 
@@ -41936,7 +41995,8 @@ window.addEventListener('DOMContentLoaded', () => {
         var currentBid = _plNormalizeBiddateValue(curItem.biddate || '');
         var mappedBid = _plNormalizeBiddateValue(mapped.biddate || '');
         var simple = plSimpleStatusKey(curItem.status || '');
-        if ((simple === 'changed' || simple === 'closed') && currentBid === '미정') return '미정';
+        // 종료/변경 상태면 항상 '미정'으로 고정 (저장 데이터의 오래된 기일로 덮어써지는 문제 방지)
+        if (simple === 'changed' || simple === 'closed') return '미정';
         return mappedBid || currentBid || '';
       })(),
       estimate: mapped.estimate || curItem.estimate || '',
@@ -42249,7 +42309,11 @@ window.addEventListener('DOMContentLoaded', () => {
   }
   function plApplySimpleStatusToItem(item, simple) {
     if (!item) return;
-    if (simple === 'closed') item.status = 'closed';
+    if (simple === 'closed') {
+      item.status = 'closed';
+      // 종료된 물건의 기일은 무의미하므로 '미정'으로 고정 (정렬 시 맨 아래)
+      item.biddate = '미정';
+    }
     else if (simple === 'changed') {
       var s = String(item.status || '');
       if (s === 'field' || s === 'bid' || s === 'won') item.status = s;
@@ -42327,17 +42391,47 @@ window.addEventListener('DOMContentLoaded', () => {
     var spanStyle = opts.spanStyle || '';
     var placeholder = opts.placeholder || '';
     var spanText = (displayValue === null || displayValue === undefined || displayValue === '') ? (opts.empty || '—') : displayValue;
+    // 금액 필드 판별: 금액계열 필드 목록 또는 opts.money === true
+    var isMoney = opts.money === true || (
+      ['appraisal','minprice','estimate','deposit','monthly','result_won'].indexOf(field) >= 0
+    );
+    // 금액 필드는 처음부터 콤마가 들어간 값으로 input 표시 (편집 진입 시 toLocaleString)
+    var inputValue = rawValue || '';
+    if (isMoney && inputValue) {
+      var _n = Number(String(inputValue).replace(/,/g,''));
+      if (!isNaN(_n) && _n > 0) inputValue = _n.toLocaleString('ko-KR');
+    }
+    // 금액 필드면 oninput에서 실시간 콤마 포맷팅
+    var onInputAttr = isMoney
+      ? 'oninput="plInlineMoneyFormat(this)" '
+      : '';
+    var inputMode = isMoney ? 'inputmode="numeric" ' : '';
     return ''
       + '<span id="'+key+'_s" data-k="'+plEscHtml(key)+'" onpointerdown="event.preventDefault();event.stopPropagation();plStartInlineEdit(this.dataset.k)" onclick="event.preventDefault();event.stopPropagation();" '
       + 'style="display:inline-block;min-width:'+(opts.minw||'40px')+';cursor:pointer;border-bottom:1px dashed rgba(255,255,255,.14);'
       + 'text-align:'+align+';'+spanStyle+'">'+plEscHtml(spanText)+'</span>'
-      + '<input id="'+key+'_i" data-k="'+plEscHtml(key)+'" data-id="'+plEscHtml(id)+'" data-field="'+plEscHtml(field)+'" type="'+type+'" value="'+plEscHtml(rawValue||'')+'" '
+      + '<input id="'+key+'_i" data-k="'+plEscHtml(key)+'" data-id="'+plEscHtml(id)+'" data-field="'+plEscHtml(field)+'" '+inputMode+'type="'+type+'" value="'+plEscHtml(inputValue)+'" '
+      + onInputAttr
       + 'onkeydown="if(event.key===\'Enter\'){this.blur();} if(event.key===\'Escape\'){plCancelInlineEdit(this.dataset.k);}" '
       + 'onblur="plFinishInlineEdit(this.dataset.id,this.dataset.field,this.dataset.k)" '
       + 'onclick="event.stopPropagation()" placeholder="'+plEscHtml(placeholder)+'" '
       + 'style="display:none;width:100%;min-width:'+(opts.minw||'40px')+';padding:4px 6px;border:1px solid rgba(255,255,255,.12);border-radius:6px;'
       + 'background:rgba(0,0,0,.25);color:var(--tx);font-size:12px;text-align:'+align+';outline:none;">';
   }
+  // 숫자 입력 시 천단위 콤마 자동 포맷 (커서 위치 보존)
+  window.plInlineMoneyFormat = function(inputEl) {
+    try {
+      var val = String(inputEl.value || '');
+      var posFromEnd = val.length - (inputEl.selectionStart || val.length);
+      var digits = val.replace(/[^0-9]/g, '');
+      var formatted = digits ? Number(digits).toLocaleString('ko-KR') : '';
+      if (formatted !== val) {
+        inputEl.value = formatted;
+        var newPos = Math.max(0, formatted.length - posFromEnd);
+        try { inputEl.setSelectionRange(newPos, newPos); } catch(e) {}
+      }
+    } catch(e) {}
+  };
   function plEditMemoCellHtml(id, rawValue) {
     var key = plDomKey(id, 'memo');
     var txt = String(rawValue || '');
@@ -42398,6 +42492,17 @@ window.addEventListener('DOMContentLoaded', () => {
     items = items.map(function(it){
       if (String(it.roomId||'') !== String(roomId)) return it;
       var safePatch = Object.assign({}, patch || {});
+      // ★ 버그 수정: 이미 종료된 항목은 'changed'/'active' 패치로 되돌리지 않음
+      // (낙찰/패찰 정보가 있는 종료 물건이 클라우드/동기화 race로 '변경'으로 덮어써지는 문제 방지)
+      var itemSimpleCurrent = plSimpleStatusKey(it.status || '');
+      if (itemSimpleCurrent === 'closed'
+          && safePatch.lifecycleStatus
+          && safePatch.lifecycleStatus !== 'closed'
+          && !safePatch.closedSummary) {
+        // 종료 상태 보호: 라이프사이클 다운그레이드 무시
+        delete safePatch.lifecycleStatus;
+        delete safePatch.status;
+      }
       if (safePatch.closedSummary) {
         var cs = safePatch.closedSummary || {};
         if (safePatch.memo === undefined) safePatch.memo = String(cs.memo || '');
@@ -42410,8 +42515,15 @@ window.addEventListener('DOMContentLoaded', () => {
         }
       }
       if (safePatch.lifecycleStatus) {
-        if (safePatch.lifecycleStatus === 'closed') safePatch.status = 'closed';
-        else if (safePatch.lifecycleStatus === 'changed') safePatch.status = (safePatch.status || 'field');
+        if (safePatch.lifecycleStatus === 'closed') {
+          safePatch.status = 'closed';
+          // 종료 시 기일은 '미정'으로 고정 (경매 없어졌음을 표시)
+          if (safePatch.biddate === undefined) safePatch.biddate = '미정';
+        }
+        else if (safePatch.lifecycleStatus === 'changed') {
+          safePatch.status = (safePatch.status || 'field');
+          if (safePatch.biddate === undefined) safePatch.biddate = '미정';
+        }
         else if (safePatch.lifecycleStatus === 'active' && !safePatch.status) safePatch.status = 'review';
       }
       if (safePatch.title && !safePatch.addr) safePatch.addr = safePatch.title;
@@ -42598,9 +42710,44 @@ window.addEventListener('DOMContentLoaded', () => {
       }
       return true;
     }).sort(function(a,b){
-      var da = a.biddate ? new Date(a.biddate) : new Date('9999-12-31');
-      var db = b.biddate ? new Date(b.biddate) : new Date('9999-12-31');
-      return da - db;
+      // 정렬 우선순위:
+      //  1) 종료 항목은 최하단 (그 안에서 입찰기일 내림차순 = 최근 종료 먼저)
+      //  2) 오늘 D-Day(d=0)인 진행 항목은 최상단
+      //  3) 미래 기일(d>0): 임박순 (작은 d가 먼저)
+      //  4) 미정/기일없음: 그 다음 (updatedAt 최신 먼저)
+      //  5) 지난 기일(d<0): 맨 아래 바로 위 (수정 필요 항목)
+      var aClosed = plSimpleStatusKey(a.status) === 'closed' || !!a.archived;
+      var bClosed = plSimpleStatusKey(b.status) === 'closed' || !!b.archived;
+      if (aClosed !== bClosed) return aClosed ? 1 : -1;
+
+      var aBidRaw = _plNormalizeBiddateValue(a.biddate || '');
+      var bBidRaw = _plNormalizeBiddateValue(b.biddate || '');
+      var aUndef = (!aBidRaw || aBidRaw === '미정');
+      var bUndef = (!bBidRaw || bBidRaw === '미정');
+
+      // 종료 그룹 내부 정렬: 최근 종료(updatedAt 큰 것) 먼저
+      if (aClosed && bClosed) {
+        return (Number(b.updatedAt||0) - Number(a.updatedAt||0));
+      }
+
+      var aD = aUndef ? null : daysDiff(aBidRaw);
+      var bD = bUndef ? null : daysDiff(bBidRaw);
+
+      function bucket(d, undef) {
+        if (undef || d === null) return 3;      // 미정
+        if (d === 0) return 0;                   // D-Day
+        if (d > 0) return 1;                     // 앞으로 올 기일
+        return 2;                                // 지난 기일(수정 필요)
+      }
+      var aB = bucket(aD, aUndef);
+      var bB = bucket(bD, bUndef);
+      if (aB !== bB) return aB - bB;
+
+      if (aB === 0) return 0;
+      if (aB === 1) return aD - bD;           // 임박한 날짜 먼저
+      if (aB === 2) return bD - aD;           // 덜 지난 것 먼저(-1 > -10)
+      // 미정끼리: 최근 수정 먼저
+      return (Number(b.updatedAt||0) - Number(a.updatedAt||0));
     });
   }
   window.plToggleOne = function(id, checked) {
@@ -42782,6 +42929,7 @@ window.addEventListener('DOMContentLoaded', () => {
       tbody.innerHTML = filtered.map(function(it){
         var d = daysDiff(it.biddate);
         var dTag = d===null ? '' : d<0 ? '<div style="font-size:10px;color:#ff6b7a;font-weight:800;">지난 기일 · 수정필요</div>'
+          : d===0 ? '<div style="display:inline-block;margin-top:2px;padding:2px 7px;border-radius:4px;background:linear-gradient(135deg,#ff3b5c,#ff6b3b);color:#fff;font-size:10px;font-weight:900;letter-spacing:.3px;box-shadow:0 0 0 1px rgba(255,107,122,.4),0 2px 8px rgba(255,59,92,.35);transform:rotate(-2deg);">🔥 D-Day · 결과 입력</div>'
           : d<=3 ? '<div style="font-size:10px;color:#ff6b6b;font-weight:700;">D-'+d+'</div>'
           : d<=7 ? '<div style="font-size:10px;color:#f5a623;font-weight:700;">D-'+d+'</div>'
           : '<div style="font-size:10px;color:var(--fg3);">D-'+d+'</div>';
@@ -42954,7 +43102,83 @@ window.addEventListener('DOMContentLoaded', () => {
     if (tab === 'pipeline') {
       pmMountPanel('pipeline');
       if (typeof window.renderWatchBoard === 'function') window.renderWatchBoard();
+      // 데스크톱에서만 드래그 리사이저 활성화
+      if (typeof window.__pmInitPipelineResizer === 'function') {
+        setTimeout(function(){ window.__pmInitPipelineResizer(); }, 30);
+      }
     }
+  };
+
+  // ── 파이프라인 드래그 리사이저 (데스크톱만) ─────────────────────────
+  // 상단 매각기일 보드와 하단 칸반 사이를 드래그해서 높이를 조절
+  window.__pmInitPipelineResizer = function() {
+    var isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent || '') || window.innerWidth <= 900;
+    var resizer = document.getElementById('pipelineResizer');
+    var board = document.getElementById('watchScheduleBoard');
+    if (!resizer || !board) return;
+
+    // 모바일은 리사이저 숨김
+    if (isMobile) {
+      resizer.style.display = 'none';
+      return;
+    }
+
+    // 상단 보드가 표시 중일 때만 리사이저 노출
+    var boardVisible = board.style.display !== 'none' && board.offsetHeight > 0;
+    resizer.style.display = boardVisible ? '' : 'none';
+    if (!boardVisible) return;
+
+    // 저장된 높이 복원
+    try {
+      var saved = parseInt(localStorage.getItem('pipelineBoardHeight') || '', 10);
+      if (!isNaN(saved) && saved >= 80 && saved <= 2000) {
+        board.style.height = saved + 'px';
+      }
+    } catch(e) {}
+
+    // 중복 바인딩 방지
+    if (resizer.__rzBound) return;
+    resizer.__rzBound = true;
+
+    var dragging = false;
+    var startY = 0;
+    var startHeight = 0;
+
+    var onMove = function(e) {
+      if (!dragging) return;
+      var y = (e.touches && e.touches[0]) ? e.touches[0].clientY : e.clientY;
+      var dy = y - startY;
+      var viewport = window.innerHeight || 800;
+      // 최소 80px, 최대 뷰포트의 80%
+      var newH = Math.max(80, Math.min(Math.round(viewport * 0.8), startHeight + dy));
+      board.style.height = newH + 'px';
+      e.preventDefault();
+    };
+    var onUp = function() {
+      if (!dragging) return;
+      dragging = false;
+      resizer.classList.remove('dragging');
+      document.body.classList.remove('pipeline-resizing');
+      try { localStorage.setItem('pipelineBoardHeight', String(parseInt(board.style.height, 10) || 230)); } catch(e) {}
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      document.removeEventListener('touchmove', onMove);
+      document.removeEventListener('touchend', onUp);
+    };
+    var onDown = function(e) {
+      dragging = true;
+      startY = (e.touches && e.touches[0]) ? e.touches[0].clientY : e.clientY;
+      startHeight = board.offsetHeight;
+      resizer.classList.add('dragging');
+      document.body.classList.add('pipeline-resizing');
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+      document.addEventListener('touchmove', onMove, { passive: false });
+      document.addEventListener('touchend', onUp);
+      e.preventDefault();
+    };
+    resizer.addEventListener('mousedown', onDown);
+    resizer.addEventListener('touchstart', onDown, { passive: false });
   };
 
   // ── 작업룸 이동 ─────────────────────────
@@ -43128,14 +43352,13 @@ window.addEventListener('DOMContentLoaded', () => {
         var el = document.getElementById(id);
         if (!el || el.dataset.boundMoney) return;
         el.dataset.boundMoney = '1';
-        el.addEventListener('input', function(){
-          var pos = this.selectionStart || 0;
-          var before = this.value.length;
-          this.value = plDisplayMoney(this.value);
-          var after = this.value.length;
-          try { this.setSelectionRange(Math.max(0, pos + (after-before)), Math.max(0, pos + (after-before))); } catch(e) {}
+        el.setAttribute('inputmode', 'numeric');
+        el.addEventListener('input', function(){ window.plInlineMoneyFormat(this); });
+        el.addEventListener('blur', function(){
+          // 한글 단위(억/만) 표기도 지원: "6억7천" 같은 입력을 정규화
+          var parsed = plParseAmountText(this.value);
+          this.value = parsed ? Number(parsed).toLocaleString('ko-KR') : '';
         });
-        el.addEventListener('blur', function(){ this.value = plDisplayMoney(this.value); });
       });
     }, 0);
   }
