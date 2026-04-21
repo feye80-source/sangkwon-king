@@ -9842,7 +9842,7 @@ window.wr2SummaryCancelEdit = function() {
     </div>
   </div>`;
 
-      const body = a ? buildAuction(data, idx, isE, isPopup, item) : buildListing(data, idx, isE, isPopup, item);
+      const body = a ? buildAuction(data, idx, isE, isPopup) : buildListing(data, idx, isE, isPopup, item);
 
       // 추가 문서 업로드 섹션 (팝업이 아닐 때만)
       let docsSection = '';
@@ -16148,7 +16148,19 @@ ${inputDesc.substring(0, 3000)}
       const isBds = src === '부동산플래닛';
       const isTrans = item.mode === 'transaction';
 
-      document.getElementById('popTitle').textContent = item.title || src || '상세정보';
+      const _popTitleEl = document.getElementById('popTitle');
+      if (_popTitleEl) {
+        _popTitleEl.textContent = item.title || src || '상세정보';
+        _popTitleEl.style.cursor = 'text';
+        _popTitleEl.title = '클릭해서 제목 수정';
+        _popTitleEl.onclick = function(e) {
+          if (!popupEditMode) {
+            try { togglePopupEdit(); } catch(_) {}
+          }
+          e && e.stopPropagation && e.stopPropagation();
+          setTimeout(function(){ const inp = document.getElementById('popTitleInput'); if (inp) { inp.focus(); inp.select(); } }, 20);
+        };
+      }
 
       let badgeCls = 'popup-badge mbl', badgeTxt = '🏪 매물';
       if (a) { badgeCls = 'popup-badge mba'; badgeTxt = '⚖️ 경매'; }
@@ -16156,8 +16168,12 @@ ${inputDesc.substring(0, 3000)}
       else if (isBds) { badgeCls = 'popup-badge'; badgeTxt = '🌍 플래닛'; }
       else if (isTrans) { badgeCls = 'popup-badge'; badgeTxt = '📊 실거래'; }
 
-      document.getElementById('popEditBtn').className = 'popup-editbtn';
-      document.getElementById('popEditBtn').textContent = '✏️ 수정';
+      const _popEditBtn = document.getElementById('popEditBtn');
+      if (_popEditBtn) {
+        _popEditBtn.className = 'popup-editbtn';
+        _popEditBtn.textContent = '✏️ 수정';
+        _popEditBtn.style.display = '';
+      }
 
       // ── 팝업 topbar 소스 탭 렌더링 (v121 스타일) ──────────────
       (function () {
@@ -16216,7 +16232,6 @@ ${inputDesc.substring(0, 3000)}
           } else {
             html += `<a href="${esc(_detailURL)}" target="_blank" class="popup-src-btn" style="${bStyle}">🔗 상세</a>`;
           }
-          html += `<button class="popup-src-btn" id="popEditUrlBtn" style="background:rgba(255,255,255,.06);color:#aab4cc;border-color:rgba(255,255,255,.2);" onclick="showPopupUrlInput('${id}')">✏️ 링크수정</button>`;
         }
         if (_siteMapURL === 'copy_planet') {
           const _addr = d.소재지 || '';
@@ -16281,7 +16296,7 @@ ${inputDesc.substring(0, 3000)}
       let body = '';
       try {
         if (item.mode === 'auction') {
-          body = buildAuction(item.data || {}, 'pop', false, true, item);
+          body = buildAuction(item.data || {}, 'pop', false, true);
         } else if (isDisco || isBds || isTrans) {
           body = buildGenericDetail(item, true);
         } else {
@@ -16417,13 +16432,8 @@ ${inputDesc.substring(0, 3000)}
       const floorValue = nG.층 ?? d.해당층 ?? d.층수 ?? d.층 ?? d.floor ?? null;
       const floorLabel = _formatFloorLabel(floorValue, d.총층);
       const directionValue = d.방향 || d.direction || '';
-      const _displayTitle = item.title || d.매물명 || d.물건명 || d.물건명칭 || d.상품명 || d.소재지 || '';
       const 요약헤더 = `<div style="background:var(--s2);border-radius:8px;padding:12px 14px;margin-bottom:12px;border-left:3px solid ${color};">
     <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px;">${srcBadge}${srcLinkBtn}</div>
-    ${isEdit
-          ? `<input value="${esc(_displayTitle)}" placeholder="제목명" style="${_inS}font-size:14px;font-weight:800;margin-bottom:6px;" oninput="window._savedDraftInput('${item.id}','매물명',this.value)" onblur="window._savedDraftCommit('${item.id}','매물명',this.value)" onmousedown="event.stopPropagation()">`
-          : (_displayTitle ? `<div style="font-size:14px;font-weight:800;color:#f0f4ff;margin-bottom:6px;">${esc(_displayTitle)}</div>` : '')
-        }
     ${isEdit
           ? `<input value="${esc(d.매물유형 || d.거래유형 || '')}" placeholder="매물유형" style="${_inS}font-size:13px;font-weight:700;color:${color};margin-bottom:4px;" oninput="${_onInput('매물유형')}" onblur="${_onBlur('매물유형')}" onmousedown="event.stopPropagation()">`
           : (d.매물유형 || d.거래유형 ? `<div style="font-size:13px;font-weight:700;color:${color};margin-bottom:4px;">${esc(d.매물유형 || '')}${d.거래유형 && d.매물유형 ? ' · ' : ''} ${esc(d.거래유형 || '')}</div>` : '')
@@ -16557,15 +16567,23 @@ ${inputDesc.substring(0, 3000)}
         titleEl.innerHTML = `<input id="popTitleInput" value="${(item.title || '').replace(/"/g, '&quot;')}"
       style="background:rgba(255,255,255,.08);border:1px solid rgba(79,142,255,.5);border-radius:6px;color:#e0e6ff;font-size:14px;font-weight:700;padding:3px 8px;width:100%;outline:none;"
       oninput="window._savedDraftInput('${popupId}','title',this.value,{title:true})"
-      onblur="window._savedDraftCommit('${popupId}','title',this.value,{title:true})">`;
+      onblur="window._savedDraftCommit('${popupId}','title',this.value,{title:true})"
+      onkeydown="if(event.key==='Enter'){window._savedDraftCommit('${popupId}','title',this.value,{title:true});togglePopupEdit();}">`;
       } else {
         // 완료: 제목 저장
         const inp = document.getElementById('popTitleInput');
-        if (inp) window._savedDraftCommit(popupId, 'title', inp.value, { title:true });
-        const fresh = (getSv().find(s => s.id === popupId) || {});
-        titleEl.textContent = fresh.title || '';
+        if (inp) {
+          const sv2 = getSv();
+          const it = sv2.find(s => s.id === popupId);
+          if (it) {
+            it.title = inp.value;
+            setSv(sv2);
+            try { renderSaved(); } catch(_) {}
+            try { updSvCnt(); } catch(_) {}
+          }
+        }
+        titleEl.textContent = (getSv().find(s => s.id === popupId) || {}).title || '';
       }
-      try { if (typeof renderSaved === 'function') renderSaved(); } catch (e) {}
       // renderPopup이 popupEditMode 상태를 읽어 기본헤더를 input/text로 분기 렌더링
       renderPopup(popupId);
     }
@@ -16631,26 +16649,11 @@ ${inputDesc.substring(0, 3000)}
       const sv = _getSavedDraftWorkingSet();
       const item = sv.find(function(s) { return s && String(s.id) === String(itemId); });
       if (!item) return;
-      const value = String(rawValue == null ? '' : rawValue);
       if (opts && opts.title) {
-        item.title = value;
-        item.data = item.data || {};
-        if (item.mode === 'auction' || Object.prototype.hasOwnProperty.call(item.data, '물건명')) item.data.물건명 = value;
-        else if (Object.prototype.hasOwnProperty.call(item.data, '물건명칭')) item.data.물건명칭 = value;
-        else if (Object.prototype.hasOwnProperty.call(item.data, '매물명')) item.data.매물명 = value;
-        else if (Object.prototype.hasOwnProperty.call(item.data, '상품명')) item.data.상품명 = value;
+        item.title = rawValue;
       } else {
         _applySavedFieldMutation(item, field, rawValue, { normalize: false });
-        if (['물건명','물건명칭','매물명','상품명'].includes(String(field || '')) && value.trim()) {
-          item.title = value.trim();
-        }
       }
-      try {
-        if (String(popupId || '') === String(itemId || '')) {
-          const popTitleEl = document.getElementById('popTitle');
-          if (popTitleEl && !popupEditMode) popTitleEl.textContent = item.title || '';
-        }
-      } catch (e) {}
       _debounce('svdraft_light_' + itemId, function() {
         const persist = function() { _persistSavedDraftSnapshot(sv); };
         if (typeof window.requestIdleCallback === 'function') {
@@ -16664,29 +16667,13 @@ ${inputDesc.substring(0, 3000)}
       const sv = _getSavedDraftWorkingSet();
       const item = sv.find(function(s) { return s && String(s.id) === String(itemId); });
       if (!item) return;
-      const value = String(rawValue == null ? '' : rawValue).trim();
       if (opts && opts.title) {
-        item.title = value;
-        item.data = item.data || {};
-        if (item.mode === 'auction' || Object.prototype.hasOwnProperty.call(item.data, '물건명')) item.data.물건명 = value;
-        else if (Object.prototype.hasOwnProperty.call(item.data, '물건명칭')) item.data.물건명칭 = value;
-        else if (Object.prototype.hasOwnProperty.call(item.data, '매물명')) item.data.매물명 = value;
-        else if (Object.prototype.hasOwnProperty.call(item.data, '상품명')) item.data.상품명 = value;
+        item.title = rawValue;
       } else {
         _applySavedFieldMutation(item, field, rawValue, { normalize: false });
-        if (['물건명','물건명칭','매물명','상품명'].includes(String(field || '')) && value) {
-          item.title = value;
-        }
       }
       _ensureNormalizedItem(item);
       setSv(sv);
-      try { if (typeof renderSaved === 'function') renderSaved(); } catch (e) {}
-      try {
-        if (String(popupId || '') === String(itemId || '')) {
-          const popTitleEl = document.getElementById('popTitle');
-          if (popTitleEl && !popupEditMode) popTitleEl.textContent = item.title || '';
-        }
-      } catch (e) {}
       _syncAfterSavedMutation(itemId, sv, { skipMapRefresh: false });
     };
 
@@ -16703,42 +16690,39 @@ ${inputDesc.substring(0, 3000)}
   </div>`;
     }
 
-    // URL 추가/수정 팝업 함수
+    // URL 추가 팝업 함수
     window.showPopupUrlInput = function (id) {
-      var host = document.getElementById('popSrcTabs');
-      if (!host) return;
-      var sv = getSv();
-      var item = sv.find(s => String(s.id) === String(id));
-      var existUrl = (item && item.data && item.data.상세URL) || '';
-      var wrap = document.getElementById('popUrlInputWrap');
+      let wrap = document.getElementById('popUrlInputWrap');
       if (!wrap) {
         wrap = document.createElement('div');
         wrap.id = 'popUrlInputWrap';
-        host.appendChild(wrap);
+        const sv = getSv(); const item = sv.find(s => s.id === id);
+        const existUrl = (item && item.data && item.data.상세URL) || '';
+        wrap.innerHTML = `<div style="display:flex;gap:6px;align-items:center;margin-top:6px;">
+      <input id="popUrlInput" type="text" value="${existUrl}" placeholder="https://new.land.naver.com/..."
+        style="flex:1;padding:6px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.2);border-radius:6px;color:#e0e6ff;font-size:11px;outline:none;"
+        onkeydown="if(event.key==='Enter')window.savePopupUrl('${id}')">
+      <button onclick="window.savePopupUrl('${id}')" style="padding:5px 12px;background:rgba(79,142,255,.2);color:#7aa8ff;border:1px solid rgba(79,142,255,.4);border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;">저장</button>
+      <button onclick="document.getElementById('popUrlInputWrap').remove()" style="padding:5px 10px;background:none;color:#6b7590;border:1px solid rgba(255,255,255,.15);border-radius:6px;font-size:11px;cursor:pointer;">취소</button>
+    </div>`;
+        document.getElementById('popSrcTabs').appendChild(wrap);
+      } else {
+        wrap.style.display = wrap.style.display === 'none' ? '' : 'none';
       }
-      wrap.style.cssText = 'display:block;margin-top:6px;width:100%;';
-      wrap.innerHTML = `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-        <input id="popUrlInput" type="text" value="${String(existUrl).replace(/"/g, '&quot;')}" placeholder="https://new.land.naver.com/..."
-          style="flex:1;min-width:240px;padding:6px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.2);border-radius:6px;color:#e0e6ff;font-size:11px;outline:none;"
-          oninput="this.style.borderColor=this.value?'rgba(79,142,255,.6)':'rgba(255,255,255,.2)'"
-          onkeydown="if(event.key==='Enter')window.savePopupUrl('${id}')">
-        <button onclick="window.savePopupUrl('${id}')" style="padding:5px 12px;background:rgba(79,142,255,.2);color:#7aa8ff;border:1px solid rgba(79,142,255,.4);border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;">저장</button>
-        <button onclick="document.getElementById('popUrlInputWrap').style.display='none'" style="padding:5px 10px;background:none;color:#6b7590;border:1px solid rgba(255,255,255,.15);border-radius:6px;font-size:11px;cursor:pointer;">취소</button>
-      </div>`;
-      setTimeout(function(){ var inp = document.getElementById('popUrlInput'); if (inp) { inp.focus(); inp.select && inp.select(); } }, 30);
+      setTimeout(() => { const inp = document.getElementById('popUrlInput'); if (inp) inp.focus(); }, 50);
     };
 
     window.savePopupUrl = function (id) {
       const inp = document.getElementById('popUrlInput');
       if (!inp) return;
       const url = inp.value.trim();
-      const sv = getSv(); const item = sv.find(s => String(s.id) === String(id));
+      const sv = getSv(); const item = sv.find(s => s.id === id);
       if (!item) return;
       item.data = item.data || {};
       item.data.상세URL = url;
       setSv(sv);
-      try { if (typeof renderSaved === 'function') renderSaved(); } catch (e) {}
-      showToast(url ? '🔗 원본 링크 저장됨' : '원본 링크를 비웠습니다', 'ok');
+      showToast('🔗 URL 저장됨', 'ok');
+      // 팝업 다시 열기
       openPopup(id);
     };
     window.promptSavedOriginalUrl = function(id) {
@@ -17736,7 +17720,7 @@ ${combinedText}
     // ===================================================
     // 경매 카드
     // ===================================================
-    function buildAuction(d, idx, isE, isPopup, item) {
+    function buildAuction(d, idx, isE, isPopup) {
       if (typeof _auctionHydrateDataFields === 'function') _auctionHydrateDataFields(d);
       // 층수: 해당층 우선, 없으면 소재지 주소에서 추출
       let 층수표시 = null;
