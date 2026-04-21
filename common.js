@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260417-syncfix7';
+    window.__SK_BUILD = '20260421-workroom-dropfix1';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -4592,6 +4592,13 @@ var _safeLocalSet = function(key, value) {
                     const ddayLabel = (saleDday == null)
                       ? ''
                       : (saleDday < 0 ? ('D+' + Math.abs(saleDday)) : (saleDday === 0 ? 'D-Day' : ('D-' + saleDday)));
+                    const needsResultUpdate = !!(saleDday != null && saleDday <= 0 && wr2GetLifecycle(r) !== 'closed');
+                    const resultAlertLabel = needsResultUpdate
+                      ? (saleDday === 0 ? '결과 입력 필요' : '결과 업데이트 필요')
+                      : '';
+                    const resultAlertTone = (saleDday === 0)
+                      ? 'color:#ffb3bc;background:rgba(255,99,112,.12);border:1px solid rgba(255,99,112,.35);'
+                      : 'color:#f8c37d;background:rgba(245,158,11,.11);border:1px solid rgba(245,158,11,.28);';
                     const meta = document.createElement('div');
                     meta.className = 'wr2-room-meta';
                     if (no || addr || price) {
@@ -4602,7 +4609,11 @@ var _safeLocalSet = function(key, value) {
                         + (ddayLabel ? ('<span style="color:#ff6b6b;white-space:nowrap;font-weight:700;">' + esc(ddayLabel) + '</span>') : '')
                         + (saleOverdueNeedsAction ? ('<span style="padding:1px 6px;border-radius:999px;border:1px solid rgba(255,107,122,.52);background:rgba(255,107,122,.16);color:#ff9eab;font-size:10px;font-weight:800;white-space:nowrap;">⚠ 기일지남 · 수정필요</span>') : '')
                         + '</div>'
-                        + (addr ? ('<div style="margin-top:2px;color:#8ea7c9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(addr) + '</div>') : '');
+                        + (addr ? ('<div style="margin-top:2px;color:#8ea7c9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(addr) + '</div>') : '')
+                        + (resultAlertLabel ? ('<div style="margin-top:4px;display:flex;align-items:center;gap:6px;">'
+                            + '<span style="padding:2px 7px;border-radius:999px;font-size:10px;font-weight:800;white-space:nowrap;' + resultAlertTone + '">' + esc(ddayLabel || '') + '</span>'
+                            + '<span style="font-size:10px;font-weight:700;color:#ffb7bf;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(resultAlertLabel) + '</span>'
+                          + '</div>') : '');
                     } else {
                       meta.textContent = '연결 정보 없음';
                     }
@@ -6686,6 +6697,8 @@ window.wr2SummaryCancelEdit = function() {
                   const zone = document.getElementById('wr2NoteDropZone');
                   if (!zone || zone._skNDBound) return;
                   zone._skNDBound = true;
+                  // generic dropzone 이 이미 붙어 있으면 wr2NoteDropZone 에서는 사용하지 않도록 차단 플래그만 남긴다.
+                  zone._skDropBound = true;
                   zone.addEventListener('dragover', function(e){ e.preventDefault(); e.stopPropagation(); zone.classList.add('drag-over'); });
                   zone.addEventListener('dragleave', function(e){ if(!zone.contains(e.relatedTarget)) zone.classList.remove('drag-over'); });
                   zone.addEventListener('drop', function(e){
@@ -7190,6 +7203,14 @@ window.wr2SummaryCancelEdit = function() {
                 function initNoteDropZone() {
                   const zone = document.getElementById('wr2NoteDropZone');
                   if (!zone) return;
+                  // wr2NoteDropZone 는 하단의 커스텀 drop handler(initWr2NoteDropZone) 하나만 사용한다.
+                  // 기존 generic bind + custom bind 가 동시에 붙으면서 동일 파일이 2~4회 중복 업로드되는 현상을 막는다.
+                  if (zone._wr2DropInitRequested) return;
+                  zone._wr2DropInitRequested = true;
+                  if (typeof initWr2NoteDropZone === 'function') {
+                    initWr2NoteDropZone();
+                    return;
+                  }
                   window._skBindFileDropZone(zone, {
                     activeClass: 'drag-over',
                     shouldClick: function() { return false; },
@@ -7205,6 +7226,21 @@ window.wr2SummaryCancelEdit = function() {
                 };
                 async function wr2HandleFilesArray(files) {
                   const room = getActiveRoom(); if (!room) return;
+                  const batch = Array.from(files || []).filter(Boolean);
+                  if (!batch.length) return;
+                  // 동일 drop 이벤트가 중복 바인딩/버블링으로 2~4회 들어오는 상황 방지
+                  try {
+                    const sig = (room.id || '') + '|' + batch.map(function(file) {
+                      return [file.name || '', file.size || 0, file.lastModified || 0, file.type || ''].join(':');
+                    }).join('|');
+                    const now = Date.now();
+                    if (window.__wr2LastFileBatchSig === sig && (now - (window.__wr2LastFileBatchAt || 0)) < 1500) {
+                      console.warn('[wr2HandleFilesArray] duplicated batch ignored');
+                      return;
+                    }
+                    window.__wr2LastFileBatchSig = sig;
+                    window.__wr2LastFileBatchAt = now;
+                  } catch (e) {}
                   migrateRoomNote(room);
                   let note = _wrGetActiveNote(room);
                   if (!note) {
@@ -7214,8 +7250,8 @@ window.wr2SummaryCancelEdit = function() {
                   if (!note) return;
                   if (!Array.isArray(note.attachments)) note.attachments = [];
                   let ok = 0, fail = 0;
-                  if (files.length) showToast('파일 업로드 중...', 'info');
-                  for (const file of files) {
+                  if (batch.length) showToast('파일 업로드 중...', 'info');
+                  for (const file of batch) {
                     try {
                       const { url, path } = await window._sbUploadImage(file, 'attachments');
                       note.attachments.push({
