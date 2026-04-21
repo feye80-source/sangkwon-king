@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260421-workroom-dropfix1';
+    window.__SK_BUILD = '20260417-syncfix7';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -3811,18 +3811,7 @@ var _safeLocalSet = function(key, value) {
                 function updateRoom(id, patch, silentRender) {
                   const idx = wr2State.rooms.findIndex(r => r.id === id);
                   if (idx === -1) return;
-                  var prevRoom = wr2State.rooms[idx] || {};
-                  var safePatch = Object.assign({}, patch || {});
-                  var prevLife = String((prevRoom && prevRoom.lifecycleStatus) || '').trim();
-                  var nextLife = String((safePatch && safePatch.lifecycleStatus) || '').trim();
-                  if (prevLife === 'closed' && nextLife && nextLife !== 'closed' && safePatch.__forceLifecycleChange !== true) {
-                    delete safePatch.lifecycleStatus;
-                    delete safePatch.status;
-                    delete safePatch.phase;
-                    delete safePatch.activePhase;
-                  }
-                  delete safePatch.__forceLifecycleChange;
-                  wr2State.rooms[idx] = Object.assign({}, prevRoom, safePatch, { updatedAt: Date.now() });
+                  wr2State.rooms[idx] = Object.assign({}, wr2State.rooms[idx], patch, { updatedAt: Date.now() });
                   if (patch && (Object.prototype.hasOwnProperty.call(patch, 'closedSummary') || Object.prototype.hasOwnProperty.call(patch, 'lifecycleStatus'))) {
                     try { wr2SyncClosedSummaryToLinkedItems(wr2State.rooms[idx]); } catch (e) {}
                   }
@@ -4583,7 +4572,9 @@ var _safeLocalSet = function(key, value) {
                     const addr = String(m['소재지'] || m['도로명주소'] || m['지번주소'] || r.address || '').trim();
                     const saleRaw = metaInfo.saleRaw;
                     const saleDday = metaInfo.saleDday;
-                    const saleOverdueNeedsAction = !!(saleRaw && saleDday != null && saleDday < 0 && wr2GetLifecycle(r) !== 'closed');
+                    const roomLifecycle = wr2GetLifecycle(r);
+                    const saleOverdueNeedsAction = !!(saleRaw && saleDday != null && saleDday < 0 && roomLifecycle !== 'closed');
+                    const saleNeedsResultInput = !!(saleRaw && saleDday === 0 && roomLifecycle !== 'closed');
                     const priceRaw = m['최저가'] || m['감정가'] || m['낙찰가'] || m['매매가'] || m['매매가_만원']
                       || (r.calcState && (r.calcState.price || r.calcState.deposit))
                       || (r.closedSummary && r.closedSummary.finalBidPrice)
@@ -4592,13 +4583,6 @@ var _safeLocalSet = function(key, value) {
                     const ddayLabel = (saleDday == null)
                       ? ''
                       : (saleDday < 0 ? ('D+' + Math.abs(saleDday)) : (saleDday === 0 ? 'D-Day' : ('D-' + saleDday)));
-                    const needsResultUpdate = !!(saleDday != null && saleDday <= 0 && wr2GetLifecycle(r) !== 'closed');
-                    const resultAlertLabel = needsResultUpdate
-                      ? (saleDday === 0 ? '결과 입력 필요' : '결과 업데이트 필요')
-                      : '';
-                    const resultAlertTone = (saleDday === 0)
-                      ? 'color:#ffb3bc;background:rgba(255,99,112,.12);border:1px solid rgba(255,99,112,.35);'
-                      : 'color:#f8c37d;background:rgba(245,158,11,.11);border:1px solid rgba(245,158,11,.28);';
                     const meta = document.createElement('div');
                     meta.className = 'wr2-room-meta';
                     if (no || addr || price) {
@@ -4606,14 +4590,11 @@ var _safeLocalSet = function(key, value) {
                         + '<div style="display:flex;align-items:center;gap:6px;line-height:1.25;">'
                         + (no ? ('<span style="color:#7bb4ff;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px;">' + esc(no) + '</span>') : '')
                         + (price ? ('<span style="color:#ffb36c;white-space:nowrap;font-weight:700;">' + esc(price) + '</span>') : '')
-                        + (ddayLabel ? ('<span style="color:#ff6b6b;white-space:nowrap;font-weight:700;">' + esc(ddayLabel) + '</span>') : '')
-                        + (saleOverdueNeedsAction ? ('<span style="padding:1px 6px;border-radius:999px;border:1px solid rgba(255,107,122,.52);background:rgba(255,107,122,.16);color:#ff9eab;font-size:10px;font-weight:800;white-space:nowrap;">⚠ 기일지남 · 수정필요</span>') : '')
+                        + (ddayLabel ? ('<span style="display:inline-flex;align-items:center;padding:1px 8px;border-radius:999px;border:1px solid rgba(255,107,122,.38);background:rgba(255,107,122,.12);color:#ff8d98;white-space:nowrap;font-weight:800;font-size:10px;">' + esc(ddayLabel) + '</span>') : '')
+                        + (saleNeedsResultInput ? ('<span style="color:#ff7f8d;white-space:nowrap;font-weight:800;font-size:10px;">(결과 입력)</span>') : '')
+                        + (saleOverdueNeedsAction ? ('<span style="color:#ff9eab;white-space:nowrap;font-weight:800;font-size:10px;">(결과 업데이트)</span>') : '')
                         + '</div>'
-                        + (addr ? ('<div style="margin-top:2px;color:#8ea7c9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(addr) + '</div>') : '')
-                        + (resultAlertLabel ? ('<div style="margin-top:4px;display:flex;align-items:center;gap:6px;">'
-                            + '<span style="padding:2px 7px;border-radius:999px;font-size:10px;font-weight:800;white-space:nowrap;' + resultAlertTone + '">' + esc(ddayLabel || '') + '</span>'
-                            + '<span style="font-size:10px;font-weight:700;color:#ffb7bf;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(resultAlertLabel) + '</span>'
-                          + '</div>') : '');
+                        + (addr ? ('<div style="margin-top:2px;color:#8ea7c9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(addr) + '</div>') : '');
                     } else {
                       meta.textContent = '연결 정보 없음';
                     }
@@ -4711,13 +4692,13 @@ var _safeLocalSet = function(key, value) {
                         const next = String(e.target.value || 'active');
                         if (next === 'closed' && prev !== 'closed') {
                           wr2CollectCloseSummary(room.closedSummary, function(closedSummary) {
-                            updateRoom(room.id, { lifecycleStatus: next, closedSummary: closedSummary, __forceLifecycleChange: true });
+                            updateRoom(room.id, { lifecycleStatus: next, closedSummary: closedSummary });
                           }, function() {
                             lifeSel.value = prev;
                           });
                           return;
                         }
-                        updateRoom(room.id, { lifecycleStatus: next, __forceLifecycleChange: true });
+                        updateRoom(room.id, { lifecycleStatus: next });
                       };
 
                       let progSel = document.getElementById('wr2ProgressSelect');
@@ -5379,6 +5360,24 @@ var _safeLocalSet = function(key, value) {
                       <span class="wr2-info-val">${valHtml}<span class="wr2-edit-hint">✏️</span></span>
                     </div>`;
                   };
+                  const editTextRow = (key, label, rawVal, placeholder) => {
+                    const safeVal = String(rawVal || '');
+                    const safeDisplay = esc(safeVal || '-');
+                    const safePlaceholder = esc(placeholder || (label + ' 입력'));
+                    if (room._summaryEditing === key) {
+                      return `<div class="wr2-info-row wr2-info-editing">
+                        <span class="wr2-info-lbl">${label}</span>
+                        <input class="wr2-info-edit-inp" value="${esc(safeVal)}"
+                          onblur="wr2SummaryEditSave('${key}',this.value)"
+                          onkeydown="if(event.key==='Enter')this.blur();if(event.key==='Escape')wr2SummaryCancelEdit();"
+                          id="wr2SumEdt_${key}" placeholder="${safePlaceholder}">
+                      </div>`;
+                    }
+                    return `<div class="wr2-info-row" title="클릭으로 수정" onclick="wr2SummaryStartEdit('${key}');event.stopPropagation();">
+                      <span class="wr2-info-lbl">${label}</span>
+                      <span class="wr2-info-val">${safeDisplay}<span class="wr2-edit-hint">✏️</span></span>
+                    </div>`;
+                  };
 
                   const primaryAddr = d['소재지'] || d['도로명주소'] || d['지번주소'] || d['주소'] || room.address || '-';
                   const pdfDoc = _getPrimaryPdfDoc(item);
@@ -5386,7 +5385,9 @@ var _safeLocalSet = function(key, value) {
                   let html = '';
 
                   // 소재지 / 물건종류
+                  const itemTitle = String(item.title || d['물건명'] || d['물건명칭'] || primaryAddr || room.title || '').trim();
                   const _addrEsc = String(primaryAddr || '').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+                  html += editTextRow('title', '물건명', itemTitle, '물건 제목 입력');
                   html += `<div class="wr2-info-row"><span class="wr2-info-lbl">소재지</span><span class="wr2-info-val" style="display:flex;align-items:center;justify-content:space-between;gap:8px;"><span style="flex:1;min-width:0;word-break:break-word;">${primaryAddr}</span>${primaryAddr && primaryAddr !== '-' ? `<span style="display:flex;align-items:center;gap:6px;flex-shrink:0;"><button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();wr2CopyText('${_addrEsc}','주소를 복사했어요')">주소복사</button>${item && item.id ? `<button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();goToMapFromCard('${String(item.id).replace(/'/g, "\\'")}')">지도열기</button>` : ''}</span>` : ''}</span></div>`;
                   if (pdfDoc && item && item.id) {
                     html += `<div class="wr2-info-row"><span class="wr2-info-lbl">원본자료</span><span class="wr2-info-val" style="display:flex;justify-content:flex-end;gap:6px;flex-wrap:wrap;"><button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();wr2OpenPrimaryPdf('${String(item.id).replace(/'/g, "\\'")}')">PDF 보기</button><button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();wr2DownloadPrimaryPdf('${String(item.id).replace(/'/g, "\\'")}')">PDF 다운로드</button></span></div>`;
@@ -5486,6 +5487,26 @@ var _safeLocalSet = function(key, value) {
                 };
                 window.wr2SummaryEditSave = function(key, val) {
                   const room = getActiveRoom(); if (!room) return;
+                  const raw = String(val == null ? '' : val).trim();
+                  if (key === 'title') {
+                    const sv = (typeof getSv === 'function') ? getSv() : [];
+                    const linkedId = String(room.linkedSavedId || room.savedId || room.listingId || '').trim();
+                    const item = linkedId ? sv.find(function(s){ return String(s.id) === linkedId; }) : null;
+                    if (item) {
+                      item.title = raw || (item.title || room.title || '');
+                      if (!item.title) {
+                        const d = item.data || {};
+                        item.title = d['물건명'] || d['물건명칭'] || d['소재지'] || d['주소'] || '';
+                      }
+                      if (typeof setSv === 'function') setSv(sv);
+                    }
+                    if (raw) room.title = raw;
+                    room._summaryEditing = null;
+                    room.updatedAt = Date.now();
+                    saveRooms();
+                    wr2Render();
+                    return;
+                  }
                   room._summaryOverride = room._summaryOverride || {};
                   const n = parseFloat(String(val).replace(/[^0-9.]/g,''));
                   room._summaryOverride[key] = isNaN(n) ? 0 : n;
@@ -6697,8 +6718,6 @@ window.wr2SummaryCancelEdit = function() {
                   const zone = document.getElementById('wr2NoteDropZone');
                   if (!zone || zone._skNDBound) return;
                   zone._skNDBound = true;
-                  // generic dropzone 이 이미 붙어 있으면 wr2NoteDropZone 에서는 사용하지 않도록 차단 플래그만 남긴다.
-                  zone._skDropBound = true;
                   zone.addEventListener('dragover', function(e){ e.preventDefault(); e.stopPropagation(); zone.classList.add('drag-over'); });
                   zone.addEventListener('dragleave', function(e){ if(!zone.contains(e.relatedTarget)) zone.classList.remove('drag-over'); });
                   zone.addEventListener('drop', function(e){
@@ -7203,14 +7222,6 @@ window.wr2SummaryCancelEdit = function() {
                 function initNoteDropZone() {
                   const zone = document.getElementById('wr2NoteDropZone');
                   if (!zone) return;
-                  // wr2NoteDropZone 는 하단의 커스텀 drop handler(initWr2NoteDropZone) 하나만 사용한다.
-                  // 기존 generic bind + custom bind 가 동시에 붙으면서 동일 파일이 2~4회 중복 업로드되는 현상을 막는다.
-                  if (zone._wr2DropInitRequested) return;
-                  zone._wr2DropInitRequested = true;
-                  if (typeof initWr2NoteDropZone === 'function') {
-                    initWr2NoteDropZone();
-                    return;
-                  }
                   window._skBindFileDropZone(zone, {
                     activeClass: 'drag-over',
                     shouldClick: function() { return false; },
@@ -7226,21 +7237,6 @@ window.wr2SummaryCancelEdit = function() {
                 };
                 async function wr2HandleFilesArray(files) {
                   const room = getActiveRoom(); if (!room) return;
-                  const batch = Array.from(files || []).filter(Boolean);
-                  if (!batch.length) return;
-                  // 동일 drop 이벤트가 중복 바인딩/버블링으로 2~4회 들어오는 상황 방지
-                  try {
-                    const sig = (room.id || '') + '|' + batch.map(function(file) {
-                      return [file.name || '', file.size || 0, file.lastModified || 0, file.type || ''].join(':');
-                    }).join('|');
-                    const now = Date.now();
-                    if (window.__wr2LastFileBatchSig === sig && (now - (window.__wr2LastFileBatchAt || 0)) < 1500) {
-                      console.warn('[wr2HandleFilesArray] duplicated batch ignored');
-                      return;
-                    }
-                    window.__wr2LastFileBatchSig = sig;
-                    window.__wr2LastFileBatchAt = now;
-                  } catch (e) {}
                   migrateRoomNote(room);
                   let note = _wrGetActiveNote(room);
                   if (!note) {
@@ -7250,8 +7246,8 @@ window.wr2SummaryCancelEdit = function() {
                   if (!note) return;
                   if (!Array.isArray(note.attachments)) note.attachments = [];
                   let ok = 0, fail = 0;
-                  if (batch.length) showToast('파일 업로드 중...', 'info');
-                  for (const file of batch) {
+                  if (files.length) showToast('파일 업로드 중...', 'info');
+                  for (const file of files) {
                     try {
                       const { url, path } = await window._sbUploadImage(file, 'attachments');
                       note.attachments.push({
@@ -25286,18 +25282,6 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       _activeInlineCancelFn = null;
     }, true);
 
-    window._scheduleSavedRender = window._scheduleSavedRender || (function() {
-      let timer = null;
-      return function(delay) {
-        clearTimeout(timer);
-        timer = setTimeout(function() {
-          timer = null;
-          try { if (typeof renderSaved === 'function') renderSaved(); } catch (e) {}
-          try { if (typeof updSvCnt === 'function') updSvCnt(); } catch (e) {}
-        }, typeof delay === 'number' ? delay : 90);
-      };
-    })();
-
     window.inlineEditSavedField = function (itemId, field, currentVal, e) {
       if (e) e.stopPropagation();
       const spanId = 'svied_' + field + '_' + itemId;
@@ -25362,7 +25346,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           }
           _applySavedFieldMutation(it, field, nextVal);
           setSv(sv2);
-          if (typeof window._scheduleSavedRender === 'function') window._scheduleSavedRender(90);
+          if (typeof renderSaved === 'function') renderSaved();
           showToast('✅ ' + field + ' 저장됨', 'ok');
         } else {
           dispEl.textContent = origText;
@@ -25455,7 +25439,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           const nextVal = (isPrice && numVal !== null) ? numVal : newVal;
           _applySavedFieldMutation(it, field, nextVal);
           setSv(sv2);
-          if (typeof window._scheduleSavedRender === 'function') window._scheduleSavedRender(90);
+          if (typeof renderSaved === 'function') renderSaved();
+          if (typeof updSvCnt === 'function') updSvCnt();
           const cardEl = document.getElementById(itemId);
           if (cardEl) { const bodyEl = cardEl.querySelector('.map-card-body'); if (bodyEl) bodyEl.innerHTML = buildMapCardBodyHTML(it); }
           showToast('✅ ' + fieldLabel + ' 저장됨', 'ok');
@@ -25521,7 +25506,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             dispEl.textContent = newVal || '-';
           }
           setSv(sv);
-          if (typeof window._scheduleSavedRender === 'function') window._scheduleSavedRender(90);
+          if (typeof renderSaved === 'function') renderSaved();
+          if (typeof updSvCnt === 'function') updSvCnt();
           showToast('✅ ' + (field === 'floor' ? '층수' : '방향') + ' 저장됨', 'ok');
         } else {
           dispEl.textContent = curText;
@@ -42038,21 +42024,6 @@ window.addEventListener('DOMContentLoaded', () => {
     var hasCloseMemo = Object.prototype.hasOwnProperty.call(raw, '종료메모');
     var nextMemo = hasCloseMemo ? String(raw['종료메모'] || '') : String(src.memo || curItem.memo || '');
     var nextBidders = String(plSavedField(raw, ['입찰인수','입찰인원'], curItem.bidders || '') || '').trim();
-    var savedLife = String(raw['작업룸상태'] || '').trim();
-    var nextSimple = (savedLife === 'active' || savedLife === 'changed' || savedLife === 'closed')
-      ? savedLife
-      : plSimpleStatusKey(curItem.status || '');
-    var nextStatus = (function(){
-      var base = String(curItem.status || 'review');
-      if (nextSimple === 'closed') return 'closed';
-      if (nextSimple === 'changed') {
-        if (base === 'field' || base === 'bid' || base === 'won' || base === 'sell') return base;
-        return 'field';
-      }
-      if (base === 'closed' || base === 'archived') return 'review';
-      return base || 'review';
-    })();
-
     return {
       linkedSavedId: String(src.id || curItem.linkedSavedId || ''),
       type: nextType,
@@ -42063,12 +42034,12 @@ window.addEventListener('DOMContentLoaded', () => {
       appraisal: mapped.appraisal || curItem.appraisal || '',
       minprice: mapped.minprice || curItem.minprice || '',
       round: mapped.round || curItem.round || '',
-      status: nextStatus,
       biddate: (function(){
         var currentBid = _plNormalizeBiddateValue(curItem.biddate || '');
         var mappedBid = _plNormalizeBiddateValue(mapped.biddate || '');
-        // 저장목록의 작업룸상태를 우선 반영해, 종료/변경이 과거 기일/상태로 되돌아가지 않게 한다.
-        if (nextSimple === 'changed' || nextSimple === 'closed') return '미정';
+        var simple = plSimpleStatusKey(curItem.status || '');
+        // 종료/변경 상태면 항상 '미정'으로 고정 (저장 데이터의 오래된 기일로 덮어써지는 문제 방지)
+        if (simple === 'changed' || simple === 'closed') return '미정';
         return mappedBid || currentBid || '';
       })(),
       estimate: mapped.estimate || curItem.estimate || '',
@@ -42631,13 +42602,6 @@ window.addEventListener('DOMContentLoaded', () => {
       activePhase: newPhase,
       lifecycleStatus: (simple === 'closed' ? 'closed' : (simple === 'changed' ? 'changed' : 'active'))
     };
-    var roomLifeNow = String((room && room.lifecycleStatus) || '').trim();
-    if (roomLifeNow === 'closed' && patch.lifecycleStatus !== 'closed' && !(item && item.__allowLifecycleReopen)) {
-      patch.phase = 'closed';
-      patch.status = 'closed';
-      patch.activePhase = 'closed';
-      patch.lifecycleStatus = 'closed';
-    }
     if (item.addr && String(room.title || '') !== String(item.addr || '')) patch.title = item.addr;
     if (item.region && String(room.address || '') !== String(item.region || '')) patch.address = item.region;
     if (simple === 'closed') {
@@ -42710,10 +42674,8 @@ window.addEventListener('DOMContentLoaded', () => {
     var oldSimple = plSimpleStatusKey(item.status);
     if (oldSimple === String(simpleStatus || '')) return;
     plApplySimpleStatusToItem(item, simpleStatus);
-    item.__allowLifecycleReopen = true;
     plSave(items.map(plNormalizeItem));
     syncToWorkroom(item);
-    try { delete item.__allowLifecycleReopen; } catch(e) {}
     try { plSyncItemToSaved(item); } catch(e) {}
     if (simpleStatus === 'closed' && oldSimple !== 'closed') {
       setTimeout(function(){ plOpenResultModal(id); }, 200);
@@ -42903,17 +42865,6 @@ window.addEventListener('DOMContentLoaded', () => {
     try { plSyncItemToSaved(changedItem); } catch(e) {}
     return changedItem;
   }
-  window._plScheduleRender = window._plScheduleRender || (function() {
-    var timer = null;
-    return function(delay) {
-      clearTimeout(timer);
-      timer = setTimeout(function() {
-        timer = null;
-        try { if (typeof renderPropertyList === 'function') renderPropertyList(); } catch(e) {}
-      }, typeof delay === 'number' ? delay : 80);
-    };
-  })();
-
   window.plInlineSet = function(id, field, rawValue) {
     if (field === 'result_won') {
       var cur0 = plLoad().find(function(i){ return String(i.id) === String(id); });
@@ -42924,7 +42875,7 @@ window.addEventListener('DOMContentLoaded', () => {
       var nextResult = Object.assign({}, cur0.result || {});
       nextResult.won = wonVal;
       plUpdateItem(id, { result: nextResult });
-      if (typeof window._plScheduleRender === 'function') window._plScheduleRender(80);
+      renderPropertyList();
       return;
     }
     var patch = {};
@@ -42936,14 +42887,14 @@ window.addEventListener('DOMContentLoaded', () => {
     if (cur && String(cur[field] || '') === String(value || '')) return;
     patch[field] = value;
     plUpdateItem(id, patch);
-    if (typeof window._plScheduleRender === 'function') window._plScheduleRender(80);
+    renderPropertyList();
   };
   window.plInlineSetSelect = function(id, field, value) {
     var cur = plLoad().find(function(i){ return String(i.id) === String(id); });
     if (cur && String(cur[field] || '') === String(value || '')) return;
     var patch = {}; patch[field] = value;
     plUpdateItem(id, patch);
-    if (typeof window._plScheduleRender === 'function') window._plScheduleRender(80);
+    renderPropertyList();
   };
   function plInputCell(id, field, value, opts) {
     opts = opts || {};
