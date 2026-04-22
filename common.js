@@ -3301,7 +3301,7 @@ var _safeLocalSet = function(key, value) {
                   activePhase: 'review',
                   sort: 'updated',
                   search: '',
-                  // lifecycleStatus 기준 필터 (기본: 진행만 → 종료 누적 문제 방지)
+                  // lifecycleStatus 기준 필터 (기본: 활성만 → 종료 누적 문제 방지)
                   statusFilter: 'active',
                   // 폴더 제거: groupFilter는 레거시 호환용 키만 유지
                   groupFilter: 'all'
@@ -3482,7 +3482,7 @@ var _safeLocalSet = function(key, value) {
                   const key = (typeof roomOrKey === 'string') ? roomOrKey : wr2GetLifecycle(roomOrKey);
                   if (key === 'closed') return '종료';
                   if (key === 'changed') return '변경';
-                  return '진행';
+                  return '활성';
                 }
                 function wr2RoomMatchesLifecycle(room, filter) {
                   const key = String(filter || 'active');
@@ -4548,7 +4548,7 @@ var _safeLocalSet = function(key, value) {
                       scopeEl.style.display = 'flex';
                       scopeEl.style.gap = '6px';
                       scopeEl.style.flexWrap = 'wrap';
-                      scopeEl.appendChild(mkBtn('active', '진행'));
+                      scopeEl.appendChild(mkBtn('active', '활성'));
                       scopeEl.appendChild(mkBtn('changed', '변경'));
                       scopeEl.appendChild(mkBtn('closed', '종료'));
                       scopeEl.appendChild(mkBtn('all', '전체'));
@@ -4592,14 +4592,21 @@ var _safeLocalSet = function(key, value) {
                     const ddayLabel = (saleDday == null)
                       ? ''
                       : (saleDday < 0 ? ('D+' + Math.abs(saleDday)) : (saleDday === 0 ? 'D-Day' : ('D-' + saleDday)));
+                    const ddayColor = (saleDday == null)
+                      ? ''
+                      : (saleDday < 0 ? '#8b93a7' : (saleDday === 0 ? '#ff6370' : (saleDday <= 3 ? '#ff8c42' : (saleDday <= 7 ? '#fbbf24' : '#4ade80'))));
+                    const resultAlertText = (saleDday == null)
+                      ? ''
+                      : (saleDday < 0 ? ' (결과 업데이트)' : (saleDday === 0 ? ' (결과 입력)' : ''));
                     const meta = document.createElement('div');
                     meta.className = 'wr2-room-meta';
                     if (no || addr || price) {
                       meta.innerHTML = ''
-                        + '<div style="display:flex;align-items:center;gap:6px;line-height:1.25;">'
+                        + '<div style="display:flex;align-items:center;gap:6px;line-height:1.25;flex-wrap:wrap;">'
                         + (no ? ('<span style="color:#7bb4ff;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px;">' + esc(no) + '</span>') : '')
                         + (price ? ('<span style="color:#ffb36c;white-space:nowrap;font-weight:700;">' + esc(price) + '</span>') : '')
-                        + (ddayLabel ? ('<span style="color:#ff6b6b;white-space:nowrap;font-weight:700;">' + esc(ddayLabel) + '</span>') : '')
+                        + (ddayLabel ? ('<span style="color:' + ddayColor + ';white-space:nowrap;font-weight:700;">' + esc(ddayLabel) + '</span>') : '')
+                        + (resultAlertText ? ('<span style="color:#ff9eab;white-space:nowrap;font-weight:800;">' + esc(resultAlertText) + '</span>') : '')
                         + (saleOverdueNeedsAction ? ('<span style="padding:1px 6px;border-radius:999px;border:1px solid rgba(255,107,122,.52);background:rgba(255,107,122,.16);color:#ff9eab;font-size:10px;font-weight:800;white-space:nowrap;">⚠ 기일지남 · 수정필요</span>') : '')
                         + '</div>'
                         + (addr ? ('<div style="margin-top:2px;color:#8ea7c9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(addr) + '</div>') : '');
@@ -4689,7 +4696,7 @@ var _safeLocalSet = function(key, value) {
                         lifeSel.style.padding = '4px 7px';
                         lifeSel.style.minWidth = '68px';
                         lifeSel.innerHTML = ''
-                          + '<option value="active">진행</option>'
+                          + '<option value="active">활성</option>'
                           + '<option value="changed">변경</option>'
                           + '<option value="closed">종료</option>';
                         host.insertBefore(lifeSel, insertAnchor);
@@ -4700,13 +4707,13 @@ var _safeLocalSet = function(key, value) {
                         const next = String(e.target.value || 'active');
                         if (next === 'closed' && prev !== 'closed') {
                           wr2CollectCloseSummary(room.closedSummary, function(closedSummary) {
-                            updateRoom(room.id, { lifecycleStatus: next, closedSummary: closedSummary });
+                            updateRoom(room.id, { lifecycleStatus: next, closedSummary: closedSummary, __forceLifecycleChange: true });
                           }, function() {
                             lifeSel.value = prev;
                           });
                           return;
                         }
-                        updateRoom(room.id, { lifecycleStatus: next });
+                        updateRoom(room.id, { lifecycleStatus: next, __forceLifecycleChange: true });
                       };
 
                       let progSel = document.getElementById('wr2ProgressSelect');
@@ -4831,7 +4838,7 @@ var _safeLocalSet = function(key, value) {
                       closedStamp.innerHTML = ''
                         + '<div style="display:flex;align-items:center;gap:10px;">'
                         + '  <div style="border:2px solid rgba(251,191,36,.75);border-radius:10px;padding:4px 10px;font-size:12px;font-weight:900;letter-spacing:2px;color:#f7d47d;transform:rotate(-8deg);">변경</div>'
-                        + '  <div style="font-size:14px;font-weight:800;letter-spacing:.2px;color:#ffe9b3;">변경 보관 상태입니다 (필요 시 다시 진행 가능)</div>'
+                        + '  <div style="font-size:14px;font-weight:800;letter-spacing:.2px;color:#ffe9b3;">변경 보관 상태입니다 (필요 시 다시 활성 가능)</div>'
                         + '</div>';
                     } else {
                       closedStamp.style.border = '1px solid rgba(255,102,120,.36)';
@@ -7602,7 +7609,7 @@ window.wr2SummaryCancelEdit = function() {
                   bindEventsOnce();
                   initResizeHandle();
                   if (!wr2State.activeView) wr2State.activeView = 'overview';
-                  // ★ 첫 진입 시: 필터는 '진행'으로 기본 설정, 방 자동 선택 없음 (빈 상태 안내 표시)
+                  // ★ 첫 진입 시: 필터는 '활성'으로 기본 설정, 방 자동 선택 없음 (빈 상태 안내 표시)
                   // 통상적인 상용 프로그램 방식: 왼쪽 목록에서 사용자가 선택하도록 유도
                   if (!wr2State.statusFilter || wr2State.statusFilter === 'all') {
                     wr2State.statusFilter = 'active';
@@ -16159,19 +16166,7 @@ ${inputDesc.substring(0, 3000)}
       const isBds = src === '부동산플래닛';
       const isTrans = item.mode === 'transaction';
 
-      const _popTitleEl = document.getElementById('popTitle');
-      if (_popTitleEl) {
-        _popTitleEl.textContent = item.title || src || '상세정보';
-        _popTitleEl.style.cursor = 'text';
-        _popTitleEl.title = '클릭해서 제목 수정';
-        _popTitleEl.onclick = function(e) {
-          if (!popupEditMode) {
-            try { togglePopupEdit(); } catch(_) {}
-          }
-          e && e.stopPropagation && e.stopPropagation();
-          setTimeout(function(){ const inp = document.getElementById('popTitleInput'); if (inp) { inp.focus(); inp.select(); } }, 20);
-        };
-      }
+      document.getElementById('popTitle').textContent = item.title || src || '상세정보';
 
       let badgeCls = 'popup-badge mbl', badgeTxt = '🏪 매물';
       if (a) { badgeCls = 'popup-badge mba'; badgeTxt = '⚖️ 경매'; }
@@ -16179,12 +16174,8 @@ ${inputDesc.substring(0, 3000)}
       else if (isBds) { badgeCls = 'popup-badge'; badgeTxt = '🌍 플래닛'; }
       else if (isTrans) { badgeCls = 'popup-badge'; badgeTxt = '📊 실거래'; }
 
-      const _popEditBtn = document.getElementById('popEditBtn');
-      if (_popEditBtn) {
-        _popEditBtn.className = 'popup-editbtn';
-        _popEditBtn.textContent = '✏️ 수정';
-        _popEditBtn.style.display = '';
-      }
+      document.getElementById('popEditBtn').className = 'popup-editbtn';
+      document.getElementById('popEditBtn').textContent = '✏️ 수정';
 
       // ── 팝업 topbar 소스 탭 렌더링 (v121 스타일) ──────────────
       (function () {
@@ -16578,21 +16569,11 @@ ${inputDesc.substring(0, 3000)}
         titleEl.innerHTML = `<input id="popTitleInput" value="${(item.title || '').replace(/"/g, '&quot;')}"
       style="background:rgba(255,255,255,.08);border:1px solid rgba(79,142,255,.5);border-radius:6px;color:#e0e6ff;font-size:14px;font-weight:700;padding:3px 8px;width:100%;outline:none;"
       oninput="window._savedDraftInput('${popupId}','title',this.value,{title:true})"
-      onblur="window._savedDraftCommit('${popupId}','title',this.value,{title:true})"
-      onkeydown="if(event.key==='Enter'){window._savedDraftCommit('${popupId}','title',this.value,{title:true});togglePopupEdit();}">`;
+      onblur="window._savedDraftCommit('${popupId}','title',this.value,{title:true})">`;
       } else {
         // 완료: 제목 저장
         const inp = document.getElementById('popTitleInput');
-        if (inp) {
-          const sv2 = getSv();
-          const it = sv2.find(s => s.id === popupId);
-          if (it) {
-            it.title = inp.value;
-            setSv(sv2);
-            try { renderSaved(); } catch(_) {}
-            try { updSvCnt(); } catch(_) {}
-          }
-        }
+        if (inp) { const sv2 = getSv(); const it = sv2.find(s => s.id === popupId); if (it) { it.title = inp.value; setSv(sv2); } }
         titleEl.textContent = (getSv().find(s => s.id === popupId) || {}).title || '';
       }
       // renderPopup이 popupEditMode 상태를 읽어 기본헤더를 input/text로 분기 렌더링
@@ -25276,6 +25257,18 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       _activeInlineCancelFn = null;
     }, true);
 
+    window._scheduleSavedRender = window._scheduleSavedRender || (function() {
+      let timer = null;
+      return function(delay) {
+        clearTimeout(timer);
+        timer = setTimeout(function() {
+          timer = null;
+          try { if (typeof renderSaved === 'function') renderSaved(); } catch (e) {}
+          try { if (typeof updSvCnt === 'function') updSvCnt(); } catch (e) {}
+        }, typeof delay === 'number' ? delay : 90);
+      };
+    })();
+
     window.inlineEditSavedField = function (itemId, field, currentVal, e) {
       if (e) e.stopPropagation();
       const spanId = 'svied_' + field + '_' + itemId;
@@ -25340,7 +25333,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           }
           _applySavedFieldMutation(it, field, nextVal);
           setSv(sv2);
-          if (typeof renderSaved === 'function') renderSaved();
+          if (typeof window._scheduleSavedRender === 'function') window._scheduleSavedRender(90);
           showToast('✅ ' + field + ' 저장됨', 'ok');
         } else {
           dispEl.textContent = origText;
@@ -25433,8 +25426,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           const nextVal = (isPrice && numVal !== null) ? numVal : newVal;
           _applySavedFieldMutation(it, field, nextVal);
           setSv(sv2);
-          if (typeof renderSaved === 'function') renderSaved();
-          if (typeof updSvCnt === 'function') updSvCnt();
+          if (typeof window._scheduleSavedRender === 'function') window._scheduleSavedRender(90);
           const cardEl = document.getElementById(itemId);
           if (cardEl) { const bodyEl = cardEl.querySelector('.map-card-body'); if (bodyEl) bodyEl.innerHTML = buildMapCardBodyHTML(it); }
           showToast('✅ ' + fieldLabel + ' 저장됨', 'ok');
@@ -25500,8 +25492,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             dispEl.textContent = newVal || '-';
           }
           setSv(sv);
-          if (typeof renderSaved === 'function') renderSaved();
-          if (typeof updSvCnt === 'function') updSvCnt();
+          if (typeof window._scheduleSavedRender === 'function') window._scheduleSavedRender(90);
           showToast('✅ ' + (field === 'floor' ? '층수' : '방향') + ' 저장됨', 'ok');
         } else {
           dispEl.textContent = curText;
@@ -41932,26 +41923,9 @@ window.addEventListener('DOMContentLoaded', () => {
     var raw = plParseAmountText(v);
     return raw ? Number(raw).toLocaleString('ko-KR') : '';
   }
-  function plAmountStoredToWon(v) {
-    var raw = String(v == null ? '' : v).replace(/[^0-9]/g, '');
-    if (!raw) return 0;
-    var n = parseInt(raw, 10);
-    if (!isFinite(n) || n <= 0) return 0;
-    // 물건리스트는 기존 저장데이터(만원 단위)와 신규 직접입력값(원 단위)이 섞여 있을 수 있다.
-    // 1,000,000 이상이면 원 단위로 간주하고, 그보다 작으면 만원 단위로 간주해 원으로 환산한다.
-    return n >= 1000000 ? n : (n * 10000);
-  }
-  function plAmountStoredToMan(v) {
-    var won = plAmountStoredToWon(v);
-    return won ? Math.round(won / 10000) : 0;
-  }
-  function plDisplayWon(v) {
-    var won = plAmountStoredToWon(v);
-    return won ? Number(won).toLocaleString('ko-KR') : '';
-  }
   function plDisplayMan(v) {
-    var disp = plDisplayWon(v);
-    return disp ? (disp + '원') : '';
+    var disp = plDisplayMoney(v);
+    return disp ? (disp + '만') : '';
   }
   function plNormalizeDateInput(v) {
     var raw = String(v || '').trim();
@@ -42035,6 +42009,21 @@ window.addEventListener('DOMContentLoaded', () => {
     var hasCloseMemo = Object.prototype.hasOwnProperty.call(raw, '종료메모');
     var nextMemo = hasCloseMemo ? String(raw['종료메모'] || '') : String(src.memo || curItem.memo || '');
     var nextBidders = String(plSavedField(raw, ['입찰인수','입찰인원'], curItem.bidders || '') || '').trim();
+    var savedLife = String(raw['작업룸상태'] || '').trim();
+    var nextSimple = (savedLife === 'active' || savedLife === 'changed' || savedLife === 'closed')
+      ? savedLife
+      : plSimpleStatusKey(curItem.status || '');
+    var nextStatus = (function(){
+      var base = String(curItem.status || 'review');
+      if (nextSimple === 'closed') return 'closed';
+      if (nextSimple === 'changed') {
+        if (base === 'field' || base === 'bid' || base === 'won' || base === 'sell') return base;
+        return 'field';
+      }
+      if (base === 'closed' || base === 'archived') return 'review';
+      return base || 'review';
+    })();
+
     return {
       linkedSavedId: String(src.id || curItem.linkedSavedId || ''),
       type: nextType,
@@ -42045,12 +42034,12 @@ window.addEventListener('DOMContentLoaded', () => {
       appraisal: mapped.appraisal || curItem.appraisal || '',
       minprice: mapped.minprice || curItem.minprice || '',
       round: mapped.round || curItem.round || '',
+      status: nextStatus,
       biddate: (function(){
         var currentBid = _plNormalizeBiddateValue(curItem.biddate || '');
         var mappedBid = _plNormalizeBiddateValue(mapped.biddate || '');
-        var simple = plSimpleStatusKey(curItem.status || '');
-        // 종료/변경 상태면 항상 '미정'으로 고정 (저장 데이터의 오래된 기일로 덮어써지는 문제 방지)
-        if (simple === 'changed' || simple === 'closed') return '미정';
+        // 저장목록의 작업룸상태를 우선 반영해, 종료/변경이 과거 기일/상태로 되돌아가지 않게 한다.
+        if (nextSimple === 'changed' || nextSimple === 'closed') return '미정';
         return mappedBid || currentBid || '';
       })(),
       estimate: mapped.estimate || curItem.estimate || '',
@@ -42087,17 +42076,17 @@ window.addEventListener('DOMContentLoaded', () => {
       putField('경매번호', item.casenum);
       putField('사건번호', item.casenum);
     }
-    function putAmountPair(manKey, wonKey, rawVal) {
-      var won = plAmountStoredToWon(rawVal);
-      if (!won) return;
-      putField(manKey, String(Math.round(won / 10000)));
-      if (wonKey) putField(wonKey, won);
+    if (item.appraisal) {
+      putField('감정가_만원', plParseAmountText(item.appraisal));
+      putField('감정가', Number(plParseAmountText(item.appraisal)) * 10000);
     }
-    if (item.appraisal) putAmountPair('감정가_만원', '감정가', item.appraisal);
-    if (item.minprice) putAmountPair('최저가_만원', '최저가', item.minprice);
-    if (item.deposit) putAmountPair('보증금_만원', '보증금', item.deposit);
-    if (item.monthly) putAmountPair('월세_만원', '월세', item.monthly);
-    if (item.estimate) putAmountPair('예상입찰가_만원', '예상입찰가', item.estimate);
+    if (item.minprice) {
+      putField('최저가_만원', plParseAmountText(item.minprice));
+      putField('최저가', Number(plParseAmountText(item.minprice)) * 10000);
+    }
+    if (item.deposit) putField('보증금_만원', plParseAmountText(item.deposit));
+    if (item.monthly) putField('월세_만원', plParseAmountText(item.monthly));
+    if (item.estimate) putField('예상입찰가_만원', plParseAmountText(item.estimate));
     {
       var bidDateNorm = String(item.biddate || '').trim();
       putField('입찰기일', bidDateNorm);
@@ -42106,11 +42095,8 @@ window.addEventListener('DOMContentLoaded', () => {
     }
     if (item.round) putField('유찰회차', item.round);
     if (item.result && item.result.won) {
-      var _won = plAmountStoredToWon(item.result.won);
-      if (_won) {
-        putField('낙찰가_만원', String(Math.round(_won / 10000)));
-        putField('낙찰가', _won);
-      }
+      putField('낙찰가_만원', plParseAmountText(item.result.won));
+      putField('낙찰가', Number(plParseAmountText(item.result.won)) * 10000);
     }
     if (item.memo !== undefined) {
       if (plDiffers(src.memo || '', item.memo || '')) {
@@ -42342,7 +42328,7 @@ window.addEventListener('DOMContentLoaded', () => {
     return (d.getMonth()+1) + '.' + d.getDate();
   }
 
-  // ── 상태(단순화: 진행/변경/종료) ──────────────────────────
+  // ── 상태(단순화: 활성/변경/종료) ──────────────────────────
   function plSimpleStatusKey(status) {
     var s = String(status || '');
     if (s === 'active' || s === 'changed' || s === 'closed') return s;
@@ -42385,7 +42371,7 @@ window.addEventListener('DOMContentLoaded', () => {
     item.updatedAt = Date.now();
   }
   var STATUS_MAP = {
-    active:  { label: '진행', bg: 'rgba(79,142,255,.14)', color: '#8ab8ff' },
+    active:  { label: '활성', bg: 'rgba(79,142,255,.14)', color: '#8ab8ff' },
     changed: { label: '변경', bg: 'rgba(245,158,11,.14)', color: '#ffd166' },
     closed:  { label: '종료', bg: 'rgba(255,255,255,.06)', color: '#9aa3b2' }
   };
@@ -42422,7 +42408,7 @@ window.addEventListener('DOMContentLoaded', () => {
       + 'onblur="plCancelInlineEdit(this.dataset.k)" onclick="event.stopPropagation()" '
       + 'style="display:none;padding:3px 6px;border-radius:999px;font-size:11px;font-weight:800;border:1px solid rgba(255,255,255,.10);'
       + 'background:rgba(0,0,0,.25);color:var(--tx);cursor:pointer;">'
-      + '<option value="active"'+(simple==='active'?' selected':'')+'>진행</option>'
+      + '<option value="active"'+(simple==='active'?' selected':'')+'>활성</option>'
       + '<option value="changed"'+(simple==='changed'?' selected':'')+'>변경</option>'
       + '<option value="closed"'+(simple==='closed'?' selected':'')+'>종료</option>'
       + '</select>';
@@ -42437,7 +42423,7 @@ window.addEventListener('DOMContentLoaded', () => {
   }
   function numCell(v, color) {
     if (!v) return '<span style="color:#444;">—</span>';
-    return '<span style="font-family:monospace;font-size:12px;'+(color?'color:'+color+';':'')+'">' + plDisplayWon(v) + '원</span>';
+    return '<span style="font-family:monospace;font-size:12px;'+(color?'color:'+color+';':'')+'">' + plDisplayMan(v) + '</span>';
   }
 
   function plEditCellHtml(id, field, rawValue, displayValue, opts) {
@@ -42616,6 +42602,13 @@ window.addEventListener('DOMContentLoaded', () => {
       activePhase: newPhase,
       lifecycleStatus: (simple === 'closed' ? 'closed' : (simple === 'changed' ? 'changed' : 'active'))
     };
+    var roomLifeNow = String((room && room.lifecycleStatus) || '').trim();
+    if (roomLifeNow === 'closed' && patch.lifecycleStatus !== 'closed' && !(item && item.__allowLifecycleReopen)) {
+      patch.phase = 'closed';
+      patch.status = 'closed';
+      patch.activePhase = 'closed';
+      patch.lifecycleStatus = 'closed';
+    }
     if (item.addr && String(room.title || '') !== String(item.addr || '')) patch.title = item.addr;
     if (item.region && String(room.address || '') !== String(item.region || '')) patch.address = item.region;
     if (simple === 'closed') {
@@ -42652,8 +42645,6 @@ window.addEventListener('DOMContentLoaded', () => {
         _origWrDbUpdateStatus(id, val);
         syncPropertyFromRoom(id, { status: val, archived: false });
         try { plSyncFromWorkrooms({ render: false }); } catch (e) {}
-        try { if (typeof renderPropertyList === 'function') renderPropertyList(); } catch (e) {}
-        try { if (typeof wr2Render === 'function' && typeof currentPage !== 'undefined' && currentPage === 4 && window.__pmActiveTab === 'work') wr2Render(); } catch (e) {}
       };
     }
     if (typeof window.updateRoom === 'function') {
@@ -42676,24 +42667,9 @@ window.addEventListener('DOMContentLoaded', () => {
             closedSummary: patch.closedSummary
           });
           try { plSyncFromWorkrooms({ render: false }); } catch (e) {}
-          try { if (typeof renderPropertyList === 'function') renderPropertyList(); } catch (e) {}
-          try { if (typeof wr2Render === 'function' && typeof currentPage !== 'undefined' && currentPage === 4 && window.__pmActiveTab === 'work') wr2Render(); } catch (e) {}
         }
         return out;
       };
-    }
-  }
-
-  function plApplyStatusResultBySimple(item, simpleStatus) {
-    if (!item) return;
-    item.resultState = item.resultState || '미입력';
-    if (simpleStatus === 'closed') {
-      if (!item.resultState || item.resultState === '미입력') item.resultState = '변경';
-    } else if (simpleStatus === 'changed') {
-      item.resultState = '변경';
-    }
-    if (simpleStatus === 'active' && item.resultState === '변경') {
-      item.resultState = '미입력';
     }
   }
 
@@ -42705,8 +42681,10 @@ window.addEventListener('DOMContentLoaded', () => {
     var oldSimple = plSimpleStatusKey(item.status);
     if (oldSimple === String(simpleStatus || '')) return;
     plApplySimpleStatusToItem(item, simpleStatus);
+    item.__allowLifecycleReopen = true;
     plSave(items.map(plNormalizeItem));
     syncToWorkroom(item);
+    try { delete item.__allowLifecycleReopen; } catch(e) {}
     try { plSyncItemToSaved(item); } catch(e) {}
     if (simpleStatus === 'closed' && oldSimple !== 'closed') {
       setTimeout(function(){ plOpenResultModal(id); }, 200);
@@ -42896,6 +42874,17 @@ window.addEventListener('DOMContentLoaded', () => {
     try { plSyncItemToSaved(changedItem); } catch(e) {}
     return changedItem;
   }
+  window._plScheduleRender = window._plScheduleRender || (function() {
+    var timer = null;
+    return function(delay) {
+      clearTimeout(timer);
+      timer = setTimeout(function() {
+        timer = null;
+        try { if (typeof renderPropertyList === 'function') renderPropertyList(); } catch(e) {}
+      }, typeof delay === 'number' ? delay : 80);
+    };
+  })();
+
   window.plInlineSet = function(id, field, rawValue) {
     if (field === 'result_won') {
       var cur0 = plLoad().find(function(i){ return String(i.id) === String(id); });
@@ -42906,7 +42895,7 @@ window.addEventListener('DOMContentLoaded', () => {
       var nextResult = Object.assign({}, cur0.result || {});
       nextResult.won = wonVal;
       plUpdateItem(id, { result: nextResult });
-      renderPropertyList();
+      if (typeof window._plScheduleRender === 'function') window._plScheduleRender(80);
       return;
     }
     var patch = {};
@@ -42918,14 +42907,14 @@ window.addEventListener('DOMContentLoaded', () => {
     if (cur && String(cur[field] || '') === String(value || '')) return;
     patch[field] = value;
     plUpdateItem(id, patch);
-    renderPropertyList();
+    if (typeof window._plScheduleRender === 'function') window._plScheduleRender(80);
   };
   window.plInlineSetSelect = function(id, field, value) {
     var cur = plLoad().find(function(i){ return String(i.id) === String(id); });
     if (cur && String(cur[field] || '') === String(value || '')) return;
     var patch = {}; patch[field] = value;
     plUpdateItem(id, patch);
-    renderPropertyList();
+    if (typeof window._plScheduleRender === 'function') window._plScheduleRender(80);
   };
   function plInputCell(id, field, value, opts) {
     opts = opts || {};
@@ -43018,7 +43007,7 @@ window.addEventListener('DOMContentLoaded', () => {
             + '</div>';
         }
         var resultTag = '';
-        if (simpleStatus === 'closed' && it.result && it.result.won) resultTag = '<div style="font-size:10px;color:#4caf87;margin-top:2px;">낙 '+(plDisplayWon(it.result.won) ? (plDisplayWon(it.result.won) + '원') : (it.result.won || ''))+'</div>';
+        if (simpleStatus === 'closed' && it.result && it.result.won) resultTag = '<div style="font-size:10px;color:#4caf87;margin-top:2px;">낙 '+(plDisplayMan(it.result.won) || it.result.won)+'</div>';
         var isPast = (d !== null && d < 0);
         var isClosed = simpleStatus === 'closed';
         var rowClass = (isClosed ? 'pl-closed' : '');
@@ -43046,19 +43035,19 @@ window.addEventListener('DOMContentLoaded', () => {
           + '<td style="padding:8px 10px;overflow:hidden;" onclick="event.stopPropagation()">'+casenumCell+'</td>'
           + '<td style="padding:8px 10px;font-size:12px;color:var(--fg2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+(it.region||'—')+'</td>'
           + '<td style="padding:8px 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+plEditCellHtml(it.id,'feature',it.feature||'',it.feature||'',{type:'text',align:'left',minw:'100px',placeholder:'특징 입력',empty:'—',spanStyle:'font-size:12px;color:var(--fg2);'})+'</td>'
-          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'appraisal',plDisplayWon(it.appraisal||''),plDisplayWon(it.appraisal||'') ? (plDisplayWon(it.appraisal||'') + '원') : '',{type:'text',align:'right',minw:'96px',placeholder:'원'})+'</td>'
-          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'minprice',plDisplayWon(it.minprice||''),plDisplayWon(it.minprice||'') ? (plDisplayWon(it.minprice||'') + '원') : '',{type:'text',align:'right',minw:'96px',placeholder:'원',spanStyle:'color:#fb923c;font-weight:700;'})+'</td>'
-          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'deposit',plDisplayWon(it.deposit||''),plDisplayWon(it.deposit||'') ? (plDisplayWon(it.deposit||'') + '원') : '',{type:'text',align:'right',minw:'88px',placeholder:'원'})+'</td>'
-          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'monthly',plDisplayWon(it.monthly||''),plDisplayWon(it.monthly||'') ? (plDisplayWon(it.monthly||'') + '원') : '',{type:'text',align:'right',minw:'88px',placeholder:'원'})+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'appraisal',plDisplayMoney(it.appraisal||''),plDisplayMan(it.appraisal||''),{type:'text',align:'right',minw:'70px',placeholder:'만원'})+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'minprice',plDisplayMoney(it.minprice||''),plDisplayMan(it.minprice||''),{type:'text',align:'right',minw:'70px',placeholder:'만원',spanStyle:'color:#fb923c;font-weight:700;'})+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'deposit',plDisplayMoney(it.deposit||''),plDisplayMan(it.deposit||''),{type:'text',align:'right',minw:'60px',placeholder:'만원'})+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'monthly',plDisplayMoney(it.monthly||''),plDisplayMan(it.monthly||''),{type:'text',align:'right',minw:'60px',placeholder:'만원'})+'</td>'
           + '<td style="padding:8px 10px;text-align:center;font-size:12px;">'+(it.round||'—')+'</td>'
           + '<td style="padding:8px 10px;white-space:nowrap;">'
           +   '<div style="font-size:13px;">'+plEditCellHtml(it.id,'biddate',it.biddate||'',fmtDate(it.biddate),{type:'text',align:'left',minw:'72px',placeholder:'YYYY-MM-DD',spanStyle:'color:'+(isPast?'#ff6b7a':'var(--tx)')+';font-weight:'+(isPast?'700':'500')+';border-bottom-color:rgba(255,255,255,.10);'})+'</div>'
           +   dTag
           + '</td>'
-          + '<td style="padding:8px 10px;text-align:right;"><span style="'+(it.estimate?'background:rgba(255,209,102,.12);border-radius:4px;padding:1px 4px;':'')+'">'+plEditCellHtml(it.id,'estimate',plDisplayWon(it.estimate||''),plDisplayWon(it.estimate||'') ? (plDisplayWon(it.estimate||'') + '원') : '',{type:'text',align:'right',minw:'96px',placeholder:'원',spanStyle:'color:#ffd166;font-weight:700;'})+'</span></td>'
+          + '<td style="padding:8px 10px;text-align:right;"><span style="'+(it.estimate?'background:rgba(255,209,102,.12);border-radius:4px;padding:1px 4px;':'')+'">'+plEditCellHtml(it.id,'estimate',plDisplayMoney(it.estimate||''),plDisplayMan(it.estimate||''),{type:'text',align:'right',minw:'72px',placeholder:'만원',spanStyle:'color:#ffd166;font-weight:700;'})+'</span></td>'
           + '<td style="padding:8px 10px;text-align:center;cursor:pointer;" onclick="event.stopPropagation();plToggleSite(\''+it.id+'\')">'+siteDots(it.site)+'</td>'
           + '<td style="padding:8px 10px;" onclick="event.stopPropagation()">'+wrLink+'</td>'
-          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'result_won',plDisplayWon((it.result&&it.result.won)||''),plDisplayWon((it.result&&it.result.won)||'') ? (plDisplayWon((it.result&&it.result.won)||'') + '원') : '',{type:'text',align:'right',minw:'96px',placeholder:'원',spanStyle:'color:#4caf87;font-weight:700;'})+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'result_won',plDisplayMoney((it.result&&it.result.won)||''),plDisplayMan((it.result&&it.result.won)||''),{type:'text',align:'right',minw:'76px',placeholder:'만원',spanStyle:'color:#4caf87;font-weight:700;'})+'</td>'
           + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'bidders',it.bidders||'',it.bidders||'',{type:'text',align:'right',minw:'44px',placeholder:'—',empty:'—',spanStyle:'font-size:11px;'})+'</td>'
           + '<td style="padding:8px 10px;max-width:180px;overflow:hidden;">'+plEditMemoCellHtml(it.id,it.memo||'')+'</td>'
           + '<td style="padding:8px 6px;text-align:center;"><button onclick="event.stopPropagation();plOpenEdit(\''+it.id+'\')" style="background:none;border:none;color:var(--fg3);cursor:pointer;font-size:15px;padding:2px 4px;">···</button></td>'
@@ -43431,7 +43420,7 @@ window.addEventListener('DOMContentLoaded', () => {
         el.addEventListener('blur', function(){
           // 한글 단위(억/만) 표기도 지원: "6억7천" 같은 입력을 정규화
           var parsed = plParseAmountText(this.value);
-          this.value = parsed ? plDisplayWon(parsed) : '';
+          this.value = parsed ? Number(parsed).toLocaleString('ko-KR') : '';
         });
       });
     }, 0);
@@ -44736,706 +44725,333 @@ window.addEventListener('DOMContentLoaded', () => {
 })();
 
 
-/* === OAI PATCH 2026-04-22 v3: lifecycle modal sync / dday colors / date preserve === */
+/* === v5 lifecycle/result patch (2026-04-22) === */
 (function(){
-  function _skNormDate(v){
-    try {
-      var s = String(v || '').trim();
-      if (!s || s === '미정') return '';
-      var m = s.match(/(\d{4})[^0-9]?(\d{1,2})[^0-9]?(\d{1,2})/);
-      if (!m) return '';
-      return m[1] + '-' + String(m[2]).padStart(2,'0') + '-' + String(m[3]).padStart(2,'0');
-    } catch(e) { return ''; }
-  }
-  function _skAddDays(dateStr, days){
-    var n = _skNormDate(dateStr);
-    var d = n ? new Date(n + 'T00:00:00') : new Date();
-    if (isNaN(d.getTime())) d = new Date();
-    d.setDate(d.getDate() + (days || 0));
-    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
-  }
-  function _skParseIntLoose(v){
-    var n = parseInt(String(v == null ? '' : v).replace(/[^0-9]/g,''),10);
-    return isNaN(n) ? 0 : n;
-  }
-  function _skFormatWon(v){
-    var n = _skParseIntLoose(v);
-    return n ? n.toLocaleString('ko-KR') + '원' : '';
-  }
-  function _skRoundLabelToNum(v){
-    var n = _skParseIntLoose(v);
-    if (!n) return 0;
-    return n;
-  }
-  function _skNextRoundLabel(v){
-    var n = _skRoundLabelToNum(v);
-    return String((n || 0) + 1) + '차';
-  }
-  function _skFindPropertyByRoom(room){
-    if (!room) return null;
-    var items = (typeof plLoad === 'function') ? plLoad() : [];
-    var roomId = String(room.id || '');
-    var linkedSavedId = String(room.linkedSavedId || room.auctionId || room.listingId || (room.linkedItems && room.linkedItems[0]) || '');
-    return items.find(function(it){
-      return String(it.roomId || '') === roomId || (linkedSavedId && String(it.linkedSavedId || '') === linkedSavedId);
-    }) || null;
-  }
-  function _skFindRoomByProperty(item){
-    if (!item) return null;
-    var rooms = (window.wr2State && Array.isArray(window.wr2State.rooms)) ? window.wr2State.rooms : [];
-    var roomId = String(item.roomId || '');
-    if (roomId) {
-      var found = rooms.find(function(r){ return String(r && r.id || '') === roomId; });
-      if (found) return found;
+  try {
+    if (typeof STATUS_MAP !== 'undefined' && STATUS_MAP && STATUS_MAP.active) {
+      STATUS_MAP.active.label = '진행';
     }
-    var linkedSavedId = String(item.linkedSavedId || '');
-    if (!linkedSavedId) return null;
-    return rooms.find(function(r){
-      if (!r) return false;
-      var ids = [r.linkedSavedId, r.auctionId, r.listingId].concat(r.linkedItems || []).map(function(x){ return String(x || ''); });
-      return ids.indexOf(linkedSavedId) >= 0;
-    }) || null;
-  }
-  function _skSavePropertyItem(nextItem){
-    if (!nextItem || typeof plLoad !== 'function' || typeof plSave !== 'function') return;
-    var items = plLoad();
-    var idx = items.findIndex(function(it){ return String(it && it.id || '') === String(nextItem.id || ''); });
-    if (idx < 0) items.push(nextItem); else items[idx] = nextItem;
-    var normItems = items.map(function(it){ return (typeof plNormalizeItem === 'function') ? plNormalizeItem(it) : it; });
-    plSave(normItems);
-    try { if (typeof plSyncItemToSaved === 'function') plSyncItemToSaved((typeof plNormalizeItem === 'function') ? plNormalizeItem(nextItem) : nextItem); } catch(e) {}
-    try { if (typeof renderPropertyList === 'function') renderPropertyList(); } catch(e) {}
-  }
-  function _skApplyUnsoldToProperty(item, payload){
-    if (!item) return null;
-    var next = Object.assign({}, item);
-    next.status = 'review';
-    next.archived = false;
-    next.resultState = '유찰';
-    next.round = String(payload.round || next.round || '');
-    next.biddate = String(payload.biddate || next.biddate || '');
-    next.minprice = String(_skParseIntLoose(payload.minprice || next.minprice || ''));
-    next.updatedAt = Date.now();
-    return (typeof plNormalizeItem === 'function') ? plNormalizeItem(next) : next;
-  }
-  function _skApplyChangedPendingToProperty(item){
-    if (!item) return null;
-    var next = Object.assign({}, item);
-    next.status = 'field';
-    next.archived = false;
-    next.resultState = '변경';
-    next.biddate = '미정';
-    next.updatedAt = Date.now();
-    return (typeof plNormalizeItem === 'function') ? plNormalizeItem(next) : next;
-  }
-  function _skApplyClosedToProperty(item, summary){
-    if (!item) return null;
-    var next = Object.assign({}, item);
-    next.status = 'closed';
-    next.archived = false;
-    next.resultState = String((summary && summary.closedType) || '') || '종료';
-    next.memo = String((summary && summary.memo) || next.memo || '');
-    next.bidders = String((summary && summary.bidderCount) || next.bidders || '');
-    next.result = Object.assign({}, next.result || {});
-    next.result.won = String((summary && summary.finalBidPrice) || next.result.won || '');
-    next.result.second = String((summary && summary.secondBidPrice) || next.result.second || '');
-    next.updatedAt = Date.now();
-    return (typeof plNormalizeItem === 'function') ? plNormalizeItem(next) : next;
-  }
-  function _skDefaultUnsoldPayload(item){
-    var curRound = String((item && item.round) || '').trim();
-    var curBiddate = String((item && item.biddate) || '').trim();
-    var curMinprice = String((item && item.minprice) || '').trim();
-    var nextRound = _skNextRoundLabel(curRound);
-    var nextBiddate = _skAddDays(curBiddate, 28);
-    var priceWon = _skParseIntLoose(curMinprice);
-    var nextPrice = priceWon ? Math.floor(priceWon * 0.7) : 0;
-    return {
-      kind: 'unsold',
-      round: nextRound,
-      biddate: nextBiddate,
-      minprice: nextPrice ? String(nextPrice) : ''
-    };
-  }
-  function _skEnsureLifecycleModalCss(){
-    if (document.getElementById('skLifecycleModalCss')) return;
-    var st = document.createElement('style');
-    st.id = 'skLifecycleModalCss';
-    st.textContent = ''
-      + '.sk-lf-backdrop{position:fixed;inset:0;background:rgba(2,6,23,.68);backdrop-filter:blur(2px);z-index:99999;display:flex;align-items:center;justify-content:center;padding:18px;}'
-      + '.sk-lf-modal{width:min(560px,96vw);background:linear-gradient(180deg,rgba(17,24,39,.98),rgba(8,12,22,.98));border:1px solid rgba(255,255,255,.1);border-radius:16px;box-shadow:0 24px 60px rgba(0,0,0,.45);padding:16px;color:#e5eefc;}'
-      + '.sk-lf-row{margin-top:10px;}'
-      + '.sk-lf-label{display:block;font-size:12px;color:#aab8d3;margin-bottom:6px;font-weight:700;}'
-      + '.sk-lf-input,.sk-lf-select,.sk-lf-textarea{width:100%;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:#f8fbff;font-size:14px;outline:none;box-sizing:border-box;}'
-      + '.sk-lf-textarea{min-height:86px;resize:vertical;line-height:1.45;}'
-      + '.sk-lf-choice{display:flex;gap:10px;margin-top:8px;}'
-      + '.sk-lf-choice button{flex:1;padding:11px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:#eef5ff;font-weight:800;cursor:pointer;}'
-      + '.sk-lf-choice button.on{border-color:rgba(79,142,255,.48);background:rgba(79,142,255,.16);color:#bcd6ff;}'
-      + '.sk-lf-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:14px;}'
-      + '.sk-lf-actions button{padding:9px 13px;border-radius:10px;border:1px solid rgba(255,255,255,.12);cursor:pointer;}'
-      + '.sk-lf-cancel{background:rgba(255,255,255,.04);color:#d9e4f4;}'
-      + '.sk-lf-save{background:rgba(255,107,122,.18);border-color:rgba(255,107,122,.35)!important;color:#ffd5da;font-weight:800;}'
-      + '.sk-lf-note{font-size:12px;color:#9bb0d0;line-height:1.45;margin-top:6px;}';
-    document.head.appendChild(st);
-  }
-  function _skCloseLifecycleModal(){
-    var el = document.getElementById('skLifecycleModal');
-    if (el) el.remove();
-  }
-  function _skOpenCloseModal(ctx, done, cancel){
-    _skEnsureLifecycleModalCss();
-    _skCloseLifecycleModal();
-    var base = Object.assign({}, (ctx && ctx.summary) || {});
-    var wrap = document.createElement('div');
-    wrap.id = 'skLifecycleModal';
-    wrap.className = 'sk-lf-backdrop';
-    wrap.innerHTML = ''
-      + '<div class="sk-lf-modal" onclick="event.stopPropagation()">'
-      + '  <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">'
-      + '    <div style="font-size:18px;font-weight:900;letter-spacing:.2px;">종료 정보를 입력합니다</div>'
-      + '    <button type="button" id="skLfX" style="background:none;border:none;color:#cbd5e1;font-size:22px;cursor:pointer;">×</button>'
-      + '  </div>'
-      + '  <div class="sk-lf-note">작업룸과 물건리스트에 동시에 반영됩니다. 마지막 매각기일은 유지됩니다.</div>'
-      + '  <div class="sk-lf-row"><label class="sk-lf-label">최종 낙찰가 (선택)</label><input id="skCloseWon" class="sk-lf-input" value="'+ String(base.finalBidPrice || '').replace(/"/g,'&quot;') +'" placeholder="예: 1억 8,500만"></div>'
-      + '  <div class="sk-lf-row"><label class="sk-lf-label">낙찰 인원 (선택)</label><input id="skCloseBidders" class="sk-lf-input" value="'+ String(base.bidderCount || '').replace(/"/g,'&quot;') +'" placeholder="예: 7"></div>'
-      + '  <div class="sk-lf-row"><label class="sk-lf-label">차순위금액 (선택)</label><input id="skCloseSecond" class="sk-lf-input" value="'+ String(base.secondBidPrice || '').replace(/"/g,'&quot;') +'" placeholder="예: 1억 7,900만"></div>'
-      + '  <div class="sk-lf-row"><label class="sk-lf-label">종료 유형 (선택)</label><select id="skCloseType" class="sk-lf-select"><option value="">선택 안 함</option><option value="낙찰">낙찰</option><option value="패찰">패찰</option><option value="매각">매각</option><option value="기타">기타</option></select></div>'
-      + '  <div class="sk-lf-row"><label class="sk-lf-label">종료 메모 (선택)</label><textarea id="skCloseMemo" class="sk-lf-textarea" placeholder="예: 한 번만 더 떨어졌으면 입찰 고려했을 텐데…">'+ String(base.memo || '').replace(/</g,'&lt;') +'</textarea></div>'
-      + '  <div class="sk-lf-actions"><button type="button" id="skLfCancel" class="sk-lf-cancel">취소</button><button type="button" id="skLfSave" class="sk-lf-save">저장하고 종료</button></div>'
-      + '</div>';
-    document.body.appendChild(wrap);
-    document.getElementById('skCloseType').value = String(base.closedType || '');
-    wrap.onclick = function(){ _skCloseLifecycleModal(); if (cancel) cancel(); };
-    document.getElementById('skLfX').onclick = document.getElementById('skLfCancel').onclick = function(){ _skCloseLifecycleModal(); if (cancel) cancel(); };
-    document.getElementById('skLfSave').onclick = function(){
-      var summary = {
-        finalBidPrice: String(document.getElementById('skCloseWon').value || '').trim(),
-        bidderCount: String(document.getElementById('skCloseBidders').value || '').trim(),
-        secondBidPrice: String(document.getElementById('skCloseSecond').value || '').trim(),
-        closedType: String(document.getElementById('skCloseType').value || '').trim(),
-        memo: String(document.getElementById('skCloseMemo').value || '').trim(),
-        closedAt: Date.now()
+  } catch(e) {}
+  try {
+    if (typeof wr2LifecycleLabel === 'function') {
+      var _origWr2LifecycleLabel = wr2LifecycleLabel;
+      wr2LifecycleLabel = function(roomOrKey){
+        var key = (typeof roomOrKey === 'string') ? roomOrKey : (typeof wr2GetLifecycle === 'function' ? wr2GetLifecycle(roomOrKey) : 'active');
+        if (key === 'closed') return '종료';
+        if (key === 'changed') return '변경';
+        return '진행';
       };
-      _skCloseLifecycleModal();
-      done && done(summary);
-    };
-  }
-  function _skOpenChangedModal(ctx, done, cancel){
-    _skEnsureLifecycleModalCss();
-    _skCloseLifecycleModal();
-    var baseItem = (ctx && ctx.item) || null;
-    var payload = _skDefaultUnsoldPayload(baseItem || {});
-    var wrap = document.createElement('div');
-    wrap.id = 'skLifecycleModal';
-    wrap.className = 'sk-lf-backdrop';
-    wrap.innerHTML = ''
-      + '<div class="sk-lf-modal" onclick="event.stopPropagation()">'
-      + '  <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">'
-      + '    <div style="font-size:18px;font-weight:900;letter-spacing:.2px;">변경 처리 방식을 선택하세요</div>'
-      + '    <button type="button" id="skLfX" style="background:none;border:none;color:#cbd5e1;font-size:22px;cursor:pointer;">×</button>'
-      + '  </div>'
-      + '  <div class="sk-lf-note">작업룸과 물건리스트에 동일하게 반영됩니다.</div>'
-      + '  <div class="sk-lf-choice">'
-      + '    <button type="button" id="skChoiceUnsold" class="on">유찰</button>'
-      + '    <button type="button" id="skChoicePending">변경 / 미진행</button>'
-      + '  </div>'
-      + '  <div id="skUnsoldBox">'
-      + '    <div class="sk-lf-row"><label class="sk-lf-label">다음 회차</label><input id="skNextRound" class="sk-lf-input" value="'+ String(payload.round || '').replace(/"/g,'&quot;') +'"></div>'
-      + '    <div class="sk-lf-row"><label class="sk-lf-label">다음 매각기일</label><input id="skNextBiddate" class="sk-lf-input" value="'+ String(payload.biddate || '').replace(/"/g,'&quot;') +'" placeholder="YYYY-MM-DD"></div>'
-      + '    <div class="sk-lf-row"><label class="sk-lf-label">다음 최저가</label><input id="skNextMinprice" class="sk-lf-input" value="'+ _skFormatWon(payload.minprice || '') .replace(/"/g,'&quot;') +'" placeholder="예: 185,906,000원"></div>'
-      + '  </div>'
-      + '  <div id="skPendingBox" style="display:none;"><div class="sk-lf-note" style="margin-top:12px;">저장하면 상태는 <b>변경</b>으로 이동하고 매각기일은 <b>미정</b>으로 바뀝니다.</div></div>'
-      + '  <div class="sk-lf-actions"><button type="button" id="skLfCancel" class="sk-lf-cancel">취소</button><button type="button" id="skLfSave" class="sk-lf-save">저장</button></div>'
-      + '</div>';
-    document.body.appendChild(wrap);
-    var kind = 'unsold';
-    function reflect(){
-      document.getElementById('skChoiceUnsold').classList.toggle('on', kind === 'unsold');
-      document.getElementById('skChoicePending').classList.toggle('on', kind === 'pending');
-      document.getElementById('skUnsoldBox').style.display = kind === 'unsold' ? '' : 'none';
-      document.getElementById('skPendingBox').style.display = kind === 'pending' ? '' : 'none';
     }
-    function moneyFmt(el){
-      el.addEventListener('input', function(){
-        var n = _skParseIntLoose(el.value || '');
-        el.value = n ? _skFormatWon(n) : '';
+  } catch(e) {}
+
+  function _skFmtYmd(v){
+    try {
+      if (!v) return '';
+      if (v === '미정') return '미정';
+      var s = String(v).trim();
+      var m = s.match(/(20\d{2})[.\-/년\s]*(\d{1,2})[.\-/월\s]*(\d{1,2})/);
+      if (!m) return s;
+      return m[1] + '-' + String(m[2]).padStart(2,'0') + '-' + String(m[3]).padStart(2,'0');
+    } catch(e){ return String(v||''); }
+  }
+  function _skAddDays(v, days){
+    try {
+      var s = _skFmtYmd(v);
+      if (!s || s==='미정') return '';
+      var dt = new Date(s + 'T00:00:00');
+      if (isNaN(dt.getTime())) return s;
+      dt.setDate(dt.getDate() + (days||28));
+      var y = dt.getFullYear();
+      var m = String(dt.getMonth()+1).padStart(2,'0');
+      var d = String(dt.getDate()).padStart(2,'0');
+      return y+'-'+m+'-'+d;
+    } catch(e){ return ''; }
+  }
+  function _skDigits(v){ return String(v||'').replace(/[^0-9]/g,''); }
+  function _skNum(v){ var n = Number(_skDigits(v)); return isNaN(n)?0:n; }
+  function _skComma(v){ var n = _skNum(v); return n ? n.toLocaleString('ko-KR') : ''; }
+  function _skNextPrice(item){
+    var cur = 0;
+    try {
+      cur = _skNum(item.minprice || item.price || (item.result && item.result.minprice) || 0);
+      if (!cur && item._norm) cur = Number(item._norm.최저가_만원||0) * 10000;
+    } catch(e) {}
+    return Math.floor(cur * 0.7);
+  }
+  function _skCurrentRound(item){
+    var r = parseInt(item.round || (item._norm && item._norm.유찰횟수) || 0, 10);
+    return isNaN(r) ? 0 : r;
+  }
+  function _skCurrentBidDate(item){ return item.biddate || item.saleDate || item.매각기일 || ''; }
+
+  function _skEnsureResultModal(){
+    var modal = document.getElementById('skResultFlowModal');
+    if (modal) return modal;
+    modal = document.createElement('div');
+    modal.id = 'skResultFlowModal';
+    modal.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,.62);z-index:14000;align-items:center;justify-content:center;padding:12px;';
+    modal.innerHTML = ''
+      + '<div style="width:min(520px,96vw);background:linear-gradient(180deg,rgba(20,24,36,.98),rgba(11,15,24,.98));border:1px solid rgba(255,196,77,.28);border-radius:14px;box-shadow:0 22px 56px rgba(0,0,0,.5);overflow:hidden;">'
+      + '  <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:linear-gradient(90deg,rgba(251,191,36,.16),rgba(251,191,36,.06));border-bottom:1px solid rgba(251,191,36,.18);">'
+      + '    <div style="display:flex;align-items:center;gap:10px;">'
+      + '      <div style="border:2px solid rgba(251,191,36,.75);border-radius:10px;padding:4px 9px;color:#f7d47d;font-size:12px;font-weight:900;letter-spacing:2px;transform:rotate(-8deg);">변경</div>'
+      + '      <div style="color:#ffe9b3;font-size:13px;font-weight:700;">변경 처리 유형을 선택하세요</div>'
+      + '    </div>'
+      + '    <button type="button" id="skResultFlowCloseX" style="border:none;background:transparent;color:#ffe9b3;font-size:20px;cursor:pointer;line-height:1;">×</button>'
+      + '  </div>'
+      + '  <div style="padding:14px 16px 10px;display:flex;gap:8px;">'
+      + '    <button type="button" id="skModeUnsold" style="flex:1;padding:10px 12px;border-radius:10px;border:1px solid rgba(79,142,255,.28);background:rgba(79,142,255,.12);color:#bcd4ff;font-weight:800;cursor:pointer;">유찰</button>'
+      + '    <button type="button" id="skModeChanged" style="flex:1;padding:10px 12px;border-radius:10px;border:1px solid rgba(251,191,36,.28);background:rgba(251,191,36,.10);color:#ffe09c;font-weight:800;cursor:pointer;">변경 / 미진행</button>'
+      + '  </div>'
+      + '  <div id="skUnsoldForm" style="display:none;padding:0 16px 12px;">'
+      + '    <label style="display:block;font-size:11px;color:#c9d7ff;margin:6px 0 5px;">다음 회차</label>'
+      + '    <input id="skNextRound" type="number" style="width:100%;padding:9px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--tx);outline:none;box-sizing:border-box;">'
+      + '    <label style="display:block;font-size:11px;color:#c9d7ff;margin:10px 0 5px;">다음 매각기일</label>'
+      + '    <input id="skNextDate" type="date" style="width:100%;padding:9px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--tx);outline:none;box-sizing:border-box;">'
+      + '    <label style="display:block;font-size:11px;color:#c9d7ff;margin:10px 0 5px;">다음 최저가</label>'
+      + '    <input id="skNextPrice" type="text" inputmode="numeric" placeholder="원" style="width:100%;padding:9px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--tx);outline:none;box-sizing:border-box;">'
+      + '  </div>'
+      + '  <div id="skChangedInfo" style="display:none;padding:0 16px 12px;font-size:12px;color:var(--mu);">변경/미진행으로 저장하면 매각기일은 미정으로 바뀝니다.</div>'
+      + '  <div style="display:flex;justify-content:flex-end;gap:8px;padding:0 16px 14px;">'
+      + '    <button type="button" id="skResultFlowCancel" style="padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.04);color:var(--tx);font-size:12px;cursor:pointer;">취소</button>'
+      + '    <button type="button" id="skResultFlowSave" style="padding:8px 12px;border-radius:8px;border:1px solid rgba(251,191,36,.35);background:rgba(251,191,36,.18);color:#ffe9b3;font-size:12px;font-weight:700;cursor:pointer;">저장</button>'
+      + '  </div>'
+      + '</div>';
+    document.body.appendChild(modal);
+    return modal;
+  }
+
+  function _skOpenResultFlow(ctx){
+    var modal = _skEnsureResultModal();
+    var close = function(){ modal.style.display='none'; modal.__ctx = null; };
+    modal.__ctx = ctx || {};
+    var unsoldBtn = document.getElementById('skModeUnsold');
+    var changedBtn = document.getElementById('skModeChanged');
+    var unsoldForm = document.getElementById('skUnsoldForm');
+    var changedInfo = document.getElementById('skChangedInfo');
+    var nextRound = document.getElementById('skNextRound');
+    var nextDate = document.getElementById('skNextDate');
+    var nextPrice = document.getElementById('skNextPrice');
+    var saveBtn = document.getElementById('skResultFlowSave');
+    var mode = 'unsold';
+    function setMode(v){
+      mode = v;
+      unsoldForm.style.display = (v==='unsold') ? 'block' : 'none';
+      changedInfo.style.display = (v==='changed') ? 'block' : 'none';
+    }
+    if (nextPrice && !nextPrice.dataset.boundMoneyFmt) {
+      nextPrice.dataset.boundMoneyFmt='1';
+      nextPrice.addEventListener('input', function(){
+        var val = String(this.value || '');
+        if (/^[\d,]*$/.test(val)) this.value = _skComma(val);
       });
     }
-    moneyFmt(document.getElementById('skNextMinprice'));
-    document.getElementById('skChoiceUnsold').onclick = function(){ kind = 'unsold'; reflect(); };
-    document.getElementById('skChoicePending').onclick = function(){ kind = 'pending'; reflect(); };
-    wrap.onclick = function(){ _skCloseLifecycleModal(); if (cancel) cancel(); };
-    document.getElementById('skLfX').onclick = document.getElementById('skLfCancel').onclick = function(){ _skCloseLifecycleModal(); if (cancel) cancel(); };
-    document.getElementById('skLfSave').onclick = function(){
-      var out = { kind: kind };
-      if (kind === 'unsold') {
-        out.round = String(document.getElementById('skNextRound').value || '').trim();
-        out.biddate = _skNormDate(document.getElementById('skNextBiddate').value || '') || String(document.getElementById('skNextBiddate').value || '').trim();
-        out.minprice = String(_skParseIntLoose(document.getElementById('skNextMinprice').value || '') || '');
-      }
-      _skCloseLifecycleModal();
-      done && done(out);
-    };
-    reflect();
-  }
-  function _skApplyFromRoom(room, action){
-    if (!room) return;
-    var item = _skFindPropertyByRoom(room);
-    if (action.kind === 'unsold') {
-      if (item) _skSavePropertyItem(_skApplyUnsoldToProperty(item, action));
-      if (window.updateRoom) window.updateRoom(room.id, { lifecycleStatus: 'active', __forceLifecycleChange: true });
-      try { if (typeof wr2Render === 'function') wr2Render(); } catch(e) {}
-      return;
-    }
-    if (action.kind === 'pending') {
-      if (item) _skSavePropertyItem(_skApplyChangedPendingToProperty(item));
-      if (window.updateRoom) window.updateRoom(room.id, { lifecycleStatus: 'changed', __forceLifecycleChange: true });
-      try { if (typeof wr2Render === 'function') wr2Render(); } catch(e) {}
-      return;
-    }
-    if (action.kind === 'closed') {
-      if (item) _skSavePropertyItem(_skApplyClosedToProperty(item, action.summary || {}));
-      if (window.updateRoom) window.updateRoom(room.id, { lifecycleStatus: 'closed', closedSummary: action.summary || {}, __forceLifecycleChange: true });
-      try { if (typeof wr2Render === 'function') wr2Render(); } catch(e) {}
-      return;
-    }
-  }
-  function _skApplyFromProperty(item, action){
-    if (!item) return;
-    var room = _skFindRoomByProperty(item);
-    if (action.kind === 'unsold') {
-      _skSavePropertyItem(_skApplyUnsoldToProperty(item, action));
-      if (room && window.updateRoom) window.updateRoom(room.id, { lifecycleStatus: 'active', __forceLifecycleChange: true });
-      return;
-    }
-    if (action.kind === 'pending') {
-      _skSavePropertyItem(_skApplyChangedPendingToProperty(item));
-      if (room && window.updateRoom) window.updateRoom(room.id, { lifecycleStatus: 'changed', __forceLifecycleChange: true });
-      return;
-    }
-    if (action.kind === 'closed') {
-      _skSavePropertyItem(_skApplyClosedToProperty(item, action.summary || {}));
-      if (room && window.updateRoom) window.updateRoom(room.id, { lifecycleStatus: 'closed', closedSummary: action.summary || {}, __forceLifecycleChange: true });
-      return;
-    }
-  }
-
-  // Keep last biddate on closed; changed only becomes undecided.
-  plApplySimpleStatusToItem = function(item, simple) {
-    if (!item) return;
-    if (simple === 'closed') {
-      item.status = 'closed';
-      // 마지막 확정 매각기일 유지
-    }
-    else if (simple === 'changed') {
-      var s = String(item.status || '');
-      if (s === 'field' || s === 'bid' || s === 'won') item.status = s;
-      else item.status = 'field';
-      item.biddate = '미정';
-    }
-    else {
-      item.status = 'review';
-      if (_plIsUndecidedDate(item.biddate || '')) item.biddate = '';
-    }
-    item.archived = false;
-    item.updatedAt = Date.now();
-  };
-
-  plBuildPatchFromSaved = function(src, curItem) {
-    if (!src) return null;
-    var raw = src.data || {};
-    var mapped = plMapSavedToItem(src);
-    var nextType = plIsPublicAuctionSaved(src) ? '공매' : (mapped.type || curItem.type || '경매');
-    var nextName = plPickSavedDisplayName(src, mapped.addr || curItem.addr || '');
-    var nextRegion = mapped.region || plSavedField(raw, ['소재지','주소','address'], '') || curItem.region || '';
-    var nextResult = Object.assign({}, curItem.result || {});
-    var wonFromSaved = plSavedField(raw, ['낙찰가_만원','낙찰가(만원)','낙찰가','최고입찰가_만원'], '');
-    var nextWon = wonFromSaved ? plToManUnit(wonFromSaved) : '';
-    if (nextWon && plDiffers(nextResult.won || '', nextWon)) nextResult.won = nextWon;
-    var hasCloseMemo = Object.prototype.hasOwnProperty.call(raw, '종료메모');
-    var nextMemo = hasCloseMemo ? String(raw['종료메모'] || '') : String(src.memo || curItem.memo || '');
-    var nextBidders = String(plSavedField(raw, ['입찰인수','입찰인원'], curItem.bidders || '') || '').trim();
-    return {
-      linkedSavedId: String(src.id || curItem.linkedSavedId || ''),
-      type: nextType,
-      addr: nextName || curItem.addr || '',
-      casenum: mapped.casenum || curItem.casenum || '',
-      region: nextRegion,
-      feature: mapped.feature || curItem.feature || '',
-      appraisal: mapped.appraisal || curItem.appraisal || '',
-      minprice: mapped.minprice || curItem.minprice || '',
-      round: mapped.round || curItem.round || '',
-      biddate: (function(){
-        var currentBid = _plNormalizeBiddateValue(curItem.biddate || '');
-        var mappedBid = _plNormalizeBiddateValue(mapped.biddate || '');
-        var simple = plSimpleStatusKey(curItem.status || '');
-        if (simple === 'changed') return '미정';
-        if (simple === 'closed') return currentBid || mappedBid || '';
-        return mappedBid || currentBid || '';
-      })(),
-      estimate: mapped.estimate || curItem.estimate || '',
-      deposit: mapped.deposit || curItem.deposit || '',
-      monthly: mapped.monthly || curItem.monthly || '',
-      result: nextResult,
-      bidders: nextBidders,
-      memo: nextMemo
-    };
-  };
-
-  syncPropertyFromRoom = function(roomId, patch) {
-    if (!roomId) return;
-    var items = plLoad();
-    var changed = false;
-    items = items.map(function(it){
-      if (String(it.roomId||'') !== String(roomId)) return it;
-      var safePatch = Object.assign({}, patch || {});
-      var itemSimpleCurrent = plSimpleStatusKey(it.status || '');
-      if (itemSimpleCurrent === 'closed' && safePatch.lifecycleStatus && safePatch.lifecycleStatus !== 'closed' && !safePatch.closedSummary && safePatch.__forceLifecycleChange !== true) {
-        delete safePatch.lifecycleStatus;
-        delete safePatch.status;
-      }
-      if (safePatch.closedSummary) {
-        var cs = safePatch.closedSummary || {};
-        if (safePatch.memo === undefined) safePatch.memo = String(cs.memo || '');
-        if (safePatch.bidders === undefined) safePatch.bidders = String(cs.bidderCount || '');
-        var won = plParseAmountText(cs.finalBidPrice || '');
-        if (won || (it.result && it.result.won)) {
-          var nextResult = Object.assign({}, it.result || {});
-          nextResult.won = won || '';
-          nextResult.second = String(cs.secondBidPrice || nextResult.second || '');
-          safePatch.result = nextResult;
-        }
-      }
-      if (safePatch.lifecycleStatus) {
-        if (safePatch.lifecycleStatus === 'closed') {
-          safePatch.status = 'closed';
-          if (safePatch.biddate === undefined) safePatch.biddate = it.biddate || '';
-        } else if (safePatch.lifecycleStatus === 'changed') {
-          safePatch.status = (safePatch.status || 'field');
-          if (safePatch.biddate === undefined) safePatch.biddate = '미정';
-        } else if (safePatch.lifecycleStatus === 'active' && !safePatch.status) {
-          safePatch.status = 'review';
-          if (safePatch.biddate === undefined && _plIsUndecidedDate(it.biddate || '')) safePatch.biddate = '';
-        }
-      }
-      if (safePatch.title && !safePatch.addr) safePatch.addr = safePatch.title;
-      if (safePatch.address && !safePatch.region) safePatch.region = safePatch.address;
-      delete safePatch.title;
-      delete safePatch.address;
-      delete safePatch.closedSummary;
-      delete safePatch.lifecycleStatus;
-      delete safePatch.__forceLifecycleChange;
-      var next = Object.assign({}, it, safePatch, { updatedAt: Date.now() });
-      if (next.status === 'archived') next.archived = true;
-      if (JSON.stringify(next) !== JSON.stringify(it)) changed = true;
-      return plNormalizeItem(next);
-    });
-    if (changed) {
-      plSave(items);
-      items.forEach(function(it){ if (String(it.roomId || '') !== String(roomId)) return; try { plSyncItemToSaved(it); } catch(e) {} });
-      if (typeof renderPropertyList === 'function') setTimeout(renderPropertyList, 30);
-    }
-  };
-
-  var _origPlSetSimpleStatus = window.plSetSimpleStatus;
-  window.plSetSimpleStatus = function(id, simpleStatus) {
-    var items = (typeof plLoad === 'function') ? plLoad() : [];
-    var item = items.find(function(i){ return i && i.id === id; });
-    if (!item) return;
-    var simple = String(simpleStatus || '');
-    if (simple === 'changed') {
-      _skOpenChangedModal({ item: item, room: _skFindRoomByProperty(item) }, function(action){ _skApplyFromProperty(item, action); });
-      return;
-    }
-    if (simple === 'closed') {
-      _skOpenCloseModal({ item: item, room: _skFindRoomByProperty(item), summary: (_skFindRoomByProperty(item) || {}).closedSummary || {} }, function(summary){ _skApplyFromProperty(item, { kind: 'closed', summary: summary }); });
-      return;
-    }
-    return _origPlSetSimpleStatus ? _origPlSetSimpleStatus(id, simpleStatus) : undefined;
-  };
-
-  // Post-render patch for workroom lifecycle selector and D-day colors.
-  var _origWr2Render = window.wr2Render;
-  if (typeof _origWr2Render === 'function') {
-    window.wr2Render = function(){
-      var out = _origWr2Render.apply(this, arguments);
+    unsoldBtn.onclick = function(){ setMode('unsold'); };
+    changedBtn.onclick = function(){ setMode('changed'); };
+    document.getElementById('skResultFlowCloseX').onclick = close;
+    document.getElementById('skResultFlowCancel').onclick = close;
+    modal.onclick = function(evt){ if (evt.target === modal) close(); };
+    var item = ctx.item || {};
+    nextRound.value = String(_skCurrentRound(item) + 1 || 1);
+    nextDate.value = _skFmtYmd(_skAddDays(_skCurrentBidDate(item), 28));
+    nextPrice.value = _skComma(_skNextPrice(item));
+    setMode('unsold');
+    saveBtn.onclick = function(){
       try {
-        var sel = document.getElementById('wr2LifecycleSelect');
-        var room = (window.wr2State && Array.isArray(window.wr2State.rooms)) ? window.wr2State.rooms.find(function(r){ return r && r.id === window.wr2State.activeRoomId; }) : null;
-        if (sel && room) {
-          sel.onchange = function(e){
-            var prev = (typeof wr2GetLifecycle === 'function') ? wr2GetLifecycle(room) : String(room.lifecycleStatus || 'active');
-            var next = String((e && e.target && e.target.value) || 'active');
-            if (next === 'changed') {
-              _skOpenChangedModal({ item: _skFindPropertyByRoom(room), room: room }, function(action){ _skApplyFromRoom(room, action); sel.value = (action.kind === 'pending' ? 'changed' : 'active'); }, function(){ sel.value = prev; });
-              return;
-            }
-            if (next === 'closed') {
-              _skOpenCloseModal({ room: room, item: _skFindPropertyByRoom(room), summary: room.closedSummary || {} }, function(summary){ _skApplyFromRoom(room, { kind: 'closed', summary: summary }); sel.value = 'closed'; }, function(){ sel.value = prev; });
-              return;
-            }
-            if (window.updateRoom) window.updateRoom(room.id, { lifecycleStatus: 'active', __forceLifecycleChange: true });
-          };
-        }
-        document.querySelectorAll('.wr2-room-item').forEach(function(itemEl){
-          var life = String(itemEl.dataset.life || 'active');
-          var spans = Array.prototype.slice.call(itemEl.querySelectorAll('.wr2-room-meta span'));
-          spans.forEach(function(sp){
-            var txt = String((sp.textContent || '')).trim();
-            if (!/^D(?:-|\+|$)|^D-Day$/i.test(txt)) return;
-            var c = '#4ade80';
-            if (life === 'closed') c = '#9aa3b2';
-            else if (/^D\+/i.test(txt) || txt === 'D-Day') c = '#ff6b6b';
-            else {
-              var n = _skParseIntLoose(txt);
-              c = (n >= 1 && n <= 7) ? '#fbbf24' : '#4ade80';
-            }
-            sp.style.color = c;
-          });
-        });
-      } catch(e) {}
-      return out;
-    };
-  }
-})();
-
-
-
-/* === 2026-04-22 v4 lifecycle hotfix === */
-(function(){
-  if (window.__skLifecycleV4Applied) return;
-  window.__skLifecycleV4Applied = true;
-
-  function _skRoomStatusFromLifecycle(life){
-    return life === 'closed' ? 'closed' : (life === 'changed' ? 'field' : 'review');
-  }
-  function _skGetRoomById(roomId){
-    var rooms = (window.wr2State && Array.isArray(window.wr2State.rooms)) ? window.wr2State.rooms : [];
-    return rooms.find(function(r){ return String(r && r.id || '') === String(roomId || ''); }) || null;
-  }
-  function _skPersistRoomAndRefresh(roomId){
-    try {
-      if (window._wrPersistRooms && window.wr2State && Array.isArray(window.wr2State.rooms)) {
-        window._wrPersistRooms(window.wr2State.rooms, { keepDeletedInState: true, syncState: true });
-      }
-    } catch(e) {}
-    try { if (typeof plSyncFromWorkrooms === 'function') plSyncFromWorkrooms({ render: false }); } catch(e) {}
-    try { if (typeof renderPropertyList === 'function') renderPropertyList(); } catch(e) {}
-    try { if (typeof wr2Render === 'function') setTimeout(function(){ wr2Render(); }, 20); } catch(e) {}
-  }
-
-  // Keep last biddate when closing.
-  if (typeof plApplySimpleStatusToItem === 'function') {
-    var __origPlApplySimpleStatusToItem = plApplySimpleStatusToItem;
-    window.plApplySimpleStatusToItem = plApplySimpleStatusToItem = function(item, simple){
-      var prevBiddate = item ? item.biddate : undefined;
-      var out = __origPlApplySimpleStatusToItem.apply(this, arguments);
-      if (item && simple === 'closed' && prevBiddate !== undefined && prevBiddate !== null && prevBiddate !== '') {
-        item.biddate = prevBiddate;
-      }
-      return out;
-    };
-  }
-
-  // Wrap property sync from room so closed status no longer forces biddate = 미정.
-  if (typeof syncPropertyFromRoom === 'function') {
-    var __origSyncPropertyFromRoom = syncPropertyFromRoom;
-    window.syncPropertyFromRoom = syncPropertyFromRoom = function(roomId, patch){
-      var before = {};
-      try {
-        var items0 = (typeof plLoad === 'function') ? plLoad() : [];
-        items0.forEach(function(it){
-          if (String(it && it.roomId || '') === String(roomId || '')) before[String(it.id || '')] = it.biddate;
-        });
-      } catch(e) {}
-      var out = __origSyncPropertyFromRoom.apply(this, arguments);
-      try {
-        if (patch && patch.lifecycleStatus === 'closed' && patch.biddate === undefined && typeof plLoad === 'function' && typeof plSave === 'function') {
+        if (ctx.source === 'pl') {
           var items = plLoad();
-          var changed = false
+          var target = items.find(function(i){ return i && String(i.id) === String(ctx.id); });
+          if (!target) return close();
+          if (mode === 'changed') {
+            target.status = 'field';
+            target.biddate = '미정';
+            target.updatedAt = Date.now();
+            target.__allowLifecycleReopen = true;
+            plSave(items.map(plNormalizeItem));
+            syncToWorkroom(target);
+            try { delete target.__allowLifecycleReopen; } catch(e) {}
+            try { plSyncItemToSaved(target); } catch(e) {}
+            if (typeof renderPropertyList === 'function') renderPropertyList();
+          } else {
+            target.status = 'review';
+            target.round = parseInt(nextRound.value || '1', 10) || 1;
+            target.biddate = nextDate.value || '';
+            target.minprice = _skDigits(nextPrice.value || '');
+            target.updatedAt = Date.now();
+            target.__allowLifecycleReopen = true;
+            plSave(items.map(plNormalizeItem));
+            syncToWorkroom(target);
+            try { delete target.__allowLifecycleReopen; } catch(e) {}
+            try { plSyncItemToSaved(target); } catch(e) {}
+            if (typeof renderPropertyList === 'function') renderPropertyList();
+          }
+        } else if (ctx.source === 'wr') {
+          var patch = { __forceLifecycleChange: true };
+          if (mode === 'changed') {
+            patch.lifecycleStatus = 'changed';
+            patch.status = 'field';
+            patch.phase = 'field';
+            patch.activePhase = 'field';
+            patch.biddate = '미정';
+          } else {
+            patch.lifecycleStatus = 'active';
+            patch.status = 'review';
+            patch.phase = 'review';
+            patch.activePhase = 'review';
+            patch.round = parseInt(nextRound.value || '1', 10) || 1;
+            patch.biddate = nextDate.value || '';
+            patch.minprice = _skDigits(nextPrice.value || '');
+          }
+          if (typeof updateRoom === 'function') updateRoom(ctx.id, patch);
+          if (typeof renderPropertyList === 'function') setTimeout(renderPropertyList, 60);
         }
-      } catch(e) {}
-      try {
-        if (patch && patch.lifecycleStatus === 'closed' && patch.biddate === undefined && typeof plLoad === 'function' && typeof plSave === 'function') {
-          var items = plLoad();
-          var changed = false;
-          items = items.map(function(it){
-            if (String(it && it.roomId || '') !== String(roomId || '')) return it;
-            var prev = before[String(it.id || '')];
-            if (prev !== undefined && prev !== null && prev !== '' && String(it.biddate || '') === '미정') {
-              it = Object.assign({}, it, { biddate: prev, updatedAt: Date.now() });
-              changed = true;
-            }
-            return (typeof plNormalizeItem === 'function') ? plNormalizeItem(it) : it;
-          });
-          if (changed) {
-            plSave(items);
-            try { if (typeof renderPropertyList === 'function') renderPropertyList(); } catch(e) {}
+      } catch(e) { console.warn('[skResultFlowSave]', e); }
+      close();
+    };
+    modal.style.display='flex';
+  }
+
+  // Allow lifecycle reopen when explicitly forced.
+  try {
+    if (typeof updateRoom === 'function') {
+      var _origUpdateRoom_v5 = updateRoom;
+      updateRoom = function(id, patch, silentRender){
+        var safe = Object.assign({}, patch || {});
+        return _origUpdateRoom_v5(id, safe, silentRender);
+      };
+      window.updateRoom = updateRoom;
+    }
+  } catch(e) {}
+
+  try {
+    if (typeof syncPropertyFromRoom === 'function') {
+      var _origSyncPropertyFromRoom = syncPropertyFromRoom;
+      syncPropertyFromRoom = function(roomId, patch){
+        var safe = Object.assign({}, patch || {});
+        if (safe.__forceLifecycleChange === true && safe.lifecycleStatus) {
+          safe.status = safe.status || (safe.lifecycleStatus === 'closed' ? 'closed' : (safe.lifecycleStatus === 'changed' ? 'field' : 'review'));
+        }
+        return _origSyncPropertyFromRoom(roomId, safe);
+      };
+    }
+  } catch(e) {}
+
+  try {
+    if (typeof syncToWorkroom === 'function') {
+      var _origSyncToWorkroom = syncToWorkroom;
+      syncToWorkroom = function(item){
+        if (item && item.__allowLifecycleReopen && item.roomId) {
+          var rooms = getWrRooms();
+          var room = rooms.find(function(r){return r.id === item.roomId;});
+          if (room && typeof updateRoom === 'function') {
+            var simple = plSimpleStatusKey(item.status);
+            var newPhase = (item.status === 'archived' ? 'closed' : (item.status || 'review'));
+            var patch = {
+              phase: newPhase,
+              status: newPhase,
+              activePhase: newPhase,
+              lifecycleStatus: (simple === 'closed' ? 'closed' : (simple === 'changed' ? 'changed' : 'active')),
+              __forceLifecycleChange: true
+            };
+            if (item.biddate !== undefined) patch.biddate = item.biddate;
+            if (item.minprice !== undefined) patch.minprice = item.minprice;
+            return updateRoom(room.id, patch);
           }
         }
-      } catch(e) {}
-      return out;
-    };
-  }
-
-  window._skSetRoomLifecycleDirect = function(roomId, lifecycle, opts){
-    var room = _skGetRoomById(roomId);
-    if (!room) return false;
-    var nextLife = String(lifecycle || 'active');
-    var nextStatus = _skRoomStatusFromLifecycle(nextLife);
-    room.lifecycleStatus = nextLife;
-    room.status = nextStatus;
-    room.phase = nextStatus;
-    room.activePhase = nextStatus;
-    if (opts && Object.prototype.hasOwnProperty.call(opts, 'closedSummary')) {
-      room.closedSummary = opts.closedSummary || {};
+        return _origSyncToWorkroom(item);
+      };
     }
-    room.updatedAt = Date.now();
+  } catch(e) {}
 
+  try {
+    window.plStartInlineEdit = function(key) {
+      var s = document.getElementById(key + '_s');
+      var i = document.getElementById(key + '_i');
+      if (!s || !i) return;
+      s.style.display = 'none';
+      i.style.display = '';
+      try {
+        i.focus();
+        if (typeof i.select === 'function' && i.tagName !== 'SELECT') i.select();
+        if (i.tagName === 'SELECT') {
+          setTimeout(function(){
+            try {
+              i.focus();
+              i.dispatchEvent(new MouseEvent('mousedown', { bubbles:true }));
+              i.dispatchEvent(new MouseEvent('click', { bubbles:true }));
+            } catch(e) {}
+          }, 0);
+        }
+      } catch(e) {}
+    };
+  } catch(e) {}
+
+  try {
+    window.plSetSimpleStatus = function(id, simpleStatus) {
+      var items = plLoad();
+      var item = items.find(function(i){return i.id===id;});
+      if (!item) return;
+      var next = String(simpleStatus || 'active');
+      if (next === 'changed') {
+        _skOpenResultFlow({ source:'pl', id:id, item:item });
+        return;
+      }
+      var oldSimple = plSimpleStatusKey(item.status);
+      if (oldSimple === next) return;
+      plApplySimpleStatusToItem(item, next);
+      if (next === 'closed' && !item.biddate) item.biddate = item.lastBiddate || item.biddate || '';
+      item.__allowLifecycleReopen = true;
+      plSave(items.map(plNormalizeItem));
+      syncToWorkroom(item);
+      try { delete item.__allowLifecycleReopen; } catch(e) {}
+      try { plSyncItemToSaved(item); } catch(e) {}
+      if (next === 'closed' && oldSimple !== 'closed') {
+        setTimeout(function(){ plOpenResultModal(id); }, 120);
+      }
+      if (typeof renderPropertyList === 'function') renderPropertyList();
+    };
+  } catch(e) {}
+
+  function _skBindWorkroomLifecycle(){
+    var lifeSel = document.getElementById('wr2LifecycleSelect');
+    if (!lifeSel) return;
     try {
-      if (typeof syncPropertyFromRoom === 'function') {
-        var patch = {
-          status: nextStatus,
-          archived: false,
-          lifecycleStatus: nextLife,
-          closedSummary: room.closedSummary
-        };
-        if (opts && Object.prototype.hasOwnProperty.call(opts, 'biddate')) patch.biddate = opts.biddate;
-        syncPropertyFromRoom(roomId, patch);
+      var opts = lifeSel.options || [];
+      for (var i=0;i<opts.length;i++) {
+        if (opts[i].value === 'active') opts[i].text = '진행';
+        if (opts[i].value === 'changed') opts[i].text = '변경';
+        if (opts[i].value === 'closed') opts[i].text = '종료';
       }
     } catch(e) {}
-
-    _skPersistRoomAndRefresh(roomId);
-    return true;
-  };
-
-  window._skApplyFromRoom = function(room, action){
-    if (!room || !action) return;
-    var item = (typeof _skFindPropertyByRoom === 'function') ? _skFindPropertyByRoom(room) : null;
-    if (action.kind === 'unsold') {
-      if (item) _skSavePropertyItem(_skApplyUnsoldToProperty(item, action));
-      window._skSetRoomLifecycleDirect(room.id, 'active');
-      return;
-    }
-    if (action.kind === 'pending') {
-      if (item) _skSavePropertyItem(_skApplyChangedPendingToProperty(item));
-      window._skSetRoomLifecycleDirect(room.id, 'changed', { biddate: '미정' });
-      return;
-    }
-    if (action.kind === 'closed') {
-      if (item) _skSavePropertyItem(_skApplyClosedToProperty(item, action.summary || {}));
-      window._skSetRoomLifecycleDirect(room.id, 'closed', { closedSummary: action.summary || {} });
-      return;
-    }
-  };
-
-  window._skApplyFromProperty = function(item, action){
-    if (!item || !action) return;
-    var room = (typeof _skFindRoomByProperty === 'function') ? _skFindRoomByProperty(item) : null;
-    if (action.kind === 'unsold') {
-      _skSavePropertyItem(_skApplyUnsoldToProperty(item, action));
-      if (room) window._skSetRoomLifecycleDirect(room.id, 'active');
-      return;
-    }
-    if (action.kind === 'pending') {
-      _skSavePropertyItem(_skApplyChangedPendingToProperty(item));
-      if (room) window._skSetRoomLifecycleDirect(room.id, 'changed', { biddate: '미정' });
-      return;
-    }
-    if (action.kind === 'closed') {
-      _skSavePropertyItem(_skApplyClosedToProperty(item, action.summary || {}));
-      if (room) window._skSetRoomLifecycleDirect(room.id, 'closed', { closedSummary: action.summary || {} });
-      return;
-    }
-  };
-
-  // Always intercept property-list simple status changes with the shared modal flow.
-  if (typeof window.plSetSimpleStatus === 'function') {
-    var __origPlSetSimpleStatusV4 = window.plSetSimpleStatus;
-    window.plSetSimpleStatus = function(id, simpleStatus){
-      var items = (typeof plLoad === 'function') ? plLoad() : [];
-      var item = items.find(function(i){ return i && i.id === id; });
-      if (!item) return;
-      var simple = String(simpleStatus || '');
-      if (simple === 'changed') {
-        _skOpenChangedModal({ item: item, room: (typeof _skFindRoomByProperty === 'function') ? _skFindRoomByProperty(item) : null }, function(action){
-          window._skApplyFromProperty(item, action);
-        });
+    if (lifeSel.dataset.skBound === '1') return;
+    lifeSel.dataset.skBound = '1';
+    lifeSel.onchange = function(e){
+      var room = (typeof getActiveRoom === 'function') ? getActiveRoom() : null;
+      if (!room) return;
+      var prev = (typeof wr2GetLifecycle === 'function') ? wr2GetLifecycle(room) : 'active';
+      var next = String(e.target.value || 'active');
+      if (next === 'changed') {
+        _skOpenResultFlow({ source:'wr', id:room.id, item: room });
+        e.target.value = prev;
         return;
       }
-      if (simple === 'closed') {
-        _skOpenCloseModal({ item: item, room: (typeof _skFindRoomByProperty === 'function') ? _skFindRoomByProperty(item) : null, summary: ((typeof _skFindRoomByProperty === 'function' ? _skFindRoomByProperty(item) : null) || {}).closedSummary || {} }, function(summary){
-          window._skApplyFromProperty(item, { kind: 'closed', summary: summary });
-        });
+      if (next === 'closed' && prev !== 'closed') {
+        wr2CollectCloseSummary(room.closedSummary, function(closedSummary) {
+          updateRoom(room.id, { lifecycleStatus: next, closedSummary: closedSummary, __forceLifecycleChange: true });
+        }, function() { lifeSel.value = prev; });
         return;
       }
-      if (simple === 'active') {
-        var prevBid = item.biddate;
-        var out = __origPlSetSimpleStatusV4.apply(this, arguments);
-        if (prevBid && item && String(item.biddate || '') === '') {
-          item.biddate = prevBid;
-          try { _skSavePropertyItem(item); } catch(e) {}
-        }
-        var room = (typeof _skFindRoomByProperty === 'function') ? _skFindRoomByProperty(item) : null;
-        if (room) window._skSetRoomLifecycleDirect(room.id, 'active');
-        return out;
-      }
-      return __origPlSetSimpleStatusV4.apply(this, arguments);
+      updateRoom(room.id, { lifecycleStatus: next, __forceLifecycleChange: true });
     };
   }
+  setInterval(_skBindWorkroomLifecycle, 500);
 
-  // Re-bind workroom dropdown every render using direct setter, not the guarded local updateRoom.
-  if (typeof window.wr2Render === 'function') {
-    var __origWr2RenderV4 = window.wr2Render;
-    window.wr2Render = function(){
-      var out = __origWr2RenderV4.apply(this, arguments);
-      try {
-        var sel = document.getElementById('wr2LifecycleSelect');
-        if (sel) {
-          sel.onchange = function(e){
-            var activeRoom = (window.wr2State && Array.isArray(window.wr2State.rooms))
-              ? window.wr2State.rooms.find(function(r){ return r && r.id === window.wr2State.activeRoomId; })
-              : null;
-            if (!activeRoom) return;
-            var prev = (typeof wr2GetLifecycle === 'function') ? wr2GetLifecycle(activeRoom) : String(activeRoom.lifecycleStatus || 'active');
-            var next = String((e && e.target && e.target.value) || 'active');
-            if (next === 'changed') {
-              _skOpenChangedModal({ item: (typeof _skFindPropertyByRoom === 'function') ? _skFindPropertyByRoom(activeRoom) : null, room: activeRoom }, function(action){
-                window._skApplyFromRoom(activeRoom, action);
-                sel.value = (action.kind === 'pending' ? 'changed' : 'active');
-              }, function(){ sel.value = prev; });
-              return;
-            }
-            if (next === 'closed') {
-              _skOpenCloseModal({ room: activeRoom, item: (typeof _skFindPropertyByRoom === 'function') ? _skFindPropertyByRoom(activeRoom) : null, summary: activeRoom.closedSummary || {} }, function(summary){
-                window._skApplyFromRoom(activeRoom, { kind: 'closed', summary: summary });
-                sel.value = 'closed';
-              }, function(){ sel.value = prev; });
-              return;
-            }
-            window._skSetRoomLifecycleDirect(activeRoom.id, 'active');
-            sel.value = 'active';
-          };
-        }
-
-        document.querySelectorAll('.wr2-room-item').forEach(function(itemEl){
-          var life = String(itemEl.dataset.life || 'active');
-          var spans = Array.prototype.slice.call(itemEl.querySelectorAll('.wr2-room-meta span'));
-          spans.forEach(function(sp){
-            var txt = String((sp.textContent || '')).trim();
-            if (!/^D(?:-|\+|$)|^D-Day$/i.test(txt)) return;
-            var c = '#4ade80';
-            if (life === 'closed') c = '#9aa3b2';
-            else if (/^D\+/i.test(txt) || txt === 'D-Day') c = '#ff6b6b';
-            else {
-              var n = parseInt(String(txt).replace(/[^\d-]/g, ''), 10);
-              c = (n >= 1 && n <= 7) ? '#fbbf24' : '#4ade80';
-            }
-            sp.style.color = c;
-          });
-        });
-      } catch (e) {}
-      return out;
-    };
-  }
+  // Relabel filter dropdowns from 활성 to 진행.
+  setInterval(function(){
+    try {
+      document.querySelectorAll('select option').forEach(function(opt){
+        if (String(opt.text || '').trim() === '활성') opt.text = '진행';
+      });
+    } catch(e) {}
+  }, 1000);
 })();
