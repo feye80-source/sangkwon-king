@@ -45198,3 +45198,244 @@ window.addEventListener('DOMContentLoaded', () => {
     };
   }
 })();
+
+
+
+/* === 2026-04-22 v4 lifecycle hotfix === */
+(function(){
+  if (window.__skLifecycleV4Applied) return;
+  window.__skLifecycleV4Applied = true;
+
+  function _skRoomStatusFromLifecycle(life){
+    return life === 'closed' ? 'closed' : (life === 'changed' ? 'field' : 'review');
+  }
+  function _skGetRoomById(roomId){
+    var rooms = (window.wr2State && Array.isArray(window.wr2State.rooms)) ? window.wr2State.rooms : [];
+    return rooms.find(function(r){ return String(r && r.id || '') === String(roomId || ''); }) || null;
+  }
+  function _skPersistRoomAndRefresh(roomId){
+    try {
+      if (window._wrPersistRooms && window.wr2State && Array.isArray(window.wr2State.rooms)) {
+        window._wrPersistRooms(window.wr2State.rooms, { keepDeletedInState: true, syncState: true });
+      }
+    } catch(e) {}
+    try { if (typeof plSyncFromWorkrooms === 'function') plSyncFromWorkrooms({ render: false }); } catch(e) {}
+    try { if (typeof renderPropertyList === 'function') renderPropertyList(); } catch(e) {}
+    try { if (typeof wr2Render === 'function') setTimeout(function(){ wr2Render(); }, 20); } catch(e) {}
+  }
+
+  // Keep last biddate when closing.
+  if (typeof plApplySimpleStatusToItem === 'function') {
+    var __origPlApplySimpleStatusToItem = plApplySimpleStatusToItem;
+    window.plApplySimpleStatusToItem = plApplySimpleStatusToItem = function(item, simple){
+      var prevBiddate = item ? item.biddate : undefined;
+      var out = __origPlApplySimpleStatusToItem.apply(this, arguments);
+      if (item && simple === 'closed' && prevBiddate !== undefined && prevBiddate !== null && prevBiddate !== '') {
+        item.biddate = prevBiddate;
+      }
+      return out;
+    };
+  }
+
+  // Wrap property sync from room so closed status no longer forces biddate = 미정.
+  if (typeof syncPropertyFromRoom === 'function') {
+    var __origSyncPropertyFromRoom = syncPropertyFromRoom;
+    window.syncPropertyFromRoom = syncPropertyFromRoom = function(roomId, patch){
+      var before = {};
+      try {
+        var items0 = (typeof plLoad === 'function') ? plLoad() : [];
+        items0.forEach(function(it){
+          if (String(it && it.roomId || '') === String(roomId || '')) before[String(it.id || '')] = it.biddate;
+        });
+      } catch(e) {}
+      var out = __origSyncPropertyFromRoom.apply(this, arguments);
+      try {
+        if (patch && patch.lifecycleStatus === 'closed' && patch.biddate === undefined && typeof plLoad === 'function' && typeof plSave === 'function') {
+          var items = plLoad();
+          var changed = false
+        }
+      } catch(e) {}
+      try {
+        if (patch && patch.lifecycleStatus === 'closed' && patch.biddate === undefined && typeof plLoad === 'function' && typeof plSave === 'function') {
+          var items = plLoad();
+          var changed = false;
+          items = items.map(function(it){
+            if (String(it && it.roomId || '') !== String(roomId || '')) return it;
+            var prev = before[String(it.id || '')];
+            if (prev !== undefined && prev !== null && prev !== '' && String(it.biddate || '') === '미정') {
+              it = Object.assign({}, it, { biddate: prev, updatedAt: Date.now() });
+              changed = true;
+            }
+            return (typeof plNormalizeItem === 'function') ? plNormalizeItem(it) : it;
+          });
+          if (changed) {
+            plSave(items);
+            try { if (typeof renderPropertyList === 'function') renderPropertyList(); } catch(e) {}
+          }
+        }
+      } catch(e) {}
+      return out;
+    };
+  }
+
+  window._skSetRoomLifecycleDirect = function(roomId, lifecycle, opts){
+    var room = _skGetRoomById(roomId);
+    if (!room) return false;
+    var nextLife = String(lifecycle || 'active');
+    var nextStatus = _skRoomStatusFromLifecycle(nextLife);
+    room.lifecycleStatus = nextLife;
+    room.status = nextStatus;
+    room.phase = nextStatus;
+    room.activePhase = nextStatus;
+    if (opts && Object.prototype.hasOwnProperty.call(opts, 'closedSummary')) {
+      room.closedSummary = opts.closedSummary || {};
+    }
+    room.updatedAt = Date.now();
+
+    try {
+      if (typeof syncPropertyFromRoom === 'function') {
+        var patch = {
+          status: nextStatus,
+          archived: false,
+          lifecycleStatus: nextLife,
+          closedSummary: room.closedSummary
+        };
+        if (opts && Object.prototype.hasOwnProperty.call(opts, 'biddate')) patch.biddate = opts.biddate;
+        syncPropertyFromRoom(roomId, patch);
+      }
+    } catch(e) {}
+
+    _skPersistRoomAndRefresh(roomId);
+    return true;
+  };
+
+  window._skApplyFromRoom = function(room, action){
+    if (!room || !action) return;
+    var item = (typeof _skFindPropertyByRoom === 'function') ? _skFindPropertyByRoom(room) : null;
+    if (action.kind === 'unsold') {
+      if (item) _skSavePropertyItem(_skApplyUnsoldToProperty(item, action));
+      window._skSetRoomLifecycleDirect(room.id, 'active');
+      return;
+    }
+    if (action.kind === 'pending') {
+      if (item) _skSavePropertyItem(_skApplyChangedPendingToProperty(item));
+      window._skSetRoomLifecycleDirect(room.id, 'changed', { biddate: '미정' });
+      return;
+    }
+    if (action.kind === 'closed') {
+      if (item) _skSavePropertyItem(_skApplyClosedToProperty(item, action.summary || {}));
+      window._skSetRoomLifecycleDirect(room.id, 'closed', { closedSummary: action.summary || {} });
+      return;
+    }
+  };
+
+  window._skApplyFromProperty = function(item, action){
+    if (!item || !action) return;
+    var room = (typeof _skFindRoomByProperty === 'function') ? _skFindRoomByProperty(item) : null;
+    if (action.kind === 'unsold') {
+      _skSavePropertyItem(_skApplyUnsoldToProperty(item, action));
+      if (room) window._skSetRoomLifecycleDirect(room.id, 'active');
+      return;
+    }
+    if (action.kind === 'pending') {
+      _skSavePropertyItem(_skApplyChangedPendingToProperty(item));
+      if (room) window._skSetRoomLifecycleDirect(room.id, 'changed', { biddate: '미정' });
+      return;
+    }
+    if (action.kind === 'closed') {
+      _skSavePropertyItem(_skApplyClosedToProperty(item, action.summary || {}));
+      if (room) window._skSetRoomLifecycleDirect(room.id, 'closed', { closedSummary: action.summary || {} });
+      return;
+    }
+  };
+
+  // Always intercept property-list simple status changes with the shared modal flow.
+  if (typeof window.plSetSimpleStatus === 'function') {
+    var __origPlSetSimpleStatusV4 = window.plSetSimpleStatus;
+    window.plSetSimpleStatus = function(id, simpleStatus){
+      var items = (typeof plLoad === 'function') ? plLoad() : [];
+      var item = items.find(function(i){ return i && i.id === id; });
+      if (!item) return;
+      var simple = String(simpleStatus || '');
+      if (simple === 'changed') {
+        _skOpenChangedModal({ item: item, room: (typeof _skFindRoomByProperty === 'function') ? _skFindRoomByProperty(item) : null }, function(action){
+          window._skApplyFromProperty(item, action);
+        });
+        return;
+      }
+      if (simple === 'closed') {
+        _skOpenCloseModal({ item: item, room: (typeof _skFindRoomByProperty === 'function') ? _skFindRoomByProperty(item) : null, summary: ((typeof _skFindRoomByProperty === 'function' ? _skFindRoomByProperty(item) : null) || {}).closedSummary || {} }, function(summary){
+          window._skApplyFromProperty(item, { kind: 'closed', summary: summary });
+        });
+        return;
+      }
+      if (simple === 'active') {
+        var prevBid = item.biddate;
+        var out = __origPlSetSimpleStatusV4.apply(this, arguments);
+        if (prevBid && item && String(item.biddate || '') === '') {
+          item.biddate = prevBid;
+          try { _skSavePropertyItem(item); } catch(e) {}
+        }
+        var room = (typeof _skFindRoomByProperty === 'function') ? _skFindRoomByProperty(item) : null;
+        if (room) window._skSetRoomLifecycleDirect(room.id, 'active');
+        return out;
+      }
+      return __origPlSetSimpleStatusV4.apply(this, arguments);
+    };
+  }
+
+  // Re-bind workroom dropdown every render using direct setter, not the guarded local updateRoom.
+  if (typeof window.wr2Render === 'function') {
+    var __origWr2RenderV4 = window.wr2Render;
+    window.wr2Render = function(){
+      var out = __origWr2RenderV4.apply(this, arguments);
+      try {
+        var sel = document.getElementById('wr2LifecycleSelect');
+        if (sel) {
+          sel.onchange = function(e){
+            var activeRoom = (window.wr2State && Array.isArray(window.wr2State.rooms))
+              ? window.wr2State.rooms.find(function(r){ return r && r.id === window.wr2State.activeRoomId; })
+              : null;
+            if (!activeRoom) return;
+            var prev = (typeof wr2GetLifecycle === 'function') ? wr2GetLifecycle(activeRoom) : String(activeRoom.lifecycleStatus || 'active');
+            var next = String((e && e.target && e.target.value) || 'active');
+            if (next === 'changed') {
+              _skOpenChangedModal({ item: (typeof _skFindPropertyByRoom === 'function') ? _skFindPropertyByRoom(activeRoom) : null, room: activeRoom }, function(action){
+                window._skApplyFromRoom(activeRoom, action);
+                sel.value = (action.kind === 'pending' ? 'changed' : 'active');
+              }, function(){ sel.value = prev; });
+              return;
+            }
+            if (next === 'closed') {
+              _skOpenCloseModal({ room: activeRoom, item: (typeof _skFindPropertyByRoom === 'function') ? _skFindPropertyByRoom(activeRoom) : null, summary: activeRoom.closedSummary || {} }, function(summary){
+                window._skApplyFromRoom(activeRoom, { kind: 'closed', summary: summary });
+                sel.value = 'closed';
+              }, function(){ sel.value = prev; });
+              return;
+            }
+            window._skSetRoomLifecycleDirect(activeRoom.id, 'active');
+            sel.value = 'active';
+          };
+        }
+
+        document.querySelectorAll('.wr2-room-item').forEach(function(itemEl){
+          var life = String(itemEl.dataset.life || 'active');
+          var spans = Array.prototype.slice.call(itemEl.querySelectorAll('.wr2-room-meta span'));
+          spans.forEach(function(sp){
+            var txt = String((sp.textContent || '')).trim();
+            if (!/^D(?:-|\+|$)|^D-Day$/i.test(txt)) return;
+            var c = '#4ade80';
+            if (life === 'closed') c = '#9aa3b2';
+            else if (/^D\+/i.test(txt) || txt === 'D-Day') c = '#ff6b6b';
+            else {
+              var n = parseInt(String(txt).replace(/[^\d-]/g, ''), 10);
+              c = (n >= 1 && n <= 7) ? '#fbbf24' : '#4ade80';
+            }
+            sp.style.color = c;
+          });
+        });
+      } catch (e) {}
+      return out;
+    };
+  }
+})();
