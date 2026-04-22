@@ -4699,6 +4699,11 @@ var _safeLocalSet = function(key, value) {
                           + '<option value="active">활성</option>'
                           + '<option value="changed">변경</option>'
                           + '<option value="closed">종료</option>';
+                        lifeSel.onpointerdown = function(ev) { try { ev.stopPropagation(); } catch(_) {} };
+                        lifeSel.onmousedown = function(ev) { try { ev.stopPropagation(); } catch(_) {} };
+                        lifeSel.onclick = function(ev) { try { ev.stopPropagation(); } catch(_) {} };
+                        lifeSel.onfocus = function() { window.__wr2SelectOpen = 'lifecycle'; };
+                        lifeSel.onblur = function() { setTimeout(function(){ if (window.__wr2SelectOpen === 'lifecycle') window.__wr2SelectOpen = ''; }, 80); };
                         host.insertBefore(lifeSel, insertAnchor);
                       }
                       lifeSel.value = wr2GetLifecycle(room);
@@ -4730,6 +4735,11 @@ var _safeLocalSet = function(key, value) {
                           + '<option value="bid">입찰</option>'
                           + '<option value="won">낙찰</option>'
                           + '<option value="sell">매도</option>';
+                        progSel.onpointerdown = function(ev) { try { ev.stopPropagation(); } catch(_) {} };
+                        progSel.onmousedown = function(ev) { try { ev.stopPropagation(); } catch(_) {} };
+                        progSel.onclick = function(ev) { try { ev.stopPropagation(); } catch(_) {} };
+                        progSel.onfocus = function() { window.__wr2SelectOpen = 'progress'; };
+                        progSel.onblur = function() { setTimeout(function(){ if (window.__wr2SelectOpen === 'progress') window.__wr2SelectOpen = ''; }, 80); };
                         host.insertBefore(progSel, insertAnchor);
                       }
                       const rawProg = String(room.status || '').trim();
@@ -42414,8 +42424,8 @@ window.addEventListener('DOMContentLoaded', () => {
       + 'background:'+m.bg+';color:'+m.color+';border:1px solid rgba(255,255,255,.08);white-space:nowrap;">'
       + m.label
       + '</span>'
-      + '<select id="'+key+'_i" data-k="'+plEscHtml(key)+'" data-id="'+plEscHtml(id)+'" onchange="event.stopPropagation();plSetSimpleStatus(this.dataset.id,this.value)" '
-      + 'onblur="plCancelInlineEdit(this.dataset.k)" onclick="event.stopPropagation()" '
+      + '<select id="'+key+'_i" data-k="'+plEscHtml(key)+'" data-id="'+plEscHtml(id)+'" onchange="event.stopPropagation();window.__plInlineEditOpen=false;window.__plInlineEditOpenUntil=Date.now()+500;plSetSimpleStatus(this.dataset.id,this.value)" '
+      + 'onfocus="window.__plInlineEditOpen=true;window.__plInlineEditOpenUntil=Date.now()+1500" onblur="window.__plInlineEditOpen=false;window.__plInlineEditOpenUntil=Date.now()+300;plCancelInlineEdit(this.dataset.k)" onclick="event.stopPropagation()" onmousedown="event.stopPropagation()" onpointerdown="event.stopPropagation()" '
       + 'style="display:none;padding:3px 6px;border-radius:999px;font-size:11px;font-weight:800;border:1px solid rgba(255,255,255,.10);'
       + 'background:rgba(0,0,0,.25);color:var(--tx);cursor:pointer;">'
       + '<option value="active"'+(simple==='active'?' selected':'')+'>활성</option>'
@@ -42511,9 +42521,15 @@ window.addEventListener('DOMContentLoaded', () => {
     var s = document.getElementById(key + '_s');
     var i = document.getElementById(key + '_i');
     if (!s || !i) return;
+    window.__plInlineEditOpen = true;
+    window.__plInlineEditOpenUntil = Date.now() + 1500;
     s.style.display = 'none';
     i.style.display = '';
-    try { i.focus(); if (typeof i.select === 'function') i.select(); } catch(e) {}
+    try {
+      i.focus();
+      if (String((i.tagName || '')).toUpperCase() !== 'SELECT' && typeof i.select === 'function') i.select();
+      if (typeof i.click === 'function' && String((i.tagName || '')).toUpperCase() === 'SELECT') i.click();
+    } catch(e) {}
   };
   window.plCancelInlineEdit = function(key) {
     var s = document.getElementById(key + '_s');
@@ -42521,6 +42537,8 @@ window.addEventListener('DOMContentLoaded', () => {
     if (!s || !i) return;
     i.style.display = 'none';
     s.style.display = '';
+    window.__plInlineEditOpen = false;
+    window.__plInlineEditOpenUntil = Date.now() + 200;
   };
   window.plFinishInlineEdit = function(id, field, key) {
     var i = document.getElementById(key + '_i');
@@ -42739,6 +42757,7 @@ window.addEventListener('DOMContentLoaded', () => {
     el.innerHTML = chips.join('');
   }
   function plEnsureListCloudRefresh() {
+    if (window.__plInlineEditOpen && window.__plInlineEditOpenUntil && Date.now() < window.__plInlineEditOpenUntil) return;
     if (window.__plListRefreshRunning) return;
     if (typeof window._plRefreshFromCloud !== 'function') return;
     var now = Date.now();
@@ -42981,6 +43000,9 @@ window.addEventListener('DOMContentLoaded', () => {
   }
   // ── 메인 렌더 ──────────────────────────
   window.renderPropertyList = function() {
+    if (window.__plInlineEditOpen && window.__plInlineEditOpenUntil && Date.now() < window.__plInlineEditOpenUntil) {
+      return;
+    }
     _plWrapSavedListSync();
     _plWrapWorkroomSync();
     plEnsureListCloudRefresh();
