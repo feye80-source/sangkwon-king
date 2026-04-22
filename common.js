@@ -44734,3 +44734,467 @@ window.addEventListener('DOMContentLoaded', () => {
     boot();
   }
 })();
+
+
+/* === OAI PATCH 2026-04-22 v3: lifecycle modal sync / dday colors / date preserve === */
+(function(){
+  function _skNormDate(v){
+    try {
+      var s = String(v || '').trim();
+      if (!s || s === '미정') return '';
+      var m = s.match(/(\d{4})[^0-9]?(\d{1,2})[^0-9]?(\d{1,2})/);
+      if (!m) return '';
+      return m[1] + '-' + String(m[2]).padStart(2,'0') + '-' + String(m[3]).padStart(2,'0');
+    } catch(e) { return ''; }
+  }
+  function _skAddDays(dateStr, days){
+    var n = _skNormDate(dateStr);
+    var d = n ? new Date(n + 'T00:00:00') : new Date();
+    if (isNaN(d.getTime())) d = new Date();
+    d.setDate(d.getDate() + (days || 0));
+    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  }
+  function _skParseIntLoose(v){
+    var n = parseInt(String(v == null ? '' : v).replace(/[^0-9]/g,''),10);
+    return isNaN(n) ? 0 : n;
+  }
+  function _skFormatWon(v){
+    var n = _skParseIntLoose(v);
+    return n ? n.toLocaleString('ko-KR') + '원' : '';
+  }
+  function _skRoundLabelToNum(v){
+    var n = _skParseIntLoose(v);
+    if (!n) return 0;
+    return n;
+  }
+  function _skNextRoundLabel(v){
+    var n = _skRoundLabelToNum(v);
+    return String((n || 0) + 1) + '차';
+  }
+  function _skFindPropertyByRoom(room){
+    if (!room) return null;
+    var items = (typeof plLoad === 'function') ? plLoad() : [];
+    var roomId = String(room.id || '');
+    var linkedSavedId = String(room.linkedSavedId || room.auctionId || room.listingId || (room.linkedItems && room.linkedItems[0]) || '');
+    return items.find(function(it){
+      return String(it.roomId || '') === roomId || (linkedSavedId && String(it.linkedSavedId || '') === linkedSavedId);
+    }) || null;
+  }
+  function _skFindRoomByProperty(item){
+    if (!item) return null;
+    var rooms = (window.wr2State && Array.isArray(window.wr2State.rooms)) ? window.wr2State.rooms : [];
+    var roomId = String(item.roomId || '');
+    if (roomId) {
+      var found = rooms.find(function(r){ return String(r && r.id || '') === roomId; });
+      if (found) return found;
+    }
+    var linkedSavedId = String(item.linkedSavedId || '');
+    if (!linkedSavedId) return null;
+    return rooms.find(function(r){
+      if (!r) return false;
+      var ids = [r.linkedSavedId, r.auctionId, r.listingId].concat(r.linkedItems || []).map(function(x){ return String(x || ''); });
+      return ids.indexOf(linkedSavedId) >= 0;
+    }) || null;
+  }
+  function _skSavePropertyItem(nextItem){
+    if (!nextItem || typeof plLoad !== 'function' || typeof plSave !== 'function') return;
+    var items = plLoad();
+    var idx = items.findIndex(function(it){ return String(it && it.id || '') === String(nextItem.id || ''); });
+    if (idx < 0) items.push(nextItem); else items[idx] = nextItem;
+    var normItems = items.map(function(it){ return (typeof plNormalizeItem === 'function') ? plNormalizeItem(it) : it; });
+    plSave(normItems);
+    try { if (typeof plSyncItemToSaved === 'function') plSyncItemToSaved((typeof plNormalizeItem === 'function') ? plNormalizeItem(nextItem) : nextItem); } catch(e) {}
+    try { if (typeof renderPropertyList === 'function') renderPropertyList(); } catch(e) {}
+  }
+  function _skApplyUnsoldToProperty(item, payload){
+    if (!item) return null;
+    var next = Object.assign({}, item);
+    next.status = 'review';
+    next.archived = false;
+    next.resultState = '유찰';
+    next.round = String(payload.round || next.round || '');
+    next.biddate = String(payload.biddate || next.biddate || '');
+    next.minprice = String(_skParseIntLoose(payload.minprice || next.minprice || ''));
+    next.updatedAt = Date.now();
+    return (typeof plNormalizeItem === 'function') ? plNormalizeItem(next) : next;
+  }
+  function _skApplyChangedPendingToProperty(item){
+    if (!item) return null;
+    var next = Object.assign({}, item);
+    next.status = 'field';
+    next.archived = false;
+    next.resultState = '변경';
+    next.biddate = '미정';
+    next.updatedAt = Date.now();
+    return (typeof plNormalizeItem === 'function') ? plNormalizeItem(next) : next;
+  }
+  function _skApplyClosedToProperty(item, summary){
+    if (!item) return null;
+    var next = Object.assign({}, item);
+    next.status = 'closed';
+    next.archived = false;
+    next.resultState = String((summary && summary.closedType) || '') || '종료';
+    next.memo = String((summary && summary.memo) || next.memo || '');
+    next.bidders = String((summary && summary.bidderCount) || next.bidders || '');
+    next.result = Object.assign({}, next.result || {});
+    next.result.won = String((summary && summary.finalBidPrice) || next.result.won || '');
+    next.result.second = String((summary && summary.secondBidPrice) || next.result.second || '');
+    next.updatedAt = Date.now();
+    return (typeof plNormalizeItem === 'function') ? plNormalizeItem(next) : next;
+  }
+  function _skDefaultUnsoldPayload(item){
+    var curRound = String((item && item.round) || '').trim();
+    var curBiddate = String((item && item.biddate) || '').trim();
+    var curMinprice = String((item && item.minprice) || '').trim();
+    var nextRound = _skNextRoundLabel(curRound);
+    var nextBiddate = _skAddDays(curBiddate, 28);
+    var priceWon = _skParseIntLoose(curMinprice);
+    var nextPrice = priceWon ? Math.floor(priceWon * 0.7) : 0;
+    return {
+      kind: 'unsold',
+      round: nextRound,
+      biddate: nextBiddate,
+      minprice: nextPrice ? String(nextPrice) : ''
+    };
+  }
+  function _skEnsureLifecycleModalCss(){
+    if (document.getElementById('skLifecycleModalCss')) return;
+    var st = document.createElement('style');
+    st.id = 'skLifecycleModalCss';
+    st.textContent = ''
+      + '.sk-lf-backdrop{position:fixed;inset:0;background:rgba(2,6,23,.68);backdrop-filter:blur(2px);z-index:99999;display:flex;align-items:center;justify-content:center;padding:18px;}'
+      + '.sk-lf-modal{width:min(560px,96vw);background:linear-gradient(180deg,rgba(17,24,39,.98),rgba(8,12,22,.98));border:1px solid rgba(255,255,255,.1);border-radius:16px;box-shadow:0 24px 60px rgba(0,0,0,.45);padding:16px;color:#e5eefc;}'
+      + '.sk-lf-row{margin-top:10px;}'
+      + '.sk-lf-label{display:block;font-size:12px;color:#aab8d3;margin-bottom:6px;font-weight:700;}'
+      + '.sk-lf-input,.sk-lf-select,.sk-lf-textarea{width:100%;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:#f8fbff;font-size:14px;outline:none;box-sizing:border-box;}'
+      + '.sk-lf-textarea{min-height:86px;resize:vertical;line-height:1.45;}'
+      + '.sk-lf-choice{display:flex;gap:10px;margin-top:8px;}'
+      + '.sk-lf-choice button{flex:1;padding:11px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:#eef5ff;font-weight:800;cursor:pointer;}'
+      + '.sk-lf-choice button.on{border-color:rgba(79,142,255,.48);background:rgba(79,142,255,.16);color:#bcd6ff;}'
+      + '.sk-lf-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:14px;}'
+      + '.sk-lf-actions button{padding:9px 13px;border-radius:10px;border:1px solid rgba(255,255,255,.12);cursor:pointer;}'
+      + '.sk-lf-cancel{background:rgba(255,255,255,.04);color:#d9e4f4;}'
+      + '.sk-lf-save{background:rgba(255,107,122,.18);border-color:rgba(255,107,122,.35)!important;color:#ffd5da;font-weight:800;}'
+      + '.sk-lf-note{font-size:12px;color:#9bb0d0;line-height:1.45;margin-top:6px;}';
+    document.head.appendChild(st);
+  }
+  function _skCloseLifecycleModal(){
+    var el = document.getElementById('skLifecycleModal');
+    if (el) el.remove();
+  }
+  function _skOpenCloseModal(ctx, done, cancel){
+    _skEnsureLifecycleModalCss();
+    _skCloseLifecycleModal();
+    var base = Object.assign({}, (ctx && ctx.summary) || {});
+    var wrap = document.createElement('div');
+    wrap.id = 'skLifecycleModal';
+    wrap.className = 'sk-lf-backdrop';
+    wrap.innerHTML = ''
+      + '<div class="sk-lf-modal" onclick="event.stopPropagation()">'
+      + '  <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">'
+      + '    <div style="font-size:18px;font-weight:900;letter-spacing:.2px;">종료 정보를 입력합니다</div>'
+      + '    <button type="button" id="skLfX" style="background:none;border:none;color:#cbd5e1;font-size:22px;cursor:pointer;">×</button>'
+      + '  </div>'
+      + '  <div class="sk-lf-note">작업룸과 물건리스트에 동시에 반영됩니다. 마지막 매각기일은 유지됩니다.</div>'
+      + '  <div class="sk-lf-row"><label class="sk-lf-label">최종 낙찰가 (선택)</label><input id="skCloseWon" class="sk-lf-input" value="'+ String(base.finalBidPrice || '').replace(/"/g,'&quot;') +'" placeholder="예: 1억 8,500만"></div>'
+      + '  <div class="sk-lf-row"><label class="sk-lf-label">낙찰 인원 (선택)</label><input id="skCloseBidders" class="sk-lf-input" value="'+ String(base.bidderCount || '').replace(/"/g,'&quot;') +'" placeholder="예: 7"></div>'
+      + '  <div class="sk-lf-row"><label class="sk-lf-label">차순위금액 (선택)</label><input id="skCloseSecond" class="sk-lf-input" value="'+ String(base.secondBidPrice || '').replace(/"/g,'&quot;') +'" placeholder="예: 1억 7,900만"></div>'
+      + '  <div class="sk-lf-row"><label class="sk-lf-label">종료 유형 (선택)</label><select id="skCloseType" class="sk-lf-select"><option value="">선택 안 함</option><option value="낙찰">낙찰</option><option value="패찰">패찰</option><option value="매각">매각</option><option value="기타">기타</option></select></div>'
+      + '  <div class="sk-lf-row"><label class="sk-lf-label">종료 메모 (선택)</label><textarea id="skCloseMemo" class="sk-lf-textarea" placeholder="예: 한 번만 더 떨어졌으면 입찰 고려했을 텐데…">'+ String(base.memo || '').replace(/</g,'&lt;') +'</textarea></div>'
+      + '  <div class="sk-lf-actions"><button type="button" id="skLfCancel" class="sk-lf-cancel">취소</button><button type="button" id="skLfSave" class="sk-lf-save">저장하고 종료</button></div>'
+      + '</div>';
+    document.body.appendChild(wrap);
+    document.getElementById('skCloseType').value = String(base.closedType || '');
+    wrap.onclick = function(){ _skCloseLifecycleModal(); if (cancel) cancel(); };
+    document.getElementById('skLfX').onclick = document.getElementById('skLfCancel').onclick = function(){ _skCloseLifecycleModal(); if (cancel) cancel(); };
+    document.getElementById('skLfSave').onclick = function(){
+      var summary = {
+        finalBidPrice: String(document.getElementById('skCloseWon').value || '').trim(),
+        bidderCount: String(document.getElementById('skCloseBidders').value || '').trim(),
+        secondBidPrice: String(document.getElementById('skCloseSecond').value || '').trim(),
+        closedType: String(document.getElementById('skCloseType').value || '').trim(),
+        memo: String(document.getElementById('skCloseMemo').value || '').trim(),
+        closedAt: Date.now()
+      };
+      _skCloseLifecycleModal();
+      done && done(summary);
+    };
+  }
+  function _skOpenChangedModal(ctx, done, cancel){
+    _skEnsureLifecycleModalCss();
+    _skCloseLifecycleModal();
+    var baseItem = (ctx && ctx.item) || null;
+    var payload = _skDefaultUnsoldPayload(baseItem || {});
+    var wrap = document.createElement('div');
+    wrap.id = 'skLifecycleModal';
+    wrap.className = 'sk-lf-backdrop';
+    wrap.innerHTML = ''
+      + '<div class="sk-lf-modal" onclick="event.stopPropagation()">'
+      + '  <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">'
+      + '    <div style="font-size:18px;font-weight:900;letter-spacing:.2px;">변경 처리 방식을 선택하세요</div>'
+      + '    <button type="button" id="skLfX" style="background:none;border:none;color:#cbd5e1;font-size:22px;cursor:pointer;">×</button>'
+      + '  </div>'
+      + '  <div class="sk-lf-note">작업룸과 물건리스트에 동일하게 반영됩니다.</div>'
+      + '  <div class="sk-lf-choice">'
+      + '    <button type="button" id="skChoiceUnsold" class="on">유찰</button>'
+      + '    <button type="button" id="skChoicePending">변경 / 미진행</button>'
+      + '  </div>'
+      + '  <div id="skUnsoldBox">'
+      + '    <div class="sk-lf-row"><label class="sk-lf-label">다음 회차</label><input id="skNextRound" class="sk-lf-input" value="'+ String(payload.round || '').replace(/"/g,'&quot;') +'"></div>'
+      + '    <div class="sk-lf-row"><label class="sk-lf-label">다음 매각기일</label><input id="skNextBiddate" class="sk-lf-input" value="'+ String(payload.biddate || '').replace(/"/g,'&quot;') +'" placeholder="YYYY-MM-DD"></div>'
+      + '    <div class="sk-lf-row"><label class="sk-lf-label">다음 최저가</label><input id="skNextMinprice" class="sk-lf-input" value="'+ _skFormatWon(payload.minprice || '') .replace(/"/g,'&quot;') +'" placeholder="예: 185,906,000원"></div>'
+      + '  </div>'
+      + '  <div id="skPendingBox" style="display:none;"><div class="sk-lf-note" style="margin-top:12px;">저장하면 상태는 <b>변경</b>으로 이동하고 매각기일은 <b>미정</b>으로 바뀝니다.</div></div>'
+      + '  <div class="sk-lf-actions"><button type="button" id="skLfCancel" class="sk-lf-cancel">취소</button><button type="button" id="skLfSave" class="sk-lf-save">저장</button></div>'
+      + '</div>';
+    document.body.appendChild(wrap);
+    var kind = 'unsold';
+    function reflect(){
+      document.getElementById('skChoiceUnsold').classList.toggle('on', kind === 'unsold');
+      document.getElementById('skChoicePending').classList.toggle('on', kind === 'pending');
+      document.getElementById('skUnsoldBox').style.display = kind === 'unsold' ? '' : 'none';
+      document.getElementById('skPendingBox').style.display = kind === 'pending' ? '' : 'none';
+    }
+    function moneyFmt(el){
+      el.addEventListener('input', function(){
+        var n = _skParseIntLoose(el.value || '');
+        el.value = n ? _skFormatWon(n) : '';
+      });
+    }
+    moneyFmt(document.getElementById('skNextMinprice'));
+    document.getElementById('skChoiceUnsold').onclick = function(){ kind = 'unsold'; reflect(); };
+    document.getElementById('skChoicePending').onclick = function(){ kind = 'pending'; reflect(); };
+    wrap.onclick = function(){ _skCloseLifecycleModal(); if (cancel) cancel(); };
+    document.getElementById('skLfX').onclick = document.getElementById('skLfCancel').onclick = function(){ _skCloseLifecycleModal(); if (cancel) cancel(); };
+    document.getElementById('skLfSave').onclick = function(){
+      var out = { kind: kind };
+      if (kind === 'unsold') {
+        out.round = String(document.getElementById('skNextRound').value || '').trim();
+        out.biddate = _skNormDate(document.getElementById('skNextBiddate').value || '') || String(document.getElementById('skNextBiddate').value || '').trim();
+        out.minprice = String(_skParseIntLoose(document.getElementById('skNextMinprice').value || '') || '');
+      }
+      _skCloseLifecycleModal();
+      done && done(out);
+    };
+    reflect();
+  }
+  function _skApplyFromRoom(room, action){
+    if (!room) return;
+    var item = _skFindPropertyByRoom(room);
+    if (action.kind === 'unsold') {
+      if (item) _skSavePropertyItem(_skApplyUnsoldToProperty(item, action));
+      if (window.updateRoom) window.updateRoom(room.id, { lifecycleStatus: 'active', __forceLifecycleChange: true });
+      try { if (typeof wr2Render === 'function') wr2Render(); } catch(e) {}
+      return;
+    }
+    if (action.kind === 'pending') {
+      if (item) _skSavePropertyItem(_skApplyChangedPendingToProperty(item));
+      if (window.updateRoom) window.updateRoom(room.id, { lifecycleStatus: 'changed', __forceLifecycleChange: true });
+      try { if (typeof wr2Render === 'function') wr2Render(); } catch(e) {}
+      return;
+    }
+    if (action.kind === 'closed') {
+      if (item) _skSavePropertyItem(_skApplyClosedToProperty(item, action.summary || {}));
+      if (window.updateRoom) window.updateRoom(room.id, { lifecycleStatus: 'closed', closedSummary: action.summary || {}, __forceLifecycleChange: true });
+      try { if (typeof wr2Render === 'function') wr2Render(); } catch(e) {}
+      return;
+    }
+  }
+  function _skApplyFromProperty(item, action){
+    if (!item) return;
+    var room = _skFindRoomByProperty(item);
+    if (action.kind === 'unsold') {
+      _skSavePropertyItem(_skApplyUnsoldToProperty(item, action));
+      if (room && window.updateRoom) window.updateRoom(room.id, { lifecycleStatus: 'active', __forceLifecycleChange: true });
+      return;
+    }
+    if (action.kind === 'pending') {
+      _skSavePropertyItem(_skApplyChangedPendingToProperty(item));
+      if (room && window.updateRoom) window.updateRoom(room.id, { lifecycleStatus: 'changed', __forceLifecycleChange: true });
+      return;
+    }
+    if (action.kind === 'closed') {
+      _skSavePropertyItem(_skApplyClosedToProperty(item, action.summary || {}));
+      if (room && window.updateRoom) window.updateRoom(room.id, { lifecycleStatus: 'closed', closedSummary: action.summary || {}, __forceLifecycleChange: true });
+      return;
+    }
+  }
+
+  // Keep last biddate on closed; changed only becomes undecided.
+  plApplySimpleStatusToItem = function(item, simple) {
+    if (!item) return;
+    if (simple === 'closed') {
+      item.status = 'closed';
+      // 마지막 확정 매각기일 유지
+    }
+    else if (simple === 'changed') {
+      var s = String(item.status || '');
+      if (s === 'field' || s === 'bid' || s === 'won') item.status = s;
+      else item.status = 'field';
+      item.biddate = '미정';
+    }
+    else {
+      item.status = 'review';
+      if (_plIsUndecidedDate(item.biddate || '')) item.biddate = '';
+    }
+    item.archived = false;
+    item.updatedAt = Date.now();
+  };
+
+  plBuildPatchFromSaved = function(src, curItem) {
+    if (!src) return null;
+    var raw = src.data || {};
+    var mapped = plMapSavedToItem(src);
+    var nextType = plIsPublicAuctionSaved(src) ? '공매' : (mapped.type || curItem.type || '경매');
+    var nextName = plPickSavedDisplayName(src, mapped.addr || curItem.addr || '');
+    var nextRegion = mapped.region || plSavedField(raw, ['소재지','주소','address'], '') || curItem.region || '';
+    var nextResult = Object.assign({}, curItem.result || {});
+    var wonFromSaved = plSavedField(raw, ['낙찰가_만원','낙찰가(만원)','낙찰가','최고입찰가_만원'], '');
+    var nextWon = wonFromSaved ? plToManUnit(wonFromSaved) : '';
+    if (nextWon && plDiffers(nextResult.won || '', nextWon)) nextResult.won = nextWon;
+    var hasCloseMemo = Object.prototype.hasOwnProperty.call(raw, '종료메모');
+    var nextMemo = hasCloseMemo ? String(raw['종료메모'] || '') : String(src.memo || curItem.memo || '');
+    var nextBidders = String(plSavedField(raw, ['입찰인수','입찰인원'], curItem.bidders || '') || '').trim();
+    return {
+      linkedSavedId: String(src.id || curItem.linkedSavedId || ''),
+      type: nextType,
+      addr: nextName || curItem.addr || '',
+      casenum: mapped.casenum || curItem.casenum || '',
+      region: nextRegion,
+      feature: mapped.feature || curItem.feature || '',
+      appraisal: mapped.appraisal || curItem.appraisal || '',
+      minprice: mapped.minprice || curItem.minprice || '',
+      round: mapped.round || curItem.round || '',
+      biddate: (function(){
+        var currentBid = _plNormalizeBiddateValue(curItem.biddate || '');
+        var mappedBid = _plNormalizeBiddateValue(mapped.biddate || '');
+        var simple = plSimpleStatusKey(curItem.status || '');
+        if (simple === 'changed') return '미정';
+        if (simple === 'closed') return currentBid || mappedBid || '';
+        return mappedBid || currentBid || '';
+      })(),
+      estimate: mapped.estimate || curItem.estimate || '',
+      deposit: mapped.deposit || curItem.deposit || '',
+      monthly: mapped.monthly || curItem.monthly || '',
+      result: nextResult,
+      bidders: nextBidders,
+      memo: nextMemo
+    };
+  };
+
+  syncPropertyFromRoom = function(roomId, patch) {
+    if (!roomId) return;
+    var items = plLoad();
+    var changed = false;
+    items = items.map(function(it){
+      if (String(it.roomId||'') !== String(roomId)) return it;
+      var safePatch = Object.assign({}, patch || {});
+      var itemSimpleCurrent = plSimpleStatusKey(it.status || '');
+      if (itemSimpleCurrent === 'closed' && safePatch.lifecycleStatus && safePatch.lifecycleStatus !== 'closed' && !safePatch.closedSummary && safePatch.__forceLifecycleChange !== true) {
+        delete safePatch.lifecycleStatus;
+        delete safePatch.status;
+      }
+      if (safePatch.closedSummary) {
+        var cs = safePatch.closedSummary || {};
+        if (safePatch.memo === undefined) safePatch.memo = String(cs.memo || '');
+        if (safePatch.bidders === undefined) safePatch.bidders = String(cs.bidderCount || '');
+        var won = plParseAmountText(cs.finalBidPrice || '');
+        if (won || (it.result && it.result.won)) {
+          var nextResult = Object.assign({}, it.result || {});
+          nextResult.won = won || '';
+          nextResult.second = String(cs.secondBidPrice || nextResult.second || '');
+          safePatch.result = nextResult;
+        }
+      }
+      if (safePatch.lifecycleStatus) {
+        if (safePatch.lifecycleStatus === 'closed') {
+          safePatch.status = 'closed';
+          if (safePatch.biddate === undefined) safePatch.biddate = it.biddate || '';
+        } else if (safePatch.lifecycleStatus === 'changed') {
+          safePatch.status = (safePatch.status || 'field');
+          if (safePatch.biddate === undefined) safePatch.biddate = '미정';
+        } else if (safePatch.lifecycleStatus === 'active' && !safePatch.status) {
+          safePatch.status = 'review';
+          if (safePatch.biddate === undefined && _plIsUndecidedDate(it.biddate || '')) safePatch.biddate = '';
+        }
+      }
+      if (safePatch.title && !safePatch.addr) safePatch.addr = safePatch.title;
+      if (safePatch.address && !safePatch.region) safePatch.region = safePatch.address;
+      delete safePatch.title;
+      delete safePatch.address;
+      delete safePatch.closedSummary;
+      delete safePatch.lifecycleStatus;
+      delete safePatch.__forceLifecycleChange;
+      var next = Object.assign({}, it, safePatch, { updatedAt: Date.now() });
+      if (next.status === 'archived') next.archived = true;
+      if (JSON.stringify(next) !== JSON.stringify(it)) changed = true;
+      return plNormalizeItem(next);
+    });
+    if (changed) {
+      plSave(items);
+      items.forEach(function(it){ if (String(it.roomId || '') !== String(roomId)) return; try { plSyncItemToSaved(it); } catch(e) {} });
+      if (typeof renderPropertyList === 'function') setTimeout(renderPropertyList, 30);
+    }
+  };
+
+  var _origPlSetSimpleStatus = window.plSetSimpleStatus;
+  window.plSetSimpleStatus = function(id, simpleStatus) {
+    var items = (typeof plLoad === 'function') ? plLoad() : [];
+    var item = items.find(function(i){ return i && i.id === id; });
+    if (!item) return;
+    var simple = String(simpleStatus || '');
+    if (simple === 'changed') {
+      _skOpenChangedModal({ item: item, room: _skFindRoomByProperty(item) }, function(action){ _skApplyFromProperty(item, action); });
+      return;
+    }
+    if (simple === 'closed') {
+      _skOpenCloseModal({ item: item, room: _skFindRoomByProperty(item), summary: (_skFindRoomByProperty(item) || {}).closedSummary || {} }, function(summary){ _skApplyFromProperty(item, { kind: 'closed', summary: summary }); });
+      return;
+    }
+    return _origPlSetSimpleStatus ? _origPlSetSimpleStatus(id, simpleStatus) : undefined;
+  };
+
+  // Post-render patch for workroom lifecycle selector and D-day colors.
+  var _origWr2Render = window.wr2Render;
+  if (typeof _origWr2Render === 'function') {
+    window.wr2Render = function(){
+      var out = _origWr2Render.apply(this, arguments);
+      try {
+        var sel = document.getElementById('wr2LifecycleSelect');
+        var room = (window.wr2State && Array.isArray(window.wr2State.rooms)) ? window.wr2State.rooms.find(function(r){ return r && r.id === window.wr2State.activeRoomId; }) : null;
+        if (sel && room) {
+          sel.onchange = function(e){
+            var prev = (typeof wr2GetLifecycle === 'function') ? wr2GetLifecycle(room) : String(room.lifecycleStatus || 'active');
+            var next = String((e && e.target && e.target.value) || 'active');
+            if (next === 'changed') {
+              _skOpenChangedModal({ item: _skFindPropertyByRoom(room), room: room }, function(action){ _skApplyFromRoom(room, action); sel.value = (action.kind === 'pending' ? 'changed' : 'active'); }, function(){ sel.value = prev; });
+              return;
+            }
+            if (next === 'closed') {
+              _skOpenCloseModal({ room: room, item: _skFindPropertyByRoom(room), summary: room.closedSummary || {} }, function(summary){ _skApplyFromRoom(room, { kind: 'closed', summary: summary }); sel.value = 'closed'; }, function(){ sel.value = prev; });
+              return;
+            }
+            if (window.updateRoom) window.updateRoom(room.id, { lifecycleStatus: 'active', __forceLifecycleChange: true });
+          };
+        }
+        document.querySelectorAll('.wr2-room-item').forEach(function(itemEl){
+          var life = String(itemEl.dataset.life || 'active');
+          var spans = Array.prototype.slice.call(itemEl.querySelectorAll('.wr2-room-meta span'));
+          spans.forEach(function(sp){
+            var txt = String((sp.textContent || '')).trim();
+            if (!/^D(?:-|\+|$)|^D-Day$/i.test(txt)) return;
+            var c = '#4ade80';
+            if (life === 'closed') c = '#9aa3b2';
+            else if (/^D\+/i.test(txt) || txt === 'D-Day') c = '#ff6b6b';
+            else {
+              var n = _skParseIntLoose(txt);
+              c = (n >= 1 && n <= 7) ? '#fbbf24' : '#4ade80';
+            }
+            sp.style.color = c;
+          });
+        });
+      } catch(e) {}
+      return out;
+    };
+  }
+})();
