@@ -4758,19 +4758,55 @@ var _safeLocalSet = function(key, value) {
                           + '<option value="closed">종료</option>';
                         host.insertBefore(lifeSel, insertAnchor);
                       }
+                      const wr2ResolveLinkedPlItem = function(targetRoom) {
+                        try {
+                          if (!targetRoom || typeof plLoad !== 'function') return null;
+                          const roomId = String(targetRoom.id || '');
+                          const roomItems = (plLoad() || []).filter(function(it) {
+                            return String(it && it.roomId || '') === roomId;
+                          });
+                          if (roomItems.length === 1) return roomItems[0] || null;
+                          const savedId = String(targetRoom.linkedSavedId || targetRoom.auctionId || targetRoom.listingId || '').trim();
+                          if (savedId) {
+                            const matched = roomItems.filter(function(it) {
+                              return String(it && it.linkedSavedId || '') === savedId;
+                            });
+                            if (matched.length === 1) return matched[0] || null;
+                          }
+                        } catch (e) {}
+                        return null;
+                      };
                       lifeSel.value = wr2GetLifecycle(room);
                       lifeSel.onchange = function(e) {
                         const prev = wr2GetLifecycle(room);
                         const next = String(e.target.value || 'active');
+                        const linkedItem = wr2ResolveLinkedPlItem(room);
+                        const targetItemId = linkedItem && linkedItem.id ? String(linkedItem.id) : '';
+                        if (next === 'changed' && prev !== 'changed' && typeof _skOpenResultFlow === 'function') {
+                          lifeSel.value = prev;
+                          _skOpenResultFlow({ source: 'wr', id: room.id, item: linkedItem || {} });
+                          return;
+                        }
                         if (next === 'closed' && prev !== 'closed') {
                           wr2CollectCloseSummary(room.closedSummary, function(closedSummary) {
-                            updateRoom(room.id, { lifecycleStatus: next, closedSummary: closedSummary, __forceLifecycleChange: true });
+                            updateRoom(room.id, {
+                              lifecycleStatus: next,
+                              closedSummary: closedSummary,
+                              __targetItemId: targetItemId,
+                              __forceLifecycleChange: true
+                            });
+                            window.__plLastLocalStatusMutationAt = Date.now();
                           }, function() {
                             lifeSel.value = prev;
                           });
                           return;
                         }
-                        updateRoom(room.id, { lifecycleStatus: next, __forceLifecycleChange: true });
+                        updateRoom(room.id, {
+                          lifecycleStatus: next,
+                          __targetItemId: targetItemId,
+                          __forceLifecycleChange: true
+                        });
+                        window.__plLastLocalStatusMutationAt = Date.now();
                       };
 
                       let progSel = document.getElementById('wr2ProgressSelect');
@@ -4880,8 +4916,21 @@ var _safeLocalSet = function(key, value) {
                         editBtn.onclick = function(evt) {
                           evt.preventDefault();
                           evt.stopPropagation();
+                          let linkedItemId = '';
+                          try {
+                            const matched = (typeof plLoad === 'function' ? (plLoad() || []) : []).filter(function(it) {
+                              return String(it && it.roomId || '') === String(room.id || '');
+                            });
+                            if (matched.length === 1 && matched[0] && matched[0].id) linkedItemId = String(matched[0].id);
+                          } catch (e) {}
                           wr2CollectCloseSummary(cs, function(nextSummary) {
-                            updateRoom(room.id, { lifecycleStatus: 'closed', closedSummary: nextSummary });
+                            updateRoom(room.id, {
+                              lifecycleStatus: 'closed',
+                              closedSummary: nextSummary,
+                              __targetItemId: linkedItemId,
+                              __forceLifecycleChange: true
+                            });
+                            window.__plLastLocalStatusMutationAt = Date.now();
                           });
                         };
                       }
@@ -42623,37 +42672,13 @@ window.addEventListener('DOMContentLoaded', () => {
     return plLoad().find(function(it){ return String(it.roomId||'') === String(roomId||''); });
   }
   function _plPickRoomTargetItem(roomId, items, targetItemId) {
-    var rid = String(roomId || '');
-    var list = (items || []).filter(function(it){ return String(it && it.roomId || '') === rid; });
-    if (!list.length) return null;
     var explicitTargetId = String(targetItemId || '').trim();
-    if (explicitTargetId) {
-      var exact = list.find(function(it){ return String(it && it.id || '') === explicitTargetId; });
-      if (exact) return exact;
-    }
-    var room = null;
-    try {
-      room = (getWrRooms() || []).find(function(r){ return String(r && r.id || '') === rid; }) || null;
-    } catch (e) {}
-    if (room) {
-      var sidCandidates = [];
-      [room.linkedSavedId, room.auctionId, room.listingId].forEach(function(raw){
-        var sid = String(raw || '').trim();
-        if (sid && sidCandidates.indexOf(sid) < 0) sidCandidates.push(sid);
-      });
-      if (sidCandidates.length) {
-        var hit = list.find(function(it){
-          return sidCandidates.indexOf(String(it && it.linkedSavedId || '').trim()) >= 0;
-        });
-        if (hit) return hit;
-      }
-    }
-    list.sort(function(a, b){
-      var aTs = Number((a && (a.updatedAt || a.createdAt)) || 0);
-      var bTs = Number((b && (b.updatedAt || b.createdAt)) || 0);
-      return bTs - aTs;
-    });
-    return list[0] || null;
+    if (!explicitTargetId) return null;
+    var rid = String(roomId || '');
+    return (items || []).find(function(it){
+      return String(it && it.id || '') === explicitTargetId
+        && String(it && it.roomId || '') === rid;
+    }) || null;
   }
   function syncPropertyFromRoom(roomId, patch) {
     if (!roomId) return;
@@ -42661,6 +42686,25 @@ window.addEventListener('DOMContentLoaded', () => {
     var targetItemId = String((patch && patch.__targetItemId) || '').trim();
     var targetItem = _plPickRoomTargetItem(roomId, items, targetItemId);
     var targetId = String(targetItem && targetItem.id || '');
+    var hasStatusPatch = !!(patch && (
+      patch.lifecycleStatus !== undefined
+      || patch.status !== undefined
+      || patch.phase !== undefined
+      || patch.activePhase !== undefined
+      || patch.closedSummary !== undefined
+    ));
+    if (!targetId && hasStatusPatch) {
+      var roomItems = (items || []).filter(function(it) {
+        return String(it && it.roomId || '') === String(roomId || '');
+      });
+      if (roomItems.length === 1) {
+        targetItem = roomItems[0] || null;
+        targetId = String(targetItem && targetItem.id || '');
+      }
+    }
+    // 타깃 물건이 명시되지 않은 상태 변경은 적용하지 않는다.
+    // (한 건 변경 시 같은 작업룸 물건 다수가 같이 바뀌는 근본 경로 차단)
+    if (hasStatusPatch && !targetId) return;
     var changed = false;
     items = items.map(function(it){
       if (String(it.roomId||'') !== String(roomId)) return it;
@@ -42786,6 +42830,18 @@ window.addEventListener('DOMContentLoaded', () => {
       __targetItemId: String(item.id || '')
     };
     var roomLifeNow = String((room && room.lifecycleStatus) || '').trim();
+    var roomUpdatedAt = Number((room && room.updatedAt) || 0);
+    var itemUpdatedAt = Number((item && item.updatedAt) || 0);
+    if (patch.lifecycleStatus && roomLifeNow && patch.lifecycleStatus !== roomLifeNow
+        && !(item && item.__allowLifecycleReopen)
+        && roomUpdatedAt && itemUpdatedAt && (roomUpdatedAt - itemUpdatedAt) > 1500) {
+      // 오래된 물건 레코드가 작업룸의 최신 lifecycle을 되돌리지 못하도록 차단한다.
+      delete patch.lifecycleStatus;
+      delete patch.phase;
+      delete patch.status;
+      delete patch.activePhase;
+      delete patch.closedSummary;
+    }
     if (roomLifeNow === 'closed' && patch.lifecycleStatus !== 'closed' && !(item && item.__allowLifecycleReopen)) {
       patch.phase = 'closed';
       patch.status = 'closed';
@@ -42835,6 +42891,15 @@ window.addEventListener('DOMContentLoaded', () => {
       window.updateRoom = function(id, patch, silentRender) {
         var out = _origUpdateRoom(id, patch, silentRender);
         if (patch && (patch.status || patch.phase || patch.lifecycleStatus || patch.closedSummary || patch.title !== undefined || patch.address !== undefined)) {
+          var inferredTargetId = String((patch && patch.__targetItemId) || '').trim();
+          if (!inferredTargetId) {
+            try {
+              var roomItems = plLoad().filter(function(it){
+                return String(it && it.roomId || '') === String(id || '');
+              });
+              if (roomItems.length === 1 && roomItems[0] && roomItems[0].id) inferredTargetId = String(roomItems[0].id);
+            } catch (e) {}
+          }
           var nextStatus = patch.status || patch.phase;
           if (!nextStatus && patch.lifecycleStatus) {
             nextStatus = patch.lifecycleStatus === 'closed'
@@ -42848,7 +42913,7 @@ window.addEventListener('DOMContentLoaded', () => {
             address: patch.address,
             lifecycleStatus: patch.lifecycleStatus,
             closedSummary: patch.closedSummary,
-            __targetItemId: patch.__targetItemId
+            __targetItemId: inferredTargetId
           });
           try { plSyncFromWorkrooms({ render: false }); } catch (e) {}
         }
@@ -45117,7 +45182,9 @@ window.addEventListener('DOMContentLoaded', () => {
             if (typeof renderPropertyList === 'function') renderPropertyList();
           }
         } else if (ctx.source === 'wr') {
+          var wrTargetId = String((ctx.item && ctx.item.id) || '').trim();
           var patch = { __forceLifecycleChange: true };
+          if (wrTargetId) patch.__targetItemId = wrTargetId;
           if (mode === 'changed') {
             patch.lifecycleStatus = 'changed';
             patch.status = 'field';
@@ -45269,26 +45336,35 @@ window.addEventListener('DOMContentLoaded', () => {
       lifeSel.onchange = function(e){
         var room = (typeof getActiveRoom === 'function') ? getActiveRoom() : null;
         if (!room) return;
+        var linkedItem = null;
+        try {
+          linkedItem = (typeof plLoad === 'function' ? plLoad() : []).find(function(it){
+            return String(it && it.roomId || '') === String(room.id || '');
+          }) || null;
+        } catch(err) {}
         var prev = (typeof wr2GetLifecycle === 'function') ? wr2GetLifecycle(room) : 'active';
         var next = String(e.target.value || 'active');
         if (next === 'changed' && prev !== 'changed' && typeof _skOpenResultFlow === 'function') {
-          var linkedItem = null;
-          try {
-            linkedItem = (typeof plLoad === 'function' ? plLoad() : []).find(function(it){
-              return String(it && it.roomId || '') === String(room.id || '');
-            }) || null;
-          } catch(err) {}
           lifeSel.value = prev;
           _skOpenResultFlow({ source: 'wr', id: room.id, item: linkedItem || {} });
           return;
         }
         if (next === 'closed' && prev !== 'closed') {
           wr2CollectCloseSummary(room.closedSummary, function(closedSummary) {
-            updateRoom(room.id, { lifecycleStatus: next, closedSummary: closedSummary, __forceLifecycleChange: true });
+            updateRoom(room.id, {
+              lifecycleStatus: next,
+              closedSummary: closedSummary,
+              __targetItemId: linkedItem && linkedItem.id ? String(linkedItem.id) : '',
+              __forceLifecycleChange: true
+            });
           }, function() { lifeSel.value = prev; });
           return;
         }
-        updateRoom(room.id, { lifecycleStatus: next, __forceLifecycleChange: true });
+        updateRoom(room.id, {
+          lifecycleStatus: next,
+          __targetItemId: linkedItem && linkedItem.id ? String(linkedItem.id) : '',
+          __forceLifecycleChange: true
+        });
       };
     };
   } catch(e) {}
