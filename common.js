@@ -42707,7 +42707,13 @@ window.addEventListener('DOMContentLoaded', () => {
     var item = items.find(function(i){return i.id===id;});
     if (!item) return;
     var oldSimple = plSimpleStatusKey(item.status);
-    if (oldSimple === String(simpleStatus || '')) return;
+    var effectiveSimple = oldSimple;
+    try {
+      var roomById = {};
+      (getWrRooms() || []).forEach(function(r){ if (r && r.id) roomById[String(r.id)] = r; });
+      effectiveSimple = plEffectiveSimpleStatus(item, roomById);
+    } catch (e) {}
+    if (oldSimple === String(simpleStatus || '') && effectiveSimple === String(simpleStatus || '')) return;
     plApplySimpleStatusToItem(item, simpleStatus);
     item.__allowLifecycleReopen = true;
     plSave(items.map(plNormalizeItem));
@@ -45015,18 +45021,26 @@ window.addEventListener('DOMContentLoaded', () => {
     window.plSetSimpleStatus = function(id, simpleStatus) {
       var items = plLoad();
       var item = items.find(function(i){return i.id===id;});
-      if (!item) return;
+      if (!item) return false;
       var next = String(simpleStatus || 'active');
       var oldSimple = plSimpleStatusKey(item.status);
-      if (oldSimple === next) {
+      var effectiveSimple = oldSimple;
+      try {
+        if (typeof getWrRooms === 'function' && typeof plEffectiveSimpleStatus === 'function') {
+          var roomById = {};
+          (getWrRooms() || []).forEach(function(r){ if (r && r.id) roomById[String(r.id)] = r; });
+          effectiveSimple = plEffectiveSimpleStatus(item, roomById);
+        }
+      } catch (e) {}
+      if (oldSimple === next && effectiveSimple === next) {
         window.__plInlineEditKey = '';
-        return;
+        return false;
       }
       // '변경'은 즉시 확정하지 않고 결과 플로우(유찰/변경·재매각)로 분기한다.
-      if (next === 'changed' && oldSimple !== 'changed' && typeof _skOpenResultFlow === 'function') {
+      if (next === 'changed' && effectiveSimple !== 'changed' && typeof _skOpenResultFlow === 'function') {
         window.__plInlineEditKey = '';
         _skOpenResultFlow({ source: 'pl', id: id, item: item });
-        return;
+        return 'flow';
       }
       plApplySimpleStatusToItem(item, next);
       item.__allowLifecycleReopen = true;
@@ -45035,10 +45049,11 @@ window.addEventListener('DOMContentLoaded', () => {
       try { delete item.__allowLifecycleReopen; } catch(e) {}
       try { plSyncItemToSaved(item); } catch(e) {}
       window.__plInlineEditKey = '';
-      if (next === 'closed' && oldSimple !== 'closed') {
+      if (next === 'closed' && effectiveSimple !== 'closed') {
         setTimeout(function(){ try { plOpenResultModal(id); } catch(e) {} }, 120);
       }
       if (typeof renderPropertyList === 'function') renderPropertyList();
+      return true;
     };
   } catch(e) {}
 
@@ -45229,12 +45244,14 @@ window.addEventListener('DOMContentLoaded', () => {
     if (typeof window.plSetSimpleStatus === 'function' && !window.plSetSimpleStatus.__skOverridePatched) {
       var _origSetSimple = window.plSetSimpleStatus;
       window.plSetSimpleStatus = function(id, simpleStatus){
+        var out = _origSetSimple.apply(this, arguments);
+        if (out !== true) return out;
         try {
           var items = (typeof plLoad === 'function') ? plLoad() : [];
           var item = (items || []).find(function(it){ return String(it && it.id || '') === String(id || ''); });
           if (item) _setOverride(item, simpleStatus);
         } catch(e) {}
-        return _origSetSimple.apply(this, arguments);
+        return out;
       };
       window.plSetSimpleStatus.__skOverridePatched = true;
     }
