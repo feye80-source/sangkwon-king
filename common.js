@@ -1653,12 +1653,13 @@
             keepDeletedInState: !!options.keepDeletedInState
           })
         : { full: (Array.isArray(arr) ? arr : []).filter(r => r && r.id), active: window._wrFilterActiveRooms(arr) };
-      _sbChangedIds(prev, persisted.full).forEach(id => {
+      const changedIds = _sbChangedIds(prev, persisted.full);
+      changedIds.forEach(id => {
         if (id && window._sbMarkRoomDirty) window._sbMarkRoomDirty(id);
       });
-      if (options.sync !== false && window._sbScheduleSaveRooms) {
+      if (options.sync !== false && changedIds.length && window._sbScheduleSaveRooms) {
         window._sbScheduleSaveRooms(persisted.full);
-      } else if (options.sync !== false && window._sbSaveRooms) {
+      } else if (options.sync !== false && changedIds.length && window._sbSaveRooms) {
         window._sbSaveRooms(persisted.full).catch(e => console.warn('[SB] room sync fail', e));
       }
       return persisted;
@@ -1795,17 +1796,24 @@
       }, typeof delay === 'number' ? delay : 1100);
     };
     window._sbSaveRooms = async function(arr) {
+      let synced = false;
       try {
         const prev = window._wrGetRoomsCache ? window._wrGetRoomsCache() : [];
-      const cleanArr = _wrStripFreeTableLegacyRooms(arr);
-      const full = _sbPruneTombstones(_sbKeepTombstones(prev, cleanArr)).filter(r => r && r.id);
+        const cleanArr = _wrStripFreeTableLegacyRooms(arr);
+        const full = _sbPruneTombstones(_sbKeepTombstones(prev, cleanArr)).filter(r => r && r.id);
+        const changedIds = _sbChangedIds(prev, full);
+        if (!changedIds.length) return;
         const active = window._wrFilterActiveRooms ? window._wrFilterActiveRooms(full) : full.filter(r => !r.deletedAt);
         const deleted = full.filter(r => r.deletedAt).map(r => r.id);
         await tblSaveDirty('workrooms', active);
         if (deleted.length) await tblSoftDelete('workrooms', deleted);
         if (window._wrPersistRoomCache) window._wrPersistRoomCache(full, { syncState: false });
-      } catch(e) { console.warn('[SB] saveRooms error', e); }
-      window._sbSyncStatus('☁️ 작업룸 동기화 완료', true);
+        synced = true;
+      } catch(e) {
+        console.warn('[SB] saveRooms error', e);
+        window._sbSyncStatus('⚠️ 작업룸 동기화 재시도 중', false);
+      }
+      if (synced) window._sbSyncStatus('☁️ 작업룸 동기화 완료', true);
     };
     window._sbMarkRoomDirty = function(roomId) { _markDirty('workrooms', roomId); };
     window._sbLoadRooms = async function() { return await tblLoadArr('workrooms'); };
@@ -28378,8 +28386,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           console.error('[wr2]', e);
         }
         if (window.wr2State) window.wr2State.activeView = 'overview';
-        if (window._sbRunEntryRefresh && typeof window._wrRefreshFromCloud === 'function') {
-          window._sbRunEntryRefresh('workrooms', window._wrRefreshFromCloud, { render: true, label: 'workrooms', force: true })
+        if (window.__plAutoCloudPull === true && window._sbRunEntryRefresh && typeof window._wrRefreshFromCloud === 'function') {
+          window._sbRunEntryRefresh('workrooms', window._wrRefreshFromCloud, { render: true, label: 'workrooms', force: false })
             .then(function(payload) {
               if (!payload && typeof window.wr2Render === 'function') window.wr2Render();
             });
@@ -41800,6 +41808,7 @@ window.addEventListener('DOMContentLoaded', () => {
   var plImportSelectedMap = {};
   var _plEditAutoFocus = null;
   var _plSavedSyncMute = 0;
+  if (window.__plAutoCloudPull === undefined) window.__plAutoCloudPull = false;
 
   function plEscHtml(s) {
     return String(s || '')
@@ -42301,11 +42310,10 @@ window.addEventListener('DOMContentLoaded', () => {
       });
 
       var built = plBuildFromRoom(room, savedItem, fallbackBase, linkedSavedId);
-      // 룸 정보가 로컬 물건보다 오래된 경우엔 상태/기일을 덮어쓰지 않는다.
-      // (느린 동기화나 다중기기 시계차로 최신 편집이 롤백되는 문제 방지)
-      var roomTs = Number(room && room.updatedAt || 0);
-      var existingTs = Number(existing && (existing.updatedAt || existing.createdAt) || 0);
-      if (existing && roomTs && existingTs && roomTs + 500 < existingTs) {
+      // 기존 물건이 있으면 상태/기일 계열은 물건 레코드를 유지한다.
+      // 작업룸 동기화는 링크/제목/주소/요약 보강만 수행한다.
+      // 상태 변경은 syncPropertyFromRoom(명시적 룸 액션) 경로에서만 반영한다.
+      if (existing) {
         built.status = existing.status;
         built.archived = !!existing.archived;
         built.biddate = existing.biddate;
@@ -42379,15 +42387,9 @@ window.addEventListener('DOMContentLoaded', () => {
   function plEffectiveSimpleStatus(item, roomById) {
     var it = plNormalizeItem(item || {});
     var simple = plSimpleStatusKey(it.status);
-    if (!roomById || !it.roomId) return simple;
-    var room = roomById[String(it.roomId)] || null;
-    if (!room) return simple;
-    var source = String(room.lifecycleStatus || room.status || room.phase || '');
-    if (!source) return simple;
-    var roomSimple = plSimpleStatusKey(source);
-    if (roomSimple === 'closed') return 'closed';
-    if (roomSimple === 'changed') return (simple === 'closed' ? 'closed' : 'changed');
-    if (roomSimple === 'active') return (simple === 'closed' ? 'closed' : 'active');
+    // 상태 표시는 물건 레코드(status)를 단일 기준으로 사용한다.
+    // 작업룸 상태는 syncPropertyFromRoom 경로에서만 명시적으로 반영한다.
+    // (백그라운드 동기화 시 작업룸 lifecycle이 UI를 되돌리는 현상 방지)
     return simple;
   }
   function plApplySimpleStatusToItem(item, simple) {
@@ -42823,6 +42825,7 @@ window.addEventListener('DOMContentLoaded', () => {
     el.innerHTML = chips.join('');
   }
   function plEnsureListCloudRefresh() {
+    if (window.__plAutoCloudPull !== true) return;
     if (window.__plInlineEditKey) return;
     if (window.__plListRefreshRunning) return;
     if (typeof window._plRefreshFromCloud !== 'function') return;
@@ -42850,11 +42853,28 @@ window.addEventListener('DOMContentLoaded', () => {
     var fs = (document.getElementById('pl-filter-status')||{}).value||'';
     var showArchived = !!((document.getElementById('pl-show-archived')||{}).checked);
     var showClosed = !!((document.getElementById('pl-show-closed')||{}).checked);
+    var canonicalRoomBySaved = {};
+    var canonicalRoomTsBySaved = {};
+    if (roomById) {
+      Object.keys(roomById).forEach(function(rid){
+        var room = roomById[rid];
+        if (!room) return;
+        var sid = String(room.linkedSavedId || room.auctionId || room.listingId || '').trim();
+        if (!sid) return;
+        var ts = Number(room.updatedAt || 0);
+        if (!canonicalRoomBySaved[sid] || ts >= Number(canonicalRoomTsBySaved[sid] || 0)) {
+          canonicalRoomBySaved[sid] = String(rid);
+          canonicalRoomTsBySaved[sid] = ts;
+        }
+      });
+    }
     return (items || []).filter(function(it){
       it = plNormalizeItem(it);
       // 물건리스트는 작업룸 기반으로만 노출 (작업룸=물건리스트)
       if (!it.roomId) return false;
       if (roomById && !roomById[String(it.roomId)]) return false;
+      var sid = String(it.linkedSavedId || '').trim();
+      if (sid && canonicalRoomBySaved[sid] && String(it.roomId || '') !== String(canonicalRoomBySaved[sid])) return false;
       var isArchived = !!it.archived;
       var simple = plEffectiveSimpleStatus(it, roomById);
       if (fs) {
@@ -43077,6 +43097,16 @@ window.addEventListener('DOMContentLoaded', () => {
     plEnsureListCloudRefresh();
     var savedList = plGetSavedItems();
     var items = plLoad();
+    if (!window.__plCanonicalCleanupDone) {
+      window.__plCanonicalCleanupDone = true;
+      try {
+        (items || []).forEach(function(it){
+          if (!it || (!it.roomId && !it.linkedSavedId)) return;
+          plCanonicalizeRoomLink(it);
+        });
+        items = plLoad();
+      } catch (e) {}
+    }
     if (!window.__plInitSavedSyncDone) {
       window.__plInitSavedSyncDone = true;
       try { plSyncFromSavedItems(savedList, { render: false }); } catch(e) {}
@@ -43244,8 +43274,8 @@ window.addEventListener('DOMContentLoaded', () => {
     });
     if (tab === 'list') {
       pmRestoreInsightPanels();
-      if (window._sbRunEntryRefresh && typeof window._plRefreshFromCloud === 'function') {
-        window._sbRunEntryRefresh('properties', window._plRefreshFromCloud, { render: true, label: 'properties', force: true })
+      if (window.__plAutoCloudPull === true && window._sbRunEntryRefresh && typeof window._plRefreshFromCloud === 'function') {
+        window._sbRunEntryRefresh('properties', window._plRefreshFromCloud, { render: true, label: 'properties', force: false })
           .then(function(payload) {
             if (!payload && typeof renderPropertyList === 'function') renderPropertyList();
           });
@@ -43261,8 +43291,8 @@ window.addEventListener('DOMContentLoaded', () => {
       if (pendingRoomId && window.wr2State) {
         window.wr2State.activeRoomId = pendingRoomId;
       }
-      if (window._sbRunEntryRefresh && typeof window._wrRefreshFromCloud === 'function') {
-        window._sbRunEntryRefresh('workrooms', window._wrRefreshFromCloud, { render: true, label: 'workrooms', force: true })
+      if (window.__plAutoCloudPull === true && window._sbRunEntryRefresh && typeof window._wrRefreshFromCloud === 'function') {
+        window._sbRunEntryRefresh('workrooms', window._wrRefreshFromCloud, { render: true, label: 'workrooms', force: false })
           .then(function(payload) {
             if (window.wr2State && pendingRoomId) {
               window.wr2State.activeRoomId = pendingRoomId;
@@ -43811,6 +43841,7 @@ window.addEventListener('DOMContentLoaded', () => {
     try {
       if (typeof currentPage === 'undefined' || currentPage !== 4) return;
       if (window.__pmActiveTab !== 'list' && window.__pmActiveTab !== 'work' && window.__pmActiveTab !== 'pipeline') return;
+      if (window.__plAutoCloudPull !== true) return;
       var ae = document.activeElement;
       var typing = !!(ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable));
       if (typing) return;
