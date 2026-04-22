@@ -3301,7 +3301,7 @@ var _safeLocalSet = function(key, value) {
                   activePhase: 'review',
                   sort: 'updated',
                   search: '',
-                  // lifecycleStatus 기준 필터 (기본: 활성만 → 종료 누적 문제 방지)
+                  // lifecycleStatus 기준 필터 (기본: 진행만 → 종료 누적 문제 방지)
                   statusFilter: 'active',
                   // 폴더 제거: groupFilter는 레거시 호환용 키만 유지
                   groupFilter: 'all'
@@ -3482,7 +3482,7 @@ var _safeLocalSet = function(key, value) {
                   const key = (typeof roomOrKey === 'string') ? roomOrKey : wr2GetLifecycle(roomOrKey);
                   if (key === 'closed') return '종료';
                   if (key === 'changed') return '변경';
-                  return '활성';
+                  return '진행';
                 }
                 function wr2RoomMatchesLifecycle(room, filter) {
                   const key = String(filter || 'active');
@@ -3520,15 +3520,6 @@ var _safeLocalSet = function(key, value) {
                   const now = new Date();
                   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
                   return Math.round((dt - today) / (1000 * 60 * 60 * 24));
-                }
-                function wr2GetDdayTone(dday, opts) {
-                  const options = opts || {};
-                  if (dday == null || dday === '') return { color: '#8ea7c9', bg: 'rgba(142,167,201,.10)', border: 'rgba(142,167,201,.22)' };
-                  const num = Number(dday);
-                  if (!isFinite(num)) return { color: '#8ea7c9', bg: 'rgba(142,167,201,.10)', border: 'rgba(142,167,201,.22)' };
-                  if (num <= 0) return { color: '#ff6b7a', bg: 'rgba(255,107,122,.16)', border: 'rgba(255,107,122,.38)' };
-                  if (num <= 7) return { color: '#f5c451', bg: 'rgba(245,196,81,.16)', border: 'rgba(245,196,81,.34)' };
-                  return { color: '#36d98a', bg: 'rgba(54,217,138,.14)', border: 'rgba(54,217,138,.30)' };
                 }
                 function wr2BuildPlLinkedMap() {
                   const map = {};
@@ -3820,7 +3811,18 @@ var _safeLocalSet = function(key, value) {
                 function updateRoom(id, patch, silentRender) {
                   const idx = wr2State.rooms.findIndex(r => r.id === id);
                   if (idx === -1) return;
-                  wr2State.rooms[idx] = Object.assign({}, wr2State.rooms[idx], patch, { updatedAt: Date.now() });
+                  var prevRoom = wr2State.rooms[idx] || {};
+                  var safePatch = Object.assign({}, patch || {});
+                  var prevLife = String((prevRoom && prevRoom.lifecycleStatus) || '').trim();
+                  var nextLife = String((safePatch && safePatch.lifecycleStatus) || '').trim();
+                  if (prevLife === 'closed' && nextLife && nextLife !== 'closed' && safePatch.__forceLifecycleChange !== true) {
+                    delete safePatch.lifecycleStatus;
+                    delete safePatch.status;
+                    delete safePatch.phase;
+                    delete safePatch.activePhase;
+                  }
+                  delete safePatch.__forceLifecycleChange;
+                  wr2State.rooms[idx] = Object.assign({}, prevRoom, safePatch, { updatedAt: Date.now() });
                   if (patch && (Object.prototype.hasOwnProperty.call(patch, 'closedSummary') || Object.prototype.hasOwnProperty.call(patch, 'lifecycleStatus'))) {
                     try { wr2SyncClosedSummaryToLinkedItems(wr2State.rooms[idx]); } catch (e) {}
                   }
@@ -4546,7 +4548,7 @@ var _safeLocalSet = function(key, value) {
                       scopeEl.style.display = 'flex';
                       scopeEl.style.gap = '6px';
                       scopeEl.style.flexWrap = 'wrap';
-                      scopeEl.appendChild(mkBtn('active', '활성'));
+                      scopeEl.appendChild(mkBtn('active', '진행'));
                       scopeEl.appendChild(mkBtn('changed', '변경'));
                       scopeEl.appendChild(mkBtn('closed', '종료'));
                       scopeEl.appendChild(mkBtn('all', '전체'));
@@ -4590,7 +4592,6 @@ var _safeLocalSet = function(key, value) {
                     const ddayLabel = (saleDday == null)
                       ? ''
                       : (saleDday < 0 ? ('D+' + Math.abs(saleDday)) : (saleDday === 0 ? 'D-Day' : ('D-' + saleDday)));
-                    const ddayTone = wr2GetDdayTone(saleDday);
                     const meta = document.createElement('div');
                     meta.className = 'wr2-room-meta';
                     if (no || addr || price) {
@@ -4598,7 +4599,7 @@ var _safeLocalSet = function(key, value) {
                         + '<div style="display:flex;align-items:center;gap:6px;line-height:1.25;">'
                         + (no ? ('<span style="color:#7bb4ff;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px;">' + esc(no) + '</span>') : '')
                         + (price ? ('<span style="color:#ffb36c;white-space:nowrap;font-weight:700;">' + esc(price) + '</span>') : '')
-                        + (ddayLabel ? ('<span style="display:inline-flex;align-items:center;padding:1px 7px;border-radius:999px;background:' + ddayTone.bg + ';border:1px solid ' + ddayTone.border + ';color:' + ddayTone.color + ';white-space:nowrap;font-weight:800;">' + esc(ddayLabel) + '</span>') : '')
+                        + (ddayLabel ? ('<span style="color:#ff6b6b;white-space:nowrap;font-weight:700;">' + esc(ddayLabel) + '</span>') : '')
                         + (saleOverdueNeedsAction ? ('<span style="padding:1px 6px;border-radius:999px;border:1px solid rgba(255,107,122,.52);background:rgba(255,107,122,.16);color:#ff9eab;font-size:10px;font-weight:800;white-space:nowrap;">⚠ 기일지남 · 수정필요</span>') : '')
                         + '</div>'
                         + (addr ? ('<div style="margin-top:2px;color:#8ea7c9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(addr) + '</div>') : '');
@@ -4688,7 +4689,7 @@ var _safeLocalSet = function(key, value) {
                         lifeSel.style.padding = '4px 7px';
                         lifeSel.style.minWidth = '68px';
                         lifeSel.innerHTML = ''
-                          + '<option value="active">활성</option>'
+                          + '<option value="active">진행</option>'
                           + '<option value="changed">변경</option>'
                           + '<option value="closed">종료</option>';
                         host.insertBefore(lifeSel, insertAnchor);
@@ -4830,7 +4831,7 @@ var _safeLocalSet = function(key, value) {
                       closedStamp.innerHTML = ''
                         + '<div style="display:flex;align-items:center;gap:10px;">'
                         + '  <div style="border:2px solid rgba(251,191,36,.75);border-radius:10px;padding:4px 10px;font-size:12px;font-weight:900;letter-spacing:2px;color:#f7d47d;transform:rotate(-8deg);">변경</div>'
-                        + '  <div style="font-size:14px;font-weight:800;letter-spacing:.2px;color:#ffe9b3;">변경 보관 상태입니다 (필요 시 다시 활성 가능)</div>'
+                        + '  <div style="font-size:14px;font-weight:800;letter-spacing:.2px;color:#ffe9b3;">변경 보관 상태입니다 (필요 시 다시 진행 가능)</div>'
                         + '</div>';
                     } else {
                       closedStamp.style.border = '1px solid rgba(255,102,120,.36)';
@@ -7601,7 +7602,7 @@ window.wr2SummaryCancelEdit = function() {
                   bindEventsOnce();
                   initResizeHandle();
                   if (!wr2State.activeView) wr2State.activeView = 'overview';
-                  // ★ 첫 진입 시: 필터는 '활성'으로 기본 설정, 방 자동 선택 없음 (빈 상태 안내 표시)
+                  // ★ 첫 진입 시: 필터는 '진행'으로 기본 설정, 방 자동 선택 없음 (빈 상태 안내 표시)
                   // 통상적인 상용 프로그램 방식: 왼쪽 목록에서 사용자가 선택하도록 유도
                   if (!wr2State.statusFilter || wr2State.statusFilter === 'all') {
                     wr2State.statusFilter = 'active';
@@ -16269,8 +16270,6 @@ ${inputDesc.substring(0, 3000)}
         }
         // ★ 작업룸 연동 버튼 (저장된 물건 → 작업룸 생성/열기)
         html += `<button class="popup-src-btn" style="background:rgba(17,157,237,.15);color:#119ded;border-color:rgba(17,157,237,.45);font-weight:700;" onclick="wr2OpenOrCreateFromSavedId('${id}')">🗂 작업룸</button>`;
-        // ★ 저장목록 상세탭: 물건명 수정 버튼
-        html += `<button class="popup-src-btn" style="background:rgba(255,255,255,.08);color:#e7edf9;border-color:rgba(255,255,255,.22);font-weight:700;" onclick="startSavedTitleEdit('${id}')">✏️ 이름수정</button>`;
         popSrcTabsEl.innerHTML = html;
         // URL 입력 영역 생성 (초기 숨김)
         if (!document.getElementById('popUrlInputWrap')) {
@@ -16564,55 +16563,6 @@ ${inputDesc.substring(0, 3000)}
     }
 
 
-    function _syncSavedTitleToLinkedWorkrooms(savedItem, prevTitle) {
-      if (!savedItem || savedItem.id == null) return;
-      const nextTitle = String(savedItem.title || '').trim();
-      if (!nextTitle) return;
-      const prev = String(prevTitle || '').trim();
-      let rooms = [];
-      try { rooms = (typeof getWrRooms === 'function') ? (getWrRooms() || []) : []; } catch (e) { rooms = []; }
-      if (!Array.isArray(rooms) || !rooms.length) return;
-      let changed = false;
-      rooms.forEach(function(room) {
-        if (!room || room.deletedAt) return;
-        const linked = String(room.linkedSavedId || '');
-        const linkedItems = Array.isArray(room.linkedItems) ? room.linkedItems.map(function(v){ return String(v); }) : [];
-        const roomIdMatch = savedItem.roomId && String(room.id || '') === String(savedItem.roomId);
-        const savedLinkMatch = linked && linked === String(savedItem.id);
-        const itemLinkMatch = linkedItems.indexOf(String(savedItem.id)) >= 0;
-        if (!roomIdMatch && !savedLinkMatch && !itemLinkMatch) return;
-        const curTitle = String(room.title || '').trim();
-        if (curTitle && prev && curTitle !== prev) return;
-        room.title = nextTitle;
-        room.updatedAt = Date.now();
-        changed = true;
-      });
-      if (!changed) return;
-      try {
-        if (window.wr2State && Array.isArray(window.wr2State.rooms)) {
-          const byId = new Map(rooms.map(function(r){ return [String(r.id), r]; }));
-          window.wr2State.rooms = window.wr2State.rooms.map(function(r){ return byId.get(String(r.id)) || r; });
-        }
-      } catch (e) {}
-      try {
-        if (window._wrPersistRooms) window._wrPersistRooms(rooms, { syncState: false });
-        else localStorage.setItem('wr2_rooms', JSON.stringify(rooms));
-      } catch (e) { console.warn('[savedTitle->workroom sync]', e); }
-      try { if (typeof window.wr2Render === 'function') window.wr2Render(); } catch (e) {}
-    }
-    window.startSavedTitleEdit = function(itemId) {
-      if (!itemId || String(popupId || '') !== String(itemId)) {
-        try { openPopup(itemId); } catch (e) {}
-      }
-      if (!popupEditMode) {
-        try { togglePopupEdit(); } catch (e) {}
-      }
-      setTimeout(function() {
-        const inp = document.getElementById('popTitleInput');
-        if (inp) { inp.focus(); inp.select(); }
-      }, 20);
-    };
-
     function togglePopupEdit() {
       popupEditMode = !popupEditMode;
       const btn = document.getElementById('popEditBtn');
@@ -16728,7 +16678,6 @@ ${inputDesc.substring(0, 3000)}
       const sv = _getSavedDraftWorkingSet();
       const item = sv.find(function(s) { return s && String(s.id) === String(itemId); });
       if (!item) return;
-      const prevTitle = String(item.title || '');
       if (opts && opts.title) {
         item.title = rawValue;
       } else {
@@ -16736,7 +16685,6 @@ ${inputDesc.substring(0, 3000)}
       }
       _ensureNormalizedItem(item);
       setSv(sv);
-      if (opts && opts.title) _syncSavedTitleToLinkedWorkrooms(item, prevTitle);
       _syncAfterSavedMutation(itemId, sv, { skipMapRefresh: false });
     };
 
@@ -41984,9 +41932,26 @@ window.addEventListener('DOMContentLoaded', () => {
     var raw = plParseAmountText(v);
     return raw ? Number(raw).toLocaleString('ko-KR') : '';
   }
+  function plAmountStoredToWon(v) {
+    var raw = String(v == null ? '' : v).replace(/[^0-9]/g, '');
+    if (!raw) return 0;
+    var n = parseInt(raw, 10);
+    if (!isFinite(n) || n <= 0) return 0;
+    // 물건리스트는 기존 저장데이터(만원 단위)와 신규 직접입력값(원 단위)이 섞여 있을 수 있다.
+    // 1,000,000 이상이면 원 단위로 간주하고, 그보다 작으면 만원 단위로 간주해 원으로 환산한다.
+    return n >= 1000000 ? n : (n * 10000);
+  }
+  function plAmountStoredToMan(v) {
+    var won = plAmountStoredToWon(v);
+    return won ? Math.round(won / 10000) : 0;
+  }
+  function plDisplayWon(v) {
+    var won = plAmountStoredToWon(v);
+    return won ? Number(won).toLocaleString('ko-KR') : '';
+  }
   function plDisplayMan(v) {
-    var disp = plDisplayMoney(v);
-    return disp ? (disp + '만') : '';
+    var disp = plDisplayWon(v);
+    return disp ? (disp + '원') : '';
   }
   function plNormalizeDateInput(v) {
     var raw = String(v || '').trim();
@@ -42122,17 +42087,17 @@ window.addEventListener('DOMContentLoaded', () => {
       putField('경매번호', item.casenum);
       putField('사건번호', item.casenum);
     }
-    if (item.appraisal) {
-      putField('감정가_만원', plParseAmountText(item.appraisal));
-      putField('감정가', Number(plParseAmountText(item.appraisal)) * 10000);
+    function putAmountPair(manKey, wonKey, rawVal) {
+      var won = plAmountStoredToWon(rawVal);
+      if (!won) return;
+      putField(manKey, String(Math.round(won / 10000)));
+      if (wonKey) putField(wonKey, won);
     }
-    if (item.minprice) {
-      putField('최저가_만원', plParseAmountText(item.minprice));
-      putField('최저가', Number(plParseAmountText(item.minprice)) * 10000);
-    }
-    if (item.deposit) putField('보증금_만원', plParseAmountText(item.deposit));
-    if (item.monthly) putField('월세_만원', plParseAmountText(item.monthly));
-    if (item.estimate) putField('예상입찰가_만원', plParseAmountText(item.estimate));
+    if (item.appraisal) putAmountPair('감정가_만원', '감정가', item.appraisal);
+    if (item.minprice) putAmountPair('최저가_만원', '최저가', item.minprice);
+    if (item.deposit) putAmountPair('보증금_만원', '보증금', item.deposit);
+    if (item.monthly) putAmountPair('월세_만원', '월세', item.monthly);
+    if (item.estimate) putAmountPair('예상입찰가_만원', '예상입찰가', item.estimate);
     {
       var bidDateNorm = String(item.biddate || '').trim();
       putField('입찰기일', bidDateNorm);
@@ -42141,8 +42106,11 @@ window.addEventListener('DOMContentLoaded', () => {
     }
     if (item.round) putField('유찰회차', item.round);
     if (item.result && item.result.won) {
-      putField('낙찰가_만원', plParseAmountText(item.result.won));
-      putField('낙찰가', Number(plParseAmountText(item.result.won)) * 10000);
+      var _won = plAmountStoredToWon(item.result.won);
+      if (_won) {
+        putField('낙찰가_만원', String(Math.round(_won / 10000)));
+        putField('낙찰가', _won);
+      }
     }
     if (item.memo !== undefined) {
       if (plDiffers(src.memo || '', item.memo || '')) {
@@ -42374,7 +42342,7 @@ window.addEventListener('DOMContentLoaded', () => {
     return (d.getMonth()+1) + '.' + d.getDate();
   }
 
-  // ── 상태(단순화: 활성/변경/종료) ──────────────────────────
+  // ── 상태(단순화: 진행/변경/종료) ──────────────────────────
   function plSimpleStatusKey(status) {
     var s = String(status || '');
     if (s === 'active' || s === 'changed' || s === 'closed') return s;
@@ -42417,7 +42385,7 @@ window.addEventListener('DOMContentLoaded', () => {
     item.updatedAt = Date.now();
   }
   var STATUS_MAP = {
-    active:  { label: '활성', bg: 'rgba(79,142,255,.14)', color: '#8ab8ff' },
+    active:  { label: '진행', bg: 'rgba(79,142,255,.14)', color: '#8ab8ff' },
     changed: { label: '변경', bg: 'rgba(245,158,11,.14)', color: '#ffd166' },
     closed:  { label: '종료', bg: 'rgba(255,255,255,.06)', color: '#9aa3b2' }
   };
@@ -42454,7 +42422,7 @@ window.addEventListener('DOMContentLoaded', () => {
       + 'onblur="plCancelInlineEdit(this.dataset.k)" onclick="event.stopPropagation()" '
       + 'style="display:none;padding:3px 6px;border-radius:999px;font-size:11px;font-weight:800;border:1px solid rgba(255,255,255,.10);'
       + 'background:rgba(0,0,0,.25);color:var(--tx);cursor:pointer;">'
-      + '<option value="active"'+(simple==='active'?' selected':'')+'>활성</option>'
+      + '<option value="active"'+(simple==='active'?' selected':'')+'>진행</option>'
       + '<option value="changed"'+(simple==='changed'?' selected':'')+'>변경</option>'
       + '<option value="closed"'+(simple==='closed'?' selected':'')+'>종료</option>'
       + '</select>';
@@ -42469,7 +42437,7 @@ window.addEventListener('DOMContentLoaded', () => {
   }
   function numCell(v, color) {
     if (!v) return '<span style="color:#444;">—</span>';
-    return '<span style="font-family:monospace;font-size:12px;'+(color?'color:'+color+';':'')+'">' + plDisplayMan(v) + '</span>';
+    return '<span style="font-family:monospace;font-size:12px;'+(color?'color:'+color+';':'')+'">' + plDisplayWon(v) + '원</span>';
   }
 
   function plEditCellHtml(id, field, rawValue, displayValue, opts) {
@@ -42684,6 +42652,8 @@ window.addEventListener('DOMContentLoaded', () => {
         _origWrDbUpdateStatus(id, val);
         syncPropertyFromRoom(id, { status: val, archived: false });
         try { plSyncFromWorkrooms({ render: false }); } catch (e) {}
+        try { if (typeof renderPropertyList === 'function') renderPropertyList(); } catch (e) {}
+        try { if (typeof wr2Render === 'function' && typeof currentPage !== 'undefined' && currentPage === 4 && window.__pmActiveTab === 'work') wr2Render(); } catch (e) {}
       };
     }
     if (typeof window.updateRoom === 'function') {
@@ -42706,9 +42676,24 @@ window.addEventListener('DOMContentLoaded', () => {
             closedSummary: patch.closedSummary
           });
           try { plSyncFromWorkrooms({ render: false }); } catch (e) {}
+          try { if (typeof renderPropertyList === 'function') renderPropertyList(); } catch (e) {}
+          try { if (typeof wr2Render === 'function' && typeof currentPage !== 'undefined' && currentPage === 4 && window.__pmActiveTab === 'work') wr2Render(); } catch (e) {}
         }
         return out;
       };
+    }
+  }
+
+  function plApplyStatusResultBySimple(item, simpleStatus) {
+    if (!item) return;
+    item.resultState = item.resultState || '미입력';
+    if (simpleStatus === 'closed') {
+      if (!item.resultState || item.resultState === '미입력') item.resultState = '변경';
+    } else if (simpleStatus === 'changed') {
+      item.resultState = '변경';
+    }
+    if (simpleStatus === 'active' && item.resultState === '변경') {
+      item.resultState = '미입력';
     }
   }
 
@@ -43033,7 +43018,7 @@ window.addEventListener('DOMContentLoaded', () => {
             + '</div>';
         }
         var resultTag = '';
-        if (simpleStatus === 'closed' && it.result && it.result.won) resultTag = '<div style="font-size:10px;color:#4caf87;margin-top:2px;">낙 '+(plDisplayMan(it.result.won) || it.result.won)+'</div>';
+        if (simpleStatus === 'closed' && it.result && it.result.won) resultTag = '<div style="font-size:10px;color:#4caf87;margin-top:2px;">낙 '+(plDisplayWon(it.result.won) ? (plDisplayWon(it.result.won) + '원') : (it.result.won || ''))+'</div>';
         var isPast = (d !== null && d < 0);
         var isClosed = simpleStatus === 'closed';
         var rowClass = (isClosed ? 'pl-closed' : '');
@@ -43061,19 +43046,19 @@ window.addEventListener('DOMContentLoaded', () => {
           + '<td style="padding:8px 10px;overflow:hidden;" onclick="event.stopPropagation()">'+casenumCell+'</td>'
           + '<td style="padding:8px 10px;font-size:12px;color:var(--fg2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+(it.region||'—')+'</td>'
           + '<td style="padding:8px 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+plEditCellHtml(it.id,'feature',it.feature||'',it.feature||'',{type:'text',align:'left',minw:'100px',placeholder:'특징 입력',empty:'—',spanStyle:'font-size:12px;color:var(--fg2);'})+'</td>'
-          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'appraisal',plDisplayMoney(it.appraisal||''),plDisplayMan(it.appraisal||''),{type:'text',align:'right',minw:'70px',placeholder:'만원'})+'</td>'
-          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'minprice',plDisplayMoney(it.minprice||''),plDisplayMan(it.minprice||''),{type:'text',align:'right',minw:'70px',placeholder:'만원',spanStyle:'color:#fb923c;font-weight:700;'})+'</td>'
-          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'deposit',plDisplayMoney(it.deposit||''),plDisplayMan(it.deposit||''),{type:'text',align:'right',minw:'60px',placeholder:'만원'})+'</td>'
-          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'monthly',plDisplayMoney(it.monthly||''),plDisplayMan(it.monthly||''),{type:'text',align:'right',minw:'60px',placeholder:'만원'})+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'appraisal',plDisplayWon(it.appraisal||''),plDisplayWon(it.appraisal||'') ? (plDisplayWon(it.appraisal||'') + '원') : '',{type:'text',align:'right',minw:'96px',placeholder:'원'})+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'minprice',plDisplayWon(it.minprice||''),plDisplayWon(it.minprice||'') ? (plDisplayWon(it.minprice||'') + '원') : '',{type:'text',align:'right',minw:'96px',placeholder:'원',spanStyle:'color:#fb923c;font-weight:700;'})+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'deposit',plDisplayWon(it.deposit||''),plDisplayWon(it.deposit||'') ? (plDisplayWon(it.deposit||'') + '원') : '',{type:'text',align:'right',minw:'88px',placeholder:'원'})+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'monthly',plDisplayWon(it.monthly||''),plDisplayWon(it.monthly||'') ? (plDisplayWon(it.monthly||'') + '원') : '',{type:'text',align:'right',minw:'88px',placeholder:'원'})+'</td>'
           + '<td style="padding:8px 10px;text-align:center;font-size:12px;">'+(it.round||'—')+'</td>'
           + '<td style="padding:8px 10px;white-space:nowrap;">'
           +   '<div style="font-size:13px;">'+plEditCellHtml(it.id,'biddate',it.biddate||'',fmtDate(it.biddate),{type:'text',align:'left',minw:'72px',placeholder:'YYYY-MM-DD',spanStyle:'color:'+(isPast?'#ff6b7a':'var(--tx)')+';font-weight:'+(isPast?'700':'500')+';border-bottom-color:rgba(255,255,255,.10);'})+'</div>'
           +   dTag
           + '</td>'
-          + '<td style="padding:8px 10px;text-align:right;"><span style="'+(it.estimate?'background:rgba(255,209,102,.12);border-radius:4px;padding:1px 4px;':'')+'">'+plEditCellHtml(it.id,'estimate',plDisplayMoney(it.estimate||''),plDisplayMan(it.estimate||''),{type:'text',align:'right',minw:'72px',placeholder:'만원',spanStyle:'color:#ffd166;font-weight:700;'})+'</span></td>'
+          + '<td style="padding:8px 10px;text-align:right;"><span style="'+(it.estimate?'background:rgba(255,209,102,.12);border-radius:4px;padding:1px 4px;':'')+'">'+plEditCellHtml(it.id,'estimate',plDisplayWon(it.estimate||''),plDisplayWon(it.estimate||'') ? (plDisplayWon(it.estimate||'') + '원') : '',{type:'text',align:'right',minw:'96px',placeholder:'원',spanStyle:'color:#ffd166;font-weight:700;'})+'</span></td>'
           + '<td style="padding:8px 10px;text-align:center;cursor:pointer;" onclick="event.stopPropagation();plToggleSite(\''+it.id+'\')">'+siteDots(it.site)+'</td>'
           + '<td style="padding:8px 10px;" onclick="event.stopPropagation()">'+wrLink+'</td>'
-          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'result_won',plDisplayMoney((it.result&&it.result.won)||''),plDisplayMan((it.result&&it.result.won)||''),{type:'text',align:'right',minw:'76px',placeholder:'만원',spanStyle:'color:#4caf87;font-weight:700;'})+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'result_won',plDisplayWon((it.result&&it.result.won)||''),plDisplayWon((it.result&&it.result.won)||'') ? (plDisplayWon((it.result&&it.result.won)||'') + '원') : '',{type:'text',align:'right',minw:'96px',placeholder:'원',spanStyle:'color:#4caf87;font-weight:700;'})+'</td>'
           + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'bidders',it.bidders||'',it.bidders||'',{type:'text',align:'right',minw:'44px',placeholder:'—',empty:'—',spanStyle:'font-size:11px;'})+'</td>'
           + '<td style="padding:8px 10px;max-width:180px;overflow:hidden;">'+plEditMemoCellHtml(it.id,it.memo||'')+'</td>'
           + '<td style="padding:8px 6px;text-align:center;"><button onclick="event.stopPropagation();plOpenEdit(\''+it.id+'\')" style="background:none;border:none;color:var(--fg3);cursor:pointer;font-size:15px;padding:2px 4px;">···</button></td>'
@@ -43446,7 +43431,7 @@ window.addEventListener('DOMContentLoaded', () => {
         el.addEventListener('blur', function(){
           // 한글 단위(억/만) 표기도 지원: "6억7천" 같은 입력을 정규화
           var parsed = plParseAmountText(this.value);
-          this.value = parsed ? Number(parsed).toLocaleString('ko-KR') : '';
+          this.value = parsed ? plDisplayWon(parsed) : '';
         });
       });
     }, 0);
