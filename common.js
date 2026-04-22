@@ -4699,11 +4699,6 @@ var _safeLocalSet = function(key, value) {
                           + '<option value="active">활성</option>'
                           + '<option value="changed">변경</option>'
                           + '<option value="closed">종료</option>';
-                        lifeSel.onpointerdown = function(ev) { try { ev.stopPropagation(); } catch(_) {} };
-                        lifeSel.onmousedown = function(ev) { try { ev.stopPropagation(); } catch(_) {} };
-                        lifeSel.onclick = function(ev) { try { ev.stopPropagation(); } catch(_) {} };
-                        lifeSel.onfocus = function() { window.__wr2SelectOpen = 'lifecycle'; };
-                        lifeSel.onblur = function() { setTimeout(function(){ if (window.__wr2SelectOpen === 'lifecycle') window.__wr2SelectOpen = ''; }, 80); };
                         host.insertBefore(lifeSel, insertAnchor);
                       }
                       lifeSel.value = wr2GetLifecycle(room);
@@ -4735,11 +4730,6 @@ var _safeLocalSet = function(key, value) {
                           + '<option value="bid">입찰</option>'
                           + '<option value="won">낙찰</option>'
                           + '<option value="sell">매도</option>';
-                        progSel.onpointerdown = function(ev) { try { ev.stopPropagation(); } catch(_) {} };
-                        progSel.onmousedown = function(ev) { try { ev.stopPropagation(); } catch(_) {} };
-                        progSel.onclick = function(ev) { try { ev.stopPropagation(); } catch(_) {} };
-                        progSel.onfocus = function() { window.__wr2SelectOpen = 'progress'; };
-                        progSel.onblur = function() { setTimeout(function(){ if (window.__wr2SelectOpen === 'progress') window.__wr2SelectOpen = ''; }, 80); };
                         host.insertBefore(progSel, insertAnchor);
                       }
                       const rawProg = String(room.status || '').trim();
@@ -11221,24 +11211,15 @@ window.wr2SummaryCancelEdit = function() {
       }
       return rooms;
     };
-    window.wrSetRooms = function (arr, opts) {
+    window.wrSetRooms = function (arr) {
       if (!window.wr2State) return;
-      var options = opts || {};
       var activeRooms = Array.isArray(arr) ? arr.filter(function(r) { return r && r.id; }) : [];
       var rawRooms = (window._wrGetRoomsCache && window._wrGetRoomsCache()) || [];
       var tombstones = rawRooms.filter(function(r) {
         return r && r.id && r.deletedAt && !activeRooms.find(function(a) { return a.id === r.id; });
       });
       var mergedRooms = activeRooms.concat(tombstones);
-      if (window._wrPersistRooms) {
-        window._wrPersistRooms(mergedRooms, {
-          sync: options.sync !== false,
-          syncState: false,
-          keepDeletedInState: true
-        });
-      } else if (window._wrPersistRoomCache) {
-        window._wrPersistRoomCache(mergedRooms, { syncState: false, keepDeletedInState: true });
-      }
+      if (window._wrPersistRoomCache) window._wrPersistRoomCache(mergedRooms, { syncState: false });
       window.wr2State.rooms = activeRooms;
       if (typeof window.wr2Render === 'function') window.wr2Render();
     };
@@ -42167,7 +42148,6 @@ window.addEventListener('DOMContentLoaded', () => {
         var out = _origSetSv.apply(this, arguments);
         if (_plSavedSyncMute <= 0) {
           try { plSyncFromSavedItems(arr, { render: false }); } catch(e) { console.warn('[plSyncFromSaved:setSv]', e); }
-          try { plSyncFromWorkrooms({ render: false, savedItems: arr }); } catch(e2) { console.warn('[plSyncFromWorkrooms:setSv]', e2); }
         }
         return out;
       };
@@ -42424,8 +42404,8 @@ window.addEventListener('DOMContentLoaded', () => {
       + 'background:'+m.bg+';color:'+m.color+';border:1px solid rgba(255,255,255,.08);white-space:nowrap;">'
       + m.label
       + '</span>'
-      + '<select id="'+key+'_i" data-k="'+plEscHtml(key)+'" data-id="'+plEscHtml(id)+'" onchange="event.stopPropagation();window.__plInlineEditOpen=false;window.__plInlineEditOpenUntil=Date.now()+500;plSetSimpleStatus(this.dataset.id,this.value)" '
-      + 'onfocus="window.__plInlineEditOpen=true;window.__plInlineEditOpenUntil=Date.now()+1500" onblur="window.__plInlineEditOpen=false;window.__plInlineEditOpenUntil=Date.now()+300;plCancelInlineEdit(this.dataset.k)" onclick="event.stopPropagation()" onmousedown="event.stopPropagation()" onpointerdown="event.stopPropagation()" '
+      + '<select id="'+key+'_i" data-k="'+plEscHtml(key)+'" data-id="'+plEscHtml(id)+'" onchange="event.stopPropagation();plSetSimpleStatus(this.dataset.id,this.value)" '
+      + 'onblur="plCancelInlineEdit(this.dataset.k)" onclick="event.stopPropagation()" '
       + 'style="display:none;padding:3px 6px;border-radius:999px;font-size:11px;font-weight:800;border:1px solid rgba(255,255,255,.10);'
       + 'background:rgba(0,0,0,.25);color:var(--tx);cursor:pointer;">'
       + '<option value="active"'+(simple==='active'?' selected':'')+'>활성</option>'
@@ -42521,15 +42501,9 @@ window.addEventListener('DOMContentLoaded', () => {
     var s = document.getElementById(key + '_s');
     var i = document.getElementById(key + '_i');
     if (!s || !i) return;
-    window.__plInlineEditOpen = true;
-    window.__plInlineEditOpenUntil = Date.now() + 1500;
     s.style.display = 'none';
     i.style.display = '';
-    try {
-      i.focus();
-      if (String((i.tagName || '')).toUpperCase() !== 'SELECT' && typeof i.select === 'function') i.select();
-      if (typeof i.click === 'function' && String((i.tagName || '')).toUpperCase() === 'SELECT') i.click();
-    } catch(e) {}
+    try { i.focus(); if (typeof i.select === 'function') i.select(); } catch(e) {}
   };
   window.plCancelInlineEdit = function(key) {
     var s = document.getElementById(key + '_s');
@@ -42537,8 +42511,6 @@ window.addEventListener('DOMContentLoaded', () => {
     if (!s || !i) return;
     i.style.display = 'none';
     s.style.display = '';
-    window.__plInlineEditOpen = false;
-    window.__plInlineEditOpenUntil = Date.now() + 200;
   };
   window.plFinishInlineEdit = function(id, field, key) {
     var i = document.getElementById(key + '_i');
@@ -42618,21 +42590,18 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   }
   function syncToWorkroom(item) {
-    if (!item) return;
-    var room = resolveRoomForItem(item);
+    if (!item.roomId) return;
+    var rooms = getWrRooms();
+    var room = rooms.find(function(r){return r.id === item.roomId;});
     if (!room) return;
-    if (!item.roomId || String(item.roomId) !== String(room.id)) item.roomId = String(room.id);
     var simple = plSimpleStatusKey(item.status);
     var newPhase = (item.status === 'archived' ? 'closed' : (item.status || 'review'));
     var patch = {
       phase: newPhase,
       status: newPhase,
       activePhase: newPhase,
-      lifecycleStatus: (simple === 'closed' ? 'closed' : (simple === 'changed' ? 'changed' : 'active')),
-      linkedSavedId: room.linkedSavedId || item.linkedSavedId || '',
-      linkedItems: Array.isArray(room.linkedItems) ? room.linkedItems.slice() : []
+      lifecycleStatus: (simple === 'closed' ? 'closed' : (simple === 'changed' ? 'changed' : 'active'))
     };
-    if (item.id && patch.linkedItems.indexOf(item.id) < 0) patch.linkedItems.push(item.id);
     var roomLifeNow = String((room && room.lifecycleStatus) || '').trim();
     if (roomLifeNow === 'closed' && patch.lifecycleStatus !== 'closed' && !(item && item.__allowLifecycleReopen)) {
       patch.phase = 'closed';
@@ -42640,7 +42609,6 @@ window.addEventListener('DOMContentLoaded', () => {
       patch.activePhase = 'closed';
       patch.lifecycleStatus = 'closed';
     }
-    if (item.linkedSavedId && String(room.linkedSavedId || '') !== String(item.linkedSavedId)) patch.linkedSavedId = String(item.linkedSavedId);
     if (item.addr && String(room.title || '') !== String(item.addr || '')) patch.title = item.addr;
     if (item.region && String(room.address || '') !== String(item.region || '')) patch.address = item.region;
     if (simple === 'closed') {
@@ -42657,21 +42625,14 @@ window.addEventListener('DOMContentLoaded', () => {
     }
     if (window.updateRoom) {
       window.updateRoom(room.id, patch);
-      if (typeof window.wrDbLinkItem === 'function' && item.id) window.wrDbLinkItem(room.id, item.id);
+      if (typeof window.wrDbLinkItem === 'function') window.wrDbLinkItem(room.id, item.id);
     } else {
-      var rooms = getWrRooms();
-      var target = rooms.find(function(r){ return r && String(r.id) === String(room.id); });
-      if (!target) return;
-      target.phase = patch.phase;
-      target.status = patch.status;
-      target.activePhase = patch.activePhase;
-      target.lifecycleStatus = patch.lifecycleStatus;
-      target.linkedSavedId = patch.linkedSavedId;
-      target.linkedItems = patch.linkedItems.slice();
-      if (patch.title !== undefined) target.title = patch.title;
-      if (patch.address !== undefined) target.address = patch.address;
-      if (patch.closedSummary) target.closedSummary = patch.closedSummary;
-      target.updatedAt = Date.now();
+      room.phase = newPhase; room.status = newPhase; room.activePhase = newPhase;
+      room.lifecycleStatus = patch.lifecycleStatus;
+      if (patch.closedSummary) room.closedSummary = patch.closedSummary;
+      room.updatedAt = Date.now();
+      if (!room.linkedItems) room.linkedItems = [];
+      if (room.linkedItems.indexOf(item.id) < 0) room.linkedItems.push(item.id);
       if (window._wrPersistRooms) window._wrPersistRooms(rooms, { syncState: true });
     }
   }
@@ -42757,7 +42718,6 @@ window.addEventListener('DOMContentLoaded', () => {
     el.innerHTML = chips.join('');
   }
   function plEnsureListCloudRefresh() {
-    if (window.__plInlineEditOpen && window.__plInlineEditOpenUntil && Date.now() < window.__plInlineEditOpenUntil) return;
     if (window.__plListRefreshRunning) return;
     if (typeof window._plRefreshFromCloud !== 'function') return;
     var now = Date.now();
@@ -43000,9 +42960,6 @@ window.addEventListener('DOMContentLoaded', () => {
   }
   // ── 메인 렌더 ──────────────────────────
   window.renderPropertyList = function() {
-    if (window.__plInlineEditOpen && window.__plInlineEditOpenUntil && Date.now() < window.__plInlineEditOpenUntil) {
-      return;
-    }
     _plWrapSavedListSync();
     _plWrapWorkroomSync();
     plEnsureListCloudRefresh();
@@ -43759,6 +43716,175 @@ window.addEventListener('DOMContentLoaded', () => {
     } catch (e) {}
   }, 20000);
 
+
+  /* ---- pl/wr dropdown stability patch ---- */
+  window.__plInlineEditOpenUntil = 0;
+  window.__plStatusHoldUntil = 0;
+  window.__plPendingListRender = false;
+  window.__plPendingListTimer = null;
+  function _plInteractiveUntil() {
+    return Math.max(Number(window.__plInlineEditOpenUntil || 0), Number(window.__plStatusHoldUntil || 0));
+  }
+  function _plHoldInteractive(ms) {
+    var until = Date.now() + Math.max(180, Number(ms || 0));
+    if (until > Number(window.__plStatusHoldUntil || 0)) window.__plStatusHoldUntil = until;
+    _plScheduleDeferredRender();
+  }
+  function _plMarkInlineEditing(ms) {
+    var until = Date.now() + Math.max(180, Number(ms || 0));
+    if (until > Number(window.__plInlineEditOpenUntil || 0)) window.__plInlineEditOpenUntil = until;
+    _plScheduleDeferredRender();
+  }
+  function _plScheduleDeferredRender() {
+    if (window.__plPendingListTimer) clearTimeout(window.__plPendingListTimer);
+    var wait = Math.max(20, _plInteractiveUntil() - Date.now() + 40);
+    window.__plPendingListTimer = setTimeout(function() {
+      window.__plPendingListTimer = null;
+      if (_plInteractiveUntil() > Date.now()) { _plScheduleDeferredRender(); return; }
+      if (!window.__plPendingListRender) return;
+      window.__plPendingListRender = false;
+      try {
+        if (typeof currentPage !== 'undefined' && currentPage === 4 && window.__pmActiveTab === 'list' && typeof window.renderPropertyList === 'function') {
+          window.renderPropertyList();
+        }
+      } catch (e) {}
+    }, wait);
+  }
+
+  if (window.plStartInlineEdit) {
+    var _origPlStartInlineEdit = window.plStartInlineEdit;
+    window.plStartInlineEdit = function(key) {
+      _plMarkInlineEditing(1500);
+      _plHoldInteractive(1500);
+      return _origPlStartInlineEdit.apply(this, arguments);
+    };
+  }
+  if (window.plCancelInlineEdit) {
+    var _origPlCancelInlineEdit = window.plCancelInlineEdit;
+    window.plCancelInlineEdit = function(key) {
+      var out = _origPlCancelInlineEdit.apply(this, arguments);
+      window.__plInlineEditOpenUntil = Math.max(0, Date.now() + 120);
+      _plScheduleDeferredRender();
+      return out;
+    };
+  }
+  if (window.plFinishInlineEdit) {
+    var _origPlFinishInlineEdit = window.plFinishInlineEdit;
+    window.plFinishInlineEdit = function(id, field, key) {
+      _plHoldInteractive(900);
+      var out = _origPlFinishInlineEdit.apply(this, arguments);
+      window.__plInlineEditOpenUntil = Math.max(0, Date.now() + 120);
+      _plScheduleDeferredRender();
+      return out;
+    };
+  }
+  if (window.plInlineSetSelect) {
+    var _origPlInlineSetSelect = window.plInlineSetSelect;
+    window.plInlineSetSelect = function(id, field, value) {
+      _plHoldInteractive(1200);
+      return _origPlInlineSetSelect.apply(this, arguments);
+    };
+  }
+  if (window.plSetSimpleStatus) {
+    var _origPlSetSimpleStatus = window.plSetSimpleStatus;
+    window.plSetSimpleStatus = function(id, simpleStatus) {
+      _plHoldInteractive(1500);
+      return _origPlSetSimpleStatus.apply(this, arguments);
+    };
+  }
+
+  function _plEnhanceStableStatusSelects() {
+    var tbody = document.getElementById('pl-tbody');
+    if (!tbody) return;
+    var items = plLoad();
+    var byId = {};
+    items.forEach(function(it){ if (it && it.id != null) byId[String(it.id)] = it; });
+    var roomById = {};
+    getWrRooms().forEach(function(r){ if (r && r.id) roomById[String(r.id)] = r; });
+    Array.prototype.forEach.call(tbody.querySelectorAll('tr[data-plid]'), function(tr) {
+      var id = String(tr.getAttribute('data-plid') || '');
+      if (!id) return;
+      var item = byId[id];
+      if (!item) return;
+      var cell = tr.children && tr.children[1];
+      if (!cell) return;
+      var simple = plEffectiveSimpleStatus(item, roomById);
+      if (cell.getAttribute('data-pl-stable') === simple) return;
+      cell.setAttribute('data-pl-stable', simple);
+      cell.innerHTML = '';
+      var sel = document.createElement('select');
+      sel.className = 'pl-stable-status-select';
+      sel.setAttribute('data-plid', id);
+      sel.style.cssText = 'padding:3px 8px;border-radius:999px;font-size:11px;font-weight:800;border:1px solid rgba(255,255,255,.10);background:rgba(0,0,0,.25);color:var(--tx);cursor:pointer;outline:none;';
+      [['active','활성'],['changed','변경'],['closed','종료']].forEach(function(row){
+        var opt = document.createElement('option');
+        opt.value = row[0];
+        opt.textContent = row[1];
+        if (row[0] === simple) opt.selected = true;
+        sel.appendChild(opt);
+      });
+      var hold = function(ev) {
+        if (ev) { ev.stopPropagation(); }
+        _plHoldInteractive(1500);
+        window.__plInlineEditOpenUntil = Date.now() + 1500;
+      };
+      sel.addEventListener('pointerdown', hold, true);
+      sel.addEventListener('mousedown', hold, true);
+      sel.addEventListener('click', hold, true);
+      sel.addEventListener('focus', hold, true);
+      sel.addEventListener('change', function(ev) {
+        ev.stopPropagation();
+        _plHoldInteractive(1800);
+        if (typeof window.plSetSimpleStatus === 'function') window.plSetSimpleStatus(id, sel.value);
+      });
+      sel.addEventListener('blur', function() {
+        window.__plInlineEditOpenUntil = Date.now() + 150;
+        _plScheduleDeferredRender();
+      }, true);
+      cell.appendChild(sel);
+    });
+  }
+
+  if (window.renderPropertyList) {
+    var _origStableRenderPropertyList = window.renderPropertyList;
+    window.renderPropertyList = function() {
+      if (_plInteractiveUntil() > Date.now()) {
+        window.__plPendingListRender = true;
+        _plScheduleDeferredRender();
+        return;
+      }
+      var out = _origStableRenderPropertyList.apply(this, arguments);
+      try { _plEnhanceStableStatusSelects(); } catch (e) { console.warn('[plEnhanceStableStatusSelects]', e); }
+      return out;
+    };
+  }
+
+  // 작업룸 헤더 select가 열려 있을 때 중간 렌더가 끼어들지 않게 막는다.
+  window.__wr2SelectOpenUntil = 0;
+  function _wr2HoldSelect(ms) {
+    var until = Date.now() + Math.max(250, Number(ms || 0));
+    if (until > Number(window.__wr2SelectOpenUntil || 0)) window.__wr2SelectOpenUntil = until;
+  }
+  document.addEventListener('pointerdown', function(e) {
+    var t = e.target;
+    if (t && (t.id === 'wr2LifecycleSelect' || t.id === 'wr2ProgressSelect')) _wr2HoldSelect(1500);
+  }, true);
+  document.addEventListener('focusin', function(e) {
+    var t = e.target;
+    if (t && (t.id === 'wr2LifecycleSelect' || t.id === 'wr2ProgressSelect')) _wr2HoldSelect(1500);
+  }, true);
+  document.addEventListener('change', function(e) {
+    var t = e.target;
+    if (t && (t.id === 'wr2LifecycleSelect' || t.id === 'wr2ProgressSelect')) _wr2HoldSelect(1200);
+  }, true);
+  if (window.wr2Render) {
+    var _origStableWr2Render = window.wr2Render;
+    window.wr2Render = function() {
+      if (Number(window.__wr2SelectOpenUntil || 0) > Date.now()) return;
+      return _origStableWr2Render.apply(this, arguments);
+    };
+  }
+
 })();
 
 /* ═══════════════════════════════════════════════
@@ -43998,33 +44124,6 @@ window.addEventListener('DOMContentLoaded', () => {
     return Array.from(new Set(ids.filter(Boolean)));
   }
 
-  function resolveRoomForItem(item) {
-    if (!item || typeof window.wrGetRooms !== 'function') return null;
-    try {
-      var rooms = window.wrGetRooms() || [];
-      var roomId = String(item.roomId || '').trim();
-      var linkedSavedId = String(item.linkedSavedId || '').trim();
-      var itemId = String(item.id || '').trim();
-      if (roomId) {
-        var direct = rooms.find(function (r) { return r && String(r.id) === roomId; });
-        if (direct) return direct;
-      }
-      var room = rooms.find(function (r) {
-        if (!r) return false;
-        if (linkedSavedId && (
-          String(r.linkedSavedId || '') === linkedSavedId ||
-          String(r.auctionId || '') === linkedSavedId ||
-          String(r.listingId || '') === linkedSavedId
-        )) return true;
-        if (itemId && Array.isArray(r.linkedItems) && r.linkedItems.map(String).indexOf(itemId) >= 0) return true;
-        return false;
-      });
-      return room || null;
-    } catch (e) {
-      return null;
-    }
-  }
-
   function syncLinkedItemsByRoom(roomId, norm) {
     try {
       if (!roomId || typeof window.wrGetRooms !== 'function' || typeof window.getSv !== 'function' || typeof window.setSv !== 'function') return false;
@@ -44035,17 +44134,11 @@ window.addEventListener('DOMContentLoaded', () => {
       if (!ids.length) return false;
       var sv = window.getSv() || [];
       var changed = false;
-      var lifecycle = (norm === 'closed') ? 'closed' : ((norm === 'changed') ? 'changed' : 'active');
       sv.forEach(function (it) {
         if (!it || ids.indexOf(String(it.id)) < 0) return;
-        if (!it.data || typeof it.data !== 'object') it.data = {};
         var cur = normalizeStatus(it.watchStatus);
         if (cur !== norm) {
           it.watchStatus = norm;
-          changed = true;
-        }
-        if (String(it.data['작업룸상태'] || '') !== lifecycle) {
-          it.data['작업룸상태'] = lifecycle;
           changed = true;
         }
       });
