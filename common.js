@@ -3482,7 +3482,7 @@ var _safeLocalSet = function(key, value) {
                   const key = (typeof roomOrKey === 'string') ? roomOrKey : wr2GetLifecycle(roomOrKey);
                   if (key === 'closed') return '종료';
                   if (key === 'changed') return '변경';
-                  return '활성';
+                  return '진행';
                 }
                 function wr2RoomMatchesLifecycle(room, filter) {
                   const key = String(filter || 'active');
@@ -4548,7 +4548,7 @@ var _safeLocalSet = function(key, value) {
                       scopeEl.style.display = 'flex';
                       scopeEl.style.gap = '6px';
                       scopeEl.style.flexWrap = 'wrap';
-                      scopeEl.appendChild(mkBtn('active', '활성'));
+                      scopeEl.appendChild(mkBtn('active', '진행'));
                       scopeEl.appendChild(mkBtn('changed', '변경'));
                       scopeEl.appendChild(mkBtn('closed', '종료'));
                       scopeEl.appendChild(mkBtn('all', '전체'));
@@ -4696,7 +4696,7 @@ var _safeLocalSet = function(key, value) {
                         lifeSel.style.padding = '4px 7px';
                         lifeSel.style.minWidth = '68px';
                         lifeSel.innerHTML = ''
-                          + '<option value="active">활성</option>'
+                          + '<option value="active">진행</option>'
                           + '<option value="changed">변경</option>'
                           + '<option value="closed">종료</option>';
                         host.insertBefore(lifeSel, insertAnchor);
@@ -42408,7 +42408,7 @@ window.addEventListener('DOMContentLoaded', () => {
       + 'onblur="plCancelInlineEdit(this.dataset.k)" onclick="event.stopPropagation()" '
       + 'style="display:none;padding:3px 6px;border-radius:999px;font-size:11px;font-weight:800;border:1px solid rgba(255,255,255,.10);'
       + 'background:rgba(0,0,0,.25);color:var(--tx);cursor:pointer;">'
-      + '<option value="active"'+(simple==='active'?' selected':'')+'>활성</option>'
+      + '<option value="active"'+(simple==='active'?' selected':'')+'>진행</option>'
       + '<option value="changed"'+(simple==='changed'?' selected':'')+'>변경</option>'
       + '<option value="closed"'+(simple==='closed'?' selected':'')+'>종료</option>'
       + '</select>';
@@ -45054,4 +45054,432 @@ window.addEventListener('DOMContentLoaded', () => {
       });
     } catch(e) {}
   }, 1000);
+})();
+
+
+/* ════════════════════════════════════════════════════════
+   SK workflow refactor v6
+   - 상태(진행/변경/종료)와 액션(유찰/미진행) 분리
+   - 작업룸/물건리스트 동시 반영
+   - 상태 변경 즉시 반영, 클릭 1회 드롭다운
+════════════════════════════════════════════════════════ */
+(function(){
+  if (window.__SK_WORKFLOW_V6__) return;
+  window.__SK_WORKFLOW_V6__ = true;
+
+  var SK_DROP_RATE_DEFAULT = 0.7;
+  function skToast(msg, type){
+    try { if (typeof showToast === 'function') showToast(msg, type || 'ok'); } catch(e) {}
+  }
+  function skNum(v){
+    var s = String(v == null ? '' : v).replace(/[^0-9]/g,'');
+    return s ? parseInt(s,10) : 0;
+  }
+  function skFmtNum(v){
+    var n = skNum(v);
+    return n ? n.toLocaleString('ko-KR') : '';
+  }
+  function skNormDate(v){
+    if (typeof plNormalizeDateInput === 'function') return plNormalizeDateInput(v);
+    var s = String(v || '').trim();
+    if (!s) return '';
+    var m = s.match(/(\d{4})[^0-9]?(\d{1,2})[^0-9]?(\d{1,2})/);
+    if (!m) return s;
+    return m[1] + '-' + String(m[2]).padStart(2,'0') + '-' + String(m[3]).padStart(2,'0');
+  }
+  function skAddDays(dateStr, days){
+    var iso = skNormDate(dateStr);
+    var dt = iso ? new Date(iso + 'T00:00:00') : new Date();
+    if (isNaN(dt.getTime())) dt = new Date();
+    dt.setDate(dt.getDate() + (days || 0));
+    return dt.getFullYear() + '-' + String(dt.getMonth()+1).padStart(2,'0') + '-' + String(dt.getDate()).padStart(2,'0');
+  }
+  function skGetRoom(roomId){
+    try {
+      var rooms = (window.wr2State && Array.isArray(window.wr2State.rooms)) ? window.wr2State.rooms : [];
+      return rooms.find(function(r){ return r && String(r.id) === String(roomId); }) || null;
+    } catch(e){ return null; }
+  }
+  function skGetLinkedItemIdsByRoom(room){
+    var ids = [];
+    if (!room) return ids;
+    if (room.linkedSavedId != null) ids.push(String(room.linkedSavedId));
+    if (room.auctionId != null) ids.push(String(room.auctionId));
+    if (room.listingId != null) ids.push(String(room.listingId));
+    if (Array.isArray(room.linkedItems)) room.linkedItems.forEach(function(id){ ids.push(String(id)); });
+    return Array.from(new Set(ids.filter(Boolean)));
+  }
+  function skFindItemByRoom(roomId){
+    try {
+      var items = (typeof plLoad === 'function') ? plLoad() : [];
+      var direct = items.find(function(it){ return String(it.roomId || '') === String(roomId); });
+      if (direct) return direct;
+      var room = skGetRoom(roomId);
+      var ids = skGetLinkedItemIdsByRoom(room);
+      if (!ids.length) return null;
+      return items.find(function(it){ return ids.indexOf(String(it.id)) >= 0 || ids.indexOf(String(it.linkedSavedId || '')) >= 0; }) || null;
+    } catch(e){ return null; }
+  }
+  function skFindRoomIdByItem(item){
+    if (!item) return '';
+    if (item.roomId) return String(item.roomId);
+    try {
+      var rooms = (window.wr2State && Array.isArray(window.wr2State.rooms)) ? window.wr2State.rooms : [];
+      var target = String(item.id || '');
+      var room = rooms.find(function(r){
+        var ids = skGetLinkedItemIdsByRoom(r);
+        return ids.indexOf(target) >= 0;
+      });
+      return room ? String(room.id) : '';
+    } catch(e){ return ''; }
+  }
+  function skSaveItemAndSync(item, opts){
+    opts = opts || {};
+    var items = (typeof plLoad === 'function') ? plLoad() : [];
+    var targetId = String(item.id);
+    var out = items.map(function(it){
+      if (!it || String(it.id) !== targetId) return it;
+      var merged = Object.assign({}, it, item, { updatedAt: Date.now() });
+      return (typeof plNormalizeItem === 'function') ? plNormalizeItem(merged) : merged;
+    });
+    if (typeof plSave === 'function') plSave(out);
+    var savedItem = out.find(function(it){ return String(it.id) === targetId; }) || item;
+    try {
+      savedItem.__allowLifecycleReopen = true;
+      if (typeof syncToWorkroom === 'function') syncToWorkroom(savedItem);
+      delete savedItem.__allowLifecycleReopen;
+    } catch(e) {}
+    try { if (typeof plSyncItemToSaved === 'function') plSyncItemToSaved(savedItem); } catch(e) {}
+    try { if (typeof renderPropertyList === 'function') renderPropertyList(); } catch(e) {}
+    try { if (typeof window.wr2Render === 'function') window.wr2Render(); } catch(e) {}
+    try { if (typeof renderSaved === 'function') renderSaved(); } catch(e) {}
+    return savedItem;
+  }
+  function skSetRoomLifecycle(roomId, lifecycle, extraPatch){
+    if (!roomId || typeof window.updateRoom !== 'function') return;
+    var patch = Object.assign({}, extraPatch || {}, { lifecycleStatus: lifecycle, __forceLifecycleChange: true });
+    if (lifecycle === 'active') {
+      patch.status = 'review';
+      patch.phase = 'review';
+      patch.activePhase = 'review';
+    } else if (lifecycle === 'changed') {
+      patch.status = 'field';
+      patch.phase = 'field';
+      patch.activePhase = 'field';
+    }
+    window.updateRoom(roomId, patch);
+  }
+  function skApplyUnsold(itemId, payload){
+    var items = (typeof plLoad === 'function') ? plLoad() : [];
+    var item = items.find(function(it){ return it && String(it.id) === String(itemId); });
+    if (!item) return false;
+    item.status = 'review'; // 진행 유지
+    item.archived = false;
+    item.round = String(payload.round || ((parseInt(item.round || '0',10) || 0) + 1));
+    item.biddate = skNormDate(payload.biddate || item.biddate || skAddDays('', 28));
+    item.minprice = skFmtNum(payload.minprice || item.minprice);
+    item.result = Object.assign({}, item.result || {}, { lastAction: 'unsold', updatedAt: Date.now() });
+    var roomId = skFindRoomIdByItem(item);
+    skSaveItemAndSync(item);
+    if (roomId) skSetRoomLifecycle(roomId, 'active');
+    skToast('유찰 처리 완료', 'ok');
+    return true;
+  }
+  function skApplyDeferred(itemId){
+    var items = (typeof plLoad === 'function') ? plLoad() : [];
+    var item = items.find(function(it){ return it && String(it.id) === String(itemId); });
+    if (!item) return false;
+    item.status = 'field'; // 변경 탭으로
+    item.archived = false;
+    item.biddate = '미정';
+    item.result = Object.assign({}, item.result || {}, { lastAction: 'deferred', updatedAt: Date.now() });
+    var roomId = skFindRoomIdByItem(item);
+    skSaveItemAndSync(item);
+    if (roomId) skSetRoomLifecycle(roomId, 'changed');
+    skToast('변경/미진행 처리 완료', 'ok');
+    return true;
+  }
+  function skEnsureActionModal(){
+    var el = document.getElementById('skAuctionActionModal');
+    if (el) return el;
+    el = document.createElement('div');
+    el.id = 'skAuctionActionModal';
+    el.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,.56);z-index:99999;align-items:center;justify-content:center;padding:16px;';
+    el.innerHTML =
+      '<div style="width:min(560px,96vw);background:#0d1320;border:1px solid rgba(255,255,255,.12);border-radius:14px;box-shadow:0 22px 70px rgba(0,0,0,.45);overflow:hidden;">'
+      + '<div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,.08);">'
+      + '  <div style="font-size:16px;font-weight:800;color:#f3f6fb;">경매 진행 처리</div>'
+      + '  <button type="button" id="skActionCloseX" style="border:none;background:transparent;color:#94a3b8;font-size:20px;cursor:pointer;">×</button>'
+      + '</div>'
+      + '<div style="padding:16px;">'
+      + '  <div id="skActionTarget" style="font-size:12px;color:#94a3b8;margin-bottom:12px;"></div>'
+      + '  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">'
+      + '    <button type="button" id="skActionUnsoldBtn" style="padding:9px 14px;border-radius:10px;border:1px solid rgba(74,222,128,.35);background:rgba(74,222,128,.12);color:#7ee7a8;font-weight:800;cursor:pointer;">유찰</button>'
+      + '    <button type="button" id="skActionDeferredBtn" style="padding:9px 14px;border-radius:10px;border:1px solid rgba(251,191,36,.35);background:rgba(251,191,36,.12);color:#f7cf68;font-weight:800;cursor:pointer;">변경 / 미진행</button>'
+      + '  </div>'
+      + '  <div id="skUnsoldForm" style="display:none;border:1px solid rgba(74,222,128,.18);background:rgba(74,222,128,.04);border-radius:12px;padding:12px;">'
+      + '    <div style="display:grid;grid-template-columns:1fr 1.2fr 1.4fr;gap:10px;">'
+      + '      <label style="font-size:12px;color:#cbd5e1;">다음 회차<input id="skUnsoldRound" type="text" style="margin-top:6px;width:100%;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:#fff;"></label>'
+      + '      <label style="font-size:12px;color:#cbd5e1;">다음 기일<input id="skUnsoldDate" type="date" style="margin-top:6px;width:100%;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:#fff;"></label>'
+      + '      <label style="font-size:12px;color:#cbd5e1;">다음 최저가(원)<input id="skUnsoldPrice" type="text" inputmode="numeric" style="margin-top:6px;width:100%;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:#fff;"></label>'
+      + '    </div>'
+      + '    <div style="margin-top:10px;font-size:11px;color:#94a3b8;">기본 제안값은 현재 최저가 × 70%, 기일 + 28일이다. 저장 전에 직접 수정 가능.</div>'
+      + '  </div>'
+      + '  <div id="skDeferredHelp" style="display:none;border:1px solid rgba(251,191,36,.18);background:rgba(251,191,36,.05);border-radius:12px;padding:12px;font-size:12px;color:#e5e7eb;">변경/미진행으로 처리하면 상태는 <b style="color:#f7cf68;">변경</b>, 매각기일은 <b style="color:#f7cf68;">미정</b>으로 저장된다.</div>'
+      + '  <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px;">'
+      + '    <button type="button" id="skActionCancel" style="padding:10px 14px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:#cbd5e1;cursor:pointer;">취소</button>'
+      + '    <button type="button" id="skActionSave" style="padding:10px 16px;border-radius:10px;border:1px solid rgba(79,142,255,.35);background:rgba(79,142,255,.16);color:#9fc2ff;font-weight:800;cursor:pointer;">저장</button>'
+      + '  </div>'
+      + '</div></div>';
+    document.body.appendChild(el);
+    function close(){ el.style.display = 'none'; el.dataset.itemId=''; el.dataset.mode=''; }
+    el.addEventListener('click', function(e){ if (e.target === el) close(); });
+    el.querySelector('#skActionCancel').onclick = close;
+    el.querySelector('#skActionCloseX').onclick = close;
+    el.querySelector('#skUnsoldPrice').addEventListener('input', function(){
+      var digits = String(this.value || '').replace(/[^0-9]/g,'');
+      this.value = digits ? Number(digits).toLocaleString('ko-KR') : '';
+    });
+    el.querySelector('#skActionUnsoldBtn').onclick = function(){
+      el.dataset.mode = 'unsold';
+      el.querySelector('#skUnsoldForm').style.display = 'block';
+      el.querySelector('#skDeferredHelp').style.display = 'none';
+    };
+    el.querySelector('#skActionDeferredBtn').onclick = function(){
+      el.dataset.mode = 'deferred';
+      el.querySelector('#skUnsoldForm').style.display = 'none';
+      el.querySelector('#skDeferredHelp').style.display = 'block';
+    };
+    el.querySelector('#skActionSave').onclick = function(){
+      var itemId = el.dataset.itemId || '';
+      if (!itemId) return;
+      var mode = el.dataset.mode || 'unsold';
+      if (mode === 'deferred') {
+        if (skApplyDeferred(itemId)) close();
+        return;
+      }
+      var payload = {
+        round: el.querySelector('#skUnsoldRound').value,
+        biddate: el.querySelector('#skUnsoldDate').value,
+        minprice: el.querySelector('#skUnsoldPrice').value
+      };
+      if (skApplyUnsold(itemId, payload)) close();
+    };
+    return el;
+  }
+  window.skOpenAuctionActionByItem = function(itemId, preferredMode){
+    var items = (typeof plLoad === 'function') ? plLoad() : [];
+    var item = items.find(function(it){ return it && String(it.id) === String(itemId); });
+    if (!item) { skToast('물건을 찾을 수 없습니다', 'warn'); return; }
+    var modal = skEnsureActionModal();
+    modal.dataset.itemId = String(itemId);
+    var curRound = parseInt(item.round || '0', 10) || 0;
+    var nextRound = curRound + 1;
+    var nextDate = skAddDays(item.biddate || '', 28);
+    var curMin = skNum(item.minprice || '');
+    var nextMin = Math.floor(curMin * SK_DROP_RATE_DEFAULT);
+    modal.querySelector('#skActionTarget').textContent = (item.addr || item.casenum || item.id) + ' · 현재 ' + (curRound || '-') + '차 / ' + (item.biddate || '미정');
+    modal.querySelector('#skUnsoldRound').value = nextRound ? String(nextRound) : '';
+    modal.querySelector('#skUnsoldDate').value = skNormDate(nextDate);
+    modal.querySelector('#skUnsoldPrice').value = nextMin ? nextMin.toLocaleString('ko-KR') : '';
+    modal.style.display = 'flex';
+    if (preferredMode === 'deferred') modal.querySelector('#skActionDeferredBtn').click();
+    else modal.querySelector('#skActionUnsoldBtn').click();
+  };
+  window.skOpenAuctionActionByRoom = function(roomId, preferredMode){
+    var item = skFindItemByRoom(roomId);
+    if (!item) { skToast('연결된 물건을 찾지 못했습니다', 'warn'); return; }
+    window.skOpenAuctionActionByItem(item.id, preferredMode);
+  };
+
+  function skInjectWrButtons(){
+    var sel = document.getElementById('wr2LifecycleSelect');
+    if (!sel || sel.dataset.skWorkflowBound === '1') return;
+    sel.dataset.skWorkflowBound = '1';
+    var host = sel.parentElement;
+    if (!host) return;
+    // 상태 드롭다운은 상태만 변경
+    sel.onchange = function(e){
+      var roomId = (window.wr2State && window.wr2State.activeRoomId) ? String(window.wr2State.activeRoomId) : '';
+      var next = String(e.target.value || 'active');
+      var room = roomId ? skGetRoom(roomId) : null;
+      var prev = room ? String(room.lifecycleStatus || 'active') : 'active';
+      if (!roomId) return;
+      if (next === 'closed' && prev !== 'closed' && typeof window.wr2CollectCloseSummary === 'function') {
+        window.wr2CollectCloseSummary(room && room.closedSummary, function(closedSummary){
+          skSetRoomLifecycle(roomId, 'closed', { closedSummary: closedSummary });
+        }, function(){ sel.value = prev || 'active'; });
+        return;
+      }
+      skSetRoomLifecycle(roomId, next);
+      setTimeout(function(){ try { if (typeof window.wr2Render === 'function') window.wr2Render(); } catch(e){} }, 20);
+    };
+    if (!document.getElementById('wr2UnsoldBtn')) {
+      var b1 = document.createElement('button');
+      b1.id = 'wr2UnsoldBtn';
+      b1.type = 'button';
+      b1.className = 'wr2-hd-btn';
+      b1.textContent = '유찰';
+      b1.style.cssText = 'padding:4px 8px;border-radius:8px;border:1px solid rgba(74,222,128,.35);background:rgba(74,222,128,.10);color:#7ee7a8;cursor:pointer;';
+      b1.onclick = function(e){
+        e.preventDefault(); e.stopPropagation();
+        var roomId = window.wr2State && window.wr2State.activeRoomId;
+        if (roomId) window.skOpenAuctionActionByRoom(roomId, 'unsold');
+      };
+      host.insertBefore(b1, sel.nextSibling);
+    }
+    if (!document.getElementById('wr2DeferredBtn')) {
+      var b2 = document.createElement('button');
+      b2.id = 'wr2DeferredBtn';
+      b2.type = 'button';
+      b2.className = 'wr2-hd-btn';
+      b2.textContent = '미진행';
+      b2.style.cssText = 'padding:4px 8px;border-radius:8px;border:1px solid rgba(251,191,36,.35);background:rgba(251,191,36,.10);color:#f7cf68;cursor:pointer;';
+      b2.onclick = function(e){
+        e.preventDefault(); e.stopPropagation();
+        var roomId = window.wr2State && window.wr2State.activeRoomId;
+        if (roomId) window.skOpenAuctionActionByRoom(roomId, 'deferred');
+      };
+      host.insertBefore(b2, document.getElementById('wr2UnsoldBtn').nextSibling);
+    }
+  }
+
+  function skPatchStatusTexts(root){
+    root = root || document;
+    try {
+      root.querySelectorAll('option[value="active"]').forEach(function(o){ if (o.textContent.trim() === '활성') o.textContent = '진행'; });
+      root.querySelectorAll('#pl-filter-status option[value="active"]').forEach(function(o){ o.textContent = '진행'; });
+      root.querySelectorAll('#wr2LifecycleSelect option[value="active"]').forEach(function(o){ o.textContent = '진행'; });
+      root.querySelectorAll('button,span,div').forEach(function(el){
+        if (el.childElementCount === 0) {
+          var t = (el.textContent || '').trim();
+          if (t === '활성') el.textContent = '진행';
+          if (t.match(/^활성\s+\d+$/)) el.textContent = t.replace(/^활성/,'진행');
+        }
+      });
+    } catch(e) {}
+  }
+
+  function skDecoratePropertyListRows(){
+    var table = document.getElementById('property-list-table') || document.querySelector('[data-pl-table], #pl-table, table');
+    document.querySelectorAll('tr[data-plid]').forEach(function(tr){
+      var itemId = tr.getAttribute('data-plid');
+      var statusTd = tr.children && tr.children[1];
+      if (!statusTd) return;
+      var span = statusTd.querySelector('span[id$="_s"]');
+      var sel = statusTd.querySelector('select[id$="_i"]');
+      if (span && !span.dataset.skOpenBound) {
+        span.dataset.skOpenBound = '1';
+        span.addEventListener('click', function(e){
+          e.preventDefault(); e.stopPropagation();
+          if (typeof window.plStartInlineEdit === 'function' && sel && sel.id) {
+            var key = sel.id.replace(/_i$/, '');
+            window.plStartInlineEdit(key);
+          }
+        }, true);
+      }
+      if (sel && !sel.dataset.skImmediate) {
+        sel.dataset.skImmediate = '1';
+        sel.addEventListener('focus', function(){ try { this.size = 3; } catch(e){} });
+        sel.addEventListener('blur', function(){ try { this.size = 0; } catch(e){} });
+      }
+      var bar = statusTd.querySelector('.sk-auction-actions');
+      if (!bar) {
+        bar = document.createElement('div');
+        bar.className = 'sk-auction-actions';
+        bar.style.cssText = 'display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;';
+        var unsold = document.createElement('button');
+        unsold.type = 'button';
+        unsold.textContent = '유찰';
+        unsold.style.cssText = 'padding:1px 6px;border-radius:999px;border:1px solid rgba(74,222,128,.32);background:rgba(74,222,128,.08);color:#7ee7a8;font-size:10px;cursor:pointer;';
+        unsold.onclick = function(ev){ ev.preventDefault(); ev.stopPropagation(); window.skOpenAuctionActionByItem(itemId, 'unsold'); };
+        var deferred = document.createElement('button');
+        deferred.type = 'button';
+        deferred.textContent = '미진행';
+        deferred.style.cssText = 'padding:1px 6px;border-radius:999px;border:1px solid rgba(251,191,36,.32);background:rgba(251,191,36,.08);color:#f7cf68;font-size:10px;cursor:pointer;';
+        deferred.onclick = function(ev){ ev.preventDefault(); ev.stopPropagation(); window.skOpenAuctionActionByItem(itemId, 'deferred'); };
+        bar.appendChild(unsold);
+        bar.appendChild(deferred);
+        statusTd.appendChild(bar);
+      }
+    });
+  }
+
+  // 물건리스트 상태 변경은 즉시 반영
+  var _origPlSetSimpleStatus = window.plSetSimpleStatus;
+  window.plSetSimpleStatus = function(id, simpleStatus){
+    var simple = String(simpleStatus || 'active');
+    if (simple === 'closed' && typeof _origPlSetSimpleStatus === 'function') {
+      return _origPlSetSimpleStatus.call(this, id, simpleStatus);
+    }
+    var items = (typeof plLoad === 'function') ? plLoad() : [];
+    var item = items.find(function(i){ return i && String(i.id) === String(id); });
+    if (!item) return;
+    if (typeof plApplySimpleStatusToItem === 'function') {
+      plApplySimpleStatusToItem(item, simple);
+    } else {
+      item.status = (simple === 'changed') ? 'field' : 'review';
+      item.archived = (simple === 'closed');
+    }
+    item.__allowLifecycleReopen = true;
+    if (typeof plSave === 'function') plSave(items.map(function(it){ return typeof plNormalizeItem === 'function' ? plNormalizeItem(it) : it; }));
+    try { if (typeof syncToWorkroom === 'function') syncToWorkroom(item); } catch(e) {}
+    try { if (typeof plSyncItemToSaved === 'function') plSyncItemToSaved(item); } catch(e) {}
+    try { delete item.__allowLifecycleReopen; } catch(e) {}
+    try { if (typeof renderPropertyList === 'function') renderPropertyList(); } catch(e) {}
+    try { if (typeof window.wr2Render === 'function') window.wr2Render(); } catch(e) {}
+  };
+
+  var _origPlStartInlineEdit = window.plStartInlineEdit;
+  window.plStartInlineEdit = function(key){
+    if (typeof _origPlStartInlineEdit === 'function') _origPlStartInlineEdit(key);
+    var i = document.getElementById(key + '_i');
+    if (!i) return;
+    if (String(i.tagName).toLowerCase() === 'select') {
+      i.style.display = '';
+      try { i.focus(); } catch(e) {}
+      setTimeout(function(){
+        try {
+          i.dispatchEvent(new MouseEvent('mousedown', { bubbles:true }));
+          i.click();
+        } catch(e){}
+      }, 0);
+    }
+  };
+
+  var _origWr2Render = window.wr2Render;
+  if (typeof _origWr2Render === 'function') {
+    window.wr2Render = function(){
+      var ret = _origWr2Render.apply(this, arguments);
+      setTimeout(function(){
+        skPatchStatusTexts(document);
+        skInjectWrButtons();
+        skDecoratePropertyListRows();
+      }, 0);
+      return ret;
+    };
+  }
+  var _origRenderPropertyList = window.renderPropertyList;
+  if (typeof _origRenderPropertyList === 'function') {
+    window.renderPropertyList = function(){
+      var ret = _origRenderPropertyList.apply(this, arguments);
+      setTimeout(function(){
+        skPatchStatusTexts(document);
+        skDecoratePropertyListRows();
+      }, 0);
+      return ret;
+    };
+  }
+
+  var mo = new MutationObserver(function(){
+    skPatchStatusTexts(document);
+    skInjectWrButtons();
+    skDecoratePropertyListRows();
+  });
+  try { mo.observe(document.documentElement, { childList:true, subtree:true }); } catch(e) {}
+  setTimeout(function(){
+    skPatchStatusTexts(document);
+    skInjectWrButtons();
+    skDecoratePropertyListRows();
+  }, 0);
 })();
