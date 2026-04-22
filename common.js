@@ -11211,15 +11211,24 @@ window.wr2SummaryCancelEdit = function() {
       }
       return rooms;
     };
-    window.wrSetRooms = function (arr) {
+    window.wrSetRooms = function (arr, opts) {
       if (!window.wr2State) return;
+      var options = opts || {};
       var activeRooms = Array.isArray(arr) ? arr.filter(function(r) { return r && r.id; }) : [];
       var rawRooms = (window._wrGetRoomsCache && window._wrGetRoomsCache()) || [];
       var tombstones = rawRooms.filter(function(r) {
         return r && r.id && r.deletedAt && !activeRooms.find(function(a) { return a.id === r.id; });
       });
       var mergedRooms = activeRooms.concat(tombstones);
-      if (window._wrPersistRoomCache) window._wrPersistRoomCache(mergedRooms, { syncState: false });
+      if (window._wrPersistRooms) {
+        window._wrPersistRooms(mergedRooms, {
+          sync: options.sync !== false,
+          syncState: false,
+          keepDeletedInState: true
+        });
+      } else if (window._wrPersistRoomCache) {
+        window._wrPersistRoomCache(mergedRooms, { syncState: false, keepDeletedInState: true });
+      }
       window.wr2State.rooms = activeRooms;
       if (typeof window.wr2Render === 'function') window.wr2Render();
     };
@@ -42148,6 +42157,7 @@ window.addEventListener('DOMContentLoaded', () => {
         var out = _origSetSv.apply(this, arguments);
         if (_plSavedSyncMute <= 0) {
           try { plSyncFromSavedItems(arr, { render: false }); } catch(e) { console.warn('[plSyncFromSaved:setSv]', e); }
+          try { plSyncFromWorkrooms({ render: false, savedItems: arr }); } catch(e2) { console.warn('[plSyncFromWorkrooms:setSv]', e2); }
         }
         return out;
       };
@@ -42590,18 +42600,21 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   }
   function syncToWorkroom(item) {
-    if (!item.roomId) return;
-    var rooms = getWrRooms();
-    var room = rooms.find(function(r){return r.id === item.roomId;});
+    if (!item) return;
+    var room = resolveRoomForItem(item);
     if (!room) return;
+    if (!item.roomId || String(item.roomId) !== String(room.id)) item.roomId = String(room.id);
     var simple = plSimpleStatusKey(item.status);
     var newPhase = (item.status === 'archived' ? 'closed' : (item.status || 'review'));
     var patch = {
       phase: newPhase,
       status: newPhase,
       activePhase: newPhase,
-      lifecycleStatus: (simple === 'closed' ? 'closed' : (simple === 'changed' ? 'changed' : 'active'))
+      lifecycleStatus: (simple === 'closed' ? 'closed' : (simple === 'changed' ? 'changed' : 'active')),
+      linkedSavedId: room.linkedSavedId || item.linkedSavedId || '',
+      linkedItems: Array.isArray(room.linkedItems) ? room.linkedItems.slice() : []
     };
+    if (item.id && patch.linkedItems.indexOf(item.id) < 0) patch.linkedItems.push(item.id);
     var roomLifeNow = String((room && room.lifecycleStatus) || '').trim();
     if (roomLifeNow === 'closed' && patch.lifecycleStatus !== 'closed' && !(item && item.__allowLifecycleReopen)) {
       patch.phase = 'closed';
@@ -42609,6 +42622,7 @@ window.addEventListener('DOMContentLoaded', () => {
       patch.activePhase = 'closed';
       patch.lifecycleStatus = 'closed';
     }
+    if (item.linkedSavedId && String(room.linkedSavedId || '') !== String(item.linkedSavedId)) patch.linkedSavedId = String(item.linkedSavedId);
     if (item.addr && String(room.title || '') !== String(item.addr || '')) patch.title = item.addr;
     if (item.region && String(room.address || '') !== String(item.region || '')) patch.address = item.region;
     if (simple === 'closed') {
@@ -42625,14 +42639,21 @@ window.addEventListener('DOMContentLoaded', () => {
     }
     if (window.updateRoom) {
       window.updateRoom(room.id, patch);
-      if (typeof window.wrDbLinkItem === 'function') window.wrDbLinkItem(room.id, item.id);
+      if (typeof window.wrDbLinkItem === 'function' && item.id) window.wrDbLinkItem(room.id, item.id);
     } else {
-      room.phase = newPhase; room.status = newPhase; room.activePhase = newPhase;
-      room.lifecycleStatus = patch.lifecycleStatus;
-      if (patch.closedSummary) room.closedSummary = patch.closedSummary;
-      room.updatedAt = Date.now();
-      if (!room.linkedItems) room.linkedItems = [];
-      if (room.linkedItems.indexOf(item.id) < 0) room.linkedItems.push(item.id);
+      var rooms = getWrRooms();
+      var target = rooms.find(function(r){ return r && String(r.id) === String(room.id); });
+      if (!target) return;
+      target.phase = patch.phase;
+      target.status = patch.status;
+      target.activePhase = patch.activePhase;
+      target.lifecycleStatus = patch.lifecycleStatus;
+      target.linkedSavedId = patch.linkedSavedId;
+      target.linkedItems = patch.linkedItems.slice();
+      if (patch.title !== undefined) target.title = patch.title;
+      if (patch.address !== undefined) target.address = patch.address;
+      if (patch.closedSummary) target.closedSummary = patch.closedSummary;
+      target.updatedAt = Date.now();
       if (window._wrPersistRooms) window._wrPersistRooms(rooms, { syncState: true });
     }
   }
@@ -42650,37 +42671,8 @@ window.addEventListener('DOMContentLoaded', () => {
     if (typeof window.updateRoom === 'function') {
       var _origUpdateRoom = window.updateRoom;
       window.updateRoom = function(id, patch, silentRender) {
-        // ★ 내부 전용 플래그는 원본 updateRoom에 전달되지 않도록 사본을 만들어 제거한다.
-        //   (원본은 Object.assign({}, prevRoom, safePatch)로 room을 갱신하므로
-        //    플래그가 그대로 저장되면 Supabase로도 업로드되는 부작용이 생긴다)
-        var isUnsoldFlag = !!(patch && patch.__skUnsoldPreservePhase);
-        var patchForOrig = patch;
-        if (isUnsoldFlag) {
-          patchForOrig = Object.assign({}, patch);
-          delete patchForOrig.__skUnsoldPreservePhase;
-        }
-        var out = _origUpdateRoom(id, patchForOrig, silentRender);
-        if (patch && (patch.status || patch.phase || patch.lifecycleStatus || patch.closedSummary || patch.title !== undefined || patch.address !== undefined || isUnsoldFlag)) {
-          // ★ 유찰 처리: phase를 건드리지 않아야 하므로 status 오버라이드를 건너뛴다
-          if (isUnsoldFlag) {
-            // 유찰은 biddate/minprice/round 같은 데이터 동기화만 하고,
-            // status/phase는 기존 room 값을 그대로 따르도록 syncPropertyFromRoom을 부드럽게 호출
-            try {
-              syncPropertyFromRoom(id, {
-                // status 생략 → 기존 값 유지
-                archived: false,
-                title: patch.title,
-                address: patch.address,
-                lifecycleStatus: patch.lifecycleStatus,
-                biddate: patch.biddate,
-                minprice: patch.minprice,
-                round: patch.round,
-                __skUnsoldPreservePhase: true
-              });
-              plSyncFromWorkrooms({ render: false });
-            } catch(e) {}
-            return out;
-          }
+        var out = _origUpdateRoom(id, patch, silentRender);
+        if (patch && (patch.status || patch.phase || patch.lifecycleStatus || patch.closedSummary || patch.title !== undefined || patch.address !== undefined)) {
           var nextStatus = patch.status || patch.phase;
           if (!nextStatus && patch.lifecycleStatus) {
             nextStatus = patch.lifecycleStatus === 'closed'
@@ -43984,6 +43976,33 @@ window.addEventListener('DOMContentLoaded', () => {
     return Array.from(new Set(ids.filter(Boolean)));
   }
 
+  function resolveRoomForItem(item) {
+    if (!item || typeof window.wrGetRooms !== 'function') return null;
+    try {
+      var rooms = window.wrGetRooms() || [];
+      var roomId = String(item.roomId || '').trim();
+      var linkedSavedId = String(item.linkedSavedId || '').trim();
+      var itemId = String(item.id || '').trim();
+      if (roomId) {
+        var direct = rooms.find(function (r) { return r && String(r.id) === roomId; });
+        if (direct) return direct;
+      }
+      var room = rooms.find(function (r) {
+        if (!r) return false;
+        if (linkedSavedId && (
+          String(r.linkedSavedId || '') === linkedSavedId ||
+          String(r.auctionId || '') === linkedSavedId ||
+          String(r.listingId || '') === linkedSavedId
+        )) return true;
+        if (itemId && Array.isArray(r.linkedItems) && r.linkedItems.map(String).indexOf(itemId) >= 0) return true;
+        return false;
+      });
+      return room || null;
+    } catch (e) {
+      return null;
+    }
+  }
+
   function syncLinkedItemsByRoom(roomId, norm) {
     try {
       if (!roomId || typeof window.wrGetRooms !== 'function' || typeof window.getSv !== 'function' || typeof window.setSv !== 'function') return false;
@@ -43994,11 +44013,17 @@ window.addEventListener('DOMContentLoaded', () => {
       if (!ids.length) return false;
       var sv = window.getSv() || [];
       var changed = false;
+      var lifecycle = (norm === 'closed') ? 'closed' : ((norm === 'changed') ? 'changed' : 'active');
       sv.forEach(function (it) {
         if (!it || ids.indexOf(String(it.id)) < 0) return;
+        if (!it.data || typeof it.data !== 'object') it.data = {};
         var cur = normalizeStatus(it.watchStatus);
         if (cur !== norm) {
           it.watchStatus = norm;
+          changed = true;
+        }
+        if (String(it.data['작업룸상태'] || '') !== lifecycle) {
+          it.data['작업룸상태'] = lifecycle;
           changed = true;
         }
       });
@@ -44813,53 +44838,6 @@ window.addEventListener('DOMContentLoaded', () => {
   }
   function _skCurrentBidDate(item){ return item.biddate || item.saleDate || item.매각기일 || ''; }
 
-  // ======================================================================
-  // [유찰/상태변경 개선 블록]
-  //  - 유찰: 회차+1 / 매각기일 +28일 / 최저가 0.7배 자동 계산, 저장 시
-  //    '진행(활성)' 상태로 저장되며 phase는 기존 단계 유지
-  //  - 변경/미진행: 매각기일 미정, 작업룸은 'changed' 라이프사이클
-  //  - 작업룸 ↔ 물건리스트 상태 상호 적용 + 저장 안정화(즉시 flush)
-  // ======================================================================
-
-  // ── 상태 변경 시 즉시 저장 flush (debounce 우회) ──
-  //   저장을 "미뤄두는" 기본 동작 때문에 상태 변경이 날아가는 문제를 막기 위해,
-  //   상태 변경 직후에 직접 localStorage/idb에 즉시 기록하도록 한다.
-  function _skFlushSaveRooms() {
-    try {
-      // 1) wr2 rooms debounce flush (saveRooms 내부 180ms 타이머 강제 실행)
-      if (typeof window.__wr2FlushSaveRooms === 'function') {
-        window.__wr2FlushSaveRooms();
-      }
-    } catch(e) {}
-    try {
-      // 2) 캐시에 immediate 저장 — idb/localStorage에 즉시 반영
-      if (window._sbPersistCachedArray && window.wr2State && Array.isArray(window.wr2State.rooms)) {
-        window._sbPersistCachedArray('wr2_rooms', window.wr2State.rooms, { immediate: true });
-      }
-    } catch(e) {}
-    try {
-      // 3) Supabase 업로드 스케줄 (있으면)
-      if (window._sbMarkRoomDirty && window.wr2State && window.wr2State.activeRoomId) {
-        window._sbMarkRoomDirty(window.wr2State.activeRoomId);
-      }
-    } catch(e) {}
-  }
-  function _skFlushSavePl() {
-    try {
-      // 물건리스트(pl_items_v3)를 즉시 flush.
-      var key = 'pl_items_v3';
-      var arr = (typeof plLoad === 'function') ? plLoad() : null;
-      if (!Array.isArray(arr)) return;
-      if (window._sbPersistCachedArray) {
-        window._sbPersistCachedArray(key, arr, { immediate: true });
-      } else {
-        try { localStorage.setItem(key, JSON.stringify(arr)); } catch(e) {}
-      }
-      if (typeof window._sbMarkKvDirty === 'function') window._sbMarkKvDirty(key);
-      if (typeof window._sbScheduleSavePlItems === 'function') window._sbScheduleSavePlItems(arr, 0);
-    } catch(e) {}
-  }
-
   function _skEnsureResultModal(){
     var modal = document.getElementById('skResultFlowModal');
     if (modal) return modal;
@@ -44867,31 +44845,30 @@ window.addEventListener('DOMContentLoaded', () => {
     modal.id = 'skResultFlowModal';
     modal.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,.62);z-index:14000;align-items:center;justify-content:center;padding:12px;';
     modal.innerHTML = ''
-      + '<div style="width:min(520px,96vw);background:linear-gradient(180deg,rgba(20,24,36,.98),rgba(11,15,24,.98));border:1px solid rgba(79,142,255,.32);border-radius:14px;box-shadow:0 22px 56px rgba(0,0,0,.5);overflow:hidden;">'
-      + '  <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:linear-gradient(90deg,rgba(79,142,255,.16),rgba(79,142,255,.06));border-bottom:1px solid rgba(79,142,255,.18);">'
-      + '    <div id="skResultFlowHeader" style="display:flex;align-items:center;gap:10px;">'
-      + '      <div id="skResultFlowBadge" style="border:2px solid rgba(79,142,255,.78);border-radius:10px;padding:4px 9px;color:#9ec0ff;font-size:12px;font-weight:900;letter-spacing:2px;transform:rotate(-8deg);">유찰</div>'
-      + '      <div id="skResultFlowTitle" style="color:#d9e4ff;font-size:13px;font-weight:700;">유찰 처리 — 다음 회차 정보를 확인하세요</div>'
+      + '<div style="width:min(520px,96vw);background:linear-gradient(180deg,rgba(20,24,36,.98),rgba(11,15,24,.98));border:1px solid rgba(255,196,77,.28);border-radius:14px;box-shadow:0 22px 56px rgba(0,0,0,.5);overflow:hidden;">'
+      + '  <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:linear-gradient(90deg,rgba(251,191,36,.16),rgba(251,191,36,.06));border-bottom:1px solid rgba(251,191,36,.18);">'
+      + '    <div style="display:flex;align-items:center;gap:10px;">'
+      + '      <div style="border:2px solid rgba(251,191,36,.75);border-radius:10px;padding:4px 9px;color:#f7d47d;font-size:12px;font-weight:900;letter-spacing:2px;transform:rotate(-8deg);">변경</div>'
+      + '      <div style="color:#ffe9b3;font-size:13px;font-weight:700;">변경 처리 유형을 선택하세요</div>'
       + '    </div>'
-      + '    <button type="button" id="skResultFlowCloseX" style="border:none;background:transparent;color:#d9e4ff;font-size:20px;cursor:pointer;line-height:1;">×</button>'
+      + '    <button type="button" id="skResultFlowCloseX" style="border:none;background:transparent;color:#ffe9b3;font-size:20px;cursor:pointer;line-height:1;">×</button>'
       + '  </div>'
-      + '  <div style="padding:12px 16px 8px;display:flex;gap:8px;">'
-      + '    <button type="button" id="skModeUnsold" style="flex:1;padding:10px 12px;border-radius:10px;border:1px solid rgba(79,142,255,.45);background:rgba(79,142,255,.22);color:#cfdfff;font-weight:800;cursor:pointer;">유찰 (다음 회차로)</button>'
+      + '  <div style="padding:14px 16px 10px;display:flex;gap:8px;">'
+      + '    <button type="button" id="skModeUnsold" style="flex:1;padding:10px 12px;border-radius:10px;border:1px solid rgba(79,142,255,.28);background:rgba(79,142,255,.12);color:#bcd4ff;font-weight:800;cursor:pointer;">유찰</button>'
       + '    <button type="button" id="skModeChanged" style="flex:1;padding:10px 12px;border-radius:10px;border:1px solid rgba(251,191,36,.28);background:rgba(251,191,36,.10);color:#ffe09c;font-weight:800;cursor:pointer;">변경 / 미진행</button>'
       + '  </div>'
-      + '  <div id="skUnsoldForm" style="display:block;padding:4px 16px 12px;">'
-      + '    <div style="font-size:11px;color:var(--mu);margin:4px 0 10px;line-height:1.5;">유찰로 저장하면 <b style="color:#bcd4ff;">물건 상태는 \'진행\'으로 유지</b>되며, 아래 정보로 <b style="color:#bcd4ff;">다음 회차가 등록</b>됩니다. (현재 진행 단계는 변하지 않습니다)</div>'
+      + '  <div id="skUnsoldForm" style="display:none;padding:0 16px 12px;">'
       + '    <label style="display:block;font-size:11px;color:#c9d7ff;margin:6px 0 5px;">다음 회차</label>'
       + '    <input id="skNextRound" type="number" style="width:100%;padding:9px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--tx);outline:none;box-sizing:border-box;">'
       + '    <label style="display:block;font-size:11px;color:#c9d7ff;margin:10px 0 5px;">다음 매각기일</label>'
       + '    <input id="skNextDate" type="date" style="width:100%;padding:9px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--tx);outline:none;box-sizing:border-box;">'
-      + '    <label style="display:block;font-size:11px;color:#c9d7ff;margin:10px 0 5px;">다음 최저가 <span style="color:var(--mu);font-weight:400;">(원 단위, 기본: 현재가×0.7)</span></label>'
+      + '    <label style="display:block;font-size:11px;color:#c9d7ff;margin:10px 0 5px;">다음 최저가</label>'
       + '    <input id="skNextPrice" type="text" inputmode="numeric" placeholder="원" style="width:100%;padding:9px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--tx);outline:none;box-sizing:border-box;">'
       + '  </div>'
-      + '  <div id="skChangedInfo" style="display:none;padding:4px 16px 12px;font-size:12px;color:var(--mu);line-height:1.5;">변경/미진행으로 저장하면 <b style="color:#ffe09c;">작업룸은 \'변경\' 상태</b>가 되고, 매각기일은 <b style="color:#ffe09c;">미정</b>으로 초기화됩니다.</div>'
+      + '  <div id="skChangedInfo" style="display:none;padding:0 16px 12px;font-size:12px;color:var(--mu);">변경/미진행으로 저장하면 매각기일은 미정으로 바뀝니다.</div>'
       + '  <div style="display:flex;justify-content:flex-end;gap:8px;padding:0 16px 14px;">'
       + '    <button type="button" id="skResultFlowCancel" style="padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.04);color:var(--tx);font-size:12px;cursor:pointer;">취소</button>'
-      + '    <button type="button" id="skResultFlowSave" style="padding:8px 14px;border-radius:8px;border:1px solid rgba(79,142,255,.45);background:rgba(79,142,255,.24);color:#e6eeff;font-size:12px;font-weight:700;cursor:pointer;">저장</button>'
+      + '    <button type="button" id="skResultFlowSave" style="padding:8px 12px;border-radius:8px;border:1px solid rgba(251,191,36,.35);background:rgba(251,191,36,.18);color:#ffe9b3;font-size:12px;font-weight:700;cursor:pointer;">저장</button>'
       + '  </div>'
       + '</div>';
     document.body.appendChild(modal);
@@ -44902,44 +44879,20 @@ window.addEventListener('DOMContentLoaded', () => {
     var modal = _skEnsureResultModal();
     var close = function(){ modal.style.display='none'; modal.__ctx = null; };
     modal.__ctx = ctx || {};
-    var unsoldBtn   = document.getElementById('skModeUnsold');
-    var changedBtn  = document.getElementById('skModeChanged');
-    var unsoldForm  = document.getElementById('skUnsoldForm');
+    var unsoldBtn = document.getElementById('skModeUnsold');
+    var changedBtn = document.getElementById('skModeChanged');
+    var unsoldForm = document.getElementById('skUnsoldForm');
     var changedInfo = document.getElementById('skChangedInfo');
-    var nextRound   = document.getElementById('skNextRound');
-    var nextDate    = document.getElementById('skNextDate');
-    var nextPrice   = document.getElementById('skNextPrice');
-    var saveBtn     = document.getElementById('skResultFlowSave');
-    var badgeEl     = document.getElementById('skResultFlowBadge');
-    var titleEl     = document.getElementById('skResultFlowTitle');
-
-    // 초기 진입 모드: 'unsold' 강제 (유찰이 기본, 유저가 명시적으로 '변경' 선택)
-    var mode = (ctx && ctx.initialMode === 'changed') ? 'changed' : 'unsold';
-
-    function updateChrome(){
-      if (mode === 'unsold') {
-        unsoldBtn.style.borderColor  = 'rgba(79,142,255,.6)';
-        unsoldBtn.style.background   = 'rgba(79,142,255,.28)';
-        changedBtn.style.borderColor = 'rgba(251,191,36,.28)';
-        changedBtn.style.background  = 'rgba(251,191,36,.10)';
-        if (badgeEl) { badgeEl.textContent = '유찰'; badgeEl.style.color = '#9ec0ff'; badgeEl.style.borderColor = 'rgba(79,142,255,.78)'; }
-        if (titleEl) titleEl.textContent = '유찰 처리 — 다음 회차 정보를 확인하세요';
-      } else {
-        unsoldBtn.style.borderColor  = 'rgba(79,142,255,.28)';
-        unsoldBtn.style.background   = 'rgba(79,142,255,.12)';
-        changedBtn.style.borderColor = 'rgba(251,191,36,.6)';
-        changedBtn.style.background  = 'rgba(251,191,36,.22)';
-        if (badgeEl) { badgeEl.textContent = '변경'; badgeEl.style.color = '#f7d47d'; badgeEl.style.borderColor = 'rgba(251,191,36,.75)'; }
-        if (titleEl) titleEl.textContent = '변경/미진행 처리 — 매각기일이 미정으로 초기화됩니다';
-      }
-    }
+    var nextRound = document.getElementById('skNextRound');
+    var nextDate = document.getElementById('skNextDate');
+    var nextPrice = document.getElementById('skNextPrice');
+    var saveBtn = document.getElementById('skResultFlowSave');
+    var mode = 'unsold';
     function setMode(v){
       mode = v;
-      unsoldForm.style.display  = (v==='unsold')  ? 'block' : 'none';
+      unsoldForm.style.display = (v==='unsold') ? 'block' : 'none';
       changedInfo.style.display = (v==='changed') ? 'block' : 'none';
-      updateChrome();
     }
-
     if (nextPrice && !nextPrice.dataset.boundMoneyFmt) {
       nextPrice.dataset.boundMoneyFmt='1';
       nextPrice.addEventListener('input', function(){
@@ -44947,106 +44900,72 @@ window.addEventListener('DOMContentLoaded', () => {
         if (/^[\d,]*$/.test(val)) this.value = _skComma(val);
       });
     }
-    unsoldBtn.onclick  = function(){ setMode('unsold'); };
+    unsoldBtn.onclick = function(){ setMode('unsold'); };
     changedBtn.onclick = function(){ setMode('changed'); };
     document.getElementById('skResultFlowCloseX').onclick = close;
     document.getElementById('skResultFlowCancel').onclick = close;
     modal.onclick = function(evt){ if (evt.target === modal) close(); };
-
     var item = ctx.item || {};
     nextRound.value = String(_skCurrentRound(item) + 1 || 1);
-    nextDate.value  = _skFmtYmd(_skAddDays(_skCurrentBidDate(item), 28));
+    nextDate.value = _skFmtYmd(_skAddDays(_skCurrentBidDate(item), 28));
     nextPrice.value = _skComma(_skNextPrice(item));
-    setMode(mode);
-
+    setMode('unsold');
     saveBtn.onclick = function(){
       try {
         if (ctx.source === 'pl') {
-          // ── 물건리스트에서 호출된 경우 ──────────────────────
           var items = plLoad();
           var target = items.find(function(i){ return i && String(i.id) === String(ctx.id); });
           if (!target) return close();
-
           if (mode === 'changed') {
-            // 변경/미진행: 작업룸 상태는 'changed'
-            target.status   = 'field';
-            target.biddate  = '미정';
+            target.status = 'field';
+            target.biddate = '미정';
             target.updatedAt = Date.now();
             target.__allowLifecycleReopen = true;
             plSave(items.map(plNormalizeItem));
-            try { syncToWorkroom(target); } catch(e){}
+            syncToWorkroom(target);
             try { delete target.__allowLifecycleReopen; } catch(e) {}
             try { plSyncItemToSaved(target); } catch(e) {}
+            if (typeof renderPropertyList === 'function') renderPropertyList();
           } else {
-            // ★ 유찰: 다음 회차 정보 갱신 + 상태는 '진행(active)' 유지
-            //   phase(검토/현장/입찰...)는 건드리지 않음 → 사용자의 현재 단계 유지
-            var prevSimple = (typeof plSimpleStatusKey === 'function')
-              ? plSimpleStatusKey(target.status)
-              : 'active';
-            // 종료 상태였다면 되살아나야 하므로 review로, 아니면 기존 phase 유지
-            var curPhase = String(target.status || 'review');
-            if (curPhase === 'closed' || curPhase === 'archived') {
-              target.status = 'review';
-            }
-            // biddate는 항상 새 매각기일로 교체
-            target.round    = parseInt(nextRound.value || '1', 10) || 1;
-            target.biddate  = nextDate.value || '';
-            var _mp = _skDigits(nextPrice.value || '');
-            if (_mp) target.minprice = _mp;
+            target.status = 'review';
+            target.round = parseInt(nextRound.value || '1', 10) || 1;
+            target.biddate = nextDate.value || '';
+            target.minprice = _skDigits(nextPrice.value || '');
             target.updatedAt = Date.now();
-            target.archived = false;
-            // ★ 작업룸으로 동기화 시 lifecycle을 active로 되돌릴 수 있도록 플래그
             target.__allowLifecycleReopen = true;
-            target.__skUnsoldPreservePhase = true;
             plSave(items.map(plNormalizeItem));
-            try { syncToWorkroom(target); } catch(e){}
+            syncToWorkroom(target);
             try { delete target.__allowLifecycleReopen; } catch(e) {}
-            try { delete target.__skUnsoldPreservePhase; } catch(e) {}
             try { plSyncItemToSaved(target); } catch(e) {}
+            if (typeof renderPropertyList === 'function') renderPropertyList();
           }
-          _skFlushSavePl();
-          _skFlushSaveRooms();
-          if (typeof renderPropertyList === 'function') renderPropertyList();
-
         } else if (ctx.source === 'wr') {
-          // ── 작업룸에서 호출된 경우 ──────────────────────────
           var patch = { __forceLifecycleChange: true };
           if (mode === 'changed') {
             patch.lifecycleStatus = 'changed';
-            patch.status          = 'field';
-            patch.phase           = 'field';
-            patch.activePhase     = 'field';
-            patch.biddate         = '미정';
+            patch.status = 'field';
+            patch.phase = 'field';
+            patch.activePhase = 'field';
+            patch.biddate = '미정';
           } else {
-            // ★ 유찰: 라이프사이클은 active, phase는 건드리지 않음
             patch.lifecycleStatus = 'active';
-            // phase/status/activePhase는 '변경하지 않는다' → patch에 넣지 않음
-            patch.biddate  = nextDate.value || '';
-            patch.round    = parseInt(nextRound.value || '1', 10) || 1;
-            var _mpw = _skDigits(nextPrice.value || '');
-            if (_mpw) patch.minprice = _mpw;
-            // ★ 플래그: wrapper들이 이를 감지해 status 오버라이드를 방지
-            patch.__skUnsoldPreservePhase = true;
+            patch.status = 'review';
+            patch.phase = 'review';
+            patch.activePhase = 'review';
+            patch.round = parseInt(nextRound.value || '1', 10) || 1;
+            patch.biddate = nextDate.value || '';
+            patch.minprice = _skDigits(nextPrice.value || '');
           }
           if (typeof updateRoom === 'function') updateRoom(ctx.id, patch);
-          _skFlushSaveRooms();
-          _skFlushSavePl();
           if (typeof renderPropertyList === 'function') setTimeout(renderPropertyList, 60);
         }
-      } catch(e) {
-        console.warn('[skResultFlowSave]', e);
-        try { if (typeof showToast === 'function') showToast('저장 중 오류가 발생했어요. 다시 시도해주세요.', 'warn'); } catch(ex) {}
-      }
+      } catch(e) { console.warn('[skResultFlowSave]', e); }
       close();
     };
     modal.style.display='flex';
-    setTimeout(function(){ try { nextDate && nextDate.focus(); } catch(e){} }, 40);
   }
 
   // Allow lifecycle reopen when explicitly forced.
-  //   이 wrapper는 단순히 patch 복사본을 만들어 하위 wrapper로 넘긴다.
-  //   (__skUnsoldPreservePhase 플래그는 안쪽 wrapper[42652줄]가 감지해야 하므로
-  //    여기서 삭제하지 않는다. 실제 원본 updateRoom 호출 직전에 안쪽 wrapper가 제거한다.)
   try {
     if (typeof updateRoom === 'function') {
       var _origUpdateRoom_v5 = updateRoom;
@@ -45063,23 +44982,7 @@ window.addEventListener('DOMContentLoaded', () => {
       var _origSyncPropertyFromRoom = syncPropertyFromRoom;
       syncPropertyFromRoom = function(roomId, patch){
         var safe = Object.assign({}, patch || {});
-        // ★ 유찰: status/phase 덮어쓰기 금지. lifecycleStatus만 남기면 원본이 status='review'로 강제하므로 둘 다 제거.
-        //   biddate/minprice/round 같은 데이터만 반영되도록 정리.
-        //   단, 만약 item이 예전에 'closed'였다면 원본 보호로직이 patch를 무시할 수 있으니,
-        //   여기서는 patch만 정리하고 원본이 기본 경로로 병합하게 둔다.
-        if (safe.__skUnsoldPreservePhase === true) {
-          // closed item을 유찰로 되살리는 경우에만 status='review'를 살짝 주입
-          try {
-            var _items = (typeof plLoad === 'function') ? plLoad() : [];
-            var _target = _items.find(function(x){ return x && String(x.roomId||'') === String(roomId); });
-            if (_target && (_target.status === 'closed' || _target.archived === true)) {
-              safe.status = 'review';
-              safe.archived = false;
-            }
-          } catch(e) {}
-          delete safe.lifecycleStatus;
-          delete safe.__skUnsoldPreservePhase;
-        } else if (safe.__forceLifecycleChange === true && safe.lifecycleStatus) {
+        if (safe.__forceLifecycleChange === true && safe.lifecycleStatus) {
           safe.status = safe.status || (safe.lifecycleStatus === 'closed' ? 'closed' : (safe.lifecycleStatus === 'changed' ? 'field' : 'review'));
         }
         return _origSyncPropertyFromRoom(roomId, safe);
@@ -45096,11 +44999,7 @@ window.addEventListener('DOMContentLoaded', () => {
           var room = rooms.find(function(r){return r.id === item.roomId;});
           if (room && typeof updateRoom === 'function') {
             var simple = plSimpleStatusKey(item.status);
-            // ★ 유찰 플래그가 있으면 phase는 건드리지 않는다 (사용자 현재 단계 유지)
-            var preservePhase = !!item.__skUnsoldPreservePhase;
-            var newPhase = preservePhase
-              ? (room.phase || room.status || room.activePhase || 'review')
-              : (item.status === 'archived' ? 'closed' : (item.status || 'review'));
+            var newPhase = (item.status === 'archived' ? 'closed' : (item.status || 'review'));
             var patch = {
               phase: newPhase,
               status: newPhase,
@@ -45108,9 +45007,8 @@ window.addEventListener('DOMContentLoaded', () => {
               lifecycleStatus: (simple === 'closed' ? 'closed' : (simple === 'changed' ? 'changed' : 'active')),
               __forceLifecycleChange: true
             };
-            if (item.biddate !== undefined)  patch.biddate  = item.biddate;
+            if (item.biddate !== undefined) patch.biddate = item.biddate;
             if (item.minprice !== undefined) patch.minprice = item.minprice;
-            if (item.round !== undefined && item.round !== '') patch.round = item.round;
             return updateRoom(room.id, patch);
           }
         }
@@ -45142,9 +45040,6 @@ window.addEventListener('DOMContentLoaded', () => {
     };
   } catch(e) {}
 
-  // ── 물건리스트에서 상태 변경 ─────────────────────────
-  //   '변경' 선택 시 유찰/변경 분기 모달 호출
-  //   '활성'/'종료' 선택 시 즉시 적용 + 작업룸 동기화 + 저장 flush
   try {
     window.plSetSimpleStatus = function(id, simpleStatus) {
       var items = plLoad();
@@ -45152,8 +45047,7 @@ window.addEventListener('DOMContentLoaded', () => {
       if (!item) return;
       var next = String(simpleStatus || 'active');
       if (next === 'changed') {
-        // 유찰/변경 분기 모달 — 기본은 '유찰'로 열림
-        _skOpenResultFlow({ source:'pl', id:id, item:item, initialMode:'unsold' });
+        _skOpenResultFlow({ source:'pl', id:id, item:item });
         return;
       }
       var oldSimple = plSimpleStatusKey(item.status);
@@ -45162,93 +45056,47 @@ window.addEventListener('DOMContentLoaded', () => {
       if (next === 'closed' && !item.biddate) item.biddate = item.lastBiddate || item.biddate || '';
       item.__allowLifecycleReopen = true;
       plSave(items.map(plNormalizeItem));
-      try { syncToWorkroom(item); } catch(e) {}
+      syncToWorkroom(item);
       try { delete item.__allowLifecycleReopen; } catch(e) {}
       try { plSyncItemToSaved(item); } catch(e) {}
-      _skFlushSavePl();
-      _skFlushSaveRooms();
       if (next === 'closed' && oldSimple !== 'closed') {
-        setTimeout(function(){ try { plOpenResultModal(id); } catch(e){} }, 120);
+        setTimeout(function(){ plOpenResultModal(id); }, 120);
       }
       if (typeof renderPropertyList === 'function') renderPropertyList();
     };
   } catch(e) {}
 
-  // ── 작업룸 라이프사이클 드롭다운 바인딩 ────────────────
-  //   렌더 시마다 wr2Render가 새 핸들러를 바인딩하는 문제를 방지하기 위해
-  //   dataset.skBound 플래그로 한 번만 바인딩한다. 기존 인라인 핸들러는
-  //   capture 단계에서 차단(stopImmediatePropagation)한다.
   function _skBindWorkroomLifecycle(){
     var lifeSel = document.getElementById('wr2LifecycleSelect');
     if (!lifeSel) return;
     try {
       var opts = lifeSel.options || [];
       for (var i=0;i<opts.length;i++) {
-        if (opts[i].value === 'active')  opts[i].text = '진행';
+        if (opts[i].value === 'active') opts[i].text = '진행';
         if (opts[i].value === 'changed') opts[i].text = '변경';
-        if (opts[i].value === 'closed')  opts[i].text = '종료';
+        if (opts[i].value === 'closed') opts[i].text = '종료';
       }
     } catch(e) {}
     if (lifeSel.dataset.skBound === '1') return;
     lifeSel.dataset.skBound = '1';
-
-    // capture 단계 change 인터셉트 — wr2Render가 덮어쓴 onchange보다 우선 실행
-    var handler = function(e){
-      // 인라인 onchange로 이미 처리되지 않도록 바로 중단
-      if (e && typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
-      if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
-
+    lifeSel.onchange = function(e){
       var room = (typeof getActiveRoom === 'function') ? getActiveRoom() : null;
       if (!room) return;
       var prev = (typeof wr2GetLifecycle === 'function') ? wr2GetLifecycle(room) : 'active';
       var next = String(e.target.value || 'active');
-      if (prev === next) return;
-
       if (next === 'changed') {
-        // 유찰/변경 분기 모달 (기본 '유찰')
-        _skOpenResultFlow({ source:'wr', id:room.id, item: room, initialMode:'unsold' });
-        // 드롭다운 표시값은 사용자가 저장할 때 갱신되므로, 취소 시를 대비해 일단 되돌림
+        _skOpenResultFlow({ source:'wr', id:room.id, item: room });
         e.target.value = prev;
         return;
       }
       if (next === 'closed' && prev !== 'closed') {
         wr2CollectCloseSummary(room.closedSummary, function(closedSummary) {
-          try {
-            updateRoom(room.id, {
-              lifecycleStatus: next,
-              closedSummary: closedSummary,
-              __forceLifecycleChange: true
-            });
-            _skFlushSaveRooms();
-            _skFlushSavePl();
-          } catch(err) {
-            console.warn('[skLifecycle:closed]', err);
-            try { if (typeof showToast === 'function') showToast('종료 처리 중 오류. 다시 시도해주세요.', 'warn'); } catch(ex) {}
-          }
-        }, function() {
-          lifeSel.value = prev;
-        });
+          updateRoom(room.id, { lifecycleStatus: next, closedSummary: closedSummary, __forceLifecycleChange: true });
+        }, function() { lifeSel.value = prev; });
         return;
       }
-      // 활성으로 복귀 or 기타
-      try {
-        updateRoom(room.id, { lifecycleStatus: next, __forceLifecycleChange: true });
-        _skFlushSaveRooms();
-        _skFlushSavePl();
-      } catch(err) {
-        console.warn('[skLifecycle:' + next + ']', err);
-      }
+      updateRoom(room.id, { lifecycleStatus: next, __forceLifecycleChange: true });
     };
-    // capture=true로 등록 → 인라인 onchange보다 먼저 실행되어 중복 처리 방지
-    lifeSel.addEventListener('change', handler, true);
-    // 방어적으로 인라인 onchange도 무력화 (wr2Render가 재설정하는 핸들러가 달라붙는 것을 대비)
-    try {
-      Object.defineProperty(lifeSel, 'onchange', {
-        configurable: true,
-        get: function(){ return null; },
-        set: function(_v){ /* no-op: 인라인 재바인딩 차단 */ }
-      });
-    } catch(e) {}
   }
   setInterval(_skBindWorkroomLifecycle, 500);
 
