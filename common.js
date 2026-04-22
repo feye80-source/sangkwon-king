@@ -42111,6 +42111,16 @@ window.addEventListener('DOMContentLoaded', () => {
       putField('종료메모', item.memo || '');
     }
     if (item.bidders !== undefined) putField('입찰인수', item.bidders || '');
+    {
+      var simpleLife = plSimpleStatusKey(item.status || '');
+      putField('작업룸상태', simpleLife || 'active');
+      putField('분석상태', simpleLife || 'active');
+      if (simpleLife === 'active') {
+        if (String(d['입찰기일'] || '').trim() === '미정') putField('입찰기일', String(item.biddate || '').trim());
+        if (String(d['매각기일'] || '').trim() === '미정') putField('매각기일', String(item.biddate || '').trim());
+        if (String(d['매각일'] || '').trim() === '미정') putField('매각일', String(item.biddate || '').trim());
+      }
+    }
     if (!changed) return false;
     try { if (typeof normalizeItem === 'function') normalizeItem(src); } catch(e) {}
     sv[idx] = src;
@@ -44748,7 +44758,7 @@ window.addEventListener('DOMContentLoaded', () => {
 (function(){
   try {
     if (typeof STATUS_MAP !== 'undefined' && STATUS_MAP && STATUS_MAP.active) {
-      STATUS_MAP.active.label = '진행';
+      STATUS_MAP.active.label = '활성';
     }
   } catch(e) {}
   try {
@@ -44758,7 +44768,7 @@ window.addEventListener('DOMContentLoaded', () => {
         var key = (typeof roomOrKey === 'string') ? roomOrKey : (typeof wr2GetLifecycle === 'function' ? wr2GetLifecycle(roomOrKey) : 'active');
         if (key === 'closed') return '종료';
         if (key === 'changed') return '변경';
-        return '진행';
+        return '활성';
       };
     }
   } catch(e) {}
