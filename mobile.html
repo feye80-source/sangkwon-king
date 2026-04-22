@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="상권King">
@@ -1691,6 +1691,45 @@ body {
   cursor: pointer;
   display: flex; align-items: center; justify-content: center;
 }
+
+/* ── 2026-04 mobile polish: zoom 허용 + 스크롤 완화 + 작은 화면 최적화 ── */
+@media (max-width: 768px) {
+  html, body {
+    overscroll-behavior-y: contain;
+  }
+  #mb-topbar {
+    padding-left: calc(12px + env(safe-area-inset-left, 0px));
+    padding-right: calc(12px + env(safe-area-inset-right, 0px));
+  }
+  #mb-content {
+    overscroll-behavior-y: contain;
+  }
+  .mb-ins-panel,
+  #mb-saved-list,
+  #mb-extract-panel,
+  #mb-map-sheet {
+    padding-bottom: calc(20px + var(--safe-bottom));
+  }
+  #mb-tabbar button {
+    min-width: 0;
+  }
+  #mb-tabbar button span:last-child {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mb-note-toolbar,
+  .mb-saved-search-row,
+  .mb-calc-tabs {
+    scroll-padding-left: 12px;
+  }
+}
+
+input, textarea, select {
+  font-size: 16px;
+}
+
 </style>
 </head>
 <body>
@@ -6441,7 +6480,9 @@ body {
     var q = ((document.getElementById('mb-plist-search') || {}).value || '').toLowerCase();
     var statusFilter = (document.getElementById('mb-plist-status') || {}).value || '';
     var items = (typeof plLoad === 'function') ? plLoad() : [];
+    if (!items.length && window._idbCache && window._idbCache['pl_items_v3']) items = window._idbCache['pl_items_v3'];
     if (!items.length && window._idbCache && window._idbCache['pl_items']) items = window._idbCache['pl_items'];
+    if (!items.length) try { items = JSON.parse(localStorage.getItem('pl_items_v3') || '[]'); } catch(e) {}
     if (!items.length) try { items = JSON.parse(localStorage.getItem('pl_items') || '[]'); } catch(e) {}
 
     function simpleSt(it) {
@@ -6922,6 +6963,7 @@ body {
 
     // 기본 시작 탭: 인사이트
     mbGoPage('insight', document.getElementById('mb-tab-insight'));
+    setTimeout(function(){ if (window.mbSoftSync) window.mbSoftSync('boot'); }, 1200);
 
     // ── 노트 초기화 (common.js 로드 후) ──
     setTimeout(function() {
@@ -8150,6 +8192,58 @@ body {
   };
 
   // ★ 모바일 전용: toggleMapGFilterPanel 오버라이드
+
+
+  // ── 모바일 클라우드/캐시 재동기화 ───────────────────────────────
+  window.__mbSyncRunning = false;
+  window.__mbLastSyncAt = 0;
+  window.mbRefreshAllViews = function() {
+    try { if (typeof mbRenderSaved === 'function') mbRenderSaved(); } catch(e) {}
+    try { if (typeof mbRoomRefreshSel === 'function') mbRoomRefreshSel(); } catch(e) {}
+    try { if (typeof mbRenderPipeline === 'function') mbRenderPipeline(); } catch(e) {}
+    try { if (typeof mbPlistRender === 'function') mbPlistRender(); } catch(e) {}
+    try { if (typeof ntRender === 'function') ntRender(); } catch(e) {}
+  };
+  window.mbSoftSync = async function(reason) {
+    try {
+      var now = Date.now();
+      if (window.__mbSyncRunning) return false;
+      if (now - (window.__mbLastSyncAt || 0) < 2500) return false;
+      window.__mbSyncRunning = true;
+      window.__mbLastSyncAt = now;
+      if (typeof window._sbGetSessionShared === 'function') {
+        var sess = await window._sbGetSessionShared();
+        if (!(sess && sess.data && sess.data.session)) {
+          window.__mbSyncRunning = false;
+          return false;
+        }
+      }
+      if (typeof window._sbInitLoad === 'function') {
+        await window._sbInitLoad();
+      } else {
+        if (typeof window._wrRefreshFromCloud === 'function') await window._wrRefreshFromCloud({ render: false });
+        if (typeof window._plRefreshFromCloud === 'function') await window._plRefreshFromCloud({ render: false, force: false, sync: true });
+      }
+      window.mbRefreshAllViews();
+      try {
+        var syncEl = document.getElementById('mb-sync');
+        if (syncEl) syncEl.textContent = '동기화 ' + new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+      } catch (e) {}
+      return true;
+    } catch (e) {
+      console.warn('[mbSoftSync]', reason || '', e);
+      return false;
+    } finally {
+      window.__mbSyncRunning = false;
+    }
+  };
+
+  window.addEventListener('pageshow', function(){ setTimeout(function(){ window.mbSoftSync && window.mbSoftSync('pageshow'); }, 250); });
+  window.addEventListener('focus', function(){ setTimeout(function(){ window.mbSoftSync && window.mbSoftSync('focus'); }, 200); });
+  document.addEventListener('visibilitychange', function(){
+    if (!document.hidden) setTimeout(function(){ window.mbSoftSync && window.mbSoftSync('visible'); }, 220);
+  });
+  window.addEventListener('online', function(){ setTimeout(function(){ window.mbSoftSync && window.mbSoftSync('online'); }, 400); });
   // common.js의 gfPanel_map 기반 토글 대신 mbGfBody를 열고 지도 패널로 이동
   (function() {
     var _origToggle = window.toggleMapGFilterPanel;
