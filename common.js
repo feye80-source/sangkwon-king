@@ -1963,6 +1963,7 @@
     };
     window._plRefreshFromCloud = async function(opts) {
       const options = opts || {};
+      let forceCloud = (options.force === true);
       if (_hasKvDirty('pl_items_v3') && window._sbSavePlItems) {
         try {
           await window._sbSavePlItems(_sbGetCachedArray('pl_items_v3').filter(it => it && it.id));
@@ -1970,12 +1971,15 @@
           console.warn('[SB] pl flush before refresh', e);
         }
       }
+      // 로컬 dirty가 남아있으면 강제 클라우드 우선은 금지한다.
+      // (최근 로컬 변경이 네트워크 지연으로 덮어써지는 저장 손실 방지)
+      if (_hasKvDirty('pl_items_v3')) forceCloud = false;
       const cloudItems = window._sbLoadPlItems ? await window._sbLoadPlItems() : [];
       const localItems = _sbGetCachedArray('pl_items_v3');
       let merged = _sbMergeById(cloudItems, localItems).filter(it => it && it.id);
       // 강제 새로고침에서는 클라우드를 우선한다.
       // (기기별 오래된 로컬 캐시가 최신 클라우드를 덮어쓰는 현상 방지)
-      if (options.force === true) {
+      if (forceCloud) {
         const cloudOnly = _sbTakeCloudArray(cloudItems);
         if (cloudOnly.length) merged = cloudOnly;
       }
@@ -42750,7 +42754,7 @@ window.addEventListener('DOMContentLoaded', () => {
     if (last && (now - last) < 12000) return;
     window.__plListRefreshAt = now;
     window.__plListRefreshRunning = true;
-    Promise.resolve(window._plRefreshFromCloud({ render: false, force: true, sync: true }))
+    Promise.resolve(window._plRefreshFromCloud({ render: false, force: false, sync: true }))
       .then(function() {
         if (typeof currentPage !== 'undefined' && currentPage === 4 && window.__pmActiveTab === 'list' && typeof renderPropertyList === 'function') {
           renderPropertyList();
@@ -43732,7 +43736,7 @@ window.addEventListener('DOMContentLoaded', () => {
       var typing = !!(ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable));
       if (typing) return;
       if (typeof window._plRefreshFromCloud === 'function') {
-        window._plRefreshFromCloud({ render: false, force: true, sync: true }).then(function() {
+        window._plRefreshFromCloud({ render: false, force: false, sync: true }).then(function() {
           if (window.__pmActiveTab === 'list' && typeof window.renderPropertyList === 'function') window.renderPropertyList();
         }).catch(function(){});
       }
@@ -45018,6 +45022,12 @@ window.addEventListener('DOMContentLoaded', () => {
         window.__plInlineEditKey = '';
         return;
       }
+      // '변경'은 즉시 확정하지 않고 결과 플로우(유찰/변경·재매각)로 분기한다.
+      if (next === 'changed' && oldSimple !== 'changed' && typeof _skOpenResultFlow === 'function') {
+        window.__plInlineEditKey = '';
+        _skOpenResultFlow({ source: 'pl', id: id, item: item });
+        return;
+      }
       plApplySimpleStatusToItem(item, next);
       item.__allowLifecycleReopen = true;
       plSave(items.map(plNormalizeItem));
@@ -45050,6 +45060,17 @@ window.addEventListener('DOMContentLoaded', () => {
         if (!room) return;
         var prev = (typeof wr2GetLifecycle === 'function') ? wr2GetLifecycle(room) : 'active';
         var next = String(e.target.value || 'active');
+        if (next === 'changed' && prev !== 'changed' && typeof _skOpenResultFlow === 'function') {
+          var linkedItem = null;
+          try {
+            linkedItem = (typeof plLoad === 'function' ? plLoad() : []).find(function(it){
+              return String(it && it.roomId || '') === String(room.id || '');
+            }) || null;
+          } catch(err) {}
+          lifeSel.value = prev;
+          _skOpenResultFlow({ source: 'wr', id: room.id, item: linkedItem || {} });
+          return;
+        }
         if (next === 'closed' && prev !== 'closed') {
           wr2CollectCloseSummary(room.closedSummary, function(closedSummary) {
             updateRoom(room.id, { lifecycleStatus: next, closedSummary: closedSummary, __forceLifecycleChange: true });
@@ -45109,7 +45130,6 @@ window.addEventListener('DOMContentLoaded', () => {
       var entry = null;
       var keys = [];
       if (item && item.id) keys.push(['item', String(item.id)]);
-      if (room && room.id) keys.push(['room', String(room.id)]);
       for (var i=0;i<keys.length;i++){
         var type = keys[i][0], key = keys[i][1];
         var candidate = type === 'item' ? byItem[key] : (type === 'room' ? byRoom[key] : bySaved[key]);
@@ -45125,15 +45145,11 @@ window.addEventListener('DOMContentLoaded', () => {
       window.__plLifecycleOverride = bag;
       var entry = { simple:_normalizeSimple(simple), until:_now()+TTL };
       if (item && item.id) bag.byItem[String(item.id)] = entry;
-      if (item && item.roomId) bag.byRoom[String(item.roomId)] = entry;
       return entry;
     }
     function _clearOverride(item, roomId, savedId){
       var bag = window.__plLifecycleOverride || {};
       if (item && item.id && bag.byItem) delete bag.byItem[String(item.id)];
-      if ((item && item.roomId) || roomId) {
-        if (bag.byRoom) delete bag.byRoom[String((item && item.roomId) || roomId)];
-      }
     }
 
     window._plSetLifecycleOverride = _setOverride;
