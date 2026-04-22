@@ -45095,7 +45095,10 @@ window.addEventListener('DOMContentLoaded', () => {
         if (b === 'field' || b === 'bid' || b === 'won' || b === 'sell') return b;
         return 'field';
       }
-      return (b === 'closed' || b === 'archived') ? 'review' : (b || 'review');
+      // active는 changed 계열(field/bid/won/sell)에서 반드시 review로 복귀시켜야
+      // 상태가 changed로 다시 되돌아가는 교차 덮어쓰기를 막을 수 있다.
+      if (b === 'field' || b === 'bid' || b === 'won' || b === 'sell' || b === 'closed' || b === 'archived') return 'review';
+      return b || 'review';
     }
     function _getOverride(item, room, savedId){
       var bag = window.__plLifecycleOverride || {};
@@ -45107,7 +45110,6 @@ window.addEventListener('DOMContentLoaded', () => {
       var keys = [];
       if (item && item.id) keys.push(['item', String(item.id)]);
       if (room && room.id) keys.push(['room', String(room.id)]);
-      if (savedId) keys.push(['saved', String(savedId)]);
       for (var i=0;i<keys.length;i++){
         var type = keys[i][0], key = keys[i][1];
         var candidate = type === 'item' ? byItem[key] : (type === 'room' ? byRoom[key] : bySaved[key]);
@@ -45124,7 +45126,6 @@ window.addEventListener('DOMContentLoaded', () => {
       var entry = { simple:_normalizeSimple(simple), until:_now()+TTL };
       if (item && item.id) bag.byItem[String(item.id)] = entry;
       if (item && item.roomId) bag.byRoom[String(item.roomId)] = entry;
-      if (item && item.linkedSavedId) bag.bySaved[String(item.linkedSavedId)] = entry;
       return entry;
     }
     function _clearOverride(item, roomId, savedId){
@@ -45132,9 +45133,6 @@ window.addEventListener('DOMContentLoaded', () => {
       if (item && item.id && bag.byItem) delete bag.byItem[String(item.id)];
       if ((item && item.roomId) || roomId) {
         if (bag.byRoom) delete bag.byRoom[String((item && item.roomId) || roomId)];
-      }
-      if ((item && item.linkedSavedId) || savedId) {
-        if (bag.bySaved) delete bag.bySaved[String((item && item.linkedSavedId) || savedId)];
       }
     }
 
