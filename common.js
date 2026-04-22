@@ -2781,11 +2781,16 @@
     }
     function _sbMergeTrackedById(table, cloud, local) {
       const dirty = _dirtyItems[table];
-      const preservedLocal = (Array.isArray(local) ? local : []).filter(item => {
-        if (!item || !item.id) return false;
-        return !!(dirty && dirty.has(item.id));
+      const localArr = (Array.isArray(local) ? local : []).filter(item => item && item.id);
+      const merged = _sbMergeById(cloud, localArr);
+      if (!dirty || !dirty.size) return merged;
+      const localById = new Map(localArr.map(item => [item.id, item]));
+      const outMap = new Map((Array.isArray(merged) ? merged : []).map(item => [item.id, item]));
+      dirty.forEach(id => {
+        if (!localById.has(id)) return;
+        outMap.set(id, localById.get(id));
       });
-      return _sbMergeById(cloud, preservedLocal);
+      return Array.from(outMap.values());
     }
     function _sbTakeCloudArray(arr) {
       return (Array.isArray(arr) ? arr : []).filter(item => item && item.id);
@@ -2899,12 +2904,14 @@
           console.warn('[SB] API key init sync error', e);
         }
         try {
-          await _sbSafeLoad('workrooms_init', () => {
-            return window._wrRefreshFromCloud ? window._wrRefreshFromCloud({ render: false }) : null;
-          }, 0);
-          await _sbSafeLoad('pl_items_init', () => {
-            return window._plRefreshFromCloud ? window._plRefreshFromCloud({ render: false }) : null;
-          }, 0);
+          if (window.__plAutoCloudPull === true) {
+            await _sbSafeLoad('workrooms_init', () => {
+              return window._wrRefreshFromCloud ? window._wrRefreshFromCloud({ render: false }) : null;
+            }, 0);
+            await _sbSafeLoad('pl_items_init', () => {
+              return window._plRefreshFromCloud ? window._plRefreshFromCloud({ render: false }) : null;
+            }, 0);
+          }
         } catch (e) {
           console.warn('[SB] init entity sync error', e);
         }
@@ -3752,11 +3759,33 @@ var _safeLocalSet = function(key, value) {
 
                 function wr2SyncClosedSummaryToLinkedItems(room) {
                   if (!room || typeof getSv !== 'function' || typeof setSv !== 'function') return;
+                  const sv = getSv() || [];
+                  const svIdSet = new Set((sv || []).filter(it => it && it.id != null).map(it => String(it.id)));
+                  const plLinkedMap = (typeof wr2BuildPlLinkedMap === 'function') ? wr2BuildPlLinkedMap() : {};
+
                   const linkedIds = [];
-                  if (room.linkedSavedId != null) linkedIds.push(String(room.linkedSavedId));
-                  if (room.auctionId != null) linkedIds.push(String(room.auctionId));
-                  if (room.listingId != null) linkedIds.push(String(room.listingId));
-                  (room.linkedItems || []).forEach(id => linkedIds.push(String(id)));
+                  const pushSavedId = function(raw) {
+                    const id = String(raw || '').trim();
+                    if (!id || !svIdSet.has(id)) return;
+                    linkedIds.push(id);
+                  };
+                  // 명시 링크(linkedSavedId/auctionId/listingId)가 있으면 이것만 신뢰한다.
+                  pushSavedId(room.linkedSavedId);
+                  pushSavedId(room.auctionId);
+                  pushSavedId(room.listingId);
+                  if (!linkedIds.length) {
+                    // 레거시 linkedItems에 savedId 또는 plItemId가 섞인 경우를 보정한다.
+                    (room.linkedItems || []).forEach(raw => {
+                      const id = String(raw || '').trim();
+                      if (!id) return;
+                      if (svIdSet.has(id)) {
+                        linkedIds.push(id);
+                        return;
+                      }
+                      const mapped = plLinkedMap[id];
+                      if (mapped && svIdSet.has(String(mapped))) linkedIds.push(String(mapped));
+                    });
+                  }
                   const uniqIds = Array.from(new Set(linkedIds.filter(Boolean)));
                   if (!uniqIds.length) return;
 
@@ -3768,6 +3797,9 @@ var _safeLocalSet = function(key, value) {
                   const secondBid = String(cs.secondBidPrice || '').trim();
                   const ctype = String(cs.closedType || '').trim();
                   const memo = String(cs.memo || '').trim();
+                  const roomLife = wr2GetLifecycle(room);
+                  const shouldSyncCloseFields = (roomLife === 'closed')
+                    || !!(bid || bidder || secondBid || ctype || memo);
 
                   const lifecycleByItem = {};
                   uniqIds.forEach(itemId => {
@@ -3777,7 +3809,12 @@ var _safeLocalSet = function(key, value) {
                       if (r.linkedSavedId != null) ids.push(String(r.linkedSavedId));
                       if (r.auctionId != null) ids.push(String(r.auctionId));
                       if (r.listingId != null) ids.push(String(r.listingId));
-                      (r.linkedItems || []).forEach(x => ids.push(String(x)));
+                      (r.linkedItems || []).forEach(x => {
+                        const raw = String(x || '').trim();
+                        if (!raw) return;
+                        ids.push(raw);
+                        if (plLinkedMap[raw]) ids.push(String(plLinkedMap[raw]));
+                      });
                       return ids.indexOf(String(itemId)) >= 0;
                     });
                     const explicitRooms = linkedRooms.filter(r => {
@@ -3792,7 +3829,6 @@ var _safeLocalSet = function(key, value) {
                     lifecycleByItem[String(itemId)] = finalLife;
                   });
 
-                  const sv = getSv() || [];
                   let changed = false;
                   sv.forEach(item => {
                     if (!item || uniqIds.indexOf(String(item.id)) < 0) return;
@@ -3812,11 +3848,13 @@ var _safeLocalSet = function(key, value) {
                       }
                     }
 
-                    if (d['낙찰가'] !== bid) { d['낙찰가'] = bid; changed = true; }
-                    if (d['입찰인수'] !== bidder) { d['입찰인수'] = bidder; changed = true; }
-                    if (d['차순위금액'] !== secondBid) { d['차순위금액'] = secondBid; changed = true; }
-                    if (d['종료유형'] !== ctype) { d['종료유형'] = ctype; changed = true; }
-                    if (d['종료메모'] !== memo) { d['종료메모'] = memo; changed = true; }
+                    if (shouldSyncCloseFields) {
+                      if (d['낙찰가'] !== bid) { d['낙찰가'] = bid; changed = true; }
+                      if (d['입찰인수'] !== bidder) { d['입찰인수'] = bidder; changed = true; }
+                      if (d['차순위금액'] !== secondBid) { d['차순위금액'] = secondBid; changed = true; }
+                      if (d['종료유형'] !== ctype) { d['종료유형'] = ctype; changed = true; }
+                      if (d['종료메모'] !== memo) { d['종료메모'] = memo; changed = true; }
+                    }
                   });
                   if (changed) {
                     setSv(sv);
@@ -42296,6 +42334,11 @@ window.addEventListener('DOMContentLoaded', () => {
       if (!existing && linkedSavedId) existing = byLinked[linkedSavedId] || null;
       if (existing && usedExisting[String(existing.id)]) existing = null;
       if (existing) usedExisting[String(existing.id)] = true;
+      // 안전장치:
+      // 1) 기존 항목이 없고, 명시적 saved 연결도 없으면 자동 생성하지 않는다.
+      // 2) 같은 savedId를 다른 room이 이미 점유했으면 중복 생성하지 않는다.
+      if (!existing && !linkedSavedId) return;
+      if (!existing && linkedSavedId && byLinked[linkedSavedId]) return;
 
       var fallbackBase = existing || plNormalizeItem({
         id: 'pl_room_' + roomId,
@@ -42579,12 +42622,49 @@ window.addEventListener('DOMContentLoaded', () => {
   function _plFindByRoomId(roomId) {
     return plLoad().find(function(it){ return String(it.roomId||'') === String(roomId||''); });
   }
+  function _plPickRoomTargetItem(roomId, items, targetItemId) {
+    var rid = String(roomId || '');
+    var list = (items || []).filter(function(it){ return String(it && it.roomId || '') === rid; });
+    if (!list.length) return null;
+    var explicitTargetId = String(targetItemId || '').trim();
+    if (explicitTargetId) {
+      var exact = list.find(function(it){ return String(it && it.id || '') === explicitTargetId; });
+      if (exact) return exact;
+    }
+    var room = null;
+    try {
+      room = (getWrRooms() || []).find(function(r){ return String(r && r.id || '') === rid; }) || null;
+    } catch (e) {}
+    if (room) {
+      var sidCandidates = [];
+      [room.linkedSavedId, room.auctionId, room.listingId].forEach(function(raw){
+        var sid = String(raw || '').trim();
+        if (sid && sidCandidates.indexOf(sid) < 0) sidCandidates.push(sid);
+      });
+      if (sidCandidates.length) {
+        var hit = list.find(function(it){
+          return sidCandidates.indexOf(String(it && it.linkedSavedId || '').trim()) >= 0;
+        });
+        if (hit) return hit;
+      }
+    }
+    list.sort(function(a, b){
+      var aTs = Number((a && (a.updatedAt || a.createdAt)) || 0);
+      var bTs = Number((b && (b.updatedAt || b.createdAt)) || 0);
+      return bTs - aTs;
+    });
+    return list[0] || null;
+  }
   function syncPropertyFromRoom(roomId, patch) {
     if (!roomId) return;
     var items = plLoad();
+    var targetItemId = String((patch && patch.__targetItemId) || '').trim();
+    var targetItem = _plPickRoomTargetItem(roomId, items, targetItemId);
+    var targetId = String(targetItem && targetItem.id || '');
     var changed = false;
     items = items.map(function(it){
       if (String(it.roomId||'') !== String(roomId)) return it;
+      if (targetId && String(it.id || '') !== targetId) return it;
       var safePatch = Object.assign({}, patch || {});
       // ★ 버그 수정: 이미 종료된 항목은 'changed'/'active' 패치로 되돌리지 않음
       // (낙찰/패찰 정보가 있는 종료 물건이 클라우드/동기화 race로 '변경'으로 덮어써지는 문제 방지)
@@ -42626,6 +42706,7 @@ window.addEventListener('DOMContentLoaded', () => {
       delete safePatch.address;
       delete safePatch.closedSummary;
       delete safePatch.lifecycleStatus;
+      delete safePatch.__targetItemId;
       var next = Object.assign({}, it, safePatch, { updatedAt: Date.now() });
       if (next.status === 'archived') next.archived = true;
       if (JSON.stringify(next) !== JSON.stringify(it)) changed = true;
@@ -42635,6 +42716,7 @@ window.addEventListener('DOMContentLoaded', () => {
       plSave(items);
       items.forEach(function(it){
         if (String(it.roomId || '') !== String(roomId)) return;
+        if (targetId && String(it.id || '') !== String(targetId)) return;
         try { plSyncItemToSaved(it); } catch(e) {}
       });
       if (typeof renderPropertyList === 'function') setTimeout(renderPropertyList, 30);
@@ -42700,7 +42782,8 @@ window.addEventListener('DOMContentLoaded', () => {
       phase: newPhase,
       status: newPhase,
       activePhase: newPhase,
-      lifecycleStatus: (simple === 'closed' ? 'closed' : (simple === 'changed' ? 'changed' : 'active'))
+      lifecycleStatus: (simple === 'closed' ? 'closed' : (simple === 'changed' ? 'changed' : 'active')),
+      __targetItemId: String(item.id || '')
     };
     var roomLifeNow = String((room && room.lifecycleStatus) || '').trim();
     if (roomLifeNow === 'closed' && patch.lifecycleStatus !== 'closed' && !(item && item.__allowLifecycleReopen)) {
@@ -42764,7 +42847,8 @@ window.addEventListener('DOMContentLoaded', () => {
             title: patch.title,
             address: patch.address,
             lifecycleStatus: patch.lifecycleStatus,
-            closedSummary: patch.closedSummary
+            closedSummary: patch.closedSummary,
+            __targetItemId: patch.__targetItemId
           });
           try { plSyncFromWorkrooms({ render: false }); } catch (e) {}
         }
@@ -45099,6 +45183,7 @@ window.addEventListener('DOMContentLoaded', () => {
               status: newPhase,
               activePhase: newPhase,
               lifecycleStatus: (simple === 'closed' ? 'closed' : (simple === 'changed' ? 'changed' : 'active')),
+              __targetItemId: String(item.id || ''),
               __forceLifecycleChange: true
             };
             if (item.biddate !== undefined) patch.biddate = item.biddate;
