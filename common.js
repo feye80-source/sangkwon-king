@@ -3521,6 +3521,15 @@ var _safeLocalSet = function(key, value) {
                   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
                   return Math.round((dt - today) / (1000 * 60 * 60 * 24));
                 }
+                function wr2GetDdayTone(dday, opts) {
+                  const options = opts || {};
+                  if (dday == null || dday === '') return { color: '#8ea7c9', bg: 'rgba(142,167,201,.10)', border: 'rgba(142,167,201,.22)' };
+                  const num = Number(dday);
+                  if (!isFinite(num)) return { color: '#8ea7c9', bg: 'rgba(142,167,201,.10)', border: 'rgba(142,167,201,.22)' };
+                  if (num <= 0) return { color: '#ff6b7a', bg: 'rgba(255,107,122,.16)', border: 'rgba(255,107,122,.38)' };
+                  if (num <= 7) return { color: '#f5c451', bg: 'rgba(245,196,81,.16)', border: 'rgba(245,196,81,.34)' };
+                  return { color: '#36d98a', bg: 'rgba(54,217,138,.14)', border: 'rgba(54,217,138,.30)' };
+                }
                 function wr2BuildPlLinkedMap() {
                   const map = {};
                   try {
@@ -3811,18 +3820,7 @@ var _safeLocalSet = function(key, value) {
                 function updateRoom(id, patch, silentRender) {
                   const idx = wr2State.rooms.findIndex(r => r.id === id);
                   if (idx === -1) return;
-                  var prevRoom = wr2State.rooms[idx] || {};
-                  var safePatch = Object.assign({}, patch || {});
-                  var prevLife = String((prevRoom && prevRoom.lifecycleStatus) || '').trim();
-                  var nextLife = String((safePatch && safePatch.lifecycleStatus) || '').trim();
-                  if (prevLife === 'closed' && nextLife && nextLife !== 'closed' && safePatch.__forceLifecycleChange !== true) {
-                    delete safePatch.lifecycleStatus;
-                    delete safePatch.status;
-                    delete safePatch.phase;
-                    delete safePatch.activePhase;
-                  }
-                  delete safePatch.__forceLifecycleChange;
-                  wr2State.rooms[idx] = Object.assign({}, prevRoom, safePatch, { updatedAt: Date.now() });
+                  wr2State.rooms[idx] = Object.assign({}, wr2State.rooms[idx], patch, { updatedAt: Date.now() });
                   if (patch && (Object.prototype.hasOwnProperty.call(patch, 'closedSummary') || Object.prototype.hasOwnProperty.call(patch, 'lifecycleStatus'))) {
                     try { wr2SyncClosedSummaryToLinkedItems(wr2State.rooms[idx]); } catch (e) {}
                   }
@@ -4592,21 +4590,15 @@ var _safeLocalSet = function(key, value) {
                     const ddayLabel = (saleDday == null)
                       ? ''
                       : (saleDday < 0 ? ('D+' + Math.abs(saleDday)) : (saleDday === 0 ? 'D-Day' : ('D-' + saleDday)));
-                    const ddayColor = (saleDday == null)
-                      ? ''
-                      : (saleDday < 0 ? '#8b93a7' : (saleDday === 0 ? '#ff6370' : (saleDday <= 3 ? '#ff8c42' : (saleDday <= 7 ? '#fbbf24' : '#4ade80'))));
-                    const resultAlertText = (saleDday == null)
-                      ? ''
-                      : (saleDday < 0 ? ' (결과 업데이트)' : (saleDday === 0 ? ' (결과 입력)' : ''));
+                    const ddayTone = wr2GetDdayTone(saleDday);
                     const meta = document.createElement('div');
                     meta.className = 'wr2-room-meta';
                     if (no || addr || price) {
                       meta.innerHTML = ''
-                        + '<div style="display:flex;align-items:center;gap:6px;line-height:1.25;flex-wrap:wrap;">'
+                        + '<div style="display:flex;align-items:center;gap:6px;line-height:1.25;">'
                         + (no ? ('<span style="color:#7bb4ff;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px;">' + esc(no) + '</span>') : '')
                         + (price ? ('<span style="color:#ffb36c;white-space:nowrap;font-weight:700;">' + esc(price) + '</span>') : '')
-                        + (ddayLabel ? ('<span style="color:' + ddayColor + ';white-space:nowrap;font-weight:700;">' + esc(ddayLabel) + '</span>') : '')
-                        + (resultAlertText ? ('<span style="color:#ff9eab;white-space:nowrap;font-weight:800;">' + esc(resultAlertText) + '</span>') : '')
+                        + (ddayLabel ? ('<span style="display:inline-flex;align-items:center;padding:1px 7px;border-radius:999px;background:' + ddayTone.bg + ';border:1px solid ' + ddayTone.border + ';color:' + ddayTone.color + ';white-space:nowrap;font-weight:800;">' + esc(ddayLabel) + '</span>') : '')
                         + (saleOverdueNeedsAction ? ('<span style="padding:1px 6px;border-radius:999px;border:1px solid rgba(255,107,122,.52);background:rgba(255,107,122,.16);color:#ff9eab;font-size:10px;font-weight:800;white-space:nowrap;">⚠ 기일지남 · 수정필요</span>') : '')
                         + '</div>'
                         + (addr ? ('<div style="margin-top:2px;color:#8ea7c9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(addr) + '</div>') : '');
@@ -4707,13 +4699,13 @@ var _safeLocalSet = function(key, value) {
                         const next = String(e.target.value || 'active');
                         if (next === 'closed' && prev !== 'closed') {
                           wr2CollectCloseSummary(room.closedSummary, function(closedSummary) {
-                            updateRoom(room.id, { lifecycleStatus: next, closedSummary: closedSummary, __forceLifecycleChange: true });
+                            updateRoom(room.id, { lifecycleStatus: next, closedSummary: closedSummary });
                           }, function() {
                             lifeSel.value = prev;
                           });
                           return;
                         }
-                        updateRoom(room.id, { lifecycleStatus: next, __forceLifecycleChange: true });
+                        updateRoom(room.id, { lifecycleStatus: next });
                       };
 
                       let progSel = document.getElementById('wr2ProgressSelect');
@@ -16166,7 +16158,19 @@ ${inputDesc.substring(0, 3000)}
       const isBds = src === '부동산플래닛';
       const isTrans = item.mode === 'transaction';
 
-      document.getElementById('popTitle').textContent = item.title || src || '상세정보';
+      const _popTitleEl = document.getElementById('popTitle');
+      if (_popTitleEl) {
+        _popTitleEl.textContent = item.title || src || '상세정보';
+        _popTitleEl.style.cursor = 'text';
+        _popTitleEl.title = '클릭해서 제목 수정';
+        _popTitleEl.onclick = function(e) {
+          if (!popupEditMode) {
+            try { togglePopupEdit(); } catch(_) {}
+          }
+          e && e.stopPropagation && e.stopPropagation();
+          setTimeout(function(){ const inp = document.getElementById('popTitleInput'); if (inp) { inp.focus(); inp.select(); } }, 20);
+        };
+      }
 
       let badgeCls = 'popup-badge mbl', badgeTxt = '🏪 매물';
       if (a) { badgeCls = 'popup-badge mba'; badgeTxt = '⚖️ 경매'; }
@@ -16174,8 +16178,12 @@ ${inputDesc.substring(0, 3000)}
       else if (isBds) { badgeCls = 'popup-badge'; badgeTxt = '🌍 플래닛'; }
       else if (isTrans) { badgeCls = 'popup-badge'; badgeTxt = '📊 실거래'; }
 
-      document.getElementById('popEditBtn').className = 'popup-editbtn';
-      document.getElementById('popEditBtn').textContent = '✏️ 수정';
+      const _popEditBtn = document.getElementById('popEditBtn');
+      if (_popEditBtn) {
+        _popEditBtn.className = 'popup-editbtn';
+        _popEditBtn.textContent = '✏️ 수정';
+        _popEditBtn.style.display = '';
+      }
 
       // ── 팝업 topbar 소스 탭 렌더링 (v121 스타일) ──────────────
       (function () {
@@ -16261,6 +16269,8 @@ ${inputDesc.substring(0, 3000)}
         }
         // ★ 작업룸 연동 버튼 (저장된 물건 → 작업룸 생성/열기)
         html += `<button class="popup-src-btn" style="background:rgba(17,157,237,.15);color:#119ded;border-color:rgba(17,157,237,.45);font-weight:700;" onclick="wr2OpenOrCreateFromSavedId('${id}')">🗂 작업룸</button>`;
+        // ★ 저장목록 상세탭: 물건명 수정 버튼
+        html += `<button class="popup-src-btn" style="background:rgba(255,255,255,.08);color:#e7edf9;border-color:rgba(255,255,255,.22);font-weight:700;" onclick="startSavedTitleEdit('${id}')">✏️ 이름수정</button>`;
         popSrcTabsEl.innerHTML = html;
         // URL 입력 영역 생성 (초기 숨김)
         if (!document.getElementById('popUrlInputWrap')) {
@@ -16554,6 +16564,55 @@ ${inputDesc.substring(0, 3000)}
     }
 
 
+    function _syncSavedTitleToLinkedWorkrooms(savedItem, prevTitle) {
+      if (!savedItem || savedItem.id == null) return;
+      const nextTitle = String(savedItem.title || '').trim();
+      if (!nextTitle) return;
+      const prev = String(prevTitle || '').trim();
+      let rooms = [];
+      try { rooms = (typeof getWrRooms === 'function') ? (getWrRooms() || []) : []; } catch (e) { rooms = []; }
+      if (!Array.isArray(rooms) || !rooms.length) return;
+      let changed = false;
+      rooms.forEach(function(room) {
+        if (!room || room.deletedAt) return;
+        const linked = String(room.linkedSavedId || '');
+        const linkedItems = Array.isArray(room.linkedItems) ? room.linkedItems.map(function(v){ return String(v); }) : [];
+        const roomIdMatch = savedItem.roomId && String(room.id || '') === String(savedItem.roomId);
+        const savedLinkMatch = linked && linked === String(savedItem.id);
+        const itemLinkMatch = linkedItems.indexOf(String(savedItem.id)) >= 0;
+        if (!roomIdMatch && !savedLinkMatch && !itemLinkMatch) return;
+        const curTitle = String(room.title || '').trim();
+        if (curTitle && prev && curTitle !== prev) return;
+        room.title = nextTitle;
+        room.updatedAt = Date.now();
+        changed = true;
+      });
+      if (!changed) return;
+      try {
+        if (window.wr2State && Array.isArray(window.wr2State.rooms)) {
+          const byId = new Map(rooms.map(function(r){ return [String(r.id), r]; }));
+          window.wr2State.rooms = window.wr2State.rooms.map(function(r){ return byId.get(String(r.id)) || r; });
+        }
+      } catch (e) {}
+      try {
+        if (window._wrPersistRooms) window._wrPersistRooms(rooms, { syncState: false });
+        else localStorage.setItem('wr2_rooms', JSON.stringify(rooms));
+      } catch (e) { console.warn('[savedTitle->workroom sync]', e); }
+      try { if (typeof window.wr2Render === 'function') window.wr2Render(); } catch (e) {}
+    }
+    window.startSavedTitleEdit = function(itemId) {
+      if (!itemId || String(popupId || '') !== String(itemId)) {
+        try { openPopup(itemId); } catch (e) {}
+      }
+      if (!popupEditMode) {
+        try { togglePopupEdit(); } catch (e) {}
+      }
+      setTimeout(function() {
+        const inp = document.getElementById('popTitleInput');
+        if (inp) { inp.focus(); inp.select(); }
+      }, 20);
+    };
+
     function togglePopupEdit() {
       popupEditMode = !popupEditMode;
       const btn = document.getElementById('popEditBtn');
@@ -16569,11 +16628,21 @@ ${inputDesc.substring(0, 3000)}
         titleEl.innerHTML = `<input id="popTitleInput" value="${(item.title || '').replace(/"/g, '&quot;')}"
       style="background:rgba(255,255,255,.08);border:1px solid rgba(79,142,255,.5);border-radius:6px;color:#e0e6ff;font-size:14px;font-weight:700;padding:3px 8px;width:100%;outline:none;"
       oninput="window._savedDraftInput('${popupId}','title',this.value,{title:true})"
-      onblur="window._savedDraftCommit('${popupId}','title',this.value,{title:true})">`;
+      onblur="window._savedDraftCommit('${popupId}','title',this.value,{title:true})"
+      onkeydown="if(event.key==='Enter'){window._savedDraftCommit('${popupId}','title',this.value,{title:true});togglePopupEdit();}">`;
       } else {
         // 완료: 제목 저장
         const inp = document.getElementById('popTitleInput');
-        if (inp) { const sv2 = getSv(); const it = sv2.find(s => s.id === popupId); if (it) { it.title = inp.value; setSv(sv2); } }
+        if (inp) {
+          const sv2 = getSv();
+          const it = sv2.find(s => s.id === popupId);
+          if (it) {
+            it.title = inp.value;
+            setSv(sv2);
+            try { renderSaved(); } catch(_) {}
+            try { updSvCnt(); } catch(_) {}
+          }
+        }
         titleEl.textContent = (getSv().find(s => s.id === popupId) || {}).title || '';
       }
       // renderPopup이 popupEditMode 상태를 읽어 기본헤더를 input/text로 분기 렌더링
@@ -16659,6 +16728,7 @@ ${inputDesc.substring(0, 3000)}
       const sv = _getSavedDraftWorkingSet();
       const item = sv.find(function(s) { return s && String(s.id) === String(itemId); });
       if (!item) return;
+      const prevTitle = String(item.title || '');
       if (opts && opts.title) {
         item.title = rawValue;
       } else {
@@ -16666,6 +16736,7 @@ ${inputDesc.substring(0, 3000)}
       }
       _ensureNormalizedItem(item);
       setSv(sv);
+      if (opts && opts.title) _syncSavedTitleToLinkedWorkrooms(item, prevTitle);
       _syncAfterSavedMutation(itemId, sv, { skipMapRefresh: false });
     };
 
@@ -25257,18 +25328,6 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       _activeInlineCancelFn = null;
     }, true);
 
-    window._scheduleSavedRender = window._scheduleSavedRender || (function() {
-      let timer = null;
-      return function(delay) {
-        clearTimeout(timer);
-        timer = setTimeout(function() {
-          timer = null;
-          try { if (typeof renderSaved === 'function') renderSaved(); } catch (e) {}
-          try { if (typeof updSvCnt === 'function') updSvCnt(); } catch (e) {}
-        }, typeof delay === 'number' ? delay : 90);
-      };
-    })();
-
     window.inlineEditSavedField = function (itemId, field, currentVal, e) {
       if (e) e.stopPropagation();
       const spanId = 'svied_' + field + '_' + itemId;
@@ -25333,7 +25392,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           }
           _applySavedFieldMutation(it, field, nextVal);
           setSv(sv2);
-          if (typeof window._scheduleSavedRender === 'function') window._scheduleSavedRender(90);
+          if (typeof renderSaved === 'function') renderSaved();
           showToast('✅ ' + field + ' 저장됨', 'ok');
         } else {
           dispEl.textContent = origText;
@@ -25426,7 +25485,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           const nextVal = (isPrice && numVal !== null) ? numVal : newVal;
           _applySavedFieldMutation(it, field, nextVal);
           setSv(sv2);
-          if (typeof window._scheduleSavedRender === 'function') window._scheduleSavedRender(90);
+          if (typeof renderSaved === 'function') renderSaved();
+          if (typeof updSvCnt === 'function') updSvCnt();
           const cardEl = document.getElementById(itemId);
           if (cardEl) { const bodyEl = cardEl.querySelector('.map-card-body'); if (bodyEl) bodyEl.innerHTML = buildMapCardBodyHTML(it); }
           showToast('✅ ' + fieldLabel + ' 저장됨', 'ok');
@@ -25492,7 +25552,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             dispEl.textContent = newVal || '-';
           }
           setSv(sv);
-          if (typeof window._scheduleSavedRender === 'function') window._scheduleSavedRender(90);
+          if (typeof renderSaved === 'function') renderSaved();
+          if (typeof updSvCnt === 'function') updSvCnt();
           showToast('✅ ' + (field === 'floor' ? '층수' : '방향') + ' 저장됨', 'ok');
         } else {
           dispEl.textContent = curText;
@@ -42009,21 +42070,6 @@ window.addEventListener('DOMContentLoaded', () => {
     var hasCloseMemo = Object.prototype.hasOwnProperty.call(raw, '종료메모');
     var nextMemo = hasCloseMemo ? String(raw['종료메모'] || '') : String(src.memo || curItem.memo || '');
     var nextBidders = String(plSavedField(raw, ['입찰인수','입찰인원'], curItem.bidders || '') || '').trim();
-    var savedLife = String(raw['작업룸상태'] || '').trim();
-    var nextSimple = (savedLife === 'active' || savedLife === 'changed' || savedLife === 'closed')
-      ? savedLife
-      : plSimpleStatusKey(curItem.status || '');
-    var nextStatus = (function(){
-      var base = String(curItem.status || 'review');
-      if (nextSimple === 'closed') return 'closed';
-      if (nextSimple === 'changed') {
-        if (base === 'field' || base === 'bid' || base === 'won' || base === 'sell') return base;
-        return 'field';
-      }
-      if (base === 'closed' || base === 'archived') return 'review';
-      return base || 'review';
-    })();
-
     return {
       linkedSavedId: String(src.id || curItem.linkedSavedId || ''),
       type: nextType,
@@ -42034,12 +42080,12 @@ window.addEventListener('DOMContentLoaded', () => {
       appraisal: mapped.appraisal || curItem.appraisal || '',
       minprice: mapped.minprice || curItem.minprice || '',
       round: mapped.round || curItem.round || '',
-      status: nextStatus,
       biddate: (function(){
         var currentBid = _plNormalizeBiddateValue(curItem.biddate || '');
         var mappedBid = _plNormalizeBiddateValue(mapped.biddate || '');
-        // 저장목록의 작업룸상태를 우선 반영해, 종료/변경이 과거 기일/상태로 되돌아가지 않게 한다.
-        if (nextSimple === 'changed' || nextSimple === 'closed') return '미정';
+        var simple = plSimpleStatusKey(curItem.status || '');
+        // 종료/변경 상태면 항상 '미정'으로 고정 (저장 데이터의 오래된 기일로 덮어써지는 문제 방지)
+        if (simple === 'changed' || simple === 'closed') return '미정';
         return mappedBid || currentBid || '';
       })(),
       estimate: mapped.estimate || curItem.estimate || '',
@@ -42602,13 +42648,6 @@ window.addEventListener('DOMContentLoaded', () => {
       activePhase: newPhase,
       lifecycleStatus: (simple === 'closed' ? 'closed' : (simple === 'changed' ? 'changed' : 'active'))
     };
-    var roomLifeNow = String((room && room.lifecycleStatus) || '').trim();
-    if (roomLifeNow === 'closed' && patch.lifecycleStatus !== 'closed' && !(item && item.__allowLifecycleReopen)) {
-      patch.phase = 'closed';
-      patch.status = 'closed';
-      patch.activePhase = 'closed';
-      patch.lifecycleStatus = 'closed';
-    }
     if (item.addr && String(room.title || '') !== String(item.addr || '')) patch.title = item.addr;
     if (item.region && String(room.address || '') !== String(item.region || '')) patch.address = item.region;
     if (simple === 'closed') {
@@ -42681,10 +42720,8 @@ window.addEventListener('DOMContentLoaded', () => {
     var oldSimple = plSimpleStatusKey(item.status);
     if (oldSimple === String(simpleStatus || '')) return;
     plApplySimpleStatusToItem(item, simpleStatus);
-    item.__allowLifecycleReopen = true;
     plSave(items.map(plNormalizeItem));
     syncToWorkroom(item);
-    try { delete item.__allowLifecycleReopen; } catch(e) {}
     try { plSyncItemToSaved(item); } catch(e) {}
     if (simpleStatus === 'closed' && oldSimple !== 'closed') {
       setTimeout(function(){ plOpenResultModal(id); }, 200);
@@ -42874,17 +42911,6 @@ window.addEventListener('DOMContentLoaded', () => {
     try { plSyncItemToSaved(changedItem); } catch(e) {}
     return changedItem;
   }
-  window._plScheduleRender = window._plScheduleRender || (function() {
-    var timer = null;
-    return function(delay) {
-      clearTimeout(timer);
-      timer = setTimeout(function() {
-        timer = null;
-        try { if (typeof renderPropertyList === 'function') renderPropertyList(); } catch(e) {}
-      }, typeof delay === 'number' ? delay : 80);
-    };
-  })();
-
   window.plInlineSet = function(id, field, rawValue) {
     if (field === 'result_won') {
       var cur0 = plLoad().find(function(i){ return String(i.id) === String(id); });
@@ -42895,7 +42921,7 @@ window.addEventListener('DOMContentLoaded', () => {
       var nextResult = Object.assign({}, cur0.result || {});
       nextResult.won = wonVal;
       plUpdateItem(id, { result: nextResult });
-      if (typeof window._plScheduleRender === 'function') window._plScheduleRender(80);
+      renderPropertyList();
       return;
     }
     var patch = {};
@@ -42907,14 +42933,14 @@ window.addEventListener('DOMContentLoaded', () => {
     if (cur && String(cur[field] || '') === String(value || '')) return;
     patch[field] = value;
     plUpdateItem(id, patch);
-    if (typeof window._plScheduleRender === 'function') window._plScheduleRender(80);
+    renderPropertyList();
   };
   window.plInlineSetSelect = function(id, field, value) {
     var cur = plLoad().find(function(i){ return String(i.id) === String(id); });
     if (cur && String(cur[field] || '') === String(value || '')) return;
     var patch = {}; patch[field] = value;
     plUpdateItem(id, patch);
-    if (typeof window._plScheduleRender === 'function') window._plScheduleRender(80);
+    renderPropertyList();
   };
   function plInputCell(id, field, value, opts) {
     opts = opts || {};
