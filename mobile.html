@@ -2249,14 +2249,14 @@ input, textarea, select {
       </div>
       <!-- 룸 헤더: 이름 + 삭제 -->
       <div id="mb-room-header" style="display:none;position:relative;z-index:5;margin-bottom:6px;padding:7px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:10px;overflow:hidden;">
-        <!-- 줄1: 제목 + 상태 탭 + 삭제 -->
+        <!-- 줄1: 제목 + 상태 드롭다운 + 삭제 -->
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;">
           <span id="mb-room-name" style="font-size:14px;font-weight:700;color:var(--tx);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
-          <div id="mb-room-lifecycle-tabs" style="display:flex;align-items:center;gap:3px;padding:2px;background:var(--bg);border:1px solid var(--b1);border-radius:9px;flex-shrink:0;">
-            <button type="button" class="mb-room-life-btn" data-life="active" onclick="mbRoomSetLifecycle('active')" style="height:24px;padding:0 8px;background:transparent;border:none;border-radius:7px;color:var(--mu);font-size:10px;font-weight:700;cursor:pointer;">진행</button>
-            <button type="button" class="mb-room-life-btn" data-life="changed" onclick="mbRoomSetLifecycle('changed')" style="height:24px;padding:0 8px;background:transparent;border:none;border-radius:7px;color:var(--mu);font-size:10px;font-weight:700;cursor:pointer;">변경·미진행</button>
-            <button type="button" class="mb-room-life-btn" data-life="closed" onclick="mbRoomSetLifecycle('closed')" style="height:24px;padding:0 8px;background:transparent;border:none;border-radius:7px;color:var(--mu);font-size:10px;font-weight:700;cursor:pointer;">종료</button>
-          </div>
+          <select id="mb-room-lifecycle" onchange="mbRoomSetLifecycle(this.value)" title="작업룸 상태" style="padding:3px 6px;background:var(--s2);border:1px solid var(--b1);border-radius:6px;color:var(--mu);font-size:10px;font-weight:700;outline:none;cursor:pointer;flex-shrink:0;">
+            <option value="active">활성</option>
+            <option value="changed">변경</option>
+            <option value="closed">종료</option>
+          </select>
           <button class="mb-btn" style="height:26px;padding:0 8px;font-size:11px;color:var(--red);border-color:rgba(255,77,77,.3);flex-shrink:0;" onclick="mbRoomDelete()">🗑</button>
         </div>
         <!-- 줄2: 주소 + 태그 인라인 -->
@@ -6309,8 +6309,9 @@ input, textarea, select {
     if (header) header.style.display = 'block';
     if (nameEl) nameEl.textContent = room.title || room.name || '이름 없음';
     if (descEl) descEl.textContent = room.address || room.desc || '';
-    // lifecycle 버튼 현재 값 반영
-    _mbSyncLifecycleButtons(room.lifecycleStatus || 'active');
+    // lifecycle 드롭다운 현재 값 반영
+    var lcSel = document.getElementById('mb-room-lifecycle');
+    if (lcSel) lcSel.value = (room.lifecycleStatus || 'active');
     var _dropLbl = document.getElementById('mb-room-sel-label');
     if (_dropLbl) _dropLbl.textContent = room.title || room.name || '이름 없음';
 
@@ -6533,16 +6534,6 @@ input, textarea, select {
     }).join('');
   };
 
-  function _mbSyncLifecycleButtons(val) {
-    var cur = String(val || 'active');
-    Array.prototype.forEach.call(document.querySelectorAll('#mb-room-lifecycle-tabs .mb-room-life-btn'), function(btn) {
-      var on = String(btn.getAttribute('data-life') || '') === cur;
-      btn.style.background = on ? 'rgba(79,142,255,.18)' : 'transparent';
-      btn.style.color = on ? '#dbe9ff' : 'var(--mu)';
-      btn.style.boxShadow = on ? 'inset 0 0 0 1px rgba(79,142,255,.28)' : 'none';
-    });
-  }
-
   // ── 작업룸 lifecycleStatus 변경 ──────────────────────────────
   window.mbRoomSetLifecycle = function(val) {
     var sel = document.getElementById('mb-room-sel');
@@ -6568,8 +6559,7 @@ input, textarea, select {
       }
       if (typeof window.mbRoomRefreshSel === 'function') window.mbRoomRefreshSel();
     }
-    _mbSyncLifecycleButtons(val);
-    mbToast({ active: '진행 탭으로 이동', changed: '변경·미진행 탭으로 이동', closed: '종료 처리됨' }[val] || '상태 변경', 'ok');
+    mbToast({ active: '활성으로 변경', changed: '변경 상태로 설정', closed: '종료 처리됨' }[val] || '상태 변경', 'ok');
   };
 
   // ── 모바일 파이프라인 렌더 ────────────────────────────────────
