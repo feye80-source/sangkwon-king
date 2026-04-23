@@ -4799,7 +4799,12 @@ var _safeLocalSet = function(key, value) {
                         const targetItemId = linkedItem && linkedItem.id ? String(linkedItem.id) : '';
                         if (next === 'changed' && prev !== 'changed' && typeof _skOpenResultFlow === 'function') {
                           lifeSel.value = prev;
-                          _skOpenResultFlow({ source: 'wr', id: room.id, item: linkedItem || {} });
+                          _skOpenResultFlow({ source: 'wr', id: room.id, item: linkedItem || {}, preferMode: 'changed' });
+                          return;
+                        }
+                        if (next === 'active' && prev === 'changed' && typeof _skOpenResultFlow === 'function') {
+                          lifeSel.value = prev;
+                          _skOpenResultFlow({ source: 'wr', id: room.id, item: linkedItem || {}, preferMode: 'unsold' });
                           return;
                         }
                         if (next === 'closed' && prev !== 'closed') {
@@ -43083,6 +43088,16 @@ window.addEventListener('DOMContentLoaded', () => {
       effectiveSimple = plEffectiveSimpleStatus(item, roomById);
     } catch (e) {}
     if (oldSimple === nextSimple && effectiveSimple === nextSimple) return false;
+    // 변경 → 활성 전환은 유찰 플로우(다음 회차/기일/최저가)를 먼저 입력받는다.
+    if (nextSimple === 'active'
+        && effectiveSimple === 'changed'
+        && window.__plForceDirectSet !== true
+        && typeof window._skOpenResultFlow === 'function') {
+      window.__plInlineEditKey = '';
+      window.__plLastLocalStatusMutationAt = Date.now();
+      window._skOpenResultFlow({ source: 'pl', id: id, item: item, preferMode: 'unsold' });
+      return 'flow';
+    }
     // '변경'은 즉시 확정하지 않고 결과 플로우(유찰/변경·재매각)로 분기한다.
     if (nextSimple === 'changed'
         && effectiveSimple !== 'changed'
@@ -43090,7 +43105,7 @@ window.addEventListener('DOMContentLoaded', () => {
         && typeof window._skOpenResultFlow === 'function') {
       window.__plInlineEditKey = '';
       window.__plLastLocalStatusMutationAt = Date.now();
-      window._skOpenResultFlow({ source: 'pl', id: id, item: item });
+      window._skOpenResultFlow({ source: 'pl', id: id, item: item, preferMode: 'changed' });
       return 'flow';
     }
     plApplySimpleStatusToItem(item, nextSimple);
@@ -45228,13 +45243,43 @@ window.addEventListener('DOMContentLoaded', () => {
   function _skDigits(v){ return String(v||'').replace(/[^0-9]/g,''); }
   function _skNum(v){ var n = Number(_skDigits(v)); return isNaN(n)?0:n; }
   function _skComma(v){ var n = _skNum(v); return n ? n.toLocaleString('ko-KR') : ''; }
-  function _skNextPrice(item){
+  function _skTodayYmd(){
+    var dt = new Date();
+    var y = dt.getFullYear();
+    var m = String(dt.getMonth()+1).padStart(2,'0');
+    var d = String(dt.getDate()).padStart(2,'0');
+    return y + '-' + m + '-' + d;
+  }
+  function _skCurrentMinPrice(item){
     var cur = 0;
     try {
-      cur = _skNum(item.minprice || item.price || (item.result && item.result.minprice) || 0);
-      if (!cur && item._norm) cur = Number(item._norm.최저가_만원||0) * 10000;
+      cur = _skNum((item && item.minprice) || (item && item.price) || (item && item.result && item.result.minprice) || 0);
+      if (!cur && item && item._norm) cur = Number(item._norm.최저가_만원 || 0);
+      if (!cur && item && item._norm) cur = Number(item._norm.최저매각가격 || 0);
+      if (!cur && item && item._norm) cur = Number(item._norm.감정가_만원 || 0);
+      if (!cur) cur = _skNum((item && item.appraisal) || 0);
     } catch(e) {}
-    return Math.floor(cur * 0.7);
+    return cur > 0 ? cur : 0;
+  }
+  function _skNextPrice(item){
+    var cur = _skCurrentMinPrice(item);
+    if (!cur) return 0;
+    // 기본 유찰 계산: 다음 회차 최저가는 20% 감액(80%) 기준
+    return Math.max(1, Math.floor(cur * 0.8));
+  }
+  function _skBuildUnsoldPlan(item){
+    var base = item || {};
+    var curRound = _skCurrentRound(base);
+    var nextRound = (curRound > 0) ? (curRound + 1) : 1;
+    var baseDate = _skFmtYmd(_skCurrentBidDate(base));
+    if (!baseDate || baseDate === '미정') baseDate = _skTodayYmd();
+    var nextDate = _skAddDays(baseDate, 28);
+    var nextPrice = _skNextPrice(base);
+    return {
+      round: String(nextRound),
+      date: String(nextDate || ''),
+      price: String(nextPrice || '')
+    };
   }
   function _skCurrentRound(item){
     var r = parseInt(item.round || (item._norm && item._norm.유찰횟수) || 0, 10);
@@ -45291,11 +45336,18 @@ window.addEventListener('DOMContentLoaded', () => {
     var nextDate = document.getElementById('skNextDate');
     var nextPrice = document.getElementById('skNextPrice');
     var saveBtn = document.getElementById('skResultFlowSave');
-    var mode = 'unsold';
+    var mode = String((ctx && ctx.preferMode) || 'changed');
+    function applyUnsoldDefaults(){
+      var plan = _skBuildUnsoldPlan(item);
+      if (nextRound) nextRound.value = plan.round || '1';
+      if (nextDate) nextDate.value = plan.date || '';
+      if (nextPrice) nextPrice.value = _skComma(plan.price || '');
+    }
     function setMode(v){
       mode = v;
       unsoldForm.style.display = (v==='unsold') ? 'block' : 'none';
       changedInfo.style.display = (v==='changed') ? 'block' : 'none';
+      if (v === 'unsold') applyUnsoldDefaults();
     }
     if (nextPrice && !nextPrice.dataset.boundMoneyFmt) {
       nextPrice.dataset.boundMoneyFmt='1';
@@ -45310,10 +45362,8 @@ window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('skResultFlowCancel').onclick = close;
     modal.onclick = function(evt){ if (evt.target === modal) close(); };
     var item = ctx.item || {};
-    nextRound.value = String(_skCurrentRound(item) + 1 || 1);
-    nextDate.value = _skFmtYmd(_skAddDays(_skCurrentBidDate(item), 28));
-    nextPrice.value = _skComma(_skNextPrice(item));
-    setMode('unsold');
+    if (mode !== 'unsold' && mode !== 'changed') mode = 'changed';
+    setMode(mode);
     saveBtn.onclick = function(){
       try {
         if (ctx.source === 'pl') {
@@ -45472,7 +45522,12 @@ window.addEventListener('DOMContentLoaded', () => {
         var next = String(e.target.value || 'active');
         if (next === 'changed' && prev !== 'changed' && typeof _skOpenResultFlow === 'function') {
           lifeSel.value = prev;
-          _skOpenResultFlow({ source: 'wr', id: room.id, item: linkedItem || {} });
+          _skOpenResultFlow({ source: 'wr', id: room.id, item: linkedItem || {}, preferMode: 'changed' });
+          return;
+        }
+        if (next === 'active' && prev === 'changed' && typeof _skOpenResultFlow === 'function') {
+          lifeSel.value = prev;
+          _skOpenResultFlow({ source: 'wr', id: room.id, item: linkedItem || {}, preferMode: 'unsold' });
           return;
         }
         if (next === 'closed' && prev !== 'closed') {
