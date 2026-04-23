@@ -45705,11 +45705,48 @@ window.addEventListener('DOMContentLoaded', () => {
               window.__plForceDirectSet = false;
             }
           } else {
+            // 유찰 처리
+            var _round = parseInt(nextRound.value || '1', 10) || 1;
+            var _biddate = nextDate.value || '';
+            var _minprice = _skDigits(nextPrice.value || '');
+            
             if (typeof window.plInlineSet === 'function') {
-              window.plInlineSet(targetId, 'round', String(parseInt(nextRound.value || '1', 10) || 1));
-              window.plInlineSet(targetId, 'biddate', nextDate.value || '');
-              window.plInlineSet(targetId, 'minprice', _skDigits(nextPrice.value || ''));
+              window.plInlineSet(targetId, 'round', String(_round));
+              window.plInlineSet(targetId, 'biddate', _biddate);
+              window.plInlineSet(targetId, 'minprice', _minprice);
             }
+            
+            // data 객체의 필드도 업데이트
+            try {
+              var _plItems = (typeof plLoad === 'function') ? plLoad() : [];
+              var _targetIdx = -1;
+              var _targetItem = null;
+              for (var _i = 0; _i < _plItems.length; _i++) {
+                if (String(_plItems[_i].id) === String(targetId)) {
+                  _targetIdx = _i;
+                  _targetItem = _plItems[_i];
+                  break;
+                }
+              }
+              if (_targetItem && _targetItem.data) {
+                var _dataPatch = Object.assign({}, _targetItem.data);
+                _dataPatch['유찰횟수'] = _round;
+                _dataPatch['매각기일'] = _biddate;
+                _dataPatch['매각일'] = _biddate;
+                _dataPatch['최저가'] = parseInt(_minprice, 10) || 0;
+                _plItems[_targetIdx] = Object.assign({}, _targetItem, { 
+                  data: _dataPatch,
+                  updatedAt: Date.now()
+                });
+                if (typeof plSave === 'function') plSave(_plItems);
+                if (typeof plSyncItemToSaved === 'function') {
+                  try { plSyncItemToSaved(_plItems[_targetIdx]); } catch(e) {}
+                }
+              }
+            } catch(e) {
+              console.warn('[ResultFlow data update]', e);
+            }
+            
             window.__plForceDirectSet = true;
             try {
               if (typeof window.plSetSimpleStatus === 'function') window.plSetSimpleStatus(targetId, 'active');
