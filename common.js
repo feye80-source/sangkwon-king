@@ -45594,6 +45594,79 @@ window.addEventListener('DOMContentLoaded', () => {
             window.plInlineSet(itemId, 'biddate', nextDate);
             window.plInlineSet(itemId, 'minprice', nextPrice);
           }
+          
+          // data 객체의 필드도 업데이트
+          var _updatedItem = null;
+          try {
+            var _plItems = (typeof plLoad === 'function') ? plLoad() : [];
+            var _targetIdx = -1;
+            var _targetItem = null;
+            for (var _i = 0; _i < _plItems.length; _i++) {
+              if (String(_plItems[_i].id) === String(itemId)) {
+                _targetIdx = _i;
+                _targetItem = _plItems[_i];
+                break;
+              }
+            }
+            if (_targetItem && _targetItem.data) {
+              var _dataPatch = Object.assign({}, _targetItem.data);
+              _dataPatch['유찰횟수'] = nextRound;
+              _dataPatch['매각기일'] = nextDate;
+              _dataPatch['매각일'] = nextDate;
+              _dataPatch['최저가'] = parseInt(nextPrice, 10) || 0;
+              _plItems[_targetIdx] = Object.assign({}, _targetItem, { 
+                data: _dataPatch,
+                updatedAt: Date.now()
+              });
+              _updatedItem = _plItems[_targetIdx];
+              if (typeof plSave === 'function') plSave(_plItems);
+              if (typeof plSyncItemToSaved === 'function') {
+                try { plSyncItemToSaved(_plItems[_targetIdx]); } catch(e) {}
+              }
+            }
+          } catch(e) {
+            console.warn('[UnsoldFlow data update]', e);
+          }
+          
+          // 작업룸에 연결되어 있으면 작업룸도 업데이트
+          if (_updatedItem && _updatedItem.roomId && typeof updateRoom === 'function') {
+            try {
+              var __room = null;
+              if (typeof getWrRooms === 'function') {
+                var __rooms = getWrRooms() || [];
+                for(var __i=0; __i<__rooms.length; __i++){ 
+                  if (__rooms[__i].id === _updatedItem.roomId){ 
+                    __room = __rooms[__i]; 
+                    break; 
+                  } 
+                }
+              }
+              if (__room) {
+                var __ovr = __room._summaryOverride ? Object.assign({}, __room._summaryOverride) : {};
+                __ovr.biddate = nextDate;
+                __ovr.price = parseInt(nextPrice, 10) || 0;
+                updateRoom(_updatedItem.roomId, {
+                  lifecycleStatus: 'active',
+                  status: 'review',
+                  phase: 'review',
+                  activePhase: 'review',
+                  __targetItemId: itemId,
+                  __forceLifecycleChange: true,
+                  round: nextRound,
+                  biddate: nextDate,
+                  minprice: nextPrice,
+                  _summaryOverride: __ovr
+                });
+                // 작업룸 저장 race 방지
+                setTimeout(function() {
+                  try { if (typeof window.__wr2FlushSaveRooms === 'function') window.__wr2FlushSaveRooms(); } catch(e) {}
+                }, 200);
+              }
+            } catch(e) {
+              console.warn('[UnsoldFlow workroom sync]', e);
+            }
+          }
+          
           try {
             if (itemId && typeof window.plSetSimpleStatus === 'function') {
               var prevForce2 = window.__plForceDirectSet;
@@ -45602,6 +45675,7 @@ window.addEventListener('DOMContentLoaded', () => {
               window.__plForceDirectSet = prevForce2;
             }
           } catch (e) {}
+          try { if (typeof wr2Render === 'function') wr2Render(); } catch(e) {}
           try { if (typeof renderPropertyList === 'function') renderPropertyList(); } catch(e) {}
         }
         _skCloseUnsoldModal();
