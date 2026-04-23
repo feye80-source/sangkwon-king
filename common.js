@@ -45731,17 +45731,53 @@ window.addEventListener('DOMContentLoaded', () => {
             patch.activePhase = 'field';
             patch.biddate = '미정';
           } else {
+            // 유찰 처리
+            var __room = (typeof getActiveRoom === 'function') ? getActiveRoom() : null;
+            if (!__room && typeof getWrRooms === 'function') {
+              var __rooms = getWrRooms() || [];
+              for(var __i=0; __i<__rooms.length; __i++){ 
+                if (__rooms[__i].id === ctx.id){ 
+                  __room = __rooms[__i]; 
+                  break; 
+                } 
+              }
+            }
+            var __ovr = __room && __room._summaryOverride ? Object.assign({}, __room._summaryOverride) : {};
+            var _nextPrice = _skDigits(nextPrice.value || '');
+            // 유찰 처리 시 새로운 매각기일과 최저가를 _summaryOverride에 저장
+            __ovr.biddate = nextDate.value || '';
+            __ovr.price = parseInt(_nextPrice, 10) || 0;
+            
             patch.lifecycleStatus = 'active';
             patch.status = 'review';
             patch.phase = 'review';
             patch.activePhase = 'review';
             patch.round = parseInt(nextRound.value || '1', 10) || 1;
             patch.biddate = nextDate.value || '';
-            patch.minprice = _skDigits(nextPrice.value || '');
+            patch.minprice = _nextPrice;
+            patch._summaryOverride = __ovr;
           }
           if (typeof updateRoom === 'function') updateRoom(ctx.id, patch);
+          // 유찰 처리 시 저장목록에도 정보 업데이트
+          if (mode === 'unsold' && wrTargetId && typeof window.plInlineSet === 'function') {
+            try {
+              window.plInlineSet(wrTargetId, 'round', String(patch.round || 1));
+              window.plInlineSet(wrTargetId, 'biddate', patch.biddate || '');
+              window.plInlineSet(wrTargetId, 'minprice', patch.minprice || '');
+            } catch (e) {
+              console.warn('[ResultFlow plInlineSet]', e);
+            }
+          }
+          // UI 즉시 업데이트
+          try { if (typeof wr2Render === 'function') wr2Render(); } catch(e) {}
           window.__plLastLocalStatusMutationAt = Date.now();
           if (typeof renderPropertyList === 'function') setTimeout(renderPropertyList, 60);
+          // updateRoom과 plInlineSet 저장 race 방지
+          if (mode === 'unsold') {
+            setTimeout(function() {
+              try { if (typeof window.__wr2FlushSaveRooms === 'function') window.__wr2FlushSaveRooms(); } catch(e) {}
+            }, 200);
+          }
         }
       } catch(e) { console.warn('[skResultFlowSave]', e); }
       close();
