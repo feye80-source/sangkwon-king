@@ -5537,6 +5537,10 @@ var _safeLocalSet = function(key, value) {
                   const sourceUrl = String(d['상세URL'] || d['옥션원URL'] || d['온비드URL'] || '').trim();
                   let html = '';
 
+                  // 경매번호/사건번호
+                  const auctionNo = d['경매번호'] || d['사건번호'] || d['caseNo'] || '';
+                  if (auctionNo) html += `<div class="wr2-info-row"><span class="wr2-info-lbl">경매번호</span><span class="wr2-info-val">${auctionNo}</span></div>`;
+
                   // 소재지 / 물건종류
                   const _addrEsc = String(primaryAddr || '').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
                   html += `<div class="wr2-info-row"><span class="wr2-info-lbl">소재지</span><span class="wr2-info-val" style="display:flex;align-items:center;justify-content:space-between;gap:8px;"><span style="flex:1;min-width:0;word-break:break-word;">${primaryAddr}</span>${primaryAddr && primaryAddr !== '-' ? `<span style="display:flex;align-items:center;gap:6px;flex-shrink:0;"><button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();wr2CopyText('${_addrEsc}','주소를 복사했어요')">주소복사</button>${item && item.id ? `<button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();goToMapFromCard('${String(item.id).replace(/'/g, "\\'")}')">지도열기</button>` : ''}</span>` : ''}</span></div>`;
@@ -5569,6 +5573,12 @@ var _safeLocalSet = function(key, value) {
                     </div>`;
                   }
 
+                  // 회차 정보 표시
+                  const currentRound = parseInt(room.round || d['유찰횟수'] || item.round || 0, 10);
+                  if (currentRound > 0) {
+                    html += `<div class="wr2-info-row"><span class="wr2-info-lbl">회차</span><span class="wr2-info-val">${currentRound}회</span></div>`;
+                  }
+
                   // 면적 (㎡ + 평)
                   if (areaM2 > 0) html += `<div class="wr2-info-row"><span class="wr2-info-lbl">${areaLabel}</span><span class="wr2-info-val">${areaStr}</span></div>`;
 
@@ -5594,9 +5604,7 @@ var _safeLocalSet = function(key, value) {
                     html += `<div class="wr2-info-row"><span class="wr2-info-lbl">임차인명</span><span class="wr2-info-val"><b>${tenant}</b></span></div>`;
                   }
 
-                  // 경매번호/사건번호
-                  const auctionNo = d['경매번호'] || d['사건번호'] || d['caseNo'] || '';
-                  if (auctionNo) html += `<div class="wr2-info-row"><span class="wr2-info-lbl">경매번호</span><span class="wr2-info-val">${auctionNo}</span></div>`;
+
 
                   // 매각기일 (항상 표시 + 수동 수정 가능)
                   {
@@ -45534,6 +45542,16 @@ window.addEventListener('DOMContentLoaded', () => {
         if (ctx && ctx.source === 'wr') {
           var targetItemId = String((ctx.item && ctx.item.id) || '').trim();
           if (typeof updateRoom === 'function') {
+            var __room = (typeof getActiveRoom === 'function') ? getActiveRoom() : null;
+            if (!__room && typeof getWrRooms === 'function') {
+                var __rooms = getWrRooms() || [];
+                for(var __i=0; __i<__rooms.length; __i++){ if (__rooms[__i].id === ctx.id){ __room = __rooms[__i]; break; } }
+            }
+            var __ovr = __room && __room._summaryOverride ? Object.assign({}, __room._summaryOverride) : {};
+            // 유찰 처리 시 새로운 매각기일과 최저가를 _summaryOverride에 저장
+            __ovr.biddate = nextDate;
+            __ovr.price = parseInt(nextPrice, 10) || 0;
+
             updateRoom(String(ctx.id || ''), {
               lifecycleStatus: 'active',
               status: 'review',
@@ -45543,7 +45561,8 @@ window.addEventListener('DOMContentLoaded', () => {
               __forceLifecycleChange: true,
               round: nextRound,
               biddate: nextDate,
-              minprice: nextPrice
+              minprice: nextPrice,
+              _summaryOverride: __ovr
             });
           }
           if (targetItemId && typeof window.plInlineSet === 'function') {
