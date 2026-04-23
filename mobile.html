@@ -2265,9 +2265,6 @@ input, textarea, select {
           <div id="mb-room-tags" style="display:flex;flex-wrap:wrap;gap:3px;flex:1;min-width:0;"></div>
           <div id="mb-room-folder-inline"></div>
         </div>
-        <div style="display:flex;gap:6px;align-items:center;margin-top:7px;">
-          <button class="mb-btn" onclick="mbRoomOpenUnsoldFlow()" style="height:28px;padding:0 10px;font-size:11px;border-color:rgba(79,142,255,.28);background:rgba(79,142,255,.10);color:#bcd4ff;">유찰 처리</button>
-        </div>
       </div>
       <div id="mb-room-folder-bar" class="mb-folder-chipbar" style="display:none !important;margin:0 0 8px;"></div>
 
@@ -6551,56 +6548,30 @@ input, textarea, select {
     var sel = document.getElementById('mb-room-sel');
     if (!sel || !sel.value) return;
     var roomId = sel.value;
-    var applyStatus = function(extraPatch) {
-      if (typeof window.skApplyUnifiedLifecycle === 'function') {
-        window.skApplyUnifiedLifecycle({
-          roomId: roomId,
-          lifecycleStatus: val,
-          refreshMobile: true,
-          closedSummary: extraPatch && extraPatch.closedSummary
-        });
-      } else {
-        var rooms = (window._wrGetRoomsCache && window._wrGetRoomsCache()) ||
-          ((window._idbCache && window._idbCache['wr2_rooms']) || JSON.parse(localStorage.getItem('wr2_rooms') || '[]'));
-        var room = rooms.find(function(r) { return r.id === roomId; });
-        if (!room) return;
-        room.lifecycleStatus = val;
-        if (extraPatch && extraPatch.closedSummary) room.closedSummary = extraPatch.closedSummary;
-        room.updatedAt = Date.now();
-        if (window._wrPersistRooms) window._wrPersistRooms(rooms, { syncState: true });
-        if (window.wr2State) {
-          var sr = window.wr2State.rooms && window.wr2State.rooms.find(function(r){ return r.id === roomId; });
-          if (sr) {
-            sr.lifecycleStatus = val;
-            if (extraPatch && extraPatch.closedSummary) sr.closedSummary = extraPatch.closedSummary;
-          }
-        }
-        if (typeof window.mbRoomRefreshSel === 'function') window.mbRoomRefreshSel();
+    if (typeof window.skApplyUnifiedLifecycle === 'function') {
+      window.skApplyUnifiedLifecycle({
+        roomId: roomId,
+        lifecycleStatus: val,
+        refreshMobile: true
+      });
+    } else {
+      var rooms = (window._wrGetRoomsCache && window._wrGetRoomsCache()) ||
+        ((window._idbCache && window._idbCache['wr2_rooms']) || JSON.parse(localStorage.getItem('wr2_rooms') || '[]'));
+      var room = rooms.find(function(r) { return r.id === roomId; });
+      if (!room) return;
+      room.lifecycleStatus = val;
+      room.updatedAt = Date.now();
+      if (window._wrPersistRooms) window._wrPersistRooms(rooms, { syncState: true });
+      if (window.wr2State) {
+        var sr = window.wr2State.rooms && window.wr2State.rooms.find(function(r){ return r.id === roomId; });
+        if (sr) sr.lifecycleStatus = val;
       }
-      _mbSyncLifecycleButtons(val);
-      mbToast({ active: '진행 탭으로 이동', changed: '변경·미진행 탭으로 이동', closed: '종료 처리됨' }[val] || '상태 변경', 'ok');
-    };
-    if (val === 'closed' && typeof window.wr2CollectCloseSummary === 'function') {
-      var rooms = (window._wrGetRoomsCache && window._wrGetRoomsCache()) || [];
-      var room = rooms.find(function(r) { return r.id === roomId; }) || null;
-      window.wr2CollectCloseSummary(room && room.closedSummary, function(summary){ applyStatus({ closedSummary: summary }); }, function(){});
-      return;
+      if (typeof window.mbRoomRefreshSel === 'function') window.mbRoomRefreshSel();
     }
-    applyStatus();
+    _mbSyncLifecycleButtons(val);
+    mbToast({ active: '진행 탭으로 이동', changed: '변경·미진행 탭으로 이동', closed: '종료 처리됨' }[val] || '상태 변경', 'ok');
   };
 
-
-
-  window.mbRoomOpenUnsoldFlow = function() {
-    var sel = document.getElementById('mb-room-sel');
-    if (!sel || !sel.value) return;
-    var roomId = sel.value;
-    var rooms = (window._wrGetRoomsCache && window._wrGetRoomsCache()) || [];
-    var room = rooms.find(function(r) { return r.id === roomId; }) || null;
-    if (typeof window._skOpenUnsoldFlow === 'function') {
-      window._skOpenUnsoldFlow({ roomId: roomId, id: roomId, item: room || {} });
-    }
-  };
   // ── 모바일 파이프라인 렌더 ────────────────────────────────────
   window.mbRenderPipeline = function() {
     var sv = (typeof getSv === 'function') ? getSv() : [];

@@ -5502,14 +5502,14 @@ var _safeLocalSet = function(key, value) {
 
                   // ── 임차인 표시
                   const tenant    = (occupancy && occupancy.tenantName) || d['현재임차인'] || d['임차인명'] || '';
-                  const saleDateRaw = String(d['매각기일'] || d['매각일'] || d['경매일'] || '').trim();
+                  const saleDateRaw = String(ovr.biddate || item.biddate || d['매각기일'] || d['매각일'] || d['경매일'] || '').trim();
                   const saleDateObj = wr2ParseSaleDateLoose(saleDateRaw);
                   const saleDday = wr2CalcDdayFromDate(saleDateObj);
                   const saleDdayLabel = (saleDday == null)
                     ? ''
                     : (saleDday < 0 ? '기일지남·수정필요' : (saleDday === 0 ? 'D-Day' : 'D-' + saleDday));
                   const lifecycle = wr2GetLifecycle(room);
-                  const saleOverdueNeedsAction = !!(saleDateRaw && saleDday != null && saleDday < 0 && lifecycle !== 'closed');
+                  const saleOverdueNeedsAction = !!(saleDateRaw && saleDday != null && saleDday <= 0 && lifecycle !== 'closed');
                   const warnTone = saleOverdueNeedsAction ? '#ff6b7a' : '#ff8c42';
 
                   // ── 수동편집 행
@@ -5595,21 +5595,21 @@ var _safeLocalSet = function(key, value) {
                   const auctionNo = d['경매번호'] || d['사건번호'] || d['caseNo'] || '';
                   if (auctionNo) html += `<div class="wr2-info-row"><span class="wr2-info-lbl">경매번호</span><span class="wr2-info-val">${auctionNo}</span></div>`;
 
-                  // 매각기일
-                  if (saleDateRaw) {
+                  // 매각기일 (항상 표시 + 수동 입력 가능)
+                  {
                     const badge = saleDdayLabel
                       ? `<span style="display:inline-block;margin-left:6px;padding:1px 6px;border-radius:999px;font-size:10px;font-weight:700;border:1px solid ${warnTone}66;background:${warnTone}18;color:${warnTone};">${saleDdayLabel}</span>`
                       : '';
-                    html += `<div class="wr2-info-row${saleOverdueNeedsAction ? ' wr2-info-overdue' : ''}">
-                      <span class="wr2-info-lbl">매각기일</span>
-                      <span class="wr2-info-val" style="${saleOverdueNeedsAction ? 'color:#ff6b7a;font-weight:800;' : ''}">${saleDateRaw}${badge}</span>
-                    </div>`;
+                    const saleDateDisplay = saleDateRaw
+                      ? `${saleDateRaw}${badge}`
+                      : `<span style="color:#94a3b8;">미입력</span>`;
+                    html += editRow('biddate', '매각기일', `<span style="${saleOverdueNeedsAction ? 'color:#ff6b7a;font-weight:800;' : ''}">${saleDateDisplay}</span>`, saleDateRaw || '');
                   }
                   if (saleOverdueNeedsAction) {
-                    const linkedItemId = item && item.id ? String(item.id).replace(/'/g, "\\'") : '';
-                    const roomIdEsc = String(room.id || '').replace(/'/g, "\\'");
+                    const linkedItemId = item && item.id ? String(item.id).replace(/'/g, "\'") : '';
+                    const roomIdEsc = String(room.id || '').replace(/'/g, "\'");
                     html += `<div class="wr2-summary-alert" style="margin:6px 0 2px;padding:8px 10px;border-radius:8px;border:1px solid rgba(255,107,122,.36);background:rgba(255,107,122,.1);font-size:11px;line-height:1.45;color:#ffd5da;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
-                      <div style="min-width:0;flex:1 1 260px;">⚠ 매각기일이 지났습니다. <b>종료</b>면 종료 처리하고, <b>유찰</b>이면 아래 버튼으로 다음 회차 정보를 갱신하세요.</div>
+                      <div style="min-width:0;flex:1 1 260px;">⚠ 매각기일이 도래했습니다. <b>종료</b>면 종료 처리하고, <b>유찰</b>이면 다음 회차 정보를 갱신하세요.</div>
                       <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
                         <button type="button" class="wr2-mini-btn" style="border-color:rgba(79,142,255,.32);background:rgba(79,142,255,.14);color:#d8e7ff;font-weight:800;" onclick="event.stopPropagation();wr2OpenUnsoldFromSummary('${roomIdEsc}','${linkedItemId}')">유찰 처리</button>
                       </div>
@@ -5641,8 +5641,19 @@ var _safeLocalSet = function(key, value) {
                 window.wr2SummaryEditSave = function(key, val) {
                   const room = getActiveRoom(); if (!room) return;
                   room._summaryOverride = room._summaryOverride || {};
-                  const n = parseFloat(String(val).replace(/[^0-9.]/g,''));
-                  room._summaryOverride[key] = isNaN(n) ? 0 : n;
+                  if (key === 'biddate') {
+                    const nextVal = (typeof plNormalizeDateInput === 'function') ? plNormalizeDateInput(val) : String(val || '').trim();
+                    room._summaryOverride[key] = nextVal;
+                    try {
+                      const sv = (typeof getSv === 'function') ? getSv() : [];
+                      const plLinkedMap = (typeof wr2BuildPlLinkedMap === 'function') ? wr2BuildPlLinkedMap() : {};
+                      const item = (typeof wr2ResolveLinkedSavedItem === 'function') ? wr2ResolveLinkedSavedItem(room, sv, plLinkedMap) : null;
+                      if (item && item.id && typeof window.plInlineSet === 'function') window.plInlineSet(String(item.id), 'biddate', nextVal);
+                    } catch (e) { console.warn('[wr2SummaryEditSave biddate]', e); }
+                  } else {
+                    const n = parseFloat(String(val).replace(/[^0-9.]/g,''));
+                    room._summaryOverride[key] = isNaN(n) ? 0 : n;
+                  }
                   room._summaryEditing = null;
                   room.updatedAt = Date.now(); saveRooms();
                   renderItemSummary(room);
@@ -43227,7 +43238,6 @@ window.addEventListener('DOMContentLoaded', () => {
     modal.style.display = 'flex';
   }
   try { window._skOpenUnsoldFlow = _skOpenUnsoldFlow; } catch(e) {}
-  try { window._skOpenResultFlow = _skOpenUnsoldFlow; } catch(e) {}
 
   function _plWrapWorkroomSync() {
     if (window.__plRoomWrapped) return;
@@ -45447,8 +45457,8 @@ window.addEventListener('DOMContentLoaded', () => {
   function _skNextPrice(item){
     var cur = _skCurrentMinPrice(item);
     if (!cur) return 0;
-    // 기본 유찰 계산: 다음 회차 최저가는 20% 감액(80%) 기준
-    return Math.max(1, Math.floor(cur * 0.8));
+    // 기본 유찰 계산: 다음 회차 최저가는 30% 감액(70%) 기준
+    return Math.max(1, Math.floor(cur * 0.7));
   }
   function _skBuildUnsoldPlan(item){
     var base = item || {};
@@ -45604,8 +45614,6 @@ window.addEventListener('DOMContentLoaded', () => {
     };
     modal.style.display='flex';
   }
-  try { if (typeof window._skOpenUnsoldFlow !== 'function') window._skOpenUnsoldFlow = _skOpenResultFlow; } catch(e) {}
-  try { window._skOpenResultFlow = window._skOpenUnsoldFlow || _skOpenResultFlow; } catch(e) {}
 
   // Allow lifecycle reopen when explicitly forced.
   try {
@@ -45897,3 +45905,196 @@ window.wr2OpenUnsoldFromSummary = window.wr2OpenUnsoldFromSummary || function(ro
   }
 };
 
+
+
+/* ===== Unsold flow root cleanup v2 ===== */
+(function(){
+  function ufDigits(v){ return String(v || '').replace(/[^0-9]/g, ''); }
+  function ufNum(v){ var n = Number(ufDigits(v)); return isFinite(n) ? n : 0; }
+  function ufComma(v){ var n = ufNum(v); return n ? n.toLocaleString('ko-KR') : ''; }
+  function ufYmd(v){
+    var raw = String(v || '').trim();
+    if (!raw || raw === '미정') return '';
+    var m = raw.match(/(\d{4})[-./](\d{1,2})[-./](\d{1,2})/);
+    if (!m) return '';
+    return m[1] + '-' + String(m[2]).padStart(2,'0') + '-' + String(m[3]).padStart(2,'0');
+  }
+  function ufAddDays(ymd, days){
+    var base = ufYmd(ymd);
+    if (!base) return '';
+    var dt = new Date(base + 'T00:00:00');
+    if (isNaN(dt.getTime())) return '';
+    dt.setDate(dt.getDate() + (days || 0));
+    return dt.getFullYear() + '-' + String(dt.getMonth()+1).padStart(2,'0') + '-' + String(dt.getDate()).padStart(2,'0');
+  }
+  function ufCurrentRound(item){
+    var raw = String((item && (item.round || (item._norm && item._norm.유찰횟수))) || '').trim();
+    var m = raw.match(/\d+/);
+    var n = parseInt(m ? m[0] : raw, 10);
+    return isFinite(n) ? n : 0;
+  }
+  function ufCurrentBidDate(item){
+    return String((item && (item.biddate || item.saleDate || item.매각기일 || (item.data && (item.data['매각기일'] || item.data['매각일'])))) || '').trim();
+  }
+  function ufCurrentMinPrice(item){
+    var c = 0;
+    try {
+      c = ufNum(item && (item.minprice || item.price || item.appraisal));
+      if (!c && item && item.result) c = ufNum(item.result.minprice || item.result.won);
+      if (!c && item && item._norm) c = Number(item._norm.최저가_만원 || 0) * 10000;
+      if (!c && item && item.data) c = ufNum(item.data['최저매각가격'] || item.data['최저가'] || item.data['최저매각가']);
+    } catch (e) {}
+    return c > 0 ? c : 0;
+  }
+  function ufBuildPlan(item){
+    var round = ufCurrentRound(item);
+    var bid = ufCurrentBidDate(item);
+    var price = ufCurrentMinPrice(item);
+    return {
+      round: String((round > 0 ? round : 0) + 1),
+      date: bid ? ufAddDays(bid, 28) : '',
+      price: String(price ? Math.max(1, Math.floor(price * 0.7)) : '')
+    };
+  }
+  function ufEnsureModal(){
+    var modal = document.getElementById('skUnsoldStableModal');
+    if (modal) return modal;
+    modal = document.createElement('div');
+    modal.id = 'skUnsoldStableModal';
+    modal.style.cssText = 'position:fixed;inset:0;display:none;align-items:center;justify-content:center;padding:16px;background:rgba(4,8,15,.72);backdrop-filter:blur(3px);z-index:999999;';
+    modal.innerHTML = ''
+      + '<div style="width:min(460px,calc(100vw - 28px));background:linear-gradient(180deg,#111827,#0f172a);border:1px solid rgba(79,142,255,.22);border-radius:16px;box-shadow:0 18px 50px rgba(0,0,0,.46);overflow:hidden;">'
+      + '  <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px 10px;border-bottom:1px solid rgba(255,255,255,.08);">'
+      + '    <div><div style="font-size:17px;font-weight:800;color:#e5eefc;">유찰 처리</div><div style="margin-top:4px;font-size:12px;color:#9fb2d1;">진행 탭은 유지하고 다음 회차 정보만 갱신합니다.</div></div>'
+      + '    <button type="button" data-uf-close style="width:34px;height:34px;border:none;border-radius:10px;background:rgba(255,255,255,.06);color:#dbeafe;font-size:18px;cursor:pointer;">×</button>'
+      + '  </div>'
+      + '  <div style="padding:16px 18px 18px;display:grid;gap:12px;">'
+      + '    <label style="display:grid;gap:6px;"><span style="font-size:12px;color:#9fb2d1;">다음 회차</span><input id="ufNextRound" type="number" min="1" style="width:100%;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:#eef4ff;outline:none;box-sizing:border-box;"></label>'
+      + '    <label style="display:grid;gap:6px;"><span style="font-size:12px;color:#9fb2d1;">다음 매각기일</span><input id="ufNextDate" type="date" style="width:100%;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:#eef4ff;outline:none;box-sizing:border-box;"></label>'
+      + '    <label style="display:grid;gap:6px;"><span style="font-size:12px;color:#9fb2d1;">다음 최저가</span><input id="ufNextPrice" type="text" inputmode="numeric" placeholder="예: 279,347,000" style="width:100%;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:#eef4ff;outline:none;box-sizing:border-box;"></label>'
+      + '    <div style="font-size:11px;color:#94a3b8;line-height:1.5;">회차는 +1, 최저가는 70% 기준, 매각기일은 같은 요일 4주 후를 자동 제안합니다. 확인 후 수정해서 저장하세요.</div>'
+      + '    <div style="display:flex;justify-content:flex-end;gap:8px;padding-top:4px;">'
+      + '      <button type="button" data-uf-cancel style="padding:10px 14px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:#cbd5e1;font-weight:700;cursor:pointer;">취소</button>'
+      + '      <button type="button" data-uf-save style="padding:10px 14px;border-radius:10px;border:1px solid rgba(79,142,255,.25);background:rgba(79,142,255,.16);color:#dbeafe;font-weight:800;cursor:pointer;">저장</button>'
+      + '    </div>'
+      + '  </div>'
+      + '</div>';
+    document.body.appendChild(modal);
+    return modal;
+  }
+  function ufResolveRoom(roomId){
+    try {
+      if (typeof getActiveRoom === 'function') {
+        var active = getActiveRoom();
+        if (active && String(active.id || '') === String(roomId || '')) return active;
+      }
+      if (typeof loadRooms === 'function') {
+        var rooms = loadRooms() || [];
+        for (var i=0;i<rooms.length;i++) if (String(rooms[i] && rooms[i].id || '') === String(roomId || '')) return rooms[i];
+      }
+      if (typeof getWrRooms === 'function') {
+        var rooms2 = getWrRooms() || [];
+        for (var j=0;j<rooms2.length;j++) if (String(rooms2[j] && rooms2[j].id || '') === String(roomId || '')) return rooms2[j];
+      }
+    } catch (e) {}
+    return null;
+  }
+  function ufResolveItem(roomId, itemId, passedItem){
+    if (passedItem && passedItem.id) return passedItem;
+    try {
+      if (itemId && typeof plLoad === 'function') {
+        var items = plLoad() || [];
+        for (var i=0;i<items.length;i++) if (String(items[i] && items[i].id || '') === String(itemId || '')) return items[i];
+      }
+      if (typeof _plResolveLifecycleTargetItem === 'function') return _plResolveLifecycleTargetItem(String(roomId || ''), String(itemId || '')) || null;
+    } catch (e) {}
+    return null;
+  }
+  function ufSaveSummaryDate(roomId, nextDate){
+    try {
+      var room = ufResolveRoom(roomId);
+      if (!room) return;
+      room._summaryOverride = room._summaryOverride || {};
+      room._summaryOverride.biddate = nextDate || '';
+      room.updatedAt = Date.now();
+      if (typeof saveRooms === 'function') saveRooms();
+    } catch (e) {}
+  }
+  window._skOpenResultFlow = function(){
+    try { if (typeof showToast === 'function') showToast('기존 변경/유찰 통합창은 제거되었습니다. 유찰은 물건요약의 유찰 처리 버튼을 사용하세요.', 'warn'); } catch (e) {}
+  };
+  window._skOpenUnsoldFlow = function(ctx){
+    try {
+      ctx = ctx || {};
+      var roomId = String(ctx.roomId || ctx.id || '').trim();
+      var room = ufResolveRoom(roomId);
+      var item = ufResolveItem(roomId, String(ctx.itemId || ''), ctx.item) || room || {};
+      var modal = ufEnsureModal();
+      var roundEl = document.getElementById('ufNextRound');
+      var dateEl = document.getElementById('ufNextDate');
+      var priceEl = document.getElementById('ufNextPrice');
+      var plan = ufBuildPlan(item || {});
+      roundEl.value = plan.round || '1';
+      dateEl.value = plan.date || '';
+      priceEl.value = ufComma(plan.price || '');
+      if (!priceEl.dataset.ufBound) {
+        priceEl.dataset.ufBound = '1';
+        priceEl.addEventListener('input', function(){ this.value = ufComma(this.value); });
+      }
+      var close = function(){ modal.style.display = 'none'; modal.__ctx = null; };
+      modal.__ctx = { roomId: roomId, itemId: String((item && item.id) || ctx.itemId || '').trim() };
+      modal.onclick = function(evt){ if (evt.target === modal) close(); };
+      var closes = modal.querySelectorAll('[data-uf-close],[data-uf-cancel]');
+      closes.forEach(function(btn){ btn.onclick = close; });
+      modal.querySelector('[data-uf-save]').onclick = function(){
+        try {
+          var target = modal.__ctx || {};
+          var nextRound = String(parseInt(roundEl.value || '1', 10) || 1);
+          var nextDate = String(dateEl.value || '').trim();
+          var nextPrice = ufDigits(priceEl.value || '');
+          if (!nextDate) {
+            if (typeof showToast === 'function') showToast('다음 매각기일을 확인해 주세요.', 'warn');
+            return;
+          }
+          if (target.itemId && typeof window.plInlineSet === 'function') {
+            window.plInlineSet(target.itemId, 'round', nextRound);
+            window.plInlineSet(target.itemId, 'biddate', nextDate);
+            window.plInlineSet(target.itemId, 'minprice', nextPrice);
+          }
+          ufSaveSummaryDate(target.roomId, nextDate);
+          if (target.roomId && typeof updateRoom === 'function') {
+            var liveRoom = ufResolveRoom(target.roomId) || room || {};
+            var keepPhase = String(liveRoom.phase || liveRoom.status || liveRoom.activePhase || 'review');
+            updateRoom(target.roomId, {
+              lifecycleStatus: 'active', status: keepPhase, phase: keepPhase, activePhase: keepPhase,
+              round: nextRound, biddate: nextDate, minprice: nextPrice,
+              __targetItemId: String(target.itemId || ''), __forceLifecycleChange: true
+            });
+          } else if (target.roomId && typeof window.skApplyUnifiedLifecycle === 'function') {
+            window.skApplyUnifiedLifecycle({ roomId: target.roomId, itemId: String(target.itemId || ''), lifecycleStatus: 'active' });
+          }
+          try { if (typeof renderPropertyList === 'function') renderPropertyList(); } catch (e) {}
+          try { if (typeof wr2Render === 'function') wr2Render(); } catch (e) {}
+          try { if (typeof window.mbRoomRefreshSel === 'function') window.mbRoomRefreshSel(); } catch (e) {}
+          try { if (typeof showToast === 'function') showToast('유찰 정보가 반영되었습니다. 진행 탭을 유지합니다.', 'ok'); } catch (e) {}
+          close();
+        } catch (e) {
+          console.warn('[stable unsold save]', e);
+          try { if (typeof showToast === 'function') showToast('유찰 저장 중 오류가 발생했습니다.', 'warn'); } catch (_) {}
+        }
+      };
+      modal.style.display = 'flex';
+    } catch (e) {
+      console.warn('[stable unsold open]', e);
+      try { if (typeof showToast === 'function') showToast('유찰 처리 창을 여는 중 오류가 발생했습니다.', 'warn'); } catch (_) {}
+    }
+  };
+  window.wr2OpenUnsoldFromSummary = function(roomId, itemId){
+    try {
+      window._skOpenUnsoldFlow({ source:'wr', roomId:String(roomId||''), id:String(roomId||''), itemId:String(itemId||'') });
+    } catch (e) {
+      console.warn('[wr2OpenUnsoldFromSummary stable]', e);
+      try { if (typeof showToast === 'function') showToast('유찰 처리 창을 열 수 없습니다. 새로고침 후 다시 시도해주세요.', 'warn'); } catch (_) {}
+    }
+  };
+})();
