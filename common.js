@@ -45534,7 +45534,7 @@ window.addEventListener('DOMContentLoaded', () => {
           return;
         }
         if (ctx && ctx.source === 'wr') {
-          // targetItemId 찾기: ctx.item.id 또는 작업룸에 연결된 아이템
+          // targetItemId 찾기
           var targetItemId = String((ctx.item && ctx.item.id) || '').trim();
           if (!targetItemId && ctx.id) {
             try {
@@ -45544,10 +45544,10 @@ window.addEventListener('DOMContentLoaded', () => {
             } catch(e) {}
           }
           
-          // STEP 1: 저장목록 data 객체 업데이트
+          // STEP 1: 저장목록 로컬 업데이트만 (동기화는 자동으로)
           if (targetItemId) {
             try {
-              var _plItems = (typeof plLoad === 'function') ? plLoad() : [];
+              var _plItems = plLoad();
               var _targetIdx = -1;
               for (var _i = 0; _i < _plItems.length; _i++) {
                 if (String(_plItems[_i].id) === String(targetItemId)) {
@@ -45568,10 +45568,9 @@ window.addEventListener('DOMContentLoaded', () => {
                   data: _dataPatch,
                   updatedAt: Date.now()
                 });
-                if (typeof plSave === 'function') plSave(_plItems);
-                if (typeof plSyncItemToSaved === 'function') {
-                  try { plSyncItemToSaved(_plItems[_targetIdx]); } catch(e) {}
-                }
+                // 로컬스토리지만 업데이트 (Supabase 동기화는 자동)
+                localStorage.setItem(PL_KEY, JSON.stringify(_plItems));
+                if (typeof window._sbMarkKvDirty === 'function') window._sbMarkKvDirty(PL_KEY);
               }
             } catch(e) {}
           }
