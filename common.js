@@ -5660,36 +5660,45 @@ var _safeLocalSet = function(key, value) {
                   renderItemSummary(room);
                 };
                 window.wr2SummaryEditSave = function(key, val) {
-                  const room = getActiveRoom(); if (!room) return;
-                  // Enter→직접save 후 onblur 이중 호출 방지
-                  if (room._summaryEditing !== key) return;
-                  room._summaryOverride = room._summaryOverride || {};
-                  if (key === 'biddate') {
-                    var normalized = plNormalizeDateInput ? plNormalizeDateInput(val) : String(val || '').trim();
-                    room._summaryOverride[key] = normalized;
-                    room.biddate = normalized; // room 네이티브 필드도 동기화 → 클라우드 sync 후에도 소실 방지
-                    var linked = null;
-                    if (typeof plLoad === 'function') {
-                      var roomItems = (plLoad() || []).filter(function(it) { return String(it && it.roomId || '') === String(room.id); });
-                      linked = roomItems.length === 1 ? roomItems[0] : null;
-                      if (!linked) {
-                        var pId = String(room.linkedSavedId || room.auctionId || room.listingId || '').trim();
-                        if (pId) {
-                          var matched = roomItems.filter(function(it) { return String(it && it.linkedSavedId || '') === pId; });
-                          if (matched.length === 1) linked = matched[0];
+                  try {
+                    const room = getActiveRoom(); if (!room) return;
+                    // Enter→직접save 후 onblur 이중 호출 방지
+                    if (room._summaryEditing !== key) return;
+                    room._summaryOverride = room._summaryOverride || {};
+                    if (key === 'biddate') {
+                      var normalized = (typeof plNormalizeDateInput === 'function') ? plNormalizeDateInput(val) : String(val || '').trim();
+                      room._summaryOverride[key] = normalized;
+                      room.biddate = normalized; // room 네이티브 필드도 동기화 → 클라우드 sync 후에도 소실 방지
+                      var linked = null;
+                      if (typeof plLoad === 'function') {
+                        var roomItems = (plLoad() || []).filter(function(it) { return String(it && it.roomId || '') === String(room.id); });
+                        linked = roomItems.length === 1 ? roomItems[0] : null;
+                        if (!linked) {
+                          var pId = String(room.linkedSavedId || room.auctionId || room.listingId || '').trim();
+                          if (pId) {
+                            var matched = roomItems.filter(function(it) { return String(it && it.linkedSavedId || '') === pId; });
+                            if (matched.length === 1) linked = matched[0];
+                          }
                         }
                       }
+                      if (linked && linked.id && typeof window.plInlineSet === 'function') {
+                        try { window.plInlineSet(linked.id, 'biddate', normalized); } catch(e) {}
+                      }
+                    } else {
+                      const n = parseFloat(String(val).replace(/[^0-9.]/g,''));
+                      room._summaryOverride[key] = isNaN(n) ? 0 : n;
                     }
-                    if (linked && linked.id && typeof window.plInlineSet === 'function') {
-                      try { window.plInlineSet(linked.id, 'biddate', normalized); } catch(e) {}
-                    }
-                  } else {
-                    const n = parseFloat(String(val).replace(/[^0-9.]/g,''));
-                    room._summaryOverride[key] = isNaN(n) ? 0 : n;
+                    room._summaryEditing = null;
+                    room.updatedAt = Date.now(); saveRooms();
+                    renderItemSummary(room);
+                  } catch (err) {
+                    console.error('[wr2SummaryEditSave Error]', err);
+                    alert('저장 중 오류가 발생했습니다: ' + err.message);
+                    try {
+                      var r = getActiveRoom();
+                      if (r) { r._summaryEditing = null; renderItemSummary(r); }
+                    } catch(e) {}
                   }
-                  room._summaryEditing = null;
-                  room.updatedAt = Date.now(); saveRooms();
-                  renderItemSummary(room);
                 };
                                 // ── phase별 체크리스트 렌더/조작 헬퍼 ──────────────────
                 function renderPhaseChecklistBody(el, clData, phase, room) {
