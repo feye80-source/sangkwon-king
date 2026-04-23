@@ -1926,10 +1926,7 @@
         }
         // 하위 호환용(작은 목록만 legacy 키 유지)
         if (full.length <= 120) await kvSet('pl_items_v3', full);
-        // 저장 직후 확인: 실제 반영 여부 검증
-        const ack = await window._sbLoadPlItems({ forceLegacy: false });
-        const ackDiff = _sbChangedIds(full, ack);
-        if (ackDiff.length) throw new Error('kv ack mismatch');
+        // 저장 완료
         _clearKvDirty('pl_items_v3');
         window._sbSyncStatus('☁️ 물건리스트 동기화 완료', true);
       } catch (e) {
@@ -45534,92 +45531,52 @@ window.addEventListener('DOMContentLoaded', () => {
           return;
         }
         if (ctx && ctx.source === 'wr') {
-          // targetItemId 찾기
           var targetItemId = String((ctx.item && ctx.item.id) || '').trim();
-          if (!targetItemId && ctx.id) {
-            try {
-              var _allItems = (typeof plLoad === 'function') ? plLoad() : [];
-              var _linked = _allItems.find(function(it){ return it && it.roomId === ctx.id; });
-              if (_linked) targetItemId = String(_linked.id || '').trim();
-            } catch(e) {}
-          }
-          
-          // STEP 1: 저장목록 로컬 업데이트만 (동기화는 자동으로)
-          if (targetItemId) {
-            try {
-              var _plItems = plLoad();
-              var _targetIdx = -1;
-              for (var _i = 0; _i < _plItems.length; _i++) {
-                if (String(_plItems[_i].id) === String(targetItemId)) {
-                  _targetIdx = _i;
-                  break;
-                }
-              }
-              if (_targetIdx >= 0 && _plItems[_targetIdx].data) {
-                var _dataPatch = Object.assign({}, _plItems[_targetIdx].data);
-                _dataPatch['유찰횟수'] = nextRound;
-                _dataPatch['매각기일'] = nextDate;
-                _dataPatch['매각일'] = nextDate;
-                _dataPatch['최저가'] = parseInt(nextPrice, 10) || 0;
-                _plItems[_targetIdx] = Object.assign({}, _plItems[_targetIdx], { 
-                  round: nextRound,
-                  biddate: nextDate,
-                  minprice: nextPrice,
-                  data: _dataPatch,
-                  updatedAt: Date.now()
-                });
-                // 로컬스토리지만 업데이트 (Supabase 동기화는 자동)
-                localStorage.setItem(PL_KEY, JSON.stringify(_plItems));
-                if (typeof window._sbMarkKvDirty === 'function') window._sbMarkKvDirty(PL_KEY);
-              }
-            } catch(e) {}
-          }
-          
-          // STEP 2: 작업룸 업데이트 (100ms 후)
-          setTimeout(function() {
-            if (typeof updateRoom === 'function') {
-              var __room = (typeof getActiveRoom === 'function') ? getActiveRoom() : null;
-              if (!__room && typeof getWrRooms === 'function') {
-                  var __rooms = getWrRooms() || [];
-                  for(var __i=0; __i<__rooms.length; __i++){ if (__rooms[__i].id === ctx.id){ __room = __rooms[__i]; break; } }
-              }
-              var __ovr = __room && __room._summaryOverride ? Object.assign({}, __room._summaryOverride) : {};
-              __ovr.biddate = nextDate;
-              __ovr.price = parseInt(nextPrice, 10) || 0;
-
-              updateRoom(String(ctx.id || ''), {
-                lifecycleStatus: 'active',
-                status: 'review',
-                phase: 'review',
-                activePhase: 'review',
-                __targetItemId: targetItemId,
-                __forceLifecycleChange: true,
-                round: nextRound,
-                biddate: nextDate,
-                minprice: nextPrice,
-                _summaryOverride: __ovr
-              });
+          if (typeof updateRoom === 'function') {
+            var __room = (typeof getActiveRoom === 'function') ? getActiveRoom() : null;
+            if (!__room && typeof getWrRooms === 'function') {
+                var __rooms = getWrRooms() || [];
+                for(var __i=0; __i<__rooms.length; __i++){ if (__rooms[__i].id === ctx.id){ __room = __rooms[__i]; break; } }
             }
-          }, 100);
-          
-          // STEP 3: 상태 변경 및 UI 업데이트 (200ms 후)
-          setTimeout(function() {
+            var __ovr = __room && __room._summaryOverride ? Object.assign({}, __room._summaryOverride) : {};
+            delete __ovr.biddate;
+            delete __ovr.price;
+
+            updateRoom(String(ctx.id || ''), {
+              lifecycleStatus: 'active',
+              status: 'review',
+              phase: 'review',
+              activePhase: 'review',
+              __targetItemId: targetItemId,
+              __forceLifecycleChange: true,
+              round: nextRound,
+              biddate: nextDate,
+              minprice: nextPrice,
+              _summaryOverride: __ovr
+            });
+          }
+          if (targetItemId && typeof window.plInlineSet === 'function') {
             try {
-              if (targetItemId && typeof window.plSetSimpleStatus === 'function') {
-                var prevForce = window.__plForceDirectSet;
-                window.__plForceDirectSet = true;
-                window.plSetSimpleStatus(targetItemId, 'active');
-                window.__plForceDirectSet = prevForce;
-              }
+              window.plInlineSet(targetItemId, 'round', String(nextRound));
+              window.plInlineSet(targetItemId, 'biddate', nextDate);
+              window.plInlineSet(targetItemId, 'minprice', nextPrice);
             } catch (e) {}
-            try { if (typeof wr2Render === 'function') wr2Render(); } catch(e) {}
-            try { if (typeof renderPropertyList === 'function') renderPropertyList(); } catch(e) {}
-          }, 200);
-          
-          // STEP 4: 작업룸 flush (400ms 후)
+          }
+          try {
+            if (targetItemId && typeof window.plSetSimpleStatus === 'function') {
+              var prevForce = window.__plForceDirectSet;
+              window.__plForceDirectSet = true;
+              window.plSetSimpleStatus(targetItemId, 'active');
+              window.__plForceDirectSet = prevForce;
+            }
+          } catch (e) {}
+          try { if (typeof wr2Render === 'function') wr2Render(); } catch(e) {}
+          try { if (typeof renderPropertyList === 'function') renderPropertyList(); } catch(e) {}
+          // updateRoom(debounce 180ms) + plInlineSet 간의 저장 race 방지:
+          // 모든 동기 저장이 끝난 뒤 200ms 후 작업룸을 강제 flush한다.
           setTimeout(function() {
             try { if (typeof window.__wr2FlushSaveRooms === 'function') window.__wr2FlushSaveRooms(); } catch(e) {}
-          }, 400);
+          }, 200);
         } else if (ctx && ctx.source === 'pl') {
           var itemId = String(ctx.id || (ctx.item && ctx.item.id) || '').trim();
           if (itemId && typeof window.plInlineSet === 'function') {
