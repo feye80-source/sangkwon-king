@@ -4807,11 +4807,6 @@ var _safeLocalSet = function(key, value) {
                         const next = String(e.target.value || 'active');
                         const linkedItem = wr2ResolveLinkedPlItem(room);
                         const targetItemId = linkedItem && linkedItem.id ? String(linkedItem.id) : '';
-                        if (next === 'changed' && prev !== 'changed' && typeof _skOpenResultFlow === 'function') {
-                          lifeSel.value = prev;
-                          _skOpenResultFlow({ source: 'wr', id: room.id, item: linkedItem || {}, preferMode: 'changed' });
-                          return;
-                        }
                         if (next === 'closed' && prev !== 'closed') {
                           wr2CollectCloseSummary(room.closedSummary, function(closedSummary) {
                             if (typeof window.skApplyUnifiedLifecycle === 'function') {
