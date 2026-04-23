@@ -43122,12 +43122,42 @@ window.addEventListener('DOMContentLoaded', () => {
       var picked = _plPickRoomTargetItem(roomKey, items, explicit);
       if (picked) return picked;
     }
+    if (explicit) {
+      var direct = (items || []).find(function(it){ return String(it && it.id || '') === explicit; }) || null;
+      if (direct) return direct;
+    }
     var matched = (items || []).filter(function(it){
       return String(it && it.roomId || '') === roomKey;
     });
     if (explicit) {
       var exact = matched.find(function(it){ return String(it && it.id || '') === explicit; });
       if (exact) return exact;
+    }
+    if (!matched.length && roomKey && typeof getWrRooms === 'function') {
+      try {
+        var room = (getWrRooms() || []).find(function(r){ return String(r && r.id || '') === roomKey; }) || null;
+        if (room) {
+          var candidateIds = [];
+          [room.targetItemId, room.linkedSavedId, room.auctionId, room.listingId].forEach(function(v){
+            var s = String(v || '').trim();
+            if (s) candidateIds.push(s);
+          });
+          if (Array.isArray(room.linkedItems)) {
+            room.linkedItems.forEach(function(v){
+              var s = String(v || '').trim();
+              if (s) candidateIds.push(s);
+            });
+          }
+          candidateIds = Array.from(new Set(candidateIds));
+          for (var i = 0; i < candidateIds.length; i += 1) {
+            var cid = candidateIds[i];
+            var found = (items || []).find(function(it){
+              return String(it && it.id || '') === cid || String(it && it.linkedSavedId || '') === cid;
+            }) || null;
+            if (found) return found;
+          }
+        }
+      } catch (e) {}
     }
     if (matched.length === 1) return matched[0] || null;
     matched.sort(function(a, b){
@@ -43715,9 +43745,56 @@ window.addEventListener('DOMContentLoaded', () => {
     var items = plLoad();
     var it = items.find(function(x){ return String(x.id) === String(itemId); });
     if (!it) return;
-    it.roomId = String(roomId || '');
+    var nextRoomId = String(roomId || '');
+    it.roomId = nextRoomId;
     it.updatedAt = Date.now();
     plSave(items.map(plNormalizeItem));
+    try {
+      if (typeof window.wrGetRooms === 'function' && typeof window.wrSetRooms === 'function') {
+        var rooms = window.wrGetRooms() || [];
+        var now = Date.now();
+        var changed = false;
+        rooms = rooms.map(function(room){
+          if (!room || !room.id) return room;
+          var rid = String(room.id || '');
+          var next = room;
+          var linked = Array.isArray(room.linkedItems) ? room.linkedItems.map(function(v){ return String(v); }) : [];
+          if (rid === nextRoomId && nextRoomId) {
+            if (linked.indexOf(String(itemId)) < 0) {
+              if (next === room) next = Object.assign({}, room);
+              linked.push(String(itemId));
+              next.linkedItems = linked;
+              changed = true;
+            }
+            if (String(next.targetItemId || '') !== String(itemId)) {
+              if (next === room) next = Object.assign({}, room);
+              next.targetItemId = String(itemId);
+              changed = true;
+            }
+            if (it && it.linkedSavedId && String(next.linkedSavedId || '') !== String(it.linkedSavedId || '')) {
+              if (next === room) next = Object.assign({}, room);
+              next.linkedSavedId = String(it.linkedSavedId || '');
+              changed = true;
+            }
+          } else {
+            var filtered = linked.filter(function(v){ return v !== String(itemId); });
+            if (filtered.length !== linked.length) {
+              if (next === room) next = Object.assign({}, room);
+              next.linkedItems = filtered;
+              changed = true;
+            }
+            if (String(room.targetItemId || '') === String(itemId)) {
+              if (next === room) next = Object.assign({}, room);
+              next.targetItemId = filtered[0] || '';
+              changed = true;
+            }
+          }
+          if (next !== room) next.updatedAt = now;
+          return next;
+        });
+        if (changed) window.wrSetRooms(rooms);
+      }
+    } catch (e) { console.warn('[plAssignRoomToItem link sync]', e); }
     syncToWorkroom(it);
     if (typeof renderPropertyList === 'function') renderPropertyList();
   };
@@ -45496,6 +45573,114 @@ window.addEventListener('DOMContentLoaded', () => {
     }
     return modal;
   }
+  function _skResolveUnsoldWorkroomTarget(ctx){
+    var roomId = String((ctx && ctx.id) || '').trim();
+    var explicitId = String((ctx && ctx.item && ctx.item.id) || '').trim();
+    var room = null;
+    try {
+      if (typeof getActiveRoom === 'function') {
+        var active = getActiveRoom();
+        if (active && (!roomId || String(active.id || '') === roomId)) room = active;
+      }
+    } catch (e) {}
+    if (!room && typeof getWrRooms === 'function') {
+      var rooms = getWrRooms() || [];
+      room = rooms.find(function(r){ return String(r && r.id || '') === roomId; }) || null;
+    }
+    var roomTargetId = String((room && room.targetItemId) || '').trim();
+    var resolveId = explicitId || roomTargetId;
+    var target = null;
+    try {
+      if (typeof _plResolveLifecycleTargetItem === 'function') target = _plResolveLifecycleTargetItem(roomId, resolveId);
+    } catch (e) {}
+    if (!target && typeof plLoad === 'function') {
+      var items = plLoad() || [];
+      if (resolveId) {
+        target = items.find(function(it){
+          return String(it && it.id || '') === resolveId || String(it && it.linkedSavedId || '') === resolveId;
+        }) || null;
+      }
+      if (!target && room) {
+        var candidateIds = [];
+        [room.targetItemId, room.linkedSavedId, room.auctionId, room.listingId].forEach(function(v){
+          var s = String(v || '').trim();
+          if (s) candidateIds.push(s);
+        });
+        if (Array.isArray(room.linkedItems)) {
+          room.linkedItems.forEach(function(v){
+            var s = String(v || '').trim();
+            if (s) candidateIds.push(s);
+          });
+        }
+        candidateIds = Array.from(new Set(candidateIds));
+        for (var i = 0; i < candidateIds.length; i += 1) {
+          var cid = candidateIds[i];
+          target = items.find(function(it){
+            return String(it && it.id || '') === cid || String(it && it.linkedSavedId || '') === cid;
+          }) || null;
+          if (target) break;
+        }
+      }
+    }
+    return { room: room, item: target || null, roomId: roomId, explicitId: explicitId || roomTargetId };
+  }
+  function _skApplyUnsoldToWorkroomSource(ctx, nextRound, nextDate, nextPrice){
+    var resolved = _skResolveUnsoldWorkroomTarget(ctx);
+    var room = resolved.room || null;
+    var target = resolved.item || null;
+    if (!target || !target.id) return { ok:false, reason:'not_found', room: room, item: target };
+    var targetId = String(target.id || '').trim();
+    var changedItem = null;
+    if (typeof plUpdateItem === 'function') {
+      changedItem = plUpdateItem(targetId, {
+        round: String(nextRound),
+        biddate: String(nextDate || '').trim(),
+        minprice: String(nextPrice || '').trim(),
+        archived: false
+      }) || null;
+    } else if (typeof window.plInlineSet === 'function') {
+      window.plInlineSet(targetId, 'round', String(nextRound));
+      window.plInlineSet(targetId, 'biddate', String(nextDate || '').trim());
+      window.plInlineSet(targetId, 'minprice', String(nextPrice || '').trim());
+      if (typeof plLoad === 'function') changedItem = (plLoad() || []).find(function(it){ return String(it && it.id || '') === targetId; }) || null;
+    }
+    try {
+      if (targetId && typeof window.plSetSimpleStatus === 'function') {
+        var prevForce = window.__plForceDirectSet;
+        window.__plForceDirectSet = true;
+        try { window.plSetSimpleStatus(targetId, 'active'); } finally { window.__plForceDirectSet = prevForce; }
+      }
+    } catch (e) {
+      console.warn('[unsold apply status]', e);
+    }
+    if (room) {
+      try {
+        var nextOverride = Object.assign({}, room._summaryOverride || {});
+        delete nextOverride.biddate;
+        delete nextOverride.price;
+        room._summaryOverride = nextOverride;
+        room.biddate = String(nextDate || '').trim();
+        room.round = String(nextRound);
+        room.minprice = String(nextPrice || '').trim();
+        room.lifecycleStatus = 'active';
+        room.status = 'review';
+        room.phase = 'review';
+        room.activePhase = 'review';
+        room.targetItemId = targetId;
+        room.updatedAt = Date.now();
+        if (typeof saveRooms === 'function') saveRooms();
+      } catch (e) {
+        console.warn('[unsold apply room]', e);
+      }
+    }
+    try { if (typeof renderPropertyList === 'function') renderPropertyList(); } catch(e) {}
+    try { if (typeof renderSaved === 'function') renderSaved(); } catch(e) {}
+    try { if (typeof mbRenderSaved === 'function') mbRenderSaved(); } catch(e) {}
+    try { if (typeof updSvCnt === 'function') updSvCnt(); } catch(e) {}
+    try { if (typeof wr2Render === 'function') wr2Render(); } catch(e) {}
+    return { ok:true, room: room, item: changedItem || target };
+  }
+
   function _skOpenUnsoldFlow(ctx){
     var modal = _skEnsureUnsoldOnlyModal();
     var item = (ctx && ctx.item) || {};
@@ -45531,120 +45716,14 @@ window.addEventListener('DOMContentLoaded', () => {
           return;
         }
         if (ctx && ctx.source === 'wr') {
-          // 1. 작업룸에 연결된 원본 물건 찾기
-          var targetItem = null;
-          var targetItemId = '';
-          
-          try {
-            var allItems = (typeof plLoad === 'function') ? plLoad() : [];
-            var roomId = String(ctx.id || '');
-            
-            // roomId로 연결된 물건들 찾기
-            var matchedItems = allItems.filter(function(it) {
-              return it && String(it.roomId || '') === roomId;
-            });
-            
-            // 여러 개면 최신 것, 하나면 그것
-            if (matchedItems.length === 1) {
-              targetItem = matchedItems[0];
-            } else if (matchedItems.length > 1) {
-              targetItem = matchedItems.sort(function(a, b) {
-                return (b.updatedAt || 0) - (a.updatedAt || 0);
-              })[0];
-            }
-            
-            if (targetItem && targetItem.id) {
-              targetItemId = String(targetItem.id);
-            }
-          } catch (e) {
-            console.error('[unsold] item lookup error', e);
-          }
-          
-          // 연결된 물건을 못 찾으면 중단
-          if (!targetItemId) {
-            if (typeof showToast === 'function') {
-              showToast('연결된 물건을 찾을 수 없습니다. 저장목록에서 작업룸에 물건을 먼저 연결하세요.', 'warn');
-            }
+          var applied = _skApplyUnsoldToWorkroomSource(ctx, nextRound, nextDate, nextPrice);
+          if (!applied || applied.ok !== true) {
+            if (typeof showToast === 'function') showToast('연결된 원본 물건을 찾지 못했습니다. 물건 연결 상태를 확인해주세요.', 'warn');
             return;
           }
-          
-          // 2. 원본 물건 데이터 직접 수정
-          try {
-            var allItems2 = (typeof plLoad === 'function') ? plLoad() : [];
-            var targetIdx = -1;
-            
-            for (var i = 0; i < allItems2.length; i++) {
-              if (String(allItems2[i].id) === targetItemId) {
-                targetIdx = i;
-                break;
-              }
-            }
-            
-            if (targetIdx >= 0) {
-              var item = allItems2[targetIdx];
-              
-              // 루트 레벨 업데이트
-              item.round = nextRound;
-              item.biddate = nextDate;
-              item.minprice = nextPrice;
-              item.updatedAt = Date.now();
-              
-              // data 객체 업데이트
-              if (!item.data) item.data = {};
-              item.data['유찰횟수'] = nextRound;
-              item.data['매각기일'] = nextDate;
-              item.data['매각일'] = nextDate;
-              item.data['최저가'] = parseInt(nextPrice, 10) || 0;
-              
-              // 원본 저장
-              if (typeof plSave === 'function') {
-                plSave(allItems2);
-              }
-              
-              // 작업룸에도 반영 (100ms 후)
-              setTimeout(function() {
-                if (typeof updateRoom === 'function') {
-                  updateRoom(String(ctx.id || ''), {
-                    lifecycleStatus: 'active',
-                    status: 'review',
-                    phase: 'review',
-                    activePhase: 'review',
-                    round: nextRound,
-                    biddate: nextDate,
-                    minprice: nextPrice
-                  });
-                }
-                
-                // 상태 변경
-                if (typeof window.plSetSimpleStatus === 'function') {
-                  try {
-                    var prevForce = window.__plForceDirectSet;
-                    window.__plForceDirectSet = true;
-                    window.plSetSimpleStatus(targetItemId, 'active');
-                    window.__plForceDirectSet = prevForce;
-                  } catch (e) {}
-                }
-                
-                // UI 갱신
-                try { if (typeof wr2Render === 'function') wr2Render(); } catch(e) {}
-                try { if (typeof renderPropertyList === 'function') renderPropertyList(); } catch(e) {}
-                
-                // 작업룸 저장 flush (200ms 후)
-                setTimeout(function() {
-                  try { if (typeof window.__wr2FlushSaveRooms === 'function') window.__wr2FlushSaveRooms(); } catch(e) {}
-                }, 200);
-              }, 100);
-              
-              if (typeof showToast === 'function') {
-                showToast('유찰 처리가 완료되었습니다.', 'ok');
-              }
-            }
-          } catch (e) {
-            console.error('[unsold] save error', e);
-            if (typeof showToast === 'function') {
-              showToast('저장 중 오류가 발생했습니다.', 'warn');
-            }
-          }
+          setTimeout(function() {
+            try { if (typeof window.__wr2FlushSaveRooms === 'function') window.__wr2FlushSaveRooms(); } catch(e) {}
+          }, 120);
         } else if (ctx && ctx.source === 'pl') {
           var itemId = String(ctx.id || (ctx.item && ctx.item.id) || '').trim();
           if (itemId && typeof window.plInlineSet === 'function') {
