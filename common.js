@@ -45523,22 +45523,31 @@ window.addEventListener('DOMContentLoaded', () => {
     };
     document.addEventListener('keydown', modal.__escHandler);
     saveEl.onclick = function(){
+      console.log('[UnsoldFlow] Save button clicked');
       try {
         var nextRound = parseInt(roundEl && roundEl.value || '', 10);
         var nextDate = String(dateEl && dateEl.value || '').trim();
         var nextPrice = _skDigits(priceEl && priceEl.value || '');
+        console.log('[UnsoldFlow] Values:', { nextRound, nextDate, nextPrice });
+        
         if (!nextRound || nextRound < 1) {
+          console.log('[UnsoldFlow] Invalid round');
           if (typeof showToast === 'function') showToast('다음 회차를 확인해주세요.', 'warn');
           return;
         }
         if (!nextDate) {
+          console.log('[UnsoldFlow] Invalid date');
           if (typeof showToast === 'function') showToast('다음 매각기일을 입력해주세요.', 'warn');
           return;
         }
         if (!nextPrice) {
+          console.log('[UnsoldFlow] Invalid price');
           if (typeof showToast === 'function') showToast('다음 최저가를 입력해주세요.', 'warn');
           return;
         }
+        
+        console.log('[UnsoldFlow] ctx:', ctx);
+        
         if (ctx && ctx.source === 'wr') {
           var targetItemId = String((ctx.item && ctx.item.id) || '').trim();
           if (typeof updateRoom === 'function') {
@@ -45588,17 +45597,20 @@ window.addEventListener('DOMContentLoaded', () => {
             try { if (typeof window.__wr2FlushSaveRooms === 'function') window.__wr2FlushSaveRooms(); } catch(e) {}
           }, 200);
         } else if (ctx && ctx.source === 'pl') {
+          console.log('[UnsoldFlow] PL source path');
           var itemId = String(ctx.id || (ctx.item && ctx.item.id) || '').trim();
-          if (itemId && typeof window.plInlineSet === 'function') {
-            window.plInlineSet(itemId, 'round', String(nextRound));
-            window.plInlineSet(itemId, 'biddate', nextDate);
-            window.plInlineSet(itemId, 'minprice', nextPrice);
-          }
+          console.log('[UnsoldFlow] itemId:', itemId);
           
-          // data 객체의 필드도 업데이트
+          // 저장 순서: data 업데이트 → plInlineSet → 작업룸 업데이트
+          // 각 단계를 순차적으로 실행하여 kv ack mismatch 방지
+          
           var _updatedItem = null;
+          
+          // STEP 1: data 객체 업데이트
           try {
+            console.log('[UnsoldFlow] STEP 1: Updating data object...');
             var _plItems = (typeof plLoad === 'function') ? plLoad() : [];
+            console.log('[UnsoldFlow] Total items:', _plItems.length);
             var _targetIdx = -1;
             var _targetItem = null;
             for (var _i = 0; _i < _plItems.length; _i++) {
@@ -45608,79 +45620,128 @@ window.addEventListener('DOMContentLoaded', () => {
                 break;
               }
             }
+            console.log('[UnsoldFlow] Found item at index:', _targetIdx);
             if (_targetItem && _targetItem.data) {
+              console.log('[UnsoldFlow] Updating data fields...');
               var _dataPatch = Object.assign({}, _targetItem.data);
               _dataPatch['유찰횟수'] = nextRound;
               _dataPatch['매각기일'] = nextDate;
               _dataPatch['매각일'] = nextDate;
               _dataPatch['최저가'] = parseInt(nextPrice, 10) || 0;
+              console.log('[UnsoldFlow] Data patch:', _dataPatch);
               _plItems[_targetIdx] = Object.assign({}, _targetItem, { 
+                round: nextRound,
+                biddate: nextDate,
+                minprice: nextPrice,
                 data: _dataPatch,
                 updatedAt: Date.now()
               });
               _updatedItem = _plItems[_targetIdx];
-              if (typeof plSave === 'function') plSave(_plItems);
+              if (typeof plSave === 'function') {
+                console.log('[UnsoldFlow] Calling plSave...');
+                plSave(_plItems);
+                console.log('[UnsoldFlow] plSave done');
+              }
               if (typeof plSyncItemToSaved === 'function') {
-                try { plSyncItemToSaved(_plItems[_targetIdx]); } catch(e) {}
+                try { 
+                  console.log('[UnsoldFlow] Syncing to saved...');
+                  plSyncItemToSaved(_plItems[_targetIdx]); 
+                  console.log('[UnsoldFlow] Sync done');
+                } catch(e) {
+                  console.error('[UnsoldFlow] Sync error:', e);
+                }
               }
             }
           } catch(e) {
-            console.warn('[UnsoldFlow data update]', e);
+            console.error('[UnsoldFlow data update]', e);
           }
           
-          // 작업룸에 연결되어 있으면 작업룸도 업데이트
-          if (_updatedItem && _updatedItem.roomId && typeof updateRoom === 'function') {
-            try {
-              var __room = null;
-              if (typeof getWrRooms === 'function') {
-                var __rooms = getWrRooms() || [];
-                for(var __i=0; __i<__rooms.length; __i++){ 
-                  if (__rooms[__i].id === _updatedItem.roomId){ 
-                    __room = __rooms[__i]; 
-                    break; 
-                  } 
+          // STEP 2: 작업룸 업데이트 (100ms 후)
+          setTimeout(function() {
+            if (_updatedItem && _updatedItem.roomId && typeof updateRoom === 'function') {
+              console.log('[UnsoldFlow] STEP 2: Item has roomId:', _updatedItem.roomId);
+              try {
+                var __room = null;
+                if (typeof getWrRooms === 'function') {
+                  var __rooms = getWrRooms() || [];
+                  for(var __i=0; __i<__rooms.length; __i++){ 
+                    if (__rooms[__i].id === _updatedItem.roomId){ 
+                      __room = __rooms[__i]; 
+                      break; 
+                    } 
+                  }
                 }
+                if (__room) {
+                  console.log('[UnsoldFlow] Found workroom, updating...');
+                  var __ovr = __room._summaryOverride ? Object.assign({}, __room._summaryOverride) : {};
+                  __ovr.biddate = nextDate;
+                  __ovr.price = parseInt(nextPrice, 10) || 0;
+                  updateRoom(_updatedItem.roomId, {
+                    lifecycleStatus: 'active',
+                    status: 'review',
+                    phase: 'review',
+                    activePhase: 'review',
+                    __targetItemId: itemId,
+                    __forceLifecycleChange: true,
+                    round: nextRound,
+                    biddate: nextDate,
+                    minprice: nextPrice,
+                    _summaryOverride: __ovr
+                  });
+                  console.log('[UnsoldFlow] updateRoom done');
+                  
+                  // STEP 3: 작업룸 flush (300ms 후)
+                  setTimeout(function() {
+                    try { 
+                      console.log('[UnsoldFlow] STEP 3: Flushing workroom save...');
+                      if (typeof window.__wr2FlushSaveRooms === 'function') window.__wr2FlushSaveRooms(); 
+                    } catch(e) {}
+                  }, 300);
+                } else {
+                  console.log('[UnsoldFlow] Workroom not found');
+                }
+              } catch(e) {
+                console.error('[UnsoldFlow workroom sync]', e);
               }
-              if (__room) {
-                var __ovr = __room._summaryOverride ? Object.assign({}, __room._summaryOverride) : {};
-                __ovr.biddate = nextDate;
-                __ovr.price = parseInt(nextPrice, 10) || 0;
-                updateRoom(_updatedItem.roomId, {
-                  lifecycleStatus: 'active',
-                  status: 'review',
-                  phase: 'review',
-                  activePhase: 'review',
-                  __targetItemId: itemId,
-                  __forceLifecycleChange: true,
-                  round: nextRound,
-                  biddate: nextDate,
-                  minprice: nextPrice,
-                  _summaryOverride: __ovr
-                });
-                // 작업룸 저장 race 방지
-                setTimeout(function() {
-                  try { if (typeof window.__wr2FlushSaveRooms === 'function') window.__wr2FlushSaveRooms(); } catch(e) {}
-                }, 200);
-              }
-            } catch(e) {
-              console.warn('[UnsoldFlow workroom sync]', e);
+            } else {
+              console.log('[UnsoldFlow] No roomId or updateRoom not available');
             }
-          }
+          }, 100);
           
-          try {
-            if (itemId && typeof window.plSetSimpleStatus === 'function') {
-              var prevForce2 = window.__plForceDirectSet;
-              window.__plForceDirectSet = true;
-              window.plSetSimpleStatus(itemId, 'active');
-              window.__plForceDirectSet = prevForce2;
+          // STEP 4: 상태 변경 및 UI 업데이트 (200ms 후)
+          setTimeout(function() {
+            try {
+              if (itemId && typeof window.plSetSimpleStatus === 'function') {
+                console.log('[UnsoldFlow] STEP 4: Setting status to active...');
+                var prevForce2 = window.__plForceDirectSet;
+                window.__plForceDirectSet = true;
+                window.plSetSimpleStatus(itemId, 'active');
+                window.__plForceDirectSet = prevForce2;
+                console.log('[UnsoldFlow] Status set');
+              }
+            } catch (e) {
+              console.error('[UnsoldFlow status]', e);
             }
-          } catch (e) {}
-          try { if (typeof wr2Render === 'function') wr2Render(); } catch(e) {}
-          try { if (typeof renderPropertyList === 'function') renderPropertyList(); } catch(e) {}
+            try { 
+              console.log('[UnsoldFlow] Calling wr2Render...');
+              if (typeof wr2Render === 'function') wr2Render(); 
+            } catch(e) {
+              console.error('[UnsoldFlow wr2Render]', e);
+            }
+            try { 
+              console.log('[UnsoldFlow] Calling renderPropertyList...');
+              if (typeof renderPropertyList === 'function') renderPropertyList(); 
+            } catch(e) {
+              console.error('[UnsoldFlow renderPropertyList]', e);
+            }
+            console.log('[UnsoldFlow] PL path complete');
+          }, 200);
         }
+        console.log('[UnsoldFlow] About to close modal');
         _skCloseUnsoldModal();
+        console.log('[UnsoldFlow] Modal closed');
       } catch (e) {
-        console.warn('[unsold save]', e);
+        console.error('[unsold save]', e);
         if (typeof showToast === 'function') showToast('유찰 저장 중 오류가 발생했습니다.', 'warn');
       }
     };
