@@ -4760,18 +4760,22 @@ var _safeLocalSet = function(key, value) {
                   if (statusBadge) statusBadge.style.display = 'none';
                   if (host) {
                       const insertAnchor = document.getElementById('wr2LinkSavedBtn') || host.firstChild;
-                      let lifeSel = document.getElementById('wr2LifecycleSelect');
-                      if (!lifeSel) {
-                        lifeSel = document.createElement('select');
-                        lifeSel.id = 'wr2LifecycleSelect';
-                        lifeSel.className = 'wr2-hd-btn';
-                        lifeSel.style.padding = '4px 7px';
-                        lifeSel.style.minWidth = '68px';
-                        lifeSel.innerHTML = ''
-                          + '<option value="active">활성</option>'
-                          + '<option value="changed">변경</option>'
-                          + '<option value="closed">종료</option>';
-                        host.insertBefore(lifeSel, insertAnchor);
+                      let lifeWrap = document.getElementById('wr2LifecycleButtons');
+                      if (!lifeWrap) {
+                        lifeWrap = document.createElement('div');
+                        lifeWrap.id = 'wr2LifecycleButtons';
+                        lifeWrap.style.display = 'inline-flex';
+                        lifeWrap.style.alignItems = 'center';
+                        lifeWrap.style.gap = '4px';
+                        lifeWrap.style.padding = '2px';
+                        lifeWrap.style.border = '1px solid rgba(255,255,255,.10)';
+                        lifeWrap.style.borderRadius = '10px';
+                        lifeWrap.style.background = 'rgba(255,255,255,.04)';
+                        lifeWrap.innerHTML = ''
+                          + '<button type="button" class="wr2-hd-btn" data-life="active" style="padding:4px 9px;min-width:52px;border-radius:8px;">진행</button>'
+                          + '<button type="button" class="wr2-hd-btn" data-life="changed" style="padding:4px 9px;min-width:86px;border-radius:8px;">변경·미진행</button>'
+                          + '<button type="button" class="wr2-hd-btn" data-life="closed" style="padding:4px 9px;min-width:52px;border-radius:8px;">종료</button>';
+                        host.insertBefore(lifeWrap, insertAnchor);
                       }
                       const wr2ResolveLinkedPlItem = function(targetRoom) {
                         try {
@@ -4791,14 +4795,11 @@ var _safeLocalSet = function(key, value) {
                         } catch (e) {}
                         return null;
                       };
-                      lifeSel.value = wr2GetLifecycle(room);
-                      lifeSel.onchange = function(e) {
+                      const wr2ApplyLifecycleUI = function(next) {
                         const prev = wr2GetLifecycle(room);
-                        const next = String(e.target.value || 'active');
                         const linkedItem = wr2ResolveLinkedPlItem(room);
                         const targetItemId = linkedItem && linkedItem.id ? String(linkedItem.id) : '';
                         if (next === 'changed' && prev !== 'changed' && typeof _skOpenResultFlow === 'function') {
-                          lifeSel.value = prev;
                           _skOpenResultFlow({ source: 'wr', id: room.id, item: linkedItem || {}, preferMode: 'changed' });
                           return;
                         }
@@ -4820,8 +4821,9 @@ var _safeLocalSet = function(key, value) {
                               });
                             }
                             window.__plLastLocalStatusMutationAt = Date.now();
+                            setTimeout(function(){ try { wr2Render(); } catch(_) {} }, 0);
                           }, function() {
-                            lifeSel.value = prev;
+                            setTimeout(function(){ try { wr2Render(); } catch(_) {} }, 0);
                           });
                           return;
                         }
@@ -4839,7 +4841,20 @@ var _safeLocalSet = function(key, value) {
                           });
                         }
                         window.__plLastLocalStatusMutationAt = Date.now();
+                        setTimeout(function(){ try { wr2Render(); } catch(_) {} }, 0);
                       };
+                      Array.from((lifeWrap && lifeWrap.querySelectorAll('button[data-life]')) || []).forEach(function(btn){
+                        const val = String(btn.getAttribute('data-life') || 'active');
+                        const active = val === wr2GetLifecycle(room);
+                        btn.style.border = active ? '1px solid rgba(79,142,255,.55)' : '1px solid rgba(255,255,255,.10)';
+                        btn.style.background = active ? 'rgba(79,142,255,.18)' : 'rgba(255,255,255,.04)';
+                        btn.style.color = active ? '#dbe9ff' : 'var(--mu)';
+                        btn.style.fontWeight = active ? '800' : '700';
+                        btn.onclick = function(evt){
+                          evt.preventDefault();
+                          wr2ApplyLifecycleUI(val);
+                        };
+                      });
 
                       let progSel = document.getElementById('wr2ProgressSelect');
                       if (!progSel) {
@@ -4975,7 +4990,7 @@ var _safeLocalSet = function(key, value) {
                       closedStamp.style.justifyContent = 'space-between';
                       closedStamp.innerHTML = ''
                         + '<div style="display:flex;align-items:center;gap:10px;">'
-                        + '  <div style="border:2px solid rgba(251,191,36,.75);border-radius:10px;padding:4px 10px;font-size:12px;font-weight:900;letter-spacing:2px;color:#f7d47d;transform:rotate(-8deg);">변경</div>'
+                        + '  <div style="border:2px solid rgba(251,191,36,.75);border-radius:10px;padding:4px 10px;font-size:12px;font-weight:900;letter-spacing:2px;color:#f7d47d;transform:rotate(-8deg);">변경·미진행</div>'
                         + '  <div style="font-size:14px;font-weight:800;letter-spacing:.2px;color:#ffe9b3;">변경 보관 상태입니다 (필요 시 다시 활성 가능)</div>'
                         + '</div>';
                     } else {
@@ -45370,14 +45385,14 @@ window.addEventListener('DOMContentLoaded', () => {
       + '<div style="width:min(520px,96vw);background:linear-gradient(180deg,rgba(20,24,36,.98),rgba(11,15,24,.98));border:1px solid rgba(255,196,77,.28);border-radius:14px;box-shadow:0 22px 56px rgba(0,0,0,.5);overflow:hidden;">'
       + '  <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:linear-gradient(90deg,rgba(251,191,36,.16),rgba(251,191,36,.06));border-bottom:1px solid rgba(251,191,36,.18);">'
       + '    <div style="display:flex;align-items:center;gap:10px;">'
-      + '      <div style="border:2px solid rgba(251,191,36,.75);border-radius:10px;padding:4px 9px;color:#f7d47d;font-size:12px;font-weight:900;letter-spacing:2px;transform:rotate(-8deg);">변경</div>'
-      + '      <div style="color:#ffe9b3;font-size:13px;font-weight:700;">변경 처리 유형을 선택하세요</div>'
+      + '      <div style="border:2px solid rgba(251,191,36,.75);border-radius:10px;padding:4px 9px;color:#f7d47d;font-size:12px;font-weight:900;letter-spacing:2px;transform:rotate(-8deg);">변경·미진행</div>'
+      + '      <div style="color:#ffe9b3;font-size:13px;font-weight:700;">D-day 결과 또는 대기 처리 유형을 선택하세요</div>'
       + '    </div>'
       + '    <button type="button" id="skResultFlowCloseX" style="border:none;background:transparent;color:#ffe9b3;font-size:20px;cursor:pointer;line-height:1;">×</button>'
       + '  </div>'
       + '  <div style="padding:14px 16px 10px;display:flex;gap:8px;">'
       + '    <button type="button" id="skModeUnsold" style="flex:1;padding:10px 12px;border-radius:10px;border:1px solid rgba(79,142,255,.28);background:rgba(79,142,255,.12);color:#bcd4ff;font-weight:800;cursor:pointer;">유찰</button>'
-      + '    <button type="button" id="skModeChanged" style="flex:1;padding:10px 12px;border-radius:10px;border:1px solid rgba(251,191,36,.28);background:rgba(251,191,36,.10);color:#ffe09c;font-weight:800;cursor:pointer;">변경 / 미진행</button>'
+      + '    <button type="button" id="skModeChanged" style="flex:1;padding:10px 12px;border-radius:10px;border:1px solid rgba(251,191,36,.28);background:rgba(251,191,36,.10);color:#ffe09c;font-weight:800;cursor:pointer;">변경·미진행</button>'
       + '  </div>'
       + '  <div id="skUnsoldForm" style="display:none;padding:0 16px 12px;">'
       + '    <label style="display:block;font-size:11px;color:#c9d7ff;margin:6px 0 5px;">다음 회차</label>'
@@ -45468,6 +45483,13 @@ window.addEventListener('DOMContentLoaded', () => {
           if (typeof renderPropertyList === 'function') renderPropertyList();
         } else if (ctx.source === 'wr') {
           var wrTargetId = String((ctx.item && ctx.item.id) || '').trim();
+          if (typeof window.skApplyUnifiedLifecycle === 'function') {
+            window.skApplyUnifiedLifecycle({
+              roomId: ctx.id,
+              itemId: wrTargetId,
+              lifecycleStatus: (mode === 'changed' ? 'changed' : 'active')
+            });
+          }
           var patch = { __forceLifecycleChange: true };
           if (wrTargetId) patch.__targetItemId = wrTargetId;
           if (mode === 'changed') {
