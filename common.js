@@ -4760,23 +4760,6 @@ var _safeLocalSet = function(key, value) {
                   if (statusBadge) statusBadge.style.display = 'none';
                   if (host) {
                       const insertAnchor = document.getElementById('wr2LinkSavedBtn') || host.firstChild;
-                      let lifeWrap = document.getElementById('wr2LifecycleButtons');
-                      if (!lifeWrap) {
-                        lifeWrap = document.createElement('div');
-                        lifeWrap.id = 'wr2LifecycleButtons';
-                        lifeWrap.style.display = 'inline-flex';
-                        lifeWrap.style.alignItems = 'center';
-                        lifeWrap.style.gap = '4px';
-                        lifeWrap.style.padding = '2px';
-                        lifeWrap.style.border = '1px solid rgba(255,255,255,.10)';
-                        lifeWrap.style.borderRadius = '10px';
-                        lifeWrap.style.background = 'rgba(255,255,255,.04)';
-                        lifeWrap.innerHTML = ''
-                          + '<button type="button" class="wr2-hd-btn" data-life="active" style="padding:4px 9px;min-width:52px;border-radius:8px;">진행</button>'
-                          + '<button type="button" class="wr2-hd-btn" data-life="changed" style="padding:4px 9px;min-width:86px;border-radius:8px;">변경·미진행</button>'
-                          + '<button type="button" class="wr2-hd-btn" data-life="closed" style="padding:4px 9px;min-width:52px;border-radius:8px;">종료</button>';
-                        host.insertBefore(lifeWrap, insertAnchor);
-                      }
                       const wr2ResolveLinkedPlItem = function(targetRoom) {
                         try {
                           if (!targetRoom || typeof plLoad !== 'function') return null;
@@ -4795,65 +4778,114 @@ var _safeLocalSet = function(key, value) {
                         } catch (e) {}
                         return null;
                       };
-                      const wr2ApplyLifecycleUI = function(next) {
-                        const prev = wr2GetLifecycle(room);
-                        const linkedItem = wr2ResolveLinkedPlItem(room);
-                        const targetItemId = linkedItem && linkedItem.id ? String(linkedItem.id) : '';
-                        if (next === 'changed' && prev !== 'changed' && typeof _skOpenResultFlow === 'function') {
-                          _skOpenResultFlow({ source: 'wr', id: room.id, item: linkedItem || {}, preferMode: 'changed' });
-                          return;
-                        }
-                        if (next === 'closed' && prev !== 'closed') {
-                          wr2CollectCloseSummary(room.closedSummary, function(closedSummary) {
-                            if (typeof window.skApplyUnifiedLifecycle === 'function') {
-                              window.skApplyUnifiedLifecycle({
-                                roomId: room.id,
-                                itemId: targetItemId,
-                                lifecycleStatus: next,
-                                closedSummary: closedSummary
-                              });
-                            } else {
-                              updateRoom(room.id, {
-                                lifecycleStatus: next,
-                                closedSummary: closedSummary,
-                                __targetItemId: targetItemId,
-                                __forceLifecycleChange: true
-                              });
+                      let lifeTabs = document.getElementById('wr2LifecycleTabs');
+                      if (!lifeTabs) {
+                        lifeTabs = document.createElement('div');
+                        lifeTabs.id = 'wr2LifecycleTabs';
+                        lifeTabs.className = 'wr2-life-tabs';
+                        lifeTabs.style.display = 'inline-flex';
+                        lifeTabs.style.alignItems = 'center';
+                        lifeTabs.style.gap = '4px';
+                        lifeTabs.style.padding = '2px';
+                        lifeTabs.style.background = 'var(--s2)';
+                        lifeTabs.style.border = '1px solid var(--b1)';
+                        lifeTabs.style.borderRadius = '10px';
+                        lifeTabs.style.flexShrink = '0';
+                        [
+                          { key: 'active', label: '진행' },
+                          { key: 'changed', label: '변경·미진행' },
+                          { key: 'closed', label: '종료' }
+                        ].forEach(function(meta) {
+                          const btn = document.createElement('button');
+                          btn.type = 'button';
+                          btn.className = 'wr2-life-tab';
+                          btn.dataset.lifecycle = meta.key;
+                          btn.textContent = meta.label;
+                          btn.style.padding = '4px 8px';
+                          btn.style.border = 'none';
+                          btn.style.borderRadius = '8px';
+                          btn.style.background = 'transparent';
+                          btn.style.color = 'var(--mu)';
+                          btn.style.fontSize = '11px';
+                          btn.style.fontWeight = '700';
+                          btn.style.cursor = 'pointer';
+                          btn.style.whiteSpace = 'nowrap';
+                          btn.onclick = function() {
+                            const next = String(meta.key || 'active');
+                            const linkedItem = wr2ResolveLinkedPlItem(room);
+                            const targetItemId = linkedItem && linkedItem.id ? String(linkedItem.id) : '';
+                            const applySimple = function(extraPatch) {
+                              if (typeof window.skApplyUnifiedLifecycle === 'function') {
+                                window.skApplyUnifiedLifecycle(Object.assign({
+                                  roomId: room.id,
+                                  itemId: targetItemId,
+                                  lifecycleStatus: next
+                                }, extraPatch || {}));
+                              } else {
+                                updateRoom(room.id, Object.assign({
+                                  lifecycleStatus: next,
+                                  __targetItemId: targetItemId,
+                                  __forceLifecycleChange: true
+                                }, extraPatch || {}));
+                              }
+                              window.__plLastLocalStatusMutationAt = Date.now();
+                              setTimeout(function(){ try { if (typeof wr2Render === 'function') wr2Render(); } catch(e) {} }, 20);
+                            };
+                            if (next === 'closed') {
+                              wr2CollectCloseSummary(room.closedSummary, function(closedSummary) {
+                                applySimple({ closedSummary: closedSummary });
+                              }, function() {});
+                              return;
                             }
-                            window.__plLastLocalStatusMutationAt = Date.now();
-                            setTimeout(function(){ try { wr2Render(); } catch(_) {} }, 0);
-                          }, function() {
-                            setTimeout(function(){ try { wr2Render(); } catch(_) {} }, 0);
-                          });
-                          return;
-                        }
-                        if (typeof window.skApplyUnifiedLifecycle === 'function') {
-                          window.skApplyUnifiedLifecycle({
-                            roomId: room.id,
-                            itemId: targetItemId,
-                            lifecycleStatus: next
-                          });
-                        } else {
-                          updateRoom(room.id, {
-                            lifecycleStatus: next,
-                            __targetItemId: targetItemId,
-                            __forceLifecycleChange: true
-                          });
-                        }
-                        window.__plLastLocalStatusMutationAt = Date.now();
-                        setTimeout(function(){ try { wr2Render(); } catch(_) {} }, 0);
-                      };
-                      Array.from((lifeWrap && lifeWrap.querySelectorAll('button[data-life]')) || []).forEach(function(btn){
-                        const val = String(btn.getAttribute('data-life') || 'active');
-                        const active = val === wr2GetLifecycle(room);
-                        btn.style.border = active ? '1px solid rgba(79,142,255,.55)' : '1px solid rgba(255,255,255,.10)';
-                        btn.style.background = active ? 'rgba(79,142,255,.18)' : 'rgba(255,255,255,.04)';
-                        btn.style.color = active ? '#dbe9ff' : 'var(--mu)';
-                        btn.style.fontWeight = active ? '800' : '700';
-                        btn.onclick = function(evt){
-                          evt.preventDefault();
-                          wr2ApplyLifecycleUI(val);
+                            applySimple();
+                          };
+                          lifeTabs.appendChild(btn);
+                        });
+                        host.insertBefore(lifeTabs, insertAnchor);
+                      }
+                      let outcomeBar = document.getElementById('wr2OutcomeBar');
+                      if (!outcomeBar) {
+                        outcomeBar = document.createElement('div');
+                        outcomeBar.id = 'wr2OutcomeBar';
+                        outcomeBar.style.display = 'inline-flex';
+                        outcomeBar.style.alignItems = 'center';
+                        outcomeBar.style.gap = '4px';
+                        outcomeBar.style.marginLeft = '6px';
+                        outcomeBar.style.flexShrink = '0';
+                        const unsoldBtn = document.createElement('button');
+                        unsoldBtn.type = 'button';
+                        unsoldBtn.id = 'wr2UnsoldActionBtn';
+                        unsoldBtn.textContent = '유찰 처리';
+                        unsoldBtn.style.padding = '4px 9px';
+                        unsoldBtn.style.borderRadius = '8px';
+                        unsoldBtn.style.border = '1px solid rgba(79,142,255,.28)';
+                        unsoldBtn.style.background = 'rgba(79,142,255,.10)';
+                        unsoldBtn.style.color = '#bcd4ff';
+                        unsoldBtn.style.fontSize = '11px';
+                        unsoldBtn.style.fontWeight = '700';
+                        unsoldBtn.style.cursor = 'pointer';
+                        unsoldBtn.onclick = function() {
+                          const linkedItem = wr2ResolveLinkedPlItem(room);
+                          if (typeof window._skOpenUnsoldFlow === 'function') {
+                            window._skOpenUnsoldFlow({
+                              source: 'wr',
+                              id: room.id,
+                              roomId: room.id,
+                              itemId: linkedItem && linkedItem.id ? String(linkedItem.id) : '',
+                              item: linkedItem || room
+                            });
+                          }
                         };
+                        outcomeBar.appendChild(unsoldBtn);
+                        host.insertBefore(outcomeBar, insertAnchor);
+                      }
+
+                      const curLife = wr2GetLifecycle(room);
+                      Array.from(lifeTabs.querySelectorAll('.wr2-life-tab')).forEach(function(btn) {
+                        const on = String(btn.dataset.lifecycle || '') === String(curLife || 'active');
+                        btn.style.background = on ? 'rgba(79,142,255,.18)' : 'transparent';
+                        btn.style.color = on ? '#dbe9ff' : 'var(--mu)';
+                        btn.style.boxShadow = on ? 'inset 0 0 0 1px rgba(79,142,255,.28)' : 'none';
                       });
 
                       let progSel = document.getElementById('wr2ProgressSelect');
@@ -4990,7 +5022,7 @@ var _safeLocalSet = function(key, value) {
                       closedStamp.style.justifyContent = 'space-between';
                       closedStamp.innerHTML = ''
                         + '<div style="display:flex;align-items:center;gap:10px;">'
-                        + '  <div style="border:2px solid rgba(251,191,36,.75);border-radius:10px;padding:4px 10px;font-size:12px;font-weight:900;letter-spacing:2px;color:#f7d47d;transform:rotate(-8deg);">변경·미진행</div>'
+                        + '  <div style="border:2px solid rgba(251,191,36,.75);border-radius:10px;padding:4px 10px;font-size:12px;font-weight:900;letter-spacing:2px;color:#f7d47d;transform:rotate(-8deg);">변경</div>'
                         + '  <div style="font-size:14px;font-weight:800;letter-spacing:.2px;color:#ffe9b3;">변경 보관 상태입니다 (필요 시 다시 활성 가능)</div>'
                         + '</div>';
                     } else {
@@ -43125,6 +43157,105 @@ window.addEventListener('DOMContentLoaded', () => {
     return { roomId: roomId, itemId: resolvedItemId, lifecycleStatus: simple };
   };
 
+
+  function _skGetRoomById(roomId) {
+    try {
+      return (getWrRooms() || []).find(function(r){ return String(r && r.id || '') === String(roomId || ''); }) || null;
+    } catch (e) { return null; }
+  }
+
+  function _skOpenUnsoldFlow(ctx) {
+    ctx = ctx || {};
+    var room = _skGetRoomById(ctx.roomId || ctx.id || '');
+    var item = ctx.item || _plResolveLifecycleTargetItem(String(ctx.roomId || ctx.id || ''), String(ctx.itemId || '')) || room || {};
+    var modal = document.getElementById('skUnsoldOnlyModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'skUnsoldOnlyModal';
+      modal.style.cssText = 'position:fixed;inset:0;background:rgba(5,8,14,.74);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;z-index:999999;';
+      modal.innerHTML = ''
+        + '<div style="width:min(420px,calc(100vw - 28px));background:linear-gradient(180deg,#111827,#0f172a);border:1px solid rgba(79,142,255,.22);border-radius:16px;box-shadow:0 18px 50px rgba(0,0,0,.46);overflow:hidden;">'
+        + '  <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px 8px;">'
+        + '    <div><div style="font-size:16px;font-weight:800;color:#e5eefc;">유찰 처리</div><div style="margin-top:4px;font-size:12px;color:#9fb2d1;">진행 탭은 유지하고 다음 회차 정보만 갱신합니다.</div></div>'
+        + '    <button type="button" id="skUnsoldOnlyCloseX" style="width:34px;height:34px;border:none;border-radius:10px;background:rgba(255,255,255,.06);color:#dbeafe;font-size:18px;cursor:pointer;">×</button>'
+        + '  </div>'
+        + '  <div style="padding:0 18px 18px;display:grid;gap:12px;">'
+        + '    <label style="display:grid;gap:6px;"><span style="font-size:12px;color:#9fb2d1;">다음 회차</span><input id="skUnsoldNextRound" type="number" style="width:100%;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:#eef4ff;outline:none;box-sizing:border-box;"></label>'
+        + '    <label style="display:grid;gap:6px;"><span style="font-size:12px;color:#9fb2d1;">다음 매각기일</span><input id="skUnsoldNextDate" type="date" style="width:100%;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:#eef4ff;outline:none;box-sizing:border-box;"></label>'
+        + '    <label style="display:grid;gap:6px;"><span style="font-size:12px;color:#9fb2d1;">다음 최저가</span><input id="skUnsoldNextPrice" type="text" inputmode="numeric" placeholder="예: 279,347,000" style="width:100%;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:#eef4ff;outline:none;box-sizing:border-box;"></label>'
+        + '    <div style="display:flex;justify-content:flex-end;gap:8px;padding-top:4px;">'
+        + '      <button type="button" id="skUnsoldOnlyCancel" style="padding:10px 14px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:#cbd5e1;font-weight:700;cursor:pointer;">취소</button>'
+        + '      <button type="button" id="skUnsoldOnlySave" style="padding:10px 14px;border-radius:10px;border:1px solid rgba(79,142,255,.25);background:rgba(79,142,255,.16);color:#dbeafe;font-weight:800;cursor:pointer;">저장</button>'
+        + '    </div>'
+        + '  </div>'
+        + '</div>';
+      document.body.appendChild(modal);
+    }
+    var roundEl = document.getElementById('skUnsoldNextRound');
+    var dateEl = document.getElementById('skUnsoldNextDate');
+    var priceEl = document.getElementById('skUnsoldNextPrice');
+    var close = function(){ modal.style.display = 'none'; };
+    var closeX = document.getElementById('skUnsoldOnlyCloseX');
+    var cancelBtn = document.getElementById('skUnsoldOnlyCancel');
+    var saveBtn = document.getElementById('skUnsoldOnlySave');
+    if (priceEl && !priceEl.dataset.boundMoneyFmt) {
+      priceEl.dataset.boundMoneyFmt = '1';
+      priceEl.addEventListener('input', function(){
+        var val = String(this.value || '');
+        if (/^[\d,]*$/.test(val)) this.value = _skComma(val);
+      });
+    }
+    var plan = _skBuildUnsoldPlan(item || room || {});
+    if (roundEl) roundEl.value = plan.round || '1';
+    if (dateEl) dateEl.value = plan.date || '';
+    if (priceEl) priceEl.value = _skComma(plan.price || '');
+    closeX.onclick = close;
+    cancelBtn.onclick = close;
+    modal.onclick = function(evt){ if (evt.target === modal) close(); };
+    saveBtn.onclick = function(){
+      try {
+        var roomId = String(ctx.roomId || ctx.id || '').trim();
+        var targetItem = _plResolveLifecycleTargetItem(roomId, String(ctx.itemId || ''));
+        var itemId = String(targetItem && targetItem.id || ctx.itemId || '').trim();
+        var nextRound = String(parseInt((roundEl && roundEl.value) || '1', 10) || 1);
+        var nextDate = String((dateEl && dateEl.value) || '').trim();
+        var nextPrice = _skDigits((priceEl && priceEl.value) || '');
+        if (itemId && typeof window.plInlineSet === 'function') {
+          window.plInlineSet(itemId, 'round', nextRound);
+          window.plInlineSet(itemId, 'biddate', nextDate);
+          window.plInlineSet(itemId, 'minprice', nextPrice);
+        }
+        if (roomId && typeof updateRoom === 'function') {
+          var liveRoom = _skGetRoomById(roomId) || room || {};
+          var keepPhase = String(liveRoom.phase || liveRoom.status || liveRoom.activePhase || 'review');
+          updateRoom(roomId, {
+            lifecycleStatus: 'active',
+            status: keepPhase,
+            phase: keepPhase,
+            activePhase: keepPhase,
+            round: nextRound,
+            biddate: nextDate,
+            minprice: nextPrice,
+            __targetItemId: itemId,
+            __forceLifecycleChange: true
+          });
+        } else if (roomId && typeof window.skApplyUnifiedLifecycle === 'function') {
+          window.skApplyUnifiedLifecycle({ roomId: roomId, itemId: itemId, lifecycleStatus: 'active' });
+        }
+        try { if (typeof renderPropertyList === 'function') setTimeout(renderPropertyList, 40); } catch (e) {}
+        try { if (typeof wr2Render === 'function') setTimeout(wr2Render, 40); } catch (e) {}
+        try { if (typeof window.mbRoomRefreshSel === 'function') setTimeout(window.mbRoomRefreshSel, 40); } catch (e) {}
+        try { if (typeof showToast === 'function') showToast('유찰 정보가 반영되었습니다. 진행 탭을 유지합니다.', 'ok'); } catch (e) {}
+      } catch (e) {
+        console.warn('[unsold flow save]', e);
+      }
+      close();
+    };
+    modal.style.display = 'flex';
+  }
+  try { window._skOpenUnsoldFlow = _skOpenUnsoldFlow; } catch(e) {}
+  try { window._skOpenResultFlow = _skOpenUnsoldFlow; } catch(e) {}
+
   function _plWrapWorkroomSync() {
     if (window.__plRoomWrapped) return;
     window.__plRoomWrapped = true;
@@ -43186,16 +43317,7 @@ window.addEventListener('DOMContentLoaded', () => {
       effectiveSimple = plEffectiveSimpleStatus(item, roomById);
     } catch (e) {}
     if (oldSimple === nextSimple && effectiveSimple === nextSimple) return false;
-    // '변경'은 즉시 확정하지 않고 결과 플로우(유찰/변경·재매각)로 분기한다.
-    if (nextSimple === 'changed'
-        && effectiveSimple !== 'changed'
-        && window.__plForceDirectSet !== true
-        && typeof window._skOpenResultFlow === 'function') {
-      window.__plInlineEditKey = '';
-      window.__plLastLocalStatusMutationAt = Date.now();
-      window._skOpenResultFlow({ source: 'pl', id: id, item: item, preferMode: 'changed' });
-      return 'flow';
-    }
+    // '변경·미진행'은 별도 탭 이동 상태로만 처리한다. 유찰/결과 입력은 별도 결과 버튼에서 수행한다.
     plApplySimpleStatusToItem(item, nextSimple);
     item.__allowLifecycleReopen = true;
     plSave(items.map(plNormalizeItem));
@@ -45385,14 +45507,14 @@ window.addEventListener('DOMContentLoaded', () => {
       + '<div style="width:min(520px,96vw);background:linear-gradient(180deg,rgba(20,24,36,.98),rgba(11,15,24,.98));border:1px solid rgba(255,196,77,.28);border-radius:14px;box-shadow:0 22px 56px rgba(0,0,0,.5);overflow:hidden;">'
       + '  <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:linear-gradient(90deg,rgba(251,191,36,.16),rgba(251,191,36,.06));border-bottom:1px solid rgba(251,191,36,.18);">'
       + '    <div style="display:flex;align-items:center;gap:10px;">'
-      + '      <div style="border:2px solid rgba(251,191,36,.75);border-radius:10px;padding:4px 9px;color:#f7d47d;font-size:12px;font-weight:900;letter-spacing:2px;transform:rotate(-8deg);">변경·미진행</div>'
-      + '      <div style="color:#ffe9b3;font-size:13px;font-weight:700;">D-day 결과 또는 대기 처리 유형을 선택하세요</div>'
+      + '      <div style="border:2px solid rgba(251,191,36,.75);border-radius:10px;padding:4px 9px;color:#f7d47d;font-size:12px;font-weight:900;letter-spacing:2px;transform:rotate(-8deg);">변경</div>'
+      + '      <div style="color:#ffe9b3;font-size:13px;font-weight:700;">변경 처리 유형을 선택하세요</div>'
       + '    </div>'
       + '    <button type="button" id="skResultFlowCloseX" style="border:none;background:transparent;color:#ffe9b3;font-size:20px;cursor:pointer;line-height:1;">×</button>'
       + '  </div>'
       + '  <div style="padding:14px 16px 10px;display:flex;gap:8px;">'
       + '    <button type="button" id="skModeUnsold" style="flex:1;padding:10px 12px;border-radius:10px;border:1px solid rgba(79,142,255,.28);background:rgba(79,142,255,.12);color:#bcd4ff;font-weight:800;cursor:pointer;">유찰</button>'
-      + '    <button type="button" id="skModeChanged" style="flex:1;padding:10px 12px;border-radius:10px;border:1px solid rgba(251,191,36,.28);background:rgba(251,191,36,.10);color:#ffe09c;font-weight:800;cursor:pointer;">변경·미진행</button>'
+      + '    <button type="button" id="skModeChanged" style="flex:1;padding:10px 12px;border-radius:10px;border:1px solid rgba(251,191,36,.28);background:rgba(251,191,36,.10);color:#ffe09c;font-weight:800;cursor:pointer;">변경 / 미진행</button>'
       + '  </div>'
       + '  <div id="skUnsoldForm" style="display:none;padding:0 16px 12px;">'
       + '    <label style="display:block;font-size:11px;color:#c9d7ff;margin:6px 0 5px;">다음 회차</label>'
@@ -45483,13 +45605,6 @@ window.addEventListener('DOMContentLoaded', () => {
           if (typeof renderPropertyList === 'function') renderPropertyList();
         } else if (ctx.source === 'wr') {
           var wrTargetId = String((ctx.item && ctx.item.id) || '').trim();
-          if (typeof window.skApplyUnifiedLifecycle === 'function') {
-            window.skApplyUnifiedLifecycle({
-              roomId: ctx.id,
-              itemId: wrTargetId,
-              lifecycleStatus: (mode === 'changed' ? 'changed' : 'active')
-            });
-          }
           var patch = { __forceLifecycleChange: true };
           if (wrTargetId) patch.__targetItemId = wrTargetId;
           if (mode === 'changed') {
@@ -45516,7 +45631,8 @@ window.addEventListener('DOMContentLoaded', () => {
     };
     modal.style.display='flex';
   }
-  try { window._skOpenResultFlow = _skOpenResultFlow; } catch(e) {}
+  try { if (typeof window._skOpenUnsoldFlow !== 'function') window._skOpenUnsoldFlow = _skOpenResultFlow; } catch(e) {}
+  try { window._skOpenResultFlow = window._skOpenUnsoldFlow || _skOpenResultFlow; } catch(e) {}
 
   // Allow lifecycle reopen when explicitly forced.
   try {
@@ -45592,52 +45708,7 @@ window.addEventListener('DOMContentLoaded', () => {
   // core 함수를 덮어쓰지 않는다.
 
   try {
-    window._skBindWorkroomLifecycle = function(){
-      var lifeSel = document.getElementById('wr2LifecycleSelect');
-      if (!lifeSel) return;
-      try {
-        var opts = lifeSel.options || [];
-        for (var i=0;i<opts.length;i++) {
-          if (opts[i].value === 'active') opts[i].text = '활성';
-          if (opts[i].value === 'changed') opts[i].text = '변경';
-          if (opts[i].value === 'closed') opts[i].text = '종료';
-        }
-      } catch(e) {}
-      lifeSel.dataset.skBound = '1';
-      lifeSel.onchange = function(e){
-        var room = (typeof getActiveRoom === 'function') ? getActiveRoom() : null;
-        if (!room) return;
-        var linkedItem = null;
-        try {
-          linkedItem = (typeof plLoad === 'function' ? plLoad() : []).find(function(it){
-            return String(it && it.roomId || '') === String(room.id || '');
-          }) || null;
-        } catch(err) {}
-        var prev = (typeof wr2GetLifecycle === 'function') ? wr2GetLifecycle(room) : 'active';
-        var next = String(e.target.value || 'active');
-        if (next === 'changed' && prev !== 'changed' && typeof _skOpenResultFlow === 'function') {
-          lifeSel.value = prev;
-          _skOpenResultFlow({ source: 'wr', id: room.id, item: linkedItem || {}, preferMode: 'changed' });
-          return;
-        }
-        if (next === 'closed' && prev !== 'closed') {
-          wr2CollectCloseSummary(room.closedSummary, function(closedSummary) {
-            updateRoom(room.id, {
-              lifecycleStatus: next,
-              closedSummary: closedSummary,
-              __targetItemId: linkedItem && linkedItem.id ? String(linkedItem.id) : '',
-              __forceLifecycleChange: true
-            });
-          }, function() { lifeSel.value = prev; });
-          return;
-        }
-        updateRoom(room.id, {
-          lifecycleStatus: next,
-          __targetItemId: linkedItem && linkedItem.id ? String(linkedItem.id) : '',
-          __forceLifecycleChange: true
-        });
-      };
-    };
+    window._skBindWorkroomLifecycle = function(){ return; };
   } catch(e) {}
 })();
 

@@ -2249,13 +2249,13 @@ input, textarea, select {
       </div>
       <!-- 룸 헤더: 이름 + 삭제 -->
       <div id="mb-room-header" style="display:none;position:relative;z-index:5;margin-bottom:6px;padding:7px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:10px;overflow:hidden;">
-        <!-- 줄1: 제목 + 상태 드롭다운 + 삭제 -->
+        <!-- 줄1: 제목 + 상태 탭 + 삭제 -->
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;">
           <span id="mb-room-name" style="font-size:14px;font-weight:700;color:var(--tx);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
-          <div id="mb-room-lifecycle" title="작업룸 상태" style="display:inline-flex;align-items:center;gap:4px;padding:2px;background:rgba(255,255,255,.04);border:1px solid var(--b1);border-radius:9px;flex-shrink:0;">
-            <button type="button" data-life="active" onclick="mbRoomSetLifecycle('active')" style="height:26px;padding:0 8px;border-radius:7px;border:1px solid rgba(255,255,255,.08);background:transparent;color:var(--mu);font-size:10px;font-weight:800;cursor:pointer;">진행</button>
-            <button type="button" data-life="changed" onclick="mbRoomSetLifecycle('changed')" style="height:26px;padding:0 8px;border-radius:7px;border:1px solid rgba(255,255,255,.08);background:transparent;color:var(--mu);font-size:10px;font-weight:800;cursor:pointer;">변경·미진행</button>
-            <button type="button" data-life="closed" onclick="mbRoomSetLifecycle('closed')" style="height:26px;padding:0 8px;border-radius:7px;border:1px solid rgba(255,255,255,.08);background:transparent;color:var(--mu);font-size:10px;font-weight:800;cursor:pointer;">종료</button>
+          <div id="mb-room-lifecycle-tabs" style="display:flex;align-items:center;gap:3px;padding:2px;background:var(--bg);border:1px solid var(--b1);border-radius:9px;flex-shrink:0;">
+            <button type="button" class="mb-room-life-btn" data-life="active" onclick="mbRoomSetLifecycle('active')" style="height:24px;padding:0 8px;background:transparent;border:none;border-radius:7px;color:var(--mu);font-size:10px;font-weight:700;cursor:pointer;">진행</button>
+            <button type="button" class="mb-room-life-btn" data-life="changed" onclick="mbRoomSetLifecycle('changed')" style="height:24px;padding:0 8px;background:transparent;border:none;border-radius:7px;color:var(--mu);font-size:10px;font-weight:700;cursor:pointer;">변경·미진행</button>
+            <button type="button" class="mb-room-life-btn" data-life="closed" onclick="mbRoomSetLifecycle('closed')" style="height:24px;padding:0 8px;background:transparent;border:none;border-radius:7px;color:var(--mu);font-size:10px;font-weight:700;cursor:pointer;">종료</button>
           </div>
           <button class="mb-btn" style="height:26px;padding:0 8px;font-size:11px;color:var(--red);border-color:rgba(255,77,77,.3);flex-shrink:0;" onclick="mbRoomDelete()">🗑</button>
         </div>
@@ -2264,6 +2264,9 @@ input, textarea, select {
           <span id="mb-room-desc" style="font-size:10px;color:var(--mu);flex-shrink:0;max-width:55%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
           <div id="mb-room-tags" style="display:flex;flex-wrap:wrap;gap:3px;flex:1;min-width:0;"></div>
           <div id="mb-room-folder-inline"></div>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;margin-top:7px;">
+          <button class="mb-btn" onclick="mbRoomOpenUnsoldFlow()" style="height:28px;padding:0 10px;font-size:11px;border-color:rgba(79,142,255,.28);background:rgba(79,142,255,.10);color:#bcd4ff;">유찰 처리</button>
         </div>
       </div>
       <div id="mb-room-folder-bar" class="mb-folder-chipbar" style="display:none !important;margin:0 0 8px;"></div>
@@ -6309,17 +6312,8 @@ input, textarea, select {
     if (header) header.style.display = 'block';
     if (nameEl) nameEl.textContent = room.title || room.name || '이름 없음';
     if (descEl) descEl.textContent = room.address || room.desc || '';
-    // lifecycle 드롭다운 현재 값 반영
-    var lcWrap = document.getElementById('mb-room-lifecycle');
-    if (lcWrap) {
-      var currentLife = String(room.lifecycleStatus || 'active');
-      Array.from(lcWrap.querySelectorAll('button[data-life]')).forEach(function(btn){
-        var on = String(btn.getAttribute('data-life') || '') === currentLife;
-        btn.style.borderColor = on ? 'rgba(79,142,255,.5)' : 'rgba(255,255,255,.08)';
-        btn.style.background = on ? 'rgba(79,142,255,.18)' : 'transparent';
-        btn.style.color = on ? '#dbe9ff' : 'var(--mu)';
-      });
-    }
+    // lifecycle 버튼 현재 값 반영
+    _mbSyncLifecycleButtons(room.lifecycleStatus || 'active');
     var _dropLbl = document.getElementById('mb-room-sel-label');
     if (_dropLbl) _dropLbl.textContent = room.title || room.name || '이름 없음';
 
@@ -6542,49 +6536,71 @@ input, textarea, select {
     }).join('');
   };
 
+  function _mbSyncLifecycleButtons(val) {
+    var cur = String(val || 'active');
+    Array.prototype.forEach.call(document.querySelectorAll('#mb-room-lifecycle-tabs .mb-room-life-btn'), function(btn) {
+      var on = String(btn.getAttribute('data-life') || '') === cur;
+      btn.style.background = on ? 'rgba(79,142,255,.18)' : 'transparent';
+      btn.style.color = on ? '#dbe9ff' : 'var(--mu)';
+      btn.style.boxShadow = on ? 'inset 0 0 0 1px rgba(79,142,255,.28)' : 'none';
+    });
+  }
+
   // ── 작업룸 lifecycleStatus 변경 ──────────────────────────────
   window.mbRoomSetLifecycle = function(val) {
     var sel = document.getElementById('mb-room-sel');
     if (!sel || !sel.value) return;
     var roomId = sel.value;
-    if (val === 'changed' && typeof window._skOpenResultFlow === 'function') {
-      var rooms0 = (window._wrGetRoomsCache && window._wrGetRoomsCache()) ||
-        ((window._idbCache && window._idbCache['wr2_rooms']) || JSON.parse(localStorage.getItem('wr2_rooms') || '[]'));
-      var room0 = rooms0.find(function(r) { return r.id === roomId; });
-      var linkedItem = null;
-      try {
-        if (room0 && typeof window.plLoad === 'function') {
-          var items = window.plLoad() || [];
-          linkedItem = items.find(function(it){ return String(it && it.roomId || '') === String(roomId); }) || null;
+    var applyStatus = function(extraPatch) {
+      if (typeof window.skApplyUnifiedLifecycle === 'function') {
+        window.skApplyUnifiedLifecycle({
+          roomId: roomId,
+          lifecycleStatus: val,
+          refreshMobile: true,
+          closedSummary: extraPatch && extraPatch.closedSummary
+        });
+      } else {
+        var rooms = (window._wrGetRoomsCache && window._wrGetRoomsCache()) ||
+          ((window._idbCache && window._idbCache['wr2_rooms']) || JSON.parse(localStorage.getItem('wr2_rooms') || '[]'));
+        var room = rooms.find(function(r) { return r.id === roomId; });
+        if (!room) return;
+        room.lifecycleStatus = val;
+        if (extraPatch && extraPatch.closedSummary) room.closedSummary = extraPatch.closedSummary;
+        room.updatedAt = Date.now();
+        if (window._wrPersistRooms) window._wrPersistRooms(rooms, { syncState: true });
+        if (window.wr2State) {
+          var sr = window.wr2State.rooms && window.wr2State.rooms.find(function(r){ return r.id === roomId; });
+          if (sr) {
+            sr.lifecycleStatus = val;
+            if (extraPatch && extraPatch.closedSummary) sr.closedSummary = extraPatch.closedSummary;
+          }
         }
-      } catch (e) {}
-      window._skOpenResultFlow({ source: 'wr', id: roomId, item: linkedItem || {}, preferMode: 'changed' });
+        if (typeof window.mbRoomRefreshSel === 'function') window.mbRoomRefreshSel();
+      }
+      _mbSyncLifecycleButtons(val);
+      mbToast({ active: '진행 탭으로 이동', changed: '변경·미진행 탭으로 이동', closed: '종료 처리됨' }[val] || '상태 변경', 'ok');
+    };
+    if (val === 'closed' && typeof window.wr2CollectCloseSummary === 'function') {
+      var rooms = (window._wrGetRoomsCache && window._wrGetRoomsCache()) || [];
+      var room = rooms.find(function(r) { return r.id === roomId; }) || null;
+      window.wr2CollectCloseSummary(room && room.closedSummary, function(summary){ applyStatus({ closedSummary: summary }); }, function(){});
       return;
     }
-    if (typeof window.skApplyUnifiedLifecycle === 'function') {
-      window.skApplyUnifiedLifecycle({
-        roomId: roomId,
-        lifecycleStatus: val,
-        refreshMobile: true
-      });
-    } else {
-      var rooms = (window._wrGetRoomsCache && window._wrGetRoomsCache()) ||
-        ((window._idbCache && window._idbCache['wr2_rooms']) || JSON.parse(localStorage.getItem('wr2_rooms') || '[]'));
-      var room = rooms.find(function(r) { return r.id === roomId; });
-      if (!room) return;
-      room.lifecycleStatus = val;
-      room.updatedAt = Date.now();
-      if (window._wrPersistRooms) window._wrPersistRooms(rooms, { syncState: true });
-      if (window.wr2State) {
-        var sr = window.wr2State.rooms && window.wr2State.rooms.find(function(r){ return r.id === roomId; });
-        if (sr) sr.lifecycleStatus = val;
-      }
-      if (typeof window.mbRoomRefreshSel === 'function') window.mbRoomRefreshSel();
-    }
-    try { if (typeof window.mbRoomLoad === 'function') window.mbRoomLoad(roomId, { cloud: true }); } catch(e) {}
-    mbToast({ active: '진행 탭으로 변경', changed: '변경·미진행 처리', closed: '종료 처리됨' }[val] || '상태 변경', 'ok');
+    applyStatus();
   };
 
+
+
+  window.mbRoomOpenUnsoldFlow = function() {
+    var sel = document.getElementById('mb-room-sel');
+    if (!sel || !sel.value) return;
+    var roomId = sel.value;
+    var rooms = (window._wrGetRoomsCache && window._wrGetRoomsCache()) || [];
+    var room = rooms.find(function(r) { return r.id === roomId; }) || null;
+    if (typeof window._skOpenUnsoldFlow === 'function') {
+      window._skOpenUnsoldFlow({ roomId: roomId, id: roomId, item: room || {} });
+    }
+  };
   // ── 모바일 파이프라인 렌더 ────────────────────────────────────
   window.mbRenderPipeline = function() {
     var sv = (typeof getSv === 'function') ? getSv() : [];
