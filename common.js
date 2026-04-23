@@ -3343,8 +3343,8 @@ var _safeLocalSet = function(key, value) {
                   activePhase: 'review',
                   sort: 'updated',
                   search: '',
-                  // lifecycleStatus 기준 필터 (기본: 활성만 → 종료 누적 문제 방지)
-                  statusFilter: 'active',
+                  // 상태 구분 UI 제거: 목록은 항상 전체 기준으로 표시
+                  statusFilter: 'all',
                   // 폴더 제거: groupFilter는 레거시 호환용 키만 유지
                   groupFilter: 'all'
                 };
@@ -4569,7 +4569,8 @@ var _safeLocalSet = function(key, value) {
                     (r.address || '').toLowerCase().includes(q) ||
                     (r.tags || []).some(t => (t || '').toLowerCase().includes(q))
                   );
-                  rooms = rooms.filter(r => wr2RoomMatchesLifecycle(r, wr2State.statusFilter));
+                  // 상태 탭(활성/변경/종료) 제거 정책:
+                  // 작업룸 목록은 lifecycleStatus로 분리하지 않고 항상 전체를 보여준다.
                   rooms.sort((a, b) => {
                     const ma = getRoomLinkedMeta(a);
                     const mb = getRoomLinkedMeta(b);
@@ -4588,44 +4589,12 @@ var _safeLocalSet = function(key, value) {
                   });
 
                   listEl.innerHTML = '';
-                  // 상태(활성/변경/종료) 스코프 바 렌더
+                  // 상태 스코프 바 비활성화 (활성/변경/종료/전체 버튼 제거)
                   try {
                     const scopeEl = document.getElementById('wr2ListScopeBar');
                     if (scopeEl) {
-                      const allRooms = wr2State.rooms.filter(r => r && !r.deletedAt);
-                      const cnt = {
-                        active: allRooms.filter(r => wr2GetLifecycle(r) === 'active').length,
-                        changed: allRooms.filter(r => wr2GetLifecycle(r) === 'changed').length,
-                        closed: allRooms.filter(r => wr2GetLifecycle(r) === 'closed').length,
-                        all: allRooms.length
-                      };
-                      const cur = String(wr2State.statusFilter || 'active');
-                      const mkBtn = function(key, label) {
-                        const b = document.createElement('button');
-                        b.type = 'button';
-                        const isOn = cur === key;
-                        const tone = key === 'changed'
-                          ? { fg: '#fbbf24', bg: 'rgba(251,191,36,.12)', bd: 'rgba(251,191,36,.35)' }
-                          : key === 'closed'
-                            ? { fg: '#ff8694', bg: 'rgba(255,99,112,.12)', bd: 'rgba(255,99,112,.35)' }
-                            : { fg: '#4f8eff', bg: 'rgba(79,142,255,.12)', bd: 'rgba(79,142,255,.35)' };
-                        b.style.cssText =
-                          'padding:4px 9px;border-radius:999px;border:1px solid ' + (isOn ? tone.bd : 'var(--b1)') +
-                          ';background:' + (isOn ? tone.bg : 'var(--s2)') +
-                          ';color:' + (isOn ? tone.fg : 'var(--mu)') +
-                          ';font-size:11px;cursor:pointer;white-space:nowrap;';
-                        b.textContent = label + ' ' + (key === 'all' ? cnt.all : cnt[key]);
-                        b.onclick = function() { wr2State.statusFilter = key; wr2Render(); };
-                        return b;
-                      };
                       scopeEl.innerHTML = '';
-                      scopeEl.style.display = 'flex';
-                      scopeEl.style.gap = '6px';
-                      scopeEl.style.flexWrap = 'wrap';
-                      scopeEl.appendChild(mkBtn('active', '활성'));
-                      scopeEl.appendChild(mkBtn('changed', '변경'));
-                      scopeEl.appendChild(mkBtn('closed', '종료'));
-                      scopeEl.appendChild(mkBtn('all', '전체'));
+                      scopeEl.style.display = 'none';
                     }
                   } catch (e) {}
                   const appendRoomItem = (parentEl, r) => {
@@ -7727,11 +7696,8 @@ window.wr2SummaryCancelEdit = function() {
                   bindEventsOnce();
                   initResizeHandle();
                   if (!wr2State.activeView) wr2State.activeView = 'overview';
-                  // ★ 첫 진입 시: 필터는 '활성'으로 기본 설정, 방 자동 선택 없음 (빈 상태 안내 표시)
-                  // 통상적인 상용 프로그램 방식: 왼쪽 목록에서 사용자가 선택하도록 유도
-                  if (!wr2State.statusFilter || wr2State.statusFilter === 'all') {
-                    wr2State.statusFilter = 'active';
-                  }
+                  // 상태 구분 UI 제거 정책: 항상 전체 표시
+                  if (!wr2State.statusFilter) wr2State.statusFilter = 'all';
                   // activeRoomId를 강제로 비우지는 않음 (페이지 내 탭 전환 시 유지는 자연스러움).
                   // 단, 자동 선택 로직은 제거.
                   wr2Render();
@@ -45194,5 +45160,4 @@ window.addEventListener('DOMContentLoaded', () => {
     boot();
   }
 })();
-
 
