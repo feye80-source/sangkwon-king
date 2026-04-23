@@ -45496,99 +45496,88 @@ window.addEventListener('DOMContentLoaded', () => {
     }
     return modal;
   }
-  function _skResolveUnsoldTargets(ctx) {
-    var roomId = String(ctx && ctx.id || '').trim();
-    var explicitItemId = String(ctx && ctx.item && ctx.item.id || '').trim();
-    var rooms = (typeof getWrRooms === 'function') ? (getWrRooms() || []) : [];
+  function _skResolveUnsoldWorkroomTarget(ctx){
+    var roomId = String((ctx && ctx.id) || '').trim();
+    var explicitId = String((ctx && ctx.item && ctx.item.id) || '').trim();
     var room = null;
-    if (roomId) {
+    try {
+      if (typeof getActiveRoom === 'function') {
+        var active = getActiveRoom();
+        if (active && (!roomId || String(active.id || '') === roomId)) room = active;
+      }
+    } catch (e) {}
+    if (!room && typeof getWrRooms === 'function') {
+      var rooms = getWrRooms() || [];
       room = rooms.find(function(r){ return String(r && r.id || '') === roomId; }) || null;
     }
-    if (!room && ctx && ctx.source === 'wr' && typeof getActiveRoom === 'function') {
-      try { room = getActiveRoom() || null; } catch (e) {}
+    var target = null;
+    try {
+      if (typeof _plResolveLifecycleTargetItem === 'function') target = _plResolveLifecycleTargetItem(roomId, explicitId);
+    } catch (e) {}
+    if (!target && explicitId && typeof plLoad === 'function') {
+      target = (plLoad() || []).find(function(it){ return String(it && it.id || '') === explicitId; }) || null;
     }
-    var items = (typeof plLoad === 'function') ? (plLoad() || []) : [];
-    var item = null;
-    if (explicitItemId) {
-      item = items.find(function(it){ return String(it && it.id || '') === explicitItemId; }) || null;
-    }
-    if (!item && roomId) {
-      item = items.find(function(it){ return String(it && it.roomId || '') === roomId; }) || null;
-    }
-    if (!item && room && room.linkedItems && room.linkedItems.length) {
-      item = items.find(function(it){ return room.linkedItems.indexOf(String(it && it.id || '')) >= 0; }) || null;
-    }
-    var linkedSavedId = String((item && item.linkedSavedId) || (room && (room.linkedSavedId || room.auctionId || room.listingId)) || '').trim();
-    if (!item && linkedSavedId) {
-      item = items.find(function(it){ return String(it && it.linkedSavedId || '') === linkedSavedId; }) || null;
-    }
-    if (!item && room) {
-      var roomCase = String(room.casenum || room.caseNo || room.auctionCaseNo || '').replace(/\s/g, '').trim();
-      if (roomCase) {
-        item = items.find(function(it){ return String(it && it.casenum || '').replace(/\s/g, '').trim() === roomCase; }) || null;
-      }
-    }
-    if (!linkedSavedId && item) linkedSavedId = String(item.linkedSavedId || '').trim();
-    return { room: room, item: item, roomId: roomId, linkedSavedId: linkedSavedId };
+    return { room: room, item: target || null, roomId: roomId, explicitId: explicitId };
   }
-  function _skApplyUnsoldToSaved(linkedSavedId, payload) {
-    var savedId = String(linkedSavedId || '').trim();
-    if (!savedId || typeof getSv !== 'function' || typeof setSv !== 'function') return false;
-    var sv = getSv() || [];
-    var idx = sv.findIndex(function(s){ return String(s && s.id || '') === savedId; });
-    if (idx < 0) return false;
-    var src = Object.assign({}, sv[idx] || {});
-    var data = Object.assign({}, src.data || {});
-    var changed = false;
-    function putField(key, value) {
-      var next = value == null ? '' : value;
-      if (String(data[key] || '') !== String(next)) {
-        data[key] = next;
-        changed = true;
-      }
-    }
-    putField('회차', String(payload.round || ''));
-    putField('유찰회차', String(payload.round || ''));
-    putField('매각기일', payload.biddate || '');
-    putField('매각일', payload.biddate || '');
-    putField('입찰기일', payload.biddate || '');
-    putField('최저가_만원', String(payload.minprice || ''));
-    putField('최저가', Number(payload.minprice || 0) > 0 ? Number(payload.minprice) * 10000 : '');
-    if (!changed) return false;
-    src.data = data;
-    src.updatedAt = Date.now();
-    try { if (typeof normalizeItem === 'function') normalizeItem(src); } catch (e) {}
-    sv[idx] = src;
-    setSv(sv);
-    return true;
-  }
-  function _skApplyUnsoldToPlItem(itemId, payload) {
-    var targetId = String(itemId || '').trim();
-    if (!targetId || typeof plLoad !== 'function' || typeof plSave !== 'function') return false;
-    var items = plLoad() || [];
+  function _skApplyUnsoldToWorkroomSource(ctx, nextRound, nextDate, nextPrice){
+    var resolved = _skResolveUnsoldWorkroomTarget(ctx);
+    var room = resolved.room || null;
+    var target = resolved.item || null;
+    if (!target || !target.id) return { ok:false, reason:'not_found', room: room, item: target };
+    var targetId = String(target.id || '').trim();
     var changedItem = null;
-    items = items.map(function(raw) {
-      if (String(raw && raw.id || '') !== targetId) return raw;
-      var next = plNormalizeItem(Object.assign({}, raw || {}));
-      next.round = String(payload.round || '');
-      next.biddate = payload.biddate || '';
-      next.minprice = String(payload.minprice || '');
-      plApplySimpleStatusToItem(next, 'active');
-      next.biddate = payload.biddate || '';
-      next.updatedAt = Date.now();
-      changedItem = plNormalizeItem(next);
-      return changedItem;
-    });
-    if (!changedItem) return false;
-    plSave(items.map(plNormalizeItem));
-    try { syncToWorkroom(changedItem); } catch (e) {}
-    try { plSyncItemToSaved(changedItem); } catch (e) {}
-    return true;
+    if (typeof plUpdateItem === 'function') {
+      changedItem = plUpdateItem(targetId, {
+        round: String(nextRound),
+        biddate: String(nextDate || '').trim(),
+        minprice: String(nextPrice || '').trim(),
+        archived: false
+      }) || null;
+    } else if (typeof window.plInlineSet === 'function') {
+      window.plInlineSet(targetId, 'round', String(nextRound));
+      window.plInlineSet(targetId, 'biddate', String(nextDate || '').trim());
+      window.plInlineSet(targetId, 'minprice', String(nextPrice || '').trim());
+      if (typeof plLoad === 'function') changedItem = (plLoad() || []).find(function(it){ return String(it && it.id || '') === targetId; }) || null;
+    }
+    try {
+      if (targetId && typeof window.plSetSimpleStatus === 'function') {
+        var prevForce = window.__plForceDirectSet;
+        window.__plForceDirectSet = true;
+        try { window.plSetSimpleStatus(targetId, 'active'); } finally { window.__plForceDirectSet = prevForce; }
+      }
+    } catch (e) {
+      console.warn('[unsold apply status]', e);
+    }
+    if (room) {
+      try {
+        var nextOverride = Object.assign({}, room._summaryOverride || {});
+        delete nextOverride.biddate;
+        delete nextOverride.price;
+        room._summaryOverride = nextOverride;
+        room.biddate = String(nextDate || '').trim();
+        room.round = String(nextRound);
+        room.minprice = String(nextPrice || '').trim();
+        room.lifecycleStatus = 'active';
+        room.status = 'review';
+        room.phase = 'review';
+        room.activePhase = 'review';
+        room.updatedAt = Date.now();
+        if (typeof saveRooms === 'function') saveRooms();
+      } catch (e) {
+        console.warn('[unsold apply room]', e);
+      }
+    }
+    try { if (typeof renderPropertyList === 'function') renderPropertyList(); } catch(e) {}
+    try { if (typeof renderSaved === 'function') renderSaved(); } catch(e) {}
+    try { if (typeof mbRenderSaved === 'function') mbRenderSaved(); } catch(e) {}
+    try { if (typeof updSvCnt === 'function') updSvCnt(); } catch(e) {}
+    try { if (typeof wr2Render === 'function') wr2Render(); } catch(e) {}
+    return { ok:true, room: room, item: changedItem || target };
   }
+
   function _skOpenUnsoldFlow(ctx){
     var modal = _skEnsureUnsoldOnlyModal();
-    var resolved = _skResolveUnsoldTargets(ctx || {});
-    var item = resolved.item || (ctx && ctx.item) || {};
+    var item = (ctx && ctx.item) || {};
     var plan = _skBuildUnsoldPlan(item);
     var roundEl = document.getElementById('skUnsoldOnlyRound');
     var dateEl = document.getElementById('skUnsoldOnlyDate');
@@ -45605,13 +45594,9 @@ window.addEventListener('DOMContentLoaded', () => {
     document.addEventListener('keydown', modal.__escHandler);
     saveEl.onclick = function(){
       try {
-        var current = _skResolveUnsoldTargets(ctx || {});
         var nextRound = parseInt(roundEl && roundEl.value || '', 10);
         var nextDate = String(dateEl && dateEl.value || '').trim();
         var nextPrice = _skDigits(priceEl && priceEl.value || '');
-        var payload = { round: nextRound, biddate: nextDate, minprice: nextPrice };
-        var targetItemId = String(current.item && current.item.id || '').trim();
-        var roomId = String(current.roomId || (ctx && ctx.id) || '').trim();
         if (!nextRound || nextRound < 1) {
           if (typeof showToast === 'function') showToast('다음 회차를 확인해주세요.', 'warn');
           return;
@@ -45624,46 +45609,32 @@ window.addEventListener('DOMContentLoaded', () => {
           if (typeof showToast === 'function') showToast('다음 최저가를 입력해주세요.', 'warn');
           return;
         }
-        if (!targetItemId && !String(current.linkedSavedId || '').trim()) {
-          if (typeof showToast === 'function') showToast('연결된 물건을 찾지 못했습니다. 저장목록 연결 상태를 확인해주세요.', 'warn');
-          return;
-        }
-        if (roomId && typeof updateRoom === 'function') {
-          var __room = current.room || null;
-          var __ovr = __room && __room._summaryOverride ? Object.assign({}, __room._summaryOverride) : {};
-          delete __ovr.biddate;
-          delete __ovr.price;
-          delete __ovr.minprice;
-          updateRoom(roomId, {
-            lifecycleStatus: 'active',
-            status: 'review',
-            phase: 'review',
-            activePhase: 'review',
-            __targetItemId: targetItemId,
-            __forceLifecycleChange: true,
-            round: nextRound,
-            biddate: nextDate,
-            minprice: nextPrice,
-            _summaryOverride: __ovr
-          });
-        }
-        var appliedToPl = _skApplyUnsoldToPlItem(targetItemId, payload);
-        if (!appliedToPl) _skApplyUnsoldToSaved(current.linkedSavedId, payload);
-        if (targetItemId && typeof window.plSetSimpleStatus === 'function') {
+        if (ctx && ctx.source === 'wr') {
+          var applied = _skApplyUnsoldToWorkroomSource(ctx, nextRound, nextDate, nextPrice);
+          if (!applied || applied.ok !== true) {
+            if (typeof showToast === 'function') showToast('연결된 원본 물건을 찾지 못했습니다. 물건 연결 상태를 확인해주세요.', 'warn');
+            return;
+          }
+          setTimeout(function() {
+            try { if (typeof window.__wr2FlushSaveRooms === 'function') window.__wr2FlushSaveRooms(); } catch(e) {}
+          }, 120);
+        } else if (ctx && ctx.source === 'pl') {
+          var itemId = String(ctx.id || (ctx.item && ctx.item.id) || '').trim();
+          if (itemId && typeof window.plInlineSet === 'function') {
+            window.plInlineSet(itemId, 'round', String(nextRound));
+            window.plInlineSet(itemId, 'biddate', nextDate);
+            window.plInlineSet(itemId, 'minprice', nextPrice);
+          }
           try {
-            var prevForce = window.__plForceDirectSet;
-            window.__plForceDirectSet = true;
-            window.plSetSimpleStatus(targetItemId, 'active');
-            window.__plForceDirectSet = prevForce;
+            if (itemId && typeof window.plSetSimpleStatus === 'function') {
+              var prevForce2 = window.__plForceDirectSet;
+              window.__plForceDirectSet = true;
+              window.plSetSimpleStatus(itemId, 'active');
+              window.__plForceDirectSet = prevForce2;
+            }
           } catch (e) {}
+          try { if (typeof renderPropertyList === 'function') renderPropertyList(); } catch(e) {}
         }
-        try { if (typeof renderSaved === 'function') renderSaved(); } catch(e) {}
-        try { if (typeof mbRenderSaved === 'function') mbRenderSaved(); } catch(e) {}
-        try { if (typeof wr2Render === 'function') wr2Render(); } catch(e) {}
-        try { if (typeof renderPropertyList === 'function') renderPropertyList(); } catch(e) {}
-        setTimeout(function() {
-          try { if (typeof window.__wr2FlushSaveRooms === 'function') window.__wr2FlushSaveRooms(); } catch(e) {}
-        }, 200);
         _skCloseUnsoldModal();
       } catch (e) {
         console.warn('[unsold save]', e);
