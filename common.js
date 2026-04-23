@@ -45539,6 +45539,8 @@ window.addEventListener('DOMContentLoaded', () => {
             var allItems = (typeof plLoad === 'function') ? plLoad() : [];
             var roomId = String(ctx.id || '');
             
+            console.log('[unsold] Looking for item. roomId:', roomId);
+            
             // 방법 1: ctx.item이 이미 있으면 사용
             if (ctx.item && ctx.item.id) {
               var ctxItemId = String(ctx.item.id);
@@ -45546,7 +45548,7 @@ window.addEventListener('DOMContentLoaded', () => {
                 return it && String(it.id) === ctxItemId;
               });
               if (targetItem) {
-                console.log('[unsold] Found via ctx.item:', targetItem.id);
+                console.log('[unsold] ✓ Found via ctx.item:', targetItem.id);
               }
             }
             
@@ -45556,38 +45558,37 @@ window.addEventListener('DOMContentLoaded', () => {
                 return it && String(it.roomId || '') === roomId;
               });
               
+              console.log('[unsold] roomId matches:', matchedItems.length);
+              
               if (matchedItems.length === 1) {
                 targetItem = matchedItems[0];
-                console.log('[unsold] Found via roomId (single):', targetItem.id);
+                console.log('[unsold] ✓ Found via roomId (single):', targetItem.id);
               } else if (matchedItems.length > 1) {
                 targetItem = matchedItems.sort(function(a, b) {
                   return (b.updatedAt || 0) - (a.updatedAt || 0);
                 })[0];
-                console.log('[unsold] Found via roomId (latest):', targetItem.id);
+                console.log('[unsold] ✓ Found via roomId (latest):', targetItem.id);
               }
             }
             
-            // 방법 3: 작업룸 객체에서 linkedItems 확인
-            if (!targetItem && typeof getActiveRoom === 'function') {
-              var room = getActiveRoom();
-              if (room && room.linkedItems && room.linkedItems.length > 0) {
-                var linkedId = room.linkedItems[0];
+            // 방법 3: getWrRooms로 작업룸 객체 직접 찾기
+            if (!targetItem && typeof getWrRooms === 'function') {
+              var rooms = getWrRooms() || [];
+              var currentRoom = null;
+              for (var i = 0; i < rooms.length; i++) {
+                if (String(rooms[i].id) === roomId) {
+                  currentRoom = rooms[i];
+                  break;
+                }
+              }
+              
+              if (currentRoom && currentRoom.linkedItems && currentRoom.linkedItems.length > 0) {
+                var linkedId = currentRoom.linkedItems[0];
                 targetItem = allItems.find(function(it) {
                   return it && String(it.id) === String(linkedId);
                 });
                 if (targetItem) {
-                  console.log('[unsold] Found via room.linkedItems:', targetItem.id);
-                }
-              }
-            }
-            
-            // 방법 4: wr2ResolveLinkedPlItem 함수 사용
-            if (!targetItem && typeof wr2ResolveLinkedPlItem === 'function') {
-              var room2 = (typeof getActiveRoom === 'function') ? getActiveRoom() : null;
-              if (room2) {
-                targetItem = wr2ResolveLinkedPlItem(room2);
-                if (targetItem && targetItem.id) {
-                  console.log('[unsold] Found via wr2ResolveLinkedPlItem:', targetItem.id);
+                  console.log('[unsold] ✓ Found via room.linkedItems:', targetItem.id);
                 }
               }
             }
@@ -45601,7 +45602,10 @@ window.addEventListener('DOMContentLoaded', () => {
           
           // 연결된 물건을 못 찾으면 중단
           if (!targetItemId) {
-            console.warn('[unsold] No target item found. roomId:', ctx.id);
+            console.warn('[unsold] ✗ No target item found. roomId:', ctx.id);
+            console.log('[unsold] All items:', allItems.map(function(it) {
+              return { id: it.id, roomId: it.roomId, address: it.address };
+            }));
             if (typeof showToast === 'function') {
               showToast('연결된 물건을 찾을 수 없습니다. 저장목록에서 작업룸에 물건을 먼저 연결하세요.', 'warn');
             }
@@ -45641,7 +45645,7 @@ window.addEventListener('DOMContentLoaded', () => {
               // 원본 저장
               if (typeof plSave === 'function') {
                 plSave(allItems2);
-                console.log('[unsold] plSave called');
+                console.log('[unsold] ✓ plSave called');
               }
               
               // 작업룸에도 반영 (100ms 후)
@@ -45656,7 +45660,7 @@ window.addEventListener('DOMContentLoaded', () => {
                     biddate: nextDate,
                     minprice: nextPrice
                   });
-                  console.log('[unsold] updateRoom called');
+                  console.log('[unsold] ✓ updateRoom called');
                 }
                 
                 // 상태 변경
@@ -45666,7 +45670,7 @@ window.addEventListener('DOMContentLoaded', () => {
                     window.__plForceDirectSet = true;
                     window.plSetSimpleStatus(targetItemId, 'active');
                     window.__plForceDirectSet = prevForce;
-                    console.log('[unsold] status set to active');
+                    console.log('[unsold] ✓ status set to active');
                   } catch (e) {}
                 }
                 
@@ -45681,7 +45685,7 @@ window.addEventListener('DOMContentLoaded', () => {
               }, 100);
               
               if (typeof showToast === 'function') {
-                showToast('유찰 처리가 완료되었습니다.', 'ok');
+                showToast('✓ 유찰 처리가 완료되었습니다.', 'ok');
               }
             }
           } catch (e) {
