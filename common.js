@@ -5617,7 +5617,18 @@ var _safeLocalSet = function(key, value) {
                       : '';
                     html += editRow('biddate', '매각기일', `${bidRaw || '<span style="color:var(--mu);">미입력</span>'}${badge}`, bidRaw || '');
                     if (bidNeedsAction) {
-                      const linkedItem = wr2ResolveLinkedPlItem ? wr2ResolveLinkedPlItem(room) : null;
+                      var linkedItem = null;
+                      if (typeof plLoad === 'function') {
+                        var _roomItems = (plLoad() || []).filter(function(it) { return String(it && it.roomId || '') === String(room.id); });
+                        linkedItem = _roomItems.length === 1 ? _roomItems[0] : null;
+                        if (!linkedItem) {
+                          var _pId = String(room.linkedSavedId || room.auctionId || room.listingId || '').trim();
+                          if (_pId) {
+                            var _matched = _roomItems.filter(function(it) { return String(it && it.linkedSavedId || '') === _pId; });
+                            if (_matched.length === 1) linkedItem = _matched[0];
+                          }
+                        }
+                      }
                       const linkedId = linkedItem && linkedItem.id ? String(linkedItem.id).replace(/'/g, "\\'") : '';
                       html += `<div class="wr2-summary-alert" style="margin:6px 0 2px;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,107,122,.36);background:rgba(255,107,122,.1);font-size:11px;line-height:1.45;color:#ffd5da;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
                         <div>⚠ 매각기일이 도래했습니다. 매각 완료면 <b>종료</b>, 유찰이면 <b>유찰 처리</b>로 다음 회차 정보를 갱신하세요.</div>
@@ -5657,7 +5668,18 @@ var _safeLocalSet = function(key, value) {
                     var normalized = plNormalizeDateInput ? plNormalizeDateInput(val) : String(val || '').trim();
                     room._summaryOverride[key] = normalized;
                     room.biddate = normalized; // room 네이티브 필드도 동기화 → 클라우드 sync 후에도 소실 방지
-                    var linked = wr2ResolveLinkedPlItem ? wr2ResolveLinkedPlItem(room) : null;
+                    var linked = null;
+                    if (typeof plLoad === 'function') {
+                      var roomItems = (plLoad() || []).filter(function(it) { return String(it && it.roomId || '') === String(room.id); });
+                      linked = roomItems.length === 1 ? roomItems[0] : null;
+                      if (!linked) {
+                        var pId = String(room.linkedSavedId || room.auctionId || room.listingId || '').trim();
+                        if (pId) {
+                          var matched = roomItems.filter(function(it) { return String(it && it.linkedSavedId || '') === pId; });
+                          if (matched.length === 1) linked = matched[0];
+                        }
+                      }
+                    }
                     if (linked && linked.id && typeof window.plInlineSet === 'function') {
                       try { window.plInlineSet(linked.id, 'biddate', normalized); } catch(e) {}
                     }
