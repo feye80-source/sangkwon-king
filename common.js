@@ -4802,11 +4802,6 @@ var _safeLocalSet = function(key, value) {
                           _skOpenResultFlow({ source: 'wr', id: room.id, item: linkedItem || {}, preferMode: 'changed' });
                           return;
                         }
-                        if (next === 'active' && prev === 'changed' && typeof _skOpenResultFlow === 'function') {
-                          lifeSel.value = prev;
-                          _skOpenResultFlow({ source: 'wr', id: room.id, item: linkedItem || {}, preferMode: 'unsold' });
-                          return;
-                        }
                         if (next === 'closed' && prev !== 'closed') {
                           wr2CollectCloseSummary(room.closedSummary, function(closedSummary) {
                             updateRoom(room.id, {
@@ -43094,16 +43089,6 @@ window.addEventListener('DOMContentLoaded', () => {
       effectiveSimple = plEffectiveSimpleStatus(item, roomById);
     } catch (e) {}
     if (oldSimple === nextSimple && effectiveSimple === nextSimple) return false;
-    // 변경 → 활성 전환은 유찰 플로우(다음 회차/기일/최저가)를 먼저 입력받는다.
-    if (nextSimple === 'active'
-        && effectiveSimple === 'changed'
-        && window.__plForceDirectSet !== true
-        && typeof window._skOpenResultFlow === 'function') {
-      window.__plInlineEditKey = '';
-      window.__plLastLocalStatusMutationAt = Date.now();
-      window._skOpenResultFlow({ source: 'pl', id: id, item: item, preferMode: 'unsold' });
-      return 'flow';
-    }
     // '변경'은 즉시 확정하지 않고 결과 플로우(유찰/변경·재매각)로 분기한다.
     if (nextSimple === 'changed'
         && effectiveSimple !== 'changed'
@@ -45529,11 +45514,6 @@ window.addEventListener('DOMContentLoaded', () => {
         if (next === 'changed' && prev !== 'changed' && typeof _skOpenResultFlow === 'function') {
           lifeSel.value = prev;
           _skOpenResultFlow({ source: 'wr', id: room.id, item: linkedItem || {}, preferMode: 'changed' });
-          return;
-        }
-        if (next === 'active' && prev === 'changed' && typeof _skOpenResultFlow === 'function') {
-          lifeSel.value = prev;
-          _skOpenResultFlow({ source: 'wr', id: room.id, item: linkedItem || {}, preferMode: 'unsold' });
           return;
         }
         if (next === 'closed' && prev !== 'closed') {
