@@ -45549,53 +45549,111 @@ window.addEventListener('DOMContentLoaded', () => {
         console.log('[UnsoldFlow] ctx:', ctx);
         
         if (ctx && ctx.source === 'wr') {
+          console.log('[UnsoldFlow] WR source path');
           var targetItemId = String((ctx.item && ctx.item.id) || '').trim();
-          if (typeof updateRoom === 'function') {
-            var __room = (typeof getActiveRoom === 'function') ? getActiveRoom() : null;
-            if (!__room && typeof getWrRooms === 'function') {
-                var __rooms = getWrRooms() || [];
-                for(var __i=0; __i<__rooms.length; __i++){ if (__rooms[__i].id === ctx.id){ __room = __rooms[__i]; break; } }
-            }
-            var __ovr = __room && __room._summaryOverride ? Object.assign({}, __room._summaryOverride) : {};
-            // 유찰 처리 시 새로운 매각기일과 최저가를 _summaryOverride에 저장
-            __ovr.biddate = nextDate;
-            __ovr.price = parseInt(nextPrice, 10) || 0;
-
-            updateRoom(String(ctx.id || ''), {
-              lifecycleStatus: 'active',
-              status: 'review',
-              phase: 'review',
-              activePhase: 'review',
-              __targetItemId: targetItemId,
-              __forceLifecycleChange: true,
-              round: nextRound,
-              biddate: nextDate,
-              minprice: nextPrice,
-              _summaryOverride: __ovr
-            });
-          }
-          if (targetItemId && typeof window.plInlineSet === 'function') {
+          console.log('[UnsoldFlow] targetItemId:', targetItemId);
+          
+          // STEP 1: 저장목록 data 객체 업데이트 (즉시)
+          if (targetItemId) {
             try {
-              window.plInlineSet(targetItemId, 'round', String(nextRound));
-              window.plInlineSet(targetItemId, 'biddate', nextDate);
-              window.plInlineSet(targetItemId, 'minprice', nextPrice);
-            } catch (e) {}
-          }
-          try {
-            if (targetItemId && typeof window.plSetSimpleStatus === 'function') {
-              var prevForce = window.__plForceDirectSet;
-              window.__plForceDirectSet = true;
-              window.plSetSimpleStatus(targetItemId, 'active');
-              window.__plForceDirectSet = prevForce;
+              console.log('[UnsoldFlow] STEP 1: Updating PL item data...');
+              var _plItems = (typeof plLoad === 'function') ? plLoad() : [];
+              var _targetIdx = -1;
+              var _targetItem = null;
+              for (var _i = 0; _i < _plItems.length; _i++) {
+                if (String(_plItems[_i].id) === String(targetItemId)) {
+                  _targetIdx = _i;
+                  _targetItem = _plItems[_i];
+                  break;
+                }
+              }
+              if (_targetItem && _targetItem.data) {
+                var _dataPatch = Object.assign({}, _targetItem.data);
+                _dataPatch['유찰횟수'] = nextRound;
+                _dataPatch['매각기일'] = nextDate;
+                _dataPatch['매각일'] = nextDate;
+                _dataPatch['최저가'] = parseInt(nextPrice, 10) || 0;
+                _plItems[_targetIdx] = Object.assign({}, _targetItem, { 
+                  round: nextRound,
+                  biddate: nextDate,
+                  minprice: nextPrice,
+                  data: _dataPatch,
+                  updatedAt: Date.now()
+                });
+                if (typeof plSave === 'function') {
+                  console.log('[UnsoldFlow] Calling plSave...');
+                  plSave(_plItems);
+                }
+                if (typeof plSyncItemToSaved === 'function') {
+                  try { plSyncItemToSaved(_plItems[_targetIdx]); } catch(e) {}
+                }
+                console.log('[UnsoldFlow] PL item data updated');
+              }
+            } catch(e) {
+              console.error('[UnsoldFlow WR data update]', e);
             }
-          } catch (e) {}
-          try { if (typeof wr2Render === 'function') wr2Render(); } catch(e) {}
-          try { if (typeof renderPropertyList === 'function') renderPropertyList(); } catch(e) {}
-          // updateRoom(debounce 180ms) + plInlineSet 간의 저장 race 방지:
-          // 모든 동기 저장이 끝난 뒤 200ms 후 작업룸을 강제 flush한다.
+          }
+          
+          // STEP 2: 작업룸 업데이트 (100ms 후)
           setTimeout(function() {
-            try { if (typeof window.__wr2FlushSaveRooms === 'function') window.__wr2FlushSaveRooms(); } catch(e) {}
+            if (typeof updateRoom === 'function') {
+              console.log('[UnsoldFlow] STEP 2: Updating workroom...');
+              var __room = (typeof getActiveRoom === 'function') ? getActiveRoom() : null;
+              if (!__room && typeof getWrRooms === 'function') {
+                  var __rooms = getWrRooms() || [];
+                  for(var __i=0; __i<__rooms.length; __i++){ if (__rooms[__i].id === ctx.id){ __room = __rooms[__i]; break; } }
+              }
+              var __ovr = __room && __room._summaryOverride ? Object.assign({}, __room._summaryOverride) : {};
+              // 유찰 처리 시 새로운 매각기일과 최저가를 _summaryOverride에 저장
+              __ovr.biddate = nextDate;
+              __ovr.price = parseInt(nextPrice, 10) || 0;
+
+              updateRoom(String(ctx.id || ''), {
+                lifecycleStatus: 'active',
+                status: 'review',
+                phase: 'review',
+                activePhase: 'review',
+                __targetItemId: targetItemId,
+                __forceLifecycleChange: true,
+                round: nextRound,
+                biddate: nextDate,
+                minprice: nextPrice,
+                _summaryOverride: __ovr
+              });
+              console.log('[UnsoldFlow] updateRoom done');
+            }
+          }, 100);
+          
+          // STEP 3: 상태 변경 및 UI 렌더링 (200ms 후)
+          setTimeout(function() {
+            try {
+              if (targetItemId && typeof window.plSetSimpleStatus === 'function') {
+                console.log('[UnsoldFlow] STEP 3: Setting status to active...');
+                var prevForce = window.__plForceDirectSet;
+                window.__plForceDirectSet = true;
+                window.plSetSimpleStatus(targetItemId, 'active');
+                window.__plForceDirectSet = prevForce;
+              }
+            } catch (e) {
+              console.error('[UnsoldFlow status]', e);
+            }
+            try { 
+              console.log('[UnsoldFlow] Calling wr2Render...');
+              if (typeof wr2Render === 'function') wr2Render(); 
+            } catch(e) {}
+            try { 
+              console.log('[UnsoldFlow] Calling renderPropertyList...');
+              if (typeof renderPropertyList === 'function') renderPropertyList(); 
+            } catch(e) {}
           }, 200);
+          
+          // STEP 4: 작업룸 flush (400ms 후)
+          setTimeout(function() {
+            try { 
+              console.log('[UnsoldFlow] STEP 4: Flushing workroom save...');
+              if (typeof window.__wr2FlushSaveRooms === 'function') window.__wr2FlushSaveRooms(); 
+            } catch(e) {}
+          }, 400);
         } else if (ctx && ctx.source === 'pl') {
           console.log('[UnsoldFlow] PL source path');
           var itemId = String(ctx.id || (ctx.item && ctx.item.id) || '').trim();
