@@ -41969,36 +41969,23 @@ window.addEventListener('DOMContentLoaded', () => {
   }
   function plLoad() {
     try {
-      var cached = (typeof _sbGetCachedArray === 'function') ? _sbGetCachedArray(PL_KEY) : null;
-      var legacy = JSON.parse(localStorage.getItem(PL_KEY) || '[]');
-      var hasCached = Array.isArray(cached);
-      var hasLegacy = Array.isArray(legacy);
-      if (hasCached && hasLegacy) {
-        var merged = [];
-        var byId = {};
-        cached.forEach(function(it){
-          if (!it || !it.id) return;
-          byId[String(it.id)] = plNormalizeItem(it);
-        });
-        legacy.forEach(function(it){
-          if (!it || !it.id) return;
-          var id = String(it.id);
-          var prev = byId[id];
-          var next = plNormalizeItem(it);
-          // 캐시에 이미 작업룸 연결 물건이 있으면 legacy가 덮어쓰지 못하게 한다.
-          // (과거/stale localStorage가 최신 상태를 되돌리는 현상 방지)
-          if (prev && String(prev.roomId || '').trim()) return;
-          if (!prev) { byId[id] = next; return; }
-          var prevTs = Number(prev.updatedAt || prev.createdAt || 0);
-          var nextTs = Number(next.updatedAt || next.createdAt || 0);
-          if (nextTs > prevTs) byId[id] = next;
-        });
-        Object.keys(byId).forEach(function(id){ merged.push(byId[id]); });
-        try { localStorage.setItem(PL_KEY, JSON.stringify(merged)); } catch (e) {}
-        return merged;
+      // 단일 소스 원칙:
+      // IDB 메모리 캐시(_idbCache[PL_KEY])가 존재하면 이를 절대 기준으로 사용한다.
+      // (stale localStorage가 최신 상태를 되돌리는 저장 오염 차단)
+      var hasMemCache = !!(window._idbCache && Array.isArray(window._idbCache[PL_KEY]));
+      if (hasMemCache) {
+        var mem = window._idbCache[PL_KEY] || [];
+        var normalizedMem = (Array.isArray(mem) ? mem : []).map(plNormalizeItem);
+        try { localStorage.setItem(PL_KEY, JSON.stringify(normalizedMem)); } catch (e) {}
+        return normalizedMem;
       }
-      if (hasCached) return cached.map(plNormalizeItem);
-      if (hasLegacy) return legacy.map(plNormalizeItem);
+      // 메모리 캐시가 아직 준비되지 않은 초기 시점에만 legacy를 폴백으로 사용한다.
+      var legacy = JSON.parse(localStorage.getItem(PL_KEY) || '[]');
+      if (Array.isArray(legacy)) {
+        var normalizedLegacy = legacy.map(plNormalizeItem);
+        if (window._idbCache) window._idbCache[PL_KEY] = normalizedLegacy;
+        return normalizedLegacy;
+      }
       return [];
     } catch(e) { return []; }
   }
