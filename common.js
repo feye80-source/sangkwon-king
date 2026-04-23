@@ -4767,15 +4767,14 @@ var _safeLocalSet = function(key, value) {
                   if (statusBadge) statusBadge.style.display = 'none';
                   if (host) {
                       const insertAnchor = document.getElementById('wr2LinkSavedBtn') || host.firstChild;
-                      let sourceBtn = document.getElementById('wr2LinkSourceBtn');
-                      if (!sourceBtn) {
-                        sourceBtn = document.createElement('button');
-                        sourceBtn.id = 'wr2LinkSourceBtn';
-                        sourceBtn.className = 'wr2-hd-btn';
-                        sourceBtn.textContent = '원본연결';
-                        sourceBtn.style.padding = '4px 7px';
-                        sourceBtn.style.minWidth = '72px';
-                        host.insertBefore(sourceBtn, insertAnchor);
+                      let sourceLinkBtn = document.getElementById('wr2LinkSourceBtn');
+                      if (!sourceLinkBtn) {
+                        sourceLinkBtn = document.createElement('button');
+                        sourceLinkBtn.id = 'wr2LinkSourceBtn';
+                        sourceLinkBtn.className = 'wr2-hd-btn';
+                        sourceLinkBtn.style.padding = '4px 7px';
+                        sourceLinkBtn.textContent = '원본연결';
+                        host.insertBefore(sourceLinkBtn, insertAnchor);
                       }
                       let lifeSel = document.getElementById('wr2LifecycleSelect');
                       if (!lifeSel) {
@@ -4793,13 +4792,24 @@ var _safeLocalSet = function(key, value) {
                       const wr2ResolveLinkedPlItem = function(targetRoom) {
                         try {
                           if (!targetRoom || typeof plLoad !== 'function') return null;
-                          const items = plLoad() || [];
-                          const directId = String(targetRoom.targetItemId || '').trim();
-                          if (directId) {
-                            const direct = items.find(function(it){ return String(it && it.id || '') === directId; });
+                          const items = (plLoad() || []);
+                          const roomId = String(targetRoom.id || '');
+                          const targetItemId = String(targetRoom.targetItemId || '').trim();
+                          if (targetItemId) {
+                            const direct = items.find(function(it) {
+                              return String(it && it.id || '') === targetItemId;
+                            });
                             if (direct) return direct || null;
                           }
-                          const roomId = String(targetRoom.id || '');
+                          const linkedItems = Array.isArray(targetRoom.linkedItems)
+                            ? targetRoom.linkedItems.map(function(v){ return String(v || '').trim(); }).filter(Boolean)
+                            : [];
+                          if (linkedItems.length) {
+                            const linked = items.find(function(it) {
+                              return linkedItems.includes(String(it && it.id || ''));
+                            });
+                            if (linked) return linked || null;
+                          }
                           const roomItems = items.filter(function(it) {
                             return String(it && it.roomId || '') === roomId;
                           });
@@ -4810,9 +4820,11 @@ var _safeLocalSet = function(key, value) {
                               return String(it && it.linkedSavedId || '') === savedId;
                             });
                             if (matched.length === 1) return matched[0] || null;
-                            if (matched.length > 1) return matched.sort(function(a,b){ return Number(b && (b.updatedAt || b.createdAt || 0)) - Number(a && (a.updatedAt || a.createdAt || 0)); })[0] || null;
                           }
-                          return roomItems.sort(function(a,b){ return Number(b && (b.updatedAt || b.createdAt || 0)) - Number(a && (a.updatedAt || a.createdAt || 0)); })[0] || null;
+                          roomItems.sort(function(a, b){
+                            return Number(b && (b.updatedAt || b.createdAt || 0)) - Number(a && (a.updatedAt || a.createdAt || 0));
+                          });
+                          return roomItems[0] || null;
                         } catch (e) {}
                         return null;
                       };
@@ -5472,7 +5484,7 @@ var _safeLocalSet = function(key, value) {
                     } else {
                       _niBidHtml = `<div class="wr2-info-row" title="클릭으로 수정" onclick="wr2SummaryStartEdit('biddate');event.stopPropagation();"><span class="wr2-info-lbl">매각기일</span><span class="wr2-info-val">${_niBiddate || '<span style="color:var(--mu);">미입력</span>'}<span class="wr2-edit-hint">✏️</span></span></div>`;
                     }
-                    el.innerHTML = _niBidHtml + '<div class="wr2-no-item">연결된 물건이 없습니다.<br/><span style="color:#4f8eff;cursor:pointer;" onclick="document.getElementById(\'wr2LinkSavedBtn\').click()">🔗 저장목록 연결</span> · <span style="color:#7dd3fc;cursor:pointer;" onclick="document.getElementById(\'wr2LinkSourceBtn\')&&document.getElementById(\'wr2LinkSourceBtn\').click()">🗂 원본연결</span> 으로 다시 연결하세요.</div>';
+                    el.innerHTML = _niBidHtml + '<div class="wr2-no-item">연결된 물건이 없습니다.<br/><span style="color:#4f8eff;cursor:pointer;" onclick="document.getElementById(\'wr2LinkSavedBtn\').click()">🔗 물건연결</span> 버튼으로 저장목록과 연결하세요.</div>';
                     if (room._summaryEditing === 'biddate') {
                       const _niInp = document.getElementById('wr2SumEdt_biddate');
                       if (_niInp) { _niInp.focus(); _niInp.select(); }
@@ -6147,16 +6159,6 @@ window.wr2SummaryCancelEdit = function() {
                     const titleEl = document.getElementById('wr2Title');
                     if (titleEl) titleEl.value = room.title;
                   }
-                  try {
-                    if (!room.targetItemId && typeof plLoad === 'function') {
-                      var linkedPl = (plLoad() || []).find(function(it){ return String(it && it.linkedSavedId || '') === String(savedId); });
-                      if (linkedPl && linkedPl.id) {
-                        room.targetItemId = String(linkedPl.id);
-                        room.linkedItems = Array.isArray(room.linkedItems) ? room.linkedItems.map(function(v){ return String(v || '').trim(); }).filter(Boolean) : [];
-                        if (!room.linkedItems.includes(String(linkedPl.id))) room.linkedItems.push(String(linkedPl.id));
-                      }
-                    }
-                  } catch (e) {}
                   room.updatedAt = Date.now();
                   saveRooms();
                   document.getElementById('wr2LinkModal')?.remove();
@@ -6164,86 +6166,72 @@ window.wr2SummaryCancelEdit = function() {
                   showToast('✅ 물건 연결 완료', 'ok');
                 };
 
+
+
+                // ── 원본 물건(pl) 연결 모달 ──────────────────────────────
                 window.wr2ShowSourceLinkModal = function () {
                   if (document.getElementById('wr2SourceLinkModal')) return;
+                  const items = (typeof plLoad === 'function' ? (plLoad() || []) : []).filter(function(it){ return it && !it.archived; });
                   const modal = document.createElement('div');
                   modal.id = 'wr2SourceLinkModal';
                   modal.innerHTML = `
                     <div class="wr2-lm-inner">
-                      <div class="wr2-lm-hd">🗂 원본 물건 다시 연결
+                      <div class="wr2-lm-hd">🗂 원본 물건 연결
                         <button onclick="document.getElementById('wr2SourceLinkModal').remove()" style="background:none;border:none;color:var(--mu);font-size:16px;cursor:pointer;">✕</button>
                       </div>
-                      <div class="wr2-lm-search"><input id="wr2SourceLmSearch" placeholder="🔍 물건리스트 검색..." oninput="wr2FilterSourceLmList(this.value)"></div>
+                      <div class="wr2-lm-search"><input id="wr2SourceLmSearch" placeholder="🔍 원본 물건 검색..." oninput="wr2FilterSourceLmList(this.value)"></div>
                       <div class="wr2-lm-list" id="wr2SourceLmList"></div>
                     </div>`;
                   document.body.appendChild(modal);
                   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
-                  wr2RenderSourceLmList('', true);
+                  wr2RenderSourceLmList(items, '');
                   setTimeout(() => document.getElementById('wr2SourceLmSearch')?.focus(), 50);
                 };
+
                 window.wr2FilterSourceLmList = function (q) {
-                  wr2RenderSourceLmList(q, false);
+                  const items = (typeof plLoad === 'function' ? (plLoad() || []) : []).filter(function(it){ return it && !it.archived; });
+                  wr2RenderSourceLmList(items, q);
                 };
-                function wr2RenderSourceLmList(q, initial) {
+                function wr2RenderSourceLmList(items, q) {
                   const el = document.getElementById('wr2SourceLmList'); if (!el) return;
-                  const room = (typeof getActiveRoom === 'function') ? getActiveRoom() : null;
-                  const items = (typeof plLoad === 'function') ? (plLoad() || []) : [];
                   const lower = String(q || '').toLowerCase();
-                  let filtered = items.slice();
-                  const savedId = String(room && (room.linkedSavedId || room.auctionId || room.listingId) || '').trim();
-                  if (initial && savedId) {
-                    const matchedSaved = filtered.filter(function(it){ return String(it && it.linkedSavedId || '') === savedId; });
-                    if (matchedSaved.length) filtered = matchedSaved;
-                  }
-                  if (lower) {
-                    filtered = filtered.filter(function(it){
-                      return [it && it.addr, it && it.title, it && it.id, it && it.linkedSavedId, it && it.roomId, it && it.auctionId, it && it.listingId]
-                        .some(v => v && String(v).toLowerCase().includes(lower));
-                    });
-                  }
-                  filtered.sort(function(a,b){
-                    var aScore = 0, bScore = 0;
-                    if (room) {
-                      if (String(a && a.roomId || '') === String(room.id || '')) aScore += 50;
-                      if (String(b && b.roomId || '') === String(room.id || '')) bScore += 50;
-                    }
-                    if (savedId) {
-                      if (String(a && a.linkedSavedId || '') === savedId) aScore += 20;
-                      if (String(b && b.linkedSavedId || '') === savedId) bScore += 20;
-                    }
-                    if (aScore !== bScore) return bScore - aScore;
-                    return Number(b && (b.updatedAt || b.createdAt || 0)) - Number(a && (a.updatedAt || a.createdAt || 0));
-                  });
+                  const filtered = lower ? items.filter(function(it){
+                    const d = it.data || {};
+                    return [it.title, it.addr, d['소재지'], d['도로명주소'], d['지번주소'], d['주소'], d['사건번호'], String(it.id)]
+                      .some(v => v && String(v).toLowerCase().includes(lower));
+                  }) : items;
                   if (!filtered.length) { el.innerHTML = '<div style="padding:20px;text-align:center;font-size:12px;color:var(--mu);">검색 결과가 없습니다</div>'; return; }
-                  el.innerHTML = filtered.slice(0, 80).map(function(it){
-                    var isCurrent = room && String(it && it.roomId || '') === String(room.id || '');
-                    var title = it && (it.title || it.addr || it.id) || '(이름없음)';
-                    var meta = [it && it.linkedSavedId ? ('saved:' + it.linkedSavedId) : '', it && it.roomId ? ('room:' + it.roomId) : '미연결']
-                      .filter(Boolean).join(' · ');
-                    return `<div class="wr2-lm-item" onclick="wr2LinkSourceItem('${String(it && it.id || '').replace(/'/g,"\'")}')">
-                      <div class="wr2-lm-item-title">${isCurrent ? '✅ ' : ''}${title}</div>
-                      <div class="wr2-lm-item-meta">${meta || String(it && it.id || '')}</div>
+                  el.innerHTML = filtered.slice(0, 80).map(function(it) {
+                    const d = it.data || {};
+                    const title = it.title || it.addr || d['소재지'] || d['주소'] || '(이름없음)';
+                    const meta = [d['사건번호'] || '', d['물건종류'] || d['용도'] || '', it.addr || d['소재지'] || ''].filter(Boolean).join(' · ');
+                    return `<div class="wr2-lm-item" onclick="wr2LinkSourceItem('${String(it.id).replace(/'/g, "\'")}')">
+                      <div class="wr2-lm-item-title">${title}</div>
+                      <div class="wr2-lm-item-meta">${meta || String(it.id)}</div>
                     </div>`;
                   }).join('');
                 }
                 window.wr2LinkSourceItem = function (itemId) {
-                  const room = getActiveRoom(); if (!room || !itemId) return;
-                  if (typeof window.plAssignRoomToItem === 'function') {
-                    window.plAssignRoomToItem(String(itemId), String(room.id || ''));
-                  }
+                  const room = getActiveRoom(); if (!room) return;
+                  if (typeof window.plAssignRoomToItem !== 'function') return;
+                  window.plAssignRoomToItem(String(itemId), String(room.id || ''));
                   try {
-                    room.targetItemId = String(itemId);
-                    room.linkedItems = Array.isArray(room.linkedItems) ? room.linkedItems.map(function(v){ return String(v || '').trim(); }).filter(Boolean) : [];
-                    if (!room.linkedItems.includes(String(itemId))) room.linkedItems.push(String(itemId));
-                    room.updatedAt = Date.now();
-                    saveRooms();
+                    const items = (typeof plLoad === 'function') ? (plLoad() || []) : [];
+                    const it = items.find(function(x){ return String(x && x.id || '') === String(itemId); }) || null;
+                    if (it) {
+                      room.targetItemId = String(it.id || '');
+                      room.linkedItems = Array.isArray(room.linkedItems) ? room.linkedItems.map(function(v){ return String(v || '').trim(); }).filter(Boolean) : [];
+                      if (!room.linkedItems.includes(String(it.id || ''))) room.linkedItems.push(String(it.id || ''));
+                      if (!room.linkedSavedId && it.linkedSavedId) room.linkedSavedId = String(it.linkedSavedId || '');
+                      room.updatedAt = Date.now();
+                      if (typeof saveRooms === 'function') saveRooms();
+                    }
                   } catch (e) { console.warn('[wr2LinkSourceItem]', e); }
                   document.getElementById('wr2SourceLinkModal')?.remove();
-                  try { renderItemSummary(room); } catch (e) {}
-                  try { if (typeof wr2Render === 'function') wr2Render(); } catch (e) {}
+                  try { renderDetail(); } catch(e) {}
+                  try { if (typeof wr2Render === 'function') wr2Render(); } catch(e) {}
                   if (typeof showToast === 'function') showToast('✅ 원본 물건 연결 완료', 'ok');
                 };
-
                 // ── 체크리스트 위젯 ──────────────────────────────────
                 // phase별 체크리스트 기본값 (개요탭 제거, 단계탭에 배분)
                 const PHASE_CHECKLIST_DEFAULTS = {
@@ -43228,19 +43216,30 @@ window.addEventListener('DOMContentLoaded', () => {
     var items = (typeof plLoad === 'function') ? plLoad() : [];
     var explicit = String(targetItemId || '').trim();
     var roomKey = String(roomId || '').trim();
-    var rooms = (typeof getWrRooms === 'function') ? (getWrRooms() || []) : [];
-    var room = rooms.find(function(r){ return String(r && r.id || '') === roomKey; }) || null;
-    var roomTargetId = String(room && room.targetItemId || '').trim();
-    if (roomTargetId) {
-      var direct = (items || []).find(function(it){ return String(it && it.id || '') === roomTargetId; });
-      if (direct) return direct;
+    var room = null;
+    try {
+      if (roomKey && typeof getWrRooms === 'function') {
+        room = (getWrRooms() || []).find(function(r){ return String(r && r.id || '') === roomKey; }) || null;
+      }
+    } catch (e) {}
+    var roomTargetItemId = String(room && room.targetItemId || '').trim();
+    if (roomTargetItemId) {
+      var direct = (items || []).find(function(it){ return String(it && it.id || '') === roomTargetItemId; });
+      if (direct) return direct || null;
     }
     if (explicit) {
-      var explicitItem = (items || []).find(function(it){ return String(it && it.id || '') === explicit; });
-      if (explicitItem) return explicitItem;
+      var explicitDirect = (items || []).find(function(it){ return String(it && it.id || '') === explicit; });
+      if (explicitDirect) return explicitDirect || null;
+    }
+    var linkedItemIds = Array.isArray(room && room.linkedItems)
+      ? room.linkedItems.map(function(v){ return String(v || '').trim(); }).filter(Boolean)
+      : [];
+    if (linkedItemIds.length) {
+      var linkedDirect = (items || []).find(function(it){ return linkedItemIds.includes(String(it && it.id || '')); });
+      if (linkedDirect) return linkedDirect || null;
     }
     if (typeof _plPickRoomTargetItem === 'function') {
-      var picked = _plPickRoomTargetItem(roomKey, items, explicit || roomTargetId);
+      var picked = _plPickRoomTargetItem(roomKey, items, explicit || roomTargetItemId);
       if (picked) return picked;
     }
     var matched = (items || []).filter(function(it){
@@ -43251,12 +43250,6 @@ window.addEventListener('DOMContentLoaded', () => {
       if (exact) return exact;
     }
     if (matched.length === 1) return matched[0] || null;
-    var savedId = String(room && (room.linkedSavedId || room.auctionId || room.listingId) || '').trim();
-    if (savedId) {
-      var bySaved = matched.filter(function(it){ return String(it && it.linkedSavedId || '') === savedId; });
-      if (bySaved.length === 1) return bySaved[0] || null;
-      if (bySaved.length > 1) matched = bySaved;
-    }
     matched.sort(function(a, b){
       return Number(b && (b.updatedAt || b.createdAt || 0)) - Number(a && (a.updatedAt || a.createdAt || 0));
     });
@@ -45661,14 +45654,14 @@ window.addEventListener('DOMContentLoaded', () => {
       var rooms = getWrRooms() || [];
       room = rooms.find(function(r){ return String(r && r.id || '') === roomId; }) || null;
     }
-    var target = null;
     var roomTargetId = String(room && room.targetItemId || '').trim();
+    var target = null;
     try {
-      if (roomTargetId && typeof plLoad === 'function') {
-        target = (plLoad() || []).find(function(it){ return String(it && it.id || '') === roomTargetId; }) || null;
-      }
-      if (!target && typeof _plResolveLifecycleTargetItem === 'function') target = _plResolveLifecycleTargetItem(roomId, explicitId || roomTargetId);
+      if (roomId && typeof _plResolveLifecycleTargetItem === 'function') target = _plResolveLifecycleTargetItem(roomId, explicitId || roomTargetId);
     } catch (e) {}
+    if (!target && roomTargetId && typeof plLoad === 'function') {
+      target = (plLoad() || []).find(function(it){ return String(it && it.id || '') === roomTargetId; }) || null;
+    }
     if (!target && explicitId && typeof plLoad === 'function') {
       target = (plLoad() || []).find(function(it){ return String(it && it.id || '') === explicitId; }) || null;
     }
@@ -45681,13 +45674,6 @@ window.addEventListener('DOMContentLoaded', () => {
     if (!target || !target.id) return { ok:false, reason:'not_found', room: room, item: target };
     var targetId = String(target.id || '').trim();
     var changedItem = null;
-    try {
-      if (room) {
-        room.targetItemId = targetId;
-        room.linkedItems = Array.isArray(room.linkedItems) ? room.linkedItems.map(function(v){ return String(v || '').trim(); }).filter(Boolean) : [];
-        if (targetId && room.linkedItems.indexOf(targetId) < 0) room.linkedItems.push(targetId);
-      }
-    } catch (e) {}
     if (typeof plUpdateItem === 'function') {
       changedItem = plUpdateItem(targetId, {
         round: String(nextRound),
@@ -45719,6 +45705,9 @@ window.addEventListener('DOMContentLoaded', () => {
         room.biddate = String(nextDate || '').trim();
         room.round = String(nextRound);
         room.minprice = String(nextPrice || '').trim();
+        room.targetItemId = targetId;
+        room.linkedItems = Array.isArray(room.linkedItems) ? room.linkedItems.map(function(v){ return String(v || '').trim(); }).filter(Boolean) : [];
+        if (targetId && !room.linkedItems.includes(targetId)) room.linkedItems.push(targetId);
         room.lifecycleStatus = 'active';
         room.status = 'review';
         room.phase = 'review';
