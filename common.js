@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260417-syncfix7';
+    window.__SK_BUILD = '20260423-lifecycle-unified1';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -2002,9 +2002,7 @@
           if (local.biddate !== undefined) next.biddate = local.biddate;
           const lts = Number(local.updatedAt || local.timestamp || 0);
           const cts = Number(item.updatedAt || item.timestamp || 0);
-          // 클라우드 새로고침마다 updatedAt을 현재시각으로 올리면
-          // 변경이 없어도 항상 "변경됨"으로 판단되어 저장/원복 루프가 생긴다.
-          next.updatedAt = Math.max(lts, cts);
+          next.updatedAt = Math.max(lts, cts, Date.now());
           return next;
         });
       } catch (e) {}
@@ -3343,8 +3341,8 @@ var _safeLocalSet = function(key, value) {
                   activePhase: 'review',
                   sort: 'updated',
                   search: '',
-                  // 상태 구분 UI 제거: 목록은 항상 전체 기준으로 표시
-                  statusFilter: 'all',
+                  // lifecycleStatus 기준 필터 (기본: 활성만 → 종료 누적 문제 방지)
+                  statusFilter: 'active',
                   // 폴더 제거: groupFilter는 레거시 호환용 키만 유지
                   groupFilter: 'all'
                 };
@@ -4569,8 +4567,7 @@ var _safeLocalSet = function(key, value) {
                     (r.address || '').toLowerCase().includes(q) ||
                     (r.tags || []).some(t => (t || '').toLowerCase().includes(q))
                   );
-                  // 상태 탭(활성/변경/종료) 제거 정책:
-                  // 작업룸 목록은 lifecycleStatus로 분리하지 않고 항상 전체를 보여준다.
+                  rooms = rooms.filter(r => wr2RoomMatchesLifecycle(r, wr2State.statusFilter));
                   rooms.sort((a, b) => {
                     const ma = getRoomLinkedMeta(a);
                     const mb = getRoomLinkedMeta(b);
@@ -4589,12 +4586,44 @@ var _safeLocalSet = function(key, value) {
                   });
 
                   listEl.innerHTML = '';
-                  // 상태 스코프 바 비활성화 (활성/변경/종료/전체 버튼 제거)
+                  // 상태(활성/변경/종료) 스코프 바 렌더
                   try {
                     const scopeEl = document.getElementById('wr2ListScopeBar');
                     if (scopeEl) {
+                      const allRooms = wr2State.rooms.filter(r => r && !r.deletedAt);
+                      const cnt = {
+                        active: allRooms.filter(r => wr2GetLifecycle(r) === 'active').length,
+                        changed: allRooms.filter(r => wr2GetLifecycle(r) === 'changed').length,
+                        closed: allRooms.filter(r => wr2GetLifecycle(r) === 'closed').length,
+                        all: allRooms.length
+                      };
+                      const cur = String(wr2State.statusFilter || 'active');
+                      const mkBtn = function(key, label) {
+                        const b = document.createElement('button');
+                        b.type = 'button';
+                        const isOn = cur === key;
+                        const tone = key === 'changed'
+                          ? { fg: '#fbbf24', bg: 'rgba(251,191,36,.12)', bd: 'rgba(251,191,36,.35)' }
+                          : key === 'closed'
+                            ? { fg: '#ff8694', bg: 'rgba(255,99,112,.12)', bd: 'rgba(255,99,112,.35)' }
+                            : { fg: '#4f8eff', bg: 'rgba(79,142,255,.12)', bd: 'rgba(79,142,255,.35)' };
+                        b.style.cssText =
+                          'padding:4px 9px;border-radius:999px;border:1px solid ' + (isOn ? tone.bd : 'var(--b1)') +
+                          ';background:' + (isOn ? tone.bg : 'var(--s2)') +
+                          ';color:' + (isOn ? tone.fg : 'var(--mu)') +
+                          ';font-size:11px;cursor:pointer;white-space:nowrap;';
+                        b.textContent = label + ' ' + (key === 'all' ? cnt.all : cnt[key]);
+                        b.onclick = function() { wr2State.statusFilter = key; wr2Render(); };
+                        return b;
+                      };
                       scopeEl.innerHTML = '';
-                      scopeEl.style.display = 'none';
+                      scopeEl.style.display = 'flex';
+                      scopeEl.style.gap = '6px';
+                      scopeEl.style.flexWrap = 'wrap';
+                      scopeEl.appendChild(mkBtn('active', '활성'));
+                      scopeEl.appendChild(mkBtn('changed', '변경'));
+                      scopeEl.appendChild(mkBtn('closed', '종료'));
+                      scopeEl.appendChild(mkBtn('all', '전체'));
                     }
                   } catch (e) {}
                   const appendRoomItem = (parentEl, r) => {
@@ -4768,25 +4797,47 @@ var _safeLocalSet = function(key, value) {
                         const next = String(e.target.value || 'active');
                         const linkedItem = wr2ResolveLinkedPlItem(room);
                         const targetItemId = linkedItem && linkedItem.id ? String(linkedItem.id) : '';
+                        if (next === 'changed' && prev !== 'changed' && typeof _skOpenResultFlow === 'function') {
+                          lifeSel.value = prev;
+                          _skOpenResultFlow({ source: 'wr', id: room.id, item: linkedItem || {}, preferMode: 'changed' });
+                          return;
+                        }
                         if (next === 'closed' && prev !== 'closed') {
                           wr2CollectCloseSummary(room.closedSummary, function(closedSummary) {
-                            updateRoom(room.id, {
-                              lifecycleStatus: next,
-                              closedSummary: closedSummary,
-                              __targetItemId: targetItemId,
-                              __forceLifecycleChange: true
-                            });
+                            if (typeof window.skApplyUnifiedLifecycle === 'function') {
+                              window.skApplyUnifiedLifecycle({
+                                roomId: room.id,
+                                itemId: targetItemId,
+                                lifecycleStatus: next,
+                                closedSummary: closedSummary
+                              });
+                            } else {
+                              updateRoom(room.id, {
+                                lifecycleStatus: next,
+                                closedSummary: closedSummary,
+                                __targetItemId: targetItemId,
+                                __forceLifecycleChange: true
+                              });
+                            }
                             window.__plLastLocalStatusMutationAt = Date.now();
                           }, function() {
                             lifeSel.value = prev;
                           });
                           return;
                         }
-                        updateRoom(room.id, {
-                          lifecycleStatus: next,
-                          __targetItemId: targetItemId,
-                          __forceLifecycleChange: true
-                        });
+                        if (typeof window.skApplyUnifiedLifecycle === 'function') {
+                          window.skApplyUnifiedLifecycle({
+                            roomId: room.id,
+                            itemId: targetItemId,
+                            lifecycleStatus: next
+                          });
+                        } else {
+                          updateRoom(room.id, {
+                            lifecycleStatus: next,
+                            __targetItemId: targetItemId,
+                            __forceLifecycleChange: true
+                          });
+                        }
                         window.__plLastLocalStatusMutationAt = Date.now();
                       };
 
@@ -7696,8 +7747,11 @@ window.wr2SummaryCancelEdit = function() {
                   bindEventsOnce();
                   initResizeHandle();
                   if (!wr2State.activeView) wr2State.activeView = 'overview';
-                  // 상태 구분 UI 제거 정책: 항상 전체 표시
-                  if (!wr2State.statusFilter) wr2State.statusFilter = 'all';
+                  // ★ 첫 진입 시: 필터는 '활성'으로 기본 설정, 방 자동 선택 없음 (빈 상태 안내 표시)
+                  // 통상적인 상용 프로그램 방식: 왼쪽 목록에서 사용자가 선택하도록 유도
+                  if (!wr2State.statusFilter || wr2State.statusFilter === 'all') {
+                    wr2State.statusFilter = 'active';
+                  }
                   // activeRoomId를 강제로 비우지는 않음 (페이지 내 탭 전환 시 유지는 자연스러움).
                   // 단, 자동 선택 로직은 제거.
                   wr2Render();
@@ -42386,17 +42440,13 @@ window.addEventListener('DOMContentLoaded', () => {
       });
 
       var built = plBuildFromRoom(room, savedItem, fallbackBase, linkedSavedId);
-      // room 단일 상태 정책:
-      // 같은 작업룸의 물건은 항상 room lifecycle을 기준으로 같은 상태를 갖는다.
-      // (기존 항목 유지 중에도 상태/기일은 room 기준으로 재정렬)
+      // 기존 물건이 있으면 상태/기일 계열은 물건 레코드를 유지한다.
+      // 작업룸 동기화는 링크/제목/주소/요약 보강만 수행한다.
+      // 상태 변경은 syncPropertyFromRoom(명시적 룸 액션) 경로에서만 반영한다.
       if (existing) {
-        built.status = plStatusFromRoom(room, existing.status || built.status || 'review');
-        built.archived = (built.status === 'archived');
-        if (plSimpleStatusKey(built.status) === 'changed' || plSimpleStatusKey(built.status) === 'closed') {
-          built.biddate = '미정';
-        } else if (_plIsUndecidedDate(built.biddate || '') && !_plIsUndecidedDate(existing.biddate || '')) {
-          built.biddate = existing.biddate;
-        }
+        built.status = existing.status;
+        built.archived = !!existing.archived;
+        built.biddate = existing.biddate;
         built.round = existing.round;
         built.minprice = existing.minprice;
       }
@@ -42466,13 +42516,11 @@ window.addEventListener('DOMContentLoaded', () => {
   }
   function plEffectiveSimpleStatus(item, roomById) {
     var it = plNormalizeItem(item || {});
-    // room에 연결된 물건은 room lifecycle을 단일 기준으로 표시한다.
-    // (개별 레코드 상태값 잔존으로 인한 탭/드롭다운 불일치 방지)
-    if (it.roomId && roomById && roomById[String(it.roomId)]) {
-      var room = roomById[String(it.roomId)];
-      return plSimpleStatusKey(room && (room.lifecycleStatus || room.status || room.phase || room.activePhase) || 'active');
-    }
-    return plSimpleStatusKey(it.status);
+    var simple = plSimpleStatusKey(it.status);
+    // 상태 표시는 물건 레코드(status)를 단일 기준으로 사용한다.
+    // 작업룸 상태는 syncPropertyFromRoom 경로에서만 명시적으로 반영한다.
+    // (백그라운드 동기화 시 작업룸 lifecycle이 UI를 되돌리는 현상 방지)
+    return simple;
   }
   function plApplySimpleStatusToItem(item, simple) {
     if (!item) return;
@@ -42704,13 +42752,13 @@ window.addEventListener('DOMContentLoaded', () => {
         targetId = String(targetItem && targetItem.id || '');
       }
     }
-    // room 단위 상태 정책:
-    // 같은 작업룸(roomId) 물건은 모두 동일 상태를 가져야 하므로
-    // 상태 패치(hasStatusPatch)는 __targetItemId가 있어도 방 전체에 적용한다.
+    // 타깃 물건이 명시되지 않은 상태 변경은 적용하지 않는다.
+    // (한 건 변경 시 같은 작업룸 물건 다수가 같이 바뀌는 근본 경로 차단)
+    if (hasStatusPatch && !targetId) return;
     var changed = false;
     items = items.map(function(it){
       if (String(it.roomId||'') !== String(roomId)) return it;
-      if (targetId && !hasStatusPatch && String(it.id || '') !== targetId) return it;
+      if (targetId && String(it.id || '') !== targetId) return it;
       var safePatch = Object.assign({}, patch || {});
       // ★ 버그 수정: 이미 종료된 항목은 'changed'/'active' 패치로 되돌리지 않음
       // (낙찰/패찰 정보가 있는 종료 물건이 클라우드/동기화 race로 '변경'으로 덮어써지는 문제 방지)
@@ -42762,7 +42810,7 @@ window.addEventListener('DOMContentLoaded', () => {
       plSave(items);
       items.forEach(function(it){
         if (String(it.roomId || '') !== String(roomId)) return;
-        if (targetId && !hasStatusPatch && String(it.id || '') !== String(targetId)) return;
+        if (targetId && String(it.id || '') !== String(targetId)) return;
         try { plSyncItemToSaved(it); } catch(e) {}
       });
       if (typeof renderPropertyList === 'function') setTimeout(renderPropertyList, 30);
@@ -42997,6 +43045,71 @@ window.addEventListener('DOMContentLoaded', () => {
     plSave(next.map(plNormalizeItem));
     return true;
   }
+
+  function _plResolveLifecycleTargetItem(roomId, targetItemId) {
+    var items = (typeof plLoad === 'function') ? plLoad() : [];
+    var explicit = String(targetItemId || '').trim();
+    var roomKey = String(roomId || '').trim();
+    if (typeof _plPickRoomTargetItem === 'function') {
+      var picked = _plPickRoomTargetItem(roomKey, items, explicit);
+      if (picked) return picked;
+    }
+    var matched = (items || []).filter(function(it){
+      return String(it && it.roomId || '') === roomKey;
+    });
+    if (explicit) {
+      var exact = matched.find(function(it){ return String(it && it.id || '') === explicit; });
+      if (exact) return exact;
+    }
+    if (matched.length === 1) return matched[0] || null;
+    matched.sort(function(a, b){
+      return Number(b && (b.updatedAt || b.createdAt || 0)) - Number(a && (a.updatedAt || a.createdAt || 0));
+    });
+    return matched[0] || null;
+  }
+  window.skApplyUnifiedLifecycle = function(opts) {
+    opts = opts || {};
+    var roomId = String(opts.roomId || opts.id || '').trim();
+    var targetItemId = String(opts.itemId || opts.targetItemId || '').trim();
+    var simple = plSimpleStatusKey(opts.lifecycleStatus || opts.simple || 'active');
+    var targetItem = _plResolveLifecycleTargetItem(roomId, targetItemId);
+    var resolvedItemId = String(targetItem && targetItem.id || targetItemId || '').trim();
+    var usedItemSetter = false;
+
+    if (resolvedItemId && typeof window.plSetSimpleStatus === 'function') {
+      var prevForce = window.__plForceDirectSet;
+      window.__plForceDirectSet = true;
+      try {
+        window.plSetSimpleStatus(resolvedItemId, simple);
+        usedItemSetter = true;
+      } catch (e) {
+        console.warn('[lifecycle] plSetSimpleStatus fallback', e);
+      } finally {
+        window.__plForceDirectSet = prevForce;
+      }
+    }
+
+    if (roomId && typeof updateRoom === 'function') {
+      var patch = {
+        lifecycleStatus: simple,
+        __targetItemId: resolvedItemId,
+        __forceLifecycleChange: true
+      };
+      if (!usedItemSetter) {
+        patch.status = (simple === 'closed') ? 'closed' : (simple === 'changed' ? 'field' : 'review');
+      }
+      if (Object.prototype.hasOwnProperty.call(opts, 'closedSummary')) {
+        patch.closedSummary = opts.closedSummary;
+      }
+      updateRoom(roomId, patch, !!opts.silentRender);
+    }
+
+    if (typeof window.mbRoomRefreshSel === 'function' && opts.refreshMobile === true) {
+      try { window.mbRoomRefreshSel(); } catch (e) {}
+    }
+    return { roomId: roomId, itemId: resolvedItemId, lifecycleStatus: simple };
+  };
+
   function _plWrapWorkroomSync() {
     if (window.__plRoomWrapped) return;
     window.__plRoomWrapped = true;
@@ -43050,38 +43163,34 @@ window.addEventListener('DOMContentLoaded', () => {
     var item = items.find(function(i){return i.id===id;});
     if (!item) return;
     var nextSimple = String(simpleStatus || 'active');
-    var targetRoomId = String(item.roomId || '').trim();
-    var changed = false;
-    items = items.map(function(it){
-      var match = targetRoomId
-        ? (String(it.roomId || '').trim() === targetRoomId)
-        : (String(it.id || '') === String(id || ''));
-      if (!match) return it;
-      var curSimple = plSimpleStatusKey(it.status);
-      if (curSimple === nextSimple) return it;
-      var next = Object.assign({}, it);
-      plApplySimpleStatusToItem(next, nextSimple);
-      next.__allowLifecycleReopen = true;
-      changed = true;
-      return plNormalizeItem(next);
-    });
-    if (!changed) return false;
+    var oldSimple = plSimpleStatusKey(item.status);
+    var effectiveSimple = oldSimple;
+    try {
+      var roomById = {};
+      (getWrRooms() || []).forEach(function(r){ if (r && r.id) roomById[String(r.id)] = r; });
+      effectiveSimple = plEffectiveSimpleStatus(item, roomById);
+    } catch (e) {}
+    if (oldSimple === nextSimple && effectiveSimple === nextSimple) return false;
+    // '변경'은 즉시 확정하지 않고 결과 플로우(유찰/변경·재매각)로 분기한다.
+    if (nextSimple === 'changed'
+        && effectiveSimple !== 'changed'
+        && window.__plForceDirectSet !== true
+        && typeof window._skOpenResultFlow === 'function') {
+      window.__plInlineEditKey = '';
+      window.__plLastLocalStatusMutationAt = Date.now();
+      window._skOpenResultFlow({ source: 'pl', id: id, item: item, preferMode: 'changed' });
+      return 'flow';
+    }
+    plApplySimpleStatusToItem(item, nextSimple);
+    item.__allowLifecycleReopen = true;
     plSave(items.map(plNormalizeItem));
     window.__plLastLocalStatusMutationAt = Date.now();
-    if (targetRoomId) {
-      var reps = items.filter(function(it){ return String(it.roomId || '').trim() === targetRoomId; });
-      if (reps.length) {
-        try { syncToWorkroom(reps[0]); } catch (e) {}
-        reps.forEach(function(it){ try { plSyncItemToSaved(it); } catch(e) {} });
-      }
-    } else {
-      var one = items.find(function(i){ return String(i.id || '') === String(id || ''); });
-      if (one) {
-        try { syncToWorkroom(one); } catch(e) {}
-        try { plSyncItemToSaved(one); } catch(e) {}
-      }
+    syncToWorkroom(item);
+    try { delete item.__allowLifecycleReopen; } catch(e) {}
+    try { plSyncItemToSaved(item); } catch(e) {}
+    if (nextSimple === 'closed' && oldSimple !== 'closed') {
+      setTimeout(function(){ plOpenResultModal(id); }, 200);
     }
-    items.forEach(function(it){ try { delete it.__allowLifecycleReopen; } catch(e) {} });
     renderPropertyList();
     return true;
   };
@@ -45161,3 +45270,527 @@ window.addEventListener('DOMContentLoaded', () => {
   }
 })();
 
+
+/* === v5 lifecycle/result patch (2026-04-22) === */
+(function(){
+  try {
+    if (typeof STATUS_MAP !== 'undefined' && STATUS_MAP && STATUS_MAP.active) {
+      STATUS_MAP.active.label = '활성';
+    }
+  } catch(e) {}
+  try {
+    if (typeof wr2LifecycleLabel === 'function') {
+      var _origWr2LifecycleLabel = wr2LifecycleLabel;
+      wr2LifecycleLabel = function(roomOrKey){
+        var key = (typeof roomOrKey === 'string') ? roomOrKey : (typeof wr2GetLifecycle === 'function' ? wr2GetLifecycle(roomOrKey) : 'active');
+        if (key === 'closed') return '종료';
+        if (key === 'changed') return '변경';
+        return '활성';
+      };
+    }
+  } catch(e) {}
+
+  function _skFmtYmd(v){
+    try {
+      if (!v) return '';
+      if (v === '미정') return '미정';
+      var s = String(v).trim();
+      var m = s.match(/(20\d{2})[.\-/년\s]*(\d{1,2})[.\-/월\s]*(\d{1,2})/);
+      if (!m) return s;
+      return m[1] + '-' + String(m[2]).padStart(2,'0') + '-' + String(m[3]).padStart(2,'0');
+    } catch(e){ return String(v||''); }
+  }
+  function _skAddDays(v, days){
+    try {
+      var s = _skFmtYmd(v);
+      if (!s || s==='미정') return '';
+      var dt = new Date(s + 'T00:00:00');
+      if (isNaN(dt.getTime())) return s;
+      dt.setDate(dt.getDate() + (days||28));
+      var y = dt.getFullYear();
+      var m = String(dt.getMonth()+1).padStart(2,'0');
+      var d = String(dt.getDate()).padStart(2,'0');
+      return y+'-'+m+'-'+d;
+    } catch(e){ return ''; }
+  }
+  function _skDigits(v){ return String(v||'').replace(/[^0-9]/g,''); }
+  function _skNum(v){ var n = Number(_skDigits(v)); return isNaN(n)?0:n; }
+  function _skComma(v){ var n = _skNum(v); return n ? n.toLocaleString('ko-KR') : ''; }
+  function _skTodayYmd(){
+    var dt = new Date();
+    var y = dt.getFullYear();
+    var m = String(dt.getMonth()+1).padStart(2,'0');
+    var d = String(dt.getDate()).padStart(2,'0');
+    return y + '-' + m + '-' + d;
+  }
+  function _skCurrentMinPrice(item){
+    var cur = 0;
+    try {
+      cur = _skNum((item && item.minprice) || (item && item.price) || (item && item.result && item.result.minprice) || 0);
+      if (!cur && item && item._norm) cur = Number(item._norm.최저가_만원 || 0);
+      if (!cur && item && item._norm) cur = Number(item._norm.최저매각가격 || 0);
+      if (!cur && item && item._norm) cur = Number(item._norm.감정가_만원 || 0);
+      if (!cur) cur = _skNum((item && item.appraisal) || 0);
+    } catch(e) {}
+    return cur > 0 ? cur : 0;
+  }
+  function _skNextPrice(item){
+    var cur = _skCurrentMinPrice(item);
+    if (!cur) return 0;
+    // 기본 유찰 계산: 다음 회차 최저가는 20% 감액(80%) 기준
+    return Math.max(1, Math.floor(cur * 0.8));
+  }
+  function _skBuildUnsoldPlan(item){
+    var base = item || {};
+    var curRound = _skCurrentRound(base);
+    var nextRound = (curRound > 0) ? (curRound + 1) : 1;
+    var baseDate = _skFmtYmd(_skCurrentBidDate(base));
+    if (!baseDate || baseDate === '미정') baseDate = _skTodayYmd();
+    var nextDate = _skAddDays(baseDate, 28);
+    var nextPrice = _skNextPrice(base);
+    return {
+      round: String(nextRound),
+      date: String(nextDate || ''),
+      price: String(nextPrice || '')
+    };
+  }
+  function _skCurrentRound(item){
+    var r = parseInt(item.round || (item._norm && item._norm.유찰횟수) || 0, 10);
+    return isNaN(r) ? 0 : r;
+  }
+  function _skCurrentBidDate(item){ return item.biddate || item.saleDate || item.매각기일 || ''; }
+
+  function _skEnsureResultModal(){
+    var modal = document.getElementById('skResultFlowModal');
+    if (modal) return modal;
+    modal = document.createElement('div');
+    modal.id = 'skResultFlowModal';
+    modal.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,.62);z-index:14000;align-items:center;justify-content:center;padding:12px;';
+    modal.innerHTML = ''
+      + '<div style="width:min(520px,96vw);background:linear-gradient(180deg,rgba(20,24,36,.98),rgba(11,15,24,.98));border:1px solid rgba(255,196,77,.28);border-radius:14px;box-shadow:0 22px 56px rgba(0,0,0,.5);overflow:hidden;">'
+      + '  <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:linear-gradient(90deg,rgba(251,191,36,.16),rgba(251,191,36,.06));border-bottom:1px solid rgba(251,191,36,.18);">'
+      + '    <div style="display:flex;align-items:center;gap:10px;">'
+      + '      <div style="border:2px solid rgba(251,191,36,.75);border-radius:10px;padding:4px 9px;color:#f7d47d;font-size:12px;font-weight:900;letter-spacing:2px;transform:rotate(-8deg);">변경</div>'
+      + '      <div style="color:#ffe9b3;font-size:13px;font-weight:700;">변경 처리 유형을 선택하세요</div>'
+      + '    </div>'
+      + '    <button type="button" id="skResultFlowCloseX" style="border:none;background:transparent;color:#ffe9b3;font-size:20px;cursor:pointer;line-height:1;">×</button>'
+      + '  </div>'
+      + '  <div style="padding:14px 16px 10px;display:flex;gap:8px;">'
+      + '    <button type="button" id="skModeUnsold" style="flex:1;padding:10px 12px;border-radius:10px;border:1px solid rgba(79,142,255,.28);background:rgba(79,142,255,.12);color:#bcd4ff;font-weight:800;cursor:pointer;">유찰</button>'
+      + '    <button type="button" id="skModeChanged" style="flex:1;padding:10px 12px;border-radius:10px;border:1px solid rgba(251,191,36,.28);background:rgba(251,191,36,.10);color:#ffe09c;font-weight:800;cursor:pointer;">변경 / 미진행</button>'
+      + '  </div>'
+      + '  <div id="skUnsoldForm" style="display:none;padding:0 16px 12px;">'
+      + '    <label style="display:block;font-size:11px;color:#c9d7ff;margin:6px 0 5px;">다음 회차</label>'
+      + '    <input id="skNextRound" type="number" style="width:100%;padding:9px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--tx);outline:none;box-sizing:border-box;">'
+      + '    <label style="display:block;font-size:11px;color:#c9d7ff;margin:10px 0 5px;">다음 매각기일</label>'
+      + '    <input id="skNextDate" type="date" style="width:100%;padding:9px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--tx);outline:none;box-sizing:border-box;">'
+      + '    <label style="display:block;font-size:11px;color:#c9d7ff;margin:10px 0 5px;">다음 최저가</label>'
+      + '    <input id="skNextPrice" type="text" inputmode="numeric" placeholder="원" style="width:100%;padding:9px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--tx);outline:none;box-sizing:border-box;">'
+      + '  </div>'
+      + '  <div id="skChangedInfo" style="display:none;padding:0 16px 12px;font-size:12px;color:var(--mu);">변경/미진행으로 저장하면 매각기일은 미정으로 바뀝니다.</div>'
+      + '  <div style="display:flex;justify-content:flex-end;gap:8px;padding:0 16px 14px;">'
+      + '    <button type="button" id="skResultFlowCancel" style="padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.04);color:var(--tx);font-size:12px;cursor:pointer;">취소</button>'
+      + '    <button type="button" id="skResultFlowSave" style="padding:8px 12px;border-radius:8px;border:1px solid rgba(251,191,36,.35);background:rgba(251,191,36,.18);color:#ffe9b3;font-size:12px;font-weight:700;cursor:pointer;">저장</button>'
+      + '  </div>'
+      + '</div>';
+    document.body.appendChild(modal);
+    return modal;
+  }
+
+  function _skOpenResultFlow(ctx){
+    var modal = _skEnsureResultModal();
+    var close = function(){ modal.style.display='none'; modal.__ctx = null; };
+    modal.__ctx = ctx || {};
+    var unsoldBtn = document.getElementById('skModeUnsold');
+    var changedBtn = document.getElementById('skModeChanged');
+    var unsoldForm = document.getElementById('skUnsoldForm');
+    var changedInfo = document.getElementById('skChangedInfo');
+    var nextRound = document.getElementById('skNextRound');
+    var nextDate = document.getElementById('skNextDate');
+    var nextPrice = document.getElementById('skNextPrice');
+    var saveBtn = document.getElementById('skResultFlowSave');
+    var mode = String((ctx && ctx.preferMode) || 'changed');
+    function applyUnsoldDefaults(){
+      var plan = _skBuildUnsoldPlan(item);
+      if (nextRound) nextRound.value = plan.round || '1';
+      if (nextDate) nextDate.value = plan.date || '';
+      if (nextPrice) nextPrice.value = _skComma(plan.price || '');
+    }
+    function setMode(v){
+      mode = v;
+      unsoldForm.style.display = (v==='unsold') ? 'block' : 'none';
+      changedInfo.style.display = (v==='changed') ? 'block' : 'none';
+      if (v === 'unsold') applyUnsoldDefaults();
+    }
+    if (nextPrice && !nextPrice.dataset.boundMoneyFmt) {
+      nextPrice.dataset.boundMoneyFmt='1';
+      nextPrice.addEventListener('input', function(){
+        var val = String(this.value || '');
+        if (/^[\d,]*$/.test(val)) this.value = _skComma(val);
+      });
+    }
+    unsoldBtn.onclick = function(){ setMode('unsold'); };
+    changedBtn.onclick = function(){ setMode('changed'); };
+    document.getElementById('skResultFlowCloseX').onclick = close;
+    document.getElementById('skResultFlowCancel').onclick = close;
+    modal.onclick = function(evt){ if (evt.target === modal) close(); };
+    var item = ctx.item || {};
+    if (mode !== 'unsold' && mode !== 'changed') mode = 'changed';
+    setMode(mode);
+    saveBtn.onclick = function(){
+      try {
+        if (ctx.source === 'pl') {
+          var targetId = String(ctx.id || '').trim();
+          if (!targetId) return close();
+          if (mode === 'changed') {
+            // 결과 플로우 저장에서는 재귀 진입을 피하고 core 상태 변경만 실행
+            window.__plForceDirectSet = true;
+            try {
+              if (typeof window.plSetSimpleStatus === 'function') window.plSetSimpleStatus(targetId, 'changed');
+            } finally {
+              window.__plForceDirectSet = false;
+            }
+          } else {
+            if (typeof window.plInlineSet === 'function') {
+              window.plInlineSet(targetId, 'round', String(parseInt(nextRound.value || '1', 10) || 1));
+              window.plInlineSet(targetId, 'biddate', nextDate.value || '');
+              window.plInlineSet(targetId, 'minprice', _skDigits(nextPrice.value || ''));
+            }
+            window.__plForceDirectSet = true;
+            try {
+              if (typeof window.plSetSimpleStatus === 'function') window.plSetSimpleStatus(targetId, 'active');
+            } finally {
+              window.__plForceDirectSet = false;
+            }
+          }
+          window.__plInlineEditKey = '';
+          window.__plLastLocalStatusMutationAt = Date.now();
+          if (typeof renderPropertyList === 'function') renderPropertyList();
+        } else if (ctx.source === 'wr') {
+          var wrTargetId = String((ctx.item && ctx.item.id) || '').trim();
+          var patch = { __forceLifecycleChange: true };
+          if (wrTargetId) patch.__targetItemId = wrTargetId;
+          if (mode === 'changed') {
+            patch.lifecycleStatus = 'changed';
+            patch.status = 'field';
+            patch.phase = 'field';
+            patch.activePhase = 'field';
+            patch.biddate = '미정';
+          } else {
+            patch.lifecycleStatus = 'active';
+            patch.status = 'review';
+            patch.phase = 'review';
+            patch.activePhase = 'review';
+            patch.round = parseInt(nextRound.value || '1', 10) || 1;
+            patch.biddate = nextDate.value || '';
+            patch.minprice = _skDigits(nextPrice.value || '');
+          }
+          if (typeof updateRoom === 'function') updateRoom(ctx.id, patch);
+          window.__plLastLocalStatusMutationAt = Date.now();
+          if (typeof renderPropertyList === 'function') setTimeout(renderPropertyList, 60);
+        }
+      } catch(e) { console.warn('[skResultFlowSave]', e); }
+      close();
+    };
+    modal.style.display='flex';
+  }
+  try { window._skOpenResultFlow = _skOpenResultFlow; } catch(e) {}
+
+  // Allow lifecycle reopen when explicitly forced.
+  try {
+    if (typeof updateRoom === 'function') {
+      var _origUpdateRoom_v5 = updateRoom;
+      updateRoom = function(id, patch, silentRender){
+        var safe = Object.assign({}, patch || {});
+        return _origUpdateRoom_v5(id, safe, silentRender);
+      };
+      window.updateRoom = updateRoom;
+    }
+  } catch(e) {}
+
+  try {
+    if (typeof syncPropertyFromRoom === 'function') {
+      var _origSyncPropertyFromRoom = syncPropertyFromRoom;
+      syncPropertyFromRoom = function(roomId, patch){
+        var safe = Object.assign({}, patch || {});
+        if (safe.__forceLifecycleChange === true && safe.lifecycleStatus) {
+          safe.status = safe.status || (safe.lifecycleStatus === 'closed' ? 'closed' : (safe.lifecycleStatus === 'changed' ? 'field' : 'review'));
+        }
+        return _origSyncPropertyFromRoom(roomId, safe);
+      };
+    }
+  } catch(e) {}
+
+  try {
+    if (typeof syncToWorkroom === 'function') {
+      var _origSyncToWorkroom = syncToWorkroom;
+      syncToWorkroom = function(item){
+        if (item && item.__allowLifecycleReopen && item.roomId) {
+          var rooms = getWrRooms();
+          var room = rooms.find(function(r){return r.id === item.roomId;});
+          if (room && typeof updateRoom === 'function') {
+            var simple = plSimpleStatusKey(item.status);
+            var newPhase = (item.status === 'archived' ? 'closed' : (item.status || 'review'));
+            var patch = {
+              phase: newPhase,
+              status: newPhase,
+              activePhase: newPhase,
+              lifecycleStatus: (simple === 'closed' ? 'closed' : (simple === 'changed' ? 'changed' : 'active')),
+              __targetItemId: String(item.id || ''),
+              __forceLifecycleChange: true
+            };
+            if (item.biddate !== undefined) patch.biddate = item.biddate;
+            if (item.minprice !== undefined) patch.minprice = item.minprice;
+            return updateRoom(room.id, patch);
+          }
+        }
+        return _origSyncToWorkroom(item);
+      };
+    }
+  } catch(e) {}
+
+  try {
+    window.plStartInlineEdit = function(key) {
+      var s = document.getElementById(key + '_s');
+      var i = document.getElementById(key + '_i');
+      if (!s || !i) return;
+      window.__plInlineEditKey = String(key || '');
+      s.style.display = 'none';
+      i.style.display = '';
+      try {
+        i.focus();
+        if (typeof i.select === 'function' && i.tagName !== 'SELECT') i.select();
+      } catch(e) {}
+    };
+  } catch(e) {}
+
+  // NOTE:
+  // 물건리스트의 core 구현(window.plSetSimpleStatus)은 상위 IIFE의 지역 함수(plLoad/plSave/syncToWorkroom)를
+  // 클로저로 사용하는 구조다. 여기서 재정의하면 지역 함수 스코프가 끊겨 런타임 오류가 발생할 수 있어
+  // core 함수를 덮어쓰지 않는다.
+
+  try {
+    window._skBindWorkroomLifecycle = function(){
+      var lifeSel = document.getElementById('wr2LifecycleSelect');
+      if (!lifeSel) return;
+      try {
+        var opts = lifeSel.options || [];
+        for (var i=0;i<opts.length;i++) {
+          if (opts[i].value === 'active') opts[i].text = '활성';
+          if (opts[i].value === 'changed') opts[i].text = '변경';
+          if (opts[i].value === 'closed') opts[i].text = '종료';
+        }
+      } catch(e) {}
+      lifeSel.dataset.skBound = '1';
+      lifeSel.onchange = function(e){
+        var room = (typeof getActiveRoom === 'function') ? getActiveRoom() : null;
+        if (!room) return;
+        var linkedItem = null;
+        try {
+          linkedItem = (typeof plLoad === 'function' ? plLoad() : []).find(function(it){
+            return String(it && it.roomId || '') === String(room.id || '');
+          }) || null;
+        } catch(err) {}
+        var prev = (typeof wr2GetLifecycle === 'function') ? wr2GetLifecycle(room) : 'active';
+        var next = String(e.target.value || 'active');
+        if (next === 'changed' && prev !== 'changed' && typeof _skOpenResultFlow === 'function') {
+          lifeSel.value = prev;
+          _skOpenResultFlow({ source: 'wr', id: room.id, item: linkedItem || {}, preferMode: 'changed' });
+          return;
+        }
+        if (next === 'closed' && prev !== 'closed') {
+          wr2CollectCloseSummary(room.closedSummary, function(closedSummary) {
+            updateRoom(room.id, {
+              lifecycleStatus: next,
+              closedSummary: closedSummary,
+              __targetItemId: linkedItem && linkedItem.id ? String(linkedItem.id) : '',
+              __forceLifecycleChange: true
+            });
+          }, function() { lifeSel.value = prev; });
+          return;
+        }
+        updateRoom(room.id, {
+          lifecycleStatus: next,
+          __targetItemId: linkedItem && linkedItem.id ? String(linkedItem.id) : '',
+          __forceLifecycleChange: true
+        });
+      };
+    };
+  } catch(e) {}
+})();
+
+
+/* === lifecycle local override patch (2026-04-23) === */
+(function(){
+  try {
+    var TTL = 4000;
+    window.__plLifecycleOverride = window.__plLifecycleOverride || { byRoom:{}, bySaved:{}, byItem:{} };
+
+    function _now(){ return Date.now(); }
+    function _cleanStore(store){
+      var now = _now();
+      Object.keys(store || {}).forEach(function(key){
+        var entry = store[key];
+        if (!entry || !entry.until || entry.until <= now) delete store[key];
+      });
+    }
+    function _normalizeSimple(value){
+      try {
+        return (typeof plSimpleStatusKey === 'function') ? plSimpleStatusKey(value) : String(value || 'active');
+      } catch(e) {
+        var s = String(value || 'active');
+        if (s === 'field' || s === 'bid' || s === 'won' || s === 'sell') return 'changed';
+        if (s === 'archived') return 'closed';
+        return (s === 'active' || s === 'changed' || s === 'closed') ? s : 'active';
+      }
+    }
+    function _statusFromSimple(simple, base){
+      var s = _normalizeSimple(simple);
+      var b = String(base || 'review');
+      if (s === 'closed') return 'closed';
+      if (s === 'changed') {
+        if (b === 'field' || b === 'bid' || b === 'won' || b === 'sell') return b;
+        return 'field';
+      }
+      // active는 changed 계열(field/bid/won/sell)에서 반드시 review로 복귀시켜야
+      // 상태가 changed로 다시 되돌아가는 교차 덮어쓰기를 막을 수 있다.
+      if (b === 'field' || b === 'bid' || b === 'won' || b === 'sell' || b === 'closed' || b === 'archived') return 'review';
+      return b || 'review';
+    }
+    function _getOverride(item, room, savedId){
+      var bag = window.__plLifecycleOverride || {};
+      var byRoom = bag.byRoom || {};
+      var bySaved = bag.bySaved || {};
+      var byItem = bag.byItem || {};
+      _cleanStore(byRoom); _cleanStore(bySaved); _cleanStore(byItem);
+      var entry = null;
+      var keys = [];
+      if (item && item.id) keys.push(['item', String(item.id)]);
+      for (var i=0;i<keys.length;i++){
+        var type = keys[i][0], key = keys[i][1];
+        var candidate = type === 'item' ? byItem[key] : (type === 'room' ? byRoom[key] : bySaved[key]);
+        if (candidate && candidate.until > _now()) { entry = candidate; break; }
+      }
+      return entry;
+    }
+    function _setOverride(item, simple){
+      var bag = window.__plLifecycleOverride || {};
+      bag.byRoom = bag.byRoom || {};
+      bag.bySaved = bag.bySaved || {};
+      bag.byItem = bag.byItem || {};
+      window.__plLifecycleOverride = bag;
+      var entry = { simple:_normalizeSimple(simple), until:_now()+TTL };
+      if (item && item.id) bag.byItem[String(item.id)] = entry;
+      return entry;
+    }
+    function _clearOverride(item, roomId, savedId){
+      var bag = window.__plLifecycleOverride || {};
+      if (item && item.id && bag.byItem) delete bag.byItem[String(item.id)];
+    }
+
+    window._plSetLifecycleOverride = _setOverride;
+    window._plClearLifecycleOverride = _clearOverride;
+    window._plGetLifecycleOverride = _getOverride;
+
+    if (typeof plBuildPatchFromSaved === 'function' && !plBuildPatchFromSaved.__skOverridePatched) {
+      var _origBuildPatchFromSaved = plBuildPatchFromSaved;
+      plBuildPatchFromSaved = function(src, curItem){
+        var patch = _origBuildPatchFromSaved(src, curItem);
+        if (!patch) return patch;
+        var savedId = String((src && src.id) || (curItem && curItem.linkedSavedId) || '');
+        var entry = _getOverride(curItem || null, null, savedId);
+        if (!entry) return patch;
+        patch.status = _statusFromSimple(entry.simple, patch.status || (curItem && curItem.status) || 'review');
+        if (entry.simple === 'changed' || entry.simple === 'closed') patch.biddate = '미정';
+        else if (patch.biddate === '미정' && curItem && curItem.biddate && curItem.biddate !== '미정') patch.biddate = curItem.biddate;
+        return patch;
+      };
+      plBuildPatchFromSaved.__skOverridePatched = true;
+      window.plBuildPatchFromSaved = plBuildPatchFromSaved;
+    }
+
+    if (typeof plBuildFromRoom === 'function' && !plBuildFromRoom.__skOverridePatched) {
+      var _origBuildFromRoom = plBuildFromRoom;
+      plBuildFromRoom = function(room, savedItem, prevItem, resolvedSavedId){
+        var built = _origBuildFromRoom(room, savedItem, prevItem, resolvedSavedId);
+        var entry = _getOverride(prevItem || built || null, room || null, resolvedSavedId || (savedItem && savedItem.id));
+        if (!entry || !built) return built;
+        built.status = _statusFromSimple(entry.simple, built.status || (prevItem && prevItem.status) || 'review');
+        built.archived = (built.status === 'archived');
+        if (entry.simple === 'changed' || entry.simple === 'closed') built.biddate = '미정';
+        else if (built.biddate === '미정' && prevItem && prevItem.biddate && prevItem.biddate !== '미정') built.biddate = prevItem.biddate;
+        return (typeof plNormalizeItem === 'function') ? plNormalizeItem(built) : built;
+      };
+      plBuildFromRoom.__skOverridePatched = true;
+      window.plBuildFromRoom = plBuildFromRoom;
+    }
+
+    if (typeof plEffectiveSimpleStatus === 'function' && !plEffectiveSimpleStatus.__skOverridePatched) {
+      var _origEffective = plEffectiveSimpleStatus;
+      plEffectiveSimpleStatus = function(item, roomById){
+        var room = roomById && item && item.roomId ? roomById[String(item.roomId)] : null;
+        var entry = _getOverride(item || null, room || null, item && item.linkedSavedId);
+        if (entry) return entry.simple;
+        return _origEffective(item, roomById);
+      };
+      plEffectiveSimpleStatus.__skOverridePatched = true;
+      window.plEffectiveSimpleStatus = plEffectiveSimpleStatus;
+    }
+
+    if (typeof syncPropertyFromRoom === 'function' && !syncPropertyFromRoom.__skOverridePatched) {
+      var _origSyncPropertyFromRoom = syncPropertyFromRoom;
+      syncPropertyFromRoom = function(roomId, patch){
+        var out = _origSyncPropertyFromRoom(roomId, patch);
+        try {
+          var items = (typeof plLoad === 'function') ? plLoad() : [];
+          var item = (items || []).find(function(it){ return String(it && it.roomId || '') === String(roomId || ''); });
+          if (item) {
+            var room = (typeof getWrRooms === 'function') ? (getWrRooms() || []).find(function(r){ return String(r && r.id || '') === String(roomId || ''); }) : null;
+            var entry = _getOverride(item, room, item.linkedSavedId);
+            if (entry) {
+              var currentSimple = _normalizeSimple(item.status);
+              var roomSimple = _normalizeSimple(room && (room.lifecycleStatus || room.status || room.phase) || '');
+              if (currentSimple === entry.simple && roomSimple === entry.simple) {
+                _clearOverride(item);
+              }
+            }
+          }
+        } catch(e) {}
+        return out;
+      };
+      syncPropertyFromRoom.__skOverridePatched = true;
+      window.syncPropertyFromRoom = syncPropertyFromRoom;
+    }
+
+    if (typeof window.plSetSimpleStatus === 'function' && !window.plSetSimpleStatus.__skOverridePatched) {
+      var _origSetSimple = window.plSetSimpleStatus;
+      window.plSetSimpleStatus = function(id, simpleStatus){
+        var out = _origSetSimple.apply(this, arguments);
+        if (out !== true) return out;
+        try {
+          var items = (typeof plLoad === 'function') ? plLoad() : [];
+          var item = (items || []).find(function(it){ return String(it && it.id || '') === String(id || ''); });
+          if (item) _setOverride(item, simpleStatus);
+        } catch(e) {}
+        return out;
+      };
+      window.plSetSimpleStatus.__skOverridePatched = true;
+    }
+
+    if (typeof window.renderPropertyList === 'function' && !window.renderPropertyList.__skOverridePatched2) {
+      var _origRenderList = window.renderPropertyList;
+      window.renderPropertyList = function(){
+        try {
+          var bag = window.__plLifecycleOverride || {};
+          _cleanStore(bag.byRoom || {});
+          _cleanStore(bag.bySaved || {});
+          _cleanStore(bag.byItem || {});
+        } catch(e) {}
+        return _origRenderList.apply(this, arguments);
+      };
+      window.renderPropertyList.__skOverridePatched2 = true;
+    }
+  } catch (e) {
+    console.warn('[lifecycle local override patch]', e);
+  }
+})();

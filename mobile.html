@@ -3222,7 +3222,7 @@ input, textarea, select {
 <script>if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
 
 <!-- 공통 로직 -->
-<script src="common.js?v=202604231300"></script>
+<script src="common.js?v=202604230620"></script>
 
 <!-- ════════════════════════════════════════════════════════
      mobile.js — 모바일 전용 초기화 및 UI 제어
@@ -6539,19 +6539,27 @@ input, textarea, select {
     var sel = document.getElementById('mb-room-sel');
     if (!sel || !sel.value) return;
     var roomId = sel.value;
-    var rooms = (window._wrGetRoomsCache && window._wrGetRoomsCache()) ||
-      ((window._idbCache && window._idbCache['wr2_rooms']) || JSON.parse(localStorage.getItem('wr2_rooms') || '[]'));
-    var room = rooms.find(function(r) { return r.id === roomId; });
-    if (!room) return;
-    room.lifecycleStatus = val;
-    room.updatedAt = Date.now();
-    if (window._wrPersistRooms) window._wrPersistRooms(rooms, { syncState: true });
-    if (window.wr2State) {
-      var sr = window.wr2State.rooms && window.wr2State.rooms.find(function(r){ return r.id === roomId; });
-      if (sr) sr.lifecycleStatus = val;
+    if (typeof window.skApplyUnifiedLifecycle === 'function') {
+      window.skApplyUnifiedLifecycle({
+        roomId: roomId,
+        lifecycleStatus: val,
+        refreshMobile: true
+      });
+    } else {
+      var rooms = (window._wrGetRoomsCache && window._wrGetRoomsCache()) ||
+        ((window._idbCache && window._idbCache['wr2_rooms']) || JSON.parse(localStorage.getItem('wr2_rooms') || '[]'));
+      var room = rooms.find(function(r) { return r.id === roomId; });
+      if (!room) return;
+      room.lifecycleStatus = val;
+      room.updatedAt = Date.now();
+      if (window._wrPersistRooms) window._wrPersistRooms(rooms, { syncState: true });
+      if (window.wr2State) {
+        var sr = window.wr2State.rooms && window.wr2State.rooms.find(function(r){ return r.id === roomId; });
+        if (sr) sr.lifecycleStatus = val;
+      }
+      if (typeof window.mbRoomRefreshSel === 'function') window.mbRoomRefreshSel();
     }
     mbToast({ active: '활성으로 변경', changed: '변경 상태로 설정', closed: '종료 처리됨' }[val] || '상태 변경', 'ok');
-    mbRoomRefreshSel();
   };
 
   // ── 모바일 파이프라인 렌더 ────────────────────────────────────
