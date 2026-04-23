@@ -5691,6 +5691,7 @@ var _safeLocalSet = function(key, value) {
                     room._summaryEditing = null;
                     room.updatedAt = Date.now(); saveRooms();
                     renderItemSummary(room);
+                    if (typeof renderList === 'function') renderList();
                   } catch (err) {
                     console.error('[wr2SummaryEditSave Error]', err);
                     alert('저장 중 오류가 발생했습니다: ' + err.message);
@@ -45832,11 +45833,6 @@ window.addEventListener('DOMContentLoaded', () => {
         } catch(err) {}
         var prev = (typeof wr2GetLifecycle === 'function') ? wr2GetLifecycle(room) : 'active';
         var next = String(e.target.value || 'active');
-        if (next === 'changed' && prev !== 'changed' && typeof _skOpenResultFlow === 'function') {
-          lifeSel.value = prev;
-          _skOpenResultFlow({ source: 'wr', id: room.id, item: linkedItem || {}, preferMode: 'changed' });
-          return;
-        }
         if (next === 'closed' && prev !== 'closed') {
           wr2CollectCloseSummary(room.closedSummary, function(closedSummary) {
             updateRoom(room.id, {
