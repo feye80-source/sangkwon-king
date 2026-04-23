@@ -5502,7 +5502,7 @@ var _safeLocalSet = function(key, value) {
                     if (room._summaryEditing === key) {
                       return `<div class="wr2-info-row wr2-info-editing">
                         <span class="wr2-info-lbl">${label}</span>
-                        <input class="wr2-info-edit-inp" value="${rawVal||''}"
+                        <input class="wr2-info-edit-inp" type="${key==='biddate' ? 'date' : 'text'}" value="${key==='biddate' && typeof plNormalizeDateInput==='function' ? (plNormalizeDateInput(rawVal||'')||'') : (rawVal||'')}"
                           onblur="wr2SummaryEditSave('${key}',this.value)"
                           onkeydown="if(event.key==='Enter')this.blur();if(event.key==='Escape')wr2SummaryCancelEdit();"
                           id="wr2SumEdt_${key}" placeholder="${key==='biddate' ? 'YYYY-MM-DD' : (label + ' 입력' + (key==='price'||key==='deposit'||key==='rent' ? ' (원 단위)' : ''))}">
@@ -5583,7 +5583,7 @@ var _safeLocalSet = function(key, value) {
                   // 매각기일 (항상 표시 + 수동 수정 가능)
                   {
                     const bidOverride = String((room._summaryOverride && room._summaryOverride.biddate) || '').trim();
-                    const bidRaw = bidOverride || saleDateRaw || String(item.biddate || '').trim();
+                    const bidRaw = plNormalizeDateInput ? plNormalizeDateInput(bidOverride || String(item.biddate || '').trim() || saleDateRaw) : (bidOverride || String(item.biddate || '').trim() || saleDateRaw);
                     const bidObj = wr2ParseSaleDateLoose(bidRaw);
                     const bidDday = wr2CalcDdayFromDate(bidObj);
                     const bidLabel = (bidDday == null) ? '' : (bidDday < 0 ? '기일지남·수정필요' : (bidDday === 0 ? 'D-Day' : 'D-' + bidDday));
@@ -42207,7 +42207,6 @@ window.addEventListener('DOMContentLoaded', () => {
         var currentBid = _plNormalizeBiddateValue(curItem.biddate || '');
         var mappedBid = _plNormalizeBiddateValue(mapped.biddate || '');
         // 작업룸 연결 물건은 로컬 상태를 우선 반영한다.
-        if (nextSimple === 'changed' || nextSimple === 'closed') return '미정';
         return mappedBid || currentBid || '';
       })(),
       estimate: mapped.estimate || curItem.estimate || '',
@@ -42541,18 +42540,14 @@ window.addEventListener('DOMContentLoaded', () => {
     if (!item) return;
     if (simple === 'closed') {
       item.status = 'closed';
-      // 종료된 물건의 기일은 무의미하므로 '미정'으로 고정 (정렬 시 맨 아래)
-      item.biddate = '미정';
     }
     else if (simple === 'changed') {
       var s = String(item.status || '');
       if (s === 'field' || s === 'bid' || s === 'won') item.status = s;
       else item.status = 'field';
-      item.biddate = '미정';
     }
     else {
       item.status = 'review';
-      if (_plIsUndecidedDate(item.biddate || '')) item.biddate = '';
     }
     item.archived = false;
     item.updatedAt = Date.now();
@@ -42801,11 +42796,11 @@ window.addEventListener('DOMContentLoaded', () => {
         if (safePatch.lifecycleStatus === 'closed') {
           safePatch.status = 'closed';
           // 종료 시 기일은 '미정'으로 고정 (경매 없어졌음을 표시)
-          if (safePatch.biddate === undefined) safePatch.biddate = '미정';
+          
         }
         else if (safePatch.lifecycleStatus === 'changed') {
           safePatch.status = (safePatch.status || 'field');
-          if (safePatch.biddate === undefined) safePatch.biddate = '미정';
+          
         }
         else if (safePatch.lifecycleStatus === 'active' && !safePatch.status) safePatch.status = 'review';
       }
@@ -43040,11 +43035,11 @@ window.addEventListener('DOMContentLoaded', () => {
       var prevBiddate = String(it.biddate || '');
       if (life === 'closed') {
         if (prevStatus !== 'closed') it.status = 'closed';
-        if (prevBiddate !== '미정') it.biddate = '미정';
+        
       } else if (life === 'changed') {
         var ps = String(it.status || '');
         if (!(ps === 'field' || ps === 'bid' || ps === 'won' || ps === 'sell')) it.status = 'field';
-        if (String(it.biddate || '') !== '미정') it.biddate = '미정';
+        
       } else {
         if (plSimpleStatusKey(it.status) !== 'active') it.status = 'review';
         if (_plIsUndecidedDate(it.biddate || '')) it.biddate = '';
@@ -43112,8 +43107,9 @@ window.addEventListener('DOMContentLoaded', () => {
         __targetItemId: resolvedItemId,
         __forceLifecycleChange: true
       };
-      if (simple === 'changed' || simple === 'closed') patch.biddate = '미정';
-      else if (targetItem && targetItem.biddate && targetItem.biddate !== '미정') patch.biddate = targetItem.biddate;
+      if (targetItem && targetItem.biddate) patch.biddate = targetItem.biddate;
+      if (targetItem && targetItem.round !== undefined) patch.round = targetItem.round;
+      if (targetItem && targetItem.minprice !== undefined) patch.minprice = targetItem.minprice;
       if (Object.prototype.hasOwnProperty.call(opts, 'closedSummary')) {
         patch.closedSummary = opts.closedSummary;
       }
@@ -45378,13 +45374,12 @@ window.addEventListener('DOMContentLoaded', () => {
     };
   }
   function _skCurrentRound(item){
-    var r = parseInt(item.round || (item._norm && item._norm.유찰횟수) || 0, 10);
+    var raw = (item && (item.round || (item.data && (item.data['유찰회차'] || item.data['회차'])) || item['유찰회차'] || item['회차'])) || ((item && item._norm && item._norm.유찰횟수) || 0);
+    var r = parseInt(raw || 0, 10);
     return isNaN(r) ? 0 : r;
   }
-  function _skCurrentBidDate(item){ return item.biddate || item.saleDate || item.매각기일 || ''; }
-
   function _skCurrentBidDate(item){
-    return item.biddate || item.saleDate || item.매각기일 || '';
+    return (item && (item.biddate || item.saleDate || item.매각기일 || (item.data && (item.data['매각기일'] || item.data['매각일'] || item.data['입찰기일'])) || '')) || '';
   }
   function _skCloseUnsoldModal(){
     var modal = document.getElementById('skUnsoldOnlyModal');
@@ -45643,7 +45638,7 @@ window.addEventListener('DOMContentLoaded', () => {
             patch.status = 'field';
             patch.phase = 'field';
             patch.activePhase = 'field';
-            patch.biddate = '미정';
+            patch.biddate = String((ctx.item && ctx.item.biddate) || '').trim();
           } else {
             patch.lifecycleStatus = 'active';
             patch.status = 'review';
@@ -45869,8 +45864,7 @@ window.addEventListener('DOMContentLoaded', () => {
         var entry = _getOverride(curItem || null, null, savedId);
         if (!entry) return patch;
         patch.status = _statusFromSimple(entry.simple, patch.status || (curItem && curItem.status) || 'review');
-        if (entry.simple === 'changed' || entry.simple === 'closed') patch.biddate = '미정';
-        else if (patch.biddate === '미정' && curItem && curItem.biddate && curItem.biddate !== '미정') patch.biddate = curItem.biddate;
+        if ((!patch.biddate || patch.biddate === '미정') && curItem && curItem.biddate && curItem.biddate !== '미정') patch.biddate = curItem.biddate;
         return patch;
       };
       plBuildPatchFromSaved.__skOverridePatched = true;
@@ -45885,8 +45879,7 @@ window.addEventListener('DOMContentLoaded', () => {
         if (!entry || !built) return built;
         built.status = _statusFromSimple(entry.simple, built.status || (prevItem && prevItem.status) || 'review');
         built.archived = (built.status === 'archived');
-        if (entry.simple === 'changed' || entry.simple === 'closed') built.biddate = '미정';
-        else if (built.biddate === '미정' && prevItem && prevItem.biddate && prevItem.biddate !== '미정') built.biddate = prevItem.biddate;
+        if ((!built.biddate || built.biddate === '미정') && prevItem && prevItem.biddate && prevItem.biddate !== '미정') built.biddate = prevItem.biddate;
         return (typeof plNormalizeItem === 'function') ? plNormalizeItem(built) : built;
       };
       plBuildFromRoom.__skOverridePatched = true;
