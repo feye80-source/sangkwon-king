@@ -5453,7 +5453,20 @@ var _safeLocalSet = function(key, value) {
                   if (openBtn && item) { openBtn.onclick = () => { if (typeof openPopup === 'function') openPopup(item.id); }; }
 
                   if (!item) {
-                    el.innerHTML = '<div class="wr2-no-item">연결된 물건이 없습니다.<br/><span style="color:#4f8eff;cursor:pointer;" onclick="document.getElementById(\'wr2LinkSavedBtn\').click()">🔗 물건연결</span> 버튼으로 저장목록과 연결하세요.</div>';
+                    // 연결 물건 없어도 매각기일은 항상 표시/수정 가능
+                    const _niBidOvr = String((room._summaryOverride && room._summaryOverride.biddate) || '').trim();
+                    const _niBiddate = _niBidOvr || String(room.biddate || '').trim();
+                    let _niBidHtml;
+                    if (room._summaryEditing === 'biddate') {
+                      _niBidHtml = `<div class="wr2-info-row wr2-info-editing"><span class="wr2-info-lbl">매각기일</span><input class="wr2-info-edit-inp" value="${_niBiddate}" onkeydown="if(event.key==='Enter'){event.preventDefault();wr2SummaryEditSave('biddate',this.value);}else if(event.key==='Escape'){event.preventDefault();wr2SummaryCancelEdit();}" onblur="wr2SummaryEditSave('biddate',this.value)" id="wr2SumEdt_biddate" placeholder="YYYY-MM-DD"></div>`;
+                    } else {
+                      _niBidHtml = `<div class="wr2-info-row" title="클릭으로 수정" onclick="wr2SummaryStartEdit('biddate');event.stopPropagation();"><span class="wr2-info-lbl">매각기일</span><span class="wr2-info-val">${_niBiddate || '<span style="color:var(--mu);">미입력</span>'}<span class="wr2-edit-hint">✏️</span></span></div>`;
+                    }
+                    el.innerHTML = _niBidHtml + '<div class="wr2-no-item">연결된 물건이 없습니다.<br/><span style="color:#4f8eff;cursor:pointer;" onclick="document.getElementById(\'wr2LinkSavedBtn\').click()">🔗 물건연결</span> 버튼으로 저장목록과 연결하세요.</div>';
+                    if (room._summaryEditing === 'biddate') {
+                      const _niInp = document.getElementById('wr2SumEdt_biddate');
+                      if (_niInp) { _niInp.focus(); _niInp.select(); }
+                    }
                     return;
                   }
 
@@ -5514,7 +5527,7 @@ var _safeLocalSet = function(key, value) {
                         <span class="wr2-info-lbl">${label}</span>
                         <input class="wr2-info-edit-inp" value="${rawVal||''}"
                           onblur="wr2SummaryEditSave('${key}',this.value)"
-                          onkeydown="if(event.key==='Enter')this.blur();if(event.key==='Escape')wr2SummaryCancelEdit();"
+                          onkeydown="if(event.key==='Enter'){event.preventDefault();wr2SummaryEditSave('${key}',this.value);}else if(event.key==='Escape'){event.preventDefault();wr2SummaryCancelEdit();}"
                           id="wr2SumEdt_${key}" placeholder="${key==='biddate' ? 'YYYY-MM-DD' : (label + ' 입력' + (key==='price'||key==='deposit'||key==='rent' ? ' (원 단위)' : ''))}">
                       </div>`;
                     }
@@ -5593,7 +5606,8 @@ var _safeLocalSet = function(key, value) {
                   // 매각기일 (항상 표시 + 수동 수정 가능)
                   {
                     const bidOverride = String((room._summaryOverride && room._summaryOverride.biddate) || '').trim();
-                    const bidRaw = bidOverride || saleDateRaw || String(item.biddate || '').trim();
+                    // biddate 폴백 우선순위: 사용자 override > room.biddate > 물건 데이터 > PL item.biddate
+                    const bidRaw = bidOverride || String(room.biddate || '').trim() || saleDateRaw || String(item.biddate || '').trim();
                     const bidObj = wr2ParseSaleDateLoose(bidRaw);
                     const bidDday = wr2CalcDdayFromDate(bidObj);
                     const bidLabel = (bidDday == null) ? '' : (bidDday < 0 ? '기일지남·수정필요' : (bidDday === 0 ? 'D-Day' : 'D-' + bidDday));
@@ -5636,10 +5650,13 @@ var _safeLocalSet = function(key, value) {
                 };
                 window.wr2SummaryEditSave = function(key, val) {
                   const room = getActiveRoom(); if (!room) return;
+                  // Enter→직접save 후 onblur 이중 호출 방지
+                  if (room._summaryEditing !== key) return;
                   room._summaryOverride = room._summaryOverride || {};
                   if (key === 'biddate') {
                     var normalized = plNormalizeDateInput ? plNormalizeDateInput(val) : String(val || '').trim();
                     room._summaryOverride[key] = normalized;
+                    room.biddate = normalized; // room 네이티브 필드도 동기화 → 클라우드 sync 후에도 소실 방지
                     var linked = wr2ResolveLinkedPlItem ? wr2ResolveLinkedPlItem(room) : null;
                     if (linked && linked.id && typeof window.plInlineSet === 'function') {
                       try { window.plInlineSet(linked.id, 'biddate', normalized); } catch(e) {}
@@ -42815,7 +42832,7 @@ window.addEventListener('DOMContentLoaded', () => {
         }
         else if (safePatch.lifecycleStatus === 'changed') {
           safePatch.status = (safePatch.status || 'field');
-          if (safePatch.biddate === undefined) safePatch.biddate = '미정';
+          // changed 전환 시 기본적으로 기존 biddate를 보존하도록 변경 (다른 코드와 정책 동일)
         }
         else if (safePatch.lifecycleStatus === 'active' && !safePatch.status) safePatch.status = 'review';
       }
@@ -45912,8 +45929,12 @@ window.addEventListener('DOMContentLoaded', () => {
         if (!entry || !built) return built;
         built.status = _statusFromSimple(entry.simple, built.status || (prevItem && prevItem.status) || 'review');
         built.archived = (built.status === 'archived');
-        if (entry.simple === 'changed' || entry.simple === 'closed') built.biddate = '미정';
-        else if (built.biddate === '미정' && prevItem && prevItem.biddate && prevItem.biddate !== '미정') built.biddate = prevItem.biddate;
+        // closed만 '미정', changed는 기존 기일 보존 (plBuildPatchFromSaved/skApplyUnifiedLifecycle과 동일 정책)
+        if (entry.simple === 'closed') {
+          built.biddate = '미정';
+        } else if (built.biddate === '미정' && prevItem && prevItem.biddate && prevItem.biddate !== '미정') {
+          built.biddate = prevItem.biddate;
+        }
         return (typeof plNormalizeItem === 'function') ? plNormalizeItem(built) : built;
       };
       plBuildFromRoom.__skOverridePatched = true;
