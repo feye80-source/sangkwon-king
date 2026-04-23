@@ -41933,6 +41933,11 @@ window.addEventListener('DOMContentLoaded', () => {
   function plNormalizeItem(it) {
     it = it || {};
     var archived = !!it.archived || it.status === 'archived';
+    var rawCreated = Number(it.createdAt || 0);
+    var rawUpdated = Number(it.updatedAt || 0);
+    var rawTs = Number(it.timestamp || 0);
+    var createdAt = rawCreated || rawTs || 0;
+    var updatedAt = rawUpdated || rawTs || createdAt || 0;
     return {
       id: String(it.id || Date.now()),
       linkedSavedId: it.linkedSavedId || '',
@@ -41956,8 +41961,10 @@ window.addEventListener('DOMContentLoaded', () => {
       memo: it.memo || '',
       result: it.result || null,
       archived: archived,
-      createdAt: it.createdAt || it.timestamp || Date.now(),
-      updatedAt: it.updatedAt || it.timestamp || Date.now()
+      // 중요: 로드 시점마다 Date.now()를 주입하면 stale 데이터가 최신처럼 보이는 병합 오염이 생긴다.
+      // 타임스탬프는 원본 값을 보존하고, 신규값 부여는 plSave 경로에서만 수행한다.
+      createdAt: createdAt,
+      updatedAt: updatedAt
     };
   }
   function plLoad() {
@@ -41978,12 +41985,16 @@ window.addEventListener('DOMContentLoaded', () => {
           var id = String(it.id);
           var prev = byId[id];
           var next = plNormalizeItem(it);
+          // 캐시에 이미 작업룸 연결 물건이 있으면 legacy가 덮어쓰지 못하게 한다.
+          // (과거/stale localStorage가 최신 상태를 되돌리는 현상 방지)
+          if (prev && String(prev.roomId || '').trim()) return;
           if (!prev) { byId[id] = next; return; }
           var prevTs = Number(prev.updatedAt || prev.createdAt || 0);
           var nextTs = Number(next.updatedAt || next.createdAt || 0);
           if (nextTs > prevTs) byId[id] = next;
         });
         Object.keys(byId).forEach(function(id){ merged.push(byId[id]); });
+        try { localStorage.setItem(PL_KEY, JSON.stringify(merged)); } catch (e) {}
         return merged;
       }
       if (hasCached) return cached.map(plNormalizeItem);
@@ -41992,7 +42003,15 @@ window.addEventListener('DOMContentLoaded', () => {
     } catch(e) { return []; }
   }
   function plSave(arr) {
-    var full = (arr || []).map(plNormalizeItem);
+    var now = Date.now();
+    var full = (arr || []).map(function(raw) {
+      var it = Object.assign({}, raw || {});
+      var c = Number(it.createdAt || it.timestamp || 0);
+      var u = Number(it.updatedAt || it.timestamp || 0);
+      if (!c) it.createdAt = now;
+      if (!u) it.updatedAt = Number(it.createdAt || now);
+      return plNormalizeItem(it);
+    });
     if (typeof _sbPersistCachedArray === 'function') _sbPersistCachedArray(PL_KEY, full, { delay: 120 });
     else localStorage.setItem(PL_KEY, JSON.stringify(full));
     if (typeof window._sbMarkKvDirty === 'function') window._sbMarkKvDirty(PL_KEY);
