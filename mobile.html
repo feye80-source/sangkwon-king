@@ -3621,6 +3621,7 @@ input, textarea, select {
   /* ── 인사이트 서브탭 ── */
   var INS_PANELS = ['note','kcard','calc','room','pipe','plist','clip','site'];
   var _mbLastInsTab = 'room';
+  window._mbPendingRoomOpenId = '';
   try { _mbLastInsTab = localStorage.getItem('mb_ins_tab') || 'room'; } catch(e) {}
   window.mbInsTab = function(name) {
     _mbLastInsTab = name;
@@ -3660,9 +3661,12 @@ input, textarea, select {
     }
     // 작업룸 탭: 룸 목록 새로고침
     if (name === 'room') {
+      var _forcedRoomId = String(window._mbPendingRoomOpenId || '').trim();
       mbRoomRefreshSel();
       var sel = document.getElementById('mb-room-sel');
-      if (sel && sel.value) mbRoomLoad(sel.value, { cloud: false });
+      if (_forcedRoomId && sel) sel.value = _forcedRoomId;
+      if (_forcedRoomId) mbRoomLoad(_forcedRoomId, { cloud: false });
+      else if (sel && sel.value) mbRoomLoad(sel.value, { cloud: false });
       else {
         var firstRoom = _mbGetRoomsArray()[0] || null;
         if (firstRoom) mbRoomLoad(firstRoom.id, { cloud: false });
@@ -3681,8 +3685,21 @@ input, textarea, select {
           : ((window._wrFilterActiveRooms && window._wrFilterActiveRooms(window._wrGetRoomsCache && window._wrGetRoomsCache())) || []);
         mbRoomRefreshSel();
         var sel2 = document.getElementById('mb-room-sel');
-        if (sel2 && sel2.value && activeRooms.find(function(r) { return r && r.id === sel2.value; })) mbRoomLoad(sel2.value, { cloud: false });
-        else mbRoomLoad('', { cloud: false });
+        var forcedAfterSync = String(window._mbPendingRoomOpenId || '').trim();
+        var wantedRoomId = forcedAfterSync || (sel2 && sel2.value) || '';
+        if (wantedRoomId && activeRooms.find(function(r) { return r && r.id === wantedRoomId; })) {
+          if (sel2) sel2.value = wantedRoomId;
+          mbRoomLoad(wantedRoomId, { cloud: false });
+          window._mbPendingRoomOpenId = '';
+        } else if (sel2 && sel2.value && activeRooms.find(function(r) { return r && r.id === sel2.value; })) {
+          mbRoomLoad(sel2.value, { cloud: false });
+        } else {
+          if (forcedAfterSync) {
+            window._mbPendingRoomOpenId = '';
+            mbToast('선택한 작업룸을 찾을 수 없어요', 'warn');
+          }
+          mbRoomLoad('', { cloud: false });
+        }
       }).catch(function(){});
     }
     // 파이프라인 탭
@@ -6632,9 +6649,32 @@ input, textarea, select {
     window.mbPlOpenDetail = function(savedId) {
       var sid = String(savedId || '').trim();
       if (!sid) return;
+      if (typeof window.getSv === 'function') {
+        try {
+          var sv = window.getSv() || [];
+          var direct = sv.find(function(it) { return it && String(it.id) === sid; });
+          if (!direct) {
+            var linked = sv.find(function(it) {
+              if (!it) return false;
+              if (String(it.linkedSavedId || '') === sid) return true;
+              if (String(it.auctionId || '') === sid) return true;
+              return false;
+            });
+            if (linked && linked.id) sid = String(linked.id);
+          }
+        } catch (e0) {}
+      }
       if (typeof window.openPopup === 'function') {
-        window.openPopup(sid);
-        return;
+        try {
+          window.openPopup(sid);
+          return;
+        } catch (e1) {}
+      }
+      if (typeof window.mbOpenSavedDetail === 'function') {
+        try {
+          window.mbOpenSavedDetail(sid);
+          return;
+        } catch (e2) {}
       }
       if (typeof window.mbGoPage === 'function') {
         window.mbGoPage('saved');
@@ -6648,9 +6688,16 @@ input, textarea, select {
     window.mbPlOpenRoom = function(roomId) {
       var rid = String(roomId || '').trim();
       if (!rid) return;
+      window._mbPendingRoomOpenId = rid;
+      window._mbRoomDropFilter = 'all';
       if (typeof window.mbInsTab === 'function') window.mbInsTab('room');
       setTimeout(function() {
-        if (typeof window.mbRoomLoad === 'function') window.mbRoomLoad(rid, { cloud: false });
+        try {
+          if (typeof window.mbRoomRefreshSel === 'function') window.mbRoomRefreshSel();
+          var sel = document.getElementById('mb-room-sel');
+          if (sel) sel.value = rid;
+          if (typeof window.mbRoomLoad === 'function') window.mbRoomLoad(rid, { cloud: false, keepTab: true });
+        } catch (e3) {}
       }, 90);
     };
   }
@@ -6729,10 +6776,19 @@ input, textarea, select {
         ((window._idbCache && window._idbCache['wr2_rooms']) || JSON.parse(localStorage.getItem('wr2_rooms') || '[]'));
     } catch (e) {}
     var roomBySaved = {};
+    function registerRoomKey(rawKey, room) {
+      var key = String(rawKey || '').trim();
+      if (!key || roomBySaved[key]) return;
+      roomBySaved[key] = room;
+    }
     (rooms || []).forEach(function(r) {
       if (!r) return;
-      var sid = String(r.linkedSavedId || '').trim();
-      if (sid && !roomBySaved[sid]) roomBySaved[sid] = r;
+      registerRoomKey(r.linkedSavedId, r);
+      registerRoomKey(r.auctionId, r);
+      registerRoomKey(r.listingId, r);
+      if (Array.isArray(r.linkedItems)) {
+        r.linkedItems.forEach(function(x) { registerRoomKey(x, r); });
+      }
     });
 
     items = items.map(function(it) {
@@ -6741,7 +6797,7 @@ input, textarea, select {
       var bidDt = parseDate(bidRaw);
       var dday = ddayInfo(bidDt);
       var priceRaw = it.minprice || it.price || it.bidprice || it.appraisal || '';
-      var room = roomBySaved[String(it.linkedSavedId || '')] || null;
+      var room = roomBySaved[String(it.id || '')] || roomBySaved[String(it.linkedSavedId || '')] || roomBySaved[String(it.auctionId || '')] || null;
       var title = String(it.addr || it.region || it.casenum || it.id || '물건').trim();
       var sub = [it.casenum || '', it.region || '', room ? ('🗂 ' + (room.title || room.name || '작업룸')) : ''].filter(Boolean).join(' · ');
       return {
@@ -6785,7 +6841,7 @@ input, textarea, select {
       else if (v.intent === '하') intentChip = '<span class="mb-pl-chip intent-low">하</span>';
       var dateMain = v.bidRaw ? esc(v.bidRaw.replace('T', ' ').slice(0, 10)) : '미입력';
       var ddayLine = v.dday ? ('<div class="mb-pl-date-dday" style="color:' + v.dday.color + ';">' + esc(v.dday.label) + '</div>') : '<div class="mb-pl-date-dday" style="color:var(--di);">기일 없음</div>';
-      var openId = String(it.linkedSavedId || it.id || '').replace(/'/g, "\\'");
+      var openId = String(it.id || it.linkedSavedId || '').replace(/'/g, "\\'");
       var roomId = String(v.roomId || '').replace(/'/g, "\\'");
       return '<div class="mb-pl-row" data-st="' + v.st + '" onclick="mbPlOpenDetail(\'' + openId + '\')">'
         + '<div class="mb-pl-main-col">'
@@ -7347,10 +7403,28 @@ input, textarea, select {
   window.mbCloseNtEditor = function() {
     var el = document.getElementById('ntEditorMain');
     if (el) el.style.display = 'none';
+    var quickNav = document.getElementById('mb-nt-quick-nav');
+    if (quickNav) quickNav.style.display = 'none';
   };
 
   // ntOpen 후킹 — 모바일에서는 오버레이로 표시
   var _origNtOpen = null;
+  function _mbEnsureNtQuickNav() {
+    var main = document.getElementById('ntEditorMain');
+    if (!main) return;
+    var nav = document.getElementById('mb-nt-quick-nav');
+    if (!nav) {
+      nav = document.createElement('div');
+      nav.id = 'mb-nt-quick-nav';
+      nav.style.cssText = 'position:absolute;right:10px;bottom:10px;z-index:30;display:flex;gap:6px;align-items:center;background:rgba(10,16,28,.88);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.16);border-radius:999px;padding:6px 8px;box-shadow:0 8px 22px rgba(0,0,0,.45);';
+      nav.innerHTML = `
+        <button type="button" onclick="mbCloseNtEditor();if(typeof mbInsTab==='function')mbInsTab('note');" style="height:30px;padding:0 10px;border-radius:999px;border:1px solid var(--b1);background:var(--s2);color:var(--tx);font-size:11px;font-weight:700;cursor:pointer;">목록</button>
+        <button type="button" onclick="mbCloseNtEditor();if(typeof mbInsTab==='function')mbInsTab('room');" style="height:30px;padding:0 10px;border-radius:999px;border:1px solid rgba(79,142,255,.32);background:rgba(79,142,255,.14);color:#8ab8ff;font-size:11px;font-weight:700;cursor:pointer;">작업룸</button>
+        <button type="button" onclick="mbCloseNtEditor();if(typeof mbInsTab==='function')mbInsTab('pipe');" style="height:30px;padding:0 10px;border-radius:999px;border:1px solid rgba(255,140,66,.34);background:rgba(255,140,66,.14);color:#ffb47b;font-size:11px;font-weight:700;cursor:pointer;">파이프라인</button>`;
+      main.appendChild(nav);
+    }
+    nav.style.display = 'flex';
+  }
   function hookNtOpen() {
     if (typeof window.ntOpen !== 'function') return;
     if (window.__mbNtOpenHooked) return;
@@ -7358,6 +7432,7 @@ input, textarea, select {
     _origNtOpen = window.ntOpen;
     window.ntOpen = function(id) {
       _origNtOpen(id); // common.js가 ntEditorScroll에 직접 렌더 + _mbNtOpenId 설정
+      setTimeout(_mbEnsureNtQuickNav, 0);
     };
   }
   setTimeout(hookNtOpen, 1500);
