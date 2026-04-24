@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260424-sync-ui-inline8';
+    window.__SK_BUILD = '20260424-sync-ui-inline9';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -16433,7 +16433,16 @@ ${inputDesc.substring(0, 3000)}
       const isBds = src === '부동산플래닛';
       const isTrans = item.mode === 'transaction';
 
-      document.getElementById('popTitle').textContent = item.title || src || '상세정보';
+      const _popTitleEl = document.getElementById('popTitle');
+      if (_popTitleEl) {
+        _popTitleEl.textContent = item.title || src || '상세정보';
+        _popTitleEl.style.cursor = 'text';
+        _popTitleEl.title = '클릭하여 제목 수정';
+        _popTitleEl.onclick = function(ev) {
+          if (ev) ev.stopPropagation();
+          if (typeof window.inlineEditPopupTitle === 'function') window.inlineEditPopupTitle();
+        };
+      }
 
       let badgeCls = 'popup-badge mbl', badgeTxt = '🏪 매물';
       if (a) { badgeCls = 'popup-badge mba'; badgeTxt = '⚖️ 경매'; }
@@ -16509,6 +16518,7 @@ ${inputDesc.substring(0, 3000)}
             html += `<a href="${esc(_detailURL)}" target="_blank" class="popup-src-btn" style="${bStyle}">🔗 상세</a>`;
           }
         }
+        html += `<button class="popup-src-btn" id="popEditUrlBtn" style="background:rgba(255,255,255,.06);color:#aab4cc;border-color:rgba(255,255,255,.24);" onclick="showPopupUrlInput('${id}')">${_detailURL ? '✏️ URL수정' : '🔗 URL추가'}</button>`;
         if (_siteMapURL === 'copy_planet') {
           const _addr = d.소재지 || '';
           html += `<button class="popup-src-btn" style="background:rgba(100,180,100,.12);color:#7ecf7e;border-color:rgba(100,180,100,.35);" onclick="(()=>{const addr='${esc(_addr)}';if(addr){navigator.clipboard.writeText(addr).catch(()=>{});const ta=document.createElement('textarea');ta.value=addr;document.body.appendChild(ta);ta.select();try{document.execCommand('copy');}catch(e){}document.body.removeChild(ta);}window.open('https://www.bdsplanet.com/map/realprice_map.ytp','_blank');})()">🌍 플래닛</button>`;
@@ -16526,7 +16536,6 @@ ${inputDesc.substring(0, 3000)}
             html += `<a href="${esc(_naverMapQ)}" target="_blank" class="popup-src-btn" style="background:rgba(4,222,91,.12);color:#04de5b;border-color:rgba(4,222,91,.4);">🗺️ 지도</a>`;
             html += `<a href="${esc(_naverLandQ)}" target="_blank" class="popup-src-btn" style="background:rgba(4,222,91,.12);color:#04de5b;border-color:rgba(4,222,91,.4);">🏠 부동산</a>`;
           }
-          html += `<button class="popup-src-btn" id="popAddUrlBtn" style="background:rgba(255,255,255,.06);color:#aab4cc;border-color:rgba(255,255,255,.2);" onclick="showPopupUrlInput('${id}')">🔗 URL 추가</button>`;
         }
         // ★ 경매 아이템: AI 분석 버튼 추가
         if (a) {
@@ -16566,7 +16575,6 @@ ${inputDesc.substring(0, 3000)}
       if (!item) return;
       openPopup(id);
       setTimeout(function() {
-        if (item.mode === 'auction') return;
         if (!popupEditMode && typeof togglePopupEdit === 'function') togglePopupEdit();
       }, 70);
     };
@@ -16863,6 +16871,32 @@ ${inputDesc.substring(0, 3000)}
       renderPopup(popupId);
     }
     window.togglePopupEdit = togglePopupEdit;
+    window.inlineEditPopupTitle = function() {
+      const titleEl = document.getElementById('popTitle');
+      if (!titleEl || !popupId || document.getElementById('popTitleInput')) return;
+      const sv = getSv();
+      const item = sv.find(function(s) { return s && String(s.id) === String(popupId); });
+      if (!item) return;
+      const curTitle = String(item.title || '').trim();
+      titleEl.innerHTML = `<input id="popTitleInput" value="${curTitle.replace(/"/g, '&quot;')}"
+        style="background:rgba(255,255,255,.08);border:1px solid rgba(79,142,255,.5);border-radius:6px;color:#e0e6ff;font-size:14px;font-weight:700;padding:3px 8px;width:100%;outline:none;"
+        oninput="window._savedDraftInput('${popupId}','title',this.value,{title:true})"
+        onblur="window._savedDraftCommit('${popupId}','title',this.value,{title:true});const _pt=document.getElementById('popTitle');if(_pt){_pt.textContent=(this.value||'').trim()||'상세정보';}"
+      >`;
+      const input = document.getElementById('popTitleInput');
+      if (input) {
+        input.focus();
+        input.select();
+        input.onkeydown = function(ev) {
+          if (ev.key === 'Enter') { ev.preventDefault(); input.blur(); }
+          if (ev.key === 'Escape') {
+            ev.preventDefault();
+            const _pt = document.getElementById('popTitle');
+            if (_pt) _pt.textContent = curTitle || '상세정보';
+          }
+        };
+      }
+    };
 
     // 디바운스 헬퍼 (타이핑 렉 방지용)
     if (!window._dbTimer) window._dbTimer = {};
@@ -17885,7 +17919,10 @@ ${combinedText}
       if (window._fiPopupListenerBound) return;
       window._fiPopupListenerBound = true;
       document.addEventListener('click', function(e) {
-        const sp = e.target.closest('.fi-popup-sp');
+        const _target = (e && e.target && typeof e.target.closest === 'function')
+          ? e.target
+          : (e && e.target && e.target.parentElement ? e.target.parentElement : null);
+        const sp = _target ? _target.closest('.fi-popup-sp') : null;
         if (!sp) return;
         e.stopPropagation();
         const key = sp.dataset.fiKey;
