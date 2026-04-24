@@ -5489,6 +5489,24 @@ var _safeLocalSet = function(key, value) {
                   _ensureNormalizedItem(item);
                   const nSum = item._norm || {};
                   const fmtN = v => { const n = parseFloat(String(v || '').replace(/[^0-9.]/g, '')); return isNaN(n) ? 0 : n; };
+                  const toWonSmart = (wonLike, manLike, refWonLike) => {
+                    const wonRaw = fmtN(wonLike);
+                    const manRaw = fmtN(manLike);
+                    const refWon = fmtN(refWonLike);
+                    const manAsWon = manRaw > 0 ? Math.round(manRaw * 10000) : 0;
+                    if (!wonRaw && manAsWon) return manAsWon;
+                    if (!wonRaw) return 0;
+                    if (!manAsWon) {
+                      if (refWon > 0 && wonRaw >= refWon * 120) return Math.round(wonRaw / 10000);
+                      return Math.round(wonRaw);
+                    }
+                    // 원값이 만원값보다 과도하게 큰 경우(중복 환산)에는 만원값을 우선한다.
+                    if (wonRaw >= manAsWon * 100) return manAsWon;
+                    // 레거시 데이터 중에는 원값이 1만배 뻥튀기된 케이스가 있어,
+                    // 감정가 대비 비정상적으로 큰 경우에만 역환산으로 보정한다.
+                    if (refWon > 0 && wonRaw >= refWon * 120) return Math.round(wonRaw / 10000);
+                    return Math.round(wonRaw);
+                  };
                   const fmtW = v => { if (!v) return '-'; const n = fmtN(v); if (n >= 100000000) { const e=Math.floor(n/100000000),r=Math.round((n%100000000)/10000); return r>0?`${e}억 ${r.toLocaleString()}만원`:`${e}억원`; } if (n >= 10000) return Math.round(n/10000).toLocaleString()+'만원'; return n.toLocaleString()+'원'; };
                   const fmtPy = v => { const man=Math.round(v/10000); return '@'+man.toLocaleString('ko-KR')+'만'; };
 
@@ -5502,8 +5520,8 @@ var _safeLocalSet = function(key, value) {
                   const areaLabel = areaInfo.label || '면적';
 
                   // ── 감정가/최저가 평당
-                  const appraiseVal = fmtN(d['감정가'] || 0);
-                  const minVal      = fmtN(d['최저가']  || 0);
+                  const appraiseVal = toWonSmart(d['감정가'] || item.appraisal || 0, d['감정가_만원'] || (nSum && nSum.감정가_만원) || 0, 0);
+                  const minVal      = toWonSmart(item.minprice || d['최저가'] || d['최저매각가격'] || 0, d['최저가_만원'] || (nSum && nSum.최저가_만원) || 0, appraiseVal);
                   const appPy = (appraiseVal > 0 && areaPy > 0) ? fmtPy(appraiseVal / areaPy) : '';
                   const minPy = (minVal > 0 && areaPy > 0)      ? fmtPy(minVal / areaPy)       : '';
 
@@ -5512,7 +5530,9 @@ var _safeLocalSet = function(key, value) {
                   const tenantDepAuto = occupancy ? occupancy.leaseDepositWon : 0;
                   const tenantRentAuto = occupancy ? occupancy.monthlyRentWon : 0;
 
-                  const priceVal   = fmtN(d['매매가_만원'] ? fmtN(d['매매가_만원']) * 10000 : (d['최저가'] || d['감정가'] || item.minprice || 0));
+                  const priceVal   = d['매매가_만원']
+                    ? toWonSmart(0, d['매매가_만원'])
+                    : toWonSmart(item.minprice || d['최저가'] || d['감정가'] || 0, d['최저가_만원'] || d['감정가_만원'] || 0, appraiseVal);
                   const depositVal = tenantDepAuto;
                   const rentVal    = tenantRentAuto;
 
@@ -5635,12 +5655,15 @@ var _safeLocalSet = function(key, value) {
                           }
                         }
                       }
-                      const linkedId = linkedItem && linkedItem.id ? String(linkedItem.id).replace(/'/g, "\\'") : '';
                       html += `<div class="wr2-summary-alert" style="margin:6px 0 2px;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,107,122,.36);background:rgba(255,107,122,.1);font-size:11px;line-height:1.45;color:#ffd5da;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
                         <div>⚠ 매각기일이 도래했습니다. 매각 완료면 <b>종료</b>, 유찰이면 <b>유찰 처리</b>로 다음 회차 정보를 갱신하세요.</div>
                         <button type="button" class="wr2-mini-btn" style="padding:8px 12px;border-radius:999px;border:1px solid rgba(79,142,255,.45);background:rgba(79,142,255,.16);color:#dbe9ff;font-weight:800;" onclick="event.stopPropagation();window.wr2OpenUnsoldForRoom && window.wr2OpenUnsoldForRoom(\'${String(room.id).replace(/\'/g, "\\'")}\')">유찰 처리</button>
                       </div>`;
                     }
+                  }
+                  {
+                    const roomIdEsc = String(room.id || '').replace(/'/g, "\\'");
+                    html += `<div class="wr2-info-row"><span class="wr2-info-lbl">수동수정</span><span class="wr2-info-val"><button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();window.wr2OpenManualBidEdit && window.wr2OpenManualBidEdit('${roomIdEsc}')">매각기일/최저가 수정</button></span></div>`;
                   }
 
                   // ── 자동계산 하단 바 (면적+가격 있을 때)
@@ -44365,6 +44388,13 @@ window.addEventListener('DOMContentLoaded', () => {
           if (window.__pmActiveTab === 'list' && typeof window.renderPropertyList === 'function') window.renderPropertyList();
         }).catch(function(){});
       }
+      var workTabActive = (window.__pmActiveTab === 'work' || window.__pmActiveTab === 'pipeline');
+      if (workTabActive && typeof window._wrRefreshFromCloud === 'function') {
+        window._wrRefreshFromCloud({ render: false }).then(function() {
+          if (window.__pmActiveTab === 'work' && typeof window.wr2Render === 'function') window.wr2Render();
+          if (window.__pmActiveTab === 'pipeline' && typeof window.renderWatchBoard === 'function') window.renderWatchBoard();
+        }).catch(function(){});
+      }
       if (typeof window._svRefreshFromCloud === 'function') {
         window._svRefreshFromCloud({ render: false }).then(function() {
           if (window.__pmActiveTab === 'work' && typeof window.wr2Render === 'function') window.wr2Render();
@@ -44373,6 +44403,37 @@ window.addEventListener('DOMContentLoaded', () => {
       }
     } catch (e) {}
   }, 20000);
+  function _plQuickCloudPull() {
+    try {
+      if (typeof currentPage === 'undefined' || currentPage !== 4) return;
+      if (window.__plAutoCloudPull !== true) return;
+      var now = Date.now();
+      var last = Number(window.__plQuickCloudPullAt || 0);
+      if (last && (now - last) < 5000) return;
+      window.__plQuickCloudPullAt = now;
+      if (typeof window._plRefreshFromCloud === 'function') {
+        window._plRefreshFromCloud({ render: false, force: false, sync: true }).then(function() {
+          if (window.__pmActiveTab === 'list' && typeof window.renderPropertyList === 'function') window.renderPropertyList();
+        }).catch(function(){});
+      }
+      if ((window.__pmActiveTab === 'work' || window.__pmActiveTab === 'pipeline') && typeof window._wrRefreshFromCloud === 'function') {
+        window._wrRefreshFromCloud({ render: false }).then(function() {
+          if (window.__pmActiveTab === 'work' && typeof window.wr2Render === 'function') window.wr2Render();
+          if (window.__pmActiveTab === 'pipeline' && typeof window.renderWatchBoard === 'function') window.renderWatchBoard();
+        }).catch(function(){});
+      }
+      if (typeof window._svRefreshFromCloud === 'function') {
+        window._svRefreshFromCloud({ render: false }).catch(function(){});
+      }
+    } catch (e) {}
+  }
+  if (!window.__plQuickCloudPullBound) {
+    window.__plQuickCloudPullBound = true;
+    document.addEventListener('visibilitychange', function() {
+      if (!document.hidden) _plQuickCloudPull();
+    });
+    window.addEventListener('focus', _plQuickCloudPull);
+  }
 
 })();
 
@@ -45445,12 +45506,19 @@ window.addEventListener('DOMContentLoaded', () => {
   }
   function _skCurrentMinPrice(item){
     var cur = 0;
+    var appraisal = 0;
     try {
       cur = _skNum((item && item.minprice) || (item && item.price) || (item && item.result && item.result.minprice) || 0);
       if (!cur && item && item._norm) cur = _skToWonFromManMaybe(item._norm.최저가_만원 || 0);
       if (!cur && item && item._norm) cur = Number(item._norm.최저매각가격 || 0);
       if (!cur && item && item._norm) cur = _skToWonFromManMaybe(item._norm.감정가_만원 || 0);
-      if (!cur) cur = _skNum((item && item.appraisal) || 0);
+      appraisal = _skNum((item && item.appraisal) || 0);
+      if (!appraisal && item && item._norm) appraisal = _skToWonFromManMaybe(item._norm.감정가_만원 || 0);
+      if (!cur) cur = appraisal;
+      if (cur > 0 && appraisal > 0 && cur >= appraisal * 120) {
+        // 레거시 중복 환산 데이터 보정 (원값이 1만배 커진 케이스)
+        cur = Math.round(cur / 10000);
+      }
     } catch(e) {}
     return cur > 0 ? cur : 0;
   }
@@ -45491,8 +45559,6 @@ window.addEventListener('DOMContentLoaded', () => {
     var r = parseInt(item.round || (item._norm && item._norm.유찰횟수) || 0, 10);
     return isNaN(r) ? 0 : r;
   }
-  function _skCurrentBidDate(item){ return item.biddate || item.saleDate || item.매각기일 || ''; }
-
   function _skCurrentBidDate(item){
     return item.biddate || item.saleDate || item.매각기일 || '';
   }
@@ -45516,12 +45582,18 @@ window.addEventListener('DOMContentLoaded', () => {
       + '    <button type="button" id="skUnsoldOnlyCloseX" style="width:54px;height:54px;border:none;border-radius:16px;background:rgba(255,255,255,.08);color:#eef4ff;font-size:22px;font-weight:800;cursor:pointer;">×</button>'
       + '  </div>'
       + '  <div style="padding:22px;">'
-      + '    <label style="display:block;font-size:13px;color:#c9d7ff;margin:0 0 8px;">다음 회차</label>'
-      + '    <input id="skUnsoldOnlyRound" type="number" style="width:100%;padding:14px 16px;border-radius:14px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--tx);font-size:15px;outline:none;box-sizing:border-box;">'
-      + '    <label style="display:block;font-size:13px;color:#c9d7ff;margin:18px 0 8px;">다음 매각기일</label>'
-      + '    <input id="skUnsoldOnlyDate" type="date" style="width:100%;padding:14px 16px;border-radius:14px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--tx);font-size:15px;outline:none;box-sizing:border-box;">'
-      + '    <label style="display:block;font-size:13px;color:#c9d7ff;margin:18px 0 8px;">다음 최저가(원)</label>'
-      + '    <input id="skUnsoldOnlyPrice" type="text" inputmode="numeric" placeholder="예: 356,720,000" style="width:100%;padding:14px 16px;border-radius:14px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--tx);font-size:15px;outline:none;box-sizing:border-box;">'
+      + '    <div id="skUnsoldOnlyRoundWrap">'
+      + '      <label style="display:block;font-size:13px;color:#c9d7ff;margin:0 0 8px;">다음 회차</label>'
+      + '      <input id="skUnsoldOnlyRound" type="number" style="width:100%;padding:14px 16px;border-radius:14px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--tx);font-size:15px;outline:none;box-sizing:border-box;">'
+      + '    </div>'
+      + '    <div id="skUnsoldOnlyDateWrap">'
+      + '      <label style="display:block;font-size:13px;color:#c9d7ff;margin:18px 0 8px;">다음 매각기일</label>'
+      + '      <input id="skUnsoldOnlyDate" type="date" style="width:100%;padding:14px 16px;border-radius:14px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--tx);font-size:15px;outline:none;box-sizing:border-box;">'
+      + '    </div>'
+      + '    <div id="skUnsoldOnlyPriceWrap">'
+      + '      <label style="display:block;font-size:13px;color:#c9d7ff;margin:18px 0 8px;">다음 최저가(원)</label>'
+      + '      <input id="skUnsoldOnlyPrice" type="text" inputmode="numeric" placeholder="예: 356,720,000" style="width:100%;padding:14px 16px;border-radius:14px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--tx);font-size:15px;outline:none;box-sizing:border-box;">'
+      + '    </div>'
       + '    <div style="margin-top:18px;color:#b9c7df;font-size:12px;line-height:1.6;">회차는 +1, 최저가는 70% 기준, 매각기일은 같은 요일 4주 후를 자동 제안합니다. 최저가는 원 단위 숫자로 입력하세요.</div>'
       + '    <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:24px;">'
       + '      <button type="button" id="skUnsoldOnlyCancel" style="padding:14px 24px;border-radius:14px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.04);color:#eef4ff;font-size:15px;font-weight:700;cursor:pointer;">취소</button>'
@@ -45539,8 +45611,8 @@ window.addEventListener('DOMContentLoaded', () => {
     if (priceEl && !priceEl.dataset.boundMoneyFmt) {
       priceEl.dataset.boundMoneyFmt = '1';
       priceEl.addEventListener('input', function(){
-        var val = String(this.value || '');
-        if (/^[\d,]*$/.test(val)) this.value = _skComma(val);
+        var val = String(this.value || '').replace(/[^\d]/g, '');
+        this.value = _skComma(val);
       });
     }
     return modal;
@@ -45735,19 +45807,90 @@ window.addEventListener('DOMContentLoaded', () => {
     _skForceUnsoldCloudSync();
     return { ok:true, room: room, item: appliedItem };
   }
+  function _skApplyManualBidInfoToWorkroomSource(ctx, nextDate, nextPrice){
+    var resolved = _skResolveUnsoldWorkroomTarget(ctx);
+    var room = resolved.room || null;
+    var target = resolved.item || null;
+    if (!target || !target.id) return { ok:false, reason:'not_found', room: room, item: target };
+
+    var targetId = String(target.id || '').trim();
+    var priceNum = _skParseUnsoldMoney(nextPrice);
+    var keepRound = parseInt(String(target.round || ((target.data || {}).유찰횟수) || '1'), 10);
+    if (!keepRound || keepRound < 1) keepRound = 1;
+
+    var nextData = Object.assign({}, target.data || {});
+    nextData['회차'] = String(keepRound);
+    nextData['유찰횟수'] = String(keepRound);
+    nextData['매각기일'] = String(nextDate || '').trim();
+    nextData['입찰기일'] = String(nextDate || '').trim();
+    nextData['최저가'] = priceNum;
+    nextData['최저가_원'] = priceNum;
+    nextData['최저가_만원'] = priceNum ? Math.round(priceNum / 10000) : '';
+
+    var patch = {
+      roomId: room ? String(room.id || '') : String(target.roomId || ''),
+      round: String(keepRound),
+      biddate: String(nextDate || '').trim(),
+      minprice: priceNum ? String(priceNum) : String(nextPrice || '').trim(),
+      archived: false,
+      data: nextData
+    };
+
+    var appliedItem = null;
+    if (typeof window.plUpdateItem === 'function') appliedItem = window.plUpdateItem(targetId, patch);
+    if (!appliedItem) return { ok:false, reason:'apply_failed', room: room, item: null };
+
+    if (room) {
+      try {
+        room.biddate = String(nextDate || '').trim();
+        room.minprice = patch.minprice;
+        room.round = String(keepRound);
+        _skTouchUnsoldRoomLink(room, appliedItem);
+        if (typeof updateRoom === 'function') {
+          updateRoom(room.id, {
+            biddate: room.biddate,
+            minprice: room.minprice,
+            round: room.round,
+            __targetItemId: targetId,
+            __forceLifecycleChange: true
+          }, true);
+        }
+      } catch(e) {}
+    }
+
+    try { if (typeof renderPropertyList === 'function') renderPropertyList(); } catch(e) {}
+    try { if (typeof wr2Render === 'function') wr2Render(); } catch(e) {}
+    try { if (typeof renderSaved === 'function') renderSaved(); } catch(e) {}
+    _skForceUnsoldCloudSync();
+    return { ok:true, room: room, item: appliedItem };
+  }
 
   function _skOpenUnsoldFlow(ctx){
     var modal = _skEnsureUnsoldOnlyModal();
     var item = (ctx && ctx.item) || {};
     var plan = _skBuildUnsoldPlan(item);
     var roundEl = document.getElementById('skUnsoldOnlyRound');
+    var roundWrap = document.getElementById('skUnsoldOnlyRoundWrap');
     var dateEl = document.getElementById('skUnsoldOnlyDate');
     var priceEl = document.getElementById('skUnsoldOnlyPrice');
     var saveEl = document.getElementById('skUnsoldOnlySave');
     modal.__ctx = ctx || {};
+    var manualMode = !!(ctx && ctx.manualOnly);
     if (roundEl) roundEl.value = plan.round || '';
-    if (dateEl) dateEl.value = plan.date || '';
-    if (priceEl) priceEl.value = _skComma(plan.price || '');
+    if (dateEl) dateEl.value = manualMode ? (String(item.biddate || '').trim() || plan.date || '') : (plan.date || '');
+    if (priceEl) {
+      var initialPrice = manualMode ? _skDigits(String(item.minprice || '').trim()) : (plan.price || '');
+      priceEl.value = _skComma(initialPrice);
+    }
+    if (roundWrap) roundWrap.style.display = manualMode ? 'none' : '';
+    try {
+      var panelTitle = modal.querySelector('div[style*="font-size:22px"]');
+      var panelDesc = modal.querySelector('div[style*="font-size:13px"]');
+      if (panelTitle) panelTitle.textContent = manualMode ? '기일/최저가 수정' : '유찰 처리';
+      if (panelDesc) panelDesc.textContent = manualMode
+        ? '매각기일과 최저가를 원 단위로 직접 수정합니다.'
+        : '진행 탭은 유지하고 다음 회차 정보만 갱신합니다.';
+    } catch(e) {}
     if (modal.__escHandler) document.removeEventListener('keydown', modal.__escHandler);
     modal.__escHandler = function(evt){
       if (evt.key === 'Escape') _skCloseUnsoldModal();
@@ -45758,7 +45901,7 @@ window.addEventListener('DOMContentLoaded', () => {
         var nextRound = parseInt(roundEl && roundEl.value || '', 10);
         var nextDate = String(dateEl && dateEl.value || '').trim();
         var nextPrice = _skDigits(priceEl && priceEl.value || '');
-        if (!nextRound || nextRound < 1) {
+        if (!manualMode && (!nextRound || nextRound < 1)) {
           if (typeof showToast === 'function') showToast('다음 회차를 확인해주세요.', 'warn');
           return;
         }
@@ -45771,7 +45914,9 @@ window.addEventListener('DOMContentLoaded', () => {
           return;
         }
         if (ctx && ctx.source === 'wr') {
-          var applied = _skApplyUnsoldToWorkroomSource(ctx, nextRound, nextDate, nextPrice);
+          var applied = manualMode
+            ? _skApplyManualBidInfoToWorkroomSource(ctx, nextDate, nextPrice)
+            : _skApplyUnsoldToWorkroomSource(ctx, nextRound, nextDate, nextPrice);
           if (!applied || applied.ok !== true) {
             if (typeof showToast === 'function') showToast('연결된 원본 물건을 찾지 못했습니다. 물건 연결 상태를 확인해주세요.', 'warn');
             return;
@@ -45826,6 +45971,19 @@ window.addEventListener('DOMContentLoaded', () => {
   // 물건연결 버튼 제거 후 호환용 no-op
   window.wr2OpenSourceRelink = function(_roomId){
     if (typeof showToast === 'function') showToast('물건연결 버튼은 제거되었습니다. 물건관리에서 연결을 관리해 주세요.', 'warn');
+  };
+  window.wr2OpenManualBidEdit = function(roomId){
+    try {
+      var room = _skResolveRoomById(roomId);
+      var item = _skResolveItemByRoom(room, '');
+      if (!item) {
+        if (typeof showToast === 'function') showToast('연결된 원본 물건이 없습니다. 물건관리에서 먼저 연결해 주세요.', 'warn');
+        return;
+      }
+      _skOpenUnsoldFlow({ source:'wr', id:String(room && room.id || roomId || ''), item:item, manualOnly:true });
+    } catch (e) {
+      if (typeof showToast === 'function') showToast('수동 수정 창을 여는 중 오류가 발생했습니다.', 'warn');
+    }
   };
 
 
@@ -45895,8 +46053,8 @@ window.addEventListener('DOMContentLoaded', () => {
     if (nextPrice && !nextPrice.dataset.boundMoneyFmt) {
       nextPrice.dataset.boundMoneyFmt='1';
       nextPrice.addEventListener('input', function(){
-        var val = String(this.value || '');
-        if (/^[\d,]*$/.test(val)) this.value = _skComma(val);
+        var val = String(this.value || '').replace(/[^\d]/g, '');
+        this.value = _skComma(val);
       });
     }
     unsoldBtn.onclick = function(){ setMode('unsold'); };
