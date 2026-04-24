@@ -3372,7 +3372,7 @@ input, textarea, select {
 <script>if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
 
 <!-- 공통 로직 -->
-<script src="common.js?v=202604250125"></script>
+<script src="common.js?v=202604250133"></script>
 
 <!-- ════════════════════════════════════════════════════════
      mobile.js — 모바일 전용 초기화 및 UI 제어
@@ -6759,11 +6759,7 @@ input, textarea, select {
       var ddayLine = v.dday ? ('<div class="mb-pl-date-dday" style="color:' + v.dday.color + ';">' + esc(v.dday.label) + '</div>') : '<div class="mb-pl-date-dday" style="color:var(--di);">기일 없음</div>';
       var openId = String(it.linkedSavedId || it.id || '').replace(/'/g, "\\'");
       var roomId = String(v.roomId || '').replace(/'/g, "\\'");
-      var actDetail = "event.stopPropagation();if(window.openPopup){openPopup('" + openId + "');}else if(window.mbGoPage){mbGoPage('saved');setTimeout(function(){if(window.mbOpenSavedDetail)mbOpenSavedDetail('" + openId + "');},100);}";
-      var actRoom = roomId
-        ? ("event.stopPropagation();if(typeof mbInsTab==='function')mbInsTab('room');setTimeout(function(){if(typeof mbRoomLoad==='function')mbRoomLoad('" + roomId + "',{cloud:false});},90);")
-        : '';
-      return '<div class="mb-pl-row" data-st="' + v.st + '" onclick="if(window.openPopup){openPopup(\'' + openId + '\');}else if(window.mbGoPage){mbGoPage(\'saved\');setTimeout(function(){if(window.mbOpenSavedDetail)mbOpenSavedDetail(\'' + openId + '\');},100);}">'
+      return '<div class="mb-pl-row" data-st="' + v.st + '" onclick="mbPlOpenDetail(\'' + openId + '\')">'
         + '<div class="mb-pl-main-col">'
         + '<div class="mb-pl-top">'
         + '<div class="mb-pl-title">' + esc(v.title) + '</div>'
@@ -6771,8 +6767,8 @@ input, textarea, select {
         + '<span class="mb-pl-chip ' + statusChipClass(v.st) + '">' + statusLabel(v.st) + '</span>'
         + intentChip
         + '<span class="mb-pl-actions">'
-        + '<button class="mb-pl-act" onclick="' + actDetail + '">상세</button>'
-        + (roomId ? ('<button class="mb-pl-act room" onclick="' + actRoom + '">작업룸</button>') : '')
+        + '<button class="mb-pl-act" onclick="event.stopPropagation();mbPlOpenDetail(\'' + openId + '\')">상세</button>'
+        + (roomId ? ('<button class="mb-pl-act room" onclick="event.stopPropagation();mbPlOpenRoom(\'' + roomId + '\')">작업룸</button>') : '')
         + '</span>'
         + '</div>'
         + '</div>'
@@ -8846,3 +8842,29 @@ window.dispatchEvent(new Event('mbReady'));
 </script>
 </body>
 </html>
+    if (typeof window.mbPlOpenDetail !== 'function') {
+      window.mbPlOpenDetail = function(savedId) {
+        var sid = String(savedId || '').trim();
+        if (!sid) return;
+        if (window.openPopup) {
+          openPopup(sid);
+          return;
+        }
+        if (window.mbGoPage) {
+          mbGoPage('saved');
+          setTimeout(function() {
+            if (window.mbOpenSavedDetail) mbOpenSavedDetail(sid);
+          }, 100);
+        }
+      };
+    }
+    if (typeof window.mbPlOpenRoom !== 'function') {
+      window.mbPlOpenRoom = function(roomId) {
+        var rid = String(roomId || '').trim();
+        if (!rid) return;
+        if (typeof mbInsTab === 'function') mbInsTab('room');
+        setTimeout(function() {
+          if (typeof mbRoomLoad === 'function') mbRoomLoad(rid, { cloud: false });
+        }, 90);
+      };
+    }
