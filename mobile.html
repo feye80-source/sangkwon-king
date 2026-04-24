@@ -300,10 +300,10 @@ body {
 .mb-ins-nav::-webkit-scrollbar { display: none; }
 .mb-ins-tab {
   flex-shrink: 0;
-  padding: 10px 14px;
+  padding: 8px 10px;
   background: none; border: none;
   color: var(--mu);
-  font-size: 12px; font-family: 'Noto Sans KR', sans-serif;
+  font-size: 11px; font-family: 'Noto Sans KR', sans-serif;
   cursor: pointer;
   border-bottom: 2px solid transparent;
   white-space: nowrap;
@@ -321,8 +321,8 @@ body {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
-  padding: 12px;
-  padding-bottom: 20px;
+  padding: 10px;
+  padding-bottom: 8px;
 }
 .mb-ins-panel.active { display: flex; flex-direction: column; }
 #mb-ins-pipe.active { display: flex; flex-direction: column; overflow: hidden; }
@@ -1147,12 +1147,14 @@ body {
   #mb-room-sel-list div:active { background: var(--s3) !important; }
   #mb-room-sel-btn:active { border-color: rgba(79,142,255,.5); }
   /* 작업룸: 상단/본문 분리감 방지 (단일 스크롤 영역) */
-  #mb-ins-room {
+  #mb-ins-room.active {
     display:flex;
     flex-direction:column;
     overflow:hidden;
     min-height:0;
+    padding:8px 8px calc(8px + var(--safe-bottom));
   }
+  #mb-ins-room:not(.active) { display:none !important; }
   #mb-room-topstack {
     position:sticky;
     top:0;
@@ -1167,7 +1169,7 @@ body {
     top:auto;
     z-index:4;
     isolation:auto;
-    margin:10px 0 10px;
+    margin:6px 0 6px;
     padding:0;
     background:var(--bg);
     overflow:hidden;
@@ -1205,7 +1207,7 @@ body {
     overflow-y:auto;
     -webkit-overflow-scrolling:touch;
     overscroll-behavior-y:contain;
-    padding-bottom:calc(20px + var(--safe-bottom));
+    padding-bottom:calc(8px + var(--safe-bottom));
   }
   #mb-room-list {
     flex:1 1 auto;
@@ -1213,8 +1215,9 @@ body {
     overflow-y:auto;
     -webkit-overflow-scrolling:touch;
     overscroll-behavior-y:contain;
-    padding-bottom:calc(16px + var(--safe-bottom));
+    padding-bottom:calc(6px + var(--safe-bottom));
   }
+  #mb-room-header { display:none !important; }
   .mb-folder-chipbar { display:flex; gap:6px; overflow-x:auto; padding:2px 0 4px; scrollbar-width:none; position:relative; z-index:2; }
   .mb-folder-chipbar::-webkit-scrollbar { display:none; }
   #mb-room-folder-bar,
@@ -3596,8 +3599,12 @@ input, textarea, select {
     INS_PANELS.forEach(function(n) {
       var tab   = document.getElementById('mb-itab-' + n);
       var panel = document.getElementById('mb-ins-' + n);
+      var isActive = (n === name);
       if (tab)   tab.classList.toggle('active', n === name);
-      if (panel) panel.classList.toggle('active', n === name);
+      if (panel) {
+        panel.classList.toggle('active', isActive);
+        panel.style.display = isActive ? '' : 'none';
+      }
     });
     // 알짜정보 탭
     if (name === 'kcard') {
