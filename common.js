@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260424-sync-ui-inline12';
+    window.__SK_BUILD = '20260425-tab-mobile01';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -4779,7 +4779,7 @@ var _safeLocalSet = function(key, value) {
                     const intent = String(metaInfo.intent || '').trim();
                     const intentColor = intent === '상' ? '#ff6b6b' : (intent === '중' ? '#60a5fa' : (intent === '하' ? '#4ade80' : '#8ea7c9'));
                     const intentChip = intent
-                      ? ('<span style="padding:1px 6px;border-radius:999px;border:1px solid ' + intentColor + '55;background:' + intentColor + '18;color:' + intentColor + ';font-size:10px;font-weight:800;white-space:nowrap;">의향 ' + esc(intent) + '</span>')
+                      ? ('<span style="padding:1px 6px;border-radius:999px;border:1px solid ' + intentColor + '55;background:' + intentColor + '18;color:' + intentColor + ';font-size:10px;font-weight:800;white-space:nowrap;">' + esc(intent) + '</span>')
                       : '';
                     const ddayLabel = (saleDday == null)
                       ? ''
@@ -45860,6 +45860,128 @@ window.addEventListener('DOMContentLoaded', () => {
     document.addEventListener('DOMContentLoaded', boot);
   } else {
     boot();
+  }
+})();
+
+
+/* === v6 property tab polish + mobile tuning (2026-04-25) === */
+(function() {
+  function injectPropTabStyle() {
+    if (document.getElementById('sk-prop-tab-style')) return;
+    var st = document.createElement('style');
+    st.id = 'sk-prop-tab-style';
+    st.textContent = ''
+      + '.sk-prop-main-tab{position:relative;overflow:visible;'
+      + 'background:linear-gradient(180deg,rgba(79,142,255,.14),rgba(79,142,255,.06)) !important;'
+      + 'border-color:rgba(79,142,255,.40) !important;color:#c6dcff !important;}'
+      + '.sk-prop-main-tab::after{content:"";position:absolute;inset:2px;border-radius:10px;'
+      + 'border:1px solid rgba(79,142,255,.35);pointer-events:none;opacity:.9;}'
+      + '.sk-prop-main-tab.on{'
+      + 'background:linear-gradient(180deg,rgba(79,142,255,.25),rgba(79,142,255,.10)) !important;'
+      + 'border-color:rgba(79,142,255,.58) !important;color:#f2f7ff !important;'
+      + 'box-shadow:0 0 0 1px rgba(79,142,255,.22) inset,0 6px 14px rgba(79,142,255,.14);}'
+      + '.sk-prop-main-tab .main-badge,'
+      + '.sk-prop-main-tab .main-tag,'
+      + '.sk-prop-main-tab [data-main],'
+      + '.sk-prop-main-tab [data-role="main-badge"]{display:none !important;}'
+      + '@media (max-width: 900px){'
+      + '  .pm-subtab-btn{min-height:36px;padding:8px 10px;font-size:12px;}'
+      + '  .wr2-room-item{padding:8px 10px;}'
+      + '  .wr2-room-title{font-size:13px;}'
+      + '  .wr2-room-meta{font-size:11px;line-height:1.35;}'
+      + '  #wr2SummaryMinInput,#wr2SummaryBidInput{'
+      + '    min-width:96px !important;max-width:130px !important;'
+      + '    padding:4px 6px !important;font-size:11px !important;'
+      + '  }'
+      + '  .wr2-info-row .wr2-mini-btn{padding:4px 7px;font-size:10px;}'
+      + '}';
+    document.head.appendChild(st);
+  }
+
+  function trimMainWords(root) {
+    if (!root) return;
+    try {
+      Array.prototype.slice.call(root.querySelectorAll('*')).forEach(function(el) {
+        if (!el || el.children.length > 0) return;
+        var txt = String(el.textContent || '').trim();
+        if (!txt) return;
+        if (/^main$/i.test(txt) || txt === '메인') el.remove();
+      });
+    } catch (e) {}
+    try {
+      var showText = (window.NodeFilter && window.NodeFilter.SHOW_TEXT) || 4;
+      var walker = document.createTreeWalker(root, showText, null);
+      var textNodes = [];
+      while (walker.nextNode()) textNodes.push(walker.currentNode);
+      textNodes.forEach(function(node) {
+        if (!node) return;
+        var oldText = String(node.nodeValue || '');
+        if (!oldText || !/main/i.test(oldText)) return;
+        var nextText = oldText.replace(/\bMAIN\b/gi, ' ').replace(/\s{2,}/g, ' ');
+        if (nextText !== oldText) node.nodeValue = nextText;
+      });
+    } catch (e) {}
+  }
+
+  function collectPropertyTabTargets() {
+    var out = [];
+    var seen = {};
+    function push(el) {
+      if (!el) return;
+      var key = el.id || el.getAttribute('onclick') || el.textContent || '';
+      if (seen[key]) return;
+      seen[key] = true;
+      out.push(el);
+    }
+    push(document.getElementById('nav4'));
+    Array.prototype.slice.call(document.querySelectorAll('[onclick*="showPage(4)"]')).forEach(push);
+    Array.prototype.slice.call(document.querySelectorAll('button,a,div,span')).forEach(function(el) {
+      if (!el || !el.textContent) return;
+      var txt = String(el.textContent || '').replace(/\s+/g, ' ').trim();
+      if (txt.indexOf('물건관리') < 0) return;
+      if (txt.length > 28) return;
+      push(el);
+    });
+    return out;
+  }
+
+  function applyPropertyTabPolish() {
+    injectPropTabStyle();
+    var targets = collectPropertyTabTargets();
+    targets.forEach(function(el) {
+      if (!el) return;
+      el.classList.add('sk-prop-main-tab');
+      trimMainWords(el);
+    });
+  }
+
+  function bindPropertyTabPolish() {
+    applyPropertyTabPolish();
+    setTimeout(applyPropertyTabPolish, 180);
+    setTimeout(applyPropertyTabPolish, 1200);
+    if (!window.__skPropTabObsBound && window.MutationObserver && document.body) {
+      var lastRun = 0;
+      var obs = new MutationObserver(function() {
+        var now = Date.now();
+        if (now - lastRun < 220) return;
+        lastRun = now;
+        setTimeout(applyPropertyTabPolish, 0);
+      });
+      obs.observe(document.body, { childList: true, subtree: true });
+      window.__skPropTabObsBound = true;
+    }
+    if (!window.__skPropTabResizeBound) {
+      window.__skPropTabResizeBound = true;
+      window.addEventListener('resize', function() {
+        setTimeout(applyPropertyTabPolish, 40);
+      });
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bindPropertyTabPolish);
+  } else {
+    bindPropertyTabPolish();
   }
 })();
 
