@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260424-sync-ui-inline4';
+    window.__SK_BUILD = '20260424-sync-ui-inline8';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -940,14 +940,11 @@
     window._sbSyncStatus = function(msg, ok) {
       // 물건리스트 편집 중 반복 상태 토스트 차단 (실사용 방해)
       if (String(msg || '').indexOf('물건리스트 동기화') >= 0) return;
+      // 백그라운드 저장 성공 토스트는 UX 방해가 커서 숨긴다.
+      // 경고/실패(ok=false)나 의미 있는 상태 메시지만 노출한다.
+      if (ok && /동기화 완료/.test(String(msg || ''))) return;
       // 동일 메시지 연속 노출(짧은 시간 내 반복) 방지
       var now = Date.now();
-      // 성공 완료 메시지는 노출 빈도를 크게 낮춘다.
-      if (ok && /동기화 완료/.test(String(msg || ''))) {
-        var lastDone = Number(window._sbLastDoneStatusAt || 0);
-        if (lastDone && (now - lastDone) < 25000) return;
-        window._sbLastDoneStatusAt = now;
-      }
       if (window._sbLastStatusMsg === msg && window._sbLastStatusAt && (now - window._sbLastStatusAt) < 3500) {
         return;
       }
@@ -5666,15 +5663,15 @@ var _safeLocalSet = function(key, value) {
                     const rentBaseLabel = isAuctionItem ? '임차 월세' : '월세';
                     const rentLabel = tenantRentAuto > 0 ? (rentBaseLabel + ' <span class="wr2-auto-badge">권리분석</span>') : rentBaseLabel;
                     const tenantName = tenant || '-';
-                    html += `<div style="margin-top:6px;padding:9px 12px;border:1px solid rgba(148,163,184,.18);background:rgba(148,163,184,.07);border-radius:12px;">
-                      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px;color:#8fa3c5;font-size:11px;font-weight:700;letter-spacing:.2px;">
+                    html += `<div style="margin-top:6px;padding:8px 12px;border:1px solid rgba(148,163,184,.18);background:rgba(148,163,184,.07);border-radius:12px;">
+                      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;color:#8fa3c5;font-size:10px;font-weight:700;letter-spacing:.2px;">
                         <span>임차 정보</span>
                         <span style="opacity:.8;">참고</span>
                       </div>
-                      <div style="display:flex;flex-direction:column;gap:6px;">
-                        <div style="display:flex;justify-content:space-between;gap:8px;"><span style="color:#8fa3c5;font-size:12px;">${depLabel}</span><b style="color:#d6e2ff;font-size:13px;">${fmtW(depositVal)||'-'}</b></div>
-                        <div style="display:flex;justify-content:space-between;gap:8px;"><span style="color:#8fa3c5;font-size:12px;">${rentLabel}</span><b style="color:#d6e2ff;font-size:13px;">${fmtW(rentVal)||'-'}</b></div>
-                        <div style="display:flex;justify-content:space-between;gap:8px;"><span style="color:#8fa3c5;font-size:12px;">임차인명</span><b style="color:#d6e2ff;font-size:13px;">${tenantName}</b></div>
+                      <div style="display:flex;flex-direction:column;gap:5px;">
+                        <div style="display:flex;justify-content:space-between;gap:8px;"><span style="color:#8fa3c5;font-size:11px;">${depLabel}</span><b style="color:#c9d6f2;font-size:12px;font-weight:600;">${fmtW(depositVal)||'-'}</b></div>
+                        <div style="display:flex;justify-content:space-between;gap:8px;"><span style="color:#8fa3c5;font-size:11px;">${rentLabel}</span><b style="color:#c9d6f2;font-size:12px;font-weight:600;">${fmtW(rentVal)||'-'}</b></div>
+                        <div style="display:flex;justify-content:space-between;gap:8px;"><span style="color:#8fa3c5;font-size:11px;">임차인명</span><b style="color:#c9d6f2;font-size:12px;font-weight:600;">${tenantName}</b></div>
                       </div>
                     </div>`;
                   }
@@ -14431,7 +14428,7 @@ window.wr2SummaryCancelEdit = function() {
           ${item.memo ? '<span style="font-size:10px;flex-shrink:0;">📝</span>' : ''}
         </div>
         <div style="display:flex;align-items:center;gap:4px;">
-          <div style="font-size:12px;font-weight:600;color:var(--tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;" title="${esc(item.title || d.소재지 || '')}">
+          <div id="svtitle_${item.id}" onclick="event.stopPropagation();inlineEditSavedTitle('${item.id}',event)" style="font-size:12px;font-weight:600;color:var(--tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;cursor:text;border-bottom:1px dashed rgba(255,255,255,.14);" title="클릭하여 제목 수정">
             ${esc(item.title || d.소재지 || item.id)}
           </div>
           <span onclick="event.stopPropagation();promptChangeGroup('${item.id}','${esc(item.group || '기본')}')" title="그룹: ${esc(item.group || '기본')}" style="font-size:9px;color:var(--mu);border:1px solid var(--b1);border-radius:4px;padding:1px 4px;cursor:pointer;white-space:nowrap;flex-shrink:0;">${esc(item.group || '기본')}</span>
@@ -14454,6 +14451,7 @@ window.wr2SummaryCancelEdit = function() {
                   ? `<button onclick="event.stopPropagation();assaOpenDetail('${esc(originalUrl)}')" class="sc-btn sc-btn-detail">🔗 원본</button>`
                   : `<a href="${esc(originalUrl)}" target="_blank" onclick="event.stopPropagation()" class="sc-btn sc-btn-detail">🔗 원본</a>`)
                 : `<button onclick="event.stopPropagation();promptSavedOriginalUrl('${item.id}')" class="sc-btn sc-btn-detail" style="background:rgba(255,255,255,.05);color:var(--di);border-style:dashed;">🔗 원본없음</button>`)}
+          <button onclick="event.stopPropagation();openPopupAndEdit('${itemIdJs}')" class="sc-btn" style="background:rgba(79,142,255,.12);color:#8ab8ff;border-color:rgba(79,142,255,.38);" title="상세 페이지에서 수정">✏️ 상세수정</button>
           ${src === '점포라인' ? `<a href="https://map.jumpoline.com/main" target="_blank" onclick="event.stopPropagation()" class="sc-btn sc-btn-map">🗺️ 지도</a>` : ''}
           ${(src === '네이버부동산' || src === '네이버' || src === 'naver') ? `<a href="${(() => { const lat = d.lat || item.lat; const lng = d.lng || item.lng; return (lat && lng) ? `https://new.land.naver.com/offices?ms=${lat},${lng},17&a=SG:SMS:APTHGJ&e=RETAIL` : `https://new.land.naver.com/`; })()}" target="_blank" onclick="event.stopPropagation()" class="sc-btn sc-btn-map">🗺️ 지도</a>` : ''}
           ${_isAssaSource(src) ? `<a href="https://xn--v69ap5so3hsnb81e1wfh6z.com/map" target="_blank" onclick="event.stopPropagation()" class="sc-btn sc-btn-map">🗺️ 지도</a>` : ''}
@@ -16349,37 +16347,9 @@ ${inputDesc.substring(0, 3000)}
 
     // 저장목록 제목 수정
     window.editSavedTitle = function (id) {
-      const input = document.getElementById('svtitle_' + id);
-      if (!input) return;
-      input.readOnly = false;
-      input.focus();
-      input.select();
-      input.style.cursor = 'text';
-      input.onblur = function () {
-        this.readOnly = true;
-        this.style.cursor = 'pointer';
-        const newTitle = this.value.trim();
-        if (!newTitle) return;
-
-        // localStorage 업데이트
-        const saved = getSv();
-        const item = saved.find(s => s.id === id);
-        if (item) {
-          item.title = newTitle;
-          setSv(saved);
-
-          // 지도 카드도 업데이트
-          const cardTitleEl = document.getElementById('title_marker_' + id);
-          if (cardTitleEl) {
-            cardTitleEl.value = newTitle;
-          }
-        }
-      };
-      input.onkeypress = function (e) {
-        if (e.key === 'Enter') {
-          this.blur();
-        }
-      };
+      if (typeof window.inlineEditSavedTitle === 'function') {
+        window.inlineEditSavedTitle(id);
+      }
     }
 
     // ★ 저장목록 주소 인라인 수정 + 지도 마커 위치 갱신
@@ -16471,8 +16441,15 @@ ${inputDesc.substring(0, 3000)}
       else if (isBds) { badgeCls = 'popup-badge'; badgeTxt = '🌍 플래닛'; }
       else if (isTrans) { badgeCls = 'popup-badge'; badgeTxt = '📊 실거래'; }
 
-      document.getElementById('popEditBtn').className = 'popup-editbtn';
-      document.getElementById('popEditBtn').textContent = '✏️ 수정';
+      const _popEditBtn = document.getElementById('popEditBtn');
+      if (_popEditBtn) {
+        _popEditBtn.className = 'popup-editbtn';
+        _popEditBtn.textContent = '✏️ 수정';
+        _popEditBtn.onclick = function(ev) {
+          if (ev) ev.stopPropagation();
+          togglePopupEdit();
+        };
+      }
 
       // ── 팝업 topbar 소스 탭 렌더링 (v121 스타일) ──────────────
       (function () {
@@ -16584,6 +16561,15 @@ ${inputDesc.substring(0, 3000)}
       const _ovA=document.getElementById('overlay');if(_ovA)_ovA.classList.add('on');
       const _ppA=document.getElementById('popup');if(_ppA)_ppA.classList.add('on');
     }
+    window.openPopupAndEdit = function(id) {
+      const item = getSv().find(s => String(s && s.id) === String(id));
+      if (!item) return;
+      openPopup(id);
+      setTimeout(function() {
+        if (item.mode === 'auction') return;
+        if (!popupEditMode && typeof togglePopupEdit === 'function') togglePopupEdit();
+      }, 70);
+    };
 
     function renderPopup(id) {
       const item = getSv().find(s => String(s?.id) === String(id)); if (!item) return;
@@ -18037,7 +18023,7 @@ ${fi(층수표시, '층수', 'text', idx, '해당층', isPopup)}
 </div>
 <div class="shdr">💰 금액 정보</div><div class="fgrid">
 ${fi(d.감정가, '감정가', 'big', idx, '감정가', isPopup)}
-${fi(d.최저가, '최저가', 'big', idx, '최저가', isPopup)}
+${fi(d.최저가, '최저가', 'money_raw', idx, '최저가', isPopup)}
 ${평당가 ? fi(평당가, '평당가(최저)', 'money_m', idx, '평당가_만원', isPopup) : ''}
 ${fi(d.청구액, '청구액', 'money', idx, '청구액', isPopup)}
 </div>
@@ -25565,6 +25551,83 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         }, typeof delay === 'number' ? delay : 90);
       };
     })();
+
+    window.inlineEditSavedTitle = function(itemId, e) {
+      if (e) e.stopPropagation();
+      const titleEl = document.getElementById('svtitle_' + itemId);
+      if (!titleEl) return;
+      if (titleEl.querySelector('input')) return;
+
+      if (_activeInlineCancelFn) _activeInlineCancelFn();
+
+      const sv = getSv();
+      const item = sv.find(function(s) { return s && String(s.id) === String(itemId); });
+      if (!item) return;
+
+      const originalText = String(item.title || titleEl.textContent || '').trim();
+      let committed = false;
+      let escPressed = false;
+
+      titleEl.innerHTML = '';
+      const inp = document.createElement('input');
+      inp.type = 'text';
+      inp.value = originalText;
+      inp.placeholder = '제목 입력';
+      inp.style.cssText = 'width:100%;box-sizing:border-box;background:rgba(79,142,255,.14);border:1px solid rgba(79,142,255,.52);border-radius:5px;color:var(--tx);font-size:12px;font-weight:600;padding:2px 6px;outline:none;';
+      inp.onclick = function(ev) { ev.stopPropagation(); };
+      inp.onmousedown = function(ev) { ev.stopPropagation(); };
+
+      _activeInlineEl = titleEl;
+      _activeInlineCancelFn = function() {
+        if (committed) return;
+        committed = true;
+        titleEl.textContent = originalText || itemId;
+        if (_activeInlineEl === titleEl) { _activeInlineEl = null; _activeInlineCancelFn = null; }
+      };
+
+      const commit = function() {
+        if (committed) return;
+        if (escPressed) { _activeInlineCancelFn && _activeInlineCancelFn(); return; }
+        committed = true;
+        const nextTitle = inp.value.trim();
+        if (_activeInlineEl === titleEl) { _activeInlineEl = null; _activeInlineCancelFn = null; }
+        if (!nextTitle || nextTitle === originalText) {
+          titleEl.textContent = originalText || itemId;
+          return;
+        }
+
+        const sv2 = getSv();
+        const target = sv2.find(function(s) { return s && String(s.id) === String(itemId); });
+        if (!target) {
+          titleEl.textContent = originalText || itemId;
+          return;
+        }
+        target.title = nextTitle;
+        setSv(sv2);
+        _syncAfterSavedMutation(itemId, sv2, { skipMapRefresh: false });
+        if (String(popupId || '') === String(itemId)) {
+          const popTitle = document.getElementById('popTitle');
+          if (popTitle && !document.getElementById('popTitleInput')) popTitle.textContent = nextTitle;
+        }
+        if (typeof window._scheduleSavedRender === 'function') window._scheduleSavedRender(90);
+        showToast('✅ 제목 저장됨', 'ok');
+      };
+
+      inp.onblur = commit;
+      inp.onkeydown = function(ev) {
+        if (ev.key === 'Enter') { ev.preventDefault(); inp.blur(); }
+        if (ev.key === 'Escape') {
+          ev.preventDefault();
+          ev.stopPropagation();
+          escPressed = true;
+          if (_activeInlineCancelFn) _activeInlineCancelFn();
+        }
+      };
+
+      titleEl.appendChild(inp);
+      inp.focus();
+      inp.select();
+    };
 
     window.inlineEditSavedField = function (itemId, field, currentVal, e) {
       if (e) e.stopPropagation();
@@ -42346,7 +42409,8 @@ window.addEventListener('DOMContentLoaded', () => {
         var currentBid = _plNormalizeBiddateValue(curItem.biddate || '');
         var mappedBid = _plNormalizeBiddateValue(mapped.biddate || '');
         // 작업룸 연결 물건은 로컬 상태를 우선 반영한다.
-        if (nextSimple === 'changed' || nextSimple === 'closed') return '미정';
+        if (nextSimple === 'closed') return '미정';
+        if (nextSimple === 'changed') return currentBid || mappedBid || '';
         return mappedBid || currentBid || '';
       })(),
       estimate: mapped.estimate || curItem.estimate || '',
@@ -42687,7 +42751,7 @@ window.addEventListener('DOMContentLoaded', () => {
       var s = String(item.status || '');
       if (s === 'field' || s === 'bid' || s === 'won') item.status = s;
       else item.status = 'field';
-      item.biddate = '미정';
+      // changed 전환 시에는 기존 매각기일을 보존한다.
     }
     else {
       item.status = 'review';
@@ -43183,7 +43247,7 @@ window.addEventListener('DOMContentLoaded', () => {
       } else if (life === 'changed') {
         var ps = String(it.status || '');
         if (!(ps === 'field' || ps === 'bid' || ps === 'won' || ps === 'sell')) it.status = 'field';
-        if (String(it.biddate || '') !== '미정') it.biddate = '미정';
+        // changed는 기존 기일을 보존
       } else {
         if (plSimpleStatusKey(it.status) !== 'active') it.status = 'review';
         if (_plIsUndecidedDate(it.biddate || '')) it.biddate = '';
@@ -46241,7 +46305,7 @@ window.addEventListener('DOMContentLoaded', () => {
       + '    <label style="display:block;font-size:11px;color:#c9d7ff;margin:10px 0 5px;">다음 최저가</label>'
       + '    <input id="skNextPrice" type="text" inputmode="numeric" placeholder="원" style="width:100%;padding:9px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--tx);outline:none;box-sizing:border-box;">'
       + '  </div>'
-      + '  <div id="skChangedInfo" style="display:none;padding:0 16px 12px;font-size:12px;color:var(--mu);">변경/미진행으로 저장하면 매각기일은 미정으로 바뀝니다.</div>'
+      + '  <div id="skChangedInfo" style="display:none;padding:0 16px 12px;font-size:12px;color:var(--mu);">변경/미진행으로 저장해도 매각기일은 기존 값을 유지합니다.</div>'
       + '  <div style="display:flex;justify-content:flex-end;gap:8px;padding:0 16px 14px;">'
       + '    <button type="button" id="skResultFlowCancel" style="padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.04);color:var(--tx);font-size:12px;cursor:pointer;">취소</button>'
       + '    <button type="button" id="skResultFlowSave" style="padding:8px 12px;border-radius:8px;border:1px solid rgba(251,191,36,.35);background:rgba(251,191,36,.18);color:#ffe9b3;font-size:12px;font-weight:700;cursor:pointer;">저장</button>'
@@ -46329,7 +46393,6 @@ window.addEventListener('DOMContentLoaded', () => {
             patch.status = 'field';
             patch.phase = 'field';
             patch.activePhase = 'field';
-            patch.biddate = '미정';
           } else {
             var appliedWrUnsold = _skApplyUnsoldToWorkroomSource(ctx, parseInt(nextRound.value || '1', 10) || 1, nextDate.value || '', _skDigits(nextPrice.value || ''));
             if (!appliedWrUnsold || appliedWrUnsold.ok !== true) {
