@@ -1055,19 +1055,28 @@ body {
   /* 커스텀 드롭다운 */
   #mb-room-sel-list div:active { background: var(--s3) !important; }
   #mb-room-sel-btn:active { border-color: rgba(79,142,255,.5); }
+  /* 작업룸: 상단/본문 분리감 방지 (단일 스크롤 영역) */
+  #mb-ins-room {
+    display:flex;
+    flex-direction:column;
+    overflow:hidden;
+    min-height:0;
+  }
   #mb-room-topstack {
-    position:relative;
+    position:sticky;
+    top:0;
     z-index:22;
     isolation:isolate;
     background:var(--bg);
-    padding-bottom:2px;
+    padding-bottom:6px;
+    flex-shrink:0;
   }
   #mb-room-tabs-wrap {
     position:relative;
     top:auto;
     z-index:4;
     isolation:auto;
-    margin:10px 0 14px;
+    margin:10px 0 10px;
     padding:0;
     background:var(--bg);
     overflow:hidden;
@@ -1096,7 +1105,25 @@ body {
   .mb-rtab[data-room-phase="bid"].active { color:#f97316;border-bottom-color:#f97316;background:rgba(249,115,22,.08); }
   .mb-rtab[data-room-phase="won"].active { color:#4ade80;border-bottom-color:#4ade80;background:rgba(74,222,128,.08); }
   .mb-rtab[data-room-phase="sell"].active { color:#f472b6;border-bottom-color:#f472b6;background:rgba(244,114,182,.08); }
-  .mb-room-tabpanel { position:relative; z-index:1; padding-top:2px; }
+  .mb-room-tabpanel {
+    position:relative;
+    z-index:1;
+    padding-top:2px;
+    flex:1 1 auto;
+    min-height:0;
+    overflow-y:auto;
+    -webkit-overflow-scrolling:touch;
+    overscroll-behavior-y:contain;
+    padding-bottom:calc(20px + var(--safe-bottom));
+  }
+  #mb-room-list {
+    flex:1 1 auto;
+    min-height:0;
+    overflow-y:auto;
+    -webkit-overflow-scrolling:touch;
+    overscroll-behavior-y:contain;
+    padding-bottom:calc(16px + var(--safe-bottom));
+  }
   .mb-folder-chipbar { display:flex; gap:6px; overflow-x:auto; padding:2px 0 4px; scrollbar-width:none; position:relative; z-index:2; }
   .mb-folder-chipbar::-webkit-scrollbar { display:none; }
   #mb-room-folder-bar,
