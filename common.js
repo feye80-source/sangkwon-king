@@ -4570,6 +4570,60 @@ var _safeLocalSet = function(key, value) {
                   let rooms = wr2State.rooms.filter(r => !r.deletedAt);
                   const svItems = (typeof getSv === 'function') ? (getSv() || []) : [];
                   const plLinkedMap = wr2BuildPlLinkedMap();
+                  const plItems = (typeof plLoad === 'function') ? (plLoad() || []) : [];
+                  const plById = {};
+                  const plByRoom = {};
+                  const plBySaved = {};
+                  (plItems || []).forEach(function(it) {
+                    if (!it || !it.id) return;
+                    const id = String(it.id || '');
+                    plById[id] = it;
+                    const rid = String(it.roomId || '').trim();
+                    if (rid) {
+                      if (!plByRoom[rid]) plByRoom[rid] = [];
+                      plByRoom[rid].push(it);
+                    }
+                    const sid = String(it.linkedSavedId || '').trim();
+                    if (sid) {
+                      if (!plBySaved[sid]) plBySaved[sid] = [];
+                      plBySaved[sid].push(it);
+                    }
+                  });
+                  const pickLatestPl = function(arr) {
+                    if (!Array.isArray(arr) || !arr.length) return null;
+                    return arr.slice().sort(function(a, b) {
+                      return Number(b && (b.updatedAt || b.createdAt || 0)) - Number(a && (a.updatedAt || a.createdAt || 0));
+                    })[0] || null;
+                  };
+                  const plByRoomLatest = {};
+                  Object.keys(plByRoom).forEach(function(rid) { plByRoomLatest[rid] = pickLatestPl(plByRoom[rid]); });
+                  const plBySavedLatest = {};
+                  Object.keys(plBySaved).forEach(function(sid) { plBySavedLatest[sid] = pickLatestPl(plBySaved[sid]); });
+                  const wr2ResolveLinkedPlItemMeta = function(room, linkedSavedId) {
+                    if (!room) return null;
+                    const targetId = String(room.targetItemId || '').trim();
+                    if (targetId && plById[targetId]) return plById[targetId];
+                    const linkedIds = Array.isArray(room.linkedItems)
+                      ? room.linkedItems.map(function(v){ return String(v || '').trim(); }).filter(Boolean)
+                      : [];
+                    for (let i = 0; i < linkedIds.length; i += 1) {
+                      if (plById[linkedIds[i]]) return plById[linkedIds[i]];
+                    }
+                    const rid = String(room.id || '').trim();
+                    if (rid && plByRoomLatest[rid]) return plByRoomLatest[rid];
+                    const sid = String(linkedSavedId || '').trim();
+                    if (sid && plBySavedLatest[sid]) return plBySavedLatest[sid];
+                    return null;
+                  };
+                  const parseMetaPriceWon = function(raw) {
+                    if (raw == null || raw === '') return 0;
+                    let n = 0;
+                    try {
+                      if (typeof _parseWonInput === 'function') n = Math.round(_parseWonInput(raw) || 0);
+                    } catch (e) {}
+                    if (!n) n = parseInt(String(raw).replace(/[^0-9]/g, ''), 10) || 0;
+                    return n > 0 ? n : 0;
+                  };
                   const fmtMetaPrice = function(raw) {
                     let n = 0;
                     try {
@@ -4591,7 +4645,26 @@ var _safeLocalSet = function(key, value) {
                     const saleRaw = String(m['매각기일'] || m['매각일'] || '').trim();
                     const saleDt = wr2ParseSaleDateLoose(saleRaw);
                     const saleDday = wr2CalcDdayFromDate(saleDt);
-                    return { linked: linked, data: m, saleRaw: saleRaw, saleDt: saleDt, saleDday: saleDday };
+                    const priceRaw = m['최저가'] || m['감정가'] || m['낙찰가'] || m['매매가'] || m['매매가_만원']
+                      || (r.calcState && (r.calcState.price || r.calcState.deposit))
+                      || (r.closedSummary && r.closedSummary.finalBidPrice)
+                      || '';
+                    const linkedSavedId = linked ? String(linked.id || '') : '';
+                    const linkedPl = wr2ResolveLinkedPlItemMeta(r, linkedSavedId);
+                    const intentRaw = String(linkedPl && linkedPl.intent || '').trim();
+                    const intentRank = intentRaw === '상' ? 3 : (intentRaw === '중' ? 2 : (intentRaw === '하' ? 1 : 0));
+                    return {
+                      linked: linked,
+                      linkedPl: linkedPl,
+                      intent: intentRaw,
+                      intentRank: intentRank,
+                      data: m,
+                      saleRaw: saleRaw,
+                      saleDt: saleDt,
+                      saleDday: saleDday,
+                      priceRaw: priceRaw,
+                      priceWon: parseMetaPriceWon(priceRaw)
+                    };
                   };
                   const sortRankByDday = function(dday) {
                     if (dday == null) return 2; // 날짜 없음은 맨 아래
@@ -4616,10 +4689,18 @@ var _safeLocalSet = function(key, value) {
                     } else if (ra === 1) { // 지난 기일: 최근 지난 것 우선
                       if (ma.saleDday !== mb.saleDday) return mb.saleDday - ma.saleDday;
                     }
+                    // 같은 D-day에서는 금액(최저가/기준가) 큰 순 정렬
+                    if (ma.priceWon !== mb.priceWon) return mb.priceWon - ma.priceWon;
                     const ta = ma.saleDt ? ma.saleDt.getTime() : Number.MAX_SAFE_INTEGER;
                     const tb = mb.saleDt ? mb.saleDt.getTime() : Number.MAX_SAFE_INTEGER;
                     if (ta !== tb) return ta - tb;
-                    return (b.updatedAt || 0) - (a.updatedAt || 0);
+                    const ca = String((ma.data && (ma.data['사건번호'] || ma.data['경매번호'])) || a.auctionId || a.listingId || a.id || '');
+                    const cb = String((mb.data && (mb.data['사건번호'] || mb.data['경매번호'])) || b.auctionId || b.listingId || b.id || '');
+                    if (ca !== cb) return ca.localeCompare(cb, 'ko');
+                    const taName = String(a.title || '').trim();
+                    const tbName = String(b.title || '').trim();
+                    if (taName !== tbName) return taName.localeCompare(tbName, 'ko');
+                    return String(a.id || '').localeCompare(String(b.id || ''), 'ko');
                   });
 
                   listEl.innerHTML = '';
@@ -4693,11 +4774,13 @@ var _safeLocalSet = function(key, value) {
                     const saleRaw = metaInfo.saleRaw;
                     const saleDday = metaInfo.saleDday;
                     const saleOverdueNeedsAction = !!(saleRaw && saleDday != null && saleDday < 0 && wr2GetLifecycle(r) !== 'closed');
-                    const priceRaw = m['최저가'] || m['감정가'] || m['낙찰가'] || m['매매가'] || m['매매가_만원']
-                      || (r.calcState && (r.calcState.price || r.calcState.deposit))
-                      || (r.closedSummary && r.closedSummary.finalBidPrice)
-                      || '';
+                    const priceRaw = metaInfo.priceRaw;
                     const price = fmtMetaPrice(priceRaw) || String(priceRaw || '').trim();
+                    const intent = String(metaInfo.intent || '').trim();
+                    const intentColor = intent === '상' ? '#ff6b6b' : (intent === '중' ? '#60a5fa' : (intent === '하' ? '#4ade80' : '#8ea7c9'));
+                    const intentChip = intent
+                      ? ('<span style="padding:1px 6px;border-radius:999px;border:1px solid ' + intentColor + '55;background:' + intentColor + '18;color:' + intentColor + ';font-size:10px;font-weight:800;white-space:nowrap;">의향 ' + esc(intent) + '</span>')
+                      : '';
                     const ddayLabel = (saleDday == null)
                       ? ''
                       : (saleDday < 0 ? ('D+' + Math.abs(saleDday)) : (saleDday === 0 ? 'D-Day' : ('D-' + saleDday)));
@@ -4714,6 +4797,7 @@ var _safeLocalSet = function(key, value) {
                         + '<div style="display:flex;align-items:center;gap:6px;line-height:1.25;flex-wrap:wrap;">'
                         + (no ? ('<span style="color:#7bb4ff;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px;">' + esc(no) + '</span>') : '')
                         + (price ? ('<span style="color:#ffb36c;white-space:nowrap;font-weight:700;">' + esc(price) + '</span>') : '')
+                        + intentChip
                         + (ddayLabel ? ('<span style="color:' + ddayColor + ';white-space:nowrap;font-weight:700;">' + esc(ddayLabel) + '</span>') : '')
                         + (resultAlertText ? ('<span style="color:#ff9eab;white-space:nowrap;font-weight:800;">' + esc(resultAlertText) + '</span>') : '')
                         + (saleOverdueNeedsAction ? ('<span style="padding:1px 6px;border-radius:999px;border:1px solid rgba(255,107,122,.52);background:rgba(255,107,122,.16);color:#ff9eab;font-size:10px;font-weight:800;white-space:nowrap;">⚠ 기일지남 · 수정필요</span>') : '')
@@ -43967,11 +44051,9 @@ window.addEventListener('DOMContentLoaded', () => {
     } else {
       tbody.innerHTML = filtered.map(function(it){
         var d = daysDiff(it.biddate);
-        var dTag = d===null ? '' : d<0 ? '<div style="font-size:10px;color:#ff6b7a;font-weight:800;">지난 기일 · 수정필요</div>'
-          : d===0 ? '<div style="display:inline-block;margin-top:2px;padding:2px 7px;border-radius:4px;background:linear-gradient(135deg,#ff3b5c,#ff6b3b);color:#fff;font-size:10px;font-weight:900;letter-spacing:.3px;box-shadow:0 0 0 1px rgba(255,107,122,.4),0 2px 8px rgba(255,59,92,.35);transform:rotate(-2deg);">🔥 D-Day · 결과 입력</div>'
-          : d<=3 ? '<div style="font-size:10px;color:#ff6b6b;font-weight:700;">D-'+d+'</div>'
-          : d<=7 ? '<div style="font-size:10px;color:#f5a623;font-weight:700;">D-'+d+'</div>'
-          : '<div style="font-size:10px;color:var(--fg3);">D-'+d+'</div>';
+        var ddayLabel = d===null ? '' : (d < 0 ? ('D+' + Math.abs(d)) : (d === 0 ? 'D-Day' : ('D-' + d)));
+        var ddayColor = d===null ? 'var(--fg3)' : (d < 0 ? '#8b93a7' : (d === 0 ? '#ff6370' : (d <= 3 ? '#ff8c42' : (d <= 7 ? '#fbbf24' : '#4ade80'))));
+        var dTag = d===null ? '' : '<div style="font-size:10px;color:' + ddayColor + ';font-weight:800;">' + ddayLabel + '</div>';
         var room = it.roomId ? roomById[String(it.roomId)] : null;
         var simpleStatus = plEffectiveSimpleStatus(it, roomById);
         var wrLink = plQuickRoomControlHtml(it, roomOptionsHtml);
@@ -44017,7 +44099,7 @@ window.addEventListener('DOMContentLoaded', () => {
           + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'monthly',plDisplayMoney(it.monthly||''),plDisplayMan(it.monthly||''),{type:'text',align:'right',minw:'60px',placeholder:'만원'})+'</td>'
           + '<td style="padding:8px 10px;text-align:center;font-size:12px;">'+(it.round||'—')+'</td>'
           + '<td style="padding:8px 10px;white-space:nowrap;">'
-          +   '<div style="font-size:13px;">'+plEditCellHtml(it.id,'biddate',it.biddate||'',fmtDate(it.biddate),{type:'text',align:'left',minw:'72px',placeholder:'YYYY-MM-DD',spanStyle:'color:'+(isPast?'#ff6b7a':'var(--tx)')+';font-weight:'+(isPast?'700':'500')+';border-bottom-color:rgba(255,255,255,.10);'})+'</div>'
+          +   '<div style="font-size:13px;">'+plEditCellHtml(it.id,'biddate',it.biddate||'',fmtDate(it.biddate),{type:'text',align:'left',minw:'72px',placeholder:'YYYY-MM-DD',spanStyle:'color:'+ddayColor+';font-weight:700;border-bottom-color:rgba(255,255,255,.10);'})+'</div>'
           +   dTag
           + '</td>'
           + '<td style="padding:8px 10px;text-align:right;"><span style="'+(it.estimate?'background:rgba(255,209,102,.12);border-radius:4px;padding:1px 4px;':'')+'">'+plEditCellHtml(it.id,'estimate',plDisplayMoney(it.estimate||''),plDisplayMan(it.estimate||''),{type:'text',align:'right',minw:'72px',placeholder:'만원',spanStyle:'color:#ffd166;font-weight:700;'})+'</span></td>'
