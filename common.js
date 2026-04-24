@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260424-sync-ui-inline2';
+    window.__SK_BUILD = '20260424-sync-ui-inline3';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -1805,7 +1805,8 @@
         const cleanArr = _wrStripFreeTableLegacyRooms(arr);
         const full = _sbPruneTombstones(_sbKeepTombstones(prev, cleanArr)).filter(r => r && r.id);
         const changedIds = _sbChangedIds(prev, full);
-        if (!changedIds.length) return;
+        const hasDirty = !!(_dirtyItems.workrooms && _dirtyItems.workrooms.size);
+        if (!changedIds.length && !hasDirty) return;
         const active = window._wrFilterActiveRooms ? window._wrFilterActiveRooms(full) : full.filter(r => !r.deletedAt);
         const deleted = full.filter(r => r.deletedAt).map(r => r.id);
         await tblSaveDirty('workrooms', active);
@@ -1972,6 +1973,12 @@
     window._plRefreshFromCloud = async function(opts) {
       const options = opts || {};
       let forceCloud = (options.force === true);
+      const nowTs = Date.now();
+      const localLifecycleMutationAt = Number(window.__plLastLocalStatusMutationAt || 0);
+      const preferLocalLifecycle = !!(
+        options.preferLocalLifecycle === true ||
+        (localLifecycleMutationAt && (nowTs - localLifecycleMutationAt) < 120000)
+      );
       if (_hasKvDirty('pl_items_v3') && window._sbSavePlItems) {
         try {
           await window._sbSavePlItems(_sbGetCachedArray('pl_items_v3').filter(it => it && it.id));
@@ -1985,27 +1992,29 @@
       const cloudItems = window._sbLoadPlItems ? await window._sbLoadPlItems() : [];
       const localItems = _sbGetCachedArray('pl_items_v3');
       let merged = _sbMergeById(cloudItems, localItems).filter(it => it && it.id);
-      // 작업룸에 연결된 물건(status/lifecycle 연동 대상)은 로컬 상태를 강하게 우선한다.
-      // (클라우드 지연/경합으로 이전 상태가 되살아나는 현상 방지)
-      try {
-        const localById = new Map((Array.isArray(localItems) ? localItems : [])
-          .filter(it => it && it.id)
-          .map(it => [String(it.id), it]));
-        merged = merged.map(function(item) {
-          if (!item || !item.id) return item;
-          const local = localById.get(String(item.id));
-          if (!local) return item;
-          if (!String(local.roomId || '').trim()) return item;
-          const next = Object.assign({}, item);
-          next.status = local.status || next.status;
-          next.archived = !!local.archived;
-          if (local.biddate !== undefined) next.biddate = local.biddate;
-          const lts = Number(local.updatedAt || local.timestamp || 0);
-          const cts = Number(item.updatedAt || item.timestamp || 0);
-          next.updatedAt = Math.max(lts, cts, Date.now());
-          return next;
-        });
-      } catch (e) {}
+      // 최근 로컬 라이프사이클 변경 직후에만 로컬 상태를 우선한다.
+      // 그렇지 않으면 클라우드 기준으로 수렴시켜 기기간 개수 흔들림을 막는다.
+      if (preferLocalLifecycle) {
+        try {
+          const localById = new Map((Array.isArray(localItems) ? localItems : [])
+            .filter(it => it && it.id)
+            .map(it => [String(it.id), it]));
+          merged = merged.map(function(item) {
+            if (!item || !item.id) return item;
+            const local = localById.get(String(item.id));
+            if (!local) return item;
+            if (!String(local.roomId || '').trim()) return item;
+            const next = Object.assign({}, item);
+            next.status = local.status || next.status;
+            next.archived = !!local.archived;
+            if (local.biddate !== undefined) next.biddate = local.biddate;
+            const lts = Number(local.updatedAt || local.timestamp || 0);
+            const cts = Number(item.updatedAt || item.timestamp || 0);
+            next.updatedAt = Math.max(lts, cts);
+            return next;
+          });
+        } catch (e) {}
+      }
       // 강제 새로고침에서는 클라우드를 우선한다.
       // (기기별 오래된 로컬 캐시가 최신 클라우드를 덮어쓰는 현상 방지)
       if (forceCloud) {
@@ -2903,7 +2912,6 @@
         _sbCachedUserId = session.user.id;
         window._sbAddLogoutBtn();
         window._sbSyncStatus('☁️ 변경분 확인 중...', true);
-        await _sbSyncDirtyQueues();
         try {
           const apiKeysCloud = await _sbSafeLoad('api_keys', () => kvGet('api_keys'), 0);
           if (apiKeysCloud) {
@@ -2927,14 +2935,30 @@
         try {
           if (window.__plAutoCloudPull === true) {
             await _sbSafeLoad('workrooms_init', () => {
-              return window._wrRefreshFromCloud ? window._wrRefreshFromCloud({ render: false }) : null;
+              return window._wrRefreshFromCloud ? window._wrRefreshFromCloud({ render: false, force: true }) : null;
             }, 0);
             await _sbSafeLoad('pl_items_init', () => {
-              return window._plRefreshFromCloud ? window._plRefreshFromCloud({ render: false }) : null;
+              return window._plRefreshFromCloud ? window._plRefreshFromCloud({ render: false, force: true, sync: false }) : null;
+            }, 0);
+            await _sbSafeLoad('saved_init', () => {
+              return window._svRefreshFromCloud ? window._svRefreshFromCloud({ render: false }) : null;
             }, 0);
           }
         } catch (e) {
           console.warn('[SB] init entity sync error', e);
+        }
+        await _sbSyncDirtyQueues();
+        try {
+          if (window.__plAutoCloudPull === true) {
+            await _sbSafeLoad('workrooms_after_sync', () => {
+              return window._wrRefreshFromCloud ? window._wrRefreshFromCloud({ render: false, force: true }) : null;
+            }, 0);
+            await _sbSafeLoad('pl_items_after_sync', () => {
+              return window._plRefreshFromCloud ? window._plRefreshFromCloud({ render: false, force: true, sync: false }) : null;
+            }, 0);
+          }
+        } catch (e) {
+          console.warn('[SB] post-sync entity refresh error', e);
         }
         window._sbCloudLoaded = true;
         window._sbSyncStatus('✅ 변경분 확인 완료', true);
@@ -5536,6 +5560,12 @@ var _safeLocalSet = function(key, value) {
                   const priceVal   = d['매매가_만원']
                     ? toWonSmart(0, d['매매가_만원'])
                     : toWonSmart(item.minprice || d['최저가'] || d['감정가'] || 0, d['최저가_만원'] || d['감정가_만원'] || 0, appraiseVal);
+                  const estimateVal = (function(){
+                    var est = fmtN(item.estimate || d['예상입찰가'] || d['예상입찰가_원'] || 0);
+                    if (!est && d['예상입찰가_만원']) est = Math.round(fmtN(d['예상입찰가_만원']) * 10000);
+                    if (!est && d['_user_매매가']) est = Math.round(fmtN(d['_user_매매가']) * 10000);
+                    return est > 0 ? est : 0;
+                  })();
                   const depositVal = tenantDepAuto;
                   const rentVal    = tenantRentAuto;
 
@@ -5617,12 +5647,16 @@ var _safeLocalSet = function(key, value) {
                     var n = Math.round(Number(v || 0));
                     return (n > 0) ? n.toLocaleString('ko-KR') : '';
                   })(minVal);
+                  const estimateInputVal = (function(v){
+                    var n = Math.round(Number(v || 0));
+                    return (n > 0) ? n.toLocaleString('ko-KR') : '';
+                  })(estimateVal);
 
                   // 인라인 수정: 매각기일(최저가보다 위)
                   html += `<div class="wr2-info-row">
                     <span class="wr2-info-lbl">매각기일</span>
                     <span class="wr2-info-val" style="display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:wrap;">
-                      <input id="wr2SummaryBidInput" type="text" value="${bidInputVal}" placeholder="YYYY-MM-DD" onclick="event.stopPropagation()" oninput="event.stopPropagation();this.value=(this.value||'').replace(/[^0-9.\\-]/g,'')" style="padding:5px 8px;border-radius:8px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.05);color:var(--tx);font-size:12px;min-width:132px;max-width:152px;text-align:center;">
+                      <input id="wr2SummaryBidInput" type="text" value="${bidInputVal}" placeholder="YYYY-MM-DD" onclick="event.stopPropagation()" oninput="event.stopPropagation();this.value=(this.value||'').replace(/[^0-9.\\-]/g,'')" style="padding:5px 8px;border-radius:8px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.05);color:var(--tx);font-size:12px;min-width:128px;max-width:142px;text-align:center;">
                       <button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();window.wr2SummaryEditSave && window.wr2SummaryEditSave('biddate')">반영</button>
                       ${bidBadge}
                     </span>
@@ -5632,7 +5666,7 @@ var _safeLocalSet = function(key, value) {
                   html += `<div class="wr2-info-row">
                     <span class="wr2-info-lbl">최저가</span>
                     <span class="wr2-info-val" style="display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:wrap;">
-                      <input id="wr2SummaryMinInput" type="text" inputmode="numeric" value="${minInputVal}" onclick="event.stopPropagation()" oninput="event.stopPropagation();window.wr2SummaryMoneyInput && window.wr2SummaryMoneyInput(this)" placeholder="원 단위 입력" style="padding:5px 8px;border-radius:8px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.05);color:var(--tx);font-size:12px;min-width:132px;max-width:168px;text-align:right;">
+                      <input id="wr2SummaryMinInput" type="text" inputmode="numeric" value="${minInputVal}" onclick="event.stopPropagation()" oninput="event.stopPropagation();window.wr2SummaryMoneyInput && window.wr2SummaryMoneyInput(this)" placeholder="원 단위 입력" style="padding:5px 8px;border-radius:8px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.05);color:var(--tx);font-size:12px;min-width:128px;max-width:160px;text-align:right;">
                       <button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();window.wr2SummaryEditSave && window.wr2SummaryEditSave('minprice')">반영</button>
                       ${minPy ? `<span class="wr2-sub-py">${minPy}</span>` : ''}
                     </span>
@@ -5641,8 +5675,15 @@ var _safeLocalSet = function(key, value) {
                   // 면적 (㎡ + 평)
                   if (areaM2 > 0) html += `<div class="wr2-info-row"><span class="wr2-info-lbl">${areaLabel}</span><span class="wr2-info-val">${areaStr}</span></div>`;
 
-                  // 매매가 (수동편집)
-                  html += editRow('price', '입찰가', `<span style="color:#ff4444;font-weight:600;">${fmtW(priceVal)||'미입력'}</span>`, priceVal||'');
+                  // 예상 입찰가 (인라인 편집)
+                  html += `<div class="wr2-info-row">
+                    <span class="wr2-info-lbl">예상 입찰가</span>
+                    <span class="wr2-info-val" style="display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:wrap;">
+                      <input id="wr2SummaryEstInput" type="text" inputmode="numeric" value="${estimateInputVal}" onclick="event.stopPropagation()" oninput="event.stopPropagation();window.wr2SummaryMoneyInput && window.wr2SummaryMoneyInput(this)" placeholder="원 단위 입력" style="padding:5px 8px;border-radius:8px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.05);color:var(--tx);font-size:12px;min-width:128px;max-width:160px;text-align:right;">
+                      <button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();window.wr2SummaryEstimateSave && window.wr2SummaryEstimateSave()">반영</button>
+                      <span style="color:#ff6666;font-weight:600;">${estimateVal > 0 ? fmtW(estimateVal) : '미입력'}</span>
+                    </span>
+                  </div>`;
 
                   // 보증금 (임차인 기보증금 자동 — 수동편집 가능)
                   {
@@ -5694,6 +5735,39 @@ var _safeLocalSet = function(key, value) {
                   if (!digits) { el.value = ''; return; }
                   var n = Number(digits);
                   el.value = Number.isFinite(n) ? n.toLocaleString('ko-KR') : '';
+                };
+                window.wr2SummaryEstimateSave = function() {
+                  try {
+                    var room = getActiveRoom();
+                    if (!room || !room.id) {
+                      if (typeof showToast === 'function') showToast('활성 작업룸을 찾을 수 없습니다.', 'warn');
+                      return;
+                    }
+                    var estIn = document.getElementById('wr2SummaryEstInput');
+                    var estDigits = String(estIn && estIn.value || '').replace(/[^0-9]/g, '');
+                    if (!estDigits) {
+                      if (typeof showToast === 'function') showToast('예상 입찰가를 원 단위 숫자로 입력해주세요.', 'warn');
+                      if (estIn) estIn.focus();
+                      return;
+                    }
+                    if (typeof window.wr2SaveEstimateFromSummary !== 'function') {
+                      if (typeof showToast === 'function') showToast('수정 모듈이 준비되지 않았습니다. 페이지를 새로고침해주세요.', 'warn');
+                      return;
+                    }
+                    var out = window.wr2SaveEstimateFromSummary(String(room.id), estDigits);
+                    if (!out || out.ok !== true) {
+                      if (typeof showToast === 'function') showToast('연결된 원본 물건을 찾지 못했습니다. 연결 상태를 확인해주세요.', 'warn');
+                      return;
+                    }
+                    if (estIn) {
+                      var estNum = Number(estDigits || 0);
+                      estIn.value = estNum > 0 ? estNum.toLocaleString('ko-KR') : '';
+                    }
+                    if (typeof showToast === 'function') showToast('예상 입찰가를 저장했습니다.', 'ok');
+                  } catch (e) {
+                    console.warn('[wr2SummaryEstimateSave]', e);
+                    if (typeof showToast === 'function') showToast('예상 입찰가 저장 중 오류가 발생했습니다.', 'warn');
+                  }
                 };
                 window.wr2SummaryEditSave = function(_key) {
                   try {
@@ -43379,7 +43453,7 @@ window.addEventListener('DOMContentLoaded', () => {
     if (last && (now - last) < 12000) return;
     window.__plListRefreshAt = now;
     window.__plListRefreshRunning = true;
-    Promise.resolve(window._plRefreshFromCloud({ render: false, force: false, sync: true }))
+    Promise.resolve(window._plRefreshFromCloud({ render: false, force: true, sync: false }))
       .then(function() {
         if (typeof currentPage !== 'undefined' && currentPage === 4 && window.__pmActiveTab === 'list' && typeof renderPropertyList === 'function') {
           renderPropertyList();
@@ -45839,6 +45913,13 @@ window.addEventListener('DOMContentLoaded', () => {
       var cloudRooms = (typeof window._sbLoadRooms === 'function') ? (await window._sbLoadRooms()) : null;
       var cloudPl = (typeof window._sbLoadPlItems === 'function') ? (await window._sbLoadPlItems()) : null;
       var cloudSv = (typeof window._sbLoadSv === 'function') ? (await window._sbLoadSv()) : null;
+      var countActiveLike = function(arr){
+        return (Array.isArray(arr) ? arr : []).filter(function(it){
+          if (!it || !it.id) return false;
+          if (it.archived || it.deletedAt || String(it.status || '') === 'archived' || String(it.status || '') === 'closed') return false;
+          return true;
+        }).length;
+      };
       var cloudRoom = (Array.isArray(cloudRooms) ? cloudRooms : []).find(function(r){ return String(r && r.id || '') === rid; }) || null;
       var cloudTarget = (Array.isArray(cloudPl) ? cloudPl : []).find(function(it){
         return localTarget && String(it && it.id || '') === String(localTarget.id || '');
@@ -45864,6 +45945,12 @@ window.addEventListener('DOMContentLoaded', () => {
       var payload = {
         build: window.__SK_BUILD || '',
         roomId: rid,
+        counts: {
+          localItems: Array.isArray(localPl) ? localPl.length : 0,
+          cloudItems: Array.isArray(cloudPl) ? cloudPl.length : 0,
+          localActiveLike: countActiveLike(localPl),
+          cloudActiveLike: countActiveLike(cloudPl)
+        },
         local: {
           room: localRoom ? { id: localRoom.id, targetItemId: localRoom.targetItemId || '', biddate: localRoom.biddate || '', minprice: localRoom.minprice || '', updatedAt: localRoom.updatedAt || null } : null,
           item: snap(localTarget),
@@ -46159,6 +46246,40 @@ window.addEventListener('DOMContentLoaded', () => {
         String(nextDate || '').trim(),
         String(nextPrice || '').trim()
       );
+    } catch (e) {
+      return { ok:false, reason:'error', message:String(e && e.message || e) };
+    }
+  };
+  window.wr2SaveEstimateFromSummary = function(roomId, estimateWon){
+    try {
+      var room = _skResolveRoomById(roomId);
+      var item = _skResolveItemByRoom(room, '');
+      if (!item || !item.id) return { ok:false, reason:'not_found' };
+      var estNum = _skParseUnsoldMoney(estimateWon);
+      if (!estNum || estNum < 1) return { ok:false, reason:'invalid_estimate' };
+      var nextData = Object.assign({}, item.data || {});
+      nextData['예상입찰가'] = estNum;
+      nextData['예상입찰가_원'] = estNum;
+      nextData['예상입찰가_만원'] = Math.round(estNum / 10000);
+      nextData['_user_매매가'] = Math.round(estNum / 10000);
+      var patch = {
+        roomId: room ? String(room.id || '') : String(item.roomId || ''),
+        estimate: String(estNum),
+        data: nextData
+      };
+      var appliedItem = null;
+      if (typeof window.plUpdateItem === 'function') {
+        appliedItem = window.plUpdateItem(String(item.id), patch);
+      }
+      if (!appliedItem) return { ok:false, reason:'apply_failed' };
+      if (room) {
+        try { _skTouchUnsoldRoomLink(room, appliedItem); } catch(e) {}
+      }
+      try { if (typeof renderPropertyList === 'function') renderPropertyList(); } catch(e) {}
+      try { if (typeof wr2Render === 'function') wr2Render(); } catch(e) {}
+      try { if (typeof renderSaved === 'function') renderSaved(); } catch(e) {}
+      _skForceUnsoldCloudSync({ pull:true });
+      return { ok:true, room: room, item: appliedItem };
     } catch (e) {
       return { ok:false, reason:'error', message:String(e && e.message || e) };
     }
