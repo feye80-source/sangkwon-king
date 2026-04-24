@@ -6759,9 +6759,9 @@ input, textarea, select {
       var ddayLine = v.dday ? ('<div class="mb-pl-date-dday" style="color:' + v.dday.color + ';">' + esc(v.dday.label) + '</div>') : '<div class="mb-pl-date-dday" style="color:var(--di);">기일 없음</div>';
       var openId = String(it.linkedSavedId || it.id || '').replace(/'/g, "\\'");
       var roomId = String(v.roomId || '').replace(/'/g, "\\'");
-      var actDetail = 'event.stopPropagation();if(window.openPopup){openPopup(\\'' + openId + '\\');}else if(window.mbGoPage){mbGoPage(\\'saved\\');setTimeout(function(){if(window.mbOpenSavedDetail)mbOpenSavedDetail(\\'' + openId + '\\');},100);}';
+      var actDetail = "event.stopPropagation();if(window.openPopup){openPopup('" + openId + "');}else if(window.mbGoPage){mbGoPage('saved');setTimeout(function(){if(window.mbOpenSavedDetail)mbOpenSavedDetail('" + openId + "');},100);}";
       var actRoom = roomId
-        ? ('event.stopPropagation();if(typeof mbInsTab===\\'function\\')mbInsTab(\\'room\\');setTimeout(function(){if(typeof mbRoomLoad===\\'function\\')mbRoomLoad(\\'' + roomId + '\\',{cloud:false});},90);')
+        ? ("event.stopPropagation();if(typeof mbInsTab==='function')mbInsTab('room');setTimeout(function(){if(typeof mbRoomLoad==='function')mbRoomLoad('" + roomId + "',{cloud:false});},90);")
         : '';
       return '<div class="mb-pl-row" data-st="' + v.st + '" onclick="if(window.openPopup){openPopup(\'' + openId + '\');}else if(window.mbGoPage){mbGoPage(\'saved\');setTimeout(function(){if(window.mbOpenSavedDetail)mbOpenSavedDetail(\'' + openId + '\');},100);}">'
         + '<div class="mb-pl-main-col">'
