@@ -5473,27 +5473,16 @@ var _safeLocalSet = function(key, value) {
                   if (openBtn && item) { openBtn.onclick = () => { if (typeof openPopup === 'function') openPopup(item.id); }; }
 
                   if (!item) {
-                    // 연결 물건 없어도 매각기일은 항상 표시/수정 가능
-                    const _niBidOvr = String((room._summaryOverride && room._summaryOverride.biddate) || '').trim();
-                    const _niBiddate = _niBidOvr || String(room.biddate || '').trim();
-                    let _niBidHtml;
-                    if (room._summaryEditing === 'biddate') {
-                      _niBidHtml = `<div class="wr2-info-row wr2-info-editing"><span class="wr2-info-lbl">매각기일</span><input class="wr2-info-edit-inp" value="${_niBiddate}" onkeydown="if(event.key==='Enter'){event.preventDefault();wr2SummaryEditSave('biddate',this.value);}else if(event.key==='Escape'){event.preventDefault();wr2SummaryCancelEdit();}" onblur="wr2SummaryEditSave('biddate',this.value)" id="wr2SumEdt_biddate" placeholder="YYYY-MM-DD"></div>`;
-                    } else {
-                      _niBidHtml = `<div class="wr2-info-row" title="클릭으로 수정" onclick="wr2SummaryStartEdit('biddate');event.stopPropagation();"><span class="wr2-info-lbl">매각기일</span><span class="wr2-info-val">${_niBiddate || '<span style="color:var(--mu);">미입력</span>'}<span class="wr2-edit-hint">✏️</span></span></div>`;
-                    }
+                    // 연결 물건이 없어도 현재 작업룸에 기록된 기일은 표시한다.
+                    const _niBiddate = String(room.biddate || '').trim();
+                    const _niBidHtml = `<div class="wr2-info-row"><span class="wr2-info-lbl">매각기일</span><span class="wr2-info-val">${_niBiddate || '<span style="color:var(--mu);">미입력</span>'}</span></div>`;
                     el.innerHTML = _niBidHtml + '<div class="wr2-no-item">연결된 물건이 없습니다.<br/><span style="color:#4f8eff;cursor:pointer;" onclick="document.getElementById(\'wr2LinkSavedBtn\').click()">🔗 저장목록 연결</span> · <span style="color:#4f8eff;cursor:pointer;" onclick="window.wr2OpenSourceRelink && window.wr2OpenSourceRelink(\'' + String(room.id || '').replace(/'/g, "\\'") + '\')">🗂 원본연결</span></div>';
-                    if (room._summaryEditing === 'biddate') {
-                      const _niInp = document.getElementById('wr2SumEdt_biddate');
-                      if (_niInp) { _niInp.focus(); _niInp.select(); }
-                    }
                     return;
                   }
 
                   const d = item.data || {};
                   _ensureNormalizedItem(item);
                   const nSum = item._norm || {};
-                  const ovr = room._summaryOverride || {};
                   const fmtN = v => { const n = parseFloat(String(v || '').replace(/[^0-9.]/g, '')); return isNaN(n) ? 0 : n; };
                   const fmtW = v => { if (!v) return '-'; const n = fmtN(v); if (n >= 100000000) { const e=Math.floor(n/100000000),r=Math.round((n%100000000)/10000); return r>0?`${e}억 ${r.toLocaleString()}만원`:`${e}억원`; } if (n >= 10000) return Math.round(n/10000).toLocaleString()+'만원'; return n.toLocaleString()+'원'; };
                   const fmtPy = v => { const man=Math.round(v/10000); return '@'+man.toLocaleString('ko-KR')+'만'; };
@@ -5518,9 +5507,9 @@ var _safeLocalSet = function(key, value) {
                   const tenantDepAuto = occupancy ? occupancy.leaseDepositWon : 0;
                   const tenantRentAuto = occupancy ? occupancy.monthlyRentWon : 0;
 
-                  const priceVal   = ovr.price   !== undefined ? ovr.price   : fmtN(d['매매가_만원'] ? fmtN(d['매매가_만원'])*10000 : (d['최저가'] || d['감정가'] || 0));
-                  const depositVal = ovr.deposit !== undefined ? ovr.deposit : tenantDepAuto;
-                  const rentVal    = ovr.rent    !== undefined ? ovr.rent    : tenantRentAuto;
+                  const priceVal   = fmtN(d['매매가_만원'] ? fmtN(d['매매가_만원']) * 10000 : (d['최저가'] || d['감정가'] || item.minprice || 0));
+                  const depositVal = tenantDepAuto;
+                  const rentVal    = tenantRentAuto;
 
                   // ── 자동 계산
                   const salePy    = (priceVal > 0 && areaPy > 0) ? priceVal / areaPy : 0;
@@ -5540,22 +5529,13 @@ var _safeLocalSet = function(key, value) {
                   const saleOverdueNeedsAction = !!(saleDateRaw && saleDday != null && saleDday < 0 && lifecycle !== 'closed');
                   const warnTone = saleOverdueNeedsAction ? '#ff6b7a' : '#ff8c42';
 
-                  // ── 수동편집 행
-                  const editRow = (key, label, valHtml, rawVal) => {
-                    if (room._summaryEditing === key) {
-                      return `<div class="wr2-info-row wr2-info-editing">
-                        <span class="wr2-info-lbl">${label}</span>
-                        <input class="wr2-info-edit-inp" value="${rawVal||''}"
-                          onblur="wr2SummaryEditSave('${key}',this.value)"
-                          onkeydown="if(event.key==='Enter'){event.preventDefault();wr2SummaryEditSave('${key}',this.value);}else if(event.key==='Escape'){event.preventDefault();wr2SummaryCancelEdit();}"
-                          id="wr2SumEdt_${key}" placeholder="${key==='biddate' ? 'YYYY-MM-DD' : (label + ' 입력' + (key==='price'||key==='deposit'||key==='rent' ? ' (원 단위)' : ''))}">
-                      </div>`;
-                    }
-                    return `<div class="wr2-info-row" title="클릭으로 수정" onclick="wr2SummaryStartEdit('${key}');event.stopPropagation();">
+                  // ── 읽기 전용 요약 행: 원본 물건 정보를 그대로 표시한다.
+                  const editRow = (_key, label, valHtml, _rawVal) => (
+                    `<div class="wr2-info-row">
                       <span class="wr2-info-lbl">${label}</span>
-                      <span class="wr2-info-val">${valHtml}<span class="wr2-edit-hint">✏️</span></span>
-                    </div>`;
-                  };
+                      <span class="wr2-info-val">${valHtml}</span>
+                    </div>`
+                  );
 
                   const primaryAddr = d['소재지'] || d['도로명주소'] || d['지번주소'] || d['주소'] || room.address || '-';
                   const pdfDoc = _getPrimaryPdfDoc(item);
@@ -5627,9 +5607,8 @@ var _safeLocalSet = function(key, value) {
 
                   // 매각기일 (항상 표시 + 수동 수정 가능)
                   {
-                    const bidOverride = String((room._summaryOverride && room._summaryOverride.biddate) || '').trim();
-                    // biddate 폴백 우선순위: 사용자 override > room.biddate > 물건 데이터 > PL item.biddate
-                    const bidRaw = bidOverride || String(room.biddate || '').trim() || saleDateRaw || String(item.biddate || '').trim();
+                    // biddate 폴백 우선순위: 원본 물건 > 저장목록 데이터 > room 동기화값
+                    const bidRaw = String(item.biddate || '').trim() || saleDateRaw || String(room.biddate || '').trim();
                     const bidObj = wr2ParseSaleDateLoose(bidRaw);
                     const bidDday = wr2CalcDdayFromDate(bidObj);
                     const bidLabel = (bidDday == null) ? '' : (bidDday < 0 ? '기일지남·수정필요' : (bidDday === 0 ? 'D-Day' : 'D-' + bidDday));
@@ -5669,59 +5648,14 @@ var _safeLocalSet = function(key, value) {
                   }
 
                   el.innerHTML = html || '<div class="wr2-no-item">연결된 물건 정보가 없습니다.</div>';
-                  if (room._summaryEditing) {
-                    const inp = document.getElementById('wr2SumEdt_' + room._summaryEditing);
-                    if (inp) { inp.focus(); inp.select(); }
-                  }
                 }
 
-                // 물건요약 수동편집
-                window.wr2SummaryStartEdit = function(key) {
-                  const room = getActiveRoom(); if (!room) return;
-                  room._summaryEditing = key;
-                  renderItemSummary(room);
+                // 물건요약은 읽기 전용: 원본 물건 데이터는 유찰 처리/물건리스트에서 수정한다.
+                window.wr2SummaryStartEdit = function(_key) {
+                  if (typeof showToast === 'function') showToast('물건요약은 읽기 전용입니다. 유찰 처리 또는 물건리스트에서 수정하세요.', 'warn');
                 };
-                window.wr2SummaryEditSave = function(key, val) {
-                  try {
-                    const room = getActiveRoom(); if (!room) return;
-                    // Enter→직접save 후 onblur 이중 호출 방지
-                    if (room._summaryEditing !== key) return;
-                    room._summaryOverride = room._summaryOverride || {};
-                    if (key === 'biddate') {
-                      var normalized = (typeof plNormalizeDateInput === 'function') ? plNormalizeDateInput(val) : String(val || '').trim();
-                      room._summaryOverride[key] = normalized;
-                      room.biddate = normalized; // room 네이티브 필드도 동기화 → 클라우드 sync 후에도 소실 방지
-                      var linked = null;
-                      if (typeof plLoad === 'function') {
-                        var roomItems = (plLoad() || []).filter(function(it) { return String(it && it.roomId || '') === String(room.id); });
-                        linked = roomItems.length === 1 ? roomItems[0] : null;
-                        if (!linked) {
-                          var pId = String(room.linkedSavedId || room.auctionId || room.listingId || '').trim();
-                          if (pId) {
-                            var matched = roomItems.filter(function(it) { return String(it && it.linkedSavedId || '') === pId; });
-                            if (matched.length === 1) linked = matched[0];
-                          }
-                        }
-                      }
-                      if (linked && linked.id && typeof window.plInlineSet === 'function') {
-                        try { window.plInlineSet(linked.id, 'biddate', normalized); } catch(e) {}
-                      }
-                    } else {
-                      const n = parseFloat(String(val).replace(/[^0-9.]/g,''));
-                      room._summaryOverride[key] = isNaN(n) ? 0 : n;
-                    }
-                    room._summaryEditing = null;
-                    room.updatedAt = Date.now(); saveRooms();
-                    renderItemSummary(room);
-                    if (typeof renderList === 'function') renderList();
-                  } catch (err) {
-                    console.error('[wr2SummaryEditSave Error]', err);
-                    alert('저장 중 오류가 발생했습니다: ' + err.message);
-                    try {
-                      var r = getActiveRoom();
-                      if (r) { r._summaryEditing = null; renderItemSummary(r); }
-                    } catch(e) {}
-                  }
+                window.wr2SummaryEditSave = function(_key, _val) {
+                  if (typeof showToast === 'function') showToast('물건요약은 읽기 전용입니다. 원본 물건 정보를 수정해주세요.', 'warn');
                 };
                                 // ── phase별 체크리스트 렌더/조작 헬퍼 ──────────────────
                 function renderPhaseChecklistBody(el, clData, phase, room) {
@@ -45497,9 +45431,9 @@ window.addEventListener('DOMContentLoaded', () => {
     var cur = 0;
     try {
       cur = _skNum((item && item.minprice) || (item && item.price) || (item && item.result && item.result.minprice) || 0);
-      if (!cur && item && item._norm) cur = Number(item._norm.최저가_만원 || 0);
+      if (!cur && item && item._norm) cur = Number(item._norm.최저가_만원 || 0) * 10000;
       if (!cur && item && item._norm) cur = Number(item._norm.최저매각가격 || 0);
-      if (!cur && item && item._norm) cur = Number(item._norm.감정가_만원 || 0);
+      if (!cur && item && item._norm) cur = Number(item._norm.감정가_만원 || 0) * 10000;
       if (!cur) cur = _skNum((item && item.appraisal) || 0);
     } catch(e) {}
     return cur > 0 ? cur : 0;
@@ -45608,20 +45542,34 @@ window.addEventListener('DOMContentLoaded', () => {
     var n = Number(raw.replace(/[^\d]/g, '') || 0);
     return Number.isFinite(n) ? n : 0;
   }
+  function _skGetRooms(){
+    try {
+      if (typeof window.wrGetRooms === 'function') {
+        var bridged = window.wrGetRooms();
+        if (Array.isArray(bridged)) return bridged.filter(function(r){ return r && !r.deletedAt; });
+      }
+    } catch(e) {}
+    if (window.wr2State && Array.isArray(window.wr2State.rooms)) {
+      return window.wr2State.rooms.filter(function(r){ return r && !r.deletedAt; });
+    }
+    try {
+      var raw = JSON.parse(localStorage.getItem('wr2_rooms') || '[]');
+      return Array.isArray(raw) ? raw.filter(function(r){ return r && !r.deletedAt; }) : [];
+    } catch(e) {}
+    return [];
+  }
   function _skResolveRoomById(roomId){
     var roomKey = String(roomId || '').trim();
     try {
-      if (typeof getWrRooms === 'function') {
-        var rooms = getWrRooms() || [];
-        if (roomKey) {
-          var found = rooms.find(function(r){ return String(r && r.id || '') === roomKey; });
-          if (found) return found;
-        }
-        if (window.wr2State && window.wr2State.activeRoomId) {
-          var activeId = String(window.wr2State.activeRoomId || '');
-          var active = rooms.find(function(r){ return String(r && r.id || '') === activeId; });
-          if (active) return active;
-        }
+      var rooms = _skGetRooms();
+      if (roomKey) {
+        var found = rooms.find(function(r){ return String(r && r.id || '') === roomKey; });
+        if (found) return found;
+      }
+      if (window.wr2State && window.wr2State.activeRoomId) {
+        var activeId = String(window.wr2State.activeRoomId || '');
+        var active = rooms.find(function(r){ return String(r && r.id || '') === activeId; });
+        if (active) return active;
       }
     } catch(e) {}
     return null;
@@ -45681,34 +45629,44 @@ window.addEventListener('DOMContentLoaded', () => {
     if (!target || !target.id) return { ok:false, reason:'not_found', room: room, item: target };
 
     var targetId = String(target.id || '').trim();
-    var items = (typeof plLoad === 'function') ? (plLoad() || []) : [];
-    var idx = items.findIndex(function(it){ return String(it && it.id || '') === targetId; });
-    if (idx < 0) {
-      items.push(target);
-      idx = items.length - 1;
-    }
-
     var priceNum = _skParseUnsoldMoney(nextPrice);
-    var nextItem = Object.assign({}, items[idx] || {});
-    nextItem.roomId = room ? String(room.id || '') : String(nextItem.roomId || '');
-    nextItem.round = String(nextRound);
-    nextItem.biddate = String(nextDate || '').trim();
-    nextItem.minprice = priceNum ? String(priceNum) : String(nextPrice || '').trim();
-    nextItem.status = 'active';
-    nextItem.archived = false;
-    nextItem.updatedAt = Date.now();
-    nextItem.data = Object.assign({}, nextItem.data || {});
-    nextItem.data['회차'] = String(nextRound);
-    nextItem.data['유찰횟수'] = String(nextRound);
-    nextItem.data['매각기일'] = String(nextDate || '').trim();
-    nextItem.data['입찰기일'] = String(nextDate || '').trim();
-    nextItem.data['최저가'] = priceNum;
-    nextItem.data['최저가_원'] = priceNum;
-    nextItem.data['최저가_만원'] = priceNum ? Math.round(priceNum / 10000) : '';
+    var nextData = Object.assign({}, target.data || {});
+    nextData['회차'] = String(nextRound);
+    nextData['유찰횟수'] = String(nextRound);
+    nextData['매각기일'] = String(nextDate || '').trim();
+    nextData['입찰기일'] = String(nextDate || '').trim();
+    nextData['최저가'] = priceNum;
+    nextData['최저가_원'] = priceNum;
+    nextData['최저가_만원'] = priceNum ? Math.round(priceNum / 10000) : '';
 
-    items[idx] = (typeof plNormalizeItem === 'function') ? plNormalizeItem(nextItem) : nextItem;
-    if (typeof plSave === 'function') plSave(items);
-    try { if (typeof syncToWorkroom === 'function') syncToWorkroom(items[idx]); } catch(e) {}
+    var nextItemPatch = {
+      roomId: room ? String(room.id || '') : String(target.roomId || ''),
+      round: String(nextRound),
+      biddate: String(nextDate || '').trim(),
+      minprice: priceNum ? String(priceNum) : String(nextPrice || '').trim(),
+      status: 'review',
+      archived: false,
+      data: nextData
+    };
+
+    var appliedItem = null;
+    if (typeof window.plUpdateItem === 'function') {
+      appliedItem = window.plUpdateItem(targetId, nextItemPatch);
+    }
+    if (!appliedItem) {
+      var items = (typeof plLoad === 'function') ? (plLoad() || []) : [];
+      var idx = items.findIndex(function(it){ return String(it && it.id || '') === targetId; });
+      if (idx < 0) {
+        items.push(target);
+        idx = items.length - 1;
+      }
+      var nextItem = Object.assign({}, items[idx] || {}, nextItemPatch, { updatedAt: Date.now() });
+      items[idx] = (typeof plNormalizeItem === 'function') ? plNormalizeItem(nextItem) : nextItem;
+      if (typeof plSave === 'function') plSave(items);
+      try { if (typeof syncToWorkroom === 'function') syncToWorkroom(items[idx]); } catch(e) {}
+      appliedItem = items[idx];
+    }
+    if (!appliedItem || !appliedItem.id) return { ok:false, reason:'apply_failed', room: room, item: null };
     try { if (targetId && typeof window.plSetSimpleStatus === 'function') {
       var prevForce = window.__plForceDirectSet;
       window.__plForceDirectSet = true;
@@ -45716,10 +45674,7 @@ window.addEventListener('DOMContentLoaded', () => {
     }} catch(e) {}
     if (room) {
       try {
-        var nextOverride = Object.assign({}, room._summaryOverride || {});
-        delete nextOverride.biddate;
-        delete nextOverride.price;
-        room._summaryOverride = nextOverride;
+        room._summaryOverride = {};
         room.biddate = String(nextDate || '').trim();
         room.round = String(nextRound);
         room.minprice = priceNum ? String(priceNum) : String(nextPrice || '').trim();
@@ -45727,7 +45682,7 @@ window.addEventListener('DOMContentLoaded', () => {
         room.status = 'review';
         room.phase = 'review';
         room.activePhase = 'review';
-        _skTouchUnsoldRoomLink(room, items[idx]);
+        _skTouchUnsoldRoomLink(room, appliedItem);
         if (typeof updateRoom === 'function') {
           updateRoom(room.id, {
             biddate: room.biddate,
@@ -45750,7 +45705,7 @@ window.addEventListener('DOMContentLoaded', () => {
     try { if (typeof renderPropertyList === 'function') renderPropertyList(); } catch(e) {}
     try { if (typeof wr2Render === 'function') wr2Render(); } catch(e) {}
     try { if (typeof renderSaved === 'function') renderSaved(); } catch(e) {}
-    return { ok:true, room: room, item: items[idx] };
+    return { ok:true, room: room, item: appliedItem };
   }
 
   function _skOpenUnsoldFlow(ctx){
@@ -46103,7 +46058,7 @@ window.addEventListener('DOMContentLoaded', () => {
       var _origSyncToWorkroom = syncToWorkroom;
       syncToWorkroom = function(item){
         if (item && item.__allowLifecycleReopen && item.roomId) {
-          var rooms = getWrRooms();
+          var rooms = _skGetRooms();
           var room = rooms.find(function(r){return r.id === item.roomId;});
           if (room && typeof updateRoom === 'function') {
             var simple = plSimpleStatusKey(item.status);
