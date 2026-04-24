@@ -3372,7 +3372,7 @@ input, textarea, select {
 <script>if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
 
 <!-- 공통 로직 -->
-<script src="common.js?v=202604250133"></script>
+<script src="common.js?v=202604250145"></script>
 
 <!-- ════════════════════════════════════════════════════════
      mobile.js — 모바일 전용 초기화 및 UI 제어
@@ -6627,6 +6627,34 @@ input, textarea, select {
     }
   };
 
+  // ── 모바일 물건리스트 액션 헬퍼 ──────────────────────────────
+  if (typeof window.mbPlOpenDetail !== 'function') {
+    window.mbPlOpenDetail = function(savedId) {
+      var sid = String(savedId || '').trim();
+      if (!sid) return;
+      if (typeof window.openPopup === 'function') {
+        window.openPopup(sid);
+        return;
+      }
+      if (typeof window.mbGoPage === 'function') {
+        window.mbGoPage('saved');
+        setTimeout(function() {
+          if (typeof window.mbOpenSavedDetail === 'function') window.mbOpenSavedDetail(sid);
+        }, 100);
+      }
+    };
+  }
+  if (typeof window.mbPlOpenRoom !== 'function') {
+    window.mbPlOpenRoom = function(roomId) {
+      var rid = String(roomId || '').trim();
+      if (!rid) return;
+      if (typeof window.mbInsTab === 'function') window.mbInsTab('room');
+      setTimeout(function() {
+        if (typeof window.mbRoomLoad === 'function') window.mbRoomLoad(rid, { cloud: false });
+      }, 90);
+    };
+  }
+
   // ── 모바일 물건리스트 렌더 ──────────────────────────────────
   window.mbPlistRender = function() {
     var body = document.getElementById('mb-plist-body');
@@ -8842,29 +8870,3 @@ window.dispatchEvent(new Event('mbReady'));
 </script>
 </body>
 </html>
-    if (typeof window.mbPlOpenDetail !== 'function') {
-      window.mbPlOpenDetail = function(savedId) {
-        var sid = String(savedId || '').trim();
-        if (!sid) return;
-        if (window.openPopup) {
-          openPopup(sid);
-          return;
-        }
-        if (window.mbGoPage) {
-          mbGoPage('saved');
-          setTimeout(function() {
-            if (window.mbOpenSavedDetail) mbOpenSavedDetail(sid);
-          }, 100);
-        }
-      };
-    }
-    if (typeof window.mbPlOpenRoom !== 'function') {
-      window.mbPlOpenRoom = function(roomId) {
-        var rid = String(roomId || '').trim();
-        if (!rid) return;
-        if (typeof mbInsTab === 'function') mbInsTab('room');
-        setTimeout(function() {
-          if (typeof mbRoomLoad === 'function') mbRoomLoad(rid, { cloud: false });
-        }, 90);
-      };
-    }
