@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260424-sync-ui-inline11';
+    window.__SK_BUILD = '20260424-sync-ui-inline12';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -5530,6 +5530,11 @@ var _safeLocalSet = function(key, value) {
                     const manAsWon = manRaw > 0 ? Math.round(manRaw * 10000) : 0;
                     if (!wonRaw && manAsWon) return manAsWon;
                     if (!wonRaw) return 0;
+                    if (manAsWon > 0) {
+                      // wonLike 값이 만원값과 동일하게 들어온 케이스(단위 혼동) 보정
+                      if (Math.round(wonRaw) === Math.round(manRaw) && wonRaw < 1000000) return manAsWon;
+                      if (wonRaw < 1000000 && manAsWon >= 10000000) return manAsWon;
+                    }
                     if (!manAsWon) {
                       if (refWon > 0 && wonRaw >= refWon * 120) return Math.round(wonRaw / 10000);
                       return Math.round(wonRaw);
@@ -42576,8 +42581,42 @@ window.addEventListener('DOMContentLoaded', () => {
       putField('감정가', Number(plParseAmountText(item.appraisal)) * 10000);
     }
     if (item.minprice) {
-      putField('최저가_만원', plParseAmountText(item.minprice));
-      putField('최저가', Number(plParseAmountText(item.minprice)) * 10000);
+      // minprice는 경로에 따라 원/만원이 혼재할 수 있으므로
+      // 저장목록에는 항상 원(최저가) + 만원(최저가_만원)을 일관되게 기록한다.
+      var minWon = 0;
+      var dWonRaw = Number(String(d['최저가_원'] || d['최저가'] || '').replace(/[^0-9]/g, ''));
+      if (Number.isFinite(dWonRaw) && dWonRaw > 0) {
+        minWon = Math.round(dWonRaw);
+      } else {
+        var minDigits = String(item.minprice || '').replace(/[^0-9]/g, '');
+        var nMin = Number(minDigits || 0);
+        if (Number.isFinite(nMin) && nMin > 0) {
+          var candWon = Math.round(nMin);
+          var candMan = Math.round(nMin * 10000);
+          var refWon = Number(String(d['감정가'] || d['최저가'] || '').replace(/[^0-9]/g, ''));
+          if (!(Number.isFinite(refWon) && refWon > 0)) {
+            var appDigits = String(item.appraisal || '').replace(/[^0-9]/g, '');
+            var appNum = Number(appDigits || 0);
+            if (Number.isFinite(appNum) && appNum > 0) {
+              // appraisal은 기존 물건리스트에서 만원 단위가 많으므로 보정
+              refWon = appNum >= 10000000 ? appNum : Math.round(appNum * 10000);
+            }
+          }
+          if (Number.isFinite(refWon) && refWon > 0) {
+            var diffWon = Math.abs(Math.log((candWon + 1) / (refWon + 1)));
+            var diffMan = Math.abs(Math.log((candMan + 1) / (refWon + 1)));
+            minWon = (diffWon <= diffMan) ? candWon : candMan;
+          } else {
+            // 기준값이 없으면 1천만원 이상은 원 단위로, 그보다 작으면 만원 단위로 간주
+            minWon = (nMin >= 10000000) ? candWon : candMan;
+          }
+        }
+      }
+      if (minWon > 0) {
+        putField('최저가', minWon);
+        putField('최저가_원', minWon);
+        putField('최저가_만원', Math.round(minWon / 10000));
+      }
     }
     if (item.deposit) putField('보증금_만원', plParseAmountText(item.deposit));
     if (item.monthly) putField('월세_만원', plParseAmountText(item.monthly));
