@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260423-lifecycle-unified1';
+    window.__SK_BUILD = '20260424-sync-ui-inline2';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -5615,15 +5615,15 @@ var _safeLocalSet = function(key, value) {
                   })(bidRaw);
                   const minInputVal = (function(v){
                     var n = Math.round(Number(v || 0));
-                    return (n > 0) ? String(n) : '';
+                    return (n > 0) ? n.toLocaleString('ko-KR') : '';
                   })(minVal);
 
                   // 인라인 수정: 매각기일(최저가보다 위)
                   html += `<div class="wr2-info-row">
                     <span class="wr2-info-lbl">매각기일</span>
                     <span class="wr2-info-val" style="display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:wrap;">
-                      <input id="wr2SummaryBidInput" type="date" value="${bidInputVal}" onclick="event.stopPropagation()" style="padding:5px 8px;border-radius:8px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.05);color:var(--tx);font-size:12px;min-width:150px;">
-                      <button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();window.wr2SummaryEditSave && window.wr2SummaryEditSave('biddate')">저장</button>
+                      <input id="wr2SummaryBidInput" type="text" value="${bidInputVal}" placeholder="YYYY-MM-DD" onclick="event.stopPropagation()" oninput="event.stopPropagation();this.value=(this.value||'').replace(/[^0-9.\\-]/g,'')" style="padding:5px 8px;border-radius:8px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.05);color:var(--tx);font-size:12px;min-width:132px;max-width:152px;text-align:center;">
+                      <button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();window.wr2SummaryEditSave && window.wr2SummaryEditSave('biddate')">반영</button>
                       ${bidBadge}
                     </span>
                   </div>`;
@@ -5632,8 +5632,8 @@ var _safeLocalSet = function(key, value) {
                   html += `<div class="wr2-info-row">
                     <span class="wr2-info-lbl">최저가</span>
                     <span class="wr2-info-val" style="display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:wrap;">
-                      <input id="wr2SummaryMinInput" type="text" inputmode="numeric" value="${minInputVal}" onclick="event.stopPropagation()" oninput="event.stopPropagation();this.value=(this.value||'').replace(/[^0-9]/g,'')" placeholder="원 단위 입력" style="padding:5px 8px;border-radius:8px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.05);color:var(--tx);font-size:12px;min-width:150px;text-align:right;">
-                      <button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();window.wr2SummaryEditSave && window.wr2SummaryEditSave('minprice')">저장</button>
+                      <input id="wr2SummaryMinInput" type="text" inputmode="numeric" value="${minInputVal}" onclick="event.stopPropagation()" oninput="event.stopPropagation();window.wr2SummaryMoneyInput && window.wr2SummaryMoneyInput(this)" placeholder="원 단위 입력" style="padding:5px 8px;border-radius:8px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.05);color:var(--tx);font-size:12px;min-width:132px;max-width:168px;text-align:right;">
+                      <button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();window.wr2SummaryEditSave && window.wr2SummaryEditSave('minprice')">반영</button>
                       ${minPy ? `<span class="wr2-sub-py">${minPy}</span>` : ''}
                     </span>
                   </div>`;
@@ -5688,6 +5688,13 @@ var _safeLocalSet = function(key, value) {
                   if (!el) return;
                   try { el.focus(); if (typeof el.select === 'function') el.select(); } catch (e) {}
                 };
+                window.wr2SummaryMoneyInput = function(el) {
+                  if (!el) return;
+                  var digits = String(el.value || '').replace(/[^0-9]/g, '');
+                  if (!digits) { el.value = ''; return; }
+                  var n = Number(digits);
+                  el.value = Number.isFinite(n) ? n.toLocaleString('ko-KR') : '';
+                };
                 window.wr2SummaryEditSave = function(_key) {
                   try {
                     var room = getActiveRoom();
@@ -5697,18 +5704,25 @@ var _safeLocalSet = function(key, value) {
                     }
                     var bidIn = document.getElementById('wr2SummaryBidInput');
                     var minIn = document.getElementById('wr2SummaryMinInput');
-                    var biddate = String(bidIn && bidIn.value || '').trim();
+                    var bidRaw = String(bidIn && bidIn.value || '').trim();
                     var minprice = String(minIn && minIn.value || '').trim();
+                    var bidObj = (typeof wr2ParseSaleDateLoose === 'function') ? wr2ParseSaleDateLoose(bidRaw) : null;
+                    var biddate = '';
+                    if (bidObj && !isNaN(bidObj.getTime())) {
+                      biddate = bidObj.getFullYear() + '-' + String(bidObj.getMonth() + 1).padStart(2, '0') + '-' + String(bidObj.getDate()).padStart(2, '0');
+                    }
                     if (!biddate) {
-                      if (typeof showToast === 'function') showToast('매각기일을 입력해주세요.', 'warn');
+                      if (typeof showToast === 'function') showToast('매각기일 형식이 올바르지 않습니다. (예: 2026-04-24)', 'warn');
                       if (bidIn) bidIn.focus();
                       return;
                     }
-                    if (!String(minprice).replace(/[^0-9]/g, '')) {
+                    var minDigits = String(minprice).replace(/[^0-9]/g, '');
+                    if (!minDigits) {
                       if (typeof showToast === 'function') showToast('최저가를 원 단위 숫자로 입력해주세요.', 'warn');
                       if (minIn) minIn.focus();
                       return;
                     }
+                    minprice = minDigits;
                     if (typeof window.wr2SaveBidAndMinFromSummary !== 'function') {
                       if (typeof showToast === 'function') showToast('수정 모듈이 준비되지 않았습니다. 페이지를 새로고침해주세요.', 'warn');
                       return;
@@ -5717,6 +5731,11 @@ var _safeLocalSet = function(key, value) {
                     if (!out || out.ok !== true) {
                       if (typeof showToast === 'function') showToast('연결된 원본 물건을 찾지 못했습니다. 연결 상태를 확인해주세요.', 'warn');
                       return;
+                    }
+                    if (bidIn) bidIn.value = biddate;
+                    if (minIn) {
+                      var minNum = Number(minDigits || 0);
+                      minIn.value = (minNum > 0) ? minNum.toLocaleString('ko-KR') : '';
                     }
                     if (typeof showToast === 'function') showToast('매각기일/최저가를 저장했습니다.', 'ok');
                   } catch (e) {
@@ -45679,22 +45698,60 @@ window.addEventListener('DOMContentLoaded', () => {
     } catch(e) {}
     return [];
   }
-  function _skForceUnsoldCloudSync(){
+  function _skForceUnsoldCloudSync(opts){
+    var options = opts || {};
+    var writes = [];
     try {
       if (typeof window._sbSavePlItems === 'function' && typeof plLoad === 'function') {
-        window._sbSavePlItems(plLoad()).catch(function(){});
+        writes.push(Promise.resolve(window._sbSavePlItems(plLoad())));
       }
-    } catch(e) {}
+    } catch(e) {
+      console.warn('[sync] pl write error', e);
+    }
     try {
       if (typeof window._sbSaveRooms === 'function') {
-        window._sbSaveRooms(_skGetRooms()).catch(function(){});
+        writes.push(Promise.resolve(window._sbSaveRooms(_skGetRooms())));
       }
-    } catch(e) {}
+    } catch(e) {
+      console.warn('[sync] room write error', e);
+    }
     try {
       if (typeof window._sbSaveSv === 'function' && typeof getSv === 'function') {
-        window._sbSaveSv(getSv()).catch(function(){});
+        writes.push(Promise.resolve(window._sbSaveSv(getSv())));
       }
-    } catch(e) {}
+    } catch(e) {
+      console.warn('[sync] saved write error', e);
+    }
+    var afterWrite = Promise.allSettled(writes).then(function(results){
+      var failed = results.filter(function(r){ return r && r.status === 'rejected'; });
+      if (failed.length) console.warn('[sync] write failed', failed);
+      return results;
+    });
+    if (options.pull !== true) return afterWrite;
+    return afterWrite.then(function(){
+      var pulls = [];
+      try {
+        if (typeof window._plRefreshFromCloud === 'function') {
+          pulls.push(Promise.resolve(window._plRefreshFromCloud({ render:false, force:true, sync:true })));
+        }
+      } catch(e) { console.warn('[sync] pl pull error', e); }
+      try {
+        if (typeof window._wrRefreshFromCloud === 'function') {
+          pulls.push(Promise.resolve(window._wrRefreshFromCloud({ render:false, force:true })));
+        }
+      } catch(e) { console.warn('[sync] room pull error', e); }
+      try {
+        if (typeof window._svRefreshFromCloud === 'function') {
+          pulls.push(Promise.resolve(window._svRefreshFromCloud({ render:false })));
+        }
+      } catch(e) { console.warn('[sync] saved pull error', e); }
+      return Promise.allSettled(pulls);
+    }).then(function(){
+      try { if (typeof renderPropertyList === 'function') renderPropertyList(); } catch(e) {}
+      try { if (typeof wr2Render === 'function') wr2Render(); } catch(e) {}
+      try { if (typeof renderSaved === 'function') renderSaved(); } catch(e) {}
+      return true;
+    });
   }
   function _skResolveRoomById(roomId){
     var roomKey = String(roomId || '').trim();
@@ -45760,6 +45817,73 @@ window.addEventListener('DOMContentLoaded', () => {
     var target = _skResolveItemByRoom(room, explicitId);
     return { room: room, item: target || null, roomId: roomId, explicitId: explicitId };
   }
+  window._skForceSyncNow = function(){
+    return _skForceUnsoldCloudSync({ pull:true }).then(function(){
+      if (typeof showToast === 'function') showToast('☁ 동기화 재정렬 완료', 'ok');
+      return true;
+    }).catch(function(e){
+      console.warn('[sync] force sync failed', e);
+      if (typeof showToast === 'function') showToast('동기화 중 오류가 발생했습니다. 콘솔을 확인해주세요.', 'warn');
+      return false;
+    });
+  };
+  window._skDebugDealSync = async function(roomId){
+    try {
+      var rid = String(roomId || (window.wr2State && window.wr2State.activeRoomId) || '').trim();
+      var localRooms = _skGetRooms();
+      var localRoom = localRooms.find(function(r){ return String(r && r.id || '') === rid; }) || null;
+      var localPl = (typeof plLoad === 'function') ? (plLoad() || []) : [];
+      var localTarget = _skResolveItemByRoom(localRoom, '');
+      var localSv = (typeof getSv === 'function') ? (getSv() || []) : [];
+
+      var cloudRooms = (typeof window._sbLoadRooms === 'function') ? (await window._sbLoadRooms()) : null;
+      var cloudPl = (typeof window._sbLoadPlItems === 'function') ? (await window._sbLoadPlItems()) : null;
+      var cloudSv = (typeof window._sbLoadSv === 'function') ? (await window._sbLoadSv()) : null;
+      var cloudRoom = (Array.isArray(cloudRooms) ? cloudRooms : []).find(function(r){ return String(r && r.id || '') === rid; }) || null;
+      var cloudTarget = (Array.isArray(cloudPl) ? cloudPl : []).find(function(it){
+        return localTarget && String(it && it.id || '') === String(localTarget.id || '');
+      }) || null;
+      var localSaved = (localTarget && localTarget.linkedSavedId)
+        ? localSv.find(function(s){ return String(s && s.id || '') === String(localTarget.linkedSavedId || ''); }) || null
+        : null;
+      var cloudSaved = (localTarget && localTarget.linkedSavedId && Array.isArray(cloudSv))
+        ? cloudSv.find(function(s){ return String(s && s.id || '') === String(localTarget.linkedSavedId || ''); }) || null
+        : null;
+
+      var snap = function(x){
+        if (!x) return null;
+        return {
+          id: x.id || '',
+          roomId: x.roomId || '',
+          linkedSavedId: x.linkedSavedId || '',
+          biddate: x.biddate || (x.data && x.data.매각기일) || '',
+          minprice: x.minprice || (x.data && x.data.최저가) || '',
+          updatedAt: x.updatedAt || x.timestamp || null
+        };
+      };
+      var payload = {
+        build: window.__SK_BUILD || '',
+        roomId: rid,
+        local: {
+          room: localRoom ? { id: localRoom.id, targetItemId: localRoom.targetItemId || '', biddate: localRoom.biddate || '', minprice: localRoom.minprice || '', updatedAt: localRoom.updatedAt || null } : null,
+          item: snap(localTarget),
+          saved: snap(localSaved)
+        },
+        cloud: {
+          room: cloudRoom ? { id: cloudRoom.id, targetItemId: cloudRoom.targetItemId || '', biddate: cloudRoom.biddate || '', minprice: cloudRoom.minprice || '', updatedAt: cloudRoom.updatedAt || null } : null,
+          item: snap(cloudTarget),
+          saved: snap(cloudSaved)
+        }
+      };
+      console.group('[SK][deal-sync]', rid || '(no-room)');
+      console.log(payload);
+      console.groupEnd();
+      return payload;
+    } catch (e) {
+      console.warn('[SK][deal-sync] debug failed', e);
+      return { error: String(e && e.message || e) };
+    }
+  };
   function _skApplyUnsoldToWorkroomSource(ctx, nextRound, nextDate, nextPrice){
     var resolved = _skResolveUnsoldWorkroomTarget(ctx);
     var room = resolved.room || null;
@@ -45843,7 +45967,7 @@ window.addEventListener('DOMContentLoaded', () => {
     try { if (typeof renderPropertyList === 'function') renderPropertyList(); } catch(e) {}
     try { if (typeof wr2Render === 'function') wr2Render(); } catch(e) {}
     try { if (typeof renderSaved === 'function') renderSaved(); } catch(e) {}
-    _skForceUnsoldCloudSync();
+    _skForceUnsoldCloudSync({ pull:true });
     return { ok:true, room: room, item: appliedItem };
   }
   function _skApplyManualBidInfoToWorkroomSource(ctx, nextDate, nextPrice){
@@ -45900,7 +46024,7 @@ window.addEventListener('DOMContentLoaded', () => {
     try { if (typeof renderPropertyList === 'function') renderPropertyList(); } catch(e) {}
     try { if (typeof wr2Render === 'function') wr2Render(); } catch(e) {}
     try { if (typeof renderSaved === 'function') renderSaved(); } catch(e) {}
-    _skForceUnsoldCloudSync();
+    _skForceUnsoldCloudSync({ pull:true });
     return { ok:true, room: room, item: appliedItem };
   }
 
