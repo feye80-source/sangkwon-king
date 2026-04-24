@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260424-sync-ui-inline9';
+    window.__SK_BUILD = '20260424-sync-ui-inline11';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -5509,6 +5509,10 @@ var _safeLocalSet = function(key, value) {
 
                   if (!item) {
                     // 연결 물건이 없어도 현재 작업룸에 기록된 기일은 표시한다.
+                    try {
+                      var _stNoItem = window.wr2SummaryGetEditState ? window.wr2SummaryGetEditState() : null;
+                      if (_stNoItem && String(_stNoItem.roomId || '') === String(room.id || '')) _stNoItem.activeKey = '';
+                    } catch (e) {}
                     const _niBiddate = String(room.biddate || '').trim();
                     const _niBidHtml = `<div class="wr2-info-row"><span class="wr2-info-lbl">매각기일</span><span class="wr2-info-val">${_niBiddate || '<span style="color:var(--mu);">미입력</span>'}</span></div>`;
                     el.innerHTML = _niBidHtml + '<div class="wr2-no-item">연결된 원본 물건이 없습니다. 물건관리에서 먼저 연결해 주세요.</div>';
@@ -5613,7 +5617,7 @@ var _safeLocalSet = function(key, value) {
                   const bidBadge = bidLabel
                     ? `<span style="display:inline-block;margin-left:6px;padding:1px 6px;border-radius:999px;font-size:10px;font-weight:700;border:1px solid ${warnTone}66;background:${warnTone}18;color:${warnTone};">${bidLabel}</span>`
                     : '';
-                  const bidInputVal = (function(v){
+                  let bidInputVal = (function(v){
                     var dt = wr2ParseSaleDateLoose(String(v || '').trim());
                     if (!dt || isNaN(dt.getTime())) return '';
                     var y = dt.getFullYear();
@@ -5621,10 +5625,16 @@ var _safeLocalSet = function(key, value) {
                     var d = String(dt.getDate()).padStart(2, '0');
                     return y + '-' + m + '-' + d;
                   })(bidRaw);
-                  const minInputVal = (function(v){
+                  let minInputVal = (function(v){
                     var n = Math.round(Number(v || 0));
                     return (n > 0) ? n.toLocaleString('ko-KR') : '';
                   })(minVal);
+                  const _summaryEditState = window.__wr2SummaryEditState || {};
+                  const _sameRoomDraft = String(_summaryEditState.roomId || '') === String(room.id || '');
+                  if (_sameRoomDraft) {
+                    if (typeof _summaryEditState.bidRaw === 'string') bidInputVal = _summaryEditState.bidRaw;
+                    if (typeof _summaryEditState.minRaw === 'string') minInputVal = _summaryEditState.minRaw;
+                  }
                   
                   // 면적 (㎡ + 평) — 메인 정보 상단으로 이동
                   if (areaM2 > 0) html += `<div class="wr2-info-row"><span class="wr2-info-lbl">${areaLabel}</span><span class="wr2-info-val">${areaStr}</span></div>`;
@@ -5644,14 +5654,14 @@ var _safeLocalSet = function(key, value) {
                   html += `<div class="wr2-info-row">
                     <span class="wr2-info-lbl">최저가</span>
                     <span class="wr2-info-val" style="display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:wrap;">
-                      <input id="wr2SummaryMinInput" type="text" inputmode="numeric" value="${minInputVal}" onclick="event.stopPropagation()" oninput="event.stopPropagation();window.wr2SummaryMoneyInput && window.wr2SummaryMoneyInput(this)" onblur="event.stopPropagation();window.wr2SummaryQueueSave && window.wr2SummaryQueueSave('minprice')" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}" placeholder="원 단위 입력" style="padding:5px 8px;border-radius:8px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.05);color:var(--tx);font-size:12px;min-width:128px;max-width:160px;text-align:right;">
+                      <input id="wr2SummaryMinInput" type="text" inputmode="numeric" value="${minInputVal}" onclick="event.stopPropagation()" onfocus="event.stopPropagation();window.wr2SummaryOnFocus && window.wr2SummaryOnFocus('minprice','${roomIdEsc}',this)" oninput="event.stopPropagation();window.wr2SummaryOnInput && window.wr2SummaryOnInput('minprice','${roomIdEsc}',this)" onblur="event.stopPropagation();window.wr2SummaryOnBlur && window.wr2SummaryOnBlur('minprice','${roomIdEsc}',this)" onkeydown="return window.wr2SummaryOnKeydown ? window.wr2SummaryOnKeydown('minprice','${roomIdEsc}',event,this) : true;" placeholder="원 단위 입력" style="padding:5px 8px;border-radius:8px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.05);color:var(--tx);font-size:12px;min-width:128px;max-width:160px;text-align:right;">
                       ${minPy ? `<span class="wr2-sub-py">${minPy}</span>` : ''}
                     </span>
                   </div>`;
                   html += `<div class="wr2-info-row">
                     <span class="wr2-info-lbl">매각기일</span>
                     <span class="wr2-info-val" style="display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:wrap;">
-                      <input id="wr2SummaryBidInput" type="text" value="${bidInputVal}" placeholder="YYYY-MM-DD" onclick="event.stopPropagation()" oninput="event.stopPropagation();this.value=(this.value||'').replace(/[^0-9.\\-]/g,'')" onblur="event.stopPropagation();window.wr2SummaryQueueSave && window.wr2SummaryQueueSave('biddate')" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}" style="padding:5px 8px;border-radius:8px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.05);color:var(--tx);font-size:12px;min-width:128px;max-width:142px;text-align:center;">
+                      <input id="wr2SummaryBidInput" type="text" value="${bidInputVal}" placeholder="YYYY-MM-DD" onclick="event.stopPropagation()" onfocus="event.stopPropagation();window.wr2SummaryOnFocus && window.wr2SummaryOnFocus('biddate','${roomIdEsc}',this)" oninput="event.stopPropagation();window.wr2SummaryOnInput && window.wr2SummaryOnInput('biddate','${roomIdEsc}',this)" onblur="event.stopPropagation();window.wr2SummaryOnBlur && window.wr2SummaryOnBlur('biddate','${roomIdEsc}',this)" onkeydown="return window.wr2SummaryOnKeydown ? window.wr2SummaryOnKeydown('biddate','${roomIdEsc}',event,this) : true;" style="padding:5px 8px;border-radius:8px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.05);color:var(--tx);font-size:12px;min-width:128px;max-width:142px;text-align:center;">
                       ${bidBadge}
                     </span>
                   </div>`;
@@ -5691,10 +5701,79 @@ var _safeLocalSet = function(key, value) {
                     html += `</div>`;
                   }
 
+                  if (_sameRoomDraft && _summaryEditState.activeKey) _summaryEditState.suppressBlurUntil = Date.now() + 260;
                   el.innerHTML = html || '<div class="wr2-no-item">연결된 물건 정보가 없습니다.</div>';
+                  if (_sameRoomDraft && _summaryEditState.activeKey) {
+                    setTimeout(function() {
+                      var targetId = (_summaryEditState.activeKey === 'biddate') ? 'wr2SummaryBidInput' : 'wr2SummaryMinInput';
+                      var inp = document.getElementById(targetId);
+                      if (!inp) return;
+                      try {
+                        inp.focus();
+                        var len = String(inp.value || '').length;
+                        if (typeof inp.setSelectionRange === 'function') inp.setSelectionRange(len, len);
+                      } catch (e) {}
+                    }, 0);
+                  }
                 }
 
                 // 물건요약 인라인 수정: 매각기일/최저가를 원본 물건에 즉시 반영
+                window.wr2SummaryGetEditState = function() {
+                  if (!window.__wr2SummaryEditState || typeof window.__wr2SummaryEditState !== 'object') {
+                    window.__wr2SummaryEditState = {
+                      roomId: '',
+                      activeKey: '',
+                      bidRaw: '',
+                      minRaw: '',
+                      suppressBlurUntil: 0
+                    };
+                  }
+                  return window.__wr2SummaryEditState;
+                };
+                window.wr2SummaryOnFocus = function(key, roomId, el) {
+                  var st = window.wr2SummaryGetEditState();
+                  st.roomId = String(roomId || '');
+                  st.activeKey = String(key || '');
+                  if (key === 'biddate') st.bidRaw = String(el && el.value || '');
+                  if (key === 'minprice') st.minRaw = String(el && el.value || '');
+                };
+                window.wr2SummaryOnInput = function(key, roomId, el) {
+                  var st = window.wr2SummaryGetEditState();
+                  st.roomId = String(roomId || '');
+                  st.activeKey = String(key || '');
+                  if (key === 'minprice') {
+                    if (window.wr2SummaryMoneyInput) window.wr2SummaryMoneyInput(el);
+                    st.minRaw = String(el && el.value || '');
+                  } else if (key === 'biddate') {
+                    if (el) el.value = String(el.value || '').replace(/[^0-9.\-]/g, '');
+                    st.bidRaw = String(el && el.value || '');
+                  }
+                };
+                window.wr2SummaryOnBlur = function(key, roomId, el) {
+                  var st = window.wr2SummaryGetEditState();
+                  st.roomId = String(roomId || st.roomId || '');
+                  if (key === 'biddate') st.bidRaw = String(el && el.value || '');
+                  if (key === 'minprice') st.minRaw = String(el && el.value || '');
+                  if (Number(st.suppressBlurUntil || 0) > Date.now()) return;
+                  st.activeKey = '';
+                  if (window.wr2SummaryQueueSave) window.wr2SummaryQueueSave(key);
+                };
+                window.wr2SummaryOnKeydown = function(key, roomId, evt, el) {
+                  if (!evt) return true;
+                  if (evt.key === 'Enter') {
+                    evt.preventDefault();
+                    if (el && typeof el.blur === 'function') el.blur();
+                    return false;
+                  }
+                  if (evt.key === 'Escape') {
+                    evt.preventDefault();
+                    var st = window.wr2SummaryGetEditState();
+                    st.activeKey = '';
+                    if (el && typeof el.blur === 'function') el.blur();
+                    return false;
+                  }
+                  return true;
+                };
                 window.wr2SummaryStartEdit = function(key) {
                   var targetId = (key === 'biddate') ? 'wr2SummaryBidInput' : 'wr2SummaryMinInput';
                   var el = document.getElementById(targetId);
@@ -5734,14 +5813,14 @@ var _safeLocalSet = function(key, value) {
                       biddate = bidObj.getFullYear() + '-' + String(bidObj.getMonth() + 1).padStart(2, '0') + '-' + String(bidObj.getDate()).padStart(2, '0');
                     }
                     if (!biddate) {
-                      if (typeof showToast === 'function') showToast('매각기일 형식이 올바르지 않습니다. (예: 2026-04-24)', 'warn');
-                      if (bidIn) bidIn.focus();
+                      if (!options.silent && typeof showToast === 'function') showToast('매각기일 형식이 올바르지 않습니다. (예: 2026-04-24)', 'warn');
+                      if (!options.silent && bidIn) bidIn.focus();
                       return;
                     }
                     var minDigits = String(minprice).replace(/[^0-9]/g, '');
                     if (!minDigits) {
-                      if (typeof showToast === 'function') showToast('최저가를 원 단위 숫자로 입력해주세요.', 'warn');
-                      if (minIn) minIn.focus();
+                      if (!options.silent && typeof showToast === 'function') showToast('최저가를 원 단위 숫자로 입력해주세요.', 'warn');
+                      if (!options.silent && minIn) minIn.focus();
                       return;
                     }
                     minprice = minDigits;
@@ -5756,12 +5835,12 @@ var _safeLocalSet = function(key, value) {
                       return;
                     }
                     if (typeof window.wr2SaveBidAndMinFromSummary !== 'function') {
-                      if (typeof showToast === 'function') showToast('수정 모듈이 준비되지 않았습니다. 페이지를 새로고침해주세요.', 'warn');
+                      if (!options.silent && typeof showToast === 'function') showToast('수정 모듈이 준비되지 않았습니다. 페이지를 새로고침해주세요.', 'warn');
                       return;
                     }
                     var out = window.wr2SaveBidAndMinFromSummary(String(room.id), biddate, minprice);
                     if (!out || out.ok !== true) {
-                      if (typeof showToast === 'function') showToast('연결된 원본 물건을 찾지 못했습니다. 연결 상태를 확인해주세요.', 'warn');
+                      if (!options.silent && typeof showToast === 'function') showToast('연결된 원본 물건을 찾지 못했습니다. 연결 상태를 확인해주세요.', 'warn');
                       return;
                     }
                     if (bidIn) bidIn.value = biddate;
@@ -5769,6 +5848,14 @@ var _safeLocalSet = function(key, value) {
                       var minNum = Number(minDigits || 0);
                       minIn.value = (minNum > 0) ? minNum.toLocaleString('ko-KR') : '';
                     }
+                    try {
+                      var st = window.wr2SummaryGetEditState ? window.wr2SummaryGetEditState() : null;
+                      if (st) {
+                        st.roomId = String(room.id || '');
+                        st.bidRaw = biddate;
+                        st.minRaw = minIn ? String(minIn.value || '') : String(minDigits || '');
+                      }
+                    } catch (e) {}
                     if (!options.silent && typeof showToast === 'function') showToast('매각기일/최저가를 저장했습니다.', 'ok');
                   } catch (e) {
                     console.warn('[wr2SummaryEditSave]', e);
@@ -42792,7 +42879,7 @@ window.addEventListener('DOMContentLoaded', () => {
     }
     else {
       item.status = 'review';
-      if (_plIsUndecidedDate(item.biddate || '')) item.biddate = '';
+      // 활성 전환 시에도 기존 매각기일은 유지한다. (요청 정책)
     }
     item.archived = false;
     item.updatedAt = Date.now();
@@ -43049,6 +43136,16 @@ window.addEventListener('DOMContentLoaded', () => {
         }
         else if (safePatch.lifecycleStatus === 'active' && !safePatch.status) safePatch.status = 'review';
       }
+      // 활성/변경 전환에서는 기존 매각기일을 지우지 않는다.
+      if (safePatch.lifecycleStatus && safePatch.lifecycleStatus !== 'closed') {
+        var prevBidKeep = _plNormalizeBiddateValue(it.biddate || '');
+        var patchBidNorm = _plNormalizeBiddateValue(safePatch.biddate || '');
+        if (!patchBidNorm && prevBidKeep) {
+          delete safePatch.biddate;
+        } else if (patchBidNorm === '미정' && prevBidKeep && prevBidKeep !== '미정') {
+          safePatch.biddate = prevBidKeep;
+        }
+      }
       if (safePatch.title && !safePatch.addr) safePatch.addr = safePatch.title;
       if (safePatch.address && !safePatch.region) safePatch.region = safePatch.address;
       delete safePatch.title;
@@ -43287,7 +43384,7 @@ window.addEventListener('DOMContentLoaded', () => {
         // changed는 기존 기일을 보존
       } else {
         if (plSimpleStatusKey(it.status) !== 'active') it.status = 'review';
-        if (_plIsUndecidedDate(it.biddate || '')) it.biddate = '';
+        // active에서도 biddate를 지우지 않는다. (요청 정책)
       }
       it.archived = false;
       if (String(it.status || '') !== prevStatus || String(it.biddate || '') !== prevBiddate) {
@@ -43464,7 +43561,15 @@ window.addEventListener('DOMContentLoaded', () => {
     if (oldSimple === nextSimple && effectiveSimple === nextSimple) return false;
     // 변경·미진행은 상태 이동만 처리한다. 결과 팝업으로 우회하지 않는다.
 
+    var prevBiddateKeep = _plNormalizeBiddateValue(item.biddate || '');
     plApplySimpleStatusToItem(item, nextSimple);
+    // 상태 전환(활성/변경) 시에는 기존 매각기일을 보존한다.
+    if (nextSimple !== 'closed' && prevBiddateKeep) {
+      var nextBidNorm = _plNormalizeBiddateValue(item.biddate || '');
+      if (!nextBidNorm || (nextBidNorm === '미정' && prevBiddateKeep !== '미정')) {
+        item.biddate = prevBiddateKeep;
+      }
+    }
     item.__allowLifecycleReopen = true;
     plSave(items.map(plNormalizeItem));
     window.__plLastLocalStatusMutationAt = Date.now();
@@ -45698,6 +45803,122 @@ window.addEventListener('DOMContentLoaded', () => {
     if (n >= 100000000) return Math.round(n);
     return Math.round(n * 10000);
   }
+  function _skToDateObjYmd(ymd){
+    var s = _skFmtYmd(ymd);
+    if (!s || s === '미정') return null;
+    var d = new Date(s + 'T00:00:00');
+    if (isNaN(d.getTime())) return null;
+    return d;
+  }
+  function _skCollectTextCandidates(item){
+    var out = [];
+    var seen = {};
+    var push = function(v){
+      var s = String(v == null ? '' : v).trim();
+      if (!s || s.length < 10) return;
+      if (seen[s]) return;
+      seen[s] = true;
+      out.push(s);
+    };
+    try {
+      if (!item || typeof item !== 'object') return out;
+      var d = item.data || {};
+      var fields = [
+        d.기일내역, d.진행내역, d.유찰내역, d.매각기일내역, d.매각결과내역, d.auctionHistory, d.history,
+        d.원문, d.본문, d.상세본문, d.설명, d.비고, d.notes,
+        item.기일내역, item.진행내역, item.유찰내역, item.auctionHistory, item.history
+      ];
+      fields.forEach(push);
+      Object.keys(d || {}).forEach(function(k){
+        var v = d[k];
+        if (typeof v === 'string' && v.length >= 28 && (k.indexOf('내역') >= 0 || k.indexOf('이력') >= 0 || k.indexOf('history') >= 0 || k.indexOf('결과') >= 0)) push(v);
+      });
+    } catch(e) {}
+    return out;
+  }
+  function _skExtractHistoryDates(item){
+    var texts = _skCollectTextCandidates(item);
+    var found = [];
+    var seen = {};
+    var re = /(20\d{2})[.\-/년\s]*(\d{1,2})[.\-/월\s]*(\d{1,2})/g;
+    texts.forEach(function(t){
+      var m;
+      while ((m = re.exec(String(t))) !== null) {
+        var y = m[1];
+        var mo = String(Number(m[2] || 0)).padStart(2, '0');
+        var d = String(Number(m[3] || 0)).padStart(2, '0');
+        var ymd = y + '-' + mo + '-' + d;
+        if (seen[ymd]) continue;
+        seen[ymd] = true;
+        var dt = _skToDateObjYmd(ymd);
+        if (dt) found.push(ymd);
+      }
+    });
+    found.sort();
+    return found;
+  }
+  function _skSuggestIntervalWeeks(item, baseYmd){
+    var base = _skToDateObjYmd(baseYmd);
+    var dates = _skExtractHistoryDates(item);
+    if (!dates.length) return 6; // 기본 6주
+    var scoped = dates;
+    if (base) {
+      scoped = dates.filter(function(ymd){
+        var dt = _skToDateObjYmd(ymd);
+        return dt && dt.getTime() <= base.getTime();
+      });
+      if (scoped.length < 2) scoped = dates;
+    }
+    if (scoped.length < 2) return 6;
+    var dayDiffs = [];
+    for (var i = 1; i < scoped.length; i += 1) {
+      var a = _skToDateObjYmd(scoped[i - 1]);
+      var b = _skToDateObjYmd(scoped[i]);
+      if (!a || !b) continue;
+      var diff = Math.round((b.getTime() - a.getTime()) / 86400000);
+      if (diff >= 21 && diff <= 84) dayDiffs.push(diff);
+    }
+    if (!dayDiffs.length) return 6;
+    dayDiffs.sort(function(x, y){ return x - y; });
+    var mid = dayDiffs[Math.floor(dayDiffs.length / 2)] || 42;
+    var weeks = Math.round(mid / 7);
+    if (!isFinite(weeks) || weeks < 4) weeks = 4;
+    if (weeks > 10) weeks = 10;
+    return weeks;
+  }
+  function _skSuggestDiscountRatio(item){
+    var texts = _skCollectTextCandidates(item);
+    var priceList = [];
+    var seen = {};
+    var reWon = /([0-9][0-9,]{4,})\s*원/g;
+    texts.forEach(function(t){
+      var m;
+      while ((m = reWon.exec(String(t))) !== null) {
+        var won = Number(String(m[1] || '').replace(/,/g, ''));
+        if (!isFinite(won) || won <= 0) continue;
+        if (seen[won]) continue;
+        seen[won] = true;
+        priceList.push(won);
+      }
+    });
+    if (priceList.length < 2) return 0.7;
+    // 보통 내역표는 차수순으로 내려가며 금액이 감소한다.
+    var ratios = [];
+    for (var i = 1; i < priceList.length; i += 1) {
+      var prev = Number(priceList[i - 1] || 0);
+      var cur = Number(priceList[i] || 0);
+      if (!(prev > 0 && cur > 0 && cur < prev)) continue;
+      var r = cur / prev;
+      if (r >= 0.5 && r <= 0.9) ratios.push(r);
+    }
+    if (!ratios.length) return 0.7;
+    ratios.sort(function(a, b){ return a - b; });
+    var median = ratios[Math.floor(ratios.length / 2)] || 0.7;
+    // 법원 경매 관행(통상 20~30% 감액) 범위로 안정화
+    if (median < 0.6) median = 0.6;
+    if (median > 0.8) median = 0.8;
+    return Math.round(median * 1000) / 1000;
+  }
   function _skCurrentMinPrice(item){
     var cur = 0;
     var appraisal = 0;
@@ -45716,20 +45937,22 @@ window.addEventListener('DOMContentLoaded', () => {
     } catch(e) {}
     return cur > 0 ? cur : 0;
   }
-  function _skNextPrice(item){
+  function _skNextPrice(item, ratio){
     var cur = _skCurrentMinPrice(item);
     if (!cur) return 0;
-    // 기본 유찰 계산: 다음 회차 최저가는 30% 감액(70%) 기준
-    return Math.max(1, Math.floor(cur * 0.7));
+    var r = Number(ratio);
+    if (!isFinite(r) || r <= 0) r = 0.7;
+    // 기본 유찰 계산: 다음 회차 최저가 = 현재 최저가 * 감액비율
+    return Math.max(1, Math.floor(cur * r));
   }
-  function _skSameWeekdayAfter4Weeks(baseYmd){
+  function _skSameWeekdayAfterWeeks(baseYmd, weeks){
     var base = _skFmtYmd(baseYmd);
     if (!base || base === '미정') return '';
     var d = new Date(base + 'T00:00:00');
     if (isNaN(d.getTime())) return '';
-    var weekday = d.getDay();
-    d.setDate(d.getDate() + 28);
-    while (d.getDay() !== weekday) d.setDate(d.getDate() + 1);
+    var w = parseInt(weeks, 10);
+    if (!isFinite(w) || w < 1) w = 6;
+    d.setDate(d.getDate() + (w * 7));
     var y = d.getFullYear();
     var m = String(d.getMonth() + 1).padStart(2, '0');
     var day = String(d.getDate()).padStart(2, '0');
@@ -45740,13 +45963,18 @@ window.addEventListener('DOMContentLoaded', () => {
     var curRound = _skCurrentRound(base);
     var nextRound = (curRound > 0) ? (curRound + 1) : 1;
     var baseDate = _skFmtYmd(_skCurrentBidDate(base));
+    var weeks = _skSuggestIntervalWeeks(base, baseDate);
+    var ratio = _skSuggestDiscountRatio(base);
     var nextDate = '';
-    if (baseDate && baseDate !== '미정') nextDate = _skSameWeekdayAfter4Weeks(baseDate);
-    var nextPrice = _skNextPrice(base);
+    if (baseDate && baseDate !== '미정') nextDate = _skSameWeekdayAfterWeeks(baseDate, weeks);
+    var nextPrice = _skNextPrice(base, ratio);
     return {
       round: String(nextRound),
       date: String(nextDate || ''),
-      price: String(nextPrice || '')
+      price: String(nextPrice || ''),
+      intervalWeeks: String(weeks),
+      ratio: String(ratio),
+      hint: '예상 기준: 동일 요일 +' + String(weeks) + '주, 최저가 ×' + String(ratio)
     };
   }
   function _skCurrentRound(item){
@@ -45788,7 +46016,7 @@ window.addEventListener('DOMContentLoaded', () => {
       + '      <label style="display:block;font-size:13px;color:#c9d7ff;margin:18px 0 8px;">다음 최저가(원)</label>'
       + '      <input id="skUnsoldOnlyPrice" type="text" inputmode="numeric" placeholder="예: 356,720,000" style="width:100%;padding:14px 16px;border-radius:14px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--tx);font-size:15px;outline:none;box-sizing:border-box;">'
       + '    </div>'
-      + '    <div style="margin-top:18px;color:#b9c7df;font-size:12px;line-height:1.6;">회차는 +1, 최저가는 70% 기준, 매각기일은 같은 요일 4주 후를 자동 제안합니다. 최저가는 원 단위 숫자로 입력하세요.</div>'
+      + '    <div id="skUnsoldOnlyHint" style="margin-top:18px;color:#b9c7df;font-size:12px;line-height:1.6;">예상 기준: 동일 요일 +6주, 최저가 ×0.7</div>'
       + '    <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:24px;">'
       + '      <button type="button" id="skUnsoldOnlyCancel" style="padding:14px 24px;border-radius:14px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.04);color:#eef4ff;font-size:15px;font-weight:700;cursor:pointer;">취소</button>'
       + '      <button type="button" id="skUnsoldOnlySave" style="padding:14px 24px;border-radius:14px;border:1px solid rgba(79,142,255,.35);background:rgba(79,142,255,.22);color:#eef4ff;font-size:15px;font-weight:800;cursor:pointer;">저장</button>'
@@ -46198,10 +46426,14 @@ window.addEventListener('DOMContentLoaded', () => {
     try {
       var panelTitle = modal.querySelector('div[style*="font-size:22px"]');
       var panelDesc = modal.querySelector('div[style*="font-size:13px"]');
+      var panelHint = document.getElementById('skUnsoldOnlyHint');
       if (panelTitle) panelTitle.textContent = manualMode ? '기일/최저가 수정' : '유찰 처리';
       if (panelDesc) panelDesc.textContent = manualMode
         ? '매각기일과 최저가를 원 단위로 직접 수정합니다.'
         : '진행 탭은 유지하고 다음 회차 정보만 갱신합니다.';
+      if (panelHint) panelHint.textContent = manualMode
+        ? '원 단위로 직접 수정하면 즉시 저장목록/작업룸/물건리스트에 반영됩니다.'
+        : (plan.hint || '예상 기준: 동일 요일 +6주, 최저가 ×0.7');
     } catch(e) {}
     if (modal.__escHandler) document.removeEventListener('keydown', modal.__escHandler);
     modal.__escHandler = function(evt){
@@ -46341,6 +46573,7 @@ window.addEventListener('DOMContentLoaded', () => {
       + '    <input id="skNextDate" type="date" style="width:100%;padding:9px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--tx);outline:none;box-sizing:border-box;">'
       + '    <label style="display:block;font-size:11px;color:#c9d7ff;margin:10px 0 5px;">다음 최저가</label>'
       + '    <input id="skNextPrice" type="text" inputmode="numeric" placeholder="원" style="width:100%;padding:9px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--tx);outline:none;box-sizing:border-box;">'
+      + '    <div id="skUnsoldHint" style="margin-top:8px;font-size:11px;color:#9fb0ce;line-height:1.5;">예상 기준: 동일 요일 +6주, 최저가 ×0.7</div>'
       + '  </div>'
       + '  <div id="skChangedInfo" style="display:none;padding:0 16px 12px;font-size:12px;color:var(--mu);">변경/미진행으로 저장해도 매각기일은 기존 값을 유지합니다.</div>'
       + '  <div style="display:flex;justify-content:flex-end;gap:8px;padding:0 16px 14px;">'
@@ -46363,6 +46596,7 @@ window.addEventListener('DOMContentLoaded', () => {
     var nextRound = document.getElementById('skNextRound');
     var nextDate = document.getElementById('skNextDate');
     var nextPrice = document.getElementById('skNextPrice');
+    var unsoldHint = document.getElementById('skUnsoldHint');
     var saveBtn = document.getElementById('skResultFlowSave');
     var mode = String((ctx && ctx.preferMode) || 'changed');
     function applyUnsoldDefaults(){
@@ -46370,6 +46604,7 @@ window.addEventListener('DOMContentLoaded', () => {
       if (nextRound) nextRound.value = plan.round || '1';
       if (nextDate) nextDate.value = plan.date || '';
       if (nextPrice) nextPrice.value = _skComma(plan.price || '');
+      if (unsoldHint) unsoldHint.textContent = plan.hint || '예상 기준: 동일 요일 +6주, 최저가 ×0.7';
     }
     function setMode(v){
       mode = v;
