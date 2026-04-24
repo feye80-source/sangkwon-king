@@ -45867,23 +45867,27 @@ window.addEventListener('DOMContentLoaded', () => {
 /* === v6 property tab polish + mobile tuning (2026-04-25) === */
 (function() {
   function injectPropTabStyle() {
-    if (document.getElementById('sk-prop-tab-style')) return;
-    var st = document.createElement('style');
-    st.id = 'sk-prop-tab-style';
+    var st = document.getElementById('sk-prop-tab-style');
+    if (!st) {
+      st = document.createElement('style');
+      st.id = 'sk-prop-tab-style';
+      document.head.appendChild(st);
+    }
     st.textContent = ''
-      + '.sk-prop-main-tab{position:relative;overflow:visible;'
-      + 'background:linear-gradient(180deg,rgba(79,142,255,.14),rgba(79,142,255,.06)) !important;'
-      + 'border-color:rgba(79,142,255,.40) !important;color:#c6dcff !important;}'
-      + '.sk-prop-main-tab::after{content:"";position:absolute;inset:2px;border-radius:10px;'
-      + 'border:1px solid rgba(79,142,255,.35);pointer-events:none;opacity:.9;}'
-      + '.sk-prop-main-tab.on{'
-      + 'background:linear-gradient(180deg,rgba(79,142,255,.25),rgba(79,142,255,.10)) !important;'
-      + 'border-color:rgba(79,142,255,.58) !important;color:#f2f7ff !important;'
-      + 'box-shadow:0 0 0 1px rgba(79,142,255,.22) inset,0 6px 14px rgba(79,142,255,.14);}'
+      + '.sk-prop-main-tab{position:relative;overflow:visible;transition:all .18s ease;}'
+      + '.sk-prop-main-tab.on,.sk-prop-main-tab.active,.sk-prop-main-tab[aria-current="page"]{'
+      + 'background:rgba(79,142,255,.10) !important;'
+      + 'border-color:rgba(79,142,255,.42) !important;'
+      + 'color:#eaf2ff !important;'
+      + 'box-shadow:0 0 0 1px rgba(79,142,255,.16) inset,0 6px 14px rgba(17,26,45,.25) !important;}'
       + '.sk-prop-main-tab .main-badge,'
       + '.sk-prop-main-tab .main-tag,'
+      + '.sk-prop-main-tab .badge-main,'
+      + '.sk-prop-main-tab .is-main,'
       + '.sk-prop-main-tab [data-main],'
-      + '.sk-prop-main-tab [data-role="main-badge"]{display:none !important;}'
+      + '.sk-prop-main-tab [data-role="main-badge"],'
+      + '.sk-prop-main-tab [class*="main-badge"],'
+      + '.sk-prop-main-tab [class*="mainTag"]{display:none !important;}'
       + '@media (max-width: 900px){'
       + '  .pm-subtab-btn{min-height:36px;padding:8px 10px;font-size:12px;}'
       + '  .wr2-room-item{padding:8px 10px;}'
@@ -45895,17 +45899,16 @@ window.addEventListener('DOMContentLoaded', () => {
       + '  }'
       + '  .wr2-info-row .wr2-mini-btn{padding:4px 7px;font-size:10px;}'
       + '}';
-    document.head.appendChild(st);
   }
 
   function trimMainWords(root) {
     if (!root) return;
     try {
       Array.prototype.slice.call(root.querySelectorAll('*')).forEach(function(el) {
-        if (!el || el.children.length > 0) return;
-        var txt = String(el.textContent || '').trim();
+        if (!el) return;
+        var txt = String(el.textContent || '').replace(/\s+/g, ' ').trim();
         if (!txt) return;
-        if (/^main$/i.test(txt) || txt === '메인') el.remove();
+        if (el.children.length === 0 && (/^main$/i.test(txt) || txt === '메인')) el.remove();
       });
     } catch (e) {}
     try {
@@ -45916,43 +45919,52 @@ window.addEventListener('DOMContentLoaded', () => {
       textNodes.forEach(function(node) {
         if (!node) return;
         var oldText = String(node.nodeValue || '');
-        if (!oldText || !/main/i.test(oldText)) return;
-        var nextText = oldText.replace(/\bMAIN\b/gi, ' ').replace(/\s{2,}/g, ' ');
+        if (!oldText || !/main|메인/i.test(oldText)) return;
+        var nextText = oldText
+          .replace(/\bMAIN\b/gi, ' ')
+          .replace(/\bmain\b/gi, ' ')
+          .replace(/\b메인\b/g, ' ')
+          .replace(/\s{2,}/g, ' ')
+          .trim();
         if (nextText !== oldText) node.nodeValue = nextText;
       });
     } catch (e) {}
   }
 
-  function collectPropertyTabTargets() {
-    var out = [];
-    var seen = {};
-    function push(el) {
-      if (!el) return;
-      var key = el.id || el.getAttribute('onclick') || el.textContent || '';
-      if (seen[key]) return;
-      seen[key] = true;
-      out.push(el);
-    }
-    push(document.getElementById('nav4'));
-    Array.prototype.slice.call(document.querySelectorAll('[onclick*="showPage(4)"]')).forEach(push);
-    Array.prototype.slice.call(document.querySelectorAll('button,a,div,span')).forEach(function(el) {
-      if (!el || !el.textContent) return;
-      var txt = String(el.textContent || '').replace(/\s+/g, ' ').trim();
-      if (txt.indexOf('물건관리') < 0) return;
-      if (txt.length > 28) return;
-      push(el);
+  function collectPropertyTabTarget() {
+    var nav4 = document.getElementById('nav4');
+    if (nav4) return nav4;
+    var direct = document.querySelector('button[onclick*="showPage(4)"],a[onclick*="showPage(4)"]');
+    if (direct) return direct;
+    var byText = Array.prototype.slice.call(document.querySelectorAll('button,a,[role="tab"]')).find(function(el) {
+      var txt = String(el && el.textContent || '').replace(/\s+/g, ' ').trim();
+      return txt.indexOf('물건관리') >= 0;
     });
-    return out;
+    return byText || null;
+  }
+
+  function cleanupMainBadgeNear(target) {
+    if (!target) return;
+    try {
+      Array.prototype.slice.call(target.querySelectorAll('*')).forEach(function(el) {
+        if (!el) return;
+        var txt = String(el.textContent || '').replace(/\s+/g, ' ').trim();
+        if (!txt) return;
+        if (/^main$/i.test(txt) || txt === '메인') el.remove();
+      });
+    } catch (e) {}
   }
 
   function applyPropertyTabPolish() {
     injectPropTabStyle();
-    var targets = collectPropertyTabTargets();
-    targets.forEach(function(el) {
-      if (!el) return;
-      el.classList.add('sk-prop-main-tab');
-      trimMainWords(el);
+    var target = collectPropertyTabTarget();
+    Array.prototype.slice.call(document.querySelectorAll('.sk-prop-main-tab')).forEach(function(el) {
+      if (el !== target) el.classList.remove('sk-prop-main-tab');
     });
+    if (!target) return;
+    target.classList.add('sk-prop-main-tab');
+    trimMainWords(target);
+    cleanupMainBadgeNear(target);
   }
 
   function bindPropertyTabPolish() {
