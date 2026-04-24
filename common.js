@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260424-sync-ui-inline3';
+    window.__SK_BUILD = '20260424-sync-ui-inline4';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -942,6 +942,12 @@
       if (String(msg || '').indexOf('물건리스트 동기화') >= 0) return;
       // 동일 메시지 연속 노출(짧은 시간 내 반복) 방지
       var now = Date.now();
+      // 성공 완료 메시지는 노출 빈도를 크게 낮춘다.
+      if (ok && /동기화 완료/.test(String(msg || ''))) {
+        var lastDone = Number(window._sbLastDoneStatusAt || 0);
+        if (lastDone && (now - lastDone) < 25000) return;
+        window._sbLastDoneStatusAt = now;
+      }
       if (window._sbLastStatusMsg === msg && window._sbLastStatusAt && (now - window._sbLastStatusAt) < 3500) {
         return;
       }
@@ -5560,12 +5566,6 @@ var _safeLocalSet = function(key, value) {
                   const priceVal   = d['매매가_만원']
                     ? toWonSmart(0, d['매매가_만원'])
                     : toWonSmart(item.minprice || d['최저가'] || d['감정가'] || 0, d['최저가_만원'] || d['감정가_만원'] || 0, appraiseVal);
-                  const estimateVal = (function(){
-                    var est = fmtN(item.estimate || d['예상입찰가'] || d['예상입찰가_원'] || 0);
-                    if (!est && d['예상입찰가_만원']) est = Math.round(fmtN(d['예상입찰가_만원']) * 10000);
-                    if (!est && d['_user_매매가']) est = Math.round(fmtN(d['_user_매매가']) * 10000);
-                    return est > 0 ? est : 0;
-                  })();
                   const depositVal = tenantDepAuto;
                   const rentVal    = tenantRentAuto;
 
@@ -5587,14 +5587,6 @@ var _safeLocalSet = function(key, value) {
                   const saleOverdueNeedsAction = !!(saleDateRaw && saleDday != null && saleDday < 0 && lifecycle !== 'closed');
                   const warnTone = saleOverdueNeedsAction ? '#ff6b7a' : '#ff8c42';
 
-                  // ── 읽기 전용 요약 행: 원본 물건 정보를 그대로 표시한다.
-                  const editRow = (_key, label, valHtml, _rawVal) => (
-                    `<div class="wr2-info-row">
-                      <span class="wr2-info-lbl">${label}</span>
-                      <span class="wr2-info-val">${valHtml}</span>
-                    </div>`
-                  );
-
                   const primaryAddr = d['소재지'] || d['도로명주소'] || d['지번주소'] || d['주소'] || room.address || '-';
                   const pdfDoc = _getPrimaryPdfDoc(item);
                   const sourceUrl = String(d['상세URL'] || d['옥션원URL'] || d['온비드URL'] || '').trim();
@@ -5614,17 +5606,6 @@ var _safeLocalSet = function(key, value) {
                     html += `<div class="wr2-info-row"><span class="wr2-info-lbl">원본 링크</span><span class="wr2-info-val" style="display:flex;justify-content:flex-end;"><a class="wr2-mini-btn" href="${esc(sourceUrl)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">옥션원/온비드 열기</a></span></div>`;
                   }
                   if (d['물건종류'] || d['용도']) html += `<div class="wr2-info-row"><span class="wr2-info-lbl">물건종류</span><span class="wr2-info-val">${d['물건종류']||d['용도']}</span></div>`;
-
-                  // 감정가 + 평당
-                  if (appraiseVal > 0) {
-                    html += `<div class="wr2-info-row">
-                      <span class="wr2-info-lbl">감정가</span>
-                      <span class="wr2-info-val">
-                        ${fmtW(appraiseVal)}
-                        ${appPy ? `<span class="wr2-sub-py">${appPy}</span>` : ''}
-                      </span>
-                    </div>`;
-                  }
 
                   const roomIdEsc = String(room.id || '').replace(/'/g, "\\'");
                   const bidRaw = String(item.biddate || '').trim() || saleDateRaw || String(room.biddate || '').trim();
@@ -5647,61 +5628,55 @@ var _safeLocalSet = function(key, value) {
                     var n = Math.round(Number(v || 0));
                     return (n > 0) ? n.toLocaleString('ko-KR') : '';
                   })(minVal);
-                  const estimateInputVal = (function(v){
-                    var n = Math.round(Number(v || 0));
-                    return (n > 0) ? n.toLocaleString('ko-KR') : '';
-                  })(estimateVal);
+                  
+                  // 면적 (㎡ + 평) — 메인 정보 상단으로 이동
+                  if (areaM2 > 0) html += `<div class="wr2-info-row"><span class="wr2-info-lbl">${areaLabel}</span><span class="wr2-info-val">${areaStr}</span></div>`;
 
-                  // 인라인 수정: 매각기일(최저가보다 위)
+                  // 감정가 + 평당
+                  if (appraiseVal > 0) {
+                    html += `<div class="wr2-info-row">
+                      <span class="wr2-info-lbl">감정가</span>
+                      <span class="wr2-info-val">
+                        ${fmtW(appraiseVal)}
+                        ${appPy ? `<span class="wr2-sub-py">${appPy}</span>` : ''}
+                      </span>
+                    </div>`;
+                  }
+
+                  // 인라인 자동저장: 최저가(먼저), 매각기일(다음)
+                  html += `<div class="wr2-info-row">
+                    <span class="wr2-info-lbl">최저가</span>
+                    <span class="wr2-info-val" style="display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:wrap;">
+                      <input id="wr2SummaryMinInput" type="text" inputmode="numeric" value="${minInputVal}" onclick="event.stopPropagation()" oninput="event.stopPropagation();window.wr2SummaryMoneyInput && window.wr2SummaryMoneyInput(this)" onblur="event.stopPropagation();window.wr2SummaryQueueSave && window.wr2SummaryQueueSave('minprice')" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}" placeholder="원 단위 입력" style="padding:5px 8px;border-radius:8px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.05);color:var(--tx);font-size:12px;min-width:128px;max-width:160px;text-align:right;">
+                      ${minPy ? `<span class="wr2-sub-py">${minPy}</span>` : ''}
+                    </span>
+                  </div>`;
                   html += `<div class="wr2-info-row">
                     <span class="wr2-info-lbl">매각기일</span>
                     <span class="wr2-info-val" style="display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:wrap;">
-                      <input id="wr2SummaryBidInput" type="text" value="${bidInputVal}" placeholder="YYYY-MM-DD" onclick="event.stopPropagation()" oninput="event.stopPropagation();this.value=(this.value||'').replace(/[^0-9.\\-]/g,'')" style="padding:5px 8px;border-radius:8px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.05);color:var(--tx);font-size:12px;min-width:128px;max-width:142px;text-align:center;">
-                      <button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();window.wr2SummaryEditSave && window.wr2SummaryEditSave('biddate')">반영</button>
+                      <input id="wr2SummaryBidInput" type="text" value="${bidInputVal}" placeholder="YYYY-MM-DD" onclick="event.stopPropagation()" oninput="event.stopPropagation();this.value=(this.value||'').replace(/[^0-9.\\-]/g,'')" onblur="event.stopPropagation();window.wr2SummaryQueueSave && window.wr2SummaryQueueSave('biddate')" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}" style="padding:5px 8px;border-radius:8px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.05);color:var(--tx);font-size:12px;min-width:128px;max-width:142px;text-align:center;">
                       ${bidBadge}
                     </span>
                   </div>`;
 
-                  // 인라인 수정: 최저가(원 단위)
-                  html += `<div class="wr2-info-row">
-                    <span class="wr2-info-lbl">최저가</span>
-                    <span class="wr2-info-val" style="display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:wrap;">
-                      <input id="wr2SummaryMinInput" type="text" inputmode="numeric" value="${minInputVal}" onclick="event.stopPropagation()" oninput="event.stopPropagation();window.wr2SummaryMoneyInput && window.wr2SummaryMoneyInput(this)" placeholder="원 단위 입력" style="padding:5px 8px;border-radius:8px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.05);color:var(--tx);font-size:12px;min-width:128px;max-width:160px;text-align:right;">
-                      <button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();window.wr2SummaryEditSave && window.wr2SummaryEditSave('minprice')">반영</button>
-                      ${minPy ? `<span class="wr2-sub-py">${minPy}</span>` : ''}
-                    </span>
-                  </div>`;
-
-                  // 면적 (㎡ + 평)
-                  if (areaM2 > 0) html += `<div class="wr2-info-row"><span class="wr2-info-lbl">${areaLabel}</span><span class="wr2-info-val">${areaStr}</span></div>`;
-
-                  // 예상 입찰가 (인라인 편집)
-                  html += `<div class="wr2-info-row">
-                    <span class="wr2-info-lbl">예상 입찰가</span>
-                    <span class="wr2-info-val" style="display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:wrap;">
-                      <input id="wr2SummaryEstInput" type="text" inputmode="numeric" value="${estimateInputVal}" onclick="event.stopPropagation()" oninput="event.stopPropagation();window.wr2SummaryMoneyInput && window.wr2SummaryMoneyInput(this)" placeholder="원 단위 입력" style="padding:5px 8px;border-radius:8px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.05);color:var(--tx);font-size:12px;min-width:128px;max-width:160px;text-align:right;">
-                      <button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();window.wr2SummaryEstimateSave && window.wr2SummaryEstimateSave()">반영</button>
-                      <span style="color:#ff6666;font-weight:600;">${estimateVal > 0 ? fmtW(estimateVal) : '미입력'}</span>
-                    </span>
-                  </div>`;
-
-                  // 보증금 (임차인 기보증금 자동 — 수동편집 가능)
+                  // 보증금/월세/임차인 묶음 카드
                   {
                     const depBaseLabel = isAuctionItem ? '임차 보증금' : '보증금';
                     const depLabel = tenantDepAuto > 0 ? (depBaseLabel + ' <span class="wr2-auto-badge">권리분석</span>') : depBaseLabel;
-                    html += editRow('deposit', depLabel, fmtW(depositVal)||'미입력', depositVal||'');
-                  }
-
-                  // 월세 (임차인 월세 자동 — 수동편집 가능)
-                  {
                     const rentBaseLabel = isAuctionItem ? '임차 월세' : '월세';
                     const rentLabel = tenantRentAuto > 0 ? (rentBaseLabel + ' <span class="wr2-auto-badge">권리분석</span>') : rentBaseLabel;
-                    html += editRow('rent', rentLabel, fmtW(rentVal)||'미입력', rentVal||'');
-                  }
-
-                  // 임차인 이름
-                  if (tenant) {
-                    html += `<div class="wr2-info-row"><span class="wr2-info-lbl">임차인명</span><span class="wr2-info-val"><b>${tenant}</b></span></div>`;
+                    const tenantName = tenant || '-';
+                    html += `<div style="margin-top:6px;padding:9px 12px;border:1px solid rgba(148,163,184,.18);background:rgba(148,163,184,.07);border-radius:12px;">
+                      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px;color:#8fa3c5;font-size:11px;font-weight:700;letter-spacing:.2px;">
+                        <span>임차 정보</span>
+                        <span style="opacity:.8;">참고</span>
+                      </div>
+                      <div style="display:flex;flex-direction:column;gap:6px;">
+                        <div style="display:flex;justify-content:space-between;gap:8px;"><span style="color:#8fa3c5;font-size:12px;">${depLabel}</span><b style="color:#d6e2ff;font-size:13px;">${fmtW(depositVal)||'-'}</b></div>
+                        <div style="display:flex;justify-content:space-between;gap:8px;"><span style="color:#8fa3c5;font-size:12px;">${rentLabel}</span><b style="color:#d6e2ff;font-size:13px;">${fmtW(rentVal)||'-'}</b></div>
+                        <div style="display:flex;justify-content:space-between;gap:8px;"><span style="color:#8fa3c5;font-size:12px;">임차인명</span><b style="color:#d6e2ff;font-size:13px;">${tenantName}</b></div>
+                      </div>
+                    </div>`;
                   }
                   if (bidNeedsAction) {
                     html += `<div class="wr2-summary-alert" style="margin:6px 0 2px;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,107,122,.36);background:rgba(255,107,122,.1);font-size:11px;line-height:1.45;color:#ffd5da;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
@@ -5736,40 +5711,16 @@ var _safeLocalSet = function(key, value) {
                   var n = Number(digits);
                   el.value = Number.isFinite(n) ? n.toLocaleString('ko-KR') : '';
                 };
-                window.wr2SummaryEstimateSave = function() {
-                  try {
-                    var room = getActiveRoom();
-                    if (!room || !room.id) {
-                      if (typeof showToast === 'function') showToast('활성 작업룸을 찾을 수 없습니다.', 'warn');
-                      return;
+                window.wr2SummaryQueueSave = function(_key) {
+                  clearTimeout(window.__wr2SummaryAutoSaveTimer);
+                  window.__wr2SummaryAutoSaveTimer = setTimeout(function() {
+                    if (typeof window.wr2SummaryEditSave === 'function') {
+                      window.wr2SummaryEditSave(_key, { silent: true });
                     }
-                    var estIn = document.getElementById('wr2SummaryEstInput');
-                    var estDigits = String(estIn && estIn.value || '').replace(/[^0-9]/g, '');
-                    if (!estDigits) {
-                      if (typeof showToast === 'function') showToast('예상 입찰가를 원 단위 숫자로 입력해주세요.', 'warn');
-                      if (estIn) estIn.focus();
-                      return;
-                    }
-                    if (typeof window.wr2SaveEstimateFromSummary !== 'function') {
-                      if (typeof showToast === 'function') showToast('수정 모듈이 준비되지 않았습니다. 페이지를 새로고침해주세요.', 'warn');
-                      return;
-                    }
-                    var out = window.wr2SaveEstimateFromSummary(String(room.id), estDigits);
-                    if (!out || out.ok !== true) {
-                      if (typeof showToast === 'function') showToast('연결된 원본 물건을 찾지 못했습니다. 연결 상태를 확인해주세요.', 'warn');
-                      return;
-                    }
-                    if (estIn) {
-                      var estNum = Number(estDigits || 0);
-                      estIn.value = estNum > 0 ? estNum.toLocaleString('ko-KR') : '';
-                    }
-                    if (typeof showToast === 'function') showToast('예상 입찰가를 저장했습니다.', 'ok');
-                  } catch (e) {
-                    console.warn('[wr2SummaryEstimateSave]', e);
-                    if (typeof showToast === 'function') showToast('예상 입찰가 저장 중 오류가 발생했습니다.', 'warn');
-                  }
+                  }, 170);
                 };
-                window.wr2SummaryEditSave = function(_key) {
+                window.wr2SummaryEditSave = function(_key, opts) {
+                  var options = opts || {};
                   try {
                     var room = getActiveRoom();
                     if (!room || !room.id) {
@@ -5797,6 +5748,16 @@ var _safeLocalSet = function(key, value) {
                       return;
                     }
                     minprice = minDigits;
+                    var currentBidRaw = String((room && room.biddate) || '').trim();
+                    var currentBidObj = (typeof wr2ParseSaleDateLoose === 'function') ? wr2ParseSaleDateLoose(currentBidRaw) : null;
+                    var currentBid = '';
+                    if (currentBidObj && !isNaN(currentBidObj.getTime())) {
+                      currentBid = currentBidObj.getFullYear() + '-' + String(currentBidObj.getMonth() + 1).padStart(2, '0') + '-' + String(currentBidObj.getDate()).padStart(2, '0');
+                    }
+                    var currentMin = String((room && room.minprice) || '').replace(/[^0-9]/g, '');
+                    if (String(currentBid) === String(biddate) && String(currentMin) === String(minprice)) {
+                      return;
+                    }
                     if (typeof window.wr2SaveBidAndMinFromSummary !== 'function') {
                       if (typeof showToast === 'function') showToast('수정 모듈이 준비되지 않았습니다. 페이지를 새로고침해주세요.', 'warn');
                       return;
@@ -5811,7 +5772,7 @@ var _safeLocalSet = function(key, value) {
                       var minNum = Number(minDigits || 0);
                       minIn.value = (minNum > 0) ? minNum.toLocaleString('ko-KR') : '';
                     }
-                    if (typeof showToast === 'function') showToast('매각기일/최저가를 저장했습니다.', 'ok');
+                    if (!options.silent && typeof showToast === 'function') showToast('매각기일/최저가를 저장했습니다.', 'ok');
                   } catch (e) {
                     console.warn('[wr2SummaryEditSave]', e);
                     if (typeof showToast === 'function') showToast('요약 저장 중 오류가 발생했습니다.', 'warn');
@@ -46246,40 +46207,6 @@ window.addEventListener('DOMContentLoaded', () => {
         String(nextDate || '').trim(),
         String(nextPrice || '').trim()
       );
-    } catch (e) {
-      return { ok:false, reason:'error', message:String(e && e.message || e) };
-    }
-  };
-  window.wr2SaveEstimateFromSummary = function(roomId, estimateWon){
-    try {
-      var room = _skResolveRoomById(roomId);
-      var item = _skResolveItemByRoom(room, '');
-      if (!item || !item.id) return { ok:false, reason:'not_found' };
-      var estNum = _skParseUnsoldMoney(estimateWon);
-      if (!estNum || estNum < 1) return { ok:false, reason:'invalid_estimate' };
-      var nextData = Object.assign({}, item.data || {});
-      nextData['예상입찰가'] = estNum;
-      nextData['예상입찰가_원'] = estNum;
-      nextData['예상입찰가_만원'] = Math.round(estNum / 10000);
-      nextData['_user_매매가'] = Math.round(estNum / 10000);
-      var patch = {
-        roomId: room ? String(room.id || '') : String(item.roomId || ''),
-        estimate: String(estNum),
-        data: nextData
-      };
-      var appliedItem = null;
-      if (typeof window.plUpdateItem === 'function') {
-        appliedItem = window.plUpdateItem(String(item.id), patch);
-      }
-      if (!appliedItem) return { ok:false, reason:'apply_failed' };
-      if (room) {
-        try { _skTouchUnsoldRoomLink(room, appliedItem); } catch(e) {}
-      }
-      try { if (typeof renderPropertyList === 'function') renderPropertyList(); } catch(e) {}
-      try { if (typeof wr2Render === 'function') wr2Render(); } catch(e) {}
-      try { if (typeof renderSaved === 'function') renderSaved(); } catch(e) {}
-      _skForceUnsoldCloudSync({ pull:true });
-      return { ok:true, room: room, item: appliedItem };
     } catch (e) {
       return { ok:false, reason:'error', message:String(e && e.message || e) };
     }
