@@ -4765,6 +4765,11 @@ var _safeLocalSet = function(key, value) {
                   if (addrInput) addrInput.value = room.address || '';
                   const host = (statusBadge && statusBadge.parentElement) || detailEl.querySelector('.wr2-hdr-row1-btns');
                   if (statusBadge) statusBadge.style.display = 'none';
+                  const linkBtnEl = document.getElementById('wr2LinkSavedBtn');
+                  if (linkBtnEl) {
+                    linkBtnEl.style.display = 'none';
+                    linkBtnEl.onclick = null;
+                  }
                   if (host) {
                       const insertAnchor = document.getElementById('wr2LinkSavedBtn') || host.firstChild;
                       let lifeSel = document.getElementById('wr2LifecycleSelect');
@@ -5476,7 +5481,7 @@ var _safeLocalSet = function(key, value) {
                     // 연결 물건이 없어도 현재 작업룸에 기록된 기일은 표시한다.
                     const _niBiddate = String(room.biddate || '').trim();
                     const _niBidHtml = `<div class="wr2-info-row"><span class="wr2-info-lbl">매각기일</span><span class="wr2-info-val">${_niBiddate || '<span style="color:var(--mu);">미입력</span>'}</span></div>`;
-                    el.innerHTML = _niBidHtml + '<div class="wr2-no-item">연결된 물건이 없습니다.<br/><span style="color:#4f8eff;cursor:pointer;" onclick="document.getElementById(\'wr2LinkSavedBtn\').click()">🔗 저장목록 연결</span> · <span style="color:#4f8eff;cursor:pointer;" onclick="window.wr2OpenSourceRelink && window.wr2OpenSourceRelink(\'' + String(room.id || '').replace(/'/g, "\\'") + '\')">🗂 원본연결</span></div>';
+                    el.innerHTML = _niBidHtml + '<div class="wr2-no-item">연결된 원본 물건이 없습니다. 물건관리에서 먼저 연결해 주세요.</div>';
                     return;
                   }
 
@@ -7312,7 +7317,10 @@ window.wr2SummaryCancelEdit = function() {
                   if (newBtn) newBtn.onclick = showNewModal;
                   if (newCreate) newCreate.onclick = createRoomFromModal;
                   if (newCancel) newCancel.onclick = hideNewModal;
-                  if (linkBtn) linkBtn.onclick = () => wr2ShowLinkModal();
+                  if (linkBtn) {
+                    linkBtn.style.display = 'none';
+                    linkBtn.onclick = null;
+                  }
 
                   const modal = document.getElementById('wr2NewModal');
                   if (modal) modal.addEventListener('click', e => { if (e.target === modal) hideNewModal(); });
@@ -41957,7 +41965,7 @@ window.addEventListener('DOMContentLoaded', () => {
   var plImportSelectedMap = {};
   var _plEditAutoFocus = null;
   var _plSavedSyncMute = 0;
-  if (window.__plAutoCloudPull === undefined) window.__plAutoCloudPull = false;
+  if (window.__plAutoCloudPull === undefined) window.__plAutoCloudPull = true;
 
   function plEscHtml(s) {
     return String(s || '')
@@ -45427,13 +45435,21 @@ window.addEventListener('DOMContentLoaded', () => {
     var d = String(dt.getDate()).padStart(2,'0');
     return y + '-' + m + '-' + d;
   }
+  function _skToWonFromManMaybe(v){
+    var n = Number(v || 0);
+    if (!isFinite(n) || n <= 0) return 0;
+    // 일부 데이터는 *_만원 필드에 이미 '원' 값이 들어있다.
+    // 값이 1억 이상이면 원으로 보고 그대로 사용한다.
+    if (n >= 100000000) return Math.round(n);
+    return Math.round(n * 10000);
+  }
   function _skCurrentMinPrice(item){
     var cur = 0;
     try {
       cur = _skNum((item && item.minprice) || (item && item.price) || (item && item.result && item.result.minprice) || 0);
-      if (!cur && item && item._norm) cur = Number(item._norm.최저가_만원 || 0) * 10000;
+      if (!cur && item && item._norm) cur = _skToWonFromManMaybe(item._norm.최저가_만원 || 0);
       if (!cur && item && item._norm) cur = Number(item._norm.최저매각가격 || 0);
-      if (!cur && item && item._norm) cur = Number(item._norm.감정가_만원 || 0) * 10000;
+      if (!cur && item && item._norm) cur = _skToWonFromManMaybe(item._norm.감정가_만원 || 0);
       if (!cur) cur = _skNum((item && item.appraisal) || 0);
     } catch(e) {}
     return cur > 0 ? cur : 0;
@@ -45504,9 +45520,9 @@ window.addEventListener('DOMContentLoaded', () => {
       + '    <input id="skUnsoldOnlyRound" type="number" style="width:100%;padding:14px 16px;border-radius:14px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--tx);font-size:15px;outline:none;box-sizing:border-box;">'
       + '    <label style="display:block;font-size:13px;color:#c9d7ff;margin:18px 0 8px;">다음 매각기일</label>'
       + '    <input id="skUnsoldOnlyDate" type="date" style="width:100%;padding:14px 16px;border-radius:14px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--tx);font-size:15px;outline:none;box-sizing:border-box;">'
-      + '    <label style="display:block;font-size:13px;color:#c9d7ff;margin:18px 0 8px;">다음 최저가</label>'
-      + '    <input id="skUnsoldOnlyPrice" type="text" inputmode="numeric" placeholder="예: 279,347,000" style="width:100%;padding:14px 16px;border-radius:14px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--tx);font-size:15px;outline:none;box-sizing:border-box;">'
-      + '    <div style="margin-top:18px;color:#b9c7df;font-size:12px;line-height:1.6;">회차는 +1, 최저가는 70% 기준, 매각기일은 같은 요일 4주 후를 자동 제안합니다. 확인 후 수정해서 저장하세요.</div>'
+      + '    <label style="display:block;font-size:13px;color:#c9d7ff;margin:18px 0 8px;">다음 최저가(원)</label>'
+      + '    <input id="skUnsoldOnlyPrice" type="text" inputmode="numeric" placeholder="예: 356,720,000" style="width:100%;padding:14px 16px;border-radius:14px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--tx);font-size:15px;outline:none;box-sizing:border-box;">'
+      + '    <div style="margin-top:18px;color:#b9c7df;font-size:12px;line-height:1.6;">회차는 +1, 최저가는 70% 기준, 매각기일은 같은 요일 4주 후를 자동 제안합니다. 최저가는 원 단위 숫자로 입력하세요.</div>'
       + '    <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:24px;">'
       + '      <button type="button" id="skUnsoldOnlyCancel" style="padding:14px 24px;border-radius:14px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.04);color:#eef4ff;font-size:15px;font-weight:700;cursor:pointer;">취소</button>'
       + '      <button type="button" id="skUnsoldOnlySave" style="padding:14px 24px;border-radius:14px;border:1px solid rgba(79,142,255,.35);background:rgba(79,142,255,.22);color:#eef4ff;font-size:15px;font-weight:800;cursor:pointer;">저장</button>'
@@ -45532,13 +45548,7 @@ window.addEventListener('DOMContentLoaded', () => {
   function _skParseUnsoldMoney(v){
     var raw = String(v == null ? '' : v).trim();
     if (!raw) return 0;
-    var s = raw.replace(/\s+/g, '');
-    var total = 0;
-    var eok = s.match(/([\d,.]+)억/);
-    if (eok) total += Math.round(Number(eok[1].replace(/,/g, '')) * 100000000);
-    var man = s.match(/억.*?([\d,.]+)만|^([\d,.]+)만/);
-    if (man) total += Math.round(Number((man[1] || man[2] || '0').replace(/,/g, '')) * 10000);
-    if (total) return total;
+    // 유찰 금액 입력은 원 단위 숫자만 허용한다.
     var n = Number(raw.replace(/[^\d]/g, '') || 0);
     return Number.isFinite(n) ? n : 0;
   }
@@ -45557,6 +45567,23 @@ window.addEventListener('DOMContentLoaded', () => {
       return Array.isArray(raw) ? raw.filter(function(r){ return r && !r.deletedAt; }) : [];
     } catch(e) {}
     return [];
+  }
+  function _skForceUnsoldCloudSync(){
+    try {
+      if (typeof window._sbSavePlItems === 'function' && typeof plLoad === 'function') {
+        window._sbSavePlItems(plLoad()).catch(function(){});
+      }
+    } catch(e) {}
+    try {
+      if (typeof window._sbSaveRooms === 'function') {
+        window._sbSaveRooms(_skGetRooms()).catch(function(){});
+      }
+    } catch(e) {}
+    try {
+      if (typeof window._sbSaveSv === 'function' && typeof getSv === 'function') {
+        window._sbSaveSv(getSv()).catch(function(){});
+      }
+    } catch(e) {}
   }
   function _skResolveRoomById(roomId){
     var roomKey = String(roomId || '').trim();
@@ -45705,6 +45732,7 @@ window.addEventListener('DOMContentLoaded', () => {
     try { if (typeof renderPropertyList === 'function') renderPropertyList(); } catch(e) {}
     try { if (typeof wr2Render === 'function') wr2Render(); } catch(e) {}
     try { if (typeof renderSaved === 'function') renderSaved(); } catch(e) {}
+    _skForceUnsoldCloudSync();
     return { ok:true, room: room, item: appliedItem };
   }
 
@@ -45784,8 +45812,7 @@ window.addEventListener('DOMContentLoaded', () => {
       var room = _skResolveRoomById(roomId);
       var item = _skResolveItemByRoom(room, '');
       if (!item) {
-        if (typeof window.wr2OpenSourceRelink === 'function') window.wr2OpenSourceRelink(roomId);
-        if (typeof showToast === 'function') showToast('원본 물건 연결이 필요합니다.', 'warn');
+        if (typeof showToast === 'function') showToast('연결된 원본 물건이 없습니다. 물건관리에서 먼저 연결해 주세요.', 'warn');
         return;
       }
       _skTouchUnsoldRoomLink(room, item);
@@ -45796,93 +45823,9 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   };
 
-  // [FIX] 작업룸 안에서 원본 물건을 다시 연결하는 모달.
-  window.wr2OpenSourceRelink = function(roomId){
-    try {
-      var room = _skResolveRoomById(roomId);
-      if (!room) {
-        if (typeof showToast === 'function') showToast('현재 작업룸을 찾지 못했습니다.', 'warn');
-        return;
-      }
-      var items = (typeof plLoad === 'function') ? (plLoad() || []) : [];
-      items = items.filter(function(it){ return it && it.id && !it.deletedAt && !it.archived; });
-      if (!items.length) {
-        if (typeof showToast === 'function') showToast('연결 가능한 원본 물건이 없습니다.', 'warn');
-        return;
-      }
-      var old = document.getElementById('wr2SourceRelinkModal');
-      if (old) old.remove();
-
-      function esc(s){
-        return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
-          return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]);
-        });
-      }
-      function titleOf(it){
-        return String((it && (it.title || it.name || it.addr || it.address || it.casenum)) || (it && it.data && (it.data.물건명 || it.data.소재지 || it.data.주소 || it.data.사건번호)) || (it && it.id) || '');
-      }
-
-      var modal = document.createElement('div');
-      modal.id = 'wr2SourceRelinkModal';
-      modal.style.cssText = 'position:fixed;inset:0;z-index:15000;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;padding:22px;';
-      modal.innerHTML = ''
-        + '<div style="width:min(760px,96vw);max-height:82vh;background:#111722;border:1px solid rgba(79,142,255,.38);border-radius:18px;box-shadow:0 22px 70px rgba(0,0,0,.55);overflow:hidden;color:#eaf0ff;">'
-        + '<div style="display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid rgba(255,255,255,.08);">'
-        + '<div><div style="font-size:20px;font-weight:900;">원본 물건 연결</div><div style="margin-top:4px;font-size:12px;color:#9ca8bd;">현재 작업룸에 연결할 원본 물건을 선택하세요.</div></div>'
-        + '<button id="wr2SourceRelinkClose" type="button" style="width:42px;height:42px;border:0;border-radius:14px;background:rgba(255,255,255,.08);color:#fff;font-size:22px;cursor:pointer;">×</button>'
-        + '</div>'
-        + '<div style="padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.06);"><input id="wr2SourceRelinkSearch" placeholder="주소/이름/사건번호 검색" style="width:100%;box-sizing:border-box;padding:12px 14px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:#fff;font-size:14px;"></div>'
-        + '<div id="wr2SourceRelinkList" style="max-height:56vh;overflow:auto;padding:10px 12px;"></div>'
-        + '</div>';
-      document.body.appendChild(modal);
-      var listEl = document.getElementById('wr2SourceRelinkList');
-      var searchEl = document.getElementById('wr2SourceRelinkSearch');
-      function close(){ try { modal.remove(); } catch(e){} }
-      document.getElementById('wr2SourceRelinkClose').onclick = close;
-      modal.addEventListener('click', function(evt){ if (evt.target === modal) close(); });
-
-      function render(){
-        var q = String(searchEl.value || '').trim().toLowerCase();
-        var rows = items.filter(function(it){
-          var hay = (titleOf(it) + ' ' + String(it.casenum || it.round || it.biddate || '') + ' ' + String(it.data && (it.data.사건번호 || it.data.경매번호 || it.data.소재지 || ''))).toLowerCase();
-          return !q || hay.indexOf(q) >= 0;
-        }).slice(0, 200);
-        if (!rows.length) {
-          listEl.innerHTML = '<div style="padding:28px;text-align:center;color:#9ca8bd;">검색 결과가 없습니다.</div>';
-          return;
-        }
-        listEl.innerHTML = rows.map(function(it){
-          var meta = [it.casenum, it.biddate, it.minprice].filter(Boolean).join(' · ');
-          return '<button type="button" data-id="'+esc(it.id)+'" style="display:block;width:100%;text-align:left;margin:6px 0;padding:13px 14px;border:1px solid rgba(255,255,255,.08);border-radius:12px;background:rgba(255,255,255,.035);color:#eaf0ff;cursor:pointer;">'
-            + '<div style="font-weight:800;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+esc(titleOf(it))+'</div>'
-            + '<div style="font-size:12px;color:#9ca8bd;margin-top:5px;">'+esc(meta || it.id)+'</div>'
-            + '</button>';
-        }).join('');
-        Array.prototype.forEach.call(listEl.querySelectorAll('[data-id]'), function(btn){
-          btn.onclick = function(){
-            var id = this.getAttribute('data-id');
-            var arr = plLoad() || [];
-            var item = arr.find(function(it){ return String(it && it.id || '') === String(id); });
-            if (!item) return;
-            item.roomId = String(room.id || '');
-            item.updatedAt = Date.now();
-            if (typeof plSave === 'function') plSave(arr.map(function(x){ return typeof plNormalizeItem === 'function' ? plNormalizeItem(x) : x; }));
-            _skTouchUnsoldRoomLink(room, item);
-            try { if (typeof syncToWorkroom === 'function') syncToWorkroom(item); } catch(e) {}
-            try { if (typeof renderPropertyList === 'function') renderPropertyList(); } catch(e) {}
-            try { if (typeof wr2Render === 'function') wr2Render(); } catch(e) {}
-            close();
-            if (typeof showToast === 'function') showToast('원본 물건 연결 완료', 'ok');
-          };
-        });
-      }
-      searchEl.addEventListener('input', render);
-      render();
-      setTimeout(function(){ try { searchEl.focus(); } catch(e){} }, 50);
-    } catch(e) {
-      console.warn('[wr2OpenSourceRelink]', e);
-      if (typeof showToast === 'function') showToast('원본연결 창을 여는 중 오류가 발생했습니다.', 'warn');
-    }
+  // 물건연결 버튼 제거 후 호환용 no-op
+  window.wr2OpenSourceRelink = function(_roomId){
+    if (typeof showToast === 'function') showToast('물건연결 버튼은 제거되었습니다. 물건관리에서 연결을 관리해 주세요.', 'warn');
   };
 
 
