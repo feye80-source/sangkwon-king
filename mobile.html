@@ -720,6 +720,22 @@ body {
   white-space: nowrap;
 }
 .mb-pl-badges { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; }
+.mb-pl-actions { display:inline-flex; align-items:center; gap:4px; margin-left:2px; }
+.mb-pl-act {
+  padding:1px 5px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.14);
+  background:rgba(255,255,255,.05);
+  color:var(--mu);
+  font-size:9px;
+  line-height:1.25;
+  cursor:pointer;
+}
+.mb-pl-act.room {
+  color:#8ab8ff;
+  border-color:rgba(79,142,255,.3);
+  background:rgba(79,142,255,.10);
+}
 .mb-pl-chip {
   padding: 1px 6px;
   border-radius: 999px;
@@ -2370,7 +2386,7 @@ input, textarea, select {
             <span id="mb-room-sel-label" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">-- 작업룸 선택 --</span>
             <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:10px;color:var(--mu);">▼</span>
           </div>
-          <div id="mb-room-sel-list" style="display:none;position:absolute;top:42px;left:0;right:0;background:var(--s2);border:1px solid var(--b1);border-radius:8px;z-index:9999;max-height:min(64vh,560px);overflow-y:auto;overscroll-behavior:contain;box-shadow:0 4px 20px rgba(0,0,0,.5);"></div>
+          <div id="mb-room-sel-list" style="display:none;position:absolute;top:42px;left:0;right:0;background:var(--s2);border:1px solid var(--b1);border-radius:8px;z-index:9999;max-height:min(74vh,680px);overflow-y:auto;overscroll-behavior:contain;box-shadow:0 4px 20px rgba(0,0,0,.5);"></div>
         </div>
         <select id="mb-room-sel" style="display:none;" onchange="mbRoomLoad(this.value, { cloud: true })"><option value="">-- 작업룸 선택 --</option></select>
         <button class="mb-btn mb-btn-gold" onclick="mbRoomNew()" style="height:36px;padding:0 12px;flex-shrink:0;">＋ 새 룸</button>
@@ -3356,7 +3372,7 @@ input, textarea, select {
 <script>if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
 
 <!-- 공통 로직 -->
-<script src="common.js?v=202604250040"></script>
+<script src="common.js?v=202604250125"></script>
 
 <!-- ════════════════════════════════════════════════════════
      mobile.js — 모바일 전용 초기화 및 UI 제어
@@ -6710,7 +6726,8 @@ input, textarea, select {
         dday: dday,
         price: moneyNum(priceRaw),
         priceText: fmtMoney(priceRaw),
-        intent: String(it.intent || '').trim()
+        intent: String(it.intent || '').trim(),
+        roomId: room && room.id ? String(room.id) : ''
       };
     }).filter(function(v) {
       if (statusFilter && v.st !== statusFilter) return false;
@@ -6741,6 +6758,11 @@ input, textarea, select {
       var dateMain = v.bidRaw ? esc(v.bidRaw.replace('T', ' ').slice(0, 10)) : '미입력';
       var ddayLine = v.dday ? ('<div class="mb-pl-date-dday" style="color:' + v.dday.color + ';">' + esc(v.dday.label) + '</div>') : '<div class="mb-pl-date-dday" style="color:var(--di);">기일 없음</div>';
       var openId = String(it.linkedSavedId || it.id || '').replace(/'/g, "\\'");
+      var roomId = String(v.roomId || '').replace(/'/g, "\\'");
+      var actDetail = 'event.stopPropagation();if(window.openPopup){openPopup(\\'' + openId + '\\');}else if(window.mbGoPage){mbGoPage(\\'saved\\');setTimeout(function(){if(window.mbOpenSavedDetail)mbOpenSavedDetail(\\'' + openId + '\\');},100);}';
+      var actRoom = roomId
+        ? ('event.stopPropagation();if(typeof mbInsTab===\\'function\\')mbInsTab(\\'room\\');setTimeout(function(){if(typeof mbRoomLoad===\\'function\\')mbRoomLoad(\\'' + roomId + '\\',{cloud:false});},90);')
+        : '';
       return '<div class="mb-pl-row" data-st="' + v.st + '" onclick="if(window.openPopup){openPopup(\'' + openId + '\');}else if(window.mbGoPage){mbGoPage(\'saved\');setTimeout(function(){if(window.mbOpenSavedDetail)mbOpenSavedDetail(\'' + openId + '\');},100);}">'
         + '<div class="mb-pl-main-col">'
         + '<div class="mb-pl-top">'
@@ -6748,6 +6770,10 @@ input, textarea, select {
         + '<div class="mb-pl-badges">'
         + '<span class="mb-pl-chip ' + statusChipClass(v.st) + '">' + statusLabel(v.st) + '</span>'
         + intentChip
+        + '<span class="mb-pl-actions">'
+        + '<button class="mb-pl-act" onclick="' + actDetail + '">상세</button>'
+        + (roomId ? ('<button class="mb-pl-act room" onclick="' + actRoom + '">작업룸</button>') : '')
+        + '</span>'
         + '</div>'
         + '</div>'
         + '<div class="mb-pl-meta">' + esc(v.sub || '정보 없음') + '</div>'
