@@ -30233,8 +30233,14 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const fileAtts = atts.filter(a => !_ntIsImg(a));
 
       main.innerHTML =
-        '<div style="display:flex;flex-direction:column;gap:10px;flex:1;min-height:0;overflow:hidden;">'
-        + '<div style="display:flex;align-items:center;gap:8px;">'
+        '<div style="display:flex;flex-direction:column;gap:10px;flex:1;min-height:0;overflow:hidden;padding:10px 10px 12px;">'
+        + '<div style="display:flex;align-items:center;gap:6px;padding:8px 10px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:10px;">'
+        +   '<button type="button" onclick="(function(){var m=document.getElementById(\'ntEditorMain\');if(m)m.style.display=\'none\';if(typeof mbInsTab===\'function\')mbInsTab(\'note\');})()" style="padding:5px 10px;border-radius:8px;border:1px solid var(--b1);background:var(--s2);color:var(--tx);font-size:11px;cursor:pointer;white-space:nowrap;">← 목록</button>'
+        +   '<button type="button" onclick="(function(){var m=document.getElementById(\'ntEditorMain\');if(m)m.style.display=\'none\';if(typeof mbInsTab===\'function\')mbInsTab(\'room\');})()" style="padding:5px 9px;border-radius:8px;border:1px solid rgba(79,142,255,.24);background:rgba(79,142,255,.10);color:#8ab8ff;font-size:11px;cursor:pointer;white-space:nowrap;">작업룸</button>'
+        +   '<button type="button" onclick="(function(){var m=document.getElementById(\'ntEditorMain\');if(m)m.style.display=\'none\';if(typeof mbInsTab===\'function\')mbInsTab(\'pipe\');})()" style="padding:5px 9px;border-radius:8px;border:1px solid rgba(255,140,66,.24);background:rgba(255,140,66,.10);color:#ffb47b;font-size:11px;cursor:pointer;white-space:nowrap;">파이프라인</button>'
+        +   '<span id="ntSimpleSaveHint" style="margin-left:auto;font-size:10px;color:var(--di);white-space:nowrap;">자동저장</span>'
+        + '</div>'
+        + '<div style="display:flex;align-items:center;gap:8px;padding:2px 0 0;">'
         +   '<input id="ntSimpleTitle" value="' + _ntEsc(note.title || '') + '" placeholder="제목" style="flex:1;min-width:0;padding:10px 12px;border-radius:10px;border:1px solid var(--b1);background:var(--s2);color:var(--tx);font-size:13px;font-weight:700;outline:none;">'
         +   '<label style="padding:8px 10px;border-radius:10px;border:1px solid rgba(0,212,170,.22);background:rgba(0,212,170,.08);color:#63e6be;font-size:12px;cursor:pointer;white-space:nowrap;">🖼 첨부'
         +     '<input id="ntSimpleAttInput" type="file" multiple accept="image/*" style="display:none;">'
@@ -30300,6 +30306,12 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const linkAdd = document.getElementById('ntSimpleLinkAdd');
       const delBtn = document.getElementById('ntSimpleDelBtn');
       const linkWrap = document.getElementById('ntSimpleLinks');
+      function _ntSimpleHint(text, color) {
+        const el = document.getElementById('ntSimpleSaveHint');
+        if (!el) return;
+        el.textContent = text;
+        if (color) el.style.color = color;
+      }
 
       if (linkWrap) {
         linkWrap.querySelectorAll('.nt-simple-link-chip').forEach(function(chip) {
@@ -30326,8 +30338,23 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         });
       }
 
-      if (titleEl) titleEl.oninput = function() { note.title = titleEl.value; note.updatedAt = new Date().toISOString(); _ntScheduleSave(note.id); window.ntRender && window.ntRender(); };
-      if (bodyEl) bodyEl.oninput = function() { note.body = bodyEl.value; note.updatedAt = new Date().toISOString(); _ntScheduleSave(note.id); };
+      if (titleEl) titleEl.oninput = function() {
+        note.title = titleEl.value;
+        note.updatedAt = new Date().toISOString();
+        _ntSimpleHint('저장중…', '#ffb347');
+        _ntScheduleSave(note.id);
+        window.ntRender && window.ntRender();
+        clearTimeout(window.__ntSimpleHintTimer);
+        window.__ntSimpleHintTimer = setTimeout(function(){ _ntSimpleHint('저장됨', '#6b7590'); }, 900);
+      };
+      if (bodyEl) bodyEl.oninput = function() {
+        note.body = bodyEl.value;
+        note.updatedAt = new Date().toISOString();
+        _ntSimpleHint('저장중…', '#ffb347');
+        _ntScheduleSave(note.id);
+        clearTimeout(window.__ntSimpleHintTimer);
+        window.__ntSimpleHintTimer = setTimeout(function(){ _ntSimpleHint('저장됨', '#6b7590'); }, 900);
+      };
       if (attInput) attInput.onchange = function() { window.ntUtAddAtt && window.ntUtAddAtt(note.id, attInput); };
       if (addLinkBtn) addLinkBtn.onclick = function() {
         if (!linkRow || !linkInput) return;
@@ -32389,6 +32416,13 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       // 태그 필터
       if (window.kcardFilter.tag && window.kcardFilter.tag !== 'all')
         filtered = filtered.filter(k => (k.tags||[]).includes(window.kcardFilter.tag));
+      // 기기별 순서 차이 제거: 최신 수정/생성 순으로 고정
+      filtered = filtered.slice().sort((a, b) => {
+        const ta = new Date(a.updatedAt || a.createdAt || 0).getTime();
+        const tb = new Date(b.updatedAt || b.createdAt || 0).getTime();
+        if (tb !== ta) return tb - ta;
+        return String(b.id || '').localeCompare(String(a.id || ''), 'ko');
+      });
 
       if (!filtered.length) {
         el.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:60px 0;color:var(--mu);">
@@ -32445,6 +32479,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       <div style="padding:8px 10px 6px;">
         <div style="display:flex;align-items:flex-start;gap:7px;margin-bottom:5px;">
           <span style="font-size:10px;padding:2px 8px;border-radius:10px;font-weight:700;white-space:nowrap;flex-shrink:0;background:${color}33;color:${color};border:1px solid ${color}77;letter-spacing:.3px;">${esc(card.cat || '기타')}</span>
+          ${(card.imgs && card.imgs.length) ? `<span style="font-size:10px;padding:2px 7px;border-radius:10px;white-space:nowrap;flex-shrink:0;background:rgba(0,212,170,.12);border:1px solid rgba(0,212,170,.30);color:#4de0c0;">📷 ${card.imgs.length}</span>` : ''}
           <div style="display:flex;gap:3px;flex-shrink:0;margin-left:auto;">
             <button onclick="event.stopPropagation();ntCreateFromKcard('${card.id}')" title="이 카드로 노트 만들기" style="background:rgba(79,142,255,.1);border:1px solid rgba(79,142,255,.25);color:#4f8eff;cursor:pointer;font-size:11px;padding:2px 6px;border-radius:4px;font-weight:700;" onmouseover="this.style.background='rgba(79,142,255,.25)'" onmouseout="this.style.background='rgba(79,142,255,.1)'">📝</button>
             <button onclick="event.stopPropagation();openKcardEditor('${card.id}')" title="수정" style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:12px;padding:1px 4px;border-radius:3px;opacity:.6;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='.6'">✏️</button>
@@ -32489,17 +32524,29 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         document.body.appendChild(modal);
       }
 
-      // 썸네일
+      // 미디어(유튜브 + 첨부이미지) 섹션
       let thHtml = '';
+      const mediaBlocks = [];
       const ym = card.ytUrl && card.ytUrl.match(/(?:v=|youtu\.be\/)+([\w-]{11})/);
       if (ym) {
-        thHtml = `<div style="position:relative;width:100%;padding-top:56.25%;background:#000;border-radius:10px;overflow:hidden;margin-bottom:16px;">
+        mediaBlocks.push(`<div style="position:relative;width:100%;padding-top:56.25%;background:#000;border-radius:10px;overflow:hidden;margin-bottom:12px;">
           <img src="https://img.youtube.com/vi/${ym[1]}/hqdefault.jpg" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;">
-          <a href="${card.ytUrl}" target="_blank" onclick="window.open(this.href,'_blank');return false;" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-decoration:none;">
-            <div style="width:52px;height:52px;background:rgba(255,0,0,.9);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:22px;margin-left:4px;">▶</div></a></div>`;
-      } else if (card.imgs && card.imgs.length) {
-        thHtml = `<div style="border-radius:10px;overflow:hidden;margin-bottom:16px;background:#111;"><img src="${window._sbImgUrl ? window._sbImgUrl(card.imgs[0]) : card.imgs[0]}" style="width:100%;height:auto;display:block;object-fit:contain;max-height:320px;"></div>`;
+          <a href="${esc(card.ytUrl || '')}" target="_blank" onclick="window.open(this.href,'_blank');return false;" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-decoration:none;">
+            <div style="width:52px;height:52px;background:rgba(255,0,0,.9);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:22px;margin-left:4px;">▶</div></a></div>`);
       }
+      if (card.imgs && card.imgs.length) {
+        const imgsHtml = card.imgs.map((src, idx) => {
+          const imgSrc = window._sbImgUrl ? window._sbImgUrl(src) : src;
+          return `<a href="${esc(imgSrc || '')}" target="_blank" onclick="window.open(this.href,'_blank');return false;" title="이미지 ${idx + 1} 보기" style="display:block;position:relative;border-radius:10px;overflow:hidden;border:1px solid var(--b1);background:#111;">
+            <img src="${esc(imgSrc || '')}" style="width:100%;height:140px;object-fit:cover;display:block;">
+          </a>`;
+        }).join('');
+        mediaBlocks.push(`<div style="margin-bottom:14px;">
+          <div style="font-size:11px;color:var(--mu);margin-bottom:7px;">첨부 이미지 ${card.imgs.length}장</div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;">${imgsHtml}</div>
+        </div>`);
+      }
+      thHtml = mediaBlocks.join('');
 
       // 본문 파싱
       const bodyLines = (card.body || '').split('\n').filter(Boolean);

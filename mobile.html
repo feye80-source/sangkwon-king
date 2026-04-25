@@ -3372,7 +3372,7 @@ input, textarea, select {
 <script>if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
 
 <!-- 공통 로직 -->
-<script src="common.js?v=202604250145"></script>
+<script src="common.js?v=202604250210"></script>
 
 <!-- ════════════════════════════════════════════════════════
      mobile.js — 모바일 전용 초기화 및 UI 제어
@@ -7790,14 +7790,13 @@ input, textarea, select {
     body.style.cssText = 'background:' + detailBg + ';border-radius:18px;padding:16px 14px 18px;';
     var html = '';
 
-    // 썸네일 — 유튜브: 탭하면 인앱 재생 / 이미지: 탭하면 전체화면
+    // 미디어: 유튜브 + 첨부이미지 모두 표시
     var ytId = null;
     if (card.ytUrl) {
       var ytM = card.ytUrl.match(/(?:v=|youtu\.be\/)([A-Za-z0-9_-]{11})/);
       if (ytM) ytId = ytM[1];
     }
     if (ytId) {
-      var _safeUrl = card.ytUrl.replace(/'/g,'');
       html += '<div id="mbDtYtThumb" style="position:relative;width:100%;padding-top:56.25%;overflow:hidden;background:#000;border-radius:10px;margin-bottom:14px;cursor:pointer;" onclick="mbDtPlayYt(\'' + ytId + '\')">' +
         '<img src="https://img.youtube.com/vi/' + ytId + '/hqdefault.jpg" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;">' +
         '<div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;">' +
@@ -7807,11 +7806,16 @@ input, textarea, select {
         '<div id="mbDtYtFrame" style="display:none;position:relative;width:100%;padding-top:56.25%;border-radius:10px;overflow:hidden;margin-bottom:14px;">' +
         '<iframe id="mbDtYtIframe" src="" style="position:absolute;inset:0;width:100%;height:100%;border:none;" allowfullscreen allow="autoplay;encrypted-media;fullscreen;picture-in-picture;web-share" referrerpolicy="strict-origin-when-cross-origin"></iframe>' +
         '</div>';
-    } else if (card.imgs && card.imgs.length) {
-      html += '<div style="position:relative;border-radius:10px;overflow:hidden;margin-bottom:14px;background:#111;cursor:pointer;" onclick="mbDtImgFull(this.querySelector(\'img\').src)">' +
-        '<img src="' + card.imgs[0] + '" style="width:100%;height:auto;display:block;object-fit:contain;max-height:280px;">' +
-        '<div style="position:absolute;bottom:0;left:0;right:0;padding:6px;text-align:center;font-size:10px;color:rgba(255,255,255,.7);background:rgba(0,0,0,.4);">🔍 탭하여 전체화면</div>' +
-        '</div>';
+    }
+    if (card.imgs && card.imgs.length) {
+      html += '<div style="font-size:11px;color:' + detailMuted + ';margin:2px 2px 8px;">첨부 이미지 ' + card.imgs.length + '장</div>';
+      html += '<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:14px;">';
+      card.imgs.forEach(function(src) {
+        html += '<div style="position:relative;border-radius:10px;overflow:hidden;background:#111;cursor:pointer;" onclick="mbDtImgFull(this.querySelector(\'img\').src)">' +
+          '<img src="' + src + '" style="width:100%;height:130px;display:block;object-fit:cover;">' +
+          '</div>';
+      });
+      html += '</div>';
     }
 
     // 제목
@@ -7912,6 +7916,13 @@ input, textarea, select {
     var filtered = _mbKcardActiveCat === '전체'
       ? kcards
       : kcards.filter(function(k) { return k.cat === _mbKcardActiveCat; });
+    // 기기별 정렬 차이 제거: 최신 수정/생성 순 고정
+    filtered = filtered.slice().sort(function(a, b) {
+      var ta = new Date(a.updatedAt || a.createdAt || 0).getTime();
+      var tb = new Date(b.updatedAt || b.createdAt || 0).getTime();
+      if (tb !== ta) return tb - ta;
+      return String(b.id || '').localeCompare(String(a.id || ''), 'ko');
+    });
 
     gridEl.innerHTML = '';
     if (!filtered.length) {
@@ -7987,6 +7998,13 @@ input, textarea, select {
       catSpan.style.cssText = 'font-size:10px;padding:2px 7px;border-radius:8px;font-weight:700;'
         + 'background:' + color + '28;color:' + color + ';border:1px solid ' + color + '66;';
       catSpan.textContent = card.cat || '기타';
+      var mediaSpan = null;
+      if (card.imgs && card.imgs.length) {
+        mediaSpan = document.createElement('span');
+        mediaSpan.style.cssText = 'font-size:10px;padding:2px 7px;border-radius:8px;font-weight:700;'
+          + 'background:rgba(0,212,170,.12);color:#4de0c0;border:1px solid rgba(0,212,170,.30);margin-left:4px;';
+        mediaSpan.textContent = '📷 ' + card.imgs.length;
+      }
 
       var editBtn = document.createElement('button');
       editBtn.textContent = '✏️';
@@ -8015,6 +8033,7 @@ input, textarea, select {
       btnRow.appendChild(editBtn);
 
       hdr.appendChild(catSpan);
+      if (mediaSpan) hdr.appendChild(mediaSpan);
       hdr.appendChild(btnRow);
       body.appendChild(hdr);
 
