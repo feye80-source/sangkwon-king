@@ -2918,10 +2918,10 @@
         try {
           const apiKeysCloud = await _sbSafeLoad('api_keys', () => kvGet('api_keys'), 0);
           if (apiKeysCloud) {
-            const apiKeys = ['g_api', 'kakao_api', 'kakao_rest_key', 'sbiz_api', 'naver_id', 'naver_sec', 'onbid_key'];
+            const apiKeys = ['g_api', 'kakao_api', 'kakao_rest_key', 'sbiz_api', 'rtms_api', 'naver_id', 'naver_sec', 'onbid_key'];
             apiKeys.forEach(k => { if (apiKeysCloud[k]) _setStoredApiValue(k, apiKeysCloud[k]); });
             if (apiKeysCloud.onbid_api && !apiKeysCloud.onbid_key) _setStoredApiValue('onbid_key', apiKeysCloud.onbid_api);
-            const mapping = { g_api:'apiKey', kakao_api:'kakaoApiKey', kakao_rest_key:'kakaoRestKey', sbiz_api:'sbizApiKey', naver_id:'naverClientId', naver_sec:'naverClientSecret', onbid_key:'onbidApiKey' };
+            const mapping = { g_api:'apiKey', kakao_api:'kakaoApiKey', kakao_rest_key:'kakaoRestKey', sbiz_api:'sbizApiKey', rtms_api:'rtmsApiKey', naver_id:'naverClientId', naver_sec:'naverClientSecret', onbid_key:'onbidApiKey' };
             Object.entries(mapping).forEach(([lsKey, elId]) => {
               const el = document.getElementById(elId);
               const val = apiKeysCloud[lsKey] || (lsKey === 'onbid_key' ? apiKeysCloud.onbid_api : '');
@@ -9083,7 +9083,7 @@ window.wr2SummaryCancelEdit = function() {
     // ===================================================
     // API 키
     // ===================================================
-    const API_KEY_SYNC_KEYS = ['g_api', 'kakao_api', 'kakao_rest_key', 'sbiz_api', 'naver_id', 'naver_sec', 'onbid_key'];
+    const API_KEY_SYNC_KEYS = ['g_api', 'kakao_api', 'kakao_rest_key', 'sbiz_api', 'rtms_api', 'naver_id', 'naver_sec', 'onbid_key'];
     function _getStoredApiValue(key) {
       if (key === 'onbid_key') {
         const migrated = localStorage.getItem('onbid_key') || localStorage.getItem('onbid_api') || '';
@@ -9120,6 +9120,7 @@ window.wr2SummaryCancelEdit = function() {
         { key: 'kakao_api', orig: 'kakaoApiKey', cfg: 'kakaoApiKey_cfg' },
         { key: 'kakao_rest_key', orig: 'kakaoRestKey', cfg: 'kakaoRestKey_cfg' },
         { key: 'sbiz_api', orig: 'sbizApiKey', cfg: 'sbizApiKey_cfg' },
+        { key: 'rtms_api', orig: 'rtmsApiKey', cfg: 'rtmsApiKey_cfg' },
         { key: 'onbid_key', orig: 'onbidApiKey', cfg: 'onbidApiKey_cfg' }
       ];
       mirrorPairs.forEach(function (it) {
@@ -9251,6 +9252,7 @@ window.wr2SummaryCancelEdit = function() {
       _bindApiMirror('kakaoApiKey', 'kakaoApiKey_cfg', 'kakao_api', 10);
       _bindApiMirror('kakaoRestKey', 'kakaoRestKey_cfg', 'kakao_rest_key', 10);
       _bindApiMirror('sbizApiKey', 'sbizApiKey_cfg', 'sbiz_api', 10);
+      _bindApiMirror('rtmsApiKey', 'rtmsApiKey_cfg', 'rtms_api', 10);
       _bindApiMirror('onbidApiKey', 'onbidApiKey_cfg', 'onbid_key', 5);
       _bindNaverCfgMirror();
     })();
@@ -9294,6 +9296,25 @@ window.wr2SummaryCancelEdit = function() {
     })();
     ['input', 'change', 'keyup', 'paste'].forEach(ev => document.getElementById('sbizApiKey').addEventListener(ev, () => { const v = document.getElementById('sbizApiKey').value.trim(), ok = v.length > 10; document.getElementById('sbizDot').classList.toggle('on', ok); if (ok) { _setStoredApiValue('sbiz_api', v); if(window._sbSaveApiKeys) window._sbSaveApiKeys(); } _syncApiSettingsUi(); }));
     function getSbizKey() { return document.getElementById('sbizApiKey').value.trim() || localStorage.getItem('sbiz_api') || '3TPJC0Q7lPb72GcvHBdm'; }
+    (() => {
+      const rk = _getStoredApiValue('rtms_api');
+      const rel = document.getElementById('rtmsApiKey');
+      if (rk && rel) rel.value = rk;
+    })();
+    (() => {
+      const rel = document.getElementById('rtmsApiKey');
+      if (!rel) return;
+      ['input', 'change', 'keyup', 'paste'].forEach(ev => rel.addEventListener(ev, () => {
+        const v = rel.value.trim();
+        const ok = v.length > 10;
+        if (ok) { _setStoredApiValue('rtms_api', v); if (window._sbSaveApiKeys) window._sbSaveApiKeys(); }
+        _syncApiSettingsUi();
+      }));
+    })();
+    function getRtmsApiKey() {
+      const fromEl = document.getElementById('rtmsApiKey');
+      return (fromEl && fromEl.value.trim()) || _getStoredApiValue('rtms_api') || localStorage.getItem('rtms_api') || '';
+    }
 
     // ===================================================
     // 파일
@@ -26812,6 +26833,215 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       return new Set([...active].map(b => b.dataset.year));
     }
 
+    function setTxLookbackExtraYears(v) {
+      const n = Math.max(0, Math.min(8, parseInt(v, 10) || 0));
+      localStorage.setItem('txLookbackExtraYears', String(n));
+      const el = document.getElementById('txLookbackExtraYears');
+      if (el && String(el.value) !== String(n)) el.value = String(n);
+      showToast(`실거래 조회 기간: 최근 ${2 + n}년`, 'ok');
+    }
+    window.setTxLookbackExtraYears = setTxLookbackExtraYears;
+
+    function _txGetLookbackMonths() {
+      const el = document.getElementById('txLookbackExtraYears');
+      const extra = Math.max(0, Math.min(8, parseInt((el && el.value) || localStorage.getItem('txLookbackExtraYears') || '0', 10) || 0));
+      return (2 + extra) * 12; // 기본 2년 + 추가 N년
+    }
+    (() => {
+      const el = document.getElementById('txLookbackExtraYears');
+      if (!el) return;
+      const saved = String(Math.max(0, Math.min(8, parseInt(localStorage.getItem('txLookbackExtraYears') || '0', 10) || 0)));
+      if (el.value !== saved) el.value = saved;
+    })();
+
+    function _txBuildRecentMonths(monthCount) {
+      const out = [];
+      const now = new Date();
+      for (let i = 0; i < monthCount; i++) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const ym = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}`;
+        out.push(ym);
+      }
+      return out;
+    }
+
+    function _txCoordToRegion(lat, lng) {
+      return new Promise(resolve => {
+        try {
+          geocoder.coord2RegionCode(lng, lat, (result, status) => {
+            if (status === kakao.maps.services.Status.OK && Array.isArray(result) && result.length) {
+              const picked = result.find(r => r.region_type === 'B') || result.find(r => r.region_type === 'H') || result[0];
+              resolve(picked || null);
+            } else resolve(null);
+          });
+        } catch (e) { resolve(null); }
+      });
+    }
+
+    function _txSampleCoordsByAreaMode() {
+      if (!map) return [];
+      const mode = (typeof getAreaSearchMode === 'function') ? getAreaSearchMode() : 'bounds';
+      const pts = [];
+      if (mode === 'radius') {
+        const c = radiusCenterLatLng || map.getCenter();
+        const lat = c.getLat(), lng = c.getLng();
+        const cfg = (typeof getRadiusConfig === 'function') ? getRadiusConfig() : { radiusM: 700 };
+        const rM = Math.max(100, Number(cfg.radiusM) || 700);
+        const pushPt = (distM, deg) => {
+          const rad = deg * Math.PI / 180;
+          const dLat = (distM / 111320) * Math.cos(rad);
+          const dLng = (distM / (111320 * Math.max(0.2, Math.cos(lat * Math.PI / 180)))) * Math.sin(rad);
+          pts.push({ lat: lat + dLat, lng: lng + dLng });
+        };
+        pts.push({ lat, lng });
+        [0, 45, 90, 135, 180, 225, 270, 315].forEach(deg => pushPt(rM * 0.85, deg));
+        [0, 90, 180, 270].forEach(deg => pushPt(rM * 0.45, deg));
+      } else {
+        const b = map.getBounds();
+        const sw = b.getSouthWest(), ne = b.getNorthEast();
+        const rows = 4, cols = 4;
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            const rr = (r + 0.5) / rows;
+            const cc = (c + 0.5) / cols;
+            const lat = sw.getLat() + (ne.getLat() - sw.getLat()) * rr;
+            const lng = sw.getLng() + (ne.getLng() - sw.getLng()) * cc;
+            pts.push({ lat, lng });
+          }
+        }
+        const center = map.getCenter();
+        pts.push({ lat: center.getLat(), lng: center.getLng() });
+      }
+      return pts;
+    }
+
+    async function _txCollectLawdCodesByCurrentArea() {
+      const pts = _txSampleCoordsByAreaMode();
+      const lawdMap = new Map();
+      for (const p of pts) {
+        const region = await _txCoordToRegion(p.lat, p.lng);
+        const code10 = String((region && (region.code || region.region_code)) || '').replace(/[^0-9]/g, '');
+        if (code10.length < 5) continue;
+        const lawdCd = code10.slice(0, 5);
+        if (lawdMap.has(lawdCd)) continue;
+        const label = `${(region.region_1depth_name || '').trim()} ${(region.region_2depth_name || '').trim()}`.trim() || lawdCd;
+        lawdMap.set(lawdCd, { lawdCd, label });
+      }
+      return Array.from(lawdMap.values());
+    }
+
+    function _txXmlText(itemEl, names) {
+      if (!itemEl) return '';
+      for (const n of names) {
+        const el = itemEl.getElementsByTagName(n)[0];
+        if (el && el.textContent != null) {
+          const t = String(el.textContent).trim();
+          if (t) return t;
+        }
+      }
+      return '';
+    }
+
+    function _txParsePriceMan(raw) {
+      const n = parseInt(String(raw || '').replace(/[^0-9]/g, ''), 10) || 0;
+      if (!n) return 0;
+      return n >= 100000000 ? Math.round(n / 10000) : n; // 원 단위가 오면 만원 단위로 정규화
+    }
+
+    function _txParseFloat(raw) {
+      const n = parseFloat(String(raw || '').replace(/[^0-9.]/g, ''));
+      return Number.isFinite(n) ? n : null;
+    }
+
+    function _txParseRtmsXml(rawXml, ym, regionLabel) {
+      const out = { rows: [], resultCode: '', resultMsg: '' };
+      if (!rawXml || String(rawXml).length < 20) return out;
+      const xml = new DOMParser().parseFromString(rawXml, 'text/xml');
+      out.resultCode = _txXmlText(xml, ['resultCode']);
+      out.resultMsg = _txXmlText(xml, ['resultMsg']);
+      const items = Array.from(xml.getElementsByTagName('item') || []);
+      if (!items.length) return out;
+      items.forEach(item => {
+        const priceMan = _txParsePriceMan(_txXmlText(item, ['dealAmount', 'DEAL_AMT', '거래금액', '거래금액(만원)', 'thingAmt', 'THNG_AMT']));
+        if (!priceMan) return;
+        const umd = _txXmlText(item, ['umdNm', 'UMD_NM', '법정동']);
+        const jibun = _txXmlText(item, ['jibun', 'JIBUN', '지번']);
+        const bld = _txXmlText(item, ['buildingNm', 'BLDG_NM', '건물명']);
+        const floor = _txXmlText(item, ['flr', 'FLR', '층']);
+        const area = _txParseFloat(_txXmlText(item, ['archArea', 'ARCH_AREA', 'excluUseAr', 'EXCLU_USE_AR', '전용면적']));
+        const dealDay = _txXmlText(item, ['dealDay', 'DEAL_DAY', '거래일', '계약일']);
+        const address = [regionLabel, umd, jibun].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+        out.rows.push({
+          type: 'transaction',
+          source: '국토부실거래API',
+          name: bld || (umd ? `${umd} 실거래` : `${regionLabel} 실거래`),
+          address: address || regionLabel,
+          price: priceMan,
+          area: area || '-',
+          floor: floor || '-',
+          year: ym.slice(0, 4),
+          month: ym.slice(4, 6),
+          day: dealDay || '',
+          lat: null,
+          lng: null,
+          fromApi: true
+        });
+      });
+      return out;
+    }
+
+    function _txMergeRows(rows) {
+      if (!Array.isArray(rows) || !rows.length) return 0;
+      const keys = new Set(transactionDataRaw.map(it => `${it.address || ''}|${it.year || ''}|${it.month || ''}|${it.price || ''}|${it.floor || ''}`));
+      let added = 0;
+      rows.forEach(it => {
+        const key = `${it.address || ''}|${it.year || ''}|${it.month || ''}|${it.price || ''}|${it.floor || ''}`;
+        if (keys.has(key)) return;
+        keys.add(key);
+        transactionDataRaw.push(it);
+        added++;
+      });
+      return added;
+    }
+
+    async function _txFetchRtmsByArea(monthCount, progressCb) {
+      const apiKey = getRtmsApiKey();
+      if (!apiKey) return { ok: false, reason: 'no_key', added: 0, totalRows: 0, requestTotal: 0, requestDone: 0, errors: [] };
+      const lawdInfos = await _txCollectLawdCodesByCurrentArea();
+      if (!lawdInfos.length) return { ok: false, reason: 'no_area_code', added: 0, totalRows: 0, requestTotal: 0, requestDone: 0, errors: [] };
+
+      const months = _txBuildRecentMonths(monthCount || 24);
+      const sk = String(apiKey).includes('%') ? String(apiKey) : encodeURIComponent(String(apiKey));
+      const allRows = [];
+      const errors = [];
+      let done = 0;
+      const total = lawdInfos.length * months.length;
+
+      for (const info of lawdInfos) {
+        for (const ym of months) {
+          done++;
+          if (typeof progressCb === 'function') progressCb(done, total, `${info.label} ${ym}`);
+          const url = `https://apis.data.go.kr/1613000/RTMSDataSvcNrgTrade/getRTMSDataSvcNrgTrade?serviceKey=${sk}&LAWD_CD=${info.lawdCd}&DEAL_YMD=${ym}&numOfRows=1000&pageNo=1`;
+          try {
+            const resp = await fetch(url, { method: 'GET', signal: window._skTimeoutSignal(12000) });
+            const raw = await resp.text();
+            const parsed = _txParseRtmsXml(raw, ym, info.label);
+            const rc = parsed.resultCode;
+            if (rc && rc !== '00' && rc !== '03') {
+              errors.push(`${info.lawdCd}-${ym}: ${parsed.resultMsg || rc}`);
+              continue;
+            }
+            if (parsed.rows.length) allRows.push(...parsed.rows);
+          } catch (e) {
+            errors.push(`${info.lawdCd}-${ym}: ${e.message || e}`);
+          }
+          if (done % 20 === 0) await new Promise(r => setTimeout(r, 40));
+        }
+      }
+      const added = _txMergeRows(allRows);
+      return { ok: true, added, totalRows: allRows.length, requestTotal: total, requestDone: done, errors, lawdCount: lawdInfos.length };
+    }
+
     // 캐시에서 좌표 일괄 조회 (API 호출 없음 - CSV 로드 직후 호출)
     async function prefetchCoordsFromCache(items) {
       let hits = 0;
@@ -26837,9 +27067,33 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     // 현재 지도 영역의 실거래가 표시 (캐시 우선, 없으면 지오코딩 후 저장)
     async function loadCurrentAreaTransactions() {
       const btn = document.getElementById('showTransactionBtn');
+      const statusEl = document.getElementById('trade-status');
+      const hasRtmsKey = !!getRtmsApiKey();
+      const lookbackMonths = _txGetLookbackMonths();
       if (btn) {
         btn.disabled = true;
         btn.textContent = '📍 실거래 준비 중';
+      }
+      if (hasRtmsKey) {
+        const apiResult = await _txFetchRtmsByArea(lookbackMonths, (done, total, hint) => {
+          if (btn) btn.textContent = `📡 API ${done}/${total}`;
+          if (statusEl) statusEl.textContent = `국토부 API 조회 중... (${done}/${total}) ${hint || ''}`;
+        });
+        if (apiResult.ok) {
+          if (apiResult.added > 0) {
+            saveTransactionRawToStorage();
+            updateCSVStorageStatus();
+          }
+          if (statusEl) {
+            const extraYears = Math.max(0, Math.min(8, parseInt(localStorage.getItem('txLookbackExtraYears') || '0', 10) || 0));
+            const periodLabel = `최근 ${2 + extraYears}년`;
+            statusEl.textContent = `국토부 API ${periodLabel} 조회 완료 · 신규 ${apiResult.added.toLocaleString()}건 (원본 ${apiResult.totalRows.toLocaleString()}건)`;
+          }
+        } else if (statusEl) {
+          statusEl.textContent = apiResult.reason === 'no_key'
+            ? 'RTMS API 키가 없어 CSV 데이터만 사용합니다.'
+            : '지도 영역 법정동 코드 추출 실패 (CSV 데이터만 사용)';
+        }
       }
       const readyCount = await _ensureTransactionDataReady();
       if (btn) {
@@ -26847,7 +27101,9 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         btn.textContent = '📍 실거래';
       }
       if (readyCount === 0 || transactionDataRaw.length === 0) {
-        showToast('업로드된 실거래가 데이터가 없습니다. CSV 데이터 불러오기를 먼저 해주세요', 'warn');
+        showToast(hasRtmsKey
+          ? '실거래 데이터가 없습니다. 지도 이동 후 다시 시도하거나 API 키/기간을 확인해주세요.'
+          : '업로드된 실거래가 데이터가 없습니다. CSV 데이터 불러오기 또는 RTMS API 키 설정 후 시도하세요.', 'warn');
         return;
       }
 

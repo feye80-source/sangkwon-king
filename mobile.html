@@ -1957,6 +1957,11 @@ input, textarea, select {
     <span class="mba-dot" id="mba-dot-4"></span>
     <input class="mba-input" id="mba-sbiz" type="password" enterkeyhint="done" onkeydown="if(event.key==='Enter')this.blur()" placeholder="소상공인 인증키" autocomplete="off">
   </div>
+  <div class="mba-row">
+    <span class="mba-lbl">RTMS</span>
+    <span class="mba-dot" id="mba-dot-5"></span>
+    <input class="mba-input" id="mba-rtms" type="password" enterkeyhint="done" onkeydown="if(event.key==='Enter')this.blur()" placeholder="국토부 실거래 API 키" autocomplete="off">
+  </div>
   <div style="display:flex;gap:8px;margin-top:4px;">
     <button class="mb-btn mb-btn-primary" onclick="mbSaveApiKeys()" style="flex:1;">💾 저장</button>
     <button class="mb-btn" onclick="mbToggleApiPanel()" style="flex:1;">닫기</button>
@@ -2803,6 +2808,17 @@ input, textarea, select {
           </div>
 
           <!-- 실거래 부가 -->
+          <div style="display:flex;align-items:center;gap:6px;margin-top:4px;">
+            <span style="font-size:10px;color:var(--mu);">조회기간</span>
+            <select id="txLookbackExtraYears" onchange="setTxLookbackExtraYears(this.value)"
+              style="height:24px;padding:0 6px;border-radius:6px;background:var(--s2);border:1px solid var(--b1);color:var(--tx);font-size:10px;font-family:inherit;">
+              <option value="0">기본 최근 2년</option>
+              <option value="1">+1년 (최근 3년)</option>
+              <option value="2">+2년 (최근 4년)</option>
+              <option value="3">+3년 (최근 5년)</option>
+              <option value="4">+4년 (최근 6년)</option>
+            </select>
+          </div>
           <div id="trade-status" style="font-size:10px;color:var(--mu);margin-top:2px;"></div>
           <button id="arrangeTransactionBtn" onclick="arrangeTransactionCards()"
             style="display:none;width:100%;margin-top:6px;height:32px;background:#1e2a40;border:1px solid #3d5080;border-radius:8px;color:#80aaff;font-size:11px;cursor:pointer;font-family:inherit;">
@@ -3182,6 +3198,7 @@ input, textarea, select {
   <input id="naverClientSecret" type="text">
   <input id="onbidApiKey" type="text">
   <input id="sbizApiKey" type="text">
+  <input id="rtmsApiKey" type="text">
 
   <!-- 저장목록 PC용 요소들 -->
   <div id="svGrid"></div>
@@ -3407,6 +3424,7 @@ input, textarea, select {
     { mb:'mba-kakaorest',orig:'kakaoRestKey',  dot:'mba-dot-2', ls:'kakao_rest_key'},
     { mb:'mba-onbid',    orig:'onbidApiKey',   dot:'mba-dot-3', ls:'onbid_key'     },
     { mb:'mba-sbiz',     orig:'sbizApiKey',    dot:'mba-dot-4', ls:'sbiz_api'      },
+    { mb:'mba-rtms',     orig:'rtmsApiKey',    dot:'mba-dot-5', ls:'rtms_api'      },
   ];
 
   function setDot(id, on) {
