@@ -16771,6 +16771,9 @@ ${inputDesc.substring(0, 3000)}
                         : (src || '매물');
         // 상세URL
         const _detailURL = d.상세URL || (_isNaver && d.매물번호 ? `https://new.land.naver.com/offices?articleNo=${d.매물번호}` : '');
+        const _addrQ = String(d.소재지 || d.address || item.address || item.title || '').trim();
+        const _naverMapQ = _addrQ ? ('https://map.naver.com/v5/search/' + encodeURIComponent(_addrQ)) : '';
+        const _naverLandQ = _addrQ ? ('https://new.land.naver.com/offices?query=' + encodeURIComponent(_addrQ) + '&a=SG:SMS:APTHGJ&e=RETAIL') : '';
         // 사이트 지도 URL
         const _siteMapURL = _isJumpo ? 'https://map.jumpoline.com/main'
           : _isAssa ? 'https://xn--v69ap5so3hsnb81e1wfh6z.com/map'
@@ -16785,42 +16788,37 @@ ${inputDesc.substring(0, 3000)}
         const _hex = getSrcHex(src, _c);
         const bStyle = `background:rgba(${_rgb},.15);color:${_hex};border-color:rgba(${_rgb},.5);`;
         const badgeStyle = `background:rgba(${_rgb},.15);color:${_hex};border:1px solid rgba(${_rgb},.45);`;
-        let html = `<span class="popup-src-badge" style="${badgeStyle}">${esc(_label)}</span>`;
+        const extBtnStyle = 'background:rgba(56,189,248,.12);color:#a5d8ff;border-color:rgba(125,211,252,.4);';
+        const appBtnStyle = 'background:rgba(79,142,255,.16);color:#8ab8ff;border-color:rgba(79,142,255,.42);font-weight:700;';
+
+        var extBtns = [];
+        var appBtns = [];
         if (_detailURL) {
-          const isAssaSrc = _isAssa;
-          if (isAssaSrc) {
-            html += `<button class="popup-src-btn" style="${bStyle}" onclick="assaOpenDetail('${esc(_detailURL)}')">🔗 상세</button>`;
-          } else {
-            html += `<a href="${esc(_detailURL)}" target="_blank" class="popup-src-btn" style="${bStyle}">🔗 상세</a>`;
-          }
+          if (_isAssa) extBtns.push(`<button class="popup-src-btn" style="${bStyle}" onclick="assaOpenDetail('${esc(_detailURL)}')">🔗 상세</button>`);
+          else extBtns.push(`<a href="${esc(_detailURL)}" target="_blank" class="popup-src-btn" style="${bStyle}">🔗 상세</a>`);
         }
-        html += `<button class="popup-src-btn" id="popEditUrlBtn" style="background:rgba(255,255,255,.06);color:#aab4cc;border-color:rgba(255,255,255,.24);" onclick="showPopupUrlInput('${id}')">${_detailURL ? '✏️ URL수정' : '🔗 URL추가'}</button>`;
+        extBtns.push(`<button class="popup-src-btn" id="popEditUrlBtn" style="background:rgba(255,255,255,.06);color:#aab4cc;border-color:rgba(255,255,255,.24);" onclick="showPopupUrlInput('${id}')">${_detailURL ? '✏️ URL수정' : '🔗 URL추가'}</button>`);
         if (_siteMapURL === 'copy_planet') {
-          const _addr = d.소재지 || '';
-          html += `<button class="popup-src-btn" style="background:rgba(100,180,100,.12);color:#7ecf7e;border-color:rgba(100,180,100,.35);" onclick="(()=>{const addr='${esc(_addr)}';if(addr){navigator.clipboard.writeText(addr).catch(()=>{});const ta=document.createElement('textarea');ta.value=addr;document.body.appendChild(ta);ta.select();try{document.execCommand('copy');}catch(e){}document.body.removeChild(ta);}window.open('https://www.bdsplanet.com/map/realprice_map.ytp','_blank');})()">🌍 플래닛</button>`;
+          extBtns.push(`<button class="popup-src-btn" style="background:rgba(100,180,100,.12);color:#7ecf7e;border-color:rgba(100,180,100,.35);" onclick="(()=>{const addr='${esc(_addrQ)}';if(addr){navigator.clipboard.writeText(addr).catch(()=>{});const ta=document.createElement('textarea');ta.value=addr;document.body.appendChild(ta);ta.select();try{document.execCommand('copy');}catch(e){}document.body.removeChild(ta);}window.open('https://www.bdsplanet.com/map/realprice_map.ytp','_blank');})()">🌍 플래닛</button>`);
         } else if (_siteMapURL) {
-          html += `<a href="${esc(_siteMapURL)}" target="_blank" class="popup-src-btn" style="background:rgba(100,180,100,.12);color:#7ecf7e;border-color:rgba(100,180,100,.35);">🗺️ 지도</a>`;
+          extBtns.push(`<a href="${esc(_siteMapURL)}" target="_blank" class="popup-src-btn" style="background:rgba(100,180,100,.12);color:#7ecf7e;border-color:rgba(100,180,100,.35);">🗺️ 출처지도</a>`);
         }
-        if (_hasPos) {
-          html += `<button class="popup-src-btn" style="background:rgba(255,209,102,.12);color:#ffd166;border-color:rgba(255,209,102,.4);" onclick="goToMapFromCard('${id}')">📍 내 지도</button>`;
-        }
-        // 상세URL 없으면: 소재지 있으면 지도/부동산 버튼 + URL 추가 버튼
-        if (!_detailURL) {
-          if (d.소재지 && d.소재지.trim().length >= 3) {
-            const _naverMapQ = 'https://map.naver.com/v5/search/' + encodeURIComponent(d.소재지.trim());
-            const _naverLandQ = 'https://new.land.naver.com/offices?query=' + encodeURIComponent(d.소재지.trim()) + '&a=SG:SMS:APTHGJ&e=RETAIL';
-            html += `<a href="${esc(_naverMapQ)}" target="_blank" class="popup-src-btn" style="background:rgba(4,222,91,.12);color:#04de5b;border-color:rgba(4,222,91,.4);">🗺️ 지도</a>`;
-            html += `<a href="${esc(_naverLandQ)}" target="_blank" class="popup-src-btn" style="background:rgba(4,222,91,.12);color:#04de5b;border-color:rgba(4,222,91,.4);">🏠 부동산</a>`;
-          }
-        }
+        if (_naverMapQ) extBtns.push(`<a href="${esc(_naverMapQ)}" target="_blank" class="popup-src-btn" style="${extBtnStyle}">🧭 네이버지도</a>`);
+        if (_naverLandQ) extBtns.push(`<a href="${esc(_naverLandQ)}" target="_blank" class="popup-src-btn" style="${extBtnStyle}">🏠 네이버부동산</a>`);
+
+        if (_hasPos) appBtns.push(`<button class="popup-src-btn" style="background:rgba(255,209,102,.12);color:#ffd166;border-color:rgba(255,209,102,.4);" onclick="goToMapFromCard('${id}')">📍 내 지도</button>`);
         // ★ 경매 아이템: AI 분석 버튼 추가
         if (a) {
           const hasAi = !!(item.data && (item.data.AI기본분석 || item.data.AI추가분석));
-          html += `<button class="popup-src-btn" id="popAiAnalyzeBtn" style="background:rgba(255,140,0,.15);color:#ff8c42;border-color:rgba(255,140,0,.4);font-weight:700;" onclick="runSavedItemAiAnalysis('${id}')">${hasAi ? '🔄 AI 재분석' : '🤖 AI 분석'}</button>`;
+          appBtns.push(`<button class="popup-src-btn" id="popAiAnalyzeBtn" style="background:rgba(255,140,0,.15);color:#ff8c42;border-color:rgba(255,140,0,.4);font-weight:700;" onclick="runSavedItemAiAnalysis('${id}')">${hasAi ? '🔄 AI 재분석' : '🤖 AI 분석'}</button>`);
         }
-        html += `<button class="popup-src-btn" style="background:rgba(79,142,255,.16);color:#8ab8ff;border-color:rgba(79,142,255,.42);font-weight:700;" onclick="plSendFromSavedId('${id}')">📋 물건리스트</button>`;
+        appBtns.push(`<button class="popup-src-btn" style="${appBtnStyle}" onclick="plSendFromSavedId('${id}')">📋 물건리스트</button>`);
         // ★ 작업룸 연동 버튼 (저장된 물건 → 작업룸 생성/열기)
-        html += `<button class="popup-src-btn" style="background:rgba(17,157,237,.15);color:#119ded;border-color:rgba(17,157,237,.45);font-weight:700;" onclick="wr2OpenOrCreateFromSavedId('${id}')">🗂 작업룸</button>`;
+        appBtns.push(`<button class="popup-src-btn" style="background:rgba(17,157,237,.15);color:#119ded;border-color:rgba(17,157,237,.45);font-weight:700;" onclick="wr2OpenOrCreateFromSavedId('${id}')">🗂 작업룸</button>`);
+
+        let html = `<span class="popup-src-badge" style="${badgeStyle}">${esc(_label)}</span>`;
+        if (extBtns.length) html += `<div class="popup-src-group external"><span class="popup-src-group-label">외부 페이지</span><div class="popup-src-group-body">${extBtns.join('')}</div></div>`;
+        if (appBtns.length) html += `<div class="popup-src-group internal"><span class="popup-src-group-label">내 사이트</span><div class="popup-src-group-body">${appBtns.join('')}</div></div>`;
         popSrcTabsEl.innerHTML = html;
         // URL 입력 영역 생성 (초기 숨김)
         if (!document.getElementById('popUrlInputWrap')) {
@@ -42904,6 +42902,26 @@ window.addEventListener('DOMContentLoaded', () => {
     var raw = plParseAmountText(v);
     return raw ? Number(raw).toLocaleString('ko-KR') : '';
   }
+  function plParseWonText(v) {
+    var raw = String(v || '').trim();
+    if (!raw) return '';
+    var cleaned = raw.replace(/,/g, '').replace(/\s+/g, '');
+    var num = NaN;
+    try {
+      if (typeof _parseWonInput === 'function') num = Number(_parseWonInput(cleaned));
+    } catch(e) {}
+    if ((!isFinite(num) || num <= 0) && /[억만천백]/.test(cleaned)) {
+      var manBased = Number(plParseAmountText(cleaned));
+      if (isFinite(manBased) && manBased > 0) num = manBased * 10000;
+    }
+    if (isFinite(num) && num > 0) return String(Math.round(num));
+    var digitsOnly = cleaned.replace(/[^0-9]/g, '');
+    return digitsOnly ? String(parseInt(digitsOnly, 10)) : '';
+  }
+  function plDisplayWon(v) {
+    var raw = plParseWonText(v);
+    return raw ? (Number(raw).toLocaleString('ko-KR') + '원') : '';
+  }
   function plDisplayMan(v) {
     var disp = plDisplayMoney(v);
     return disp ? (disp + '만') : '';
@@ -42984,8 +43002,11 @@ window.addEventListener('DOMContentLoaded', () => {
     var nextName = plPickSavedDisplayName(src, mapped.addr || curItem.addr || '');
     var nextRegion = mapped.region || plSavedField(raw, ['소재지','주소','address'], '') || curItem.region || '';
     var nextResult = Object.assign({}, curItem.result || {});
-    var wonFromSaved = plSavedField(raw, ['낙찰가_만원','낙찰가(만원)','낙찰가','최고입찰가_만원'], '');
-    var nextWon = wonFromSaved ? plToManUnit(wonFromSaved) : '';
+    var wonFromSavedWon = plSavedField(raw, ['낙찰가','낙찰가_원','최고입찰가','최고입찰가_원'], '');
+    var wonFromSavedMan = plSavedField(raw, ['낙찰가_만원','낙찰가(만원)','최고입찰가_만원'], '');
+    var nextWon = '';
+    if (wonFromSavedWon) nextWon = plParseWonText(wonFromSavedWon);
+    if (!nextWon && wonFromSavedMan) nextWon = plParseWonText(String(wonFromSavedMan).trim() + '만');
     if (nextWon && plDiffers(nextResult.won || '', nextWon)) nextResult.won = nextWon;
     var hasCloseMemo = Object.prototype.hasOwnProperty.call(raw, '종료메모');
     var nextMemo = hasCloseMemo ? String(raw['종료메모'] || '') : String(src.memo || curItem.memo || '');
@@ -43023,7 +43044,7 @@ window.addEventListener('DOMContentLoaded', () => {
         var currentBid = _plNormalizeBiddateValue(curItem.biddate || '');
         var mappedBid = _plNormalizeBiddateValue(mapped.biddate || '');
         // 작업룸 연결 물건은 로컬 상태를 우선 반영한다.
-        if (nextSimple === 'closed') return '미정';
+        // 상태(활성/변경/종료)와 무관하게 기존 기일은 보존한다.
         if (nextSimple === 'changed') return currentBid || mappedBid || '';
         return mappedBid || currentBid || '';
       })(),
@@ -43105,7 +43126,13 @@ window.addEventListener('DOMContentLoaded', () => {
     }
     if (item.deposit) putField('보증금_만원', plParseAmountText(item.deposit));
     if (item.monthly) putField('월세_만원', plParseAmountText(item.monthly));
-    if (item.estimate) putField('예상입찰가_만원', plParseAmountText(item.estimate));
+    if (item.estimate) {
+      var estimateWon = Number(plParseWonText(item.estimate));
+      if (Number.isFinite(estimateWon) && estimateWon > 0) {
+        putField('예상입찰가', Math.round(estimateWon));
+        putField('예상입찰가_만원', Math.round(estimateWon / 10000));
+      }
+    }
     {
       var bidDateNorm = String(item.biddate || '').trim();
       putField('입찰기일', bidDateNorm);
@@ -43114,8 +43141,11 @@ window.addEventListener('DOMContentLoaded', () => {
     }
     if (item.round) putField('유찰회차', item.round);
     if (item.result && item.result.won) {
-      putField('낙찰가_만원', plParseAmountText(item.result.won));
-      putField('낙찰가', Number(plParseAmountText(item.result.won)) * 10000);
+      var wonValue = Number(plParseWonText(item.result.won));
+      if (Number.isFinite(wonValue) && wonValue > 0) {
+        putField('낙찰가', Math.round(wonValue));
+        putField('낙찰가_만원', Math.round(wonValue / 10000));
+      }
     }
     if (item.memo !== undefined) {
       if (plDiffers(src.memo || '', item.memo || '')) {
@@ -43248,8 +43278,8 @@ window.addEventListener('DOMContentLoaded', () => {
       var bidderCount = String(closeSummary.bidderCount || '').trim();
       var closeMemo = String(closeSummary.memo || '').trim();
       if (finalBid) {
-        var wonMan = plParseAmountText(finalBid);
-        next.result = Object.assign({}, next.result || {}, { won: wonMan || finalBid });
+        var wonValue = plParseWonText(finalBid);
+        next.result = Object.assign({}, next.result || {}, { won: wonValue || finalBid });
       }
       if (bidderCount) next.bidders = bidderCount;
       if (closeMemo) next.memo = closeMemo;
@@ -43312,7 +43342,14 @@ window.addEventListener('DOMContentLoaded', () => {
       if (existing) {
         built.status = existing.status;
         built.archived = !!existing.archived;
-        built.biddate = existing.biddate;
+        // 기존 값이 비었거나 '미정'이면 room/saved에서 복구 가능한 기일을 우선 사용
+        var existingBidNorm = _plNormalizeBiddateValue(existing.biddate || '');
+        var builtBidNorm = _plNormalizeBiddateValue(built.biddate || '');
+        var roomBidNorm = _plNormalizeBiddateValue((room && room.biddate) || '');
+        if (existingBidNorm && existingBidNorm !== '미정') built.biddate = existingBidNorm;
+        else if (builtBidNorm && builtBidNorm !== '미정') built.biddate = builtBidNorm;
+        else if (roomBidNorm && roomBidNorm !== '미정') built.biddate = roomBidNorm;
+        else built.biddate = existing.biddate;
         built.round = existing.round;
         built.minprice = existing.minprice;
       }
@@ -43356,19 +43393,33 @@ window.addEventListener('DOMContentLoaded', () => {
     var iso = plNormalizeDateInput(raw);
     return iso || '';
   }
+  function _plParseDateOnlyLocal(v) {
+    var s = String(v || '').trim();
+    if (!s) return null;
+    var m = s.match(/(20\d{2})[.\-\/년\s]*(\d{1,2})[.\-\/월\s]*(\d{1,2})/);
+    if (!m) return null;
+    var y = parseInt(m[1], 10);
+    var mo = parseInt(m[2], 10);
+    var d = parseInt(m[3], 10);
+    if (!isFinite(y) || !isFinite(mo) || !isFinite(d)) return null;
+    var dt = new Date(y, mo - 1, d);
+    return isNaN(dt.getTime()) ? null : dt;
+  }
   function daysDiff(dateStr) {
     var normalized = _plNormalizeBiddateValue(dateStr);
     if (!normalized || normalized === '미정') return null;
-    var dt = new Date(normalized);
-    if (isNaN(dt.getTime())) return null;
-    return Math.ceil((dt - new Date()) / 86400000);
+    var dt = _plParseDateOnlyLocal(normalized);
+    if (!dt) return null;
+    var now = new Date();
+    var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    return Math.round((dt - today) / 86400000);
   }
   function fmtDate(dateStr) {
     var normalized = _plNormalizeBiddateValue(dateStr);
     if (!normalized) return '—';
     if (normalized === '미정') return '미정';
-    var d = new Date(normalized);
-    if (isNaN(d.getTime())) return '미정';
+    var d = _plParseDateOnlyLocal(normalized);
+    if (!d) return '미정';
     return (d.getMonth()+1) + '.' + d.getDate();
   }
 
@@ -43392,8 +43443,7 @@ window.addEventListener('DOMContentLoaded', () => {
     if (!item) return;
     if (simple === 'closed') {
       item.status = 'closed';
-      // 종료된 물건의 기일은 무의미하므로 '미정'으로 고정 (정렬 시 맨 아래)
-      item.biddate = '미정';
+      // 종료 상태에서도 기존 입찰/매각기일은 보존한다.
     }
     else if (simple === 'changed') {
       var s = String(item.status || '');
@@ -43516,21 +43566,27 @@ window.addEventListener('DOMContentLoaded', () => {
   function plEditMemoCellHtml(id, rawValue) {
     var key = plDomKey(id, 'memo');
     var txt = String(rawValue || '');
-    var display = txt ? txt.replace(/\s+/g, ' ').trim() : '—';
+    var display = txt ? txt.trim() : '';
+    var safeDisplay = display || '메모 없음';
+    var hint = txt ? '클릭해 보기/수정' : '클릭해 메모 작성';
     return ''
       + '<div id="'+key+'_s" data-k="'+plEscHtml(key)+'" onpointerdown="event.preventDefault();event.stopPropagation();plStartInlineEdit(this.dataset.k)" onclick="event.preventDefault();event.stopPropagation();" '
-      + 'style="cursor:pointer;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.02);border-radius:8px;padding:6px 8px;'
-      + 'white-space:nowrap;line-height:1.35;height:28px;max-width:260px;color:var(--fg2);'
-      + 'overflow:hidden;text-overflow:ellipsis;" '
+      + 'style="cursor:pointer;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03);border-radius:8px;padding:7px 8px;'
+      + 'line-height:1.45;min-height:44px;max-width:320px;color:var(--fg2);'
+      + 'display:flex;flex-direction:column;gap:4px;justify-content:flex-start;overflow:hidden;" '
       + 'title="'+plEscHtml(txt)+'">'
-      + plEscHtml(display)
+      + '<div style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word;white-space:pre-wrap;'
+      + (display ? 'color:var(--fg2);' : 'color:var(--fg3);font-style:italic;') + '">'
+      + plEscHtml(safeDisplay)
       + '</div>'
-      + '<textarea id="'+key+'_i" data-k="'+plEscHtml(key)+'" data-id="'+plEscHtml(id)+'" data-field="memo" rows="2" '
+      + '<div style="font-size:10px;color:var(--fg3);line-height:1.2;">' + plEscHtml(hint) + '</div>'
+      + '</div>'
+      + '<textarea id="'+key+'_i" data-k="'+plEscHtml(key)+'" data-id="'+plEscHtml(id)+'" data-field="memo" rows="6" '
       + 'onkeydown="if(event.key===\'Escape\'){plCancelInlineEdit(this.dataset.k);}" '
       + 'onblur="plFinishInlineEdit(this.dataset.id,this.dataset.field,this.dataset.k)" '
       + 'onclick="event.stopPropagation()" '
-      + 'style="display:none;width:100%;min-width:200px;max-width:260px;padding:6px 8px;border:1px solid rgba(255,255,255,.12);border-radius:8px;'
-      + 'background:rgba(0,0,0,.25);color:var(--tx);font-size:12px;line-height:1.45;outline:none;resize:vertical;">'
+      + 'style="display:none;width:100%;min-width:260px;max-width:360px;min-height:120px;padding:8px 10px;border:1px solid rgba(255,255,255,.16);border-radius:8px;'
+      + 'background:rgba(0,0,0,.35);color:var(--tx);font-size:12px;line-height:1.55;outline:none;resize:vertical;box-sizing:border-box;">'
       + plEscHtml(txt)
       + '</textarea>';
   }
@@ -43544,7 +43600,12 @@ window.addEventListener('DOMContentLoaded', () => {
     i.style.display = '';
     try {
       i.focus();
-      if (typeof i.select === 'function' && i.tagName !== 'SELECT') i.select();
+      if (i.tagName === 'TEXTAREA') {
+        i.scrollTop = 0;
+        try { i.setSelectionRange(0, 0); } catch(e) {}
+      } else if (typeof i.select === 'function' && i.tagName !== 'SELECT') {
+        i.select();
+      }
     } catch(e) {}
   };
   window.plCancelInlineEdit = function(key) {
@@ -43641,18 +43702,17 @@ window.addEventListener('DOMContentLoaded', () => {
         var cs = safePatch.closedSummary || {};
         if (safePatch.memo === undefined) safePatch.memo = String(cs.memo || '');
         if (safePatch.bidders === undefined) safePatch.bidders = String(cs.bidderCount || '');
-        var won = plParseAmountText(cs.finalBidPrice || '');
-        if (won || (it.result && it.result.won)) {
-          var nextResult = Object.assign({}, it.result || {});
-          nextResult.won = won || '';
-          safePatch.result = nextResult;
-        }
+      var won = plParseWonText(cs.finalBidPrice || '');
+      if (won || (it.result && it.result.won)) {
+        var nextResult = Object.assign({}, it.result || {});
+        nextResult.won = won || '';
+        safePatch.result = nextResult;
+      }
       }
       if (safePatch.lifecycleStatus) {
         if (safePatch.lifecycleStatus === 'closed') {
           safePatch.status = 'closed';
-          // 종료 시 기일은 '미정'으로 고정 (경매 없어졌음을 표시)
-          if (safePatch.biddate === undefined) safePatch.biddate = '미정';
+          // 종료 상태에서도 기존 기일을 유지한다.
         }
         else if (safePatch.lifecycleStatus === 'changed') {
           safePatch.status = (safePatch.status || 'field');
@@ -43660,15 +43720,13 @@ window.addEventListener('DOMContentLoaded', () => {
         }
         else if (safePatch.lifecycleStatus === 'active' && !safePatch.status) safePatch.status = 'review';
       }
-      // 활성/변경 전환에서는 기존 매각기일을 지우지 않는다.
-      if (safePatch.lifecycleStatus && safePatch.lifecycleStatus !== 'closed') {
-        var prevBidKeep = _plNormalizeBiddateValue(it.biddate || '');
-        var patchBidNorm = _plNormalizeBiddateValue(safePatch.biddate || '');
-        if (!patchBidNorm && prevBidKeep) {
-          delete safePatch.biddate;
-        } else if (patchBidNorm === '미정' && prevBidKeep && prevBidKeep !== '미정') {
-          safePatch.biddate = prevBidKeep;
-        }
+      // 상태와 무관하게 기존 매각기일/입찰기일은 강제로 '미정'으로 덮어쓰지 않는다.
+      var prevBidKeep = _plNormalizeBiddateValue(it.biddate || '');
+      var patchBidNorm = _plNormalizeBiddateValue(safePatch.biddate || '');
+      if (!patchBidNorm && prevBidKeep) {
+        delete safePatch.biddate;
+      } else if (patchBidNorm === '미정' && prevBidKeep && prevBidKeep !== '미정') {
+        safePatch.biddate = prevBidKeep;
       }
       if (safePatch.title && !safePatch.addr) safePatch.addr = safePatch.title;
       if (safePatch.address && !safePatch.region) safePatch.region = safePatch.address;
@@ -43901,7 +43959,7 @@ window.addEventListener('DOMContentLoaded', () => {
       var prevBiddate = String(it.biddate || '');
       if (life === 'closed') {
         if (prevStatus !== 'closed') it.status = 'closed';
-        if (prevBiddate !== '미정') it.biddate = '미정';
+        // 종료 상태에서도 기존 기일을 유지한다.
       } else if (life === 'changed') {
         var ps = String(it.status || '');
         if (!(ps === 'field' || ps === 'bid' || ps === 'won' || ps === 'sell')) it.status = 'field';
@@ -43998,13 +44056,9 @@ window.addEventListener('DOMContentLoaded', () => {
         __targetItemId: resolvedItemId,
         __forceLifecycleChange: true
       };
-      // closed 시에만 biddate를 '미정'으로 초기화한다.
-      // changed 전환은 기존 매각기일을 보존해야 하므로 건드리지 않는다.
-      // (변경→활성 전환 시에도 biddate가 살아있어야 유찰 처리 흐름이 정상 동작함)
-      if (simple === 'closed') {
-        patch.biddate = '미정';
-      } else if (simple !== 'changed' && targetItem && targetItem.biddate && targetItem.biddate !== '미정') {
-        // active 전환: 연결 물건의 biddate가 있으면 반영
+      // 상태 전환(활성/변경/종료)에서도 기존 매각기일/입찰기일은 유지한다.
+      if (simple !== 'changed' && targetItem && targetItem.biddate && targetItem.biddate !== '미정') {
+        // active/closed 전환: 연결 물건의 biddate가 있으면 반영
         patch.biddate = targetItem.biddate;
       }
       // changed: biddate 패치 없음 → updateRoom이 기존 room.biddate를 그대로 유지
@@ -44087,8 +44141,8 @@ window.addEventListener('DOMContentLoaded', () => {
 
     var prevBiddateKeep = _plNormalizeBiddateValue(item.biddate || '');
     plApplySimpleStatusToItem(item, nextSimple);
-    // 상태 전환(활성/변경) 시에는 기존 매각기일을 보존한다.
-    if (nextSimple !== 'closed' && prevBiddateKeep) {
+    // 상태 전환(활성/변경/종료) 모두 기존 매각기일을 보존한다.
+    if (prevBiddateKeep) {
       var nextBidNorm = _plNormalizeBiddateValue(item.biddate || '');
       if (!nextBidNorm || (nextBidNorm === '미정' && prevBiddateKeep !== '미정')) {
         item.biddate = prevBiddateKeep;
@@ -44198,43 +44252,19 @@ window.addEventListener('DOMContentLoaded', () => {
       }
       return true;
     }).sort(function(a,b){
-      // 정렬 우선순위:
-      //  1) 종료 항목은 최하단 (그 안에서 입찰기일 내림차순 = 최근 종료 먼저)
-      //  2) 오늘 D-Day(d=0)인 진행 항목은 최상단
-      //  3) 미래 기일(d>0): 임박순 (작은 d가 먼저)
-      //  4) 미정/기일없음: 그 다음 (updatedAt 최신 먼저)
-      //  5) 지난 기일(d<0): 맨 아래 바로 위 (수정 필요 항목)
-      var aClosed = plSimpleStatusKey(a.status) === 'closed' || !!a.archived;
-      var bClosed = plSimpleStatusKey(b.status) === 'closed' || !!b.archived;
-      if (aClosed !== bClosed) return aClosed ? 1 : -1;
-
+      // 입찰/매각기일 기준 최신일(최근 날짜) 우선 정렬
       var aBidRaw = _plNormalizeBiddateValue(a.biddate || '');
       var bBidRaw = _plNormalizeBiddateValue(b.biddate || '');
-      var aUndef = (!aBidRaw || aBidRaw === '미정');
-      var bUndef = (!bBidRaw || bBidRaw === '미정');
+      var aDate = (aBidRaw && aBidRaw !== '미정') ? _plParseDateOnlyLocal(aBidRaw) : null;
+      var bDate = (bBidRaw && bBidRaw !== '미정') ? _plParseDateOnlyLocal(bBidRaw) : null;
+      var aTs = aDate ? aDate.getTime() : null;
+      var bTs = bDate ? bDate.getTime() : null;
 
-      // 종료 그룹 내부 정렬: 최근 종료(updatedAt 큰 것) 먼저
-      if (aClosed && bClosed) {
-        return (Number(b.updatedAt||0) - Number(a.updatedAt||0));
-      }
+      if (aTs !== null && bTs !== null && aTs !== bTs) return bTs - aTs;
+      if (aTs !== null && bTs === null) return -1;
+      if (aTs === null && bTs !== null) return 1;
 
-      var aD = aUndef ? null : daysDiff(aBidRaw);
-      var bD = bUndef ? null : daysDiff(bBidRaw);
-
-      function bucket(d, undef) {
-        if (undef || d === null) return 3;      // 미정
-        if (d === 0) return 0;                   // D-Day
-        if (d > 0) return 1;                     // 앞으로 올 기일
-        return 2;                                // 지난 기일(수정 필요)
-      }
-      var aB = bucket(aD, aUndef);
-      var bB = bucket(bD, bUndef);
-      if (aB !== bB) return aB - bB;
-
-      if (aB === 0) return 0;
-      if (aB === 1) return aD - bD;           // 임박한 날짜 먼저
-      if (aB === 2) return bD - aD;           // 덜 지난 것 먼저(-1 > -10)
-      // 미정끼리: 최근 수정 먼저
+      // 날짜가 같거나 둘 다 미정이면 최근 수정 순
       return (Number(b.updatedAt||0) - Number(a.updatedAt||0));
     });
   }
@@ -44331,7 +44361,7 @@ window.addEventListener('DOMContentLoaded', () => {
     if (field === 'result_won') {
       var cur0 = plLoad().find(function(i){ return String(i.id) === String(id); });
       if (!cur0) return;
-      var wonVal = plParseAmountText(rawValue);
+      var wonVal = plParseWonText(rawValue);
       var oldWon = cur0.result && cur0.result.won ? String(cur0.result.won) : '';
       if (String(oldWon) === String(wonVal || '')) return;
       var nextResult = Object.assign({}, cur0.result || {});
@@ -44342,7 +44372,8 @@ window.addEventListener('DOMContentLoaded', () => {
     }
     var patch = {};
     var value = rawValue;
-    if (['appraisal','minprice','estimate','deposit','monthly'].indexOf(field) >= 0) value = plParseAmountText(rawValue);
+    if (['appraisal','minprice','deposit','monthly'].indexOf(field) >= 0) value = plParseAmountText(rawValue);
+    if (field === 'estimate') value = plParseWonText(rawValue);
     if (field === 'biddate') value = plNormalizeDateInput(rawValue);
     // 값이 실제로 바뀌지 않으면 저장/동기화 생략 (클릭만 해도 동기화 재시도되는 현상 방지)
     var cur = plLoad().find(function(i){ return String(i.id) === String(id); });
@@ -44466,7 +44497,7 @@ window.addEventListener('DOMContentLoaded', () => {
             + '</div>';
         }
         var resultTag = '';
-        if (simpleStatus === 'closed' && it.result && it.result.won) resultTag = '<div style="font-size:10px;color:#4caf87;margin-top:2px;">낙 '+(plDisplayMan(it.result.won) || it.result.won)+'</div>';
+        if (simpleStatus === 'closed' && it.result && it.result.won) resultTag = '<div style="font-size:10px;color:#4caf87;margin-top:2px;">낙 '+(plDisplayWon(it.result.won) || it.result.won)+'</div>';
         var isPast = (d !== null && d < 0);
         var isClosed = simpleStatus === 'closed';
         var rowClass = (isClosed ? 'pl-closed' : '');
@@ -44503,12 +44534,12 @@ window.addEventListener('DOMContentLoaded', () => {
           +   '<div style="font-size:13px;">'+plEditCellHtml(it.id,'biddate',it.biddate||'',fmtDate(it.biddate),{type:'text',align:'left',minw:'72px',placeholder:'YYYY-MM-DD',spanStyle:'color:'+ddayColor+';font-weight:700;border-bottom-color:rgba(255,255,255,.10);'})+'</div>'
           +   dTag
           + '</td>'
-          + '<td style="padding:8px 10px;text-align:right;"><span style="'+(it.estimate?'background:rgba(255,209,102,.12);border-radius:4px;padding:1px 4px;':'')+'">'+plEditCellHtml(it.id,'estimate',plDisplayMoney(it.estimate||''),plDisplayMan(it.estimate||''),{type:'text',align:'right',minw:'72px',placeholder:'만원',spanStyle:'color:#ffd166;font-weight:700;'})+'</span></td>'
+          + '<td style="padding:8px 10px;text-align:right;"><span style="'+(it.estimate?'background:rgba(255,209,102,.12);border-radius:4px;padding:1px 4px;':'')+'">'+plEditCellHtml(it.id,'estimate',plDisplayMoney(plParseWonText(it.estimate||'')),plDisplayWon(it.estimate||''),{type:'text',align:'right',minw:'72px',placeholder:'원',spanStyle:'color:#ffd166;font-weight:700;'})+'</span></td>'
           + '<td style="padding:8px 10px;text-align:center;cursor:pointer;" onclick="event.stopPropagation();plToggleSite(\''+it.id+'\')">'+siteDots(it.site)+'</td>'
           + '<td style="padding:8px 10px;" onclick="event.stopPropagation()">'+wrLink+'</td>'
-          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'result_won',plDisplayMoney((it.result&&it.result.won)||''),plDisplayMan((it.result&&it.result.won)||''),{type:'text',align:'right',minw:'76px',placeholder:'만원',spanStyle:'color:#4caf87;font-weight:700;'})+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'result_won',plDisplayMoney(plParseWonText((it.result&&it.result.won)||'')),plDisplayWon((it.result&&it.result.won)||''),{type:'text',align:'right',minw:'76px',placeholder:'원',spanStyle:'color:#4caf87;font-weight:700;'})+'</td>'
           + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'bidders',it.bidders||'',it.bidders||'',{type:'text',align:'right',minw:'44px',placeholder:'—',empty:'—',spanStyle:'font-size:11px;'})+'</td>'
-          + '<td style="padding:8px 10px;max-width:180px;overflow:hidden;">'+plEditMemoCellHtml(it.id,it.memo||'')+'</td>'
+          + '<td style="padding:8px 10px;min-width:210px;max-width:260px;overflow:visible;">'+plEditMemoCellHtml(it.id,it.memo||'')+'</td>'
           + '<td style="padding:8px 6px;text-align:center;"><button onclick="event.stopPropagation();plOpenEdit(\''+it.id+'\')" style="background:none;border:none;color:var(--fg3);cursor:pointer;font-size:15px;padding:2px 4px;">···</button></td>'
           + '</tr>';
       }).join('');
@@ -44927,7 +44958,7 @@ window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('pl-f-minprice').value = plDisplayMoney(it.minprice||'');
     document.getElementById('pl-f-round').value = it.round||'';
     document.getElementById('pl-f-biddate').value = it.biddate||'';
-    document.getElementById('pl-f-estimate').value = plDisplayMoney(it.estimate||'');
+    document.getElementById('pl-f-estimate').value = plDisplayMoney(plParseWonText(it.estimate||''));
     document.getElementById('pl-f-deposit').value = plDisplayMoney(it.deposit||'');
     document.getElementById('pl-f-monthly').value = plDisplayMoney(it.monthly||'');
     document.getElementById('pl-f-site').value = it.site||'0';
@@ -45001,8 +45032,8 @@ window.addEventListener('DOMContentLoaded', () => {
         el.setAttribute('inputmode', 'numeric');
         el.addEventListener('input', function(){ window.plInlineMoneyFormat(this); });
         el.addEventListener('blur', function(){
-          // 한글 단위(억/만) 표기도 지원: "6억7천" 같은 입력을 정규화
-          var parsed = plParseAmountText(this.value);
+          // 원 단위 숫자 입력을 기본으로 정규화
+          var parsed = (this.id === 'pl-f-estimate') ? plParseWonText(this.value) : plParseAmountText(this.value);
           this.value = parsed ? Number(parsed).toLocaleString('ko-KR') : '';
         });
       });
@@ -45028,7 +45059,7 @@ window.addEventListener('DOMContentLoaded', () => {
       minprice:  plParseAmountText(document.getElementById('pl-f-minprice').value),
       round:     document.getElementById('pl-f-round').value.trim(),
       biddate:   plNormalizeDateInput(document.getElementById('pl-f-biddate').value),
-      estimate:  plParseAmountText(document.getElementById('pl-f-estimate').value),
+      estimate:  plParseWonText(document.getElementById('pl-f-estimate').value),
       deposit:   plParseAmountText(document.getElementById('pl-f-deposit').value),
       monthly:   plParseAmountText(document.getElementById('pl-f-monthly').value),
       site:      document.getElementById('pl-f-site').value,
@@ -47641,10 +47672,8 @@ window.addEventListener('DOMContentLoaded', () => {
         var entry = _getOverride(curItem || null, null, savedId);
         if (!entry) return patch;
         patch.status = _statusFromSimple(entry.simple, patch.status || (curItem && curItem.status) || 'review');
-        // closed만 '미정', changed는 기존 기일 보존 (skApplyUnifiedLifecycle과 동일 정책)
-        if (entry.simple === 'closed') {
-          patch.biddate = '미정';
-        } else if (patch.biddate === '미정' && curItem && curItem.biddate && curItem.biddate !== '미정') {
+        // 상태와 무관하게 기존 기일은 보존한다.
+        if (patch.biddate === '미정' && curItem && curItem.biddate && curItem.biddate !== '미정') {
           patch.biddate = curItem.biddate;
         }
         return patch;
@@ -47661,10 +47690,8 @@ window.addEventListener('DOMContentLoaded', () => {
         if (!entry || !built) return built;
         built.status = _statusFromSimple(entry.simple, built.status || (prevItem && prevItem.status) || 'review');
         built.archived = (built.status === 'archived');
-        // closed만 '미정', changed는 기존 기일 보존 (plBuildPatchFromSaved/skApplyUnifiedLifecycle과 동일 정책)
-        if (entry.simple === 'closed') {
-          built.biddate = '미정';
-        } else if (built.biddate === '미정' && prevItem && prevItem.biddate && prevItem.biddate !== '미정') {
+        // 상태와 무관하게 기존 기일은 보존한다.
+        if (built.biddate === '미정' && prevItem && prevItem.biddate && prevItem.biddate !== '미정') {
           built.biddate = prevItem.biddate;
         }
         return (typeof plNormalizeItem === 'function') ? plNormalizeItem(built) : built;

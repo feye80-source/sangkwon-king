@@ -1711,10 +1711,61 @@
     /* ── 팝업 소스 탭 (v121 스타일) ── */
     .popup-src-tabs {
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       gap: 6px;
       flex-wrap: wrap;
       flex-shrink: 0;
+    }
+
+    .popup-src-group {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 6px;
+      border-radius: 7px;
+      border: 1px solid rgba(255, 255, 255, .12);
+      background: rgba(255, 255, 255, .03);
+    }
+
+    .popup-src-group.external {
+      border-color: rgba(125, 211, 252, .26);
+      background: rgba(56, 189, 248, .05);
+    }
+
+    .popup-src-group.internal {
+      border-color: rgba(79, 142, 255, .30);
+      background: rgba(79, 142, 255, .06);
+    }
+
+    .popup-src-group-label {
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: .2px;
+      white-space: nowrap;
+      border-radius: 999px;
+      padding: 2px 6px;
+      color: var(--mu);
+      border: 1px solid rgba(255, 255, 255, .12);
+      background: rgba(255, 255, 255, .04);
+    }
+
+    .popup-src-group.external .popup-src-group-label {
+      color: #a5d8ff;
+      border-color: rgba(125, 211, 252, .4);
+      background: rgba(56, 189, 248, .16);
+    }
+
+    .popup-src-group.internal .popup-src-group-label {
+      color: #9fc2ff;
+      border-color: rgba(79, 142, 255, .42);
+      background: rgba(79, 142, 255, .18);
+    }
+
+    .popup-src-group-body {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
     }
 
     .popup-src-badge {
