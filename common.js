@@ -12746,7 +12746,7 @@ window.wr2SummaryCancelEdit = function() {
       const tokenParts = [
         item.id, item.title, item.memo, item.group, item.source, item.csvFileName,
         n.소재지, d.소재지, d['도로명주소'], d['지번주소'], d.주소, d.address, d.roadAddress, d.jibunAddress,
-        d.단지명, d.건물명, d.상품명, d.매물명, d.매물번호, d.물건종류, d.용도, d.매물특징,
+        d.단지명, d.건물명, d.물건명, d.물건명칭, d.상품명, d.매물명, d.매물번호, d.물건종류, d.용도, d.매물특징,
         d.업종, d.업종상세, d.가게상호, d.프랜차이즈,
         d.경매번호, d.사건번호, d.임차인, d.소유자
       ].filter(Boolean);
@@ -12988,7 +12988,7 @@ window.wr2SummaryCancelEdit = function() {
 
     // 경매 링크 버튼: URL 있으면 열고, 없으면 원본 PDF 열기
     window.openAuctionLinkOrPdf = function(savedId, url) {
-      const u = String(url || '').trim();
+      const u = _a1NormalizeDetailUrl(String(url || '').trim());
       if (u && u !== '#' && /^https?:\/\//i.test(u)) {
         try { window.open(u, '_blank'); } catch (e) { window.location.href = u; }
         return;
@@ -14578,6 +14578,7 @@ window.wr2SummaryCancelEdit = function() {
       })();
       const linkedRoomIdJs = linkedRoom ? String(linkedRoom.id || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'") : '';
       const linkedRoomTitle = linkedRoom ? String(linkedRoom.title || linkedRoom.name || '작업룸') : '';
+      const listBtnHtml = `<button onclick="event.stopPropagation();if(typeof plSendFromSavedId==='function'){plSendFromSavedId('${itemIdJs}');}" class="sc-btn" style="background:rgba(79,142,255,.1);color:#8ab8ff;border-color:rgba(79,142,255,.35);" title="물건리스트로 보내기/갱신">📋 리스트</button>`;
       const roomBtnHtml = linkedRoom
         ? `<button onclick="event.stopPropagation();if(typeof pmOpenWorkroom==='function'){pmOpenWorkroom('${linkedRoomIdJs}');}else if(typeof wr2OpenOrCreateFromSavedId==='function'){wr2OpenOrCreateFromSavedId('${itemIdJs}');}" class="sc-btn" style="background:rgba(74,222,128,.12);color:#8fffd0;border-color:rgba(74,222,128,.42);" title="연결됨: ${esc(linkedRoomTitle)}">🗂 연결됨</button>`
         : `<button onclick="event.stopPropagation();wr2OpenOrCreateFromSavedId('${itemIdJs}')" class="sc-btn" style="background:rgba(17,157,237,.1);color:#119ded;border-color:rgba(17,157,237,.3);" title="작업룸 생성/연결">🗂 룸</button>`;
@@ -14637,6 +14638,7 @@ window.wr2SummaryCancelEdit = function() {
           ${(!ia && !d.상세URL && d.소재지 && d.소재지.trim().length >= 3 && item.mode !== 'transaction' && src !== '디스코' && src !== '부동산플래닛') ? `<a href="https://map.naver.com/v5/search/${encodeURIComponent(d.소재지.trim())}" target="_blank" onclick="event.stopPropagation()" class="sc-btn" style="background:rgba(4,222,91,.12);color:#04de5b;border-color:rgba(4,222,91,.4);">🗺️ 지도</a>` : ''}
           ${(!ia && !d.상세URL && d.소재지 && d.소재지.trim().length >= 3 && item.mode !== 'transaction' && src !== '디스코' && src !== '부동산플래닛') ? `<a href="https://new.land.naver.com/offices?query=${encodeURIComponent(d.소재지.trim())}&a=SG:SMS:APTHGJ&e=RETAIL" target="_blank" onclick="event.stopPropagation()" class="sc-btn" style="background:rgba(4,222,91,.12);color:#04de5b;border-color:rgba(4,222,91,.4);">🏠 부동산</a>` : ''}
           ${_hasItemMapTarget(item) ? `<button onclick="event.stopPropagation();goToMapFromCard('${item.id}')" class="sc-btn sc-btn-mymap">📍 내 지도</button>` : ''}
+          ${listBtnHtml}
           ${roomBtnHtml}
           <span style="font-size:9px;color:var(--di);white-space:nowrap;">${ts}</span>
         </div>
@@ -15349,6 +15351,77 @@ window.wr2SummaryCancelEdit = function() {
       return d;
     }
 
+    function _a1CleanHtmlToText(raw) {
+      return String(raw || '')
+        .replace(/<script[\s\S]*?<\/script>/gi, '')
+        .replace(/<style[\s\S]*?<\/style>/gi, '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&gt;/g, '>')
+        .replace(/&lt;/g, '<')
+        .replace(/&amp;/g, '&')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/`/g, "'")
+        .replace(/\\/g, '/')
+        .replace(/\$/g, 'S')
+        .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
+        .replace(/\s{2,}/g, '\n')
+        .trim();
+    }
+
+    function _a1SourceSignalInfo(sourceText) {
+      const text = String(sourceText || '');
+      const rules = [
+        /경매번호|사건번호/,
+        /소재지|도로명|지번/,
+        /감정가|최저가/,
+        /매각기일|매각일|입찰기일/,
+        /유찰|낙찰/,
+        /말소기준권리|배당종기|임차인/
+      ];
+      const hits = rules.filter(function(re){ return re.test(text); }).length;
+      return { score: hits, length: text.length };
+    }
+
+    function _a1ParsedSignalInfo(parsed) {
+      const d = parsed || {};
+      let score = 0;
+      if (String(d.경매번호 || d.사건번호 || '').trim()) score += 1;
+      if (String(d.소재지 || '').trim().length >= 5) score += 1;
+      if (_auctionNum(d.감정가_만원 || d.감정가) > 0) score += 1;
+      if (_auctionNum(d.최저가_만원 || d.최저가) > 0) score += 1;
+      if (String(d.매각기일 || d.매각일 || '').trim()) score += 1;
+      if (String(d.말소기준권리 || '').trim()) score += 1;
+      return { score: score };
+    }
+
+    function _a1NormalizeDetailUrl(rawUrl) {
+      const src = String(rawUrl || '').trim();
+      if (!src) return '';
+      try {
+        const u = new URL(src);
+        const host = String(u.hostname || '').toLowerCase();
+        if (host.indexOf('auction1.co.kr') >= 0) {
+          const pid = String(u.searchParams.get('product_id') || '').trim();
+          if (pid) {
+            const out = new URL('https://www.auction1.co.kr/auction/ca_view.php');
+            out.searchParams.set('product_id', pid);
+            u.searchParams.forEach(function(v, k) {
+              if (k === 'product_id') return;
+              if (v == null || String(v).trim() === '') return;
+              out.searchParams.set(k, String(v));
+            });
+            return out.toString();
+          }
+          u.protocol = 'https:';
+          u.hostname = 'www.auction1.co.kr';
+          return u.toString();
+        }
+      } catch (e) {}
+      return src;
+    }
+
     function _a1AuctionSchema(hasCookie) {
       return `{
   "경매번호": "",
@@ -15510,7 +15583,9 @@ window.wr2SummaryCancelEdit = function() {
       _auctionHydrateDataFields(raw);
       const tenants = _auctionCloneTenantList(raw.임차인_목록);
       const firstTenant = tenants[0] || {};
-      const canonicalUrl = raw._sourceUrl || raw.옥션원URL || raw.상세URL || (raw._pid || raw.product_id ? `https://auction1.co.kr/auction/ca_view.php?product_id=${encodeURIComponent(raw._pid || raw.product_id)}` : '');
+      const canonicalUrl = _a1NormalizeDetailUrl(
+        raw._sourceUrl || raw.옥션원URL || raw.상세URL || (raw._pid || raw.product_id ? `https://www.auction1.co.kr/auction/ca_view.php?product_id=${encodeURIComponent(raw._pid || raw.product_id)}` : '')
+      );
       const bidDepositWon = _auctionManToWon(raw.보증금_만원 || raw.입찰보증금_만원 || raw.입찰보증금 || raw.보증금);
       const item = {
         id: Date.now() + '_a1',
@@ -15588,19 +15663,24 @@ window.wr2SummaryCancelEdit = function() {
       const statusEl = document.getElementById('a1Status');
       const pidM = payload.match(/product_id=(\d+)/);
       const pid = pidM ? pidM[1] : payload.replace(/\D/g,'');
-      const canonicalUrl = pid ? `https://auction1.co.kr/auction/ca_view.php?product_id=${pid}` : (payload.startsWith('http') ? payload : '');
+      const canonicalUrl = _a1NormalizeDetailUrl(
+        payload.startsWith('http')
+          ? payload
+          : (pid ? `https://www.auction1.co.kr/auction/ca_view.php?product_id=${pid}` : '')
+      );
       if (statusEl) statusEl.textContent = '⏳ 페이지 HTML 가져오는 중...';
 
       const isUrl = payload.startsWith('http') || /^\d+$/.test(payload);
       const hasCookie = !!a1Cookie;
       let inputDesc;
+      let sourceText = '';
 
       if (isUrl) {
         let fetchUrl;
         if (hasCookie && pid) {
-          fetchUrl = `https://auction1.co.kr/auction/ca_view.php?product_id=${pid}`;
+          fetchUrl = `https://www.auction1.co.kr/auction/ca_view.php?product_id=${pid}`;
         } else if (payload.startsWith('http')) {
-          fetchUrl = payload;
+          fetchUrl = _a1NormalizeDetailUrl(payload);
         } else {
           if (statusEl) statusEl.textContent = '❌ URL 형식이 아닙니다'; return;
         }
@@ -15618,24 +15698,8 @@ window.wr2SummaryCancelEdit = function() {
           const html = fetchData.html || '';
           if (html.length < 500) throw new Error('HTML이 너무 짧음 — 로그인 실패 또는 접근 차단 가능성');
 
-          const clean = html
-            .replace(/<script[\s\S]*?<\/script>/gi, '')
-            .replace(/<style[\s\S]*?<\/style>/gi, '')
-            .replace(/<[^>]+>/g, ' ')
-            .replace(/&nbsp;/g, ' ')
-            .replace(/&gt;/g, '>')
-            .replace(/&lt;/g, '<')
-            .replace(/&amp;/g, '&')
-            .replace(/&quot;/g, '"')
-            .replace(/&#39;/g, "'")
-            .replace(/`/g, "'")
-            .replace(/\\/g, '/')           // ★ 백슬래시 → 슬래시 (JSON 오염 방지)
-            .replace(/\$/g, 'S')
-            .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '') // ★ 제어문자 제거
-            .replace(/\s{2,}/g, '\n')
-            .trim();
-
-          inputDesc = '경매 페이지 텍스트 (auction1.co.kr):\n' + clean.substring(0, 50000);
+          sourceText = _a1CleanHtmlToText(html);
+          inputDesc = '경매 페이지 텍스트 (auction1.co.kr):\n' + sourceText.substring(0, 50000);
           if (statusEl) statusEl.textContent = '⏳ Gemini 파싱 중...';
         } catch (fetchErr) {
           if (statusEl) statusEl.textContent = '⚠ HTML 가져오기 실패: ' + fetchErr.message + ' — 페이지 소스(Ctrl+U → 전체복사)를 붙여넣으세요';
@@ -15643,21 +15707,18 @@ window.wr2SummaryCancelEdit = function() {
           return;
         }
       } else {
-        const clean = payload
-          .replace(/<script[\s\S]*?<\/script>/gi, '')
-          .replace(/<style[\s\S]*?<\/style>/gi, '')
-          .replace(/<[^>]+>/g, ' ')
-          .replace(/&nbsp;/g, ' ')
-          .replace(/&gt;/g, '>')
-          .replace(/&lt;/g, '<')
-          .replace(/&amp;/g, '&')
-          .replace(/`/g, "'")
-          .replace(/\\/g, '/')           // ★ 백슬래시 → 슬래시
-          .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '') // ★ 제어문자 제거
-          .replace(/\s{2,}/g, '\n')
-          .trim();
-        inputDesc = '경매 페이지 텍스트:\n' + clean.substring(0, 50000);
+        sourceText = _a1CleanHtmlToText(payload);
+        inputDesc = '경매 페이지 텍스트:\n' + sourceText.substring(0, 50000);
         if (statusEl) statusEl.textContent = '⏳ Gemini 파싱 중...';
+      }
+
+      // 로그인 페이지/차단 페이지 등 "실제 상세 본문이 아닌 텍스트" 조기 감지
+      const srcSignal = _a1SourceSignalInfo(sourceText);
+      if (srcSignal.score < 2) {
+        if (statusEl) statusEl.textContent = '⚠ 상세 본문 신호가 약합니다. 로그인 페이지/차단 페이지를 가져온 것 같습니다.';
+        console.warn('[a1] weak source text', srcSignal, String(sourceText || '').slice(0, 350));
+        showToast('옥션원 상세 본문을 읽지 못했습니다. 쿠키 갱신 후 다시 시도하거나 Ctrl+U 원본 HTML을 붙여넣어 주세요.', 'warn');
+        return;
       }
 
       const schema = _a1AuctionSchema(hasCookie);
@@ -15695,6 +15756,14 @@ window.wr2SummaryCancelEdit = function() {
         const parsed = await _a1CallGeminiJson(prompt);
         _a1Data = { ...parsed, _pid: pid, _hasCookie: hasCookie, _sourceUrl: canonicalUrl };
         _auctionHydrateDataFields(_a1Data);
+        const parsedSignal = _a1ParsedSignalInfo(_a1Data);
+        if (parsedSignal.score < 2) {
+          _a1ShowVerify(_a1Data);
+          if (statusEl) statusEl.textContent = '⚠ 파싱 결과가 비어 있습니다. 원본 HTML/쿠키 상태를 확인해 주세요.';
+          console.warn('[a1] weak parsed result', parsedSignal, _a1Data);
+          showToast('파싱 결과가 거의 비어 있습니다. URL 대신 Ctrl+U 페이지소스 전체를 붙여넣어 다시 시도해 주세요.', 'warn');
+          return;
+        }
         if (statusEl) statusEl.textContent = '✅ 파싱 완료! 아래 항목을 원본과 대조해 확인하세요.';
         _a1ShowVerify(parsed);
 
@@ -15837,17 +15906,22 @@ ${inputDesc.substring(0, 3000)}
       const statusEl = document.getElementById(statusId);
       const pidM = payload.match(/product_id=(\d+)/);
       const pid = pidM ? pidM[1] : '';
-      const canonicalUrl = pid ? `https://auction1.co.kr/auction/ca_view.php?product_id=${pid}` : (payload.startsWith('http') ? payload : '');
+      const canonicalUrl = _a1NormalizeDetailUrl(
+        payload.startsWith('http')
+          ? payload
+          : (pid ? `https://www.auction1.co.kr/auction/ca_view.php?product_id=${pid}` : '')
+      );
       if (statusEl) statusEl.textContent = '⏳ Gemini 파싱 중...';
 
       const isUrl = payload.startsWith('http');
 
       let inputDesc;
+      let sourceText = '';
       if (isUrl) {
         // URL → 프록시로 HTML fetch
         let fetchUrl = (hasCookie && pid)
-          ? `https://auction1.co.kr/auction/ca_view.php?product_id=${pid}`
-          : payload;
+          ? `https://www.auction1.co.kr/auction/ca_view.php?product_id=${pid}`
+          : _a1NormalizeDetailUrl(payload);
         if (statusEl) statusEl.textContent = '⏳ 페이지 HTML 가져오는 중...';
         try {
           const fetchResp = await window._proxyFetch(window._getProxyBase() + '/fetch', {
@@ -15860,20 +15934,9 @@ ${inputDesc.substring(0, 3000)}
           const fetchData = await fetchResp.json();
           if (fetchData.status === 'error') throw new Error(fetchData.message);
           const html = fetchData.html || '';
-          if (!html) throw new Error('HTML 내용 없음');
-          const clean = html
-            .replace(/<script[\s\S]*?<\/script>/gi, '')
-            .replace(/<style[\s\S]*?<\/style>/gi, '')
-            .replace(/<[^>]+>/g, ' ')
-            .replace(/&nbsp;/g, ' ')
-            .replace(/&gt;/g, '>')
-            .replace(/&lt;/g, '<')
-            .replace(/&amp;/g, '&')
-            .replace(/`/g, "\\'")
-            .replace(/\$/g, 'S')
-            .replace(/\s{2,}/g, '\n')
-            .trim();
-          inputDesc = `경매 페이지 텍스트 (auction1.co.kr):\n${clean.substring(0, 50000)}`;
+          if (html.length < 500) throw new Error('HTML이 너무 짧음 — 로그인 실패 또는 접근 차단 가능성');
+          sourceText = _a1CleanHtmlToText(html);
+          inputDesc = `경매 페이지 텍스트 (auction1.co.kr):\n${sourceText.substring(0, 50000)}`;
           if (statusEl) statusEl.textContent = '⏳ Gemini 파싱 중...';
         } catch (fetchErr) {
           if (statusEl) statusEl.textContent = '⚠ HTML 가져오기 실패: ' + fetchErr.message + ' — 페이지 소스(Ctrl+U → 전체복사)를 붙여넣으세요';
@@ -15881,7 +15944,15 @@ ${inputDesc.substring(0, 3000)}
           return;
         }
       } else {
-        inputDesc = `HTML 소스 (앞 50000자):\n${payload.substring(0, 50000)}`;
+        sourceText = _a1CleanHtmlToText(payload);
+        inputDesc = `HTML 소스 (앞 50000자):\n${sourceText.substring(0, 50000)}`;
+      }
+      const srcSignal = _a1SourceSignalInfo(sourceText);
+      if (srcSignal.score < 2) {
+        if (statusEl) statusEl.textContent = '⚠ 상세 본문 신호가 약합니다. 로그인 페이지/차단 페이지를 가져온 것 같습니다.';
+        console.warn('[a1-from] weak source text', srcSignal, String(sourceText || '').slice(0, 350));
+        showToast('옥션원 상세 본문을 읽지 못했습니다. 쿠키 갱신 후 다시 시도하거나 Ctrl+U 원본 HTML을 붙여넣어 주세요.', 'warn');
+        return;
       }
       const schemaFrom = _a1AuctionSchema(hasCookie);
 
@@ -15918,6 +15989,14 @@ ${inputDesc.substring(0, 3000)}
         const parsed = await _a1CallGeminiJson(prompt);
         _a1DataMap[payloadId] = { ...parsed, _pid: pid, _hasCookie: hasCookie, _sourceUrl: canonicalUrl };
         _auctionHydrateDataFields(_a1DataMap[payloadId]);
+        const parsedSignal = _a1ParsedSignalInfo(_a1DataMap[payloadId]);
+        if (parsedSignal.score < 2) {
+          _a1ShowVerifyTo(_a1DataMap[payloadId], verifyBoxId, verifyFieldsId);
+          if (statusEl) statusEl.textContent = '⚠ 파싱 결과가 비어 있습니다. 원본 HTML/쿠키 상태를 확인해 주세요.';
+          console.warn('[a1-from] weak parsed result', parsedSignal, _a1DataMap[payloadId]);
+          showToast('파싱 결과가 거의 비어 있습니다. URL 대신 Ctrl+U 페이지소스 전체를 붙여넣어 다시 시도해 주세요.', 'warn');
+          return;
+        }
         if (statusEl) statusEl.textContent = '✅ 파싱 완료! 아래 항목을 원본과 대조해 확인하세요.';
         _a1ShowVerifyTo(parsed, verifyBoxId, verifyFieldsId);
 
@@ -16718,6 +16797,7 @@ ${inputDesc.substring(0, 3000)}
           const hasAi = !!(item.data && (item.data.AI기본분석 || item.data.AI추가분석));
           html += `<button class="popup-src-btn" id="popAiAnalyzeBtn" style="background:rgba(255,140,0,.15);color:#ff8c42;border-color:rgba(255,140,0,.4);font-weight:700;" onclick="runSavedItemAiAnalysis('${id}')">${hasAi ? '🔄 AI 재분석' : '🤖 AI 분석'}</button>`;
         }
+        html += `<button class="popup-src-btn" style="background:rgba(79,142,255,.16);color:#8ab8ff;border-color:rgba(79,142,255,.42);font-weight:700;" onclick="plSendFromSavedId('${id}')">📋 물건리스트</button>`;
         // ★ 작업룸 연동 버튼 (저장된 물건 → 작업룸 생성/열기)
         html += `<button class="popup-src-btn" style="background:rgba(17,157,237,.15);color:#119ded;border-color:rgba(17,157,237,.45);font-weight:700;" onclick="wr2OpenOrCreateFromSavedId('${id}')">🗂 작업룸</button>`;
         popSrcTabsEl.innerHTML = html;
@@ -17080,6 +17160,8 @@ ${inputDesc.substring(0, 3000)}
       clearTimeout(window._dbTimer[key]);
       window._dbTimer[key] = setTimeout(fn, delay || 300);
     }
+    // inline HTML(oninput="_debounce(...)")에서 접근할 수 있게 전역 노출
+    window._debounce = window._debounce || _debounce;
 
     function _persistSavedDraftSnapshot(arr) {
       if (window._sbPersistCachedArray) window._sbPersistCachedArray('re_sv', arr, { delay: 260 });
@@ -17255,6 +17337,20 @@ ${inputDesc.substring(0, 3000)}
       renderSaved();
     }
     window.closePopup = closePopup;
+    // 저장목록 상세 팝업: 배경 클릭으로 닫기
+    if (!window.__savedPopupBackdropBound) {
+      window.__savedPopupBackdropBound = true;
+      setTimeout(function() {
+        var ov = document.getElementById('overlay');
+        if (!ov || ov.dataset.popupCloseBound === '1') return;
+        ov.dataset.popupCloseBound = '1';
+        ov.addEventListener('click', function(e) {
+          if (e.target !== ov) return;
+          var pop = document.getElementById('popup');
+          if (pop && pop.classList.contains('on') && typeof window.closePopup === 'function') window.closePopup();
+        });
+      }, 0);
+    }
 
     // ===================================================
     // 메모
@@ -18908,6 +19004,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           const captureModal = document.getElementById('mapCaptureModal'); if (captureModal && captureModal.style.display !== 'none') { captureModal.style.display = 'none'; if (typeof _clearCapturePreview === 'function') _clearCapturePreview(); return; }
           const aiPanel = document.getElementById('aiMapPanel'); if (aiPanel && aiPanel.style.display !== 'none') { if (typeof closeAiMapPanel === 'function') closeAiMapPanel(); return; }
           const calcPanel = document.getElementById('calcPanel'); if (calcPanel && calcPanel.style.display !== 'none') { if (typeof closeCalcPanel === 'function') closeCalcPanel(); return; }
+          const kcardDetailModal = document.getElementById('kcardDetailModal');
+          if (kcardDetailModal && kcardDetailModal.style.display !== 'none') { if (typeof closeKcardDetail === 'function') closeKcardDetail(); else kcardDetailModal.style.display = 'none'; return; }
           const kcardModal = document.getElementById('kcardModal'); if (kcardModal && kcardModal.style.display !== 'none') { kcardModal.style.display = 'none'; return; }
           const addSiteModal = document.getElementById('addSiteModal'); if (addSiteModal && addSiteModal.style.display !== 'none') { addSiteModal.style.display = 'none'; return; }
           const sbizReport = document.getElementById('sbizReportModal'); if (sbizReport) { sbizReport.remove(); return; }
@@ -44424,6 +44522,82 @@ window.addEventListener('DOMContentLoaded', () => {
     if (typeof showToast === 'function') showToast('저장목록에서 물건을 찾을 수 없습니다', 'warn');
   };
 
+  // 저장목록 물건을 물건리스트로 보내기/갱신
+  window.plSendFromSavedId = function(savedId, opts) {
+    opts = opts || {};
+    var sid = String(savedId || '').trim();
+    if (!sid) {
+      if (typeof showToast === 'function') showToast('저장목록 물건 ID가 없습니다', 'warn');
+      return '';
+    }
+    var openList = (opts.openList !== false);
+    var sv = plGetSavedItems();
+    var src = (sv || []).find(function(s){ return String(s && s.id || '') === sid; }) || null;
+    if (!src) {
+      if (typeof showToast === 'function') showToast('저장목록에서 물건을 찾지 못했습니다', 'warn');
+      return '';
+    }
+
+    var items = plLoad();
+    var mapped = plMapSavedToItem(src);
+    var old = null;
+    for (var i = 0; i < items.length; i += 1) {
+      if (String(items[i] && items[i].linkedSavedId || '') === sid) { old = items[i]; break; }
+    }
+    if (!old && mapped.casenum) {
+      var caseKey = String(mapped.casenum || '').replace(/\s/g, '');
+      var caseMatches = items.filter(function(it){
+        return String(it && it.casenum || '').replace(/\s/g, '') === caseKey;
+      });
+      if (caseMatches.length === 1) old = caseMatches[0];
+    }
+
+    var target = null;
+    var isAdded = false;
+    if (old) {
+      old.linkedSavedId = sid;
+      old.type = mapped.type || old.type;
+      if (mapped.addr) old.addr = mapped.addr;
+      if (mapped.casenum) old.casenum = mapped.casenum;
+      if (mapped.region) old.region = mapped.region;
+      if (mapped.feature) old.feature = mapped.feature;
+      if (mapped.appraisal) old.appraisal = mapped.appraisal;
+      if (mapped.minprice) old.minprice = mapped.minprice;
+      if (mapped.round) old.round = mapped.round;
+      if (mapped.biddate) old.biddate = mapped.biddate;
+      if (mapped.deposit) old.deposit = mapped.deposit;
+      if (mapped.monthly) old.monthly = mapped.monthly;
+      old.archived = false;
+      if (old.status === 'archived') old.status = 'review';
+      old.updatedAt = Date.now();
+      target = old;
+    } else {
+      mapped.linkedSavedId = sid;
+      mapped.updatedAt = Date.now();
+      items.push(mapped);
+      target = mapped;
+      isAdded = true;
+    }
+
+    var normalized = items.map(plNormalizeItem);
+    plSave(normalized);
+    var targetNorm = normalized.find(function(it){ return String(it.id) === String(target.id); }) || target;
+    try { syncToWorkroom(targetNorm); } catch(e) {}
+    try { plSyncItemToSaved(targetNorm); } catch(e) {}
+
+    if (openList) {
+      try {
+        if (typeof window.showPage === 'function') window.showPage(4);
+        if (typeof window.pmShowTab === 'function') window.pmShowTab('list');
+      } catch (e) {}
+      if (typeof renderPropertyList === 'function') setTimeout(renderPropertyList, 30);
+    }
+    if (typeof showToast === 'function') {
+      showToast(isAdded ? '📋 물건리스트에 추가했습니다' : '📋 물건리스트 정보를 갱신했습니다', 'ok');
+    }
+    return String(targetNorm.id || '');
+  };
+
   // 경매번호로 저장목록 자동 연결
   window.plLinkByCasenum = function(itemId) {
     var items = plLoad();
@@ -44542,15 +44716,23 @@ window.addEventListener('DOMContentLoaded', () => {
         modal.addEventListener('mousedown', function(e){
           if (e.target === modal) window.plCloseModal();
         });
+        modal.addEventListener('click', function(e){
+          if (e.target === modal) window.plCloseModal();
+        });
       }
       var importModal = document.getElementById('pl-import-modal');
       if (importModal) {
         importModal.addEventListener('mousedown', function(e){
           if (e.target === importModal && typeof window.plCloseImportModal === 'function') window.plCloseImportModal();
         });
+        importModal.addEventListener('click', function(e){
+          if (e.target === importModal && typeof window.plCloseImportModal === 'function') window.plCloseImportModal();
+        });
       }
       document.addEventListener('keydown', function(e){
         if (e.key !== 'Escape') return;
+        var kcardDetail = document.getElementById('kcardDetailModal');
+        if (kcardDetail && kcardDetail.style.display !== 'none') { if (typeof window.closeKcardDetail === 'function') window.closeKcardDetail(); else kcardDetail.style.display = 'none'; return; }
         var modalOpen = document.getElementById('pl-modal');
         if (modalOpen && modalOpen.style.display !== 'none' && modalOpen.style.display !== '') { window.plCloseModal(); return; }
         var importOpen = document.getElementById('pl-import-modal');
@@ -44679,13 +44861,24 @@ window.addEventListener('DOMContentLoaded', () => {
 
 
   // ── 저장목록 경매 가져오기 ─────────────────
+  function plIsAuctionCandidateSaved(src) {
+    if (!src) return false;
+    var mode = String(src.mode || src.type || '').toLowerCase();
+    var raw = src.data || {};
+    var source = String(src.source || raw['출처'] || '').toLowerCase();
+    if (mode === 'auction' || mode === '경매' || mode === 'onbid' || mode === '공매') return true;
+    if (source.indexOf('경매') >= 0 || source.indexOf('옥션원') >= 0 || source.indexOf('온비드') >= 0 || source.indexOf('공매') >= 0) return true;
+    return !!(
+      raw['경매번호'] || raw['사건번호'] ||
+      raw['매각기일'] || raw['매각일'] || raw['입찰기일'] ||
+      raw['옥션원URL'] || raw['온비드URL'] || raw['product_id']
+    );
+  }
   function plSavedAuctionItems() {
     var sv = [];
     try { sv = (typeof getSv === 'function') ? getSv() : JSON.parse(localStorage.getItem('re_sv')||'[]'); } catch(e) { sv = []; }
     return (sv || []).filter(function(it){
-      if (!it) return false;
-      var mode = String(it.mode || '').toLowerCase();
-      return mode === 'auction' || mode === '경매';
+      return plIsAuctionCandidateSaved(it);
     });
   }
   function plMapSavedToItem(src) {
