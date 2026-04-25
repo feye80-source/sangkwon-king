@@ -189,10 +189,12 @@
       };
       const over = function(evt) {
         evt.preventDefault();
+        if (opts.stopPropagation) evt.stopPropagation();
         setActive(true);
       };
       const leave = function(evt) {
         if (evt && evt.relatedTarget && zone.contains(evt.relatedTarget)) return;
+        if (opts.stopPropagation) evt.stopPropagation();
         setActive(false);
       };
       zone.addEventListener('dragenter', over);
@@ -200,6 +202,7 @@
       zone.addEventListener('dragleave', leave);
       zone.addEventListener('drop', function(evt) {
         evt.preventDefault();
+        if (opts.stopPropagation) evt.stopPropagation();
         setActive(false);
         const files = getFiles(evt);
         if (files.length && typeof opts.onFiles === 'function') opts.onFiles(files, evt);
@@ -5266,6 +5269,7 @@ var _safeLocalSet = function(key, value) {
                       + '</div>';
                     initCaptureDrop('wr2CaptureDrop');
                   }
+                  renderSnapList(room);
                 }
 
                 function wr2CollectRoomGalleryItems(room) {
@@ -5323,10 +5327,10 @@ var _safeLocalSet = function(key, value) {
                   saveRooms(); renderCaptureWidget(room);
                 };
 
-                window.wr2GoToSnap = function(snapName) {
+                window.wr2GoToSnap = function(snapName, parentSnapName) {
                   if (typeof swLoadSnap === 'function') {
                     showPage(2);
-                    setTimeout(function() { swLoadSnap(snapName, null); }, 300);
+                    setTimeout(function() { swLoadSnap(snapName, parentSnapName || null); }, 300);
                   } else { showToast('스냅샷을 찾을 수 없습니다', 'warn'); }
                 };
 
@@ -5410,7 +5414,7 @@ var _safeLocalSet = function(key, value) {
 
                     if (exists) {
                       var pnQ = '';
-                      html += '<button onclick="wr2GoToSnap(this.dataset.snap)" data-snap="' + sn.replace(/"/g,'&quot;') + '" style="padding:3px 8px;font-size:10px;background:rgba(79,142,255,.1);border:1px solid rgba(79,142,255,.3);border-radius:5px;color:#4f8eff;cursor:pointer;font-family:inherit;white-space:nowrap;">↗ 이동</button>';
+                      html += '<button onclick="wr2GoToSnap(this.dataset.snap,this.dataset.parent||null)" data-snap="' + sn.replace(/"/g,'&quot;') + '" data-parent="" style="padding:3px 8px;font-size:10px;background:rgba(79,142,255,.1);border:1px solid rgba(79,142,255,.3);border-radius:5px;color:#4f8eff;cursor:pointer;font-family:inherit;white-space:nowrap;">↗ 이동</button>';
                       html += '<button onclick="swRenameSnap(\'' + snQ + '\',\'\')" style="padding:3px 6px;font-size:11px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);border-radius:5px;color:#fbbf24;cursor:pointer;" title="이름 변경">✏️</button>';
                       html += '<button onclick="swDeleteSnap(\'' + snQ + '\',\'\')" style="padding:3px 6px;font-size:11px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);border-radius:5px;color:#ef4444;cursor:pointer;" title="스냅샷 삭제">🗑</button>';
                     }
@@ -5431,7 +5435,7 @@ var _safeLocalSet = function(key, value) {
                         html += '<div style="font-size:9px;color:var(--di);">↑ ' + sn + (childImgCount ? ' · 이미지 ' + childImgCount + '장' : '') + '</div>';
                         html += '</div>';
                         if (childExists) {
-                          html += '<button onclick="wr2GoToSnap(this.dataset.snap)" data-snap="' + child.name.replace(/"/g,'&quot;') + '" style="padding:3px 8px;font-size:10px;background:rgba(79,142,255,.1);border:1px solid rgba(79,142,255,.3);border-radius:5px;color:#4f8eff;cursor:pointer;font-family:inherit;white-space:nowrap;">↗ 이동</button>';
+                          html += '<button onclick="wr2GoToSnap(this.dataset.snap,this.dataset.parent||null)" data-snap="' + child.name.replace(/"/g,'&quot;') + '" data-parent="' + sn.replace(/"/g,'&quot;') + '" style="padding:3px 8px;font-size:10px;background:rgba(79,142,255,.1);border:1px solid rgba(79,142,255,.3);border-radius:5px;color:#4f8eff;cursor:pointer;font-family:inherit;white-space:nowrap;">↗ 이동</button>';
                           html += '<button onclick="swRenameSnap(\'' + cQ + '\',\'' + cpQ + '\')" style="padding:3px 6px;font-size:11px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);border-radius:5px;color:#fbbf24;cursor:pointer;" title="이름 변경">✏️</button>';
                           html += '<button onclick="swDeleteSnap(\'' + cQ + '\',\'' + cpQ + '\')" style="padding:3px 6px;font-size:11px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);border-radius:5px;color:#ef4444;cursor:pointer;" title="하위 스냅샷 삭제">🗑</button>';
                         }
@@ -7145,6 +7149,7 @@ window.wr2SummaryCancelEdit = function() {
                   if (!zone) return;
                   window._skBindFileDropZone(zone, {
                     activeClass: 'drag-over',
+                    stopPropagation: true,
                     clickTarget: 'wr2FileInput',
                     onFiles: function(files) { wr2HandleFilesArray(files); }
                   });
@@ -7153,15 +7158,13 @@ window.wr2SummaryCancelEdit = function() {
                 // ★ 노트 전체 영역 드래그앤드롭
                 function initWr2NoteDropZone() {
                   const zone = document.getElementById('wr2NoteDropZone');
-                  if (!zone || zone._skNDBound) return;
-                  zone._skNDBound = true;
-                  zone.addEventListener('dragover', function(e){ e.preventDefault(); e.stopPropagation(); zone.classList.add('drag-over'); });
-                  zone.addEventListener('dragleave', function(e){ if(!zone.contains(e.relatedTarget)) zone.classList.remove('drag-over'); });
-                  zone.addEventListener('drop', function(e){
-                    e.preventDefault(); e.stopPropagation();
-                    zone.classList.remove('drag-over');
-                    const fs = Array.from((e.dataTransfer&&e.dataTransfer.files)||[]);
-                    if (fs.length && typeof wr2HandleFilesArray==='function') wr2HandleFilesArray(fs);
+                  if (!zone) return;
+                  window._skBindFileDropZone(zone, {
+                    activeClass: 'drag-over',
+                    shouldClick: function() { return false; },
+                    onFiles: function(files) {
+                      if (files.length) wr2HandleFilesArray(files);
+                    }
                   });
                 }
 
@@ -7648,7 +7651,7 @@ window.wr2SummaryCancelEdit = function() {
                   };
 
                   // 노트 드롭존 (파일 드래그앤드롭)
-                  initNoteDropZone();
+                  initWr2NoteDropZone();
 
                   document.addEventListener('keydown', e => {
                     if (e.key === 'Escape') {
@@ -7660,15 +7663,8 @@ window.wr2SummaryCancelEdit = function() {
                 }
 
                 function initNoteDropZone() {
-                  const zone = document.getElementById('wr2NoteDropZone');
-                  if (!zone) return;
-                  window._skBindFileDropZone(zone, {
-                    activeClass: 'drag-over',
-                    shouldClick: function() { return false; },
-                    onFiles: function(files) {
-                      if (files.length) wr2HandleFilesArray(files);
-                    }
-                  });
+                  // 레거시 호출 호환: 실제 바인딩은 initWr2NoteDropZone 하나만 사용
+                  initWr2NoteDropZone();
                 }
 
                 window.wr2HandleFiles = function (input) {
@@ -11561,30 +11557,51 @@ window.wr2SummaryCancelEdit = function() {
         return rowHtml;
       }
 
+      function _swRoomLifecycle(room) {
+        if (!room) return 'active';
+        try {
+          if (typeof wr2GetLifecycle === 'function') return wr2GetLifecycle(room);
+        } catch (e) {}
+        var life = String(room.lifecycleStatus || room.status || '').toLowerCase();
+        if (life === 'closed' || life === 'archived') return 'closed';
+        if (life === 'changed' || life === 'field' || life === 'bid' || life === 'won' || life === 'sell') return 'changed';
+        return 'active';
+      }
       var rootMetas = roots.map(function(root) {
         var kids = scenes.filter(function(s){ return s.parentName === root.name; });
-        var inRoom = rooms.some(function(r){
+        var linkedRooms = rooms.filter(function(r){
           return (r.mapScene && r.mapScene.sceneName === root.name) ||
             (r.captureImages || []).some(function(i){ return i.snapName === root.name; });
         });
+        var inRoom = linkedRooms.length > 0;
+        var hasActiveRoom = linkedRooms.some(function(r){ return _swRoomLifecycle(r) !== 'closed'; });
+        var hasClosedOnly = inRoom && !hasActiveRoom;
         return {
           root: root,
           kids: kids,
           inRoom: inRoom,
+          linkKind: !inRoom ? 'none' : (hasActiveRoom ? 'active' : 'closed'),
           savedAt: Number(root && root.savedAt || 0)
         };
       });
-      var pendingRoots = rootMetas.filter(function(meta) { return !meta.inRoom; }).slice(0, 6);
-      var linkedRoots = rootMetas.filter(function(meta) { return meta.inRoom; }).slice(0, 6);
+      var pendingRoots = rootMetas.filter(function(meta) { return meta.linkKind === 'none'; }).slice(0, 6);
+      var linkedRoots = rootMetas.filter(function(meta) { return meta.linkKind === 'active'; }).slice(0, 6);
+      var closedLinkedRoots = rootMetas.filter(function(meta) { return meta.linkKind === 'closed'; }).slice(0, 6);
       var usedNames = new Set();
       pendingRoots.forEach(function(meta) { usedNames.add(meta.root.name); });
       linkedRoots.forEach(function(meta) { usedNames.add(meta.root.name); });
+      closedLinkedRoots.forEach(function(meta) { usedNames.add(meta.root.name); });
       var archivedRoots = rootMetas.filter(function(meta) { return !usedNames.has(meta.root.name); });
       var archiveOpen = false;
       try {
         archiveOpen = localStorage.getItem('sw_snapshot_archive_open') === '1';
       } catch(e) {}
       if (!archivedRoots.length) archiveOpen = false;
+      var closedOpen = false;
+      try {
+        closedOpen = localStorage.getItem('sw_snapshot_closed_open') === '1';
+      } catch(e) {}
+      if (!closedLinkedRoots.length) closedOpen = false;
 
       function renderSection(label, count, desc, metas, className) {
         if (!metas.length) return '';
@@ -11601,12 +11618,24 @@ window.wr2SummaryCancelEdit = function() {
       }
 
       var html = '<div class="sw-snap-summary">'
-        + '<div class="sw-snap-summary-chip focus">미저장 ' + rootMetas.filter(function(meta) { return !meta.inRoom; }).length + '</div>'
-        + '<div class="sw-snap-summary-chip linked">작업룸 연결 ' + rootMetas.filter(function(meta) { return meta.inRoom; }).length + '</div>'
+        + '<div class="sw-snap-summary-chip focus">미저장 ' + rootMetas.filter(function(meta) { return meta.linkKind === 'none'; }).length + '</div>'
+        + '<div class="sw-snap-summary-chip linked">작업룸 연결 ' + rootMetas.filter(function(meta) { return meta.linkKind === 'active'; }).length + '</div>'
+        + '<div class="sw-snap-summary-chip" style="background:rgba(148,163,184,.18);border-color:rgba(148,163,184,.35);color:#cbd5e1;">종료룸 ' + rootMetas.filter(function(meta) { return meta.linkKind === 'closed'; }).length + '</div>'
         + '<div class="sw-snap-summary-chip total">전체 ' + rootMetas.length + '</div>'
         + '</div>';
       html += renderSection('바로 작업', pendingRoots.length, '아직 작업룸에 넣지 않은 최신 스냅샷', pendingRoots, 'focus');
       html += renderSection('작업룸 연결됨', linkedRoots.length, '이미 작업룸에 정리된 스냅샷', linkedRoots, 'linked');
+      if (closedLinkedRoots.length) {
+        html += '<button type="button" class="sw-archive-toggle" onclick="swToggleClosedSnapshotArchive()">';
+        html += '<span>🧊 종료룸 연결 '+closedLinkedRoots.length+'개</span>';
+        html += '<span>'+(closedOpen ? '접기 ▾' : '펼치기 ▸')+'</span>';
+        html += '</button>';
+        html += '<div class="sw-archive-wrap" id="swSnapshotClosedArchive" style="display:'+(closedOpen ? 'flex' : 'none')+';">';
+        closedLinkedRoots.forEach(function(meta) {
+          html += renderSnapRow(meta.root);
+        });
+        html += '</div>';
+      }
       if (archivedRoots.length) {
         html += '<button type="button" class="sw-archive-toggle" onclick="swToggleSnapshotArchive()">';
         html += '<span>📦 보관함 '+archivedRoots.length+'개</span>';
@@ -11632,6 +11661,20 @@ window.wr2SummaryCancelEdit = function() {
       }
       try {
         localStorage.setItem('sw_snapshot_archive_open', willOpen ? '1' : '0');
+      } catch(e) {}
+      swRenderSnapTree();
+    };
+    window.swToggleClosedSnapshotArchive = function() {
+      var el = document.getElementById('swSnapshotClosedArchive');
+      if (!el) return;
+      var willOpen = el.style.display === 'none';
+      el.style.display = willOpen ? 'flex' : 'none';
+      if (willOpen) {
+        el.style.flexDirection = 'column';
+        el.style.gap = '1px';
+      }
+      try {
+        localStorage.setItem('sw_snapshot_closed_open', willOpen ? '1' : '0');
       } catch(e) {}
       swRenderSnapTree();
     };
@@ -26863,6 +26906,23 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       return out;
     }
 
+    function _txMonthIndex(year, month) {
+      const y = parseInt(String(year || '').replace(/[^0-9]/g, '').slice(0, 4), 10);
+      const m = parseInt(String(month || '').replace(/[^0-9]/g, '').slice(0, 2), 10);
+      if (!Number.isFinite(y) || !Number.isFinite(m) || m < 1 || m > 12) return null;
+      return y * 12 + (m - 1);
+    }
+
+    function _txInLookback(item, lookbackMonths) {
+      const months = Math.max(1, parseInt(lookbackMonths, 10) || 24);
+      const now = new Date();
+      const nowIdx = now.getFullYear() * 12 + now.getMonth();
+      const itemIdx = _txMonthIndex(item && item.year, item && item.month);
+      if (itemIdx == null) return false;
+      const diff = nowIdx - itemIdx;
+      return diff >= 0 && diff < months;
+    }
+
     function _txCoordToRegion(lat, lng) {
       return new Promise(resolve => {
         try {
@@ -27096,7 +27156,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const readyCount = await _ensureTransactionDataReady();
       if (btn) {
         btn.disabled = false;
-        btn.textContent = '📍 실거래';
+        btn.textContent = '📍 실거래 불러오기';
       }
       if (readyCount === 0 || transactionDataRaw.length === 0) {
         showToast(hasRtmsKey
@@ -27157,6 +27217,9 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       if (candidates.length > 50000 && region.r3) {
         candidates = candidates.filter(it => (it.address || '').includes(region.r3));
       }
+
+      // ★ 조회기간 드롭다운과 실제 표시 기간을 일치시킨다.
+      candidates = candidates.filter(it => _txInLookback(it, lookbackMonths));
 
       // ★ 연도 필터 적용
       const selectedYears = getSelectedTransactionYears();
@@ -27286,7 +27349,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
       // ★ 버튼 숨기지 않음 - 텍스트/상태만 초기화 (사라지는 버그 방지)
       const _stBtn = document.getElementById('showTransactionBtn');
-      if (_stBtn) { _stBtn.disabled = false; _stBtn.textContent = '📍 실거래가 불러오기'; }
+      if (_stBtn) { _stBtn.disabled = false; _stBtn.textContent = '📍 실거래 불러오기'; }
       // ★ 로드 완료 후 연도 필터 재초기화
       if (typeof initTransactionYearFilter === 'function') initTransactionYearFilter();
       document.getElementById('hideTransactionBtn').style.display = 'block';
@@ -27316,7 +27379,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
       document.getElementById('showTransactionBtn').style.display = 'block';
       document.getElementById('showTransactionBtn').disabled = false;
-      document.getElementById('showTransactionBtn').textContent = '📍 여기 실거래가 표시';
+      document.getElementById('showTransactionBtn').textContent = '📍 실거래 불러오기';
       document.getElementById('hideTransactionBtn').style.display = 'none';
       document.getElementById('arrangeTransactionBtn').style.display = 'none';
       document.getElementById('filterTransaction').checked = false;
@@ -42922,6 +42985,19 @@ window.addEventListener('DOMContentLoaded', () => {
     var raw = plParseWonText(v);
     return raw ? (Number(raw).toLocaleString('ko-KR') + '원') : '';
   }
+  function plNormalizeWonInputText(v) {
+    var raw = String(v || '').trim();
+    if (!raw) return '';
+    // 단위 텍스트가 있으면 사용자가 입력한 표현을 최대한 보존
+    if (/[억만천백원]/.test(raw)) return raw.replace(/\s+/g, '');
+    // 숫자만 입력한 경우만 콤마 정규화
+    var digits = raw.replace(/[^0-9]/g, '');
+    if (!digits) return '';
+    return Number(digits).toLocaleString('ko-KR');
+  }
+  function plDisplayWonInput(v) {
+    return plNormalizeWonInputText(v);
+  }
   function plDisplayMan(v) {
     var disp = plDisplayMoney(v);
     return disp ? (disp + '만') : '';
@@ -43005,9 +43081,19 @@ window.addEventListener('DOMContentLoaded', () => {
     var wonFromSavedWon = plSavedField(raw, ['낙찰가','낙찰가_원','최고입찰가','최고입찰가_원'], '');
     var wonFromSavedMan = plSavedField(raw, ['낙찰가_만원','낙찰가(만원)','최고입찰가_만원'], '');
     var nextWon = '';
-    if (wonFromSavedWon) nextWon = plParseWonText(wonFromSavedWon);
-    if (!nextWon && wonFromSavedMan) nextWon = plParseWonText(String(wonFromSavedMan).trim() + '만');
-    if (nextWon && plDiffers(nextResult.won || '', nextWon)) nextResult.won = nextWon;
+    var wonFromSavedWonParsed = wonFromSavedWon ? Number(plParseWonText(wonFromSavedWon)) : 0;
+    var wonFromSavedManParsed = wonFromSavedMan ? Number(plParseWonText(String(wonFromSavedMan).trim() + '만')) : 0;
+    if (wonFromSavedWonParsed > 0 && wonFromSavedManParsed > 0) {
+      // 과거 데이터에서 낙찰가(원) 필드에 만원값이 들어간 케이스를 보정
+      var wonScaled = wonFromSavedWonParsed * 10000;
+      var closeToMan = Math.abs(wonScaled - wonFromSavedManParsed) <= Math.max(10000, Math.round(wonFromSavedManParsed * 0.02));
+      nextWon = closeToMan ? String(wonFromSavedManParsed) : String(wonFromSavedWonParsed);
+    } else if (wonFromSavedWonParsed > 0) {
+      nextWon = String(wonFromSavedWonParsed);
+    } else if (wonFromSavedManParsed > 0) {
+      nextWon = String(wonFromSavedManParsed);
+    }
+    if (nextWon && plDiffers(nextResult.won || '', nextWon)) nextResult.won = plNormalizeWonInputText(nextWon);
     var hasCloseMemo = Object.prototype.hasOwnProperty.call(raw, '종료메모');
     var nextMemo = hasCloseMemo ? String(raw['종료메모'] || '') : String(src.memo || curItem.memo || '');
     var nextBidders = String(plSavedField(raw, ['입찰인수','입찰인원'], curItem.bidders || '') || '').trim();
@@ -43564,32 +43650,122 @@ window.addEventListener('DOMContentLoaded', () => {
     } catch(e) {}
   };
   function plEditMemoCellHtml(id, rawValue) {
-    var key = plDomKey(id, 'memo');
     var txt = String(rawValue || '');
-    var display = txt ? txt.trim() : '';
+    var display = txt.replace(/\s+/g, ' ').trim();
     var safeDisplay = display || '메모 없음';
-    var hint = txt ? '클릭해 보기/수정' : '클릭해 메모 작성';
+    var short = safeDisplay.length > 26 ? safeDisplay.slice(0, 26) + '…' : safeDisplay;
+    var idEsc = plEscHtml(String(id || ''));
+    var title = txt ? txt : '메모 없음';
+    var hasMemo = !!display;
     return ''
-      + '<div id="'+key+'_s" data-k="'+plEscHtml(key)+'" onpointerdown="event.preventDefault();event.stopPropagation();plStartInlineEdit(this.dataset.k)" onclick="event.preventDefault();event.stopPropagation();" '
-      + 'style="cursor:pointer;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03);border-radius:8px;padding:7px 8px;'
-      + 'line-height:1.45;min-height:44px;max-width:320px;color:var(--fg2);'
-      + 'display:flex;flex-direction:column;gap:4px;justify-content:flex-start;overflow:hidden;" '
-      + 'title="'+plEscHtml(txt)+'">'
-      + '<div style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word;white-space:pre-wrap;'
-      + (display ? 'color:var(--fg2);' : 'color:var(--fg3);font-style:italic;') + '">'
-      + plEscHtml(safeDisplay)
+      + '<div style="display:flex;align-items:center;gap:6px;max-width:280px;">'
+      + '<button type="button" onclick="event.stopPropagation();plOpenMemoPreview(\'' + idEsc + '\')" '
+      + 'title="' + plEscHtml(title) + '" '
+      + 'style="flex:1;min-width:0;text-align:left;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03);border-radius:8px;'
+      + 'padding:6px 8px;font-size:11px;line-height:1.4;color:' + (hasMemo ? 'var(--fg2)' : 'var(--fg3)') + ';'
+      + (hasMemo ? '' : 'font-style:italic;')
+      + 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;">'
+      + plEscHtml(short)
+      + '</button>'
+      + '<button type="button" onclick="event.stopPropagation();plOpenMemoEditor(\'' + idEsc + '\')" '
+      + 'style="flex-shrink:0;padding:5px 8px;border-radius:7px;border:1px solid rgba(79,142,255,.35);background:rgba(79,142,255,.12);color:#8ab8ff;font-size:11px;cursor:pointer;">수정</button>'
       + '</div>'
-      + '<div style="font-size:10px;color:var(--fg3);line-height:1.2;">' + plEscHtml(hint) + '</div>'
-      + '</div>'
-      + '<textarea id="'+key+'_i" data-k="'+plEscHtml(key)+'" data-id="'+plEscHtml(id)+'" data-field="memo" rows="6" '
-      + 'onkeydown="if(event.key===\'Escape\'){plCancelInlineEdit(this.dataset.k);}" '
-      + 'onblur="plFinishInlineEdit(this.dataset.id,this.dataset.field,this.dataset.k)" '
-      + 'onclick="event.stopPropagation()" '
-      + 'style="display:none;width:100%;min-width:260px;max-width:360px;min-height:120px;padding:8px 10px;border:1px solid rgba(255,255,255,.16);border-radius:8px;'
-      + 'background:rgba(0,0,0,.35);color:var(--tx);font-size:12px;line-height:1.55;outline:none;resize:vertical;box-sizing:border-box;">'
-      + plEscHtml(txt)
-      + '</textarea>';
+      + '';
   }
+
+  window.plCloseMemoModal = function() {
+    var modal = document.getElementById('plMemoModal');
+    if (!modal) return;
+    if (modal._escHandler) {
+      document.removeEventListener('keydown', modal._escHandler);
+      modal._escHandler = null;
+    }
+    modal.remove();
+  };
+
+  function plOpenMemoModal(itemId, editMode) {
+    window.plCloseMemoModal();
+    var items = plLoad();
+    var it = (items || []).find(function(x){ return String(x && x.id || '') === String(itemId || ''); });
+    if (!it) return;
+    var memo = String(it.memo || '');
+    var title = String(it.addr || it.casenum || '메모');
+
+    var wrap = document.createElement('div');
+    wrap.id = 'plMemoModal';
+    wrap.style.cssText = 'position:fixed;inset:0;z-index:100120;display:flex;align-items:center;justify-content:center;background:rgba(3,6,12,.72);padding:20px;';
+    var modeLabel = editMode ? '메모 수정' : '메모 보기';
+    var readonlyAttr = editMode ? '' : 'readonly ';
+    var memoFooterButtons = editMode
+      ? '<button type="button" id="plMemoCancelBtn" style="padding:7px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.2);background:transparent;color:#cbd5e1;cursor:pointer;">취소</button>'
+        + '<button type="button" id="plMemoSaveBtn" style="padding:7px 12px;border-radius:8px;border:1px solid rgba(79,142,255,.4);background:rgba(79,142,255,.14);color:#9ec5ff;font-weight:700;cursor:pointer;">저장</button>'
+      : '<button type="button" id="plMemoEditBtn" style="padding:7px 12px;border-radius:8px;border:1px solid rgba(79,142,255,.4);background:rgba(79,142,255,.14);color:#9ec5ff;font-weight:700;cursor:pointer;">수정</button>';
+    wrap.innerHTML = ''
+      + '<div style="width:min(640px,92vw);max-height:82vh;background:#101726;border:1px solid rgba(255,255,255,.14);border-radius:14px;display:flex;flex-direction:column;overflow:hidden;">'
+      +   '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.08);">'
+      +     '<div style="min-width:0;">'
+      +       '<div style="font-size:12px;font-weight:700;color:#9fb6de;">' + modeLabel + '</div>'
+      +       '<div style="margin-top:2px;font-size:11px;color:var(--fg3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + plEscHtml(title) + '</div>'
+      +     '</div>'
+      +     '<button type="button" id="plMemoCloseBtn" style="border:none;background:transparent;color:#9fb6de;font-size:18px;cursor:pointer;line-height:1;">×</button>'
+      +   '</div>'
+      +   '<div style="padding:12px 14px;flex:1;min-height:0;">'
+      +     '<textarea id="plMemoEditorInput" ' + readonlyAttr + 'style="width:100%;height:100%;min-height:180px;max-height:52vh;padding:10px 12px;border:1px solid rgba(255,255,255,.14);border-radius:10px;background:rgba(2,6,16,.62);color:var(--tx);font-size:13px;line-height:1.55;resize:vertical;outline:none;box-sizing:border-box;">'
+      +       plEscHtml(memo)
+      +     '</textarea>'
+      +   '</div>'
+      +   '<div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:10px 14px;border-top:1px solid rgba(255,255,255,.08);">'
+      +     memoFooterButtons
+      +   '</div>'
+      + '</div>';
+    document.body.appendChild(wrap);
+
+    var close = function() { window.plCloseMemoModal(); };
+    wrap.addEventListener('click', function(e) { if (e.target === wrap) close(); });
+    var closeBtn = wrap.querySelector('#plMemoCloseBtn');
+    if (closeBtn) closeBtn.onclick = close;
+    var escHandler = function(e) { if (e.key === 'Escape') close(); };
+    wrap._escHandler = escHandler;
+    document.addEventListener('keydown', escHandler);
+
+    var input = wrap.querySelector('#plMemoEditorInput');
+    if (input) {
+      input.scrollTop = 0;
+      if (editMode) {
+        setTimeout(function(){
+          try {
+            input.focus();
+            var len = input.value.length;
+            input.setSelectionRange(len, len);
+          } catch (e) {}
+        }, 30);
+      }
+    }
+
+    if (editMode) {
+      var cancelBtn = wrap.querySelector('#plMemoCancelBtn');
+      var saveBtn = wrap.querySelector('#plMemoSaveBtn');
+      if (cancelBtn) cancelBtn.onclick = close;
+      if (saveBtn) {
+        saveBtn.onclick = function() {
+          var next = String((input && input.value) || '');
+          if (typeof window.plInlineSet === 'function') window.plInlineSet(String(itemId), 'memo', next);
+          close();
+        };
+      }
+    } else {
+      var editBtn = wrap.querySelector('#plMemoEditBtn');
+      if (editBtn) {
+        editBtn.onclick = function() {
+          close();
+          plOpenMemoModal(itemId, true);
+        };
+      }
+    }
+  }
+
+  window.plOpenMemoPreview = function(itemId) { plOpenMemoModal(String(itemId || ''), false); };
+  window.plOpenMemoEditor = function(itemId) { plOpenMemoModal(String(itemId || ''), true); };
 
   window.plStartInlineEdit = function(key) {
     var s = document.getElementById(key + '_s');
@@ -44252,20 +44428,37 @@ window.addEventListener('DOMContentLoaded', () => {
       }
       return true;
     }).sort(function(a,b){
-      // 입찰/매각기일 기준 최신일(최근 날짜) 우선 정렬
-      var aBidRaw = _plNormalizeBiddateValue(a.biddate || '');
-      var bBidRaw = _plNormalizeBiddateValue(b.biddate || '');
-      var aDate = (aBidRaw && aBidRaw !== '미정') ? _plParseDateOnlyLocal(aBidRaw) : null;
-      var bDate = (bBidRaw && bBidRaw !== '미정') ? _plParseDateOnlyLocal(bBidRaw) : null;
-      var aTs = aDate ? aDate.getTime() : null;
-      var bTs = bDate ? bDate.getTime() : null;
+      // 작업룸 정렬과 동일: D-1, D-2 ... → 지난기일(D+1...) → 미정
+      var ad = daysDiff(a.biddate);
+      var bd = daysDiff(b.biddate);
+      var rank = function(dday) {
+        if (dday == null) return 2;
+        if (dday >= 0) return 0;
+        return 1;
+      };
+      var ra = rank(ad);
+      var rb = rank(bd);
+      if (ra !== rb) return ra - rb;
+      if (ra === 0 && ad !== bd) return ad - bd;
+      if (ra === 1 && ad !== bd) return bd - ad;
 
-      if (aTs !== null && bTs !== null && aTs !== bTs) return bTs - aTs;
-      if (aTs !== null && bTs === null) return -1;
-      if (aTs === null && bTs !== null) return 1;
+      var priceMan = function(it) {
+        var minp = Number(plParseAmountText(it.minprice || '')) || 0;
+        if (minp > 0) return minp;
+        var appr = Number(plParseAmountText(it.appraisal || '')) || 0;
+        if (appr > 0) return appr;
+        var won = Number(plParseWonText(it.result && it.result.won || '')) || 0;
+        if (won > 0) return Math.round(won / 10000);
+        return 0;
+      };
+      var ap = priceMan(a);
+      var bp = priceMan(b);
+      if (ap !== bp) return bp - ap;
 
-      // 날짜가 같거나 둘 다 미정이면 최근 수정 순
-      return (Number(b.updatedAt||0) - Number(a.updatedAt||0));
+      var an = String(a.casenum || a.addr || a.id || '');
+      var bn = String(b.casenum || b.addr || b.id || '');
+      if (an !== bn) return an.localeCompare(bn, 'ko');
+      return Number(b.updatedAt||0) - Number(a.updatedAt||0);
     });
   }
   window.plToggleOne = function(id, checked) {
@@ -44361,8 +44554,8 @@ window.addEventListener('DOMContentLoaded', () => {
     if (field === 'result_won') {
       var cur0 = plLoad().find(function(i){ return String(i.id) === String(id); });
       if (!cur0) return;
-      var wonVal = plParseWonText(rawValue);
-      var oldWon = cur0.result && cur0.result.won ? String(cur0.result.won) : '';
+      var wonVal = plNormalizeWonInputText(rawValue);
+      var oldWon = plNormalizeWonInputText(cur0.result && cur0.result.won ? String(cur0.result.won) : '');
       if (String(oldWon) === String(wonVal || '')) return;
       var nextResult = Object.assign({}, cur0.result || {});
       nextResult.won = wonVal;
@@ -44373,7 +44566,7 @@ window.addEventListener('DOMContentLoaded', () => {
     var patch = {};
     var value = rawValue;
     if (['appraisal','minprice','deposit','monthly'].indexOf(field) >= 0) value = plParseAmountText(rawValue);
-    if (field === 'estimate') value = plParseWonText(rawValue);
+    if (field === 'estimate') value = plNormalizeWonInputText(rawValue);
     if (field === 'biddate') value = plNormalizeDateInput(rawValue);
     // 값이 실제로 바뀌지 않으면 저장/동기화 생략 (클릭만 해도 동기화 재시도되는 현상 방지)
     var cur = plLoad().find(function(i){ return String(i.id) === String(id); });
@@ -44534,10 +44727,10 @@ window.addEventListener('DOMContentLoaded', () => {
           +   '<div style="font-size:13px;">'+plEditCellHtml(it.id,'biddate',it.biddate||'',fmtDate(it.biddate),{type:'text',align:'left',minw:'72px',placeholder:'YYYY-MM-DD',spanStyle:'color:'+ddayColor+';font-weight:700;border-bottom-color:rgba(255,255,255,.10);'})+'</div>'
           +   dTag
           + '</td>'
-          + '<td style="padding:8px 10px;text-align:right;"><span style="'+(it.estimate?'background:rgba(255,209,102,.12);border-radius:4px;padding:1px 4px;':'')+'">'+plEditCellHtml(it.id,'estimate',plDisplayMoney(plParseWonText(it.estimate||'')),plDisplayWon(it.estimate||''),{type:'text',align:'right',minw:'72px',placeholder:'원',spanStyle:'color:#ffd166;font-weight:700;'})+'</span></td>'
+          + '<td style="padding:8px 10px;text-align:right;"><span style="'+(it.estimate?'background:rgba(255,209,102,.12);border-radius:4px;padding:1px 4px;':'')+'">'+plEditCellHtml(it.id,'estimate',plDisplayWonInput(it.estimate||''),plDisplayWonInput(it.estimate||''),{type:'text',align:'right',minw:'72px',placeholder:'원',spanStyle:'color:#ffd166;font-weight:700;'})+'</span></td>'
           + '<td style="padding:8px 10px;text-align:center;cursor:pointer;" onclick="event.stopPropagation();plToggleSite(\''+it.id+'\')">'+siteDots(it.site)+'</td>'
           + '<td style="padding:8px 10px;" onclick="event.stopPropagation()">'+wrLink+'</td>'
-          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'result_won',plDisplayMoney(plParseWonText((it.result&&it.result.won)||'')),plDisplayWon((it.result&&it.result.won)||''),{type:'text',align:'right',minw:'76px',placeholder:'원',spanStyle:'color:#4caf87;font-weight:700;'})+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'result_won',plDisplayWonInput((it.result&&it.result.won)||''),plDisplayWonInput((it.result&&it.result.won)||''),{type:'text',align:'right',minw:'76px',placeholder:'원',spanStyle:'color:#4caf87;font-weight:700;'})+'</td>'
           + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'bidders',it.bidders||'',it.bidders||'',{type:'text',align:'right',minw:'44px',placeholder:'—',empty:'—',spanStyle:'font-size:11px;'})+'</td>'
           + '<td style="padding:8px 10px;min-width:210px;max-width:260px;overflow:visible;">'+plEditMemoCellHtml(it.id,it.memo||'')+'</td>'
           + '<td style="padding:8px 6px;text-align:center;"><button onclick="event.stopPropagation();plOpenEdit(\''+it.id+'\')" style="background:none;border:none;color:var(--fg3);cursor:pointer;font-size:15px;padding:2px 4px;">···</button></td>'
@@ -44958,7 +45151,7 @@ window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('pl-f-minprice').value = plDisplayMoney(it.minprice||'');
     document.getElementById('pl-f-round').value = it.round||'';
     document.getElementById('pl-f-biddate').value = it.biddate||'';
-    document.getElementById('pl-f-estimate').value = plDisplayMoney(plParseWonText(it.estimate||''));
+    document.getElementById('pl-f-estimate').value = plDisplayWonInput(it.estimate||'');
     document.getElementById('pl-f-deposit').value = plDisplayMoney(it.deposit||'');
     document.getElementById('pl-f-monthly').value = plDisplayMoney(it.monthly||'');
     document.getElementById('pl-f-site').value = it.site||'0';
@@ -45033,8 +45226,8 @@ window.addEventListener('DOMContentLoaded', () => {
         el.addEventListener('input', function(){ window.plInlineMoneyFormat(this); });
         el.addEventListener('blur', function(){
           // 원 단위 숫자 입력을 기본으로 정규화
-          var parsed = (this.id === 'pl-f-estimate') ? plParseWonText(this.value) : plParseAmountText(this.value);
-          this.value = parsed ? Number(parsed).toLocaleString('ko-KR') : '';
+          var parsed = (this.id === 'pl-f-estimate') ? plNormalizeWonInputText(this.value) : plParseAmountText(this.value);
+          this.value = parsed ? String(parsed) : '';
         });
       });
     }, 0);
@@ -45059,7 +45252,7 @@ window.addEventListener('DOMContentLoaded', () => {
       minprice:  plParseAmountText(document.getElementById('pl-f-minprice').value),
       round:     document.getElementById('pl-f-round').value.trim(),
       biddate:   plNormalizeDateInput(document.getElementById('pl-f-biddate').value),
-      estimate:  plParseWonText(document.getElementById('pl-f-estimate').value),
+      estimate:  plNormalizeWonInputText(document.getElementById('pl-f-estimate').value),
       deposit:   plParseAmountText(document.getElementById('pl-f-deposit').value),
       monthly:   plParseAmountText(document.getElementById('pl-f-monthly').value),
       site:      document.getElementById('pl-f-site').value,
@@ -45183,6 +45376,20 @@ window.addEventListener('DOMContentLoaded', () => {
     var deposit = plSavedField(norm, ['보증금_만원'], '') || (plSavedField(raw, ['임차인_보증금'], '') ? String(Math.round(parseInt(String(plSavedField(raw,['임차인_보증금'],'')).replace(/[^0-9]/g,''),10)/10000)) : '') || src.deposit || '';
     var monthly = plSavedField(norm, ['월세_만원'], '') || plSavedField(raw, ['임차인_월세'], '') || src.monthly || '';
     var failCount = plSavedField(norm,['유찰횟수'],'') || plSavedField(raw,['유찰횟수'],'') || '';
+    var estimateWonRaw = plSavedField(raw, ['예상입찰가','추천낙찰가','추천입찰가','입찰가'], '');
+    var estimateManRaw = plSavedField(raw, ['예상입찰가_만원','추천낙찰가_만원','추천입찰가_만원'], '');
+    var estimateParsedWon = estimateWonRaw ? Number(plParseWonText(estimateWonRaw)) : 0;
+    var estimateParsedMan = estimateManRaw ? Number(plParseWonText(String(estimateManRaw).trim() + '만')) : 0;
+    var estimateFromSaved = '';
+    if (estimateParsedWon > 0 && estimateParsedMan > 0) {
+      var estWonScaled = estimateParsedWon * 10000;
+      var estCloseToMan = Math.abs(estWonScaled - estimateParsedMan) <= Math.max(10000, Math.round(estimateParsedMan * 0.02));
+      estimateFromSaved = String(estCloseToMan ? estimateParsedMan : estimateParsedWon);
+    } else if (estimateParsedWon > 0) {
+      estimateFromSaved = String(estimateParsedWon);
+    } else if (estimateParsedMan > 0) {
+      estimateFromSaved = String(estimateParsedMan);
+    }
     return plNormalizeItem({
       id: 'pl_' + String(src.id || Date.now()),
       linkedSavedId: String(src.id || ''),
@@ -45197,7 +45404,7 @@ window.addEventListener('DOMContentLoaded', () => {
       minprice: minprice,
       round: failCount !== '' ? (String(failCount) + '회 유찰') : (src.round || ''),
       biddate: plNormalizeDateInput(bidDate),
-      estimate: src.estimate || '',
+      estimate: plNormalizeWonInputText(src.estimate || estimateFromSaved || ''),
       deposit: deposit,
       monthly: monthly,
       memo: src.memo || ''
