@@ -26918,7 +26918,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const now = new Date();
       const nowIdx = now.getFullYear() * 12 + now.getMonth();
       const itemIdx = _txMonthIndex(item && item.year, item && item.month);
-      if (itemIdx == null) return false;
+      // 거래년월이 비어있는 기존 CSV/레거시 데이터는 제외하지 않는다.
+      if (itemIdx == null) return true;
       const diff = nowIdx - itemIdx;
       return diff >= 0 && diff < months;
     }
@@ -27019,14 +27020,34 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       out.resultMsg = _txXmlText(xml, ['resultMsg']);
       const items = Array.from(xml.getElementsByTagName('item') || []);
       if (!items.length) return out;
+      const _pickAnyNumeric = (itemEl, matcher) => {
+        if (!itemEl || !itemEl.children) return '';
+        const children = Array.from(itemEl.children || []);
+        for (const ch of children) {
+          const tag = String(ch.tagName || ch.nodeName || '').toLowerCase();
+          if (!matcher(tag)) continue;
+          const txt = String(ch.textContent || '').trim();
+          if (!txt) continue;
+          if (/[0-9]/.test(txt)) return txt;
+        }
+        return '';
+      };
       items.forEach(item => {
-        const priceMan = _txParsePriceMan(_txXmlText(item, ['dealAmount', 'DEAL_AMT', '거래금액', '거래금액(만원)', 'thingAmt', 'THNG_AMT']));
+        let amountRaw = _txXmlText(item, [
+          'dealAmount', 'DEAL_AMT', 'dealAmt', 'DEAL_AMT',
+          'objAmt', 'OBJ_AMT', 'thingAmt', 'THNG_AMT', 'thngAmt', 'THNG_AMT',
+          'amount', 'AMOUNT', '거래금액', '거래금액(만원)'
+        ]);
+        if (!amountRaw) {
+          amountRaw = _pickAnyNumeric(item, tag => /(amt|amount|price|거래금액)/i.test(tag));
+        }
+        const priceMan = _txParsePriceMan(amountRaw);
         if (!priceMan) return;
         const umd = _txXmlText(item, ['umdNm', 'UMD_NM', '법정동']);
         const jibun = _txXmlText(item, ['jibun', 'JIBUN', '지번']);
         const bld = _txXmlText(item, ['buildingNm', 'BLDG_NM', '건물명']);
         const floor = _txXmlText(item, ['flr', 'FLR', '층']);
-        const area = _txParseFloat(_txXmlText(item, ['archArea', 'ARCH_AREA', 'excluUseAr', 'EXCLU_USE_AR', '전용면적']));
+        const area = _txParseFloat(_txXmlText(item, ['archArea', 'ARCH_AREA', 'excluUseAr', 'EXCLU_USE_AR', 'buildingAr', 'BLDG_AREA', '전용면적']));
         const dealDay = _txXmlText(item, ['dealDay', 'DEAL_DAY', '거래일', '계약일']);
         const address = [regionLabel, umd, jibun].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
         out.rows.push({
@@ -27075,6 +27096,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       let done = 0;
       const total = lawdInfos.length * months.length;
 
+      const debugStats = { requestTotal: total, fetched: 0, rows: 0, errors: 0, samples: [] };
       for (const info of lawdInfos) {
         for (const ym of months) {
           done++;
@@ -27085,18 +27107,40 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             const raw = await resp.text();
             const parsed = _txParseRtmsXml(raw, ym, info.label);
             const rc = parsed.resultCode;
+            debugStats.fetched += 1;
+            debugStats.rows += parsed.rows.length;
+            if (debugStats.samples.length < 6) {
+              debugStats.samples.push({
+                lawdCd: info.lawdCd,
+                ym,
+                resultCode: rc || '',
+                resultMsg: parsed.resultMsg || '',
+                rows: parsed.rows.length
+              });
+            }
             if (rc && rc !== '00' && rc !== '03') {
               errors.push(`${info.lawdCd}-${ym}: ${parsed.resultMsg || rc}`);
+              debugStats.errors += 1;
               continue;
             }
             if (parsed.rows.length) allRows.push(...parsed.rows);
           } catch (e) {
             errors.push(`${info.lawdCd}-${ym}: ${e.message || e}`);
+            debugStats.errors += 1;
           }
           if (done % 20 === 0) await new Promise(r => setTimeout(r, 40));
         }
       }
       const added = _txMergeRows(allRows);
+      try {
+        window.__txLastFetchDebug = Object.assign({}, debugStats, {
+          added,
+          totalRows: allRows.length,
+          lawdCount: lawdInfos.length,
+          errors: errors.slice(0, 20)
+        });
+        console.info('[RTMS] fetch summary', window.__txLastFetchDebug);
+      } catch (e) {}
       return { ok: true, added, totalRows: allRows.length, requestTotal: total, requestDone: done, errors, lawdCount: lawdInfos.length };
     }
 
@@ -27145,7 +27189,17 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           if (statusEl) {
             const extraYears = Math.max(0, Math.min(8, parseInt(localStorage.getItem('txLookbackExtraYears') || '0', 10) || 0));
             const periodLabel = `최근 ${2 + extraYears}년`;
-            statusEl.textContent = `국토부 API ${periodLabel} 조회 완료 · 신규 ${apiResult.added.toLocaleString()}건 (원본 ${apiResult.totalRows.toLocaleString()}건)`;
+            if ((apiResult.totalRows || 0) === 0) {
+              const errHint = (apiResult.errors && apiResult.errors.length)
+                ? ` · 오류 ${apiResult.errors.length}건`
+                : '';
+              statusEl.textContent = `국토부 API ${periodLabel} 조회 결과 0건${errHint}`;
+              if (apiResult.errors && apiResult.errors.length) {
+                showToast('실거래 API 응답 오류가 있습니다. 콘솔에서 [RTMS] fetch summary를 확인해주세요.', 'warn');
+              }
+            } else {
+              statusEl.textContent = `국토부 API ${periodLabel} 조회 완료 · 신규 ${apiResult.added.toLocaleString()}건 (원본 ${apiResult.totalRows.toLocaleString()}건)`;
+            }
           }
         } else if (statusEl) {
           statusEl.textContent = apiResult.reason === 'no_key'
