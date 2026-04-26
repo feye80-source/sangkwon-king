@@ -11639,15 +11639,25 @@ window.wr2SummaryCancelEdit = function() {
       closedLinkedRoots.forEach(function(meta) { usedNames.add(meta.root.name); });
       var archivedRoots = rootMetas.filter(function(meta) { return !usedNames.has(meta.root.name); });
       var archiveOpen = false;
-      try {
-        archiveOpen = localStorage.getItem('sw_snapshot_archive_open') === '1';
-      } catch(e) {}
+      if (typeof window._swArchiveOpenState === 'boolean') {
+        archiveOpen = window._swArchiveOpenState;
+      } else {
+        try {
+          archiveOpen = localStorage.getItem('sw_snapshot_archive_open') === '1';
+        } catch(e) {}
+      }
       if (!archivedRoots.length) archiveOpen = false;
       var closedOpen = false;
-      try {
-        closedOpen = localStorage.getItem('sw_snapshot_closed_open') === '1';
-      } catch(e) {}
+      if (typeof window._swClosedArchiveOpenState === 'boolean') {
+        closedOpen = window._swClosedArchiveOpenState;
+      } else {
+        try {
+          closedOpen = localStorage.getItem('sw_snapshot_closed_open') === '1';
+        } catch(e) {}
+      }
       if (!closedLinkedRoots.length) closedOpen = false;
+      window._swArchiveOpenState = archiveOpen;
+      window._swClosedArchiveOpenState = closedOpen;
 
       function renderSection(label, count, desc, metas, className) {
         if (!metas.length) return '';
@@ -11676,7 +11686,7 @@ window.wr2SummaryCancelEdit = function() {
         html += '<span>🧊 종료룸 연결 '+closedLinkedRoots.length+'개</span>';
         html += '<span id="swClosedArchiveToggleText">'+(closedOpen ? '접기 ▾' : '펼치기 ▸')+'</span>';
         html += '</button>';
-        html += '<div class="sw-archive-wrap" id="swSnapshotClosedArchive" style="display:'+(closedOpen ? 'flex' : 'none')+';">';
+        html += '<div class="sw-archive-wrap" id="swSnapshotClosedArchive" style="display:'+(closedOpen ? 'block' : 'none')+';">';
         closedLinkedRoots.forEach(function(meta) {
           html += renderSnapRow(meta.root);
         });
@@ -11687,7 +11697,7 @@ window.wr2SummaryCancelEdit = function() {
         html += '<span>📦 보관함 '+archivedRoots.length+'개</span>';
         html += '<span id="swArchiveToggleText">'+(archiveOpen ? '접기 ▾' : '펼치기 ▸')+'</span>';
         html += '</button>';
-        html += '<div class="sw-archive-wrap" id="swSnapshotArchive" style="display:'+(archiveOpen ? 'flex' : 'none')+';">';
+        html += '<div class="sw-archive-wrap" id="swSnapshotArchive" style="display:'+(archiveOpen ? 'block' : 'none')+';">';
         archivedRoots.forEach(function(meta) {
           html += renderSnapRow(meta.root);
         });
@@ -11705,14 +11715,16 @@ window.wr2SummaryCancelEdit = function() {
       var txt = document.getElementById('swArchiveToggleText');
       var hidden = (el.style.display === 'none') || (window.getComputedStyle && window.getComputedStyle(el).display === 'none');
       var willOpen = (typeof forceOpen === 'boolean') ? forceOpen : hidden;
-      el.style.display = willOpen ? 'flex' : 'none';
-      el.style.flexDirection = 'column';
-      el.style.gap = '1px';
+      el.style.display = willOpen ? 'block' : 'none';
       if (btn) btn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
       if (txt) txt.textContent = willOpen ? '접기 ▾' : '펼치기 ▸';
+      window._swArchiveOpenState = !!willOpen;
       try {
         localStorage.setItem('sw_snapshot_archive_open', willOpen ? '1' : '0');
       } catch(e) {}
+      if (willOpen) {
+        try { setTimeout(function(){ el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }, 20); } catch(e) {}
+      }
       return false;
     };
     window.swToggleClosedSnapshotArchive = function(ev, forceOpen) {
@@ -11724,14 +11736,16 @@ window.wr2SummaryCancelEdit = function() {
       var txt = document.getElementById('swClosedArchiveToggleText');
       var hidden = (el.style.display === 'none') || (window.getComputedStyle && window.getComputedStyle(el).display === 'none');
       var willOpen = (typeof forceOpen === 'boolean') ? forceOpen : hidden;
-      el.style.display = willOpen ? 'flex' : 'none';
-      el.style.flexDirection = 'column';
-      el.style.gap = '1px';
+      el.style.display = willOpen ? 'block' : 'none';
       if (btn) btn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
       if (txt) txt.textContent = willOpen ? '접기 ▾' : '펼치기 ▸';
+      window._swClosedArchiveOpenState = !!willOpen;
       try {
         localStorage.setItem('sw_snapshot_closed_open', willOpen ? '1' : '0');
       } catch(e) {}
+      if (willOpen) {
+        try { setTimeout(function(){ el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }, 20); } catch(e) {}
+      }
       return false;
     };
 

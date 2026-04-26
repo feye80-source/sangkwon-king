@@ -668,8 +668,8 @@ body {
 }
 .mb-pl-head {
   display:grid;
-  grid-template-columns:minmax(0,1fr) 64px 66px;
-  gap:8px;
+  grid-template-columns:minmax(0,1fr) 98px 76px;
+  gap:6px;
   padding:6px 10px;
   margin-bottom:4px;
   font-size:10px;
@@ -703,8 +703,8 @@ body {
 .mb-pl-row {
   position: relative;
   display:grid;
-  grid-template-columns:minmax(0,1fr) 64px 66px;
-  gap:8px;
+  grid-template-columns:minmax(0,1fr) 98px 76px;
+  gap:6px;
   align-items:center;
   padding:8px 10px;
   margin-bottom:5px;
@@ -784,11 +784,13 @@ body {
   line-height:1.2;
 }
 .mb-pl-price {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 800;
   color: #ff9f43;
   text-align:right;
   white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
   font-variant-numeric:tabular-nums;
 }
 .mb-pl-date {
@@ -796,7 +798,7 @@ body {
   line-height: 1.15;
 }
 .mb-pl-date-main {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   color: #d4def3;
   white-space:nowrap;
@@ -806,6 +808,15 @@ body {
   font-size: 10px;
   font-weight: 800;
   margin-top:1px;
+}
+
+@media (max-width: 390px) {
+  .mb-pl-head,
+  .mb-pl-row {
+    grid-template-columns:minmax(0,1fr) 88px 70px;
+  }
+  .mb-pl-price { font-size: 11px; }
+  .mb-pl-date-main { font-size: 11px; }
 }
 
 /* 저장 카드 — 완전히 재설계 */
@@ -3421,7 +3432,7 @@ input, textarea, select {
 <script>if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
 
 <!-- 공통 로직 -->
-<script src="common.js?v=202604260840"></script>
+<script src="common.js?v=202604261955"></script>
 
 <!-- ════════════════════════════════════════════════════════
      mobile.js — 모바일 전용 초기화 및 UI 제어
@@ -7045,6 +7056,40 @@ input, textarea, select {
       { key: 'won',      label: '✅ 낙찰',   color: '#4ade80' },
       { key: 'sell',     label: '💰 매도',   color: '#f472b6' }
     ];
+    function normalizeWatchStatus(raw) {
+      var v = String(raw || '').trim().toLowerCase();
+      if (!v) return '';
+      if (v === 'overview' || v === '개요' || v === 'interest' || v === '관심') return 'interest';
+      if (v === 'review' || v === '검토' || v === '검토중') return 'review';
+      if (v === 'field' || v === '현장') return 'field';
+      if (v === 'bid' || v === '입찰') return 'bid';
+      if (v === 'won' || v === '낙찰') return 'won';
+      if (v === 'sell' || v === '매도') return 'sell';
+      return '';
+    }
+    function resolveWatchStatus(it) {
+      if (!it) return '';
+      var direct = normalizeWatchStatus(it.watchStatus || it.phase || it.progress);
+      if (direct) return direct;
+      var room = rooms.find(function(r){
+        return (r && (
+          String(r.linkedSavedId || '') === String(it.id || '') ||
+          String(r.auctionId || '') === String(it.id || '') ||
+          ((r.linkedItems || []).map(String).indexOf(String(it.id || '')) >= 0)
+        ));
+      });
+      return normalizeWatchStatus(room && (room.activePhase || room.phase || room.watchStatus));
+    }
+    var normalizedSv = (sv || []).map(function(it){
+      if (!it) return it;
+      var ws = resolveWatchStatus(it);
+      if (!ws && it.watchStatus) ws = normalizeWatchStatus(it.watchStatus);
+      if (!ws) ws = '';
+      if (it.watchStatus === ws) return it;
+      var next = Object.assign({}, it);
+      next.watchStatus = ws;
+      return next;
+    });
 
     function parseSaleDate(v) {
       if (!v || v === '미정') return null;
@@ -7074,7 +7119,10 @@ input, textarea, select {
 
     // ── 매각기일 보드 ──
     if (scheduleEl) {
-      var auctionItems = sv.filter(function(it){ return it && it.mode==='auction'; })
+      scheduleEl.style.maxHeight = '34vh';
+      scheduleEl.style.overflowY = 'auto';
+      scheduleEl.style.webkitOverflowScrolling = 'touch';
+      var auctionItems = normalizedSv.filter(function(it){ return it && it.mode==='auction'; })
         .map(function(it){
           var dt = parseSaleDate((it.data||{})['매각일'] || (it.data||{})['매각기일']);
           return dt ? { it: it, dt: dt, dday: calcDday(dt) } : null;
@@ -7084,7 +7132,7 @@ input, textarea, select {
       } else {
         scheduleEl.style.display = 'block';
         var html = '<div style="font-size:12px;font-weight:700;color:var(--tx);margin-bottom:8px;">📅 매각기일 보드 <span style="font-size:10px;color:var(--di);">'+auctionItems.length+'건</span></div>';
-        html += '<div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;">';
+        html += '<div style="display:flex;align-items:flex-start;gap:8px;overflow-x:auto;padding-bottom:4px;">';
         var grouped = [];
         auctionItems.forEach(function(e){
           var key = localDateKey(e.dt);
@@ -7096,7 +7144,7 @@ input, textarea, select {
           var c = g.dday<0?'#6b7280':g.dday===0?'#ff6370':g.dday<=3?'#ff8c42':g.dday<=7?'#fbbf24':'#4ade80';
           var dl = g.dday<0?'종료':g.dday===0?'D-Day':'D-'+g.dday;
           var mo = g.dt.getMonth()+1, da = g.dt.getDate(), wd=['일','월','화','수','목','금','토'][g.dt.getDay()];
-          html += '<div style="min-width:160px;background:rgba(14,17,24,.92);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:8px;flex-shrink:0;">';
+          html += '<div style="min-width:150px;max-height:250px;overflow-y:auto;-webkit-overflow-scrolling:touch;background:rgba(14,17,24,.92);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:8px;flex-shrink:0;">';
           html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">';
           html += '<span style="font-size:12px;font-weight:700;color:#e8edf5;">'+mo+'/'+da+' ('+wd+')</span>';
           html += '<span style="font-size:10px;font-weight:700;color:'+c+';background:'+c+'18;border:1px solid '+c+'33;padding:1px 6px;border-radius:99px;">'+dl+'</span></div>';
@@ -7126,7 +7174,7 @@ input, textarea, select {
     listEl.innerHTML = '';
     var anyItem = false;
     STATUSES.forEach(function(st){
-      var items = sv.filter(function(it){ return it && it.watchStatus===st.key; });
+      var items = normalizedSv.filter(function(it){ return it && normalizeWatchStatus(it.watchStatus)===st.key; });
       if (!items.length) return;
       anyItem = true;
       if (sortKey==='saledate') items.sort(function(a,b){
@@ -7176,6 +7224,49 @@ input, textarea, select {
       });
       listEl.appendChild(section);
     });
+    var unclassified = normalizedSv.filter(function(it){
+      return it && !normalizeWatchStatus(it.watchStatus);
+    });
+    if (unclassified.length) {
+      anyItem = true;
+      var sec = document.createElement('div');
+      sec.innerHTML = '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">'
+        + '<span style="font-size:12px;font-weight:700;color:#94a3b8;">🧩 미분류</span>'
+        + '<span style="font-size:10px;background:rgba(148,163,184,.18);color:#cbd5e1;padding:1px 6px;border-radius:99px;">'+unclassified.length+'</span>'
+        + '</div>';
+      unclassified.slice(0, 60).forEach(function(it){
+        var d = it.data || {};
+        var ia = it.mode==='auction';
+        var priceStr = ia ? fmtPrice(d['감정가']) : fmtPrice(d['매매가']);
+        var dt = parseSaleDate(d['매각일']||d['매각기일']);
+        var ddayHtml = '';
+        if (ia && dt) {
+          var dd = calcDday(dt);
+          var dc = dd<0?'#6b7280':dd<=3?'#ff6370':dd<=7?'#f97316':'#4ade80';
+          ddayHtml = '<span style="font-size:10px;font-weight:700;color:'+dc+';">'+( dd<0?'종료':dd===0?'D-Day':'D-'+dd)+'</span>';
+        }
+        var lr = rooms.find(function(r){ return (r.linkedItems||[]).map(String).indexOf(String(it.id))>=0 || String(r.linkedSavedId||'')===String(it.id); });
+        var sidJs = String(it.id || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        var ridJs = String(lr && lr.id || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        var card = document.createElement('div');
+        card.style.cssText = 'background:var(--s2);border-radius:8px;border:1px solid var(--b1);padding:9px 11px;margin-bottom:6px;cursor:pointer;';
+        card.onclick = function(){ if(window.openPopup) openPopup(it.id); };
+        card.innerHTML = '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:4px;">'
+          + '<div style="font-size:12px;font-weight:600;color:var(--tx);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(it.title||d['소재지']||it.id)+'</div>'
+          + '<div style="display:flex;align-items:center;gap:4px;flex-shrink:0;">'+ddayHtml+'</div></div>'
+          + '<div style="font-size:10px;color:var(--mu);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(String(d['소재지']||''))+'</div>'
+          + '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:5px;">'
+          + '<span style="font-size:12px;font-weight:700;color:'+(ia?'#ff9944':'#4f8eff')+';">'+priceStr+'</span>'
+          + '<div style="display:flex;gap:4px;">'
+          + '<button onclick="event.stopPropagation();mbPlOpenDetail(\''+sidJs+'\')" style="padding:2px 7px;background:rgba(79,142,255,.10);border:1px solid rgba(79,142,255,.35);border-radius:5px;color:#8ab8ff;font-size:10px;font-weight:700;cursor:pointer;">상세</button>'
+          + (lr ? '<button onclick="event.stopPropagation();mbPlOpenRoom(\''+ridJs+'\')" style="padding:2px 7px;background:rgba(17,157,237,.12);border:1px solid rgba(17,157,237,.35);border-radius:5px;color:#119ded;font-size:10px;font-weight:600;cursor:pointer;">작업룸</button>'
+          : '<button onclick="event.stopPropagation();if(window._wbCreateAndLink)_wbCreateAndLink(\''+sidJs+'\')" style="padding:2px 7px;background:rgba(17,157,237,.06);border:1px dashed rgba(17,157,237,.35);border-radius:5px;color:#119ded;font-size:10px;cursor:pointer;">＋룸</button>')
+          + '</div>'
+          + '</div>';
+        sec.appendChild(card);
+      });
+      listEl.appendChild(sec);
+    }
     if (!anyItem) {
       listEl.innerHTML = '<div style="text-align:center;padding:40px 16px;color:var(--di);font-size:12px;">'
         + '저장목록에서 +검토 버튼을 눌러<br>파이프라인에 추가하세요</div>';
