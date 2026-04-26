@@ -5978,6 +5978,13 @@
       overflow: hidden !important;
     }
 
+    /* 설정 탭은 카드가 길어서 개별 스크롤 허용 */
+    #page3 .insw-body>#ipage_cfg {
+      overflow-y: auto !important;
+      overflow-x: hidden !important;
+      -webkit-overflow-scrolling: touch;
+    }
+
     /* 탭별 내부 래퍼들이 제각각 max-width를 가지고 있어도 강제로 통일 */
     #page3 .insw-body .ins-wrap,
     #page3 .insw-body .calc-two,

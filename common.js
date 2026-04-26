@@ -11164,6 +11164,7 @@ window.wr2SummaryCancelEdit = function() {
       const scenes = getWorkScenes();
       const scene = scenes.find(s => s.name === name && s.parentName === (parentName || null));
       if (!scene) { showToast('⚠️ 스냅샷을 찾을 수 없음', 'warn'); return; }
+      const latestSaved = (typeof getSv === 'function') ? (getSv() || []) : [];
       if (typeof window.mbGoPage === 'function') {
         window.mbGoPage('map', document.getElementById('mb-tab-map'));
         setTimeout(function() { clearMapMarkers(); }, 500);
@@ -11178,8 +11179,18 @@ window.wr2SummaryCancelEdit = function() {
         setTimeout(() => {
           try {
             const coords = new kakao.maps.LatLng(parseFloat(c.lat), parseFloat(c.lng));
-            c.item.lat = parseFloat(c.lat); c.item.lng = parseFloat(c.lng);
-            addMapMarker(c.item, coords);
+            const snapItem = c.item || {};
+            const snapItemId = String(snapItem.id || c.id || '').replace(/^marker_/, '');
+            const liveItem = latestSaved.find(function(it) { return it && String(it.id) === snapItemId; });
+            const loadItem = liveItem
+              ? JSON.parse(JSON.stringify(liveItem))
+              : JSON.parse(JSON.stringify(snapItem));
+            loadItem.lat = parseFloat(c.lat);
+            loadItem.lng = parseFloat(c.lng);
+            if (!loadItem.data) loadItem.data = {};
+            loadItem.data.lat = loadItem.lat;
+            loadItem.data.lng = loadItem.lng;
+            addMapMarker(loadItem, coords);
             // ★ [FIX] 스냅샷으로 추가된 마커에 _isSnap + _userLoaded 플래그 부여
             setTimeout(() => {
               const ov = mapOverlays.find(o => o.id === c.id);
@@ -11199,8 +11210,9 @@ window.wr2SummaryCancelEdit = function() {
           const ov = mapOverlays.find(o => o.id === c.id);
           if (ov) { ov.isOpen = c.isOpen; try { ov.overlay.setMap(c.isOpen ? map : null); } catch (e) { } }
           updateMapLine && updateMapLine(c.id);
-          // ★ [FIX] 스냅샷 메모 복원: item.memo → DOM textarea에 반영
-          const memo = (c.item && c.item.memo) || '';
+          // ★ 최신 저장 데이터 기반 메모 사용 (스냅샷은 레이아웃만 복원)
+          const liveOv = mapOverlays.find(o => o.id === c.id);
+          const memo = (liveOv && liveOv.item && liveOv.item.memo) || '';
           const memoTA = el.querySelector('.map-card-memo');
           if (memoTA) {
             memoTA.value = memo;
@@ -11261,9 +11273,8 @@ window.wr2SummaryCancelEdit = function() {
           }
           return s;
         });
-        const removedNames = !pn ? [name].concat(children.map(c => c.name)) : [name];
-        _removeSnapshotRefsFromRooms(removedNames);
-        setWorkScenes(withTombstone); swRenderSnapTree(); showToast('🗑 삭제됨', 'ok');
+        // 지도 탭 스냅샷만 삭제하고, 작업룸에 저장된 스냅샷/이미지는 유지
+        setWorkScenes(withTombstone); swRenderSnapTree(); showToast('🗑 삭제됨 (작업룸 데이터 유지)', 'ok');
       });
     };
 
@@ -21790,7 +21801,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const now = Date.now();
       if (!window.__cardMarkTapAt) window.__cardMarkTapAt = {};
       const last = Number(window.__cardMarkTapAt[key] || 0);
-      if (last && (now - last) < 320) return false;
+      if (last && (now - last) < 140) return false;
       window.__cardMarkTapAt[key] = now;
       if (typeof window.toggleCardMark === 'function') window.toggleCardMark(itemId, ev);
       return false;
@@ -21832,8 +21843,16 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           if (String(m.id || '') === markerId || (m.item && String(m.item.id || '') === idStr)) m.item = item;
         });
       } catch (_) {}
-      setSv(sv);
-      showToast(nextMarked ? '⭐ 카드 선택됨 (테두리 강조)' : '★ 선택 해제됨', 'ok');
+      // 저장 반영은 짧은 디바운스로 배치 처리 (연속 클릭 시 프레임 드랍 방지)
+      if (!window.__cardMarkPersist) window.__cardMarkPersist = { timer: null, sv: null };
+      window.__cardMarkPersist.sv = sv;
+      if (window.__cardMarkPersist.timer) clearTimeout(window.__cardMarkPersist.timer);
+      window.__cardMarkPersist.timer = setTimeout(function() {
+        try {
+          if (window.__cardMarkPersist && window.__cardMarkPersist.sv) setSv(window.__cardMarkPersist.sv);
+        } catch (_) {}
+        if (window.__cardMarkPersist) window.__cardMarkPersist.timer = null;
+      }, 120);
     };
     window.toggleRightsPanel = function (itemId) {
       const id = 'marker_' + itemId;
@@ -27352,14 +27371,43 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const total = lawdInfos.length * months.length;
 
       const debugStats = { requestTotal: total, fetched: 0, rows: 0, errors: 0, samples: [] };
+      const _txFetchRawXml = async function(url) {
+        let directErr = null;
+        try {
+          const resp = await window._proxyFetch(url, { method: 'GET', signal: window._skTimeoutSignal(12000) });
+          if (!resp.ok) throw new Error('HTTP ' + resp.status);
+          return await resp.text();
+        } catch (e) {
+          directErr = e;
+        }
+        const proxyBase = (typeof window._getProxyBase === 'function')
+          ? window._getProxyBase()
+          : (window.PROXY_URL || 'http://localhost:8080');
+        const base = String(proxyBase || '').replace(/\/+$/, '');
+        const isLocalProxy = /localhost:8080|127\.0\.0\.1:8080/.test(base);
+        if (!isLocalProxy) throw directErr || new Error('RTMS direct fetch failed');
+        const pResp = await window._proxyFetch(base + '/fetch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: url }),
+          signal: window._skTimeoutSignal(15000)
+        });
+        if (!pResp.ok) throw new Error('proxy HTTP ' + pResp.status);
+        const pdata = await pResp.json();
+        if (pdata && pdata.status === 'error') {
+          throw new Error(pdata.message || 'proxy fetch error');
+        }
+        const raw = String((pdata && (pdata.html || pdata.body || '')) || '');
+        if (!raw) throw new Error('proxy empty body');
+        return raw;
+      };
       for (const info of lawdInfos) {
         for (const ym of months) {
           done++;
           if (typeof progressCb === 'function') progressCb(done, total, `${info.label} ${ym}`);
           const url = `https://apis.data.go.kr/1613000/RTMSDataSvcNrgTrade/getRTMSDataSvcNrgTrade?serviceKey=${sk}&LAWD_CD=${info.lawdCd}&DEAL_YMD=${ym}&numOfRows=1000&pageNo=1`;
           try {
-            const resp = await fetch(url, { method: 'GET', signal: window._skTimeoutSignal(12000) });
-            const raw = await resp.text();
+            const raw = await _txFetchRawXml(url);
             const parsed = _txParseRtmsXml(raw, ym, info.label);
             const rc = parsed.resultCode;
             debugStats.fetched += 1;
@@ -27392,7 +27440,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           added,
           totalRows: allRows.length,
           lawdCount: lawdInfos.length,
-          errors: errors.slice(0, 20)
+          errors: errors.slice(0, 20),
+          firstError: errors[0] || ''
         });
         console.info('[RTMS] fetch summary', window.__txLastFetchDebug);
       } catch (e) {}
@@ -27450,9 +27499,10 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
               const errHint = (apiResult.errors && apiResult.errors.length)
                 ? ` · 오류 ${apiResult.errors.length}건`
                 : '';
-              statusEl.textContent = `국토부 API ${periodLabel} 조회 결과 0건${errHint}`;
+              const firstErr = (apiResult.errors && apiResult.errors.length) ? String(apiResult.errors[0]).slice(0, 90) : '';
+              statusEl.textContent = `국토부 API ${periodLabel} 조회 결과 0건${errHint}${firstErr ? ` · 예: ${firstErr}` : ''}`;
               if (apiResult.errors && apiResult.errors.length) {
-                showToast('실거래 API 응답 오류가 있습니다. 콘솔에서 [RTMS] fetch summary를 확인해주세요.', 'warn');
+                showToast('실거래 API 응답 오류가 있습니다. 콘솔 [RTMS] fetch summary 첫 오류를 확인해주세요.', 'warn');
               }
             } else {
               statusEl.textContent = `국토부 API ${periodLabel} 조회 완료 · 신규 ${apiResult.added.toLocaleString()}건 (원본 ${apiResult.totalRows.toLocaleString()}건)`;
@@ -33904,15 +33954,57 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       if (dday <= 7) return '#fbbf24';
       return '#4ade80';
     }
+    function _plNormStatus(v) {
+      const s = String(v || '').trim().toLowerCase();
+      if (!s || s === 'undefined' || s === 'null') return '';
+      const map = {
+        interest: 'interest', review: 'review', field: 'field', bid: 'bid', won: 'won', sell: 'sell', pass: 'pass',
+        ph_interest: 'interest', ph_review: 'review', ph_field: 'field', ph_bid: 'bid', ph_won: 'won', ph_sell: 'sell',
+        '개요': 'interest', '관심': 'interest',
+        '검토': 'review', '검토중': 'review',
+        '현장': 'field', '임장': 'field', '현장예정': 'field',
+        '입찰': 'bid', '입찰준비': 'bid',
+        '낙찰': 'won', '완료': 'won',
+        '매도': 'sell', '패스': 'pass'
+      };
+      return map[s] || '';
+    }
+    function _plBuildRoomStatusByItem() {
+      const statusByItem = {};
+      if (typeof wrGetRooms !== 'function') return statusByItem;
+      const rooms = wrGetRooms() || [];
+      rooms.forEach(room => {
+        if (!room) return;
+        const roomStatus = _plNormStatus(room.status || room.phase || room.activePhase);
+        if (!roomStatus || roomStatus === 'pass') return;
+        const ids = [];
+        if (room.linkedSavedId != null) ids.push(String(room.linkedSavedId));
+        if (room.auctionId != null) ids.push(String(room.auctionId));
+        if (room.listingId != null) ids.push(String(room.listingId));
+        (room.linkedItems || []).forEach(id => ids.push(String(id)));
+        ids.forEach(id => { if (id) statusByItem[id] = roomStatus; });
+      });
+      return statusByItem;
+    }
+    function _plCollectPipelineRows() {
+      const sv = getSv();
+      const roomStatusByItem = _plBuildRoomStatusByItem();
+      return (sv || []).map(it => {
+        if (!it) return null;
+        const d = it.data || {};
+        const itemId = String(it.id || '');
+        let status = _plNormStatus(it.watchStatus || roomStatusByItem[itemId] || '');
+        // 상태가 비어 있어도 경매물건은 파이프라인에서 기본 개요로 노출
+        if (!status && String(it.mode || '').toLowerCase() === 'auction') status = 'interest';
+        if (!status || status === 'pass') return null;
+        const saleDt = _plParseAuctionDate(d.매각일 || d.매각기일 || '');
+        return { item: it, saleDt: saleDt, status: status };
+      }).filter(Boolean);
+    }
     function renderPipelineListBoard() {
       const listEl = document.getElementById('pipelineListBoard');
       if (!listEl) return;
-      const sv = getSv();
-      const rows = sv.filter(it => it && it.watchStatus && it.watchStatus !== 'pass').map(it => {
-        const d = it.data || {};
-        const saleDt = _plParseAuctionDate(d.매각일 || d.매각기일 || '');
-        return { item: it, saleDt: saleDt };
-      });
+      const rows = _plCollectPipelineRows();
       const statusMap = { interest: '개요', review: '검토', field: '현장', bid: '입찰', won: '낙찰', sell: '매도' };
       rows.sort((a, b) => {
         const da = a.saleDt ? a.saleDt.getTime() : Number.MAX_SAFE_INTEGER;
@@ -33929,7 +34021,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         const saleDate = entry.saleDt
           ? (entry.saleDt.getFullYear() + '.' + String(entry.saleDt.getMonth() + 1).padStart(2, '0') + '.' + String(entry.saleDt.getDate()).padStart(2, '0'))
           : (d.매각일 || d.매각기일 || '-');
-        const st = statusMap[it.watchStatus] || it.watchStatus;
+        const st = statusMap[entry.status] || entry.status;
         return `<tr onclick="openPopup('${String(it.id).replace(/'/g, "\\'")}')" style="cursor:pointer;">
           <td style="padding:8px 10px;border-bottom:1px solid var(--b1);color:var(--tx);white-space:nowrap;">${_plEsc(st)}</td>
           <td style="padding:8px 10px;border-bottom:1px solid var(--b1);color:var(--tx);font-weight:600;">${_plEsc(it.title || d.소재지 || it.id)}</td>
@@ -33955,13 +34047,10 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     function renderPipelineCalendarBoard() {
       const host = document.getElementById('pipelineListBoard');
       if (!host) return;
-      const sv = getSv();
-      const items = sv.filter(it => it && it.watchStatus && it.watchStatus !== 'pass').map(it => {
-        const d = it.data || {};
-        const saleDt = _plParseAuctionDate(d.매각일 || d.매각기일 || '');
-        if (!saleDt) return null;
-        return { item: it, date: saleDt };
-      }).filter(Boolean).sort((a, b) => a.date - b.date);
+      const items = _plCollectPipelineRows()
+        .filter(entry => entry.saleDt)
+        .map(entry => ({ item: entry.item, date: entry.saleDt }))
+        .sort((a, b) => a.date - b.date);
       if (!items.length) {
         host.innerHTML = '<div style="padding:28px;text-align:center;color:var(--di);font-size:12px;">달력에 표시할 기일 데이터가 없습니다.</div>';
         return;
