@@ -2014,7 +2014,10 @@
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;
     }
     .sw-row:hover .sw-row-name, .sw-kid:hover .sw-row-name { color: #4f8eff; }
-    .sw-row-meta { font-size: 9px; color: var(--di); white-space: nowrap; flex-shrink: 0; }
+    .sw-row-meta {
+      font-size: 9px; color: var(--di); white-space: nowrap; flex-shrink: 0;
+      max-width: 78px; overflow: hidden; text-overflow: ellipsis;
+    }
 
     /* 버튼 그룹: 기본 숨김, 호버 시 노출 */
     .sw-row-btns {
@@ -2046,6 +2049,11 @@
     }
     .sw-add-kid:hover { color: var(--mu); border-color: rgba(255,255,255,.14); }
     .sw-snap-group { display: flex; flex-direction: column; gap: 1px; }
+    @media (max-width: 768px) {
+      .sw-row-main, .sw-kid-main { gap: 4px; padding: 6px 5px; }
+      .sw-row-name { font-size: 12px; }
+      .sw-row-meta { max-width: 64px; font-size: 8.5px; }
+    }
     .sw-snap-summary {
       display: flex;
       flex-wrap: wrap;

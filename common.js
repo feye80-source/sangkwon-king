@@ -11551,7 +11551,11 @@ window.wr2SummaryCancelEdit = function() {
         });
       if (!roots.length) { tree.innerHTML = ''; if (empty) empty.style.display = 'block'; return; }
       if (empty) empty.style.display = 'none';
-      function fmt(ts) { var d=new Date(ts); return (d.getMonth()+1)+'/'+d.getDate()+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
+      function fmtDate(ts) {
+        var d = new Date(ts);
+        if (isNaN(d.getTime())) return '-';
+        return (d.getMonth() + 1) + '/' + d.getDate();
+      }
       function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
       var rooms = [];
       try { rooms = (window._idbCache && window._idbCache['wr2_rooms'] || []); } catch(e){}
@@ -11568,8 +11572,8 @@ window.wr2SummaryCancelEdit = function() {
         rowHtml += '<div class="sw-row" data-n="'+rn+'">';
         rowHtml += '<button class="sw-row-main" onclick="swLoadSnap(this.closest(\'.sw-row\').dataset.n,null)">';
         rowHtml += '<span class="sw-row-icon">📷</span>';
-        rowHtml += '<span class="sw-row-name">'+rn+'</span>';
-        rowHtml += '<span class="sw-row-meta">'+fmt(root.savedAt)+(kids.length?' · '+kids.length+'개':'')+(inRoom?' <span style="color:#10b981;font-size:8px;">저장됨</span>':' <span style="color:#f59e0b;font-size:8px;">미저장</span>')+'</span>';
+        rowHtml += '<span class="sw-row-name" title="'+rn+'">'+rn+'</span>';
+        rowHtml += '<span class="sw-row-meta">'+fmtDate(root.savedAt)+(kids.length?' · '+kids.length+'개':'')+(inRoom?' <span style="color:#10b981;font-size:8px;">저장</span>':' <span style="color:#f59e0b;font-size:8px;">미저장</span>')+'</span>';
         rowHtml += '</button>';
         rowHtml += '<div class="sw-row-btns">';
         rowHtml += '<button onclick="swOverwriteSnap(this.closest(\'.sw-row\').dataset.n,null)" title="덮어쓰기">🔄</button>';
@@ -11583,11 +11587,11 @@ window.wr2SummaryCancelEdit = function() {
         rowHtml += '<div class="sw-snap-group"><div class="sw-kids" id="'+cid+'" style="display:none;">';
         kids.forEach(function(k) {
           var kn = esc(k.name);
-          var kt = String(new Date(k.savedAt).getHours()).padStart(2,'0')+':'+String(new Date(k.savedAt).getMinutes()).padStart(2,'0');
+          var kt = fmtDate(k.savedAt);
           rowHtml += '<div class="sw-kid" data-n="'+kn+'" data-p="'+rn+'">';
           rowHtml += '<button class="sw-kid-main" onclick="swLoadSnap(this.closest(\'.sw-kid\').dataset.n,this.closest(\'.sw-kid\').dataset.p)">';
           rowHtml += '<span style="color:var(--di);font-size:9px;margin-right:2px;">ㄴ</span>';
-          rowHtml += '<span class="sw-row-name" style="font-size:10px;">'+kn+'</span>';
+          rowHtml += '<span class="sw-row-name" style="font-size:10px;" title="'+kn+'">'+kn+'</span>';
           rowHtml += '<span class="sw-row-meta">'+kt+'</span>';
           rowHtml += '</button>';
           rowHtml += '<div class="sw-row-btns">';
@@ -21455,7 +21459,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       ${countBadge}
       <div class="map-card-header" onmousedown="dragMapCard(event,'${id}')">
         <div class="map-card-header-left">
-          ${isAuction ? `<span class="card-type-icon" style="width:24px;height:24px;flex:0 0 24px;display:flex;align-items:center;justify-content:center;font-size:17px;background:none;border:none;box-shadow:none;cursor:pointer;" onmousedown="event.stopPropagation()" onclick="event.stopPropagation();toggleCardMark(\'${item.id}\')">👑</span>` : `<img class="card-type-icon" src="${cardType === 'sale' ? ICON_SALE : ICON_RENT}" alt="" draggable="false" style="cursor:pointer;" onmousedown="event.stopPropagation()" onclick="event.stopPropagation();toggleCardMark(\'${item.id}\')"/>`}
+          ${isAuction ? `<span class="card-type-icon" style="width:24px;height:24px;flex:0 0 24px;display:flex;align-items:center;justify-content:center;font-size:17px;background:none;border:none;box-shadow:none;cursor:pointer;" onpointerdown="return onCardMarkTap(\'${item.id}\',event)" onclick="event.stopPropagation();event.preventDefault();return false;">👑</span>` : `<img class="card-type-icon" src="${cardType === 'sale' ? ICON_SALE : ICON_RENT}" alt="" draggable="false" style="cursor:pointer;" onpointerdown="return onCardMarkTap(\'${item.id}\',event)" onclick="event.stopPropagation();event.preventDefault();return false;"/>`}
           <input class="map-card-title" id="title_${id}" value="${esc(item.title)}" readonly onclick="editCardTitle('${id}')"/>
         </div>
         <div class="map-card-header-right">
@@ -21765,24 +21769,49 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     // ===================================================
     // ★ 경매 카드 권리정보 패널 토글
     // ★ 지도카드 선택 표시 토글 (중요 카드 북마크)
-    window.toggleCardMark = function (itemId) {
+    // pointerdown + click 중복 호출 방지용 탭 헬퍼
+    window.onCardMarkTap = function(itemId, ev) {
+      if (ev) {
+        try { ev.stopPropagation(); } catch(_) {}
+        try { ev.preventDefault(); } catch(_) {}
+      }
+      const key = String(itemId || '');
+      const now = Date.now();
+      if (!window.__cardMarkTapAt) window.__cardMarkTapAt = {};
+      const last = Number(window.__cardMarkTapAt[key] || 0);
+      if (last && (now - last) < 220) return false;
+      window.__cardMarkTapAt[key] = now;
+      if (typeof window.toggleCardMark === 'function') window.toggleCardMark(itemId, ev);
+      return false;
+    };
+    window.toggleCardMark = function (itemId, ev) {
+      if (ev) {
+        try { ev.stopPropagation(); } catch(_) {}
+        try { ev.preventDefault(); } catch(_) {}
+      }
+      const idStr = String(itemId || '').trim();
+      if (!idStr) return;
+      const cardEl = document.getElementById('marker_' + idStr);
       const sv = getSv();
-      const item = sv.find(s => s.id === itemId);
-      if (!item) return;
-      item.marked = !item.marked;
-      setSv(sv);
-      // 카드 DOM에 클래스 즉시 반영
-      const cardEl = document.getElementById('marker_' + itemId);
+      const item = sv.find(function(s){ return s && String(s.id) === idStr; });
+      if (!item) {
+        // 저장목록에 없는 카드여도 UI 토글은 즉시 반영
+        if (cardEl) cardEl.classList.toggle('card-marked');
+        return;
+      }
+      const nextMarked = !item.marked;
+      item.marked = nextMarked;
+      // 무거운 저장(setSv) 전에 UI를 먼저 반영해서 즉시성 확보
       if (cardEl) {
-        cardEl.classList.toggle('card-marked', !!item.marked);
-        // CSS 애니메이션으로 처리 — inline style 초기화만
+        cardEl.classList.toggle('card-marked', !!nextMarked);
         const iconEl = cardEl.querySelector('.card-type-icon');
         if (iconEl) {
           iconEl.style.boxShadow = '';
           iconEl.style.border = '';
         }
       }
-      showToast(item.marked ? '⭐ 카드 선택됨 (테두리 강조)' : '★ 선택 해제됨', 'ok');
+      setSv(sv);
+      showToast(nextMarked ? '⭐ 카드 선택됨 (테두리 강조)' : '★ 선택 해제됨', 'ok');
     };
     window.toggleRightsPanel = function (itemId) {
       const id = 'marker_' + itemId;
