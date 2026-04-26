@@ -676,6 +676,30 @@ body {
   color:var(--di);
   border-bottom:1px solid rgba(255,255,255,.08);
 }
+.mb-pl-status-tabs {
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:6px;
+  padding:6px 12px 8px;
+  border-bottom:1px solid rgba(255,255,255,.06);
+}
+.mb-pl-stab {
+  min-height:32px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.12);
+  background:rgba(255,255,255,.04);
+  color:var(--mu);
+  font-size:11px;
+  font-weight:700;
+  cursor:pointer;
+  font-family:inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+.mb-pl-stab.active {
+  border-color:rgba(79,142,255,.45);
+  background:rgba(79,142,255,.16);
+  color:#9bc0ff;
+}
 .mb-pl-row {
   position: relative;
   display:grid;
@@ -722,14 +746,16 @@ body {
 .mb-pl-badges { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; }
 .mb-pl-actions { display:inline-flex; align-items:center; gap:4px; margin-left:2px; }
 .mb-pl-act {
-  padding:1px 5px;
+  min-height:24px;
+  padding:2px 7px;
   border-radius:999px;
   border:1px solid rgba(255,255,255,.14);
   background:rgba(255,255,255,.05);
   color:var(--mu);
-  font-size:9px;
+  font-size:10px;
   line-height:1.25;
   cursor:pointer;
+  -webkit-tap-highlight-color: transparent;
 }
 .mb-pl-act.room {
   color:#8ab8ff;
@@ -2583,16 +2609,22 @@ input, textarea, select {
     <div id="mb-ins-plist" class="mb-ins-panel" style="padding:0;overflow:hidden;">
       <div id="mb-plist-wrap" style="display:flex;flex-direction:column;height:100%;min-height:0;overflow:hidden;">
         <!-- 검색/필터 헤더 -->
-        <div style="padding:8px 12px;display:flex;gap:6px;align-items:center;flex-shrink:0;border-bottom:1px solid var(--b1);">
+        <div style="padding:8px 12px 6px;display:flex;gap:6px;align-items:center;flex-shrink:0;border-bottom:1px solid var(--b1);">
           <input id="mb-plist-search" type="text" placeholder="🔍 검색..." oninput="mbPlistRender()"
             style="flex:1;padding:6px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;color:var(--tx);font-size:12px;outline:none;">
-          <select id="mb-plist-status" onchange="mbPlistRender()"
-            style="padding:5px 8px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;color:var(--tx);font-size:11px;outline:none;">
+          <select id="mb-plist-status" onchange="mbPlSetStatusFilter(this.value)"
+            style="display:none;padding:5px 8px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;color:var(--tx);font-size:11px;outline:none;">
             <option value="">전체</option>
             <option value="active">활성</option>
             <option value="changed">변경</option>
             <option value="closed">종료</option>
           </select>
+        </div>
+        <div class="mb-pl-status-tabs" role="tablist" aria-label="물건 상태 필터">
+          <button class="mb-pl-stab active" data-v="" onclick="mbPlSetStatusFilter('')">전체</button>
+          <button class="mb-pl-stab" data-v="active" onclick="mbPlSetStatusFilter('active')">활성</button>
+          <button class="mb-pl-stab" data-v="changed" onclick="mbPlSetStatusFilter('changed')">변경</button>
+          <button class="mb-pl-stab" data-v="closed" onclick="mbPlSetStatusFilter('closed')">종료</button>
         </div>
         <!-- 리스트 -->
         <div id="mb-plist-body" style="flex:1;min-height:0;overflow-y:auto;padding:6px 8px 2px;"></div>
@@ -3389,7 +3421,7 @@ input, textarea, select {
 <script>if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
 
 <!-- 공통 로직 -->
-<script src="common.js?v=202604260710"></script>
+<script src="common.js?v=202604260840"></script>
 
 <!-- ════════════════════════════════════════════════════════
      mobile.js — 모바일 전용 초기화 및 UI 제어
@@ -3712,6 +3744,13 @@ input, textarea, select {
         } else if (sel2 && sel2.value && activeRooms.find(function(r) { return r && r.id === sel2.value; })) {
           mbRoomLoad(sel2.value, { cloud: false });
         } else {
+          var keepCurrent = String(window._mbActiveRoomId || '').trim();
+          if (keepCurrent && activeRooms.find(function(r) { return r && r.id === keepCurrent; })) {
+            if (sel2) sel2.value = keepCurrent;
+            mbRoomLoad(keepCurrent, { cloud: false });
+            window._mbPendingRoomOpenId = '';
+            return;
+          }
           if (forcedAfterSync) {
             window._mbPendingRoomOpenId = '';
             mbToast('선택한 작업룸을 찾을 수 없어요', 'warn');
@@ -3726,7 +3765,9 @@ input, textarea, select {
     }
     // 물건리스트 탭
     if (name === 'plist') {
-      if (typeof window.mbPlistRender === 'function') window.mbPlistRender();
+      var curSt = ((document.getElementById('mb-plist-status') || {}).value || '');
+      if (typeof window.mbPlSetStatusFilter === 'function') window.mbPlSetStatusFilter(curSt);
+      else if (typeof window.mbPlistRender === 'function') window.mbPlistRender();
     }
     if (name === 'site') {
       if (typeof window._siteHydrateKeysFromIdb === 'function') {
@@ -6709,16 +6750,18 @@ input, textarea, select {
       window._mbPendingRoomOpenId = rid;
       window._mbRoomDropFilter = 'all';
       if (typeof window.mbInsTab === 'function') window.mbInsTab('room');
-      setTimeout(function() {
-        try {
-          if (typeof window.mbRoomRefreshSel === 'function') window.mbRoomRefreshSel();
-          var sel = document.getElementById('mb-room-sel');
-          if (sel) sel.value = rid;
-          if (typeof window.mbRoomLoad === 'function') window.mbRoomLoad(rid, { cloud: false, keepTab: true });
-        } catch (e3) {}
-      }, 90);
     };
   }
+
+  window.mbPlSetStatusFilter = function(val) {
+    var v = String(val || '');
+    var sel = document.getElementById('mb-plist-status');
+    if (sel) sel.value = v;
+    document.querySelectorAll('.mb-pl-stab').forEach(function(btn) {
+      btn.classList.toggle('active', String(btn.getAttribute('data-v') || '') === v);
+    });
+    if (typeof window.mbPlistRender === 'function') window.mbPlistRender();
+  };
 
   // ── 모바일 물건리스트 렌더 ──────────────────────────────────
   window.mbPlistRender = function() {
@@ -6768,14 +6811,35 @@ input, textarea, select {
       var n = parseInt(String(v || '').replace(/[^0-9]/g, ''), 10) || 0;
       return n > 0 ? n : 0;
     }
-    function fmtMoney(v) {
-      var n = moneyNum(v);
-      if (!n) return '-';
-      if (n >= 100000000) {
-        var e = n / 100000000;
-        return (e >= 10 ? e.toFixed(0) : e.toFixed(1)).replace(/\.0$/, '') + '억';
+    function fmtMoney(v, sourceKey) {
+      var raw = String(v == null ? '' : v).trim();
+      if (!raw) return '-';
+      var onlyNum = moneyNum(raw);
+      if (!onlyNum) return '-';
+      var won = 0;
+      if (/원/.test(raw)) {
+        won = onlyNum;
+      } else if (/억|만/.test(raw)) {
+        // 텍스트 단위가 있으면 pl item 입력 관례(만원)로 변환
+        if (/억/.test(raw)) {
+          var e = 0, m = 0;
+          var em = raw.match(/([\d.,]+)\s*억/);
+          var mm = raw.match(/([\d.,]+)\s*만/);
+          if (em) e = parseFloat(String(em[1]).replace(/,/g, '')) || 0;
+          if (mm) m = parseFloat(String(mm[1]).replace(/,/g, '')) || 0;
+          won = Math.round((e * 10000 + m) * 10000);
+        } else {
+          won = Math.round(onlyNum * 10000);
+        }
+      } else if (sourceKey === 'minprice' || sourceKey === 'appraisal') {
+        // 물건리스트의 핵심 금액 필드(minprice/appraisal)는 내부 만원 단위 저장
+        won = Math.round(onlyNum * 10000);
+      } else {
+        // 그 외는 원/만원 혼재 가능 → 값 크기로 보정
+        won = onlyNum >= 100000000 ? onlyNum : Math.round(onlyNum * 10000);
       }
-      return Math.round(n / 10000).toLocaleString('ko-KR') + '만';
+      if (!won) return '-';
+      return won.toLocaleString('ko-KR') + '원';
     }
     function statusLabel(st) {
       if (st === 'changed') return '변경';
@@ -6789,9 +6853,11 @@ input, textarea, select {
     }
 
     var rooms = [];
+    var savedItems = [];
     try {
       rooms = (window._wrGetRoomsCache && window._wrGetRoomsCache()) ||
         ((window._idbCache && window._idbCache['wr2_rooms']) || JSON.parse(localStorage.getItem('wr2_rooms') || '[]'));
+      savedItems = (typeof window.getSv === 'function') ? (window.getSv() || []) : [];
     } catch (e) {}
     var roomBySaved = {};
     function registerRoomKey(rawKey, room) {
@@ -6809,17 +6875,52 @@ input, textarea, select {
       }
     });
 
+    function findSavedIdForPlItem(it) {
+      if (!it) return '';
+      var candidates = [
+        it.linkedSavedId, it.savedId, it.sourceSavedId, it.auctionId, it.itemId, it.id
+      ].map(function(x){ return String(x || '').trim(); }).filter(Boolean);
+      for (var i = 0; i < candidates.length; i++) {
+        if (savedItems.find(function(sv){ return sv && String(sv.id) === candidates[i]; })) return candidates[i];
+      }
+      var casenum = String(it.casenum || '').trim();
+      if (casenum) {
+        var byCase = savedItems.find(function(sv){
+          var d = sv && sv.data || {};
+          return String(d.사건번호 || d.경매번호 || '').trim() === casenum;
+        });
+        if (byCase && byCase.id) return String(byCase.id);
+      }
+      var addr = String(it.addr || it.region || '').trim();
+      if (addr.length >= 5) {
+        var byAddr = savedItems.find(function(sv){
+          var d = sv && sv.data || {};
+          var sa = String((d.소재지 || sv.title || '')).trim();
+          return sa && (sa.indexOf(addr) >= 0 || addr.indexOf(sa) >= 0);
+        });
+        if (byAddr && byAddr.id) return String(byAddr.id);
+      }
+      return candidates[0] || '';
+    }
+
     items = items.map(function(it) {
       var st = simpleSt(it);
       var bidRaw = String(it.biddate || '').trim();
       var bidDt = parseDate(bidRaw);
       var dday = ddayInfo(bidDt);
-      var priceRaw = it.minprice || it.price || it.bidprice || it.appraisal || '';
-      var room = roomBySaved[String(it.id || '')] || roomBySaved[String(it.linkedSavedId || '')] || roomBySaved[String(it.auctionId || '')] || null;
+      var priceRaw = '';
+      var priceSource = '';
+      if (it.minprice) { priceRaw = it.minprice; priceSource = 'minprice'; }
+      else if (it.price) { priceRaw = it.price; priceSource = 'price'; }
+      else if (it.bidprice) { priceRaw = it.bidprice; priceSource = 'bidprice'; }
+      else if (it.appraisal) { priceRaw = it.appraisal; priceSource = 'appraisal'; }
+      var savedId = findSavedIdForPlItem(it);
+      var room = roomBySaved[String(savedId || '')] || roomBySaved[String(it.id || '')] || roomBySaved[String(it.linkedSavedId || '')] || roomBySaved[String(it.auctionId || '')] || null;
       var title = String(it.addr || it.region || it.casenum || it.id || '물건').trim();
       var sub = [it.casenum || '', it.region || '', room ? ('🗂 ' + (room.title || room.name || '작업룸')) : ''].filter(Boolean).join(' · ');
       return {
         raw: it,
+        savedId: savedId,
         st: st,
         title: title,
         sub: sub,
@@ -6827,7 +6928,7 @@ input, textarea, select {
         bidDt: bidDt,
         dday: dday,
         price: moneyNum(priceRaw),
-        priceText: fmtMoney(priceRaw),
+        priceText: fmtMoney(priceRaw, priceSource),
         intent: String(it.intent || '').trim(),
         roomId: room && room.id ? String(room.id) : ''
       };
@@ -6839,9 +6940,18 @@ input, textarea, select {
       }
       return true;
     }).sort(function(a, b) {
-      var aDays = a.dday ? a.dday.days : 99999;
-      var bDays = b.dday ? b.dday.days : 99999;
-      if (aDays !== bDays) return aDays - bDays;
+      var aDays = a.dday ? a.dday.days : null;
+      var bDays = b.dday ? b.dday.days : null;
+      var rank = function(dday) {
+        if (dday == null) return 2;
+        if (dday >= 0) return 0;
+        return 1;
+      };
+      var ra = rank(aDays);
+      var rb = rank(bDays);
+      if (ra !== rb) return ra - rb;
+      if (ra === 0 && aDays !== bDays) return aDays - bDays;
+      if (ra === 1 && aDays !== bDays) return bDays - aDays;
       if (a.price !== b.price) return b.price - a.price;
       return String(a.title || '').localeCompare(String(b.title || ''), 'ko');
     });
@@ -6859,7 +6969,7 @@ input, textarea, select {
       else if (v.intent === '하') intentChip = '<span class="mb-pl-chip intent-low">하</span>';
       var dateMain = v.bidRaw ? esc(v.bidRaw.replace('T', ' ').slice(0, 10)) : '미입력';
       var ddayLine = v.dday ? ('<div class="mb-pl-date-dday" style="color:' + v.dday.color + ';">' + esc(v.dday.label) + '</div>') : '<div class="mb-pl-date-dday" style="color:var(--di);">기일 없음</div>';
-      var openId = String(it.id || it.linkedSavedId || '').replace(/'/g, "\\'");
+      var openId = String(v.savedId || it.linkedSavedId || it.id || '').replace(/'/g, "\\'");
       var roomId = String(v.roomId || '').replace(/'/g, "\\'");
       return '<div class="mb-pl-row" data-st="' + v.st + '" onclick="mbPlOpenDetail(\'' + openId + '\')">'
         + '<div class="mb-pl-main-col">'
@@ -6982,12 +7092,7 @@ input, textarea, select {
           if (!g) { g={key:key,dt:e.dt,dday:e.dday,items:[]}; grouped.push(g); }
           g.items.push(e.it);
         });
-        var focusIdx = grouped.findIndex(function(g) { return g.dday >= 0; });
-        if (focusIdx < 0) focusIdx = grouped.length - 1;
-        var startIdx = Math.max(0, focusIdx - 1);
-        if (startIdx + 8 > grouped.length) startIdx = Math.max(0, grouped.length - 8);
-        var visibleGroups = grouped.slice(startIdx, startIdx + 8);
-        visibleGroups.forEach(function(g){
+        grouped.forEach(function(g){
           var c = g.dday<0?'#6b7280':g.dday===0?'#ff6370':g.dday<=3?'#ff8c42':g.dday<=7?'#fbbf24':'#4ade80';
           var dl = g.dday<0?'종료':g.dday===0?'D-Day':'D-'+g.dday;
           var mo = g.dt.getMonth()+1, da = g.dt.getDate(), wd=['일','월','화','수','목','금','토'][g.dt.getDay()];
@@ -6995,19 +7100,23 @@ input, textarea, select {
           html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">';
           html += '<span style="font-size:12px;font-weight:700;color:#e8edf5;">'+mo+'/'+da+' ('+wd+')</span>';
           html += '<span style="font-size:10px;font-weight:700;color:'+c+';background:'+c+'18;border:1px solid '+c+'33;padding:1px 6px;border-radius:99px;">'+dl+'</span></div>';
-          g.items.slice(0,3).forEach(function(it){
+          g.items.forEach(function(it){
             var lr = rooms.find(function(r){ return (r.linkedItems||[]).map(String).indexOf(String(it.id))>=0 || String(r.linkedSavedId||'')===String(it.id); });
-            html += '<div onclick="if(window.openPopup)openPopup(\''+esc(it.id)+'\')" style="padding:5px 6px;background:rgba(255,255,255,.04);border-radius:6px;margin-bottom:4px;cursor:pointer;">';
+            var sidJs = String(it.id || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+            var ridJs = String(lr && lr.id || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+            html += '<div style="padding:5px 6px;background:rgba(255,255,255,.04);border-radius:6px;margin-bottom:4px;">';
             html += '<div style="font-size:11px;font-weight:600;color:var(--tx);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(it.title||(it.data||{})['소재지']||it.id)+'</div>';
             if (lr) html += '<div style="font-size:9px;color:#119ded;margin-top:2px;">🗂 '+esc((lr.title||lr.name||'').substring(0,12))+'</div>';
+            html += '<div style="display:flex;gap:4px;margin-top:4px;">'
+              + '<button onclick="event.stopPropagation();mbPlOpenDetail(\''+sidJs+'\')" style="padding:2px 7px;background:rgba(79,142,255,.10);border:1px solid rgba(79,142,255,.35);border-radius:5px;color:#8ab8ff;font-size:10px;font-weight:700;cursor:pointer;">상세</button>'
+              + (lr
+                ? '<button onclick="event.stopPropagation();mbPlOpenRoom(\''+ridJs+'\')" style="padding:2px 7px;background:rgba(17,157,237,.12);border:1px solid rgba(17,157,237,.35);border-radius:5px;color:#119ded;font-size:10px;font-weight:700;cursor:pointer;">작업룸</button>'
+                : '<button onclick="event.stopPropagation();if(window._wbCreateAndLink)_wbCreateAndLink(\''+sidJs+'\')" style="padding:2px 7px;background:rgba(17,157,237,.06);border:1px dashed rgba(17,157,237,.35);border-radius:5px;color:#119ded;font-size:10px;cursor:pointer;">＋룸</button>')
+              + '</div>';
             html += '</div>';
           });
-          if (g.items.length>3) html += '<div style="font-size:10px;color:var(--di);padding:2px;">+' + (g.items.length-3) + '건</div>';
           html += '</div>';
         });
-        if (grouped.length > visibleGroups.length) {
-          html += '<div style="margin-top:6px;font-size:10px;color:var(--di);min-width:100%;">오늘 기준 구간 표시 중 · 총 ' + grouped.length + '개 날짜</div>';
-        }
         html += '</div>';
         scheduleEl.innerHTML = html;
       }
@@ -7044,19 +7153,24 @@ input, textarea, select {
           ddayHtml = '<span style="font-size:10px;font-weight:700;color:'+dc+';">'+( dd<0?'종료':dd===0?'D-Day':'D-'+dd)+'</span>';
         }
         var lr = rooms.find(function(r){ return (r.linkedItems||[]).map(String).indexOf(String(it.id))>=0 || String(r.linkedSavedId||'')===String(it.id); });
+        var sidJs = String(it.id || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        var ridJs = String(lr && lr.id || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
         var card = document.createElement('div');
         card.style.cssText = 'background:var(--s2);border-radius:8px;border:1px solid var(--b1);padding:9px 11px;margin-bottom:6px;cursor:pointer;';
         card.onclick = function(){ if(window.openPopup) openPopup(it.id); };
         card.innerHTML = '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:4px;">'
           + '<div style="font-size:12px;font-weight:600;color:var(--tx);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(it.title||d['소재지']||it.id)+'</div>'
           + '<div style="display:flex;align-items:center;gap:4px;flex-shrink:0;">'+ddayHtml
-          + '<button onclick="event.stopPropagation();if(window.cycleWatchStatus)cycleWatchStatus(\''+esc(it.id)+'\');setTimeout(mbRenderPipeline,80)" style="padding:1px 6px;background:none;border:1px solid var(--b1);border-radius:4px;color:var(--di);font-size:10px;cursor:pointer;">↻</button>'
+          + '<button onclick="event.stopPropagation();if(window.cycleWatchStatus)cycleWatchStatus(\''+sidJs+'\');setTimeout(mbRenderPipeline,80)" style="padding:1px 6px;background:none;border:1px solid var(--b1);border-radius:4px;color:var(--di);font-size:10px;cursor:pointer;">↻</button>'
           + '</div></div>'
           + '<div style="font-size:10px;color:var(--mu);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(String(d['소재지']||''))+'</div>'
           + '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:5px;">'
           + '<span style="font-size:12px;font-weight:700;color:'+(ia?'#ff9944':'#4f8eff')+';">'+priceStr+'</span>'
-          + (lr ? '<button onclick="event.stopPropagation();if(typeof mbInsTab===\'function\')mbInsTab(\'room\');setTimeout(function(){if(typeof mbRoomLoad===\'function\')mbRoomLoad(\''+esc(lr.id)+'\',{cloud:false});},80);" style="padding:2px 7px;background:rgba(17,157,237,.12);border:1px solid rgba(17,157,237,.35);border-radius:5px;color:#119ded;font-size:10px;font-weight:600;cursor:pointer;">🗂</button>'
-          : '<button onclick="event.stopPropagation();if(window._wbCreateAndLink)_wbCreateAndLink(\''+esc(it.id)+'\')" style="padding:2px 7px;background:rgba(17,157,237,.06);border:1px dashed rgba(17,157,237,.35);border-radius:5px;color:#119ded;font-size:10px;cursor:pointer;">＋룸</button>')
+          + '<div style="display:flex;gap:4px;">'
+          + '<button onclick="event.stopPropagation();mbPlOpenDetail(\''+sidJs+'\')" style="padding:2px 7px;background:rgba(79,142,255,.10);border:1px solid rgba(79,142,255,.35);border-radius:5px;color:#8ab8ff;font-size:10px;font-weight:700;cursor:pointer;">상세</button>'
+          + (lr ? '<button onclick="event.stopPropagation();mbPlOpenRoom(\''+ridJs+'\')" style="padding:2px 7px;background:rgba(17,157,237,.12);border:1px solid rgba(17,157,237,.35);border-radius:5px;color:#119ded;font-size:10px;font-weight:600;cursor:pointer;">작업룸</button>'
+          : '<button onclick="event.stopPropagation();if(window._wbCreateAndLink)_wbCreateAndLink(\''+sidJs+'\')" style="padding:2px 7px;background:rgba(17,157,237,.06);border:1px dashed rgba(17,157,237,.35);border-radius:5px;color:#119ded;font-size:10px;cursor:pointer;">＋룸</button>')
+          + '</div>'
           + '</div>';
         section.appendChild(card);
       });

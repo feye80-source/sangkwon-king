@@ -8306,8 +8306,10 @@ window.wr2SummaryCancelEdit = function() {
 
     // CSV 실거래가 데이터 (results 배열과 분리)
     let csvFiles = [];  // 업로드된 CSV 파일 정보 (메타데이터만)
-    let transactionDataRaw = [];  // CSV 원본 데이터 (메모리)
+    let transactionDataRaw = [];  // 실거래 원본 데이터(현재는 API 우선)
     let loadedTransactions = [];  // 현재 지도에 표시중인 실거래가
+    const TX_API_ONLY_MODE = true; // 요구사항: 엑셀/CSV 연결 중단, API 방식만 사용
+    window.TX_API_ONLY_MODE = TX_API_ONLY_MODE;
 
     // IndexedDB 지오코딩 캐시
     let geocodeDB = null;
@@ -8316,30 +8318,66 @@ window.wr2SummaryCancelEdit = function() {
     const GEOCODE_STORE = 'coords';
 
     // ===================================================
-    // CSV 실거래 데이터 IDB 자동저장
+    // 실거래 데이터 IDB 자동저장
     // ===================================================
     const CSV_RAW_STORAGE_KEY = 'csv_transaction_raw';
+    function _isApiTransactionRow(item) {
+      if (!item || typeof item !== 'object') return false;
+      if (item.fromApi === true) return true;
+      const src = String(item.source || '').trim();
+      return src === '국토부실거래API' || src === 'RTMS_API';
+    }
+    function _toApiTransactionRows(arr) {
+      if (!Array.isArray(arr)) return [];
+      return arr.filter(_isApiTransactionRow).map(item => ({
+        name: item.name || '',
+        address: item.address || item.sigungu || (item.dong ? (item.sigungu || '') + ' ' + item.dong : ''),
+        price: item.price,
+        area: item.area || '-',
+        floor: item.floor || '-',
+        year: item.year || '',
+        month: item.month || '',
+        day: item.day || '',
+        lat: item.lat || null,
+        lng: item.lng || null,
+        source: item.source || '국토부실거래API',
+        type: item.type || 'transaction',
+        sigungu: item.sigungu || '',
+        dong: item.dong || '',
+        jibun: item.jibun || '',
+        buildYear: item.buildYear || '',
+        name2: item.name || '',
+        fromApi: true,
+        mode: 'transaction',
+        data: Object.assign({
+          소재지: item.address || item.sigungu || '',
+          매매가_만원: item.price || '',
+          실거래가_만원: item.price || '',
+          거래년월: String(item.year || '') + String(item.month || ''),
+          전용면적_m2: item.area || '',
+          해당층: item.floor || '',
+          층수: item.floor || '',
+          매물유형: '실거래',
+          거래유형: '실거래',
+          출처: item.source || '국토부실거래API'
+        }, (item.data && typeof item.data === 'object') ? item.data : {})
+      }));
+    }
+    function _applyTxApiOnlyUI() {
+      if (!TX_API_ONLY_MODE) return;
+      try {
+        const csvBody = document.getElementById('csvSectionBody');
+        const csvPanel = csvBody ? csvBody.closest('.map-panel-section') : null;
+        if (csvPanel) csvPanel.style.display = 'none';
+        const csvDatasetsEl = document.getElementById('csvDatasets');
+        if (csvDatasetsEl) csvDatasetsEl.style.display = 'none';
+        const csvLoaderBtn = document.getElementById('trade-csv-upload');
+        if (csvLoaderBtn) csvLoaderBtn.disabled = true;
+      } catch (e) { }
+    }
     function saveTransactionRawToStorage() {
       try {
-        const toSave = transactionDataRaw.map(item => ({
-          name: item.name,
-          address: item.address || item.sigungu || (item.dong ? (item.sigungu || '') + ' ' + item.dong : ''),
-          price: item.price,
-          area: item.area || '-',
-          floor: item.floor || '-',
-          year: item.year || '',
-          month: item.month || '',
-          day: item.day || '',
-          lat: item.lat || null,
-          lng: item.lng || null,
-          source: item.source || 'CSV',
-          type: item.type || 'transaction',
-          sigungu: item.sigungu || '',
-          dong: item.dong || '',
-          jibun: item.jibun || '',
-          buildYear: item.buildYear || '',
-          name2: item.name || ''
-        }));
+        const toSave = _toApiTransactionRows(transactionDataRaw);
         if (window._idbCache) window._idbCache[CSV_RAW_STORAGE_KEY] = toSave;
         if (window.idbSet) window.idbSet(CSV_RAW_STORAGE_KEY, toSave).catch(e => console.warn('CSV IDB 저장 실패:', e));
         else localStorage.setItem(CSV_RAW_STORAGE_KEY, JSON.stringify(toSave));
@@ -8349,12 +8387,7 @@ window.wr2SummaryCancelEdit = function() {
         if (e.name === 'QuotaExceededError') {
           try {
             // 최근 10만 건만 유지
-            const trimmed = transactionDataRaw.slice(-100000).map(item => ({
-              name: item.name, address: item.address || ((item.sigungu || '') + ' ' + (item.dong || '')).trim(),
-              price: item.price, area: item.area || '-', floor: item.floor || '-',
-              year: item.year || '', month: item.month || '', day: item.day || '',
-              lat: item.lat || null, lng: item.lng || null, source: item.source || 'CSV'
-            }));
+            const trimmed = _toApiTransactionRows(transactionDataRaw.slice(-100000));
             if (window._idbCache) window._idbCache[CSV_RAW_STORAGE_KEY] = trimmed;
             if (window.idbSet) window.idbSet(CSV_RAW_STORAGE_KEY, trimmed).catch(e2 => console.warn('CSV 축약 저장 실패:', e2));
             else localStorage.setItem(CSV_RAW_STORAGE_KEY, JSON.stringify(trimmed));
@@ -8369,7 +8402,7 @@ window.wr2SummaryCancelEdit = function() {
       }
     }
 
-    // CSV 데이터 복원
+    // 실거래 데이터 복원 (API 캐시만)
     async function loadTransactionRawFromStorage() {
       try {
         let cached = (window._idbCache && window._idbCache[CSV_RAW_STORAGE_KEY] !== undefined)
@@ -8386,10 +8419,21 @@ window.wr2SummaryCancelEdit = function() {
               return raw ? JSON.parse(raw) : null;
             })();
         if (!Array.isArray(parsed) || parsed.length === 0) return 0;
+        const parsedApiOnly = _toApiTransactionRows(parsed);
+        if (!parsedApiOnly.length) {
+          if (TX_API_ONLY_MODE) {
+            // 과거 CSV 캐시를 사용하지 않도록 정리
+            if (window._idbCache) window._idbCache[CSV_RAW_STORAGE_KEY] = [];
+            if (window.idbSet) window.idbSet(CSV_RAW_STORAGE_KEY, []).catch(() => {});
+            else localStorage.setItem(CSV_RAW_STORAGE_KEY, '[]');
+          }
+          return 0;
+        }
         // 기존 데이터 유지 + 새 데이터 병합 (중복 제거는 address+year+month 기준)
+        transactionDataRaw = _toApiTransactionRows(transactionDataRaw);
         const existingKeys = new Set(transactionDataRaw.map(i => `${i.address || ''}|${i.year || ''}|${i.month || ''}`));
         let added = 0;
-        parsed.forEach(item => {
+        parsedApiOnly.forEach(item => {
           const key = `${item.address || ''}|${item.year || ''}|${item.month || ''}`;
           if (!existingKeys.has(key)) {
             transactionDataRaw.push(item);
@@ -8397,6 +8441,8 @@ window.wr2SummaryCancelEdit = function() {
             added++;
           }
         });
+        // 스토리지도 API 데이터만 유지
+        if (TX_API_ONLY_MODE && parsedApiOnly.length !== parsed.length) saveTransactionRawToStorage();
         return added;
       } catch (e) {
         console.warn('CSV 복원 실패:', e);
@@ -11626,9 +11672,9 @@ window.wr2SummaryCancelEdit = function() {
       html += renderSection('바로 작업', pendingRoots.length, '아직 작업룸에 넣지 않은 최신 스냅샷', pendingRoots, 'focus');
       html += renderSection('작업룸 연결됨', linkedRoots.length, '이미 작업룸에 정리된 스냅샷', linkedRoots, 'linked');
       if (closedLinkedRoots.length) {
-        html += '<button type="button" class="sw-archive-toggle" onclick="swToggleClosedSnapshotArchive()">';
+        html += '<button type="button" class="sw-archive-toggle" id="swClosedArchiveToggle" aria-controls="swSnapshotClosedArchive" aria-expanded="' + (closedOpen ? 'true' : 'false') + '" onclick="return swToggleClosedSnapshotArchive(event)">';
         html += '<span>🧊 종료룸 연결 '+closedLinkedRoots.length+'개</span>';
-        html += '<span>'+(closedOpen ? '접기 ▾' : '펼치기 ▸')+'</span>';
+        html += '<span id="swClosedArchiveToggleText">'+(closedOpen ? '접기 ▾' : '펼치기 ▸')+'</span>';
         html += '</button>';
         html += '<div class="sw-archive-wrap" id="swSnapshotClosedArchive" style="display:'+(closedOpen ? 'flex' : 'none')+';">';
         closedLinkedRoots.forEach(function(meta) {
@@ -11637,9 +11683,9 @@ window.wr2SummaryCancelEdit = function() {
         html += '</div>';
       }
       if (archivedRoots.length) {
-        html += '<button type="button" class="sw-archive-toggle" onclick="swToggleSnapshotArchive()">';
+        html += '<button type="button" class="sw-archive-toggle" id="swArchiveToggle" aria-controls="swSnapshotArchive" aria-expanded="' + (archiveOpen ? 'true' : 'false') + '" onclick="return swToggleSnapshotArchive(event)">';
         html += '<span>📦 보관함 '+archivedRoots.length+'개</span>';
-        html += '<span>'+(archiveOpen ? '접기 ▾' : '펼치기 ▸')+'</span>';
+        html += '<span id="swArchiveToggleText">'+(archiveOpen ? '접기 ▾' : '펼치기 ▸')+'</span>';
         html += '</button>';
         html += '<div class="sw-archive-wrap" id="swSnapshotArchive" style="display:'+(archiveOpen ? 'flex' : 'none')+';">';
         archivedRoots.forEach(function(meta) {
@@ -11650,33 +11696,43 @@ window.wr2SummaryCancelEdit = function() {
       tree.innerHTML = html;
     }
 
-    window.swToggleSnapshotArchive = function() {
+    window.swToggleSnapshotArchive = function(ev, forceOpen) {
+      if (ev && ev.preventDefault) ev.preventDefault();
+      if (ev && ev.stopPropagation) ev.stopPropagation();
       var el = document.getElementById('swSnapshotArchive');
-      if (!el) return;
-      var willOpen = el.style.display === 'none';
+      if (!el) return false;
+      var btn = document.getElementById('swArchiveToggle');
+      var txt = document.getElementById('swArchiveToggleText');
+      var hidden = (el.style.display === 'none') || (window.getComputedStyle && window.getComputedStyle(el).display === 'none');
+      var willOpen = (typeof forceOpen === 'boolean') ? forceOpen : hidden;
       el.style.display = willOpen ? 'flex' : 'none';
-      if (willOpen) {
-        el.style.flexDirection = 'column';
-        el.style.gap = '1px';
-      }
+      el.style.flexDirection = 'column';
+      el.style.gap = '1px';
+      if (btn) btn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+      if (txt) txt.textContent = willOpen ? '접기 ▾' : '펼치기 ▸';
       try {
         localStorage.setItem('sw_snapshot_archive_open', willOpen ? '1' : '0');
       } catch(e) {}
-      swRenderSnapTree();
+      return false;
     };
-    window.swToggleClosedSnapshotArchive = function() {
+    window.swToggleClosedSnapshotArchive = function(ev, forceOpen) {
+      if (ev && ev.preventDefault) ev.preventDefault();
+      if (ev && ev.stopPropagation) ev.stopPropagation();
       var el = document.getElementById('swSnapshotClosedArchive');
-      if (!el) return;
-      var willOpen = el.style.display === 'none';
+      if (!el) return false;
+      var btn = document.getElementById('swClosedArchiveToggle');
+      var txt = document.getElementById('swClosedArchiveToggleText');
+      var hidden = (el.style.display === 'none') || (window.getComputedStyle && window.getComputedStyle(el).display === 'none');
+      var willOpen = (typeof forceOpen === 'boolean') ? forceOpen : hidden;
       el.style.display = willOpen ? 'flex' : 'none';
-      if (willOpen) {
-        el.style.flexDirection = 'column';
-        el.style.gap = '1px';
-      }
+      el.style.flexDirection = 'column';
+      el.style.gap = '1px';
+      if (btn) btn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+      if (txt) txt.textContent = willOpen ? '접기 ▾' : '펼치기 ▸';
       try {
         localStorage.setItem('sw_snapshot_closed_open', willOpen ? '1' : '0');
       } catch(e) {}
-      swRenderSnapTree();
+      return false;
     };
 
     window.swToggleChildren = function(id, btn) {
@@ -18811,9 +18867,19 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     }
 
     // ===================================================
-    // CSV 저장 상태 UI 업데이트
+    // 실거래 저장 상태 UI 업데이트
     // ===================================================
     function updateCSVStorageStatus() {
+      _applyTxApiOnlyUI();
+      if (TX_API_ONLY_MODE) {
+        try {
+          const panelEl = document.getElementById('csvStatusPanel');
+          if (panelEl) panelEl.style.display = 'none';
+          const showBtn = document.getElementById('showTransactionBtn');
+          if (showBtn) showBtn.disabled = false;
+        } catch (e) {}
+        return;
+      }
       try {
         const raw = localStorage.getItem(CSV_RAW_STORAGE_KEY);
         const panelEl = document.getElementById('csvStatusPanel');
@@ -20242,7 +20308,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           if (loadType) return (loadType === 'listing' || loadType === 'naver');
           return getCb('filterNaver');
         }
-        // 실거래(디스코/플래닛 제외 일반 transaction)는 CSV filterTransaction에서 처리
+        // 실거래(디스코/플래닛 제외 일반 transaction)
         if (mode === 'transaction') { if (loadType) return loadType === 'transaction'; return getCb('filterTransaction'); }
         // 나머지 미분류 → source 없는 일반 매물로 간주
         if (loadType) return (loadType === 'listing' || loadType === 'naver');
@@ -20250,11 +20316,24 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       }
 
       // 하나라도 불러올 게 있는지 사전 체크
-      const loadCSV = loadType === 'transaction' || getCb('filterTransaction');
-      const willLoadAny = loadType !== null || getCb('filterAuction') || getCb('filterNaver') || getCb('filterJumpo') || getCb('filterNemo') || getCb('filterAssa') || getCb('filterDisco') || getCb('filterBds') || loadCSV;
+      const txRequested = loadType === 'transaction' || getCb('filterTransaction');
+      const nonTxRequested = (loadType && loadType !== 'transaction')
+        || getCb('filterAuction')
+        || getCb('filterNaver')
+        || getCb('filterJumpo')
+        || getCb('filterNemo')
+        || getCb('filterAssa')
+        || getCb('filterDisco')
+        || getCb('filterBds');
+      const loadCSV = (!TX_API_ONLY_MODE) && txRequested;
+      const willLoadAny = !!nonTxRequested || !!txRequested || !!loadCSV;
       if (!willLoadAny) {
         alert('표시할 매물 유형을 선택해주세요');
         return;
+      }
+      if (TX_API_ONLY_MODE && txRequested && !nonTxRequested) {
+        await loadCurrentAreaTransactions();
+        return { cancelled: false, inBoundsCount: loadedTransactions.length, totalToLoad: transactionDataRaw.length };
       }
 
       let totalToLoad = 0;
@@ -20625,6 +20704,15 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             showToast(`✅ ${inBoundsCount}개 매물이 지도에 표시되었습니다`, 'ok');
           } else {
             showToast('현재 화면 영역에 표시할 매물이 없습니다. 다른 지역으로 이동해보세요', 'warn');
+          }
+
+          // API 전용 모드에서 실거래 체크가 켜져 있으면 CSV 대신 API 호출을 이어서 수행
+          if (TX_API_ONLY_MODE && txRequested && nonTxRequested) {
+            setTimeout(() => {
+              loadCurrentAreaTransactions().catch(e => {
+                console.warn('[TX API] load failed after map load:', e && (e.message || e));
+              });
+            }, 60);
           }
 
           resolve({ cancelled: false, inBoundsCount, totalToLoad });
@@ -24519,6 +24607,14 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
     // CSV 소스를 csvDatasets 목록에 등록(로드는 지연)
     function initExternalCSVDatasets() {
+      if (TX_API_ONLY_MODE) {
+        csvDatasets = [];
+        _applyTxApiOnlyUI();
+        try {
+          if (typeof renderCSVSourceList === 'function') renderCSVSourceList();
+        } catch (e) {}
+        return;
+      }
       // 기존 localStorage 기반 datasets는 사용하지 않음 (용량 폭발 방지)
       csvDatasets = CSV_SOURCES.map(src => ({
         id: src.id,
@@ -24537,6 +24633,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
     // 특정 데이터셋 로드 (최초 1회만)
     async function ensureCSVDatasetLoaded(dataset) {
+      if (TX_API_ONLY_MODE) return;
       if (!dataset || dataset.loaded) return;
       const statusEl = document.getElementById('trade-status');
       try {
@@ -24595,6 +24692,11 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
     // 모달 열기
     function openCSVLoader() {
+      if (TX_API_ONLY_MODE) {
+        _applyTxApiOnlyUI();
+        if (typeof showToast === 'function') showToast('실거래는 API 방식만 사용합니다. CSV 불러오기는 비활성화되었습니다.', 'warn');
+        return;
+      }
       const modal = document.getElementById('csvLoaderModal');
       const fileList = document.getElementById('csvFileList');
       const loadBtn = document.getElementById('csvLoadBtn');
@@ -24645,6 +24747,11 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
     // 선택된 CSV 파일들 불러오기
     async function loadSelectedCSVFiles() {
+      if (TX_API_ONLY_MODE) {
+        _applyTxApiOnlyUI();
+        if (typeof showToast === 'function') showToast('API 전용 모드에서는 CSV 불러오기를 사용하지 않습니다.', 'warn');
+        return;
+      }
       const checkboxes = document.querySelectorAll('#csvFileList input[type="checkbox"]:checked');
 
       if (checkboxes.length === 0) {
@@ -26279,16 +26386,26 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     // 2번: CSV 데이터셋 관리
     // ===================================================
     function saveCSVDatasets() {
+      if (TX_API_ONLY_MODE) return;
       // 내장(builtin) 데이터는 localStorage에 저장하지 않음 (용량/중복 방지)
       const toSave = (csvDatasets || []).filter(ds => !ds.builtin);
       if(window._idbCache)window._idbCache['csvDatasets']=toSave;if(window.idbSet)window.idbSet('csvDatasets',toSave).catch(()=>{});
     }
     function loadCSVDatasetsOnInit() {
+      if (TX_API_ONLY_MODE) {
+        csvDatasets = [];
+        _applyTxApiOnlyUI();
+        return;
+      }
       // localStorage 기반 CSV 저장은 용량 폭발 위험이 커서 사용하지 않습니다.
       // data/ 폴더의 외부 CSV 소스를 목록에 등록(로드는 지연)합니다.
       initExternalCSVDatasets();
     }
     function renderCSVSourceList() {
+      if (TX_API_ONLY_MODE) {
+        _applyTxApiOnlyUI();
+        return;
+      }
       const list = document.getElementById('csvSourceList');
       if (!list) return;
       list.innerHTML = '';
@@ -26311,9 +26428,30 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       if (panel) panel.style.display = 'block';
       if (info) info.textContent = '✅ ' + loaded.length + '개 파일 로드됨 · ' + totalCnt.toLocaleString() + '건';
     }
-    function renderCSVList() { const list = document.getElementById('csvList'); if (!list) { return; } list.innerHTML = ''; csvDatasets.forEach(dataset => { const div = document.createElement('div'); div.className = 'csv-item'; div.innerHTML = `<div class="csv-toggle ${dataset.visible ? 'on' : ''}" onclick="toggleCSVDataset('${dataset.id}')"></div><span class="csv-name">${esc(dataset.name)}</span><span class="csv-delete" onclick="deleteCSVDataset('${dataset.id}')">×</span>`; list.appendChild(div); }); }
-    window.toggleCSVDataset = function (id) { const dataset = csvDatasets.find(d => d.id === id); if (!dataset) return; dataset.visible = !dataset.visible; saveCSVDatasets(); renderCSVList(); renderCSVSourceList(); mapMarkers.forEach(m => { if (m.item && m.item.datasetId === id) { if (dataset.visible) { m.marker.setMap(map); } else { m.marker.setMap(null); if (m.overlay) m.overlay.setMap(null); } } }); }
+    function renderCSVList() {
+      if (TX_API_ONLY_MODE) return;
+      const list = document.getElementById('csvList');
+      if (!list) { return; }
+      list.innerHTML = '';
+      csvDatasets.forEach(dataset => {
+        const div = document.createElement('div');
+        div.className = 'csv-item';
+        div.innerHTML = `<div class="csv-toggle ${dataset.visible ? 'on' : ''}" onclick="toggleCSVDataset('${dataset.id}')"></div><span class="csv-name">${esc(dataset.name)}</span><span class="csv-delete" onclick="deleteCSVDataset('${dataset.id}')">×</span>`;
+        list.appendChild(div);
+      });
+    }
+    window.toggleCSVDataset = function (id) {
+      if (TX_API_ONLY_MODE) return;
+      const dataset = csvDatasets.find(d => d.id === id);
+      if (!dataset) return;
+      dataset.visible = !dataset.visible;
+      saveCSVDatasets();
+      renderCSVList();
+      renderCSVSourceList();
+      mapMarkers.forEach(m => { if (m.item && m.item.datasetId === id) { if (dataset.visible) { m.marker.setMap(map); } else { m.marker.setMap(null); if (m.overlay) m.overlay.setMap(null); } } });
+    }
     window.deleteCSVDataset = function (id) {
+      if (TX_API_ONLY_MODE) return;
       const dataset = csvDatasets.find(d => d.id === id);
       if (dataset && dataset.builtin) {
         alert('내장 데이터는 삭제할 수 없습니다. 필요하면 토글로 숨김 처리하세요.');
@@ -26690,6 +26828,12 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     // 지도 탭 CSV 업로드 핸들러
     // ===================================================
     function handleMapCSV(input) {
+      if (TX_API_ONLY_MODE) {
+        if (input) input.value = '';
+        _applyTxApiOnlyUI();
+        if (typeof showToast === 'function') showToast('실거래 CSV 업로드는 중단되었습니다. API 불러오기를 사용해주세요.', 'warn');
+        return;
+      }
       const file = input.files[0];
       if (!file) return;
 
@@ -27053,6 +27197,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         out.rows.push({
           type: 'transaction',
           source: '국토부실거래API',
+          mode: 'transaction',
           name: bld || (umd ? `${umd} 실거래` : `${regionLabel} 실거래`),
           address: address || regionLabel,
           price: priceMan,
@@ -27063,7 +27208,19 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           day: dealDay || '',
           lat: null,
           lng: null,
-          fromApi: true
+          fromApi: true,
+          data: {
+            소재지: address || regionLabel,
+            매매가_만원: priceMan,
+            실거래가_만원: priceMan,
+            거래년월: ym,
+            전용면적_m2: area || '',
+            해당층: floor || '',
+            층수: floor || '',
+            매물유형: '실거래',
+            거래유형: '실거래',
+            출처: '국토부실거래API'
+          }
         });
       });
       return out;
@@ -27071,13 +27228,14 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
     function _txMergeRows(rows) {
       if (!Array.isArray(rows) || !rows.length) return 0;
+      if (TX_API_ONLY_MODE) transactionDataRaw = _toApiTransactionRows(transactionDataRaw);
       const keys = new Set(transactionDataRaw.map(it => `${it.address || ''}|${it.year || ''}|${it.month || ''}|${it.price || ''}|${it.floor || ''}`));
       let added = 0;
       rows.forEach(it => {
         const key = `${it.address || ''}|${it.year || ''}|${it.month || ''}|${it.price || ''}|${it.floor || ''}`;
         if (keys.has(key)) return;
         keys.add(key);
-        transactionDataRaw.push(it);
+        transactionDataRaw.push(TX_API_ONLY_MODE ? Object.assign({}, it, { fromApi: true, source: '국토부실거래API' }) : it);
         added++;
       });
       return added;
@@ -27160,6 +27318,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     }
 
     async function _ensureTransactionDataReady() {
+      if (TX_API_ONLY_MODE) transactionDataRaw = _toApiTransactionRows(transactionDataRaw);
       if (transactionDataRaw.length > 0) return transactionDataRaw.length;
       const restored = await loadTransactionRawFromStorage();
       if (restored > 0) updateCSVStorageStatus();
@@ -27168,6 +27327,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
     // 현재 지도 영역의 실거래가 표시 (캐시 우선, 없으면 지오코딩 후 저장)
     async function loadCurrentAreaTransactions() {
+      if (TX_API_ONLY_MODE) _applyTxApiOnlyUI();
       const btn = document.getElementById('showTransactionBtn');
       const statusEl = document.getElementById('trade-status');
       const hasRtmsKey = !!getRtmsApiKey();
@@ -27215,7 +27375,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       if (readyCount === 0 || transactionDataRaw.length === 0) {
         showToast(hasRtmsKey
           ? '실거래 데이터가 없습니다. 지도 이동 후 다시 시도하거나 API 키/기간을 확인해주세요.'
-          : '업로드된 실거래가 데이터가 없습니다. CSV 데이터 불러오기 또는 RTMS API 키 설정 후 시도하세요.', 'warn');
+          : 'RTMS API 키를 설정한 뒤 다시 시도해주세요. (API 전용 모드)', 'warn');
         return;
       }
 
@@ -27281,6 +27441,31 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         candidates = candidates.filter(it => {
           const y = String(it.year || '').replace(/[^0-9]/g, '').substring(0, 4);
           return selectedYears.has(y);
+        });
+      }
+
+      // ★ 기존 지도 조건필터(gf)도 실거래 카드에 동일 적용
+      if ((window._gfActive || (typeof isGFilterActive === 'function' && isGFilterActive())) && typeof _checkFilter === 'function') {
+        candidates = candidates.filter(it => {
+          try {
+            if (!it.mode) it.mode = 'transaction';
+            if (!it.source) it.source = '국토부실거래API';
+            if (!it.data || typeof it.data !== 'object') it.data = {};
+            if (!it.data.소재지) it.data.소재지 = it.address || '';
+            if (!it.data.매매가_만원) it.data.매매가_만원 = it.price || '';
+            if (!it.data.실거래가_만원) it.data.실거래가_만원 = it.price || '';
+            if (!it.data.전용면적_m2) it.data.전용면적_m2 = it.area || '';
+            if (!it.data.해당층) it.data.해당층 = it.floor || '';
+            if (!it.data.층수) it.data.층수 = it.floor || '';
+            if (!it.data.거래년월) it.data.거래년월 = String(it.year || '') + String(it.month || '');
+            if (!it.data.매물유형) it.data.매물유형 = '실거래';
+            if (!it.data.거래유형) it.data.거래유형 = '실거래';
+            if (!it.data.출처) it.data.출처 = it.source || '국토부실거래API';
+            _ensureNormalizedItem(it);
+            return _checkFilter(it.data || {}, 'gf', it);
+          } catch (e) {
+            return true;
+          }
         });
       }
 
@@ -27832,6 +28017,12 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     // ===================================================
     const originalHandleTradeCSV = window.handleTradeCSV;
     window.handleTradeCSV = function (input) {
+      if (TX_API_ONLY_MODE) {
+        if (input) input.value = '';
+        _applyTxApiOnlyUI();
+        if (typeof showToast === 'function') showToast('실거래는 API 불러오기만 지원합니다.', 'warn');
+        return;
+      }
       const file = input.files && input.files[0];
       if (!file) return;
 
