@@ -16404,28 +16404,38 @@ ${inputDesc.substring(0, 3000)}
       });
     }
 
+    function _forceMapRelayoutBurst(delays) {
+      const burst = Array.isArray(delays) && delays.length ? delays : [0, 120, 260, 480];
+      burst.forEach(function(ms) {
+        setTimeout(function() {
+          try {
+            if (!window.map) return;
+            if (typeof window.map.relayout === 'function') window.map.relayout();
+            if (window.kakao && window.kakao.maps && window.kakao.maps.event) {
+              window.kakao.maps.event.trigger(window.map, 'resize');
+            }
+            if (typeof updateStackedCards === 'function') updateStackedCards();
+          } catch (_) {}
+        }, Math.max(0, Number(ms) || 0));
+      });
+    }
+
     // ── 저장목록 카드에서 내 지도탭으로 이동 ──────────────────────────────
     window.goToMapFromCard = function (itemId) {
+      const itemKey = String(itemId || '').replace(/^marker_/, '');
       const sv = getSv();
-      const item = sv.find(s => s.id === itemId);
+      const item = sv.find(s => String(s && s.id) === itemKey);
       if (!item) return;
 
       closePopup();
       if (typeof window.mbGoPage === 'function') {
         window.mbGoPage('map', document.getElementById('mb-tab-map'));
       } else { showPage(2); }
-      setTimeout(function() {
-        try {
-          if (window.map && typeof window.map.relayout === 'function') window.map.relayout();
-          if (window.kakao && window.kakao.maps && window.kakao.maps.event && window.map) {
-            window.kakao.maps.event.trigger(window.map, 'resize');
-          }
-        } catch (e) {}
-      }, 120);
+      _forceMapRelayoutBurst([0, 90, 220, 420, 760]);
 
       // 해당 카드만 열고 나머지 모두 닫기
       const openOnlyThisCard = () => {
-        const markerId = 'marker_' + itemId;
+        const markerId = 'marker_' + itemKey;
         // 모든 카드 닫기
         mapOverlays.forEach(o => {
           o.isOpen = false;
@@ -16446,11 +16456,12 @@ ${inputDesc.substring(0, 3000)}
         // coord2RegionCode는 지도 이동 시 별도로 호출되므로 카드 열기에서 불필요
         renderCardListPanel();
         if (typeof updateMapLine === 'function') updateMapLine(markerId);
+        _forceMapRelayoutBurst([0, 110, 260]);
         return !!oObj;
       };
 
       const openMarkerCard = () => {
-        const markerId = 'marker_' + itemId;
+        const markerId = 'marker_' + itemKey;
         const mObj = mapMarkers.find(m => m.id === markerId);
         if (mObj && mObj.marker) {
           try { map.panTo(mObj.marker.getPosition()); map.setLevel(3); } catch (e) { }
@@ -16460,12 +16471,12 @@ ${inputDesc.substring(0, 3000)}
       };
 
       const tryOpenSavedDirect = () => {
-        const markerId = 'marker_' + itemId;
+        const markerId = 'marker_' + itemKey;
         const lat = parseFloat(item.lat), lng = parseFloat(item.lng);
         if (!window.map || isNaN(lat) || isNaN(lng)) return false;
         const pos = new kakao.maps.LatLng(lat, lng);
         try { map.setCenter(pos); map.setLevel(3); } catch (e) { }
-        removeMapItemBySavedId(itemId);
+        removeMapItemBySavedId(itemKey);
         try { addMapMarker(item, pos); } catch (e) { return false; }
         return openMarkerCard();
       };
@@ -16511,7 +16522,7 @@ ${inputDesc.substring(0, 3000)}
                 item.data = item.data || {};
                 item.data.lat = geoLat;
                 item.data.lng = geoLng;
-                _debounce('gtm_fix_' + itemId, () => setSv(sv), 200);
+                _debounce('gtm_fix_' + itemKey, () => setSv(sv), 200);
               } catch (e) {}
               try { done(new kakao.maps.LatLng(geoLat, geoLng)); } catch (e2) { done(null); }
               return;
@@ -16543,7 +16554,7 @@ ${inputDesc.substring(0, 3000)}
           try {
             map.setCenter(pos);
             map.setLevel(3);
-            removeMapItemBySavedId(itemId);
+            removeMapItemBySavedId(itemKey);
             addMapMarker(item, pos);
             setTimeout(() => { openMarkerCard(); }, 80);
             showToast('해당 물건만 지도에 바로 표시했습니다', 'ok');
@@ -16566,13 +16577,13 @@ ${inputDesc.substring(0, 3000)}
                   : item.source === '부동산플래닛' ? 'bds'
                     : 'listing';
           window._mapLoadType = srcType;
-          window._mapOpenOnlyItemId = itemId;
-          removeMapItemBySavedId(itemId);
+          window._mapOpenOnlyItemId = itemKey;
+          removeMapItemBySavedId(itemKey);
           // ★ [v154 FIX] idle 리스너 대신 단순 setTimeout으로 교체
           // (카카오맵 removeListener 패턴 이슈로 idle이 계속 살아남아 무한 실행 문제)
           const _execLoad = () => {
-            window._mapOpenOnlyItemId = itemId;
-            removeMapItemBySavedId(itemId);
+            window._mapOpenOnlyItemId = itemKey;
+            removeMapItemBySavedId(itemKey);
             // ★ [v179 FIX] loadCurrentAreaByType 사용 (geocoding 선처리 포함)
             Promise.resolve(loadCurrentAreaByType(srcType)).then(result => {
               if (result && result.cancelled) return;
@@ -16580,7 +16591,7 @@ ${inputDesc.substring(0, 3000)}
                 fallbackDirect(pos);
                 return;
               }
-              window._mapOpenOnlyItemId = itemId; // 혹시 초기화됐으면 재설정
+              window._mapOpenOnlyItemId = itemKey; // 혹시 초기화됐으면 재설정
               openMarkerCard();
               setTimeout(() => { window._mapOpenOnlyItemId = null; }, 300);
             }).catch(() => {
@@ -16611,7 +16622,7 @@ ${inputDesc.substring(0, 3000)}
           if (!isNaN(lat) && !isNaN(lng) && window.map && window.kakao && window.kakao.maps) {
             try {
               const pos = new window.kakao.maps.LatLng(lat, lng);
-              loadedMarkerIds.delete('marker_' + itemId);
+              loadedMarkerIds.delete('marker_' + itemKey);
               addMapMarker(item, pos);
               openMarkerCard();
               showToast('해당 물건만 지도에 바로 표시했습니다', 'ok');
@@ -21459,7 +21470,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       ${countBadge}
       <div class="map-card-header" onmousedown="dragMapCard(event,'${id}')">
         <div class="map-card-header-left">
-          ${isAuction ? `<span class="card-type-icon" style="width:24px;height:24px;flex:0 0 24px;display:flex;align-items:center;justify-content:center;font-size:17px;background:none;border:none;box-shadow:none;cursor:pointer;" onpointerdown="return onCardMarkTap(\'${item.id}\',event)" onclick="event.stopPropagation();event.preventDefault();return false;">👑</span>` : `<img class="card-type-icon" src="${cardType === 'sale' ? ICON_SALE : ICON_RENT}" alt="" draggable="false" style="cursor:pointer;" onpointerdown="return onCardMarkTap(\'${item.id}\',event)" onclick="event.stopPropagation();event.preventDefault();return false;"/>`}
+          ${isAuction ? `<span class="card-type-icon" style="width:24px;height:24px;flex:0 0 24px;display:flex;align-items:center;justify-content:center;font-size:17px;background:none;border:none;box-shadow:none;cursor:pointer;" onpointerdown="return onCardMarkTap(\'${item.id}\',event)" onmousedown="return onCardMarkTap(\'${item.id}\',event)" ontouchstart="return onCardMarkTap(\'${item.id}\',event)" onclick="return onCardMarkTap(\'${item.id}\',event)">👑</span>` : `<img class="card-type-icon" src="${cardType === 'sale' ? ICON_SALE : ICON_RENT}" alt="" draggable="false" style="cursor:pointer;" onpointerdown="return onCardMarkTap(\'${item.id}\',event)" onmousedown="return onCardMarkTap(\'${item.id}\',event)" ontouchstart="return onCardMarkTap(\'${item.id}\',event)" onclick="return onCardMarkTap(\'${item.id}\',event)"/>`}
           <input class="map-card-title" id="title_${id}" value="${esc(item.title)}" readonly onclick="editCardTitle('${id}')"/>
         </div>
         <div class="map-card-header-right">
@@ -21779,7 +21790,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const now = Date.now();
       if (!window.__cardMarkTapAt) window.__cardMarkTapAt = {};
       const last = Number(window.__cardMarkTapAt[key] || 0);
-      if (last && (now - last) < 220) return false;
+      if (last && (now - last) < 320) return false;
       window.__cardMarkTapAt[key] = now;
       if (typeof window.toggleCardMark === 'function') window.toggleCardMark(itemId, ev);
       return false;
@@ -21791,7 +21802,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       }
       const idStr = String(itemId || '').trim();
       if (!idStr) return;
-      const cardEl = document.getElementById('marker_' + idStr);
+      const markerId = 'marker_' + idStr;
+      const cardEl = document.getElementById(markerId);
       const sv = getSv();
       const item = sv.find(function(s){ return s && String(s.id) === idStr; });
       if (!item) {
@@ -21810,6 +21822,16 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           iconEl.style.border = '';
         }
       }
+      try {
+        mapOverlays.forEach(function(o) {
+          if (!o) return;
+          if (String(o.id || '') === markerId || (o.item && String(o.item.id || '') === idStr)) o.item = item;
+        });
+        mapMarkers.forEach(function(m) {
+          if (!m) return;
+          if (String(m.id || '') === markerId || (m.item && String(m.item.id || '') === idStr)) m.item = item;
+        });
+      } catch (_) {}
       setSv(sv);
       showToast(nextMarked ? '⭐ 카드 선택됨 (테두리 강조)' : '★ 선택 해제됨', 'ok');
     };
@@ -22088,29 +22110,61 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     // ===================================================
     function refreshMapCardData(savedId) {
       try {
-        const obj = mapOverlays.find(o => o.id === savedId);
-        if (!obj || !obj.overlay) return;
-        const content = (typeof obj.overlay.getContent === 'function') ? obj.overlay.getContent() : obj.overlay.a; // 일부 래퍼 호환
-        if (!content) return;
-        // content는 createMapCard()가 만든 DOM 엘리먼트
-        const body = content.querySelector('.map-card-body');
-        if (body) {
-          // 최신 저장데이터로 body만 재렌더
-          body.innerHTML = buildMapCardBodyHTML(obj.item);
-        } else {
-          // fallback: 전체 교체
-          const fresh = createMapCard(obj.item, obj.id, obj.marker.getPosition());
-          if (typeof obj.overlay.setContent === 'function') {
-            obj.overlay.setContent(fresh);
-          } else if (content.parentNode) {
-            content.parentNode.replaceChild(fresh, content);
-          }
-        }
-        // 수익률/매매가 DOM 보정(사용자값 존재 시)
+        const baseId = String(savedId || '').replace(/^marker_/, '').trim();
+        if (!baseId) return;
+        const markerId = 'marker_' + baseId;
         const sv = getSv();
-        const it = sv.find(s => s.id === savedId);
-        if (it && (it.data._user_매매가 || it.data._user_수익률)) {
-          _updateYieldCardRows('marker_' + savedId, savedId, it.data._user_매매가 || null, it.data._user_수익률 || null);
+        const it = sv.find(function(s) { return s && String(s.id) === baseId; });
+        const targets = mapOverlays.filter(function(o) {
+          if (!o) return false;
+          const oid = String(o.id || '');
+          if (oid === markerId || oid === baseId) return true;
+          if (oid.replace(/^marker_/, '') === baseId) return true;
+          return !!(o.item && String(o.item.id || '') === baseId);
+        });
+        if (!targets.length) return;
+
+        targets.forEach(function(obj) {
+          const current = it || obj.item;
+          if (!current) return;
+          obj.item = current;
+
+          // 마커 배열 참조도 함께 동기화(새로고침 없이 즉시 일치)
+          const mm = mapMarkers.find(function(m) {
+            if (!m) return false;
+            const mid = String(m.id || '');
+            return mid === String(obj.id || '') || mid.replace(/^marker_/, '') === baseId || (m.item && String(m.item.id || '') === baseId);
+          });
+          if (mm) mm.item = current;
+
+          const cardEl = document.getElementById(String(obj.id || markerId));
+          const liveBody = cardEl ? cardEl.querySelector('.map-card-body') : null;
+          if (liveBody) {
+            liveBody.innerHTML = buildMapCardBodyHTML(current);
+          } else if (obj.overlay) {
+            const content = (typeof obj.overlay.getContent === 'function') ? obj.overlay.getContent() : obj.overlay.a;
+            if (content && typeof content.querySelector === 'function') {
+              const body = content.querySelector('.map-card-body');
+              if (body) {
+                body.innerHTML = buildMapCardBodyHTML(current);
+              } else if (typeof obj.overlay.setContent === 'function' && obj.marker && typeof obj.marker.getPosition === 'function') {
+                obj.overlay.setContent(createMapCard(current, obj.id, obj.marker.getPosition()));
+              }
+            } else if (typeof obj.overlay.setContent === 'function' && obj.marker && typeof obj.marker.getPosition === 'function') {
+              obj.overlay.setContent(createMapCard(current, obj.id, obj.marker.getPosition()));
+            }
+          }
+
+          const liveCard = document.getElementById(String(obj.id || markerId));
+          if (liveCard) {
+            const titleInput = liveCard.querySelector('.map-card-title');
+            if (titleInput) titleInput.value = String(current.title || '');
+            liveCard.classList.toggle('card-marked', !!current.marked);
+          }
+        });
+
+        if (it && it.data && (it.data._user_매매가 || it.data._user_수익률)) {
+          _updateYieldCardRows(markerId, baseId, it.data._user_매매가 || null, it.data._user_수익률 || null);
         }
       } catch (e) { console.warn('refreshMapCardData', e); }
     }
