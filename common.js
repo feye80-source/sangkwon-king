@@ -21481,7 +21481,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       ${countBadge}
       <div class="map-card-header" onmousedown="dragMapCard(event,'${id}')">
         <div class="map-card-header-left">
-          ${isAuction ? `<span class="card-type-icon" style="width:24px;height:24px;flex:0 0 24px;display:flex;align-items:center;justify-content:center;font-size:17px;background:none;border:none;box-shadow:none;cursor:pointer;" onpointerdown="return onCardMarkTap(\'${item.id}\',event)" onmousedown="return onCardMarkTap(\'${item.id}\',event)" ontouchstart="return onCardMarkTap(\'${item.id}\',event)" onclick="return onCardMarkTap(\'${item.id}\',event)">👑</span>` : `<img class="card-type-icon" src="${cardType === 'sale' ? ICON_SALE : ICON_RENT}" alt="" draggable="false" style="cursor:pointer;" onpointerdown="return onCardMarkTap(\'${item.id}\',event)" onmousedown="return onCardMarkTap(\'${item.id}\',event)" ontouchstart="return onCardMarkTap(\'${item.id}\',event)" onclick="return onCardMarkTap(\'${item.id}\',event)"/>`}
+          ${isAuction ? `<span class="card-type-icon" style="width:24px;height:24px;flex:0 0 24px;display:flex;align-items:center;justify-content:center;font-size:17px;background:none;border:none;box-shadow:none;cursor:pointer;" onpointerdown="event.stopPropagation();event.preventDefault();return false;" onmousedown="event.stopPropagation();event.preventDefault();return false;" ontouchstart="event.stopPropagation();event.preventDefault();return false;" onclick="return onCardMarkTap(\'${item.id}\',event)">👑</span>` : `<img class="card-type-icon" src="${cardType === 'sale' ? ICON_SALE : ICON_RENT}" alt="" draggable="false" style="cursor:pointer;" onpointerdown="event.stopPropagation();event.preventDefault();return false;" onmousedown="event.stopPropagation();event.preventDefault();return false;" ontouchstart="event.stopPropagation();event.preventDefault();return false;" onclick="return onCardMarkTap(\'${item.id}\',event)"/>`}
           <input class="map-card-title" id="title_${id}" value="${esc(item.title)}" readonly onclick="editCardTitle('${id}')"/>
         </div>
         <div class="map-card-header-right">
@@ -21824,6 +21824,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       }
       const nextMarked = !item.marked;
       item.marked = nextMarked;
+      if (!window.__pendingMarkedById) window.__pendingMarkedById = {};
+      window.__pendingMarkedById[idStr] = !!nextMarked;
       // 무거운 저장(setSv) 전에 UI를 먼저 반영해서 즉시성 확보
       if (cardEl) {
         cardEl.classList.toggle('card-marked', !!nextMarked);
@@ -21850,6 +21852,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       window.__cardMarkPersist.timer = setTimeout(function() {
         try {
           if (window.__cardMarkPersist && window.__cardMarkPersist.sv) setSv(window.__cardMarkPersist.sv);
+          if (window.__pendingMarkedById) delete window.__pendingMarkedById[idStr];
         } catch (_) {}
         if (window.__cardMarkPersist) window.__cardMarkPersist.timer = null;
       }, 120);
@@ -22146,6 +22149,9 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         targets.forEach(function(obj) {
           const current = it || obj.item;
           if (!current) return;
+          if (window.__pendingMarkedById && Object.prototype.hasOwnProperty.call(window.__pendingMarkedById, baseId)) {
+            current.marked = !!window.__pendingMarkedById[baseId];
+          }
           obj.item = current;
 
           // 마커 배열 참조도 함께 동기화(새로고침 없이 즉시 일치)
@@ -27410,6 +27416,9 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             const raw = await _txFetchRawXml(url);
             const parsed = _txParseRtmsXml(raw, ym, info.label);
             const rc = parsed.resultCode;
+            const rcNum = String(rc || '').replace(/[^0-9]/g, '');
+            const rcNorm = rcNum ? rcNum.slice(-2) : '';
+            const rcOk = (!rcNorm && parsed.rows.length > 0) || rcNorm === '00' || rcNorm === '03';
             debugStats.fetched += 1;
             debugStats.rows += parsed.rows.length;
             if (debugStats.samples.length < 6) {
@@ -27421,7 +27430,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
                 rows: parsed.rows.length
               });
             }
-            if (rc && rc !== '00' && rc !== '03') {
+            if (!rcOk && parsed.rows.length === 0) {
               errors.push(`${info.lawdCd}-${ym}: ${parsed.resultMsg || rc}`);
               debugStats.errors += 1;
               continue;
@@ -27566,17 +27575,25 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       // 후보군 만들기: r2(구/시)가 있으면 우선 r2 포함 주소, 없으면 r1 포함 주소로 축소
       const key2 = region.r2;
       const key1 = region.r1;
+      const _txAddrOf = (it) => String((it && (it.address || (it.data && it.data.소재지))) || '').trim();
       let candidates = transactionDataRaw;
 
       if (key2) {
-        candidates = transactionDataRaw.filter(it => (it.address || '').includes(key2));
+        candidates = transactionDataRaw.filter(it => _txAddrOf(it).includes(key2));
       } else if (key1) {
-        candidates = transactionDataRaw.filter(it => (it.address || '').includes(key1));
+        candidates = transactionDataRaw.filter(it => _txAddrOf(it).includes(key1));
       }
 
       // 그래도 너무 많으면(예: '경기도'만 잡힌 경우) r3까지 추가로 축소
       if (candidates.length > 50000 && region.r3) {
-        candidates = candidates.filter(it => (it.address || '').includes(region.r3));
+        candidates = candidates.filter(it => _txAddrOf(it).includes(region.r3));
+      }
+      // 주소 표현 차이(행정동/법정동)로 후보가 0건이면 자동 완화
+      if (!candidates.length && region.r3) {
+        candidates = transactionDataRaw.filter(it => _txAddrOf(it).includes(region.r3));
+      }
+      if (!candidates.length) {
+        candidates = transactionDataRaw.slice();
       }
 
       // ★ 조회기간 드롭다운과 실제 표시 기간을 일치시킨다.
@@ -34022,7 +34039,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           ? (entry.saleDt.getFullYear() + '.' + String(entry.saleDt.getMonth() + 1).padStart(2, '0') + '.' + String(entry.saleDt.getDate()).padStart(2, '0'))
           : (d.매각일 || d.매각기일 || '-');
         const st = statusMap[entry.status] || entry.status;
-        return `<tr onclick="openPopup('${String(it.id).replace(/'/g, "\\'")}')" style="cursor:pointer;">
+        const saleTs = entry.saleDt ? entry.saleDt.getTime() : '';
+        return `<tr data-sale-ts="${saleTs}" onclick="openPopup('${String(it.id).replace(/'/g, "\\'")}')" style="cursor:pointer;">
           <td style="padding:8px 10px;border-bottom:1px solid var(--b1);color:var(--tx);white-space:nowrap;">${_plEsc(st)}</td>
           <td style="padding:8px 10px;border-bottom:1px solid var(--b1);color:var(--tx);font-weight:600;">${_plEsc(it.title || d.소재지 || it.id)}</td>
           <td style="padding:8px 10px;border-bottom:1px solid var(--b1);color:var(--mu);">${_plEsc(d.소재지 || '-')}</td>
@@ -34043,6 +34061,24 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           </thead>
           <tbody>${body || `<tr><td colspan="5" style="padding:22px;text-align:center;color:var(--di);">표시할 물건이 없습니다.</td></tr>`}</tbody>
         </table>`;
+      if (rows.length) {
+        setTimeout(() => {
+          try {
+            const now = new Date();
+            const todayTs = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+            const trs = Array.from(listEl.querySelectorAll('tbody tr[data-sale-ts]'));
+            if (!trs.length) return;
+            const future = trs.find(tr => {
+              const ts = Number(tr.getAttribute('data-sale-ts') || 0);
+              return ts && ts >= todayTs;
+            });
+            const target = future || trs[trs.length - 1];
+            if (!target) return;
+            const top = Math.max(0, target.offsetTop - 70);
+            listEl.scrollTop = top;
+          } catch (_) {}
+        }, 0);
+      }
     }
     function renderPipelineCalendarBoard() {
       const host = document.getElementById('pipelineListBoard');
@@ -34074,6 +34110,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       }
 
       host.innerHTML = months.map(mm => {
+        const monthKey = mm.y + '-' + String(mm.m).padStart(2, '0');
         const first = new Date(mm.y, mm.m - 1, 1);
         const startWeek = first.getDay();
         const monthLast = new Date(mm.y, mm.m, 0).getDate();
@@ -34101,12 +34138,25 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             ${more}
           </div>`;
         }
-        return `<div style="margin-bottom:14px;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:10px;background:rgba(12,16,24,.62);">
+        return `<div data-pcal-month="${monthKey}" style="margin-bottom:14px;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:10px;background:rgba(12,16,24,.62);">
           <div style="font-size:13px;font-weight:800;color:var(--tx);margin-bottom:8px;">${_plFmtMonthTitle(mm.y, mm.m)}</div>
           <div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;margin-bottom:6px;">${weekHeads.map(w => `<div style="font-size:11px;color:var(--di);text-align:center;">${w}</div>`).join('')}</div>
           <div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;">${dayCells}</div>
         </div>`;
       }).join('');
+      setTimeout(() => {
+        try {
+          const now = new Date();
+          const key = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+          const blocks = Array.from(host.querySelectorAll('[data-pcal-month]'));
+          if (!blocks.length) return;
+          const found = host.querySelector('[data-pcal-month="' + key + '"]');
+          const future = blocks.find(el => String(el.getAttribute('data-pcal-month') || '') >= key);
+          const target = found || future || blocks[blocks.length - 1];
+          if (!target) return;
+          host.scrollTop = Math.max(0, target.offsetTop - 8);
+        } catch (_) {}
+      }, 0);
     }
 
     window.wr2PipelineSetView = function(view) {
