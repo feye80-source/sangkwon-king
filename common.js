@@ -1561,7 +1561,7 @@
       }
       if (room._freeTable2) {
         const old3 = room._freeTable2;
-        const cols = old3.cols ? old3.cols.slice() : ['층','평당가','방향','월세','보증금','메모'];
+        const cols = old3.cols ? old3.cols.slice() : ['층','평단가','방향','월세','보증금','메모'];
         const rows = (old3.rows || []).map(function(_, ri) {
           return cols.map(function(_, ci) {
             return (old3.cells && old3.cells[ri] && old3.cells[ri][ci] !== undefined) ? old3.cells[ri][ci] : '';
@@ -1598,7 +1598,7 @@
         window._wrPersistFreeTables(room.id, legacy, { quiet: true });
         return legacy;
       }
-      if (!room.__ftDraft) room.__ftDraft = (typeof _ftMakeTable === 'function') ? [_ftMakeTable('')] : [{ title:'', cols:['층','평당가','방향','월세','보증금','메모'], rows:[['1층','','남향','150만','1000만',''],['2층','','동향','180만','1000만','']] }];
+      if (!room.__ftDraft) room.__ftDraft = (typeof _ftMakeTable === 'function') ? [_ftMakeTable('')] : [{ title:'', cols:['층','평단가','방향','월세','보증금','메모'], rows:[['1층','','남향','150만','1000만',''],['2층','','동향','180만','1000만','']] }];
       return room.__ftDraft;
     };
     window._wrPersistFreeTables = function(roomId, tables, opts) {
@@ -4217,7 +4217,7 @@ var _safeLocalSet = function(key, value) {
                     const el = document.getElementById('wc_deposit'); if (el && changed !== 'deposit') el.value = Math.round(calcVal).toLocaleString();
                   }
 
-                  // 면적 있으면 평당가 바 갱신
+                  // 면적 있으면 평단가 바 갱신
                   if (typeof window.wr2UpdatePyeongDisp === 'function') window.wr2UpdatePyeongDisp();
 
                   const resEl = document.getElementById('wc_result');
@@ -4472,7 +4472,7 @@ var _safeLocalSet = function(key, value) {
                   }
                 };
 
-                // 면적 ㎡ 입력 → 평 자동변환 + 평당가 갱신
+                // 면적 ㎡ 입력 → 평 자동변환 + 평단가 갱신
                 window.wr2AreaM2Input = function () {
                   const el = document.getElementById('wc_area');
                   const m2 = parseFloat(((el||{value:''}).value||'').replace(/[^0-9.]/g,'')) || 0;
@@ -4480,7 +4480,7 @@ var _safeLocalSet = function(key, value) {
                   if (pyEl) pyEl.value = m2 > 0 ? (m2/3.30579).toFixed(2) : '';
                   window.wr2UpdatePyeongDisp();
                 };
-                // 면적 평 입력 → ㎡ 자동변환 + 평당가 갱신
+                // 면적 평 입력 → ㎡ 자동변환 + 평단가 갱신
                 window.wr2AreaPyInput = function () {
                   const pyEl = document.getElementById('wc_area_py');
                   const py = parseFloat(((pyEl||{value:''}).value||'').replace(/[^0-9.]/g,'')) || 0;
@@ -4488,7 +4488,7 @@ var _safeLocalSet = function(key, value) {
                   if (m2El) m2El.value = py > 0 ? (py*3.30579).toFixed(2) : '';
                   window.wr2UpdatePyeongDisp();
                 };
-                // 평당가 표시 갱신
+                // 평단가 표시 갱신
                 window.wr2UpdatePyeongDisp = function (changed) {
                   const parseRaw = id => parseFloat(((document.getElementById(id)||{value:''}).value||'').replace(/[^0-9.]/g,'')) || 0;
                   const m2 = parseRaw('wc_area');
@@ -4498,7 +4498,7 @@ var _safeLocalSet = function(key, value) {
                   if (!bar) return;
                   const areaPy = m2 > 0 ? m2/3.30579 : 0;
 
-                  // ★ 평당가 소수점 1자리 표시 (@7.5만 형식)
+                  // ★ 평단가 소수점 1자리 표시 (@7.5만 형식)
                   const fmtPy = v => {
                     const man = v / 10000;
                     return '@' + (man % 1 === 0 ? man.toLocaleString('ko-KR') : man.toFixed(1)) + '만';
@@ -4515,7 +4515,7 @@ var _safeLocalSet = function(key, value) {
                   if (salePyEl) salePyEl.textContent = salePy > 0 ? fmtPy(salePy) : '-';
                   if (rentPyEl) rentPyEl.textContent = rentPy > 0 ? fmtPy(rentPy) : '-';
 
-                  // ★ 양방향: 평당가 입력칸도 갱신 (단, 사용자가 직접 입력 중인 칸은 건드리지 않음)
+                  // ★ 양방향: 평단가 입력칸도 갱신 (단, 사용자가 직접 입력 중인 칸은 건드리지 않음)
                   if (salePyInp && changed !== 'sale_pp' && salePy > 0) {
                     const man = salePy / 10000;
                     salePyInp.value = man % 1 === 0 ? man.toLocaleString('ko-KR') : man.toFixed(1);
@@ -4528,11 +4528,11 @@ var _safeLocalSet = function(key, value) {
                   bar.style.display = (areaPy > 0 && (price > 0 || rent > 0)) ? '' : 'none';
                 };
 
-                // ★ 평당가 역산 입력: 평당가 입력 → 매매가/월세 자동 계산
+                // ★ 평단가 역산 입력: 평단가 입력 → 매매가/월세 자동 계산
                 window.wr2SalePpInput = function() {
                   const parseRaw = id => parseFloat(((document.getElementById(id)||{value:''}).value||'').replace(/[^0-9.]/g,'')) || 0;
                   const m2 = parseRaw('wc_area');
-                  const ppMan = parseRaw('wc_sale_pp_inp'); // 만원 단위 평당가
+                  const ppMan = parseRaw('wc_sale_pp_inp'); // 만원 단위 평단가
                   if (m2 <= 0 || ppMan <= 0) return;
                   const areaPy = m2 / 3.30579;
                   const newPrice = Math.round(ppMan * 10000 * areaPy);
@@ -5788,8 +5788,8 @@ var _safeLocalSet = function(key, value) {
                   // ── 자동계산 하단 바 (면적+가격 있을 때)
                   if (areaPy > 0 || priceVal > 0 || rentVal > 0) {
                     html += `<div class="wr2-summary-calc-bar">`;
-                    if (salePy > 0) html += `<div class="wr2-scb-row"><span class="wr2-scb-lbl">💰 매매 평당가</span><b style="color:#4f8eff;">${'@'+(salePy/10000 % 1 === 0 ? (salePy/10000).toLocaleString() : (salePy/10000).toFixed(1))+'만'}</b></div>`;
-                    if (rentPy > 0) html += `<div class="wr2-scb-row"><span class="wr2-scb-lbl">💵 월세 평당가</span><b style="color:#4ade80;">${'@'+(rentPy/10000 % 1 === 0 ? (rentPy/10000).toLocaleString() : (rentPy/10000).toFixed(1))+'만'}</b></div>`;
+                    if (salePy > 0) html += `<div class="wr2-scb-row"><span class="wr2-scb-lbl">💰 매매 평단가</span><b style="color:#4f8eff;">${'@'+(salePy/10000 % 1 === 0 ? (salePy/10000).toLocaleString() : (salePy/10000).toFixed(1))+'만'}</b></div>`;
+                    if (rentPy > 0) html += `<div class="wr2-scb-row"><span class="wr2-scb-lbl">💵 월세 평단가</span><b style="color:#4ade80;">${'@'+(rentPy/10000 % 1 === 0 ? (rentPy/10000).toLocaleString() : (rentPy/10000).toFixed(1))+'만'}</b></div>`;
                     if (yieldRate > 0) html += `<div class="wr2-scb-row"><span class="wr2-scb-lbl">📈 수익률</span><b style="color:#ffd166;">${yieldRate.toFixed(2)}%</b></div>`;
                     html += `</div>`;
                   }
@@ -6057,7 +6057,7 @@ var _safeLocalSet = function(key, value) {
                   '보증금':    function(v){ var n=parseFloat(String(v||'').replace(/,/g,'')); return (!v||isNaN(n))?v||'':n>=10000?(n/10000).toFixed(1)+'억':n+'만'; },
                   '월세':      function(v){ var n=parseFloat(String(v||'').replace(/,/g,'')); return (!v||isNaN(n))?v||'':n+'만'; },
                 };
-                var _FT_DEFAULT_COLS = ['층','평당가','방향','월세','보증금','메모'];
+                var _FT_DEFAULT_COLS = ['층','평단가','방향','월세','보증금','메모'];
 
                 // 표 하나의 기본값
                 function _ftMakeTable(title) {
@@ -9775,7 +9775,7 @@ window.wr2SummaryCancelEdit = function() {
             return Number.isFinite(n) && n > 0 ? n : null;
           })(),
 
-          // 평당가(만원) 계산(가격이 '만원' 단위일 때)
+          // 평단가(만원) 계산(가격이 '만원' 단위일 때)
           평당가_만원: (() => {
             const priceMan = (() => {
               const v = row['거래금액(만원)'] ?? row['거래금액'] ?? row['매매가'] ?? row['매매가(만원)'];
@@ -10232,7 +10232,7 @@ window.wr2SummaryCancelEdit = function() {
                 }
               }
             }
-            // 평당가 후처리 - 계산
+            // 평단가 후처리 - 계산
             if (data.매매가 && data.전용면적_m2 && !data.평당가_만원) {
               data.평당가_만원 = Math.round((data.매매가 / (data.전용면적_m2 / 3.3058)) * 10) / 10;
             } else if (data.매매가 && data.계약면적_m2 && !data.평당가_만원) {
@@ -10676,7 +10676,7 @@ window.wr2SummaryCancelEdit = function() {
         if (mbMax !== null && p > mbMax) return false;
       }
 
-      // ── 평당가 ──
+      // ── 평단가 ──
       const ppMin = num('PpMin'), ppMax = num('PpMax');
       if (ppMin !== null || ppMax !== null) {
         const p = n?.평당가_만원;
@@ -12268,7 +12268,7 @@ window.wr2SummaryCancelEdit = function() {
       rng('실거래가', 'TxPriceMin','TxPriceMax','만');
       rng('면적', 'AreaMin','AreaMax','㎡');
       rng('수익률', 'YieldMin','YieldMax','%');
-      rng('평당가', 'PpMin','PpMax','만');
+      rng('평단가', 'PpMin','PpMax','만');
       rng('층', 'FloorMin','FloorMax','층');
       rng('감정가', 'AppraisalMin','AppraisalMax','만');
       rng('최저가', 'MinBidMin','MinBidMax','만');
@@ -13301,7 +13301,7 @@ window.wr2SummaryCancelEdit = function() {
       else if (전세가_만원)         표시가격기준 = '전세가';
       // 임대(월세)는 표시가격기준을 별도로 두지 않음 (보증금/월세로 표시)
 
-      // ── 평당가 ───────────────────────────────────────────────────
+      // ── 평단가 ───────────────────────────────────────────────────
       let 평당가_만원 = null;
       if (면적_m2 && 면적_m2 > 0) {
         const 평수 = 면적_m2 / 3.3058;
@@ -14579,7 +14579,7 @@ window.wr2SummaryCancelEdit = function() {
       let extraRows = '';
       if (ia) {
         if (n.감정가_만원) extraRows += _sied('감정가', '감정가', fM(n.감정가_만원), d.감정가, true);
-        if (n.평당가_만원) extraRows += _sied('평당가', '평당가_만원', (function (v) { const nv = Math.round(v); if (nv >= 10000) { const e = Math.floor(nv / 10000), m = nv % 10000; return m ? e + '억 ' + m.toLocaleString() + '만원/평' : e + '억원/평'; } return nv.toLocaleString() + '만원/평'; })(n.평당가_만원), n.평당가_만원, true);
+        if (n.평당가_만원) extraRows += _sied('평단가', '평당가_만원', (function (v) { const nv = Math.round(v); if (nv >= 10000) { const e = Math.floor(nv / 10000), m = nv % 10000; return m ? e + '억 ' + m.toLocaleString() + '만원/평' : e + '억원/평'; } return nv.toLocaleString() + '만원/평'; })(n.평당가_만원), n.평당가_만원, true);
         if (saleDateRaw) {
           const tone = isSaleOverdue ? '#ff6b7a' : (saleDday != null && saleDday <= 3 ? '#ff8c42' : '#4ade80');
           const saleText = saleDdayLabel
@@ -14601,7 +14601,7 @@ window.wr2SummaryCancelEdit = function() {
           extraRows += _sied('매매가', '매매가_만원', fM(_매매가), _매매가, true);
           if (면적py > 0) {
             const 매매pp = Math.round(_매매가 / 면적py);
-            extraRows += _sied('매매 평당가', '', 매매pp.toLocaleString() + '만/평', 매매pp, false);
+            extraRows += _sied('매매 평단가', '', 매매pp.toLocaleString() + '만/평', 매매pp, false);
           }
           if (_yr확정) extraRows += _sied('수익률', '', _yr확정 + '%', _yr확정, false, 'color:var(--g);font-weight:700;');
         }
@@ -14613,7 +14613,7 @@ window.wr2SummaryCancelEdit = function() {
           extraRows += _sied('월세', '월세_만원', fM(n.월세_만원) + mgmtStr, n.월세_만원, true);
           if (면적py > 0) {
             const 임대pp = Math.round(n.월세_만원 / 면적py * 10) / 10;
-            extraRows += _sied('임대 평당가', '', 임대pp.toFixed(1) + '만/평', 임대pp, false);
+            extraRows += _sied('임대 평단가', '', 임대pp.toFixed(1) + '만/평', 임대pp, false);
           }
           if (!_매매가) {
             if (_yr비확정) {
@@ -17111,7 +17111,7 @@ ${inputDesc.substring(0, 3000)}
       const 가격n = nG.매매가_만원 || nG.실거래가_만원 || 0;
       const 월세n = nG.월세_만원 || 0;
       const 보증n = nG.보증금_만원 || 0;
-      const 평당가 = nG.평당가_만원 ?? ((가격n > 0 && 면적n > 0) ? Math.round(가격n / (면적n / 3.3058)) : null);
+      const 평단가 = nG.평당가_만원 ?? ((가격n > 0 && 면적n > 0) ? Math.round(가격n / (면적n / 3.3058)) : null);
       let 수익률 = null;
       if (nG.수익률 && nG.수익률_산출방식 === 'auto') {
         수익률 = nG.수익률.toFixed(2);
@@ -17206,7 +17206,7 @@ ${inputDesc.substring(0, 3000)}
         rowEdit('월세(만원)', '월세_만원', d.월세_만원, null, '만원 단위') +
         rowEdit('관리비(만원)', '관리비_만원', d.관리비_만원, null, '만원 단위') +
         rowEdit('권리금(만원)', '권리금_만원', d.권리금_만원, null, '만원 단위') +
-        (!isEdit ? row('평당가', 평당가 ? `<span style="color:#ff9a3c;font-weight:600;">${Math.round(평당가)}만원/평</span>` : '-') : '') +
+        (!isEdit ? row('평단가', 평단가 ? `<span style="color:#ff9a3c;font-weight:600;">${Math.round(평단가)}만원/평</span>` : '-') : '') +
         (!isEdit && 수익률 ? row('수익률', `<span style="color:var(--g);font-weight:700;font-size:13px;">${수익률}%</span>`) : '') +
         (!isEdit && !가격n && 월세n ? `<div style="padding:4px 0;">${수익률입력Widget}</div>` : '') +
         rowEdit('월수익(만원)', '월수익_만원', d.월수익_만원, null, '만원 단위') +
@@ -18472,11 +18472,11 @@ ${combinedText}
         const m = String(d.소재지).match(/(\d+)층/);
         if (m) 층수표시 = m[1] + '층';
       }
-      // 평당가 계산 (없으면 자동 계산)
-      let 평당가 = d.평당가_만원;
-      if (!평당가 && d.최저가) {
+      // 평단가 계산 (없으면 자동 계산)
+      let 평단가 = d.평당가_만원;
+      if (!평단가 && d.최저가) {
         const area = parseFloat(d.전용면적_m2 || d.건물면적_m2 || 0);
-        if (area > 0) 평당가 = Math.round((parseInt(d.최저가) / 10000) / (area / 3.3058) * 10) / 10;
+        if (area > 0) 평단가 = Math.round((parseInt(d.최저가) / 10000) / (area / 3.3058) * 10) / 10;
       }
       return `<div class="shdr">📋 경매 정보</div><div class="fgrid">
 ${fi(d.경매번호, '경매번호', 'text', idx, '경매번호', isPopup)}
@@ -18491,7 +18491,7 @@ ${fi(층수표시, '층수', 'text', idx, '해당층', isPopup)}
 <div class="shdr">💰 금액 정보</div><div class="fgrid">
 ${fi(d.감정가, '감정가', 'big', idx, '감정가', isPopup)}
 ${fi(d.최저가, '최저가', 'money_raw', idx, '최저가', isPopup)}
-${평당가 ? fi(평당가, '평당가(최저)', 'money_m', idx, '평당가_만원', isPopup) : ''}
+${평단가 ? fi(평단가, '평단가(최저)', 'money_m', idx, '평당가_만원', isPopup) : ''}
 ${fi(d.청구액, '청구액', 'money', idx, '청구액', isPopup)}
 </div>
 <div class="shdr">📅 일정 정보</div><div class="fgrid">
@@ -18538,12 +18538,12 @@ ${fi(d.기타사항, '기타사항', 'text', idx, '기타사항', isPopup)}
       _ensureNormalizedItem(item);
       const nB = item._norm || {};
       const 면적pp2 = nB.면적_m2 || parseFloat(d.전용면적_m2 || d.계약면적_m2 || 0);
-      let 매매평당가 = null, 월세평당가 = null;
+      let 매매평단가 = null, 월세평단가 = null;
       if (nB.매매가_만원) {
-        매매평당가 = nB.평당가_만원 || (면적pp2 > 0 ? Math.round(nB.매매가_만원 / (면적pp2 / 3.3058) * 10) / 10 : null);
+        매매평단가 = nB.평당가_만원 || (면적pp2 > 0 ? Math.round(nB.매매가_만원 / (면적pp2 / 3.3058) * 10) / 10 : null);
       }
       if (nB.월세_만원 && 면적pp2 > 0) {
-        월세평당가 = Math.round(nB.월세_만원 / (면적pp2 / 3.3058) * 10) / 10;
+        월세평단가 = Math.round(nB.월세_만원 / (면적pp2 / 3.3058) * 10) / 10;
       }
 
       // 수익률 — _norm 우선
@@ -18737,13 +18737,13 @@ ${_상호통합 ? `<div class="fi" style="grid-column:1/-1;"><div class="fl">상
 <div class="shdr">🏠 임대/매매 정보</div><div class="fgrid">
 ${has매매 ? `
   ${fi(nB.매매가_만원, '매매가', 'big_m', idx, '매매가', isPopup)}
-  ${fi(매매평당가, '매매 평당가', 'money_m', idx, '평당가_만원', isPopup)}
+  ${fi(매매평단가, '매매 평단가', 'money_m', idx, '평당가_만원', isPopup)}
   ${수익률Row}
 ` : 수익률입력Widget}
 ${nB.거래년월 ? fi(fmtYearMonth(nB.거래년월), '거래년월', 'text', idx, '거래년월', isPopup) : ''}
 ${fi(nB.보증금_만원, '보증금', 'money_m', idx, '기보증금_만원', isPopup)}
 ${nB.월세_만원 ? `<div class="fi"><div class="fl">월세</div><div class="fv money">${fM(nB.월세_만원)}${d.관리비포함 === true ? ' <span style="font-size:10px;color:var(--mu);">(관리비포함)</span>' : ''}</div></div>` : fi(null, '월세', 'money_m', idx, '월세_만원', isPopup)}
-${has임대 ? fi(월세평당가, '임대 평당가', 'money_m', idx, '', isPopup) : ''}
+${has임대 ? fi(월세평단가, '임대 평단가', 'money_m', idx, '', isPopup) : ''}
 ${fi(d.권리금_만원, '권리금', 'money_m', idx, '권리금_만원', isPopup)}
 ${fi(d.관리비_만원, '관리비', 'money_m', idx, '관리비_만원', isPopup)}
 ${d.월수익_만원 ? fi(d.월수익_만원, '월수익', 'money_m', idx, '월수익_만원', isPopup) : (_isStore ? fi(null, '월수익', 'money_m', idx, '월수익_만원', isPopup) : '')}
@@ -21597,16 +21597,16 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           <div id="ypi_result_sub_${item.id}" style="font-size:10px;color:rgba(255,255,255,.4);margin-top:3px;"></div>
         </div>
         ${areaLabel ? `
-        <!-- 평당가 -->
+        <!-- 평단가 -->
         <div style="margin-top:8px;padding:6px 8px;background:rgba(79,142,255,.06);border:1px solid rgba(79,142,255,.15);border-radius:6px;">
-          <div style="font-size:9px;color:rgba(79,142,255,.7);margin-bottom:4px;">📐 평당가 (${areaLabel})</div>
+          <div style="font-size:9px;color:rgba(79,142,255,.7);margin-bottom:4px;">📐 평단가 (${areaLabel})</div>
           <div style="display:flex;gap:8px;">
             <div style="flex:1;text-align:center;">
-              <div style="font-size:9px;color:rgba(255,255,255,.35);">매매 평당가</div>
+              <div style="font-size:9px;color:rgba(255,255,255,.35);">매매 평단가</div>
               <div id="ypi_sale_pyeong_${item.id}" style="font-size:11px;font-weight:700;color:#4f8eff;font-family:'JetBrains Mono',monospace;">-</div>
             </div>
             <div style="flex:1;text-align:center;">
-              <div style="font-size:9px;color:rgba(255,255,255,.35);">월세 평당가</div>
+              <div style="font-size:9px;color:rgba(255,255,255,.35);">월세 평단가</div>
               <div id="ypi_rent_pyeong_${item.id}" style="font-size:11px;font-weight:700;color:#4f8eff;font-family:'JetBrains Mono',monospace;">-</div>
             </div>
           </div>
@@ -21623,7 +21623,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
 
     // ===================================================
-    // ★ [v180] 통합 카드 수익률 계산기 (4개 상호연동 + 🎯타겟 고정 + 평당가)
+    // ★ [v180] 통합 카드 수익률 계산기 (4개 상호연동 + 🎯타겟 고정 + 평단가)
     // ===================================================
     // 카드별 타겟 상태 저장 (기본: yield)
     const _cardYieldTargets = {};
@@ -21706,7 +21706,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         }
       } else if (resEl) { resEl.style.display = 'none'; }
 
-      // 평당가 갱신
+      // 평단가 갱신
       _updateCardPyeong(itemId);
 
       // ★ localStorage 저장 (매매가/수익률) - 300ms 디바운스로 타이핑 렉 방지
@@ -21723,7 +21723,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             if (_curYr > 0) it.data._user_수익률 = _curYr;
             if (_curD > 0) it.data.기보증금_만원 = Math.round(_curD);  // 이미 만원 단위
             if (_curR > 0) it.data.월세_만원 = Math.round(_curR);  // 이미 만원 단위
-            // 평당가 자동 계산
+            // 평단가 자동 계산
             const _area = _getPrimaryAreaInfo(it, it.data).areaM2 || 0;
             if (_curP > 0 && _area > 0) it.data.평당가_만원 = Math.round(_curP / (_area / 3.30579));
             setSv(sv);
@@ -21734,7 +21734,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     };
 
     function _fmtW(v, decimals) {
-      // decimals: 만원 단위 소수점 자릿수 (기본 0, 평당가용은 2)
+      // decimals: 만원 단위 소수점 자릿수 (기본 0, 평단가용은 2)
       const dec = decimals !== undefined ? decimals : 0;
       if (v >= 100000000) {
         const e = Math.floor(v / 100000000);
@@ -23510,7 +23510,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       // ── 공통 헬퍼 ──────────────────────────────────
       function row(label, value, redText) {
         if (value === null || value === undefined || value === '') value = '-';
-        const isPP = label && label.includes('평당가');
+        const isPP = label && label.includes('평단가');
         const style = redText ? 'color:#ff4444;font-weight:600;' : isPP ? 'color:#ff9a3c;font-weight:600;' : '';
         return `<div class="map-card-row"><span class="map-card-label">${label}</span><span class="map-card-value" style="${style}">${value}</span></div>`;
       }
@@ -23548,18 +23548,18 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           const 면적라벨 = areaLabelFromNorm(nT);
           const 층str = nT.층 != null ? (nT.층 + '층' + (d.총층 ? ' / ' + d.총층 + '층' : '')) : '-';
           const 거래년월 = nT.거래년월 ? fmtYearMonth(nT.거래년월) : '-';
-          // ★ 평당가는 항상 재계산 (저장된 값이 단위 오류로 잘못됐을 수 있음)
+          // ★ 평단가는 항상 재계산 (저장된 값이 단위 오류로 잘못됐을 수 있음)
           const _basePrice = nT.실거래가_만원 || nT.매매가_만원;
           const 평당가_만 = (_basePrice && nT.면적_m2 && nT.면적_m2 > 0)
             ? Math.round(_basePrice / (nT.면적_m2 / 3.3058))
             : null;
-          const 평당가str = 평당가_만 ? (moneyShortMan(평당가_만) + '만원/평') : '-';
+          const 평단가str = 평당가_만 ? (moneyShortMan(평당가_만) + '만원/평') : '-';
           const 매물명 = d.매물명 || d.r_type_nm || '-';
           return `
         ${editableRowTx('매매가', '매매가', 매매가str, true)}
         ${editableRowTx('보증금', '기보증금_만원', nT.보증금_만원 ? fM(nT.보증금_만원) : '-', true)}
         ${editableRowTx('월세', '월세_만원', nT.월세_만원 ? fM(nT.월세_만원) : '-', true)}
-        ${row('매매 평당가', 평당가str)}
+        ${row('매매 평단가', 평단가str)}
         ${row(면적라벨, 면적str ? 면적str : '-')}
         <div class="map-card-row"><span class="map-card-label">층수</span><span class="map-card-value map-card-value-inline" id="floor_disp_${item.id}" onclick="inlineEditFloor('${item.id}','floor')" onmousedown="event.stopPropagation()" ontouchstart="event.stopPropagation()" title="클릭하여 수정" style="cursor:pointer;border-bottom:1px dashed rgba(255,255,255,.2);">${층str}</span></div>
         <div class="map-card-row"><span class="map-card-label">방향</span><span class="map-card-value map-card-value-inline" id="dir_disp_${item.id}" onclick="inlineEditFloor('${item.id}','dir')" onmousedown="event.stopPropagation()" ontouchstart="event.stopPropagation()" title="클릭하여 수정" style="cursor:pointer;border-bottom:1px dashed rgba(255,255,255,.2);">${d.방향 ? String(d.방향).trim() : '-'}</span></div>
@@ -23589,14 +23589,14 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           : (item.buildingType && item.buildingType !== '-') ? item.buildingType : null;
         const nameLabel = (item.name && item.name !== item.address) ? item.name : null;
 
-        // 평당가 계산
+        // 평단가 계산
         const pyeongPrice = calcPyeong(priceNum, areaNum);
         const pyeongStr = pyeongPrice ? fM(pyeongPrice) + '(평당)' : null;
 
         const dirStr = item.direction && item.direction !== '-' ? item.direction : '-';
         return `
       <span class="map-card-price">${getDealSummary(item)}</span>
-      ${pyeongStr ? row('평당가', pyeongStr) : row('평당가', '-')}
+      ${pyeongStr ? row('평단가', pyeongStr) : row('평단가', '-')}
       ${row('면적', areaStr ? '전용 ' + areaStr : '-')}
       ${row('층수', floorLabel)}
       ${row('방향', dirStr)}
@@ -23665,7 +23665,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
         const 유찰 = n.유찰횟수 != null ? n.유찰횟수 + '회' : '-';
 
-        // 평당가 — _norm 우선, 없으면 직접 계산
+        // 평단가 — _norm 우선, 없으면 직접 계산
         const _fPP = (v) => {
           if (!v) return '-';
           const nv = Math.round(v);
@@ -23677,13 +23677,13 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           const 기준가 = n.최저가_만원 || n.감정가_만원 || 0;
           return (기준가 > 0 && 면적pyeong > 0) ? Math.round(기준가 / 면적pyeong) : null;
         })();
-        const 평당가str = _fPP(평당가_val);
+        const 평단가str = _fPP(평당가_val);
         const 매각일str = d.매각일 || d.매각기일 || '-';
         const linkUrl = d.상세URL || d.옥션원URL || (d.product_id ? `https://auction1.co.kr/auction/ca_view.php?product_id=${encodeURIComponent(d.product_id)}` : '#');
         return `
       ${row('감정가', 감정가str || '-')}
       <div class="map-card-row"><span class="map-card-label">최저가</span><span class="map-card-value" style="color:#ff4444;font-weight:700;">${최저가str || '-'}</span></div>
-      ${row('평당가', 평당가str)}
+      ${row('평단가', 평단가str)}
       ${row('면적', areaStr || '-')}
       <div class="map-card-row"><span class="map-card-label">층수</span><span class="map-card-value map-card-value-inline" id="floor_disp_${item.id}" onclick="inlineEditFloor('${item.id}','floor')" onmousedown="event.stopPropagation()" ontouchstart="event.stopPropagation()" title="클릭하여 수정" style="cursor:pointer;border-bottom:1px dashed rgba(255,255,255,.2);">${floorLabel}</span></div>
       ${row('매각기일', 매각일str)}
@@ -23725,7 +23725,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       // 방향
       const 방향 = d.방향 ? String(d.방향).trim() : '-';
 
-      // ── 거래유형별 금액 및 평당가 처리 — _norm 기준 ─────────────────────
+      // ── 거래유형별 금액 및 평단가 처리 — _norm 기준 ─────────────────────
       const isSale = !!nL.매매가_만원;
       const isRent = !isSale && (nL.월세_만원 || nL.보증금_만원);
 
@@ -23736,13 +23736,13 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const 거래년월str = nL.거래년월 ? fmtYearMonth(nL.거래년월) : (d.거래년월 ? fmtYearMonth(d.거래년월) : '-');
 
       let priceRows = '';
-      let 평당가Row = '';
+      let 평단가Row = '';
 
       if (isSale) {
         priceRows = `<span class="map-card-price" style="color:#ff4444;">${매매가str}</span>`;
         // ★ 항상 재계산 (저장값 단위 오류 방지)
         const ppSale = (nL.매매가_만원 && 면적num2 > 0) ? calcPyeong(nL.매매가_만원, 면적num2) : null;
-        평당가Row = row('매매 평당가', ppSale ? (moneyShortMan(ppSale) + '만원/평') : '-');
+        평단가Row = row('매매 평단가', ppSale ? (moneyShortMan(ppSale) + '만원/평') : '-');
       } else if (isRent) {
         const depShort = nL.보증금_만원 ? moneyShortMan(nL.보증금_만원) : '0';
         const monShort = nL.월세_만원 ? moneyShortMan(nL.월세_만원) : '-';
@@ -23750,13 +23750,13 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         if (nL.월세_만원 && 면적num2 > 0) {
           const perPyeong = Math.round(nL.월세_만원 / (면적num2 / 3.3058) * 100) / 100;
           const perPyeongStr = perPyeong.toLocaleString('ko-KR', {minimumFractionDigits: 0, maximumFractionDigits: 2});
-          평당가Row = row('월세 평당가', perPyeongStr + '만원/평');
+          평단가Row = row('월세 평단가', perPyeongStr + '만원/평');
         } else {
-          평당가Row = row('월세 평당가', '-');
+          평단가Row = row('월세 평단가', '-');
         }
       } else {
         priceRows = `<span class="map-card-price">-</span>`;
-        평당가Row = row('평당가', '-');
+        평단가Row = row('평단가', '-');
       }
 
       // ── 상단 식별 정보: 상호명 > 업종 > 없으면 표시 안 함 ─────────────
@@ -23781,7 +23781,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     ${식별info ? `<div style="padding:3px 6px 4px;margin-bottom:2px;font-size:11px;font-weight:700;color:#fff;background:rgba(255,255,255,0.06);border-radius:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${esc(식별info)}">${esc(식별info)}</div>` : ''}
     ${editableRow('보증금', '기보증금_만원', 보증금str, true)}
     ${editableRow('월세', '월세_만원', 월세str, true)}
-    ${평당가Row}
+    ${평단가Row}
     ${editableRow('권리금', '권리금_만원', 권리금str, false, '#7dd3fc')}
     ${d.관리비포함 === true ? row('관리비', '<span class="map-card-value-right-accent">월세 포함</span>') : editableRow('관리비', '관리비_만원', 관리비str, false, '#7dd3fc')}
     ${row('면적', areaStr || '-')}
@@ -23803,7 +23803,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     ${editableRow('매매가', '매매가', 매매가str, true)}
     ${editableRow('보증금', '기보증금_만원', 보증금str, true)}
     ${editableRow('월세', '월세_만원', 월세str, true)}
-    ${평당가Row}
+    ${평단가Row}
     ${거래년월str && 거래년월str !== '-' ? row('거래년월', 거래년월str) : ''}
     ${수익률str ? row('수익률', 수익률str) : ''}
     ${isSale ? `
@@ -28713,7 +28713,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 사용자가 지도 스크린샷을 업로드하면, 화면에 보이는 매물 카드들의 데이터(매매가, 보증금, 월세, 전용면적, 실거래가 등)를 분석하여 다음을 제공하세요:
 
 1. **현재 화면 수익률 분석**: 보이는 매물들의 수익률 범위 (수식: 월세×12÷(매매가-보증금)×100)
-2. **면적대별 월세 평당가**: 소형/중형/대형별 비교
+2. **면적대별 월세 평단가**: 소형/중형/대형별 비교
 3. **지역 특징**: 카드 분포, 가격대, 특이사항
 4. **요약**: 이 지역 투자 시 참고할 핵심 수치
 
@@ -31970,7 +31970,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       setR('r_yr_cap', fW(capital));
       setR('r_yr_gross', gross.toFixed(2) + '%', gross >= 5 ? 'var(--g)' : '#ff6370');
       setR('r_yr_net', net.toFixed(2) + '%', net >= 5 ? 'var(--ac)' : '#ff6370');
-      // 면적 입력 시 평당가 자동계산 (소수점 1자리)
+      // 면적 입력 시 평단가 자동계산 (소수점 1자리)
       if (area > 0) {
         const areaPy = area / 3.30579;
         const fmtPy = v => { const man = v / 10000; return '@' + (man % 1 === 0 ? man.toLocaleString('ko-KR') : man.toFixed(1)) + '만'; };
@@ -32120,7 +32120,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       setR('r_area_pyeong', pyeong.toFixed(2) + '평');
       setR('r_area_sqm', sqm.toFixed(2) + '㎡');
       setR('r_area_sqft', sqft.toFixed(2) + 'ft²');
-      // 평당가도 재계산
+      // 평단가도 재계산
       calcAreaPrice();
     }
     window.calcArea = calcArea;
@@ -33961,15 +33961,79 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     function _plFmtMonthTitle(y, m) {
       return y + '년 ' + m + '월';
     }
+    function _plGetDdayTone(dday) {
+      const d = Number(dday);
+      if (!isFinite(d)) return { color: 'var(--di)', label: '', state: 'none' };
+      if (d < 0) return { color: '#8b93a7', label: 'D+' + Math.abs(d), state: 'past' };
+      if (d === 0) return { color: '#ff6370', label: 'D-Day', state: 'today' };
+      if (d <= 3) return { color: '#ff8c42', label: 'D-' + d, state: 'urgent' };
+      if (d <= 7) return { color: '#fbbf24', label: 'D-' + d, state: 'near' };
+      if (d >= 30) return { color: '#60a5fa', label: 'D-' + d, state: 'far' };
+      return { color: '#4ade80', label: 'D-' + d, state: 'normal' };
+    }
+    window._skGetUnifiedDdayTone = _plGetDdayTone;
     function _plDdayColor(dt) {
+      if (!dt || isNaN(dt.getTime())) return 'var(--di)';
       const now = new Date();
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       const dday = Math.round((dt - today) / 86400000);
-      if (dday < 0) return '#8b93a7';
-      if (dday === 0) return '#ff6370';
-      if (dday <= 3) return '#ff8c42';
-      if (dday <= 7) return '#fbbf24';
-      return '#4ade80';
+      return _plGetDdayTone(dday).color;
+    }
+    function _plIntentTone(intent) {
+      const v = String(intent || '').trim();
+      if (v === '상') return { color: '#ff6b6b', bg: 'rgba(255,107,107,.16)' };
+      if (v === '중') return { color: '#60a5fa', bg: 'rgba(96,165,250,.16)' };
+      if (v === '하') return { color: '#4ade80', bg: 'rgba(74,222,128,.16)' };
+      return null;
+    }
+    function _plIntentChip(intent) {
+      const tone = _plIntentTone(intent);
+      if (!tone) return '';
+      return `<span style="display:inline-flex;align-items:center;padding:1px 6px;border-radius:999px;border:1px solid ${tone.color}55;background:${tone.bg};color:${tone.color};font-size:10px;font-weight:800;line-height:1.25;white-space:nowrap;">${_plEsc(intent)}</span>`;
+    }
+    function _plBuildPropertyMetaBySavedId() {
+      const map = {};
+      if (typeof plLoad !== 'function') return map;
+      let items = [];
+      try { items = plLoad() || []; } catch (_) { items = []; }
+      (items || []).forEach(it => {
+        if (!it) return;
+        const meta = {
+          intent: String(it.intent || '').trim(),
+          bidFocus: !!(it.bidFocus === true || String(it.bidFocus || '').trim() === '1' || String(it.bidFocus || '').trim().toLowerCase() === 'true')
+        };
+        const keys = [it.linkedSavedId, it.id];
+        keys.forEach(raw => {
+          const key = String(raw || '').trim();
+          if (!key) return;
+          if (!map[key]) map[key] = meta;
+        });
+      });
+      return map;
+    }
+    function _plGetPipelineScrollState(viewName) {
+      const root = window.__wrPipelineScrollState = window.__wrPipelineScrollState || {};
+      if (!root[viewName]) root[viewName] = { locked: false, top: 0, programmaticUntil: 0 };
+      return root[viewName];
+    }
+    function _plEnsurePipelineScrollWatch(host, viewName) {
+      if (!host) return;
+      const boundKey = '__plScrollWatchBound_' + viewName;
+      if (host[boundKey]) return;
+      host[boundKey] = true;
+      host.addEventListener('scroll', function() {
+        const st = _plGetPipelineScrollState(viewName);
+        if (Date.now() <= Number(st.programmaticUntil || 0)) return;
+        st.locked = true;
+        st.top = host.scrollTop || 0;
+      }, { passive: true });
+    }
+    function _plSetPipelineScrollTop(host, viewName, top) {
+      if (!host) return;
+      const st = _plGetPipelineScrollState(viewName);
+      st.programmaticUntil = Date.now() + 180;
+      host.scrollTop = Math.max(0, Number(top || 0));
+      st.top = host.scrollTop || 0;
     }
     function _plNormStatus(v) {
       const s = String(v || '').trim().toLowerCase();
@@ -34006,6 +34070,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     function _plCollectPipelineRows() {
       const sv = getSv();
       const roomStatusByItem = _plBuildRoomStatusByItem();
+      const propMetaBySaved = _plBuildPropertyMetaBySavedId();
       return (sv || []).map(it => {
         if (!it) return null;
         const d = it.data || {};
@@ -34014,13 +34079,23 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         // 상태가 비어 있어도 경매물건은 파이프라인에서 기본 개요로 노출
         if (!status && String(it.mode || '').toLowerCase() === 'auction') status = 'interest';
         if (!status || status === 'pass') return null;
+        const meta = propMetaBySaved[itemId] || {};
         const saleDt = _plParseAuctionDate(d.매각일 || d.매각기일 || '');
-        return { item: it, saleDt: saleDt, status: status };
+        return {
+          item: it,
+          saleDt: saleDt,
+          status: status,
+          intent: String(meta.intent || '').trim(),
+          bidFocus: !!meta.bidFocus
+        };
       }).filter(Boolean);
     }
     function renderPipelineListBoard() {
       const listEl = document.getElementById('pipelineListBoard');
       if (!listEl) return;
+      _plEnsurePipelineScrollWatch(listEl, 'list');
+      const listScrollState = _plGetPipelineScrollState('list');
+      const prevTop = listEl.scrollTop || 0;
       const rows = _plCollectPipelineRows();
       const statusMap = { interest: '개요', review: '검토', field: '현장', bid: '입찰', won: '낙찰', sell: '매도' };
       rows.sort((a, b) => {
@@ -34039,13 +34114,17 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           ? (entry.saleDt.getFullYear() + '.' + String(entry.saleDt.getMonth() + 1).padStart(2, '0') + '.' + String(entry.saleDt.getDate()).padStart(2, '0'))
           : (d.매각일 || d.매각기일 || '-');
         const st = statusMap[entry.status] || entry.status;
+        const intentChip = _plIntentChip(entry.intent);
+        const bidDot = entry.bidFocus
+          ? '<span style="display:inline-block;width:8px;height:8px;border-radius:999px;background:#34d399;box-shadow:0 0 0 2px rgba(52,211,153,.2);margin-right:5px;vertical-align:middle;"></span>'
+          : '';
         const saleTs = entry.saleDt ? entry.saleDt.getTime() : '';
         return `<tr data-sale-ts="${saleTs}" onclick="openPopup('${String(it.id).replace(/'/g, "\\'")}')" style="cursor:pointer;">
           <td style="padding:8px 10px;border-bottom:1px solid var(--b1);color:var(--tx);white-space:nowrap;">${_plEsc(st)}</td>
-          <td style="padding:8px 10px;border-bottom:1px solid var(--b1);color:var(--tx);font-weight:600;">${_plEsc(it.title || d.소재지 || it.id)}</td>
+          <td style="padding:8px 10px;border-bottom:1px solid var(--b1);color:var(--tx);font-weight:600;"><div style="display:flex;align-items:center;gap:6px;min-width:0;">${intentChip}<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${_plEsc(it.title || d.소재지 || it.id)}</span></div></td>
           <td style="padding:8px 10px;border-bottom:1px solid var(--b1);color:var(--mu);">${_plEsc(d.소재지 || '-')}</td>
           <td style="padding:8px 10px;border-bottom:1px solid var(--b1);color:#ff9f43;white-space:nowrap;">${_plEsc(price)}</td>
-          <td style="padding:8px 10px;border-bottom:1px solid var(--b1);color:var(--mu);white-space:nowrap;">${_plEsc(saleDate)}</td>
+          <td style="padding:8px 10px;border-bottom:1px solid var(--b1);color:var(--mu);white-space:nowrap;">${bidDot}${_plEsc(saleDate)}</td>
         </tr>`;
       }).join('');
       listEl.innerHTML = `
@@ -34061,7 +34140,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           </thead>
           <tbody>${body || `<tr><td colspan="5" style="padding:22px;text-align:center;color:var(--di);">표시할 물건이 없습니다.</td></tr>`}</tbody>
         </table>`;
-      if (rows.length) {
+      if (rows.length && !listScrollState.locked) {
         setTimeout(() => {
           try {
             const now = new Date();
@@ -34075,7 +34154,14 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             const target = future || trs[trs.length - 1];
             if (!target) return;
             const top = Math.max(0, target.offsetTop - 70);
-            listEl.scrollTop = top;
+            _plSetPipelineScrollTop(listEl, 'list', top);
+          } catch (_) {}
+        }, 0);
+      } else if (listScrollState.locked) {
+        setTimeout(() => {
+          try {
+            const keepTop = (typeof listScrollState.top === 'number') ? listScrollState.top : prevTop;
+            _plSetPipelineScrollTop(listEl, 'list', keepTop);
           } catch (_) {}
         }, 0);
       }
@@ -34083,12 +34169,16 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     function renderPipelineCalendarBoard() {
       const host = document.getElementById('pipelineListBoard');
       if (!host) return;
+      _plEnsurePipelineScrollWatch(host, 'calendar');
+      const calScrollState = _plGetPipelineScrollState('calendar');
+      const prevTop = host.scrollTop || 0;
       const items = _plCollectPipelineRows()
         .filter(entry => entry.saleDt)
-        .map(entry => ({ item: entry.item, date: entry.saleDt }))
+        .map(entry => ({ item: entry.item, date: entry.saleDt, intent: entry.intent, bidFocus: !!entry.bidFocus }))
         .sort((a, b) => a.date - b.date);
       if (!items.length) {
         host.innerHTML = '<div style="padding:28px;text-align:center;color:var(--di);font-size:12px;">달력에 표시할 기일 데이터가 없습니다.</div>';
+        if (calScrollState.locked) _plSetPipelineScrollTop(host, 'calendar', prevTop);
         return;
       }
       const weekHeads = ['일', '월', '화', '수', '목', '금', '토'];
@@ -34128,8 +34218,22 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             const it = entry.item;
             const raw = ((it.data || {}).최저가 || (it.data || {}).감정가 || (it.data || {}).매매가 || (it.data || {}).매매가_만원 || '');
             const labelPrice = _plFmtMoneyWon(raw, (it.data || {}).매매가_만원).replace('원', '');
-            const color = _plDdayColor(entry.date);
-            return `<button onclick="event.stopPropagation();openPopup('${String(it.id).replace(/'/g, "\\'")}')" style="display:block;width:100%;text-align:left;padding:5px 6px;background:${color}14;border:1px solid ${color}55;border-radius:7px;color:var(--tx);font-size:10px;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${_plEsc(it.title || (it.data||{}).소재지 || it.id)} · ${_plEsc(labelPrice)}</button>`;
+            const now = new Date();
+            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            const dday = Math.round((entry.date - today) / 86400000);
+            const tone = _plGetDdayTone(dday);
+            const intentChip = _plIntentChip(entry.intent);
+            const bidDot = entry.bidFocus
+              ? '<span style="display:inline-block;width:8px;height:8px;border-radius:999px;background:#34d399;box-shadow:0 0 0 2px rgba(52,211,153,.25);"></span>'
+              : '';
+            return `<button onclick="event.stopPropagation();openPopup('${String(it.id).replace(/'/g, "\\'")}')" style="display:block;width:100%;text-align:left;padding:5px 6px;background:${tone.color}14;border:1px solid ${tone.color}55;border-radius:7px;color:var(--tx);font-size:10px;cursor:pointer;overflow:hidden;">
+              <div style="display:flex;align-items:center;gap:4px;min-width:0;">
+                ${bidDot}
+                ${intentChip}
+                <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${_plEsc(it.title || (it.data||{}).소재지 || it.id)}</span>
+              </div>
+              <div style="margin-top:2px;color:var(--mu);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${_plEsc(labelPrice)}</div>
+            </button>`;
           }).join('');
           const more = rows.length > 3 ? `<div style="font-size:10px;color:var(--di);padding:0 2px;">+${rows.length - 3}건</div>` : '';
           dayCells += `<div style="min-height:122px;border:1px solid rgba(255,255,255,.08);background:rgba(12,16,24,.72);border-radius:8px;padding:6px;display:flex;flex-direction:column;gap:5px;">
@@ -34144,6 +34248,15 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           <div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;">${dayCells}</div>
         </div>`;
       }).join('');
+      if (calScrollState.locked) {
+        setTimeout(() => {
+          try {
+            const keepTop = (typeof calScrollState.top === 'number') ? calScrollState.top : prevTop;
+            _plSetPipelineScrollTop(host, 'calendar', keepTop);
+          } catch (_) {}
+        }, 0);
+        return;
+      }
       setTimeout(() => {
         try {
           const now = new Date();
@@ -34154,7 +34267,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           const future = blocks.find(el => String(el.getAttribute('data-pcal-month') || '') >= key);
           const target = found || future || blocks[blocks.length - 1];
           if (!target) return;
-          host.scrollTop = Math.max(0, target.offsetTop - 8);
+          _plSetPipelineScrollTop(host, 'calendar', Math.max(0, target.offsetTop - 8));
         } catch (_) {}
       }, 0);
     }
@@ -34239,6 +34352,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const cntEls = ['wCnt0','wCnt1','wCnt2','wCnt3','wCnt4','wCnt5'].map(id=>document.getElementById(id));
       const emptyEls = ['wEmpty0','wEmpty1','wEmpty2','wEmpty3','wEmpty4','wEmpty5'].map(id=>document.getElementById(id));
       const rooms = wrGetRooms();
+      const plMetaBySaved = _plBuildPropertyMetaBySavedId();
       const scheduleEl = document.getElementById('watchScheduleBoard');
       applyPipelineKanbanLayout();
       const itemLifecycle = {};
@@ -34321,8 +34435,9 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             + '<div id="skSchedScrollRaw" style="display:flex;gap:8px;overflow-x:auto;padding-bottom:2px;">'
             + grouped.map(group => {
               const dday = _calcDday(group.date);
-              const color = dday < 0 ? '#8b93a7' : dday === 0 ? '#ff6370' : dday <= 3 ? '#ff8c42' : dday <= 7 ? '#fbbf24' : '#4ade80';
-              const ddayLabel = dday < 0 ? '종료' : (dday === 0 ? 'D-Day' : 'D-' + dday);
+              const tone = _plGetDdayTone(dday);
+              const color = tone.color;
+              const ddayLabel = dday < 0 ? '종료' : tone.label;
               const isPast = dday < 0;
               return '<div data-sched-key="' + group.key + '" style="min-width:220px;max-width:220px;background:' + (isPast ? 'rgba(11,13,19,.72)' : 'rgba(14,17,24,.92)') + ';border:1px solid ' + (isPast ? 'rgba(255,255,255,.05)' : 'rgba(255,255,255,.08)') + ';border-radius:10px;padding:10px;opacity:' + (isPast ? '0.72' : '1') + ';">'
                 + '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:8px;">'
@@ -34416,8 +34531,9 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
               const _saleDt = _parseSaleDate(d.매각일 || d.매각기일);
               const dDay = _saleDt ? _calcDday(_saleDt) : null;
               if (dDay != null) {
-                const dColor = dDay < 0 ? 'var(--di)' : dDay <= 3 ? '#ff6370' : dDay <= 7 ? 'var(--or)' : '#4ade80';
-                const dLabel = dDay < 0 ? '기일지남·수정' : (dDay === 0 ? 'D-Day' : 'D-' + dDay);
+                const dTone = _plGetDdayTone(dDay);
+                const dColor = dDay < 0 ? 'var(--di)' : dTone.color;
+                const dLabel = dDay < 0 ? '기일지남·수정' : dTone.label;
                 ddayHtml = `<span style="font-size:10px;font-weight:700;color:${dColor};background:${dColor}18;padding:1px 5px;border-radius:4px;">${dLabel}</span>`;
               }
             }
@@ -34454,6 +34570,11 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
                   ${closeSecondBid ? `<span style="max-width:100%;padding:1px 5px;border-radius:999px;border:1px solid rgba(255,165,94,.42);background:rgba(255,165,94,.12);color:#ffbe88;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">차순위 ${esc(closeSecondBid)}</span>` : ''}
                 </div>`
               : '';
+            const pMeta = plMetaBySaved[itemIdStr] || {};
+            const intentChip = _plIntentChip(pMeta.intent);
+            const bidFocusChip = pMeta.bidFocus
+              ? '<span style="display:inline-flex;align-items:center;gap:3px;padding:1px 5px;border-radius:999px;border:1px solid rgba(52,211,153,.42);background:rgba(52,211,153,.12);color:#34d399;font-size:9px;font-weight:800;">● 입찰</span>'
+              : '';
 
             const card = document.createElement('div');
             card.style.cssText = `background:var(--s2);border-radius:9px;border:1px solid ${linkedRoom ? 'rgba(17,157,237,.25)' : 'var(--b1)'};padding:8px 10px;transition:all .15s;position:relative;cursor:pointer;width:100%;`;
@@ -34477,6 +34598,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:4px;margin-bottom:3px;">
               <div style="font-size:12px;font-weight:600;color:var(--tx);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(item.title || d.소재지 || item.id)}</div>
               <div style="display:flex;align-items:center;gap:3px;flex-shrink:0;">
+                ${bidFocusChip}
+                ${intentChip}
                 ${ddayHtml}
               </div>
             </div>
@@ -42726,7 +42849,7 @@ ${newsText}
 
 
 /* ════════════════════════════════════════════════════════
-   수익률 계산기 (calcSY) - 면적↔평 / 매매가↔평당가 / 월세↔평당월세 / 수익률 상호연동
+   수익률 계산기 (calcSY) - 면적↔평 / 매매가↔평단가 / 월세↔평당월세 / 수익률 상호연동
    app.js calcSY 로직 기반, 사이트용으로 이식
 ════════════════════════════════════════════════════════ */
 (function() {
@@ -43002,7 +43125,7 @@ ${newsText}
     if (sub) {
       sub.textContent = (P > 0 && M > 0 && ri > 0)
         ? ((Y >= 6 ? '🟢 우수' : Y >= 5 ? '🟡 양호' : Y >= 4 ? '🟠 보통' : '🔴 주의') + ' · 실투자 ' + fmtWon(ri))
-        : '면적과 가격을 입력하면 평당가와 수익률이 함께 계산됩니다';
+        : '면적과 가격을 입력하면 평단가와 수익률이 함께 계산됩니다';
     }
     var areaWrap = document.getElementById(prefix + '_area_result');
     var areaGrid = document.getElementById(prefix + '_area_grid');
@@ -45063,6 +45186,48 @@ window.addEventListener('DOMContentLoaded', () => {
     plUpdateItem(id, patch);
     if (typeof window._plScheduleRender === 'function') window._plScheduleRender(80);
   };
+  function plIsBidFocusOn(v) {
+    if (v === true || v === 1) return true;
+    var s = String(v || '').trim().toLowerCase();
+    return s === '1' || s === 'true' || s === 'y' || s === 'yes' || s === 'on';
+  }
+  window.plToggleBidFocus = function(id) {
+    var item = plLoad().find(function(i){ return String(i.id) === String(id); });
+    if (!item) return false;
+    var nextOn = !plIsBidFocusOn(item.bidFocus);
+    plUpdateItem(id, { bidFocus: nextOn ? 1 : '' });
+    if (typeof window._plScheduleRender === 'function') window._plScheduleRender(60);
+    return nextOn;
+  };
+  function plBiddateCellHtml(it, ddayLabel, ddayColor) {
+    var id = String(it && it.id || '');
+    var key = plDomKey(id, 'biddate');
+    var display = fmtDate(it && it.biddate || '');
+    if (!display || display === '—') display = '미정';
+    var rawValue = String(it && it.biddate || '');
+    var focused = plIsBidFocusOn(it && it.bidFocus);
+    var dotBg = focused ? '#34d399' : 'transparent';
+    var dotBd = focused ? 'rgba(52,211,153,.75)' : 'rgba(255,255,255,.26)';
+    return ''
+      + '<div style="display:flex;align-items:center;gap:6px;min-width:0;">'
+      +   '<button type="button" onclick="event.preventDefault();event.stopPropagation();plToggleBidFocus(\'' + plEscHtml(id) + '\')" '
+      +   'style="width:12px;height:12px;border-radius:999px;border:1.5px solid ' + dotBd + ';background:' + dotBg + ';box-shadow:' + (focused ? '0 0 0 2px rgba(52,211,153,.2)' : 'none') + ';cursor:pointer;flex-shrink:0;" '
+      +   'title="이번 회차 입찰 체크"></button>'
+      +   '<button type="button" id="' + key + '_s" data-k="' + plEscHtml(key) + '" onclick="event.preventDefault();event.stopPropagation();plToggleBidFocus(\'' + plEscHtml(id) + '\')" '
+      +   'style="display:inline-flex;align-items:center;justify-content:flex-start;min-width:64px;padding:0;border:none;background:transparent;color:' + ddayColor + ';font-size:13px;font-weight:700;cursor:pointer;border-bottom:1px dashed rgba(255,255,255,.14);text-align:left;">'
+      +     plEscHtml(display)
+      +   '</button>'
+      +   '<input id="' + key + '_i" data-k="' + plEscHtml(key) + '" data-id="' + plEscHtml(id) + '" data-field="biddate" type="text" value="' + plEscHtml(rawValue) + '" '
+      +   'onkeydown="if(event.key===\'Enter\'){this.blur();} if(event.key===\'Escape\'){plCancelInlineEdit(this.dataset.k);}" '
+      +   'onblur="plFinishInlineEdit(this.dataset.id,this.dataset.field,this.dataset.k)" '
+      +   'onclick="event.stopPropagation()" placeholder="YYYY-MM-DD" '
+      +   'style="display:none;width:112px;min-width:82px;padding:4px 6px;border:1px solid rgba(255,255,255,.12);border-radius:6px;background:rgba(0,0,0,.25);color:var(--tx);font-size:12px;text-align:left;outline:none;">'
+      +   '<button type="button" onclick="event.preventDefault();event.stopPropagation();plStartInlineEdit(\'' + plEscHtml(key) + '\')" '
+      +   'style="padding:1px 5px;border-radius:5px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.04);color:var(--di);font-size:10px;cursor:pointer;flex-shrink:0;" '
+      +   'title="입찰기일 수정">수정</button>'
+      + '</div>'
+      + (ddayLabel ? '<div style="margin-top:2px;font-size:10px;color:' + ddayColor + ';font-weight:800;">' + ddayLabel + '</div>' : '');
+  }
   function plInputCell(id, field, value, opts) {
     opts = opts || {};
     var type = opts.type || 'text';
@@ -45157,9 +45322,9 @@ window.addEventListener('DOMContentLoaded', () => {
     } else {
       tbody.innerHTML = filtered.map(function(it){
         var d = daysDiff(it.biddate);
-        var ddayLabel = d===null ? '' : (d < 0 ? ('D+' + Math.abs(d)) : (d === 0 ? 'D-Day' : ('D-' + d)));
-        var ddayColor = d===null ? 'var(--fg3)' : (d < 0 ? '#8b93a7' : (d === 0 ? '#ff6370' : (d <= 3 ? '#ff8c42' : (d <= 7 ? '#fbbf24' : '#4ade80'))));
-        var dTag = d===null ? '' : '<div style="font-size:10px;color:' + ddayColor + ';font-weight:800;">' + ddayLabel + '</div>';
+        var dTone = _plGetDdayTone(d);
+        var ddayLabel = d===null ? '' : dTone.label;
+        var ddayColor = d===null ? 'var(--fg3)' : dTone.color;
         var room = it.roomId ? roomById[String(it.roomId)] : null;
         var simpleStatus = plEffectiveSimpleStatus(it, roomById);
         var wrLink = plQuickRoomControlHtml(it, roomOptionsHtml);
@@ -45205,8 +45370,7 @@ window.addEventListener('DOMContentLoaded', () => {
           + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'monthly',plDisplayMoney(it.monthly||''),plDisplayMan(it.monthly||''),{type:'text',align:'right',minw:'60px',placeholder:'만원'})+'</td>'
           + '<td style="padding:8px 10px;text-align:center;font-size:12px;">'+(it.round||'—')+'</td>'
           + '<td style="padding:8px 10px;white-space:nowrap;">'
-          +   '<div style="font-size:13px;">'+plEditCellHtml(it.id,'biddate',it.biddate||'',fmtDate(it.biddate),{type:'text',align:'left',minw:'72px',placeholder:'YYYY-MM-DD',spanStyle:'color:'+ddayColor+';font-weight:700;border-bottom-color:rgba(255,255,255,.10);'})+'</div>'
-          +   dTag
+          +   plBiddateCellHtml(it, ddayLabel, ddayColor)
           + '</td>'
           + '<td style="padding:8px 10px;text-align:right;"><span style="'+(it.estimate?'background:rgba(255,209,102,.12);border-radius:4px;padding:1px 4px;':'')+'">'+plEditCellHtml(it.id,'estimate',plDisplayWonInput(it.estimate||''),plDisplayWonInput(it.estimate||''),{type:'text',align:'right',minw:'72px',placeholder:'원',spanStyle:'color:#ffd166;font-weight:700;'})+'</span></td>'
           + '<td style="padding:8px 10px;text-align:center;cursor:pointer;" onclick="event.stopPropagation();plToggleSite(\''+it.id+'\')">'+siteDots(it.site)+'</td>'
