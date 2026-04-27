@@ -33968,6 +33968,54 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const n = _plToWon(raw, fallbackMan);
       return n ? (n.toLocaleString('ko-KR') + '원') : '-';
     }
+
+    function _plIntentRank(intent) {
+      const s = String(intent || '').trim();
+      if (s === '상') return 0;
+      if (s === '중') return 1;
+      if (s === '하') return 2;
+      return 3;
+    }
+    function _plRoundScore(entry) {
+      const it = entry && entry.item ? entry.item : {};
+      const d = it.data || {};
+      const candidates = [
+        it.round, it.auctionRound, it.currentRound,
+        d.회차, d.입찰회차, d.매각회차, d.차수, d.유찰횟수
+      ];
+      let max = 0;
+      candidates.forEach(v => {
+        const n = parseInt(String(v || '').replace(/[^0-9]/g, ''), 10) || 0;
+        if (n > max) max = n;
+      });
+      const titleNums = String(it.title || d.소재지 || '').match(/\d+(?=\s*(?:회|차))/g) || [];
+      titleNums.forEach(v => {
+        const n = parseInt(v, 10) || 0;
+        if (n > max) max = n;
+      });
+      return max;
+    }
+    function _plLowPriceScore(entry) {
+      const it = entry && entry.item ? entry.item : {};
+      const d = it.data || {};
+      const n = _plToWon(d.최저가 || d.감정가 || d.매매가, d.매매가_만원);
+      return n > 0 ? n : Number.MAX_SAFE_INTEGER;
+    }
+    function _plCalendarEntryCompare(a, b) {
+      if (!!a.bidFocus !== !!b.bidFocus) return a.bidFocus ? -1 : 1;
+      const ia = _plIntentRank(a.intent);
+      const ib = _plIntentRank(b.intent);
+      if (ia !== ib) return ia - ib;
+      const ra = _plRoundScore(a);
+      const rb = _plRoundScore(b);
+      if (ra !== rb) return rb - ra;
+      const pa = _plLowPriceScore(a);
+      const pb = _plLowPriceScore(b);
+      if (pa !== pb) return pa - pb;
+      const ta = String(a.item && (a.item.title || (a.item.data || {}).소재지) || '').toLowerCase();
+      const tb = String(b.item && (b.item.title || (b.item.data || {}).소재지) || '').toLowerCase();
+      return ta.localeCompare(tb);
+    }
     function _plFmtMonthTitle(y, m) {
       return y + '년 ' + m + '월';
     }
@@ -34138,14 +34186,14 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         </tr>`;
       }).join('');
       listEl.innerHTML = `
-        <table style="width:100%;border-collapse:collapse;font-size:11px;min-width:780px;">
+        <table style="width:100%;border-collapse:separate;border-spacing:0;font-size:11px;min-width:780px;">
           <thead>
-            <tr style="position:sticky;top:0;background:var(--s1);z-index:1;">
-              <th style="padding:9px 10px;border-bottom:1px solid var(--b1);text-align:left;color:var(--di);font-weight:700;">상태</th>
-              <th style="padding:9px 10px;border-bottom:1px solid var(--b1);text-align:left;color:var(--di);font-weight:700;">물건</th>
-              <th style="padding:9px 10px;border-bottom:1px solid var(--b1);text-align:left;color:var(--di);font-weight:700;">주소</th>
-              <th style="padding:9px 10px;border-bottom:1px solid var(--b1);text-align:left;color:var(--di);font-weight:700;">금액</th>
-              <th style="padding:9px 10px;border-bottom:1px solid var(--b1);text-align:left;color:var(--di);font-weight:700;">기일</th>
+            <tr>
+              <th style="position:sticky;top:0;z-index:3;background:var(--s1);padding:9px 10px;border-bottom:1px solid var(--b1);text-align:left;color:var(--di);font-weight:700;">상태</th>
+              <th style="position:sticky;top:0;z-index:3;background:var(--s1);padding:9px 10px;border-bottom:1px solid var(--b1);text-align:left;color:var(--di);font-weight:700;">물건</th>
+              <th style="position:sticky;top:0;z-index:3;background:var(--s1);padding:9px 10px;border-bottom:1px solid var(--b1);text-align:left;color:var(--di);font-weight:700;">주소</th>
+              <th style="position:sticky;top:0;z-index:3;background:var(--s1);padding:9px 10px;border-bottom:1px solid var(--b1);text-align:left;color:var(--di);font-weight:700;">금액</th>
+              <th style="position:sticky;top:0;z-index:3;background:var(--s1);padding:9px 10px;border-bottom:1px solid var(--b1);text-align:left;color:var(--di);font-weight:700;">기일</th>
             </tr>
           </thead>
           <tbody>${body || `<tr><td colspan="5" style="padding:22px;text-align:center;color:var(--di);">표시할 물건이 없습니다.</td></tr>`}</tbody>
@@ -34182,42 +34230,10 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       _plEnsurePipelineScrollWatch(host, 'calendar');
       const calScrollState = _plGetPipelineScrollState('calendar');
       const prevTop = host.scrollTop || 0;
-      const _plCalendarRoundNum = function(entry) {
-        try {
-          const it = (entry && entry.item) || {};
-          const d = it.data || {};
-          const raw = String(it.round || it.회차 || d.유찰횟수 || d.유찰회차 || d.회차 || '').trim();
-          const n = parseInt((raw.match(/\d+/) || ['0'])[0], 10);
-          return Number.isFinite(n) ? n : 0;
-        } catch (_) { return 0; }
-      };
-      const _plCalendarPriceWon = function(entry) {
-        try {
-          const it = (entry && entry.item) || {};
-          const d = it.data || {};
-          const raw = d.최저가 || d.최저가_원 || d.최저가_만원 || d.감정가 || d.매매가 || d.매매가_만원 || it.minprice || it.appraisal || '';
-          const n = Number(String(raw || '').replace(/[^0-9]/g, ''));
-          if (!Number.isFinite(n) || n <= 0) return Number.MAX_SAFE_INTEGER;
-          if (raw === d.최저가_만원 || raw === d.매매가_만원 || n < 1000000) return n * 10000;
-          return n;
-        } catch (_) { return Number.MAX_SAFE_INTEGER; }
-      };
-      const _plCalendarEntrySort = function(a, b) {
-        if (!!a.bidFocus !== !!b.bidFocus) return a.bidFocus ? -1 : 1;
-        const ra = _plCalendarRoundNum(a);
-        const rb = _plCalendarRoundNum(b);
-        if (ra !== rb) return rb - ra;
-        const pa = _plCalendarPriceWon(a);
-        const pb = _plCalendarPriceWon(b);
-        if (pa !== pb) return pa - pb;
-        const ta = String((a.item && (a.item.title || (a.item.data||{}).소재지)) || '').toLowerCase();
-        const tb = String((b.item && (b.item.title || (b.item.data||{}).소재지)) || '').toLowerCase();
-        return ta.localeCompare(tb);
-      };
       const items = _plCollectPipelineRows()
         .filter(entry => entry.saleDt)
         .map(entry => ({ item: entry.item, date: entry.saleDt, intent: entry.intent, bidFocus: !!entry.bidFocus }))
-        .sort((a, b) => a.date - b.date);
+        .sort((a, b) => (a.date - b.date) || _plCalendarEntryCompare(a, b));
       if (!items.length) {
         host.innerHTML = '<div style="padding:28px;text-align:center;color:var(--di);font-size:12px;">달력에 표시할 기일 데이터가 없습니다.</div>';
         if (calScrollState.locked) _plSetPipelineScrollTop(host, 'calendar', prevTop);
@@ -34251,11 +34267,11 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         for (let idx = 0; idx < totalCells; idx++) {
           const dayNum = idx - startWeek + 1;
           if (dayNum < 1 || dayNum > monthLast) {
-            dayCells += '<div style="min-height:122px;border:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.01);border-radius:8px;"></div>';
+            dayCells += '<div style="min-height:156px;border:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.01);border-radius:8px;"></div>';
             continue;
           }
           const dayKey = mm.y + '-' + String(mm.m).padStart(2, '0') + '-' + String(dayNum).padStart(2, '0');
-          const rows = (byDay.get(dayKey) || []).slice().sort(_plCalendarEntrySort);
+          const rows = (byDay.get(dayKey) || []).slice().sort(_plCalendarEntryCompare);
           const chips = rows.map(entry => {
             const it = entry.item;
             const raw = ((it.data || {}).최저가 || (it.data || {}).감정가 || (it.data || {}).매매가 || (it.data || {}).매매가_만원 || '');
@@ -34269,7 +34285,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             const borderColor = entry.bidFocus ? tone.color : (tone.color + '55');
             const borderWidth = entry.bidFocus ? '2px' : '1px';
             const bgColor = entry.bidFocus ? (tone.color + '18') : (tone.color + '14');
-            return `<button onclick="event.stopPropagation();openPopup('${String(it.id).replace(/'/g, "\\'")}')" style="display:block;width:100%;text-align:left;padding:5px 6px;background:${bgColor};border:${borderWidth} solid ${borderColor};border-radius:7px;color:var(--tx);font-size:10px;cursor:pointer;overflow:hidden;">
+            return `<button onclick="event.stopPropagation();openPopup('${String(it.id).replace(/'/g, "\\'")}')" style="display:block;width:100%;text-align:left;padding:6px 7px;background:${bgColor};border:${borderWidth} solid ${borderColor};border-radius:7px;color:var(--tx);font-size:10px;line-height:1.25;cursor:pointer;overflow:hidden;">
               <div style="display:flex;align-items:center;gap:4px;min-width:0;">
                 ${intentChip}
                 <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${_plEsc(it.title || (it.data||{}).소재지 || it.id)}</span>
@@ -34277,10 +34293,11 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
               <div style="margin-top:2px;color:var(--mu);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${_plEsc(labelPrice)}</div>
             </button>`;
           }).join('');
-          const moreBadge = rows.length > 3 ? `<span style="flex-shrink:0;font-size:10px;font-weight:800;color:#bfdbfe;background:rgba(96,165,250,.18);border:1px solid rgba(96,165,250,.38);border-radius:999px;padding:1px 6px;">+${rows.length - 3}</span>` : '';
-          dayCells += `<div style="height:122px;border:1px solid rgba(255,255,255,.08);background:rgba(12,16,24,.72);border-radius:8px;padding:6px;display:flex;flex-direction:column;gap:5px;overflow:hidden;">
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;flex-shrink:0;"><span style="font-size:11px;font-weight:700;color:#d8e2ff;">${dayNum}</span>${moreBadge}</div>
-            <div style="flex:1;min-height:0;overflow-y:${rows.length > 3 ? 'auto' : 'hidden'};display:flex;flex-direction:column;gap:5px;padding-right:${rows.length > 3 ? '2px' : '0'};">
+          const more = rows.length > 3 ? `<div style="position:absolute;right:7px;top:6px;font-size:11px;font-weight:900;color:#dbeafe;background:rgba(59,130,246,.22);border:1px solid rgba(147,197,253,.55);border-radius:999px;padding:2px 7px;line-height:1;">+${rows.length - 3}</div>` : '';
+          dayCells += `<div style="min-height:156px;border:1px solid rgba(255,255,255,.08);background:rgba(12,16,24,.72);border-radius:8px;padding:7px;display:flex;flex-direction:column;gap:5px;position:relative;box-sizing:border-box;">
+            ${more}
+            <div style="font-size:11px;font-weight:700;color:#d8e2ff;padding-right:${rows.length > 3 ? '36px' : '0'};">${dayNum}</div>
+            <div style="display:flex;flex-direction:column;gap:5px;overflow-y:${rows.length > 3 ? 'auto' : 'visible'};padding-right:${rows.length > 3 ? '3px' : '0'};max-height:${rows.length > 3 ? '126px' : 'none'};box-sizing:border-box;">
               ${chips || '<div style="flex:1;"></div>'}
             </div>
           </div>`;
@@ -48725,32 +48742,4 @@ window.addEventListener('DOMContentLoaded', () => {
   } catch (e) {
     console.warn('[lifecycle local override patch]', e);
   }
-})();
-
-/* ---- SK patch: calendar day scroll + property-list sticky header (2026-04-27) ---- */
-(function(){
-  function ensureStyle(){
-    if (document.getElementById('sk-calendar-scroll-and-pl-header')) return;
-    var st = document.createElement('style');
-    st.id = 'sk-calendar-scroll-and-pl-header';
-    st.textContent = `
-      #pipelineListBoard [data-pcal-month] div[style*="overflow-y:auto"]::-webkit-scrollbar { width: 6px; }
-      #pipelineListBoard [data-pcal-month] div[style*="overflow-y:auto"]::-webkit-scrollbar-thumb { background: rgba(148,163,184,.45); border-radius: 999px; }
-      #pipelineListBoard [data-pcal-month] div[style*="overflow-y:auto"]::-webkit-scrollbar-track { background: rgba(15,23,42,.25); border-radius: 999px; }
-
-      #pl-table thead,
-      #pl-thead-row { position: sticky !important; top: 112px !important; z-index: 90 !important; }
-      #pl-table thead th,
-      #pl-thead-row th {
-        position: sticky !important;
-        top: 112px !important;
-        z-index: 91 !important;
-        background: #07101b !important;
-        box-shadow: 0 1px 0 rgba(148,163,184,.22), 0 8px 14px rgba(0,0,0,.25) !important;
-      }
-    `;
-    document.head.appendChild(st);
-  }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ensureStyle);
-  else ensureStyle();
 })();
