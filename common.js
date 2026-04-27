@@ -4789,7 +4789,7 @@ var _safeLocalSet = function(key, value) {
                       : (saleDday < 0 ? ('D+' + Math.abs(saleDday)) : (saleDday === 0 ? 'D-Day' : ('D-' + saleDday)));
                     const ddayColor = (saleDday == null)
                       ? ''
-                      : (saleDday < 0 ? '#8b93a7' : (saleDday === 0 ? '#ff6370' : (saleDday <= 3 ? '#ff8c42' : (saleDday <= 7 ? '#fbbf24' : '#4ade80'))));
+                      : _plGetDdayTone(saleDday).color;
                     const resultAlertText = (saleDday == null)
                       ? ''
                       : (saleDday < 0 ? ' (결과 업데이트)' : (saleDday === 0 ? ' (결과 입력)' : ''));
@@ -33968,8 +33968,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       if (d === 0) return { color: '#ff6370', label: 'D-Day', state: 'today' };
       if (d <= 3) return { color: '#ff8c42', label: 'D-' + d, state: 'urgent' };
       if (d <= 7) return { color: '#fbbf24', label: 'D-' + d, state: 'near' };
-      if (d >= 30) return { color: '#60a5fa', label: 'D-' + d, state: 'far' };
-      return { color: '#4ade80', label: 'D-' + d, state: 'normal' };
+      if (d <= 29) return { color: '#4ade80', label: 'D-' + d, state: 'normal' };
+      return { color: '#60a5fa', label: 'D-' + d, state: 'far' };
     }
     window._skGetUnifiedDdayTone = _plGetDdayTone;
     function _plDdayColor(dt) {
@@ -45208,15 +45208,26 @@ window.addEventListener('DOMContentLoaded', () => {
     var focused = plIsBidFocusOn(it && it.bidFocus);
     var dotBg = focused ? '#34d399' : 'transparent';
     var dotBd = focused ? 'rgba(52,211,153,.75)' : 'rgba(255,255,255,.26)';
+    
+    // 의향 chip 추가
+    var intentChip = '';
+    var intent = String(it.intent || '').trim();
+    if (intent === '상') intentChip = '<span style="display:inline-flex;align-items:center;padding:1px 5px;border-radius:999px;border:1px solid #ff6b6b88;background:rgba(255,107,107,.16);color:#ff6b6b;font-size:9px;font-weight:800;line-height:1.2;margin-left:4px;">상</span>';
+    else if (intent === '중') intentChip = '<span style="display:inline-flex;align-items:center;padding:1px 5px;border-radius:999px;border:1px solid #60a5fa88;background:rgba(96,165,250,.16);color:#60a5fa;font-size:9px;font-weight:800;line-height:1.2;margin-left:4px;">중</span>';
+    else if (intent === '하') intentChip = '<span style="display:inline-flex;align-items:center;padding:1px 5px;border-radius:999px;border:1px solid #4ade8088;background:rgba(74,222,128,.16);color:#4ade80;font-size:9px;font-weight:800;line-height:1.2;margin-left:4px;">하</span>';
+    
     return ''
       + '<div style="display:flex;align-items:center;gap:6px;min-width:0;">'
       +   '<button type="button" onclick="event.preventDefault();event.stopPropagation();plToggleBidFocus(\'' + plEscHtml(id) + '\')" '
       +   'style="width:12px;height:12px;border-radius:999px;border:1.5px solid ' + dotBd + ';background:' + dotBg + ';box-shadow:' + (focused ? '0 0 0 2px rgba(52,211,153,.2)' : 'none') + ';cursor:pointer;flex-shrink:0;" '
       +   'title="이번 회차 입찰 체크"></button>'
-      +   '<button type="button" id="' + key + '_s" data-k="' + plEscHtml(key) + '" onclick="event.preventDefault();event.stopPropagation();plToggleBidFocus(\'' + plEscHtml(id) + '\')" '
-      +   'style="display:inline-flex;align-items:center;justify-content:flex-start;min-width:64px;padding:0;border:none;background:transparent;color:' + ddayColor + ';font-size:13px;font-weight:700;cursor:pointer;border-bottom:1px dashed rgba(255,255,255,.14);text-align:left;">'
-      +     plEscHtml(display)
-      +   '</button>'
+      +   '<div style="display:flex;align-items:center;min-width:0;flex:1;">'
+      +     '<button type="button" id="' + key + '_s" data-k="' + plEscHtml(key) + '" onclick="event.preventDefault();event.stopPropagation();plToggleBidFocus(\'' + plEscHtml(id) + '\')" '
+      +     'style="display:inline-flex;align-items:center;justify-content:flex-start;padding:0;border:none;background:transparent;color:' + ddayColor + ';font-size:13px;font-weight:700;cursor:pointer;border-bottom:1px dashed rgba(255,255,255,.14);text-align:left;white-space:nowrap;">'
+      +       plEscHtml(display)
+      +     '</button>'
+      +     intentChip
+      +   '</div>'
       +   '<input id="' + key + '_i" data-k="' + plEscHtml(key) + '" data-id="' + plEscHtml(id) + '" data-field="biddate" type="text" value="' + plEscHtml(rawValue) + '" '
       +   'onkeydown="if(event.key===\'Enter\'){this.blur();} if(event.key===\'Escape\'){plCancelInlineEdit(this.dataset.k);}" '
       +   'onblur="plFinishInlineEdit(this.dataset.id,this.dataset.field,this.dataset.k)" '
@@ -47016,8 +47027,9 @@ window.addEventListener('DOMContentLoaded', () => {
       + '<div id="skSchedScroll" style="display:flex;gap:8px;overflow-x:auto;padding-bottom:2px;">'
       + visible.map(function (group) {
         var dday = calcDday(group.date);
-        var color = dday < 0 ? '#8b93a7' : dday === 0 ? '#ff6370' : dday <= 3 ? '#ff8c42' : dday <= 7 ? '#fbbf24' : '#4ade80';
-        var ddayLabel = dday < 0 ? '종료' : (dday === 0 ? 'D-Day' : 'D-' + dday);
+        var tone = _plGetDdayTone(dday);
+        var color = tone.color;
+        var ddayLabel = dday < 0 ? '종료' : tone.label;
         var isPast = dday < 0;
         var cardBg = isPast ? 'rgba(11,13,19,.72)' : 'rgba(14,17,24,.92)';
         var cardBd = isPast ? 'rgba(255,255,255,.05)' : 'rgba(255,255,255,.1)';
@@ -47557,11 +47569,14 @@ window.addEventListener('DOMContentLoaded', () => {
     var cur = 0;
     var appraisal = 0;
     try {
-      cur = _skNum((item && item.minprice) || (item && item.price) || (item && item.result && item.result.minprice) || 0);
+      // item.minprice가 만원 단위일 수 있으므로 _skToWonFromManMaybe 사용
+      var rawMin = _skNum((item && item.minprice) || (item && item.price) || (item && item.result && item.result.minprice) || 0);
+      cur = rawMin > 0 ? _skToWonFromManMaybe(rawMin) : 0;
       if (!cur && item && item._norm) cur = _skToWonFromManMaybe(item._norm.최저가_만원 || 0);
       if (!cur && item && item._norm) cur = Number(item._norm.최저매각가격 || 0);
       if (!cur && item && item._norm) cur = _skToWonFromManMaybe(item._norm.감정가_만원 || 0);
       appraisal = _skNum((item && item.appraisal) || 0);
+      appraisal = appraisal > 0 ? _skToWonFromManMaybe(appraisal) : 0;
       if (!appraisal && item && item._norm) appraisal = _skToWonFromManMaybe(item._norm.감정가_만원 || 0);
       if (!cur) cur = appraisal;
       if (cur > 0 && appraisal > 0 && cur >= appraisal * 120) {
