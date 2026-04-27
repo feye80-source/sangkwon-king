@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260428-calendar-month-label';
+    window.__SK_BUILD = '20260428-calendar-final-polish';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -34230,11 +34230,23 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       if (!badge) {
         badge = document.createElement('span');
         badge.id = 'plCalendarMonthBadge';
-        badge.style.cssText = 'display:none;align-items:center;margin-right:8px;padding:5px 10px;border-radius:999px;border:1px solid rgba(96,165,250,.34);background:rgba(96,165,250,.12);color:#bfdbfe;font-size:12px;font-weight:900;white-space:nowrap;box-shadow:inset 0 0 0 1px rgba(255,255,255,.03);';
-        const btn = document.getElementById('plViewCalBtn');
-        const parent = btn && btn.parentElement ? btn.parentElement : null;
-        if (parent) parent.insertBefore(badge, parent.firstChild);
       }
+      badge.style.cssText = 'display:none;align-items:center;margin-left:10px;padding:5px 12px;border-radius:999px;border:1px solid rgba(96,165,250,.45);background:rgba(96,165,250,.14);color:#dbeafe;font-size:16px;font-weight:900;line-height:1.15;white-space:nowrap;vertical-align:middle;box-shadow:inset 0 0 0 1px rgba(255,255,255,.04);';
+      try {
+        // 컨트롤 버튼 옆이 아니라 제목 "파이프라인" 바로 옆에 붙인다.
+        const nodes = Array.from(document.querySelectorAll('h1,h2,h3,h4,div,span'));
+        const title = nodes.find(el => {
+          const txt = String(el.childNodes && el.childNodes.length ? Array.from(el.childNodes).filter(n => n.nodeType === 3).map(n => n.textContent).join('') : el.textContent || '').trim();
+          return txt === '🎯 파이프라인' || txt === '파이프라인' || /^🎯s*파이프라인$/.test(txt);
+        });
+        if (title && badge.parentElement !== title) {
+          if (badge.parentElement) badge.parentElement.removeChild(badge);
+          title.appendChild(badge);
+        } else if (!badge.parentElement) {
+          const host = document.getElementById('pipelineListBoard');
+          if (host && host.parentElement) host.parentElement.insertBefore(badge, host);
+        }
+      } catch (_) {}
       return badge;
     }
     function _plSetCalendarMonthBadgeText(text) {
@@ -34324,10 +34336,11 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           const toneColor = tone.color || '#34d399';
           const intentChip = _plIntentChip(entry.intent);
           const checked = entry.bidFocus ? ' data-bid-focus="1"' : '';
-          const borderColor = entry.bidFocus ? '#34d399' : (toneColor + '88');
-          const borderWidth = entry.bidFocus ? '2px' : '1px';
-          const bgColor = entry.bidFocus ? 'rgba(16,185,129,.18)' : (toneColor + '14');
-          const focusShadow = entry.bidFocus ? '0 0 0 1px rgba(52,211,153,.50) inset' : 'none';
+          const isPastAuction = tone && tone.state === 'past';
+          const borderColor = isPastAuction ? 'rgba(148,163,184,.72)' : (entry.bidFocus ? '#34d399' : (toneColor + '88'));
+          const borderWidth = entry.bidFocus && !isPastAuction ? '2px' : '1px';
+          const bgColor = isPastAuction ? 'rgba(100,116,139,.12)' : (entry.bidFocus ? 'rgba(16,185,129,.18)' : (toneColor + '14'));
+          const focusShadow = entry.bidFocus && !isPastAuction ? '0 0 0 1px rgba(52,211,153,.50) inset' : 'none';
           return `<button type="button"${checked} onclick="event.stopPropagation();openPopup('${String(it.id).replace(/'/g, "\\'")}')" style="width:100%;height:40px;min-height:40px;flex:0 0 40px;box-sizing:border-box;border:${borderWidth} solid ${borderColor};background:${bgColor};color:var(--tx);border-radius:7px;padding:5px 7px;text-align:left;cursor:pointer;overflow:hidden;box-shadow:${focusShadow};">
               <div style="display:flex;align-items:center;gap:5px;min-width:0;line-height:15px;height:15px;">
                 ${intentChip}<span style="font-weight:700;font-size:11px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${_plEsc(it.title || ddata.소재지 || it.id)}</span>
