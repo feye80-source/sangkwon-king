@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260428-calendar-today-week-offset';
+    window.__SK_BUILD = '20260428-calendar-today-week-context-v2';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -34395,7 +34395,9 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       }
       _plUpdateCalendarVisibleMonth(host);
 
-      if (calScrollState.locked) {
+      // 사용자가 이미 달력에서 직접 스크롤한 뒤의 재렌더는 현재 위치를 보존한다.
+      // 단, 달력 최초 진입 때는 저장된/이전 scroll 상태 때문에 오늘 주 자동 위치가 막히지 않도록 1회 자동 보정을 허용한다.
+      if (calScrollState.locked && host.__plCalendarAutoPositioned === true) {
         setTimeout(() => {
           try {
             const keepTop = (typeof calScrollState.top === 'number') ? calScrollState.top : prevTop;
@@ -34426,7 +34428,12 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           // 데이터 범위 밖이면 월 시작/오늘/가까운 미래 일정으로 fallback.
           const target = weekStartEl || todayEl || monthStartEl || currentMonthDays[0] || future || allDays[allDays.length - 1];
           if (!target) return;
-          _plSetPipelineScrollTop(host, 'calendar', Math.max(0, target.offsetTop - 72));
+          const cellH = Math.max(120, target.offsetHeight || 176);
+          // 오늘이 속한 주를 딱 상단에 붙이지 않고, 전 주가 조금 보이도록 위쪽 맥락을 남긴다.
+          // host 내부 스크롤 기준으로 계산해야 상단 고정 메뉴/파이프라인 툴바에 말려 들어가지 않는다.
+          const contextGap = Math.round(cellH * 0.62);
+          _plSetPipelineScrollTop(host, 'calendar', Math.max(0, target.offsetTop - contextGap));
+          host.__plCalendarAutoPositioned = true;
           _plUpdateCalendarVisibleMonth(host);
         } catch (_) {}
       }, 0);
