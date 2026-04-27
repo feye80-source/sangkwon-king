@@ -34239,6 +34239,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         if (calScrollState.locked) _plSetPipelineScrollTop(host, 'calendar', prevTop);
         return;
       }
+
       const weekHeads = ['일', '월', '화', '수', '목', '금', '토'];
       const byDay = new Map();
       items.forEach(entry => {
@@ -34246,68 +34247,60 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         if (!byDay.has(key)) byDay.set(key, []);
         byDay.get(key).push(entry);
       });
+      byDay.forEach(rows => rows.sort(_plCalendarEntryCompare));
 
       const firstDate = items[0].date;
       const lastDate = items[items.length - 1].date;
-      const months = [];
-      let cursor = new Date(firstDate.getFullYear(), firstDate.getMonth(), 1);
-      const monthEnd = new Date(lastDate.getFullYear(), lastDate.getMonth(), 1);
-      while (cursor <= monthEnd) {
-        months.push({ y: cursor.getFullYear(), m: cursor.getMonth() + 1 });
-        cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+      const firstMonth = new Date(firstDate.getFullYear(), firstDate.getMonth(), 1);
+      const lastMonthEnd = new Date(lastDate.getFullYear(), lastDate.getMonth() + 1, 0);
+      const startDate = new Date(firstMonth);
+      startDate.setDate(startDate.getDate() - startDate.getDay());
+      const endDate = new Date(lastMonthEnd);
+      endDate.setDate(endDate.getDate() + (6 - endDate.getDay()));
+
+      const cells = [];
+      for (let dt = new Date(startDate); dt <= endDate; dt.setDate(dt.getDate() + 1)) {
+        const d = new Date(dt);
+        const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        const rows = byDay.get(key) || [];
+        const inactive = d < firstMonth || d > lastMonthEnd;
+        const isFirstOfMonth = d.getDate() === 1;
+        const dayLabel = isFirstOfMonth ? ((d.getMonth() + 1) + '/1') : String(d.getDate());
+        const hasScroll = rows.length > 3;
+        const chips = rows.map(entry => {
+          const it = entry.item;
+          const ddata = it.data || {};
+          const price = _plFmtMoneyWon(ddata.최저가 || ddata.감정가 || ddata.매매가, ddata.매매가_만원);
+          const labelPrice = String(price || '').replace(/만원$/,'만');
+          const intentChip = _plIntentChip(entry.intent);
+          const checked = entry.bidFocus ? ' data-bid-focus="1"' : '';
+          return `<button type="button"${checked} onclick="event.stopPropagation();openPopup('${String(it.id).replace(/'/g, "\\'")}')" style="width:100%;height:40px;min-height:40px;flex:0 0 40px;box-sizing:border-box;border:1px solid ${entry.bidFocus ? '#34d399' : 'rgba(52,211,153,.45)'};background:${entry.bidFocus ? 'rgba(16,185,129,.18)' : 'rgba(16,185,129,.10)'};color:var(--tx);border-radius:7px;padding:5px 7px;text-align:left;cursor:pointer;overflow:hidden;box-shadow:${entry.bidFocus ? '0 0 0 1px rgba(52,211,153,.50) inset' : 'none'};">
+              <div style="display:flex;align-items:center;gap:5px;min-width:0;line-height:15px;height:15px;">
+                ${intentChip}<span style="font-weight:700;font-size:11px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${_plEsc(it.title || ddata.소재지 || it.id)}</span>
+              </div>
+              <div style="margin-top:2px;color:var(--mu);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:14px;height:14px;">${_plEsc(labelPrice)}</div>
+            </button>`;
+        }).join('');
+        const more = hasScroll ? `<div style="position:absolute;right:7px;top:6px;font-size:11px;font-weight:900;color:#dbeafe;background:rgba(59,130,246,.25);border:1px solid rgba(147,197,253,.65);border-radius:999px;padding:2px 7px;line-height:1;z-index:2;">+${rows.length - 3}</div>` : '';
+        const cellBg = inactive ? 'rgba(22,29,41,.70)' : 'rgba(10,14,22,.76)';
+        const cellBorder = inactive ? '1px dashed rgba(148,163,184,.20)' : '1px solid rgba(255,255,255,.08)';
+        cells.push(`<div data-pcal-day="${key}" style="min-height:176px;border:${cellBorder};background:${cellBg};border-radius:8px;padding:6px;display:flex;flex-direction:column;gap:5px;position:relative;box-sizing:border-box;overflow:hidden;">
+          ${more}
+          <div style="font-size:11px;font-weight:800;color:${inactive ? 'rgba(203,213,225,.38)' : '#d8e2ff'};padding-right:${hasScroll ? '38px' : '0'};height:14px;line-height:14px;flex:0 0 auto;">${dayLabel}</div>
+          <div style="display:flex;flex-direction:column;gap:5px;overflow-y:${hasScroll ? 'auto' : 'visible'};overflow-x:hidden;padding-right:${hasScroll ? '3px' : '0'};height:${hasScroll ? '130px' : 'auto'};max-height:${hasScroll ? '130px' : 'none'};box-sizing:border-box;${hasScroll ? 'overscroll-behavior:contain;' : ''}">
+            ${chips || '<div style="height:1px;flex:0 0 auto;"></div>'}
+          </div>
+        </div>`);
       }
 
-      host.innerHTML = months.map(mm => {
-        const monthKey = mm.y + '-' + String(mm.m).padStart(2, '0');
-        const first = new Date(mm.y, mm.m - 1, 1);
-        const startWeek = first.getDay();
-        const monthLast = new Date(mm.y, mm.m, 0).getDate();
-        const totalCells = Math.ceil((startWeek + monthLast) / 7) * 7;
-        let dayCells = '';
-        for (let idx = 0; idx < totalCells; idx++) {
-          const dayNum = idx - startWeek + 1;
-          if (dayNum < 1 || dayNum > monthLast) {
-            dayCells += '<div style="min-height:190px;border:1px dashed rgba(148,163,184,.22);background:rgba(30,41,59,.42);border-radius:8px;opacity:.95;"></div>';
-            continue;
-          }
-          const dayKey = mm.y + '-' + String(mm.m).padStart(2, '0') + '-' + String(dayNum).padStart(2, '0');
-          const rows = (byDay.get(dayKey) || []).slice().sort(_plCalendarEntryCompare);
-          const chips = rows.map(entry => {
-            const it = entry.item;
-            const raw = ((it.data || {}).최저가 || (it.data || {}).감정가 || (it.data || {}).매매가 || (it.data || {}).매매가_만원 || '');
-            const labelPrice = _plFmtMoneyWon(raw, (it.data || {}).매매가_만원).replace('원', '');
-            const now = new Date();
-            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-            const dday = Math.round((entry.date - today) / 86400000);
-            const tone = _plGetDdayTone(dday);
-            const intentChip = _plIntentChip(entry.intent);
-            // bidFocus가 true면 날짜 색상 테두리로 강조
-            const borderColor = entry.bidFocus ? tone.color : (tone.color + '55');
-            const borderWidth = entry.bidFocus ? '2px' : '1px';
-            const bgColor = entry.bidFocus ? (tone.color + '18') : (tone.color + '14');
-            return `<button onclick="event.stopPropagation();openPopup('${String(it.id).replace(/'/g, "\\'")}')" style="display:flex;flex-direction:column;justify-content:center;width:100%;height:44px;min-height:44px;max-height:44px;flex:none;text-align:left;padding:5px 7px;margin:0 0 4px 0;background:${bgColor};border:${borderWidth} solid ${borderColor};border-radius:8px;color:var(--tx);font-size:10px;line-height:1.22;cursor:pointer;overflow:hidden;box-sizing:border-box;">
-              <div style="display:flex;align-items:center;gap:4px;min-width:0;height:16px;line-height:16px;">
-                ${intentChip}
-                <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${_plEsc(it.title || (it.data||{}).소재지 || it.id)}</span>
-              </div>
-              <div style="margin-top:2px;color:var(--mu);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;height:14px;line-height:14px;">${_plEsc(labelPrice)}</div>
-            </button>`;
-          }).join('');
-          const more = rows.length > 3 ? `<div style="position:absolute;right:7px;top:6px;font-size:11px;font-weight:900;color:#dbeafe;background:rgba(59,130,246,.22);border:1px solid rgba(147,197,253,.55);border-radius:999px;padding:2px 7px;line-height:1;">+${rows.length - 3}</div>` : '';
-          dayCells += `<div style="min-height:190px;border:1px solid rgba(255,255,255,.08);background:rgba(12,16,24,.72);border-radius:8px;padding:7px;display:flex;flex-direction:column;gap:5px;position:relative;box-sizing:border-box;overflow:hidden;">
-            ${more}
-            <div style="font-size:11px;font-weight:700;color:#d8e2ff;padding-right:${rows.length > 3 ? '38px' : '0'};height:14px;line-height:14px;flex:0 0 auto;">${dayNum}</div>
-            <div style="display:block;overflow-y:${rows.length > 3 ? 'auto' : 'visible'};overflow-x:hidden;padding-right:${rows.length > 3 ? '4px' : '0'};height:${rows.length > 3 ? '144px' : 'auto'};max-height:${rows.length > 3 ? '144px' : 'none'};box-sizing:border-box;${rows.length > 3 ? 'overscroll-behavior:contain;' : ''}flex:0 0 auto;">
-              ${chips || '<div style="height:1px;"></div>'}
-            </div>
-          </div>`;
-        }
-        return `<div data-pcal-month="${monthKey}" style="margin-bottom:0;border:0;border-radius:0;padding:6px 0;background:transparent;">
-          <div style="font-size:13px;font-weight:800;color:var(--tx);margin-bottom:8px;">${_plFmtMonthTitle(mm.y, mm.m)}</div>
-          <div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;margin-bottom:6px;">${weekHeads.map(w => `<div style="font-size:11px;color:var(--di);text-align:center;">${w}</div>`).join('')}</div>
-          <div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;">${dayCells}</div>
+      host.innerHTML = `
+        <div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;margin-bottom:6px;">
+          ${weekHeads.map(w => `<div style="font-size:11px;color:var(--di);text-align:center;">${w}</div>`).join('')}
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;">
+          ${cells.join('')}
         </div>`;
-      }).join('');
+
       if (calScrollState.locked) {
         setTimeout(() => {
           try {
@@ -34320,14 +34313,13 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       setTimeout(() => {
         try {
           const now = new Date();
-          const key = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
-          const blocks = Array.from(host.querySelectorAll('[data-pcal-month]'));
-          if (!blocks.length) return;
-          const found = host.querySelector('[data-pcal-month="' + key + '"]');
-          const future = blocks.find(el => String(el.getAttribute('data-pcal-month') || '') >= key);
-          const target = found || future || blocks[blocks.length - 1];
+          const todayKey = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
+          const todayEl = host.querySelector('[data-pcal-day="' + todayKey + '"]');
+          const allDays = Array.from(host.querySelectorAll('[data-pcal-day]'));
+          const future = allDays.find(el => String(el.getAttribute('data-pcal-day') || '') >= todayKey);
+          const target = todayEl || future || allDays[allDays.length - 1];
           if (!target) return;
-          _plSetPipelineScrollTop(host, 'calendar', Math.max(0, target.offsetTop - 8));
+          _plSetPipelineScrollTop(host, 'calendar', Math.max(0, target.offsetTop - 12));
         } catch (_) {}
       }, 0);
     }
