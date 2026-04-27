@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260427-bidflash-pp-extlink01';
+    window.__SK_BUILD = '20260427-maplink-pp-flicker01';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -9585,25 +9585,15 @@ window.wr2SummaryCancelEdit = function() {
 
     function fM(v) {
       if (v == null || v === '') return null;
-      const raw = String(v).replace(/,/g, '').trim();
-      const cleaned = raw.replace(/[^0-9.]/g, ''); // 소수점 보존: 평단가 4195.4 → 4,195.4만원
-      const n = cleaned ? parseFloat(cleaned) : NaN;
-      if (!Number.isFinite(n)) return String(v);
-      const fmtMan = function(num) {
-        if (!Number.isFinite(num)) return '';
-        const rounded = Math.round(num * 10) / 10;
-        const opt = Math.abs(rounded - Math.round(rounded)) < 0.0001
-          ? { maximumFractionDigits: 0 }
-          : { minimumFractionDigits: 1, maximumFractionDigits: 1 };
-        return rounded.toLocaleString('ko-KR', opt);
-      };
+      const n = parseInt(String(v).replace(/[^0-9]/g, '')); // 문자 제거 후 파싱
+      if (isNaN(n)) return String(v);
       // n은 이미 만원 단위
       if (n >= 10000) {
         const e = Math.floor(n / 10000); // 억 단위
-        const m = Math.round((n - e * 10000) * 10) / 10; // 만원 단위 나머지
-        return m ? e + '억 ' + fmtMan(m) + '만원' : e + '억원';
+        const m = n % 10000; // 만원 단위 나머지
+        return m ? e + '억 ' + m.toLocaleString() + '만원' : e + '억원';
       }
-      return fmtMan(n) + '만원';
+      return n.toLocaleString('ko-KR') + '만원';
     }
 
     function fMnum(v) {
@@ -14589,7 +14579,12 @@ window.wr2SummaryCancelEdit = function() {
       let extraRows = '';
       if (ia) {
         if (n.감정가_만원) extraRows += _sied('감정가', '감정가', fM(n.감정가_만원), d.감정가, true);
-        if (n.평당가_만원) extraRows += _sied('평단가', '평당가_만원', (function (v) { const nv = Math.round(v); if (nv >= 10000) { const e = Math.floor(nv / 10000), m = nv % 10000; return m ? e + '억 ' + m.toLocaleString() + '만원/평' : e + '억원/평'; } return nv.toLocaleString() + '만원/평'; })(n.평당가_만원), n.평당가_만원, true);
+        {
+          const _ppAreaM2 = Number(n.면적_m2 || n.전용면적_m2 || n.건물면적_m2 || d.전용면적_m2 || d.건물면적_m2 || 0);
+          const _ppPriceMan = Number(n.최저가_만원 || (d.최저가 ? Number(String(d.최저가).replace(/[^0-9]/g, '')) / 10000 : 0) || n.감정가_만원 || 0);
+          const _ppMan = (_ppPriceMan > 0 && _ppAreaM2 > 0) ? Math.round((_ppPriceMan / (_ppAreaM2 / 3.3058)) * 10) / 10 : Number(n.평당가_만원 || 0);
+          if (_ppMan > 0) extraRows += _sied('평단가', '평당가_만원', (function (v) { const nv = Math.round(v); return nv.toLocaleString() + '만원/평'; })(_ppMan), _ppMan, true);
+        }
         if (saleDateRaw) {
           const tone = isSaleOverdue ? '#ff6b7a' : (saleDday != null && saleDday <= 3 ? '#ff8c42' : '#4ade80');
           const saleText = saleDdayLabel
@@ -14846,128 +14841,124 @@ window.wr2SummaryCancelEdit = function() {
     }
 
     // ── 외부 링크 사이트 바로가기 ──────────────────────────────
-    function _skClipboardWriteText(text) {
-      var value = String(text || '').trim();
-      if (!value) return false;
+    function _skGetMapCenterInfo() {
+      if (typeof map === 'undefined' || !map || !map.getCenter) return null;
+      var c = map.getCenter();
+      var lat = Number(c.getLat ? c.getLat() : c.Ma || c.La || 0);
+      var lng = Number(c.getLng ? c.getLng() : c.La || c.Ma || 0);
+      var level = (map.getLevel && map.getLevel()) || 4;
+      if (!isFinite(lat) || !isFinite(lng)) return null;
+      return { lat: lat, lng: lng, level: level, coordText: lat.toFixed(6) + ', ' + lng.toFixed(6) };
+    }
+    function _skCopyText(text) {
+      var t = String(text || '').trim();
+      if (!t) return Promise.resolve(false);
+      var done = false;
+      function fallbackCopy() {
+        try {
+          var ta = document.createElement('textarea');
+          ta.value = t;
+          ta.setAttribute('readonly', 'readonly');
+          ta.style.position = 'fixed';
+          ta.style.left = '-9999px';
+          ta.style.top = '0';
+          document.body.appendChild(ta);
+          ta.focus();
+          ta.select();
+          var ok = document.execCommand('copy');
+          document.body.removeChild(ta);
+          return !!ok;
+        } catch(e) { return false; }
+      }
       try {
         if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(value).catch(function(){});
+          return navigator.clipboard.writeText(t).then(function(){ return true; }).catch(function(){ return fallbackCopy(); });
         }
       } catch(e) {}
-      try {
-        var ta = document.createElement('textarea');
-        ta.value = value;
-        ta.setAttribute('readonly', 'readonly');
-        ta.style.position = 'fixed';
-        ta.style.left = '-9999px';
-        ta.style.top = '0';
-        document.body.appendChild(ta);
-        ta.focus();
-        ta.select();
-        document.execCommand('copy');
-        document.body.removeChild(ta);
-        return true;
-      } catch(e) { return false; }
+      return Promise.resolve(fallbackCopy());
     }
-    function _skCopyMapCenterForExternalLink(label) {
-      if (typeof map === 'undefined' || !map) return null;
-      var c = map.getCenter();
-      var lat = c.getLat().toFixed(6);
-      var lng = c.getLng().toFixed(6);
-      var level = map.getLevel ? map.getLevel() : '';
-      var fallback = lat + ', ' + lng + (level !== '' ? ' / zoom ' + level : '');
-      _skClipboardWriteText(fallback);
-      if (window.kakao && window.kakao.maps && window.kakao.maps.services) {
+    function _skReverseGeocodeMapCenter(info) {
+      return new Promise(function(resolve) {
+        if (!info) { resolve(''); return; }
         try {
-          var gc = new kakao.maps.services.Geocoder();
-          gc.coord2Address(parseFloat(lng), parseFloat(lat), function(result, status) {
-            var addr = '';
-            if (status === kakao.maps.services.Status.OK && result && result[0]) {
-              addr = result[0].road_address
-                ? result[0].road_address.address_name
-                : (result[0].address ? result[0].address.address_name : '');
-            }
-            if (addr) {
-              _skClipboardWriteText(addr);
-              if (typeof showToast === 'function') showToast('📋 현재 지도 위치 복사됨: ' + addr, 'ok');
-            } else if (typeof showToast === 'function') {
-              showToast('📋 현재 지도 좌표 복사됨: ' + fallback, 'ok');
-            }
-          });
-        } catch(e) {
-          if (typeof showToast === 'function') showToast('📋 현재 지도 좌표 복사됨: ' + fallback, 'ok');
-        }
-      } else if (typeof showToast === 'function') {
-        showToast('📋 현재 지도 좌표 복사됨: ' + fallback, 'ok');
-      }
-      return { lat: lat, lng: lng, level: level, text: fallback };
+          if (window.kakao && window.kakao.maps && window.kakao.maps.services) {
+            var gc = new kakao.maps.services.Geocoder();
+            gc.coord2Address(info.lng, info.lat, function(result, status) {
+              var addr = '';
+              try {
+                if (status === kakao.maps.services.Status.OK && result && result[0]) {
+                  addr = result[0].road_address && result[0].road_address.address_name
+                    ? result[0].road_address.address_name
+                    : (result[0].address && result[0].address.address_name ? result[0].address.address_name : '');
+                }
+              } catch(e) {}
+              resolve(addr || info.coordText);
+            });
+            return;
+          }
+        } catch(e) {}
+        resolve(info.coordText);
+      });
     }
-    window._skCopyMapCenterForExternalLink = _skCopyMapCenterForExternalLink;
-    function _skRenameExternalLinkButtons() {
-      try {
-        var nodes = document.querySelectorAll('button,a,summary,div,span');
-        nodes.forEach(function(el) {
-          if (!el || el.children.length > 0) return;
-          var t = String(el.textContent || '').trim();
-          if (t === '상권분석' || t === '🏪 상권분석') el.textContent = t.indexOf('🏪') >= 0 ? '🔗 외부 링크' : '외부 링크';
-          if (String(el.title || '').trim() === '상권분석') el.title = '외부 링크';
-        });
-      } catch(e) {}
-    }
-    window._skRenameExternalLinkButtons = _skRenameExternalLinkButtons;
-    if (!window.__skExternalLinkRenameBound) {
-      window.__skExternalLinkRenameBound = true;
-      document.addEventListener('DOMContentLoaded', function(){ _skRenameExternalLinkButtons(); });
-      setInterval(_skRenameExternalLinkButtons, 1200);
-    }
-
-    function openOpenub() {
+    function _skOpenExternalWithMapAddress(url, label) {
       if (typeof map === 'undefined' || !map) {
         showToast('지도 탭을 먼저 열어주세요', 'warn'); return;
       }
-      _skCopyMapCenterForExternalLink('오픈업');
-      window.open('https://www.openub.com/', '_blank');
+      var info = _skGetMapCenterInfo();
+      if (!info) { showToast('현재 지도 위치를 읽지 못했습니다', 'warn'); return; }
+      var w = null;
+      try { w = window.open('about:blank', '_blank'); } catch(e) {}
+      // 좌표를 URL에 직접 넣지 않는다. 외부 사이트 검색창에는 주소를 붙여넣도록 클립보드만 채운다.
+      _skReverseGeocodeMapCenter(info).then(function(text) {
+        return _skCopyText(text).then(function(ok) {
+          if (typeof showToast === 'function') {
+            showToast(ok ? ('📋 현재 지도 위치 복사됨: ' + text) : ('현재 위치 복사 실패. 직접 입력: ' + text), ok ? 'ok' : 'warn');
+          }
+          try {
+            if (w && !w.closed) w.location.href = url;
+            else window.open(url, '_blank');
+          } catch(e) { window.open(url, '_blank'); }
+        });
+      });
+    }
+    function openOpenub() {
+      _skOpenExternalWithMapAddress('https://www.openub.com/', '오픈업');
     }
     window.openOpenub = openOpenub;
     function openNiceBizFlow() {
-      if (typeof map === 'undefined' || !map) {
-        showToast('지도 탭을 먼저 열어주세요', 'warn'); return;
-      }
-      const copied = _skCopyMapCenterForExternalLink('나이스비즈맵 유동인구');
-      const lat = copied ? copied.lat : map.getCenter().getLat().toFixed(6);
-      const lng = copied ? copied.lng : map.getCenter().getLng().toFixed(6);
-      const zoom = map.getLevel ? map.getLevel() : 4;
-      // 나이스비즈맵 유동인구 — lat/lng/zoom 파라미터로 현재 위치 전달 + 현재 위치 복사
-      window.open(`https://m.nicebizmap.co.kr/explorer/flowpop?lat=${lat}&lng=${lng}&zoom=${zoom}`, '_blank');
-      showToast('나이스비즈맵 유동인구로 이동합니다', 'ok');
+      _skOpenExternalWithMapAddress('https://m.nicebizmap.co.kr/explorer/flowpop', '유동인구');
     }
     window.openNiceBizFlow = openNiceBizFlow;
     function openMyFranchise() {
-      if (typeof map === 'undefined' || !map) {
-        showToast('지도 탭을 먼저 열어주세요', 'warn'); return;
-      }
-      const copied = _skCopyMapCenterForExternalLink('마이프랜차이즈');
-      const lat = copied ? copied.lat : map.getCenter().getLat().toFixed(6);
-      const lng = copied ? copied.lng : map.getCenter().getLng().toFixed(6);
-      const level = map.getLevel();
-      window.open(`https://myfranchise.kr/map?lat=${lat}&lng=${lng}&level=${level}`, '_blank');
-      showToast('마이프랜차이즈로 이동합니다', 'ok');
+      _skOpenExternalWithMapAddress('https://myfranchise.kr/map', '마이프차');
     }
     window.openMyFranchise = openMyFranchise;
-
     function openKwonrigum() {
-      if (typeof map === 'undefined' || !map) {
-        showToast('지도 탭을 먼저 열어주세요', 'warn'); return;
-      }
-      const copied = _skCopyMapCenterForExternalLink('권리금닷컴');
-      const lat = copied ? copied.lat : map.getCenter().getLat().toFixed(6);
-      const lng = copied ? copied.lng : map.getCenter().getLng().toFixed(6);
-      const level = map.getLevel ? map.getLevel() : 4;
-      // 권리금닷컴 — 좌표 파라미터로 현재 위치 전달 + 현재 위치 복사
-      window.open(`https://kwonrigum.com/reports?lat=${lat}&lng=${lng}&zoom=${level}`, '_blank');
-      showToast('권리금닷컴으로 이동합니다', 'ok');
+      _skOpenExternalWithMapAddress('https://kwonrigum.com/reports', '권리금닷컴');
     }
     window.openKwonrigum = openKwonrigum;
+
+    // 화면 표시명 보정: HTML에 박힌 기존 '상권분석' 문구도 공통 JS에서 외부 링크로 바꾼다.
+    (function _skPatchExternalLinkLabel(){
+      function patch(root) {
+        try {
+          var walker = document.createTreeWalker(root || document.body, NodeFilter.SHOW_TEXT, null);
+          var n;
+          while ((n = walker.nextNode())) {
+            if (!n.nodeValue) continue;
+            if (n.nodeValue.indexOf('상권분석 바로가기') >= 0) n.nodeValue = n.nodeValue.replace(/상권분석 바로가기/g, '외부 링크 바로가기');
+            if (/^\s*상권분석\s*$/.test(n.nodeValue)) n.nodeValue = n.nodeValue.replace('상권분석', '외부 링크');
+          }
+        } catch(e) {}
+      }
+      function run(){ if (document.body) patch(document.body); }
+      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run);
+      else run();
+      try {
+        var mo = new MutationObserver(function(){ run(); });
+        if (document.documentElement) mo.observe(document.documentElement, { childList:true, subtree:true, characterData:true });
+      } catch(e) { setInterval(run, 1500); }
+    })();
 
     // ── 디스코/BDS 지도 위치로 열기 ──────────────────────────
     function openDiscoAtMapCenter() {
@@ -18550,11 +18541,13 @@ ${combinedText}
         const m = String(d.소재지).match(/(\d+)층/);
         if (m) 층수표시 = m[1] + '층';
       }
-      // 평단가 계산 (없으면 자동 계산)
-      let 평단가 = d.평당가_만원;
-      if (!평단가 && d.최저가) {
+      // 평단가 계산: 저장된 평당가_만원은 단위 오류가 섞일 수 있어 최저가/면적으로 우선 재계산
+      let 평단가 = null;
+      {
         const area = parseFloat(d.전용면적_m2 || d.건물면적_m2 || 0);
-        if (area > 0) 평단가 = Math.round((parseInt(d.최저가) / 10000) / (area / 3.3058) * 10) / 10;
+        const minWon = Number(String(d.최저가 || d.최저가_원 || '').replace(/[^0-9]/g, ''));
+        if (area > 0 && minWon > 0) 평단가 = Math.round((minWon / 10000) / (area / 3.3058) * 10) / 10;
+        else if (d.평당가_만원) 평단가 = Number(d.평당가_만원);
       }
       return `<div class="shdr">📋 경매 정보</div><div class="fgrid">
 ${fi(d.경매번호, '경매번호', 'text', idx, '경매번호', isPopup)}
@@ -18569,7 +18562,7 @@ ${fi(층수표시, '층수', 'text', idx, '해당층', isPopup)}
 <div class="shdr">💰 금액 정보</div><div class="fgrid">
 ${fi(d.감정가, '감정가', 'big', idx, '감정가', isPopup)}
 ${fi(d.최저가, '최저가', 'money_raw', idx, '최저가', isPopup)}
-${평단가 ? fi(평단가, '평단가(최저)', 'money_m', idx, '평당가_만원', isPopup) : ''}
+${평단가 ? fi((Math.round(평단가 * 10) / 10).toLocaleString('ko-KR') + '만원/평', '평단가(최저)', 'text', idx, '평당가_만원', isPopup) : ''}
 ${fi(d.청구액, '청구액', 'money', idx, '청구액', isPopup)}
 </div>
 <div class="shdr">📅 일정 정보</div><div class="fgrid">
@@ -44486,28 +44479,11 @@ window.addEventListener('DOMContentLoaded', () => {
     var i = document.getElementById(key + '_i');
     if (!i) { window.plCancelInlineEdit && window.plCancelInlineEdit(key); return; }
     var val = (i.value !== undefined) ? i.value : (i.textContent || '');
-
-    // 먼저 데이터 저장
+    
+    // 먼저 plInlineSet 호출해서 데이터 저장 + span 업데이트
     if (typeof window.plInlineSet === 'function') window.plInlineSet(String(id), String(field), String(val));
-
-    // 저장 직후 기존 span이 잠깐 보이며 깜빡이는 문제 방지:
-    // blur로 input을 닫기 전에 현재 입력값 기준으로 span 표시값을 즉시 갱신한다.
-    try {
-      var s = document.getElementById(key + '_s');
-      if (s) {
-        var display = String(val || '');
-        if (field === 'estimate' || field === 'result_won') {
-          display = plDisplayWonInput(plNormalizeWonInputText(display));
-        } else if (['appraisal','minprice','deposit','monthly'].indexOf(field) >= 0) {
-          display = plDisplayMoney(plParseAmountText(display));
-        } else if (field === 'biddate') {
-          display = plNormalizeDateInput(display);
-        }
-        s.textContent = display ? display : '—';
-      }
-    } catch(e) {}
-
-    // 그 다음 편집모드 종료. 렌더 전에도 이미 최신 표시값이 보이므로 깜빡임이 없다.
+    
+    // 그 다음 plCancelInlineEdit (렌더링이 덮어쓰는 것 방지)
     window.plCancelInlineEdit && window.plCancelInlineEdit(key);
   };
 
@@ -45275,6 +45251,15 @@ window.addEventListener('DOMContentLoaded', () => {
     if (['appraisal','minprice','deposit','monthly'].indexOf(field) >= 0) value = plParseAmountText(rawValue);
     if (field === 'estimate') value = plNormalizeWonInputText(rawValue);
     if (field === 'biddate') value = plNormalizeDateInput(rawValue);
+    if (field === 'estimate') {
+      try {
+        var _domId = plDomKey(id, field);
+        var _el = document.getElementById(_domId);
+        if (_el) _el.textContent = plDisplayWonInput(value);
+        var _inp = document.getElementById(_domId + '_inp');
+        if (_inp) _inp.value = plDisplayWonInput(value);
+      } catch(e) {}
+    }
     
     // 값이 실제로 바뀌지 않으면 저장/동기화 생략
     var cur = plLoad().find(function(i){ return String(i.id) === String(id); });
@@ -45525,7 +45510,7 @@ window.addEventListener('DOMContentLoaded', () => {
           + '<td style="padding:8px 10px;white-space:nowrap;">'
           +   plBiddateCellHtml(it, ddayLabel, ddayColor)
           + '</td>'
-          + '<td style="padding:8px 10px;text-align:right;"><span style="'+((it.estimate !== undefined && it.estimate !== null && String(it.estimate) !== '')?'background:rgba(255,209,102,.12);border-radius:4px;padding:1px 4px;':'')+'">'+plEditCellHtml(it.id,'estimate',plDisplayWonInput((it.estimate !== undefined && it.estimate !== null) ? String(it.estimate) : ''),plDisplayWonInput((it.estimate !== undefined && it.estimate !== null) ? String(it.estimate) : ''),{type:'text',align:'right',minw:'72px',placeholder:'원',spanStyle:'color:#ffd166;font-weight:700;'})+'</span></td>'
+          + '<td style="padding:8px 10px;text-align:right;"><span style="'+(it.estimate?'background:rgba(255,209,102,.12);border-radius:4px;padding:1px 4px;':'')+'">'+plEditCellHtml(it.id,'estimate',plDisplayWonInput(it.estimate == null ? '' : it.estimate),plDisplayWonInput(it.estimate == null ? '' : it.estimate),{type:'text',align:'right',minw:'72px',placeholder:'원',spanStyle:'color:#ffd166;font-weight:700;'})+'</span></td>'
           + '<td style="padding:8px 10px;text-align:center;cursor:pointer;" onclick="event.stopPropagation();plToggleSite(\''+it.id+'\')">'+siteDots(it.site)+'</td>'
           + '<td style="padding:8px 10px;" onclick="event.stopPropagation()">'+wrLink+'</td>'
           + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'result_won',plDisplayWonInput((it.result&&it.result.won)||''),plDisplayWonInput((it.result&&it.result.won)||''),{type:'text',align:'right',minw:'76px',placeholder:'원',spanStyle:'color:#4caf87;font-weight:700;'})+'</td>'
