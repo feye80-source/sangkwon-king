@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260428-calendar-3cards-fixed-scroll';
+    window.__SK_BUILD = '20260428-calendar-scroll-conditional-tight';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -34285,7 +34285,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             const borderColor = entry.bidFocus ? tone.color : (tone.color + '55');
             const borderWidth = entry.bidFocus ? '2px' : '1px';
             const bgColor = entry.bidFocus ? (tone.color + '18') : (tone.color + '14');
-            return `<button onclick="event.stopPropagation();openPopup('${String(it.id).replace(/'/g, "\\'")}')" style="display:flex;flex-direction:column;justify-content:center;width:100%;height:44px;min-height:44px;max-height:44px;flex:none;text-align:left;padding:6px 8px;margin:0 0 6px 0;background:${bgColor};border:${borderWidth} solid ${borderColor};border-radius:8px;color:var(--tx);font-size:10px;line-height:1.22;cursor:pointer;overflow:hidden;box-sizing:border-box;">
+            return `<button onclick="event.stopPropagation();openPopup('${String(it.id).replace(/'/g, "\\'")}')" style="display:flex;flex-direction:column;justify-content:center;width:100%;height:44px;min-height:44px;max-height:44px;flex:none;text-align:left;padding:5px 7px;margin:0 0 4px 0;background:${bgColor};border:${borderWidth} solid ${borderColor};border-radius:8px;color:var(--tx);font-size:10px;line-height:1.22;cursor:pointer;overflow:hidden;box-sizing:border-box;">
               <div style="display:flex;align-items:center;gap:4px;min-width:0;height:16px;line-height:16px;">
                 ${intentChip}
                 <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${_plEsc(it.title || (it.data||{}).소재지 || it.id)}</span>
@@ -34294,15 +34294,15 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             </button>`;
           }).join('');
           const more = rows.length > 3 ? `<div style="position:absolute;right:7px;top:6px;font-size:11px;font-weight:900;color:#dbeafe;background:rgba(59,130,246,.22);border:1px solid rgba(147,197,253,.55);border-radius:999px;padding:2px 7px;line-height:1;">+${rows.length - 3}</div>` : '';
-          dayCells += `<div style="min-height:190px;border:1px solid rgba(255,255,255,.08);background:rgba(12,16,24,.72);border-radius:8px;padding:8px;display:flex;flex-direction:column;gap:6px;position:relative;box-sizing:border-box;overflow:hidden;">
+          dayCells += `<div style="min-height:190px;border:1px solid rgba(255,255,255,.08);background:rgba(12,16,24,.72);border-radius:8px;padding:7px;display:flex;flex-direction:column;gap:5px;position:relative;box-sizing:border-box;overflow:hidden;">
             ${more}
             <div style="font-size:11px;font-weight:700;color:#d8e2ff;padding-right:${rows.length > 3 ? '38px' : '0'};height:14px;line-height:14px;flex:0 0 auto;">${dayNum}</div>
-            <div style="display:block;overflow-y:${rows.length > 3 ? 'auto' : 'visible'};overflow-x:hidden;padding-right:${rows.length > 3 ? '4px' : '0'};height:${rows.length > 3 ? '144px' : 'auto'};max-height:${rows.length > 3 ? '144px' : 'none'};box-sizing:border-box;overscroll-behavior:contain;flex:0 0 auto;">
+            <div style="display:block;overflow-y:${rows.length > 3 ? 'auto' : 'visible'};overflow-x:hidden;padding-right:${rows.length > 3 ? '4px' : '0'};height:${rows.length > 3 ? '144px' : 'auto'};max-height:${rows.length > 3 ? '144px' : 'none'};box-sizing:border-box;${rows.length > 3 ? 'overscroll-behavior:contain;' : ''}flex:0 0 auto;">
               ${chips || '<div style="height:1px;"></div>'}
             </div>
           </div>`;
         }
-        return `<div data-pcal-month="${monthKey}" style="margin-bottom:14px;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:10px;background:rgba(12,16,24,.62);">
+        return `<div data-pcal-month="${monthKey}" style="margin-bottom:0;border:0;border-radius:0;padding:6px 0;background:transparent;">
           <div style="font-size:13px;font-weight:800;color:var(--tx);margin-bottom:8px;">${_plFmtMonthTitle(mm.y, mm.m)}</div>
           <div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;margin-bottom:6px;">${weekHeads.map(w => `<div style="font-size:11px;color:var(--di);text-align:center;">${w}</div>`).join('')}</div>
           <div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;">${dayCells}</div>
