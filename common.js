@@ -34019,6 +34019,19 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     function _plFmtMonthTitle(y, m) {
       return y + '년 ' + m + '월';
     }
+    function _plMonthAccent(monthIndex) {
+      const palette = [
+        { color:'#f87171', bg:'rgba(248,113,113,.14)', border:'rgba(248,113,113,.42)' },
+        { color:'#fb923c', bg:'rgba(251,146,60,.14)', border:'rgba(251,146,60,.42)' },
+        { color:'#facc15', bg:'rgba(250,204,21,.13)', border:'rgba(250,204,21,.40)' },
+        { color:'#34d399', bg:'rgba(52,211,153,.14)', border:'rgba(52,211,153,.42)' },
+        { color:'#38bdf8', bg:'rgba(56,189,248,.14)', border:'rgba(56,189,248,.42)' },
+        { color:'#60a5fa', bg:'rgba(96,165,250,.14)', border:'rgba(96,165,250,.42)' },
+        { color:'#a78bfa', bg:'rgba(167,139,250,.14)', border:'rgba(167,139,250,.42)' },
+        { color:'#f472b6', bg:'rgba(244,114,182,.14)', border:'rgba(244,114,182,.42)' }
+      ];
+      return palette[Math.abs(Number(monthIndex || 0)) % palette.length] || palette[0];
+    }
     function _plGetDdayTone(dday) {
       const d = Number(dday);
       if (!isFinite(d)) return { color: 'var(--di)', label: '', state: 'none' };
@@ -34323,9 +34336,10 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         const dayLabel = isFirstOfMonth
           ? ((dateObj.getMonth() + 1) + '월 1일')
           : (isSunday ? ((dateObj.getMonth() + 1) + '월 ' + dateObj.getDate() + '일') : String(dateObj.getDate()));
+        const monthAccent = _plMonthAccent(dateObj.getMonth());
         const monthLabelStyle = isFirstOfMonth
-          ? 'display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:999px;background:rgba(96,165,250,.14);border:1px solid rgba(96,165,250,.32);color:#bfdbfe;font-weight:900;'
-          : (isSunday ? 'color:#ff6b6b;font-weight:900;' : '');
+          ? ('display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:999px;background:' + monthAccent.bg + ';border:1px solid ' + monthAccent.border + ';color:' + monthAccent.color + ';font-weight:900;')
+          : (isSunday ? ('color:' + monthAccent.color + ';font-weight:900;') : '');
         const hasScroll = rows.length > 3;
         const chips = rows.map(entry => {
           const it = entry.item;
@@ -34356,7 +34370,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         const baseBorderColor = inactive ? 'rgba(148,163,184,.20)' : 'rgba(255,255,255,.08)';
         const cellBorderStyle = inactive ? 'dashed' : 'solid';
         const monthStartBorder = isFirstOfMonth
-          ? 'border-left:3px solid rgba(96,165,250,.72);border-top-color:rgba(96,165,250,.30);border-bottom-color:rgba(96,165,250,.30);border-right-color:' + baseBorderColor + ';box-shadow:inset 2px 0 0 rgba(96,165,250,.16);'
+          ? ('border-left:3px solid ' + monthAccent.border + ';border-top-color:' + monthAccent.border + ';border-bottom-color:' + monthAccent.border + ';border-right-color:' + baseBorderColor + ';box-shadow:inset 2px 0 0 ' + monthAccent.bg + ';')
           : '';
         cells.push(`<div data-pcal-day="${key}" data-pcal-month-label="${monthLabelText}" style="min-height:176px;border:1px ${cellBorderStyle} ${baseBorderColor};background:${cellBg};border-radius:8px;padding:6px;display:flex;flex-direction:column;gap:5px;position:relative;box-sizing:border-box;overflow:hidden;${monthStartBorder}">
           ${more}
@@ -34396,17 +34410,21 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           const now = new Date();
           const todayKey = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
           const monthStartKey = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-01';
-          const monthStartEl = host.querySelector('[data-pcal-day="' + monthStartKey + '"]');
           const todayEl = host.querySelector('[data-pcal-day="' + todayKey + '"]');
+          const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+          const weekStartKey = weekStart.getFullYear() + '-' + String(weekStart.getMonth() + 1).padStart(2, '0') + '-' + String(weekStart.getDate()).padStart(2, '0');
+          const weekStartEl = host.querySelector('[data-pcal-day="' + weekStartKey + '"]');
+          const monthStartEl = host.querySelector('[data-pcal-day="' + monthStartKey + '"]');
           const allDays = Array.from(host.querySelectorAll('[data-pcal-day]'));
           const currentMonthDays = allDays.filter(el => {
             const key = String(el.getAttribute('data-pcal-day') || '');
             return key.slice(0, 7) === monthStartKey.slice(0, 7);
           });
           const future = allDays.find(el => String(el.getAttribute('data-pcal-day') || '') >= todayKey);
-          // 첫 진입은 오늘이 속한 '월 전체'가 보이도록 월 시작 주간에 맞춘다.
-          // 현재 월 데이터가 없을 때만 오늘/가까운 미래 일정으로 fallback.
-          const target = monthStartEl || currentMonthDays[0] || todayEl || future || allDays[allDays.length - 1];
+          // 첫 진입은 오늘 날짜가 속한 '이번 주'가 바로 보이도록 주 시작 칸에 맞춘다.
+          // 데이터 범위 밖이면 월 시작/오늘/가까운 미래 일정으로 fallback.
+          const target = weekStartEl || todayEl || monthStartEl || currentMonthDays[0] || future || allDays[allDays.length - 1];
           if (!target) return;
           _plSetPipelineScrollTop(host, 'calendar', Math.max(0, target.offsetTop - 28));
           _plUpdateCalendarVisibleMonth(host);
