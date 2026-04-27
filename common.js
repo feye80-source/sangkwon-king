@@ -14835,127 +14835,71 @@ window.wr2SummaryCancelEdit = function() {
       if (src && dst) setTimeout(() => dst.value = src.value, 100);
     }
 
-    // ── 외부 링크 바로가기 ──────────────────────────────
-    function _skNormalizeMapAddrText(text) {
-      var raw = String(text || '').replace(/\s+/g, ' ').trim();
-      if (!raw) return '';
-      // mapAddr는 "동명 + 전체주소" 구조라 "상암동 서울특별시 ... 상암동"처럼 보일 수 있다.
-      // 앞의 동명이 전체주소 끝에도 있으면 앞 동명만 제거해서 붙여넣기 주소를 깔끔하게 만든다.
-      var parts = raw.split(' ');
-      if (parts.length > 1 && /동$/.test(parts[0]) && raw.indexOf(' ') > -1) {
-        var rest = raw.slice(parts[0].length).trim();
-        if (rest.indexOf(parts[0]) >= 0) return rest;
-      }
-      return raw;
-    }
-    function _skGetVisibleMapAddress() {
-      var el = document.getElementById('mapAddr');
-      var txt = el ? (el.textContent || el.innerText || '') : '';
-      return _skNormalizeMapAddrText(txt);
-    }
-    function _skCopyTextNow(text) {
-      var value = String(text || '').trim();
-      if (!value) return false;
-      try {
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(value).catch(function(){});
-          return true;
-        }
-      } catch(e) {}
-      try {
-        var ta = document.createElement('textarea');
-        ta.value = value;
-        ta.setAttribute('readonly', 'readonly');
-        ta.style.position = 'fixed';
-        ta.style.left = '-9999px';
-        ta.style.top = '0';
-        document.body.appendChild(ta);
-        ta.focus();
-        ta.select();
-        document.execCommand('copy');
-        document.body.removeChild(ta);
-        return true;
-      } catch(e) {
-        return false;
-      }
-    }
-    function _skCopyCurrentMapAddressForExternalLink() {
-      if (typeof map === 'undefined' || !map) {
-        showToast('지도 탭을 먼저 열어주세요', 'warn'); return '';
-      }
-      var addr = _skGetVisibleMapAddress();
-      if (addr && _skCopyTextNow(addr)) {
-        showToast('📋 주소 복사됨: ' + addr, 'ok');
-      } else if (addr) {
-        showToast('주소를 자동 복사하지 못했습니다. 왼쪽 상단 주소를 복사해 주세요.', 'warn');
-      } else {
-        showToast('복사할 주소가 아직 표시되지 않았습니다. 지도를 조금 이동한 뒤 다시 눌러주세요.', 'warn');
-      }
-      return addr;
-    }
+    // ── 상권분석 사이트 바로가기 ──────────────────────────────
     function openOpenub() {
-      _skCopyCurrentMapAddressForExternalLink();
+      if (typeof map === 'undefined' || !map) {
+        showToast('지도 탭을 먼저 열어주세요', 'warn'); return;
+      }
+      const c = map.getCenter();
+      const lat = c.getLat().toFixed(6);
+      const lng = c.getLng().toFixed(6);
+      // 오픈업 - 카카오 역지오코딩으로 주소 가져오기
+      if (window.kakao && window.kakao.maps && window.kakao.maps.services) {
+        const gc = new kakao.maps.services.Geocoder();
+        gc.coord2Address(parseFloat(lng), parseFloat(lat), function(result, status) {
+          if (status === kakao.maps.services.Status.OK && result[0]) {
+            const addr = result[0].road_address 
+              ? result[0].road_address.address_name 
+              : (result[0].address ? result[0].address.address_name : '');
+            if (addr) {
+              try { navigator.clipboard.writeText(addr); } catch(e) {}
+              showToast('📋 주소 복사됨: ' + addr, 'ok');
+            }
+          }
+        });
+      }
       window.open('https://www.openub.com/', '_blank');
     }
     window.openOpenub = openOpenub;
     function openNiceBizFlow() {
-      _skCopyCurrentMapAddressForExternalLink();
-      window.open('https://m.nicebizmap.co.kr/explorer/flowpop', '_blank');
+      if (typeof map === 'undefined' || !map) {
+        showToast('지도 탭을 먼저 열어주세요', 'warn'); return;
+      }
+      const c = map.getCenter();
+      const lat = c.getLat().toFixed(6);
+      const lng = c.getLng().toFixed(6);
+      const zoom = map.getLevel ? map.getLevel() : 4;
+      // 나이스비즈맵 유동인구 — lat/lng/zoom 파라미터로 현재 위치 전달
+      window.open(`https://m.nicebizmap.co.kr/explorer/flowpop?lat=${lat}&lng=${lng}&zoom=${zoom}`, '_blank');
+      showToast('나이스비즈맵 유동인구로 이동합니다', 'ok');
     }
     window.openNiceBizFlow = openNiceBizFlow;
     function openMyFranchise() {
-      _skCopyCurrentMapAddressForExternalLink();
-      window.open('https://myfranchise.kr/map', '_blank');
+      if (typeof map === 'undefined' || !map) {
+        showToast('지도 탭을 먼저 열어주세요', 'warn'); return;
+      }
+      const c = map.getCenter();
+      const lat = c.getLat().toFixed(6);
+      const lng = c.getLng().toFixed(6);
+      const level = map.getLevel();
+      window.open(`https://myfranchise.kr/map?lat=${lat}&lng=${lng}&level=${level}`, '_blank');
+      showToast('마이프랜차이즈로 이동합니다', 'ok');
     }
     window.openMyFranchise = openMyFranchise;
 
     function openKwonrigum() {
-      _skCopyCurrentMapAddressForExternalLink();
-      window.open('https://kwonrigum.com/reports', '_blank');
+      if (typeof map === 'undefined' || !map) {
+        showToast('지도 탭을 먼저 열어주세요', 'warn'); return;
+      }
+      const c = map.getCenter();
+      const lat = c.getLat().toFixed(6);
+      const lng = c.getLng().toFixed(6);
+      const level = map.getLevel ? map.getLevel() : 4;
+      // 권리금닷컴 — 좌표 파라미터로 현재 위치 전달
+      window.open(`https://kwonrigum.com/reports?lat=${lat}&lng=${lng}&zoom=${level}`, '_blank');
+      showToast('권리금닷컴으로 이동합니다', 'ok');
     }
     window.openKwonrigum = openKwonrigum;
-
-    function _skReplaceExternalLinkLabels(root) {
-      try {
-        var scope = root || document.body;
-        if (!scope) return;
-        var walker = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT, {
-          acceptNode: function(node) {
-            return node && node.nodeValue && node.nodeValue.indexOf('상권분석') >= 0
-              ? NodeFilter.FILTER_ACCEPT
-              : NodeFilter.FILTER_REJECT;
-          }
-        });
-        var nodes = [];
-        while (walker.nextNode()) nodes.push(walker.currentNode);
-        nodes.forEach(function(node) {
-          node.nodeValue = node.nodeValue.replace(/상권분석/g, '외부 링크');
-        });
-      } catch(e) {}
-    }
-    function _skInitExternalLinkLabelSync() {
-      _skReplaceExternalLinkLabels(document.body);
-      try {
-        var mo = new MutationObserver(function(muts) {
-          muts.forEach(function(m) {
-            if (m && m.addedNodes) {
-              Array.prototype.forEach.call(m.addedNodes, function(n) {
-                if (n && n.nodeType === 1) _skReplaceExternalLinkLabels(n);
-                else if (n && n.nodeType === 3 && n.nodeValue && n.nodeValue.indexOf('상권분석') >= 0) {
-                  n.nodeValue = n.nodeValue.replace(/상권분석/g, '외부 링크');
-                }
-              });
-            }
-          });
-        });
-        if (document.body) mo.observe(document.body, { childList: true, subtree: true });
-      } catch(e) {}
-    }
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', _skInitExternalLinkLabelSync);
-    } else {
-      _skInitExternalLinkLabelSync();
-    }
 
     // ── 디스코/BDS 지도 위치로 열기 ──────────────────────────
     function openDiscoAtMapCenter() {
@@ -34325,7 +34269,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             const borderColor = entry.bidFocus ? tone.color : (tone.color + '55');
             const borderWidth = entry.bidFocus ? '2px' : '1px';
             const bgColor = entry.bidFocus ? (tone.color + '18') : (tone.color + '14');
-            return `<button onclick="event.stopPropagation();openPopup('${String(it.id).replace(/'/g, "\\'")}')" style="display:block;width:100%;text-align:left;padding:5px 6px;background:${bgColor};border:${borderWidth} solid ${borderColor};border-radius:7px;color:var(--tx);font-size:10px;cursor:pointer;overflow:hidden;flex:0 0 auto;">
+            return `<button onclick="event.stopPropagation();openPopup('${String(it.id).replace(/'/g, "\\'")}')" style="display:block;width:100%;text-align:left;padding:5px 6px;background:${bgColor};border:${borderWidth} solid ${borderColor};border-radius:7px;color:var(--tx);font-size:10px;cursor:pointer;overflow:hidden;">
               <div style="display:flex;align-items:center;gap:4px;min-width:0;">
                 ${intentChip}
                 <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${_plEsc(it.title || (it.data||{}).소재지 || it.id)}</span>
@@ -34333,13 +34277,10 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
               <div style="margin-top:2px;color:var(--mu);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${_plEsc(labelPrice)}</div>
             </button>`;
           }).join('');
-          const more = rows.length > 3 ? `<span style="display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:20px;padding:0 7px;border-radius:999px;background:rgba(59,130,246,.22);border:1px solid rgba(96,165,250,.65);color:#dbeafe;font-size:11px;font-weight:900;line-height:1;">+${rows.length - 3}</span>` : '';
+          const moreBadge = rows.length > 3 ? `<span style="flex-shrink:0;font-size:10px;font-weight:800;color:#bfdbfe;background:rgba(96,165,250,.18);border:1px solid rgba(96,165,250,.38);border-radius:999px;padding:1px 6px;">+${rows.length - 3}</span>` : '';
           dayCells += `<div style="height:122px;border:1px solid rgba(255,255,255,.08);background:rgba(12,16,24,.72);border-radius:8px;padding:6px;display:flex;flex-direction:column;gap:5px;overflow:hidden;">
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;flex:0 0 auto;">
-              <span style="font-size:11px;font-weight:700;color:#d8e2ff;">${dayNum}</span>
-              ${more}
-            </div>
-            <div style="flex:1;min-height:0;overflow-y:${rows.length > 3 ? 'auto' : 'hidden'};display:flex;flex-direction:column;gap:5px;padding-right:${rows.length > 3 ? '3px' : '0'};">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;flex-shrink:0;"><span style="font-size:11px;font-weight:700;color:#d8e2ff;">${dayNum}</span>${moreBadge}</div>
+            <div style="flex:1;min-height:0;overflow-y:${rows.length > 3 ? 'auto' : 'hidden'};display:flex;flex-direction:column;gap:5px;padding-right:${rows.length > 3 ? '2px' : '0'};">
               ${chips || '<div style="flex:1;"></div>'}
             </div>
           </div>`;
@@ -48784,4 +48725,32 @@ window.addEventListener('DOMContentLoaded', () => {
   } catch (e) {
     console.warn('[lifecycle local override patch]', e);
   }
+})();
+
+/* ---- SK patch: calendar day scroll + property-list sticky header (2026-04-27) ---- */
+(function(){
+  function ensureStyle(){
+    if (document.getElementById('sk-calendar-scroll-and-pl-header')) return;
+    var st = document.createElement('style');
+    st.id = 'sk-calendar-scroll-and-pl-header';
+    st.textContent = `
+      #pipelineListBoard [data-pcal-month] div[style*="overflow-y:auto"]::-webkit-scrollbar { width: 6px; }
+      #pipelineListBoard [data-pcal-month] div[style*="overflow-y:auto"]::-webkit-scrollbar-thumb { background: rgba(148,163,184,.45); border-radius: 999px; }
+      #pipelineListBoard [data-pcal-month] div[style*="overflow-y:auto"]::-webkit-scrollbar-track { background: rgba(15,23,42,.25); border-radius: 999px; }
+
+      #pl-table thead,
+      #pl-thead-row { position: sticky !important; top: 112px !important; z-index: 90 !important; }
+      #pl-table thead th,
+      #pl-thead-row th {
+        position: sticky !important;
+        top: 112px !important;
+        z-index: 91 !important;
+        background: #07101b !important;
+        box-shadow: 0 1px 0 rgba(148,163,184,.22), 0 8px 14px rgba(0,0,0,.25) !important;
+      }
+    `;
+    document.head.appendChild(st);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ensureStyle);
+  else ensureStyle();
 })();
