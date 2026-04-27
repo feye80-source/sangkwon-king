@@ -14843,11 +14843,9 @@ window.wr2SummaryCancelEdit = function() {
       const c = map.getCenter();
       const lat = c.getLat().toFixed(6);
       const lng = c.getLng().toFixed(6);
-      // 오픈업 상권분석 — 좌표 기반 이동 (lat/lng 파라미터)
-      // 오픈업 - 좌표 클립보드 복사 후 사이트 열기
-      try { navigator.clipboard.writeText(lat + ',' + lng); } catch(e) {}
-      window.open('https://www.openup.kr', '_blank');
-      showToast('📋 좌표가 복사됐습니다: ' + lat + ',' + lng, 'ok');
+      // 오픈업(openub) 상권분석 — 좌표 기반 이동
+      const openubUrl = 'https://www.openub.com/report/tbd?lat=' + lat + '&lng=' + lng;
+      window.open(openubUrl, '_blank');
       showToast('오픈업 상권분석으로 이동합니다', 'ok');
     }
     window.openOpenub = openOpenub;
@@ -45174,25 +45172,21 @@ window.addEventListener('DOMContentLoaded', () => {
     if (field === 'estimate') value = plNormalizeWonInputText(rawValue);
     if (field === 'biddate') value = plNormalizeDateInput(rawValue);
     
-    // 값이 실제로 바뀌지 않으면 저장/동기화 생략 (클릭만 해도 동기화 재시도되는 현상 방지)
+    // 값이 실제로 바뀌지 않으면 저장/동기화 생략
     var cur = plLoad().find(function(i){ return String(i.id) === String(id); });
-    if (cur && String(cur[field] || '') === String(value || '')) {
-      // 값이 같더라도 표시값은 업데이트 (빈 값 처리를 위해)
-      var key = plDomKey(id, field);
-      var span = document.getElementById(key + '_s');
-      if (span) {
-        var displayVal = value;
-        if (field === 'estimate' || field === 'result_won') displayVal = plDisplayWonInput(value);
-        else if (['appraisal','minprice','deposit','monthly'].indexOf(field) >= 0) displayVal = plDisplayMan(value);
-        span.textContent = displayVal || '—';
-      }
+    var currentValue = String(cur && cur[field] || '');
+    var newValue = String(value || '');
+    
+    if (currentValue === newValue) {
+      // 값이 같으면 아무것도 안 함
       return;
     }
     
+    // 값이 다르면 저장
     patch[field] = value;
     plUpdateItem(id, patch);
     
-    // 저장 후 즉시 표시값 업데이트
+    // 저장 후 즉시 표시값 업데이트 (특히 빈 값 처리)
     var key = plDomKey(id, field);
     var span = document.getElementById(key + '_s');
     if (span) {
@@ -45203,7 +45197,12 @@ window.addEventListener('DOMContentLoaded', () => {
       span.textContent = displayVal || '—';
     }
     
-    if (typeof window._plScheduleRender === 'function') window._plScheduleRender(50);
+    // estimate 필드는 반드시 렌더링 예약 (빈 값 처리 보장)
+    if (field === 'estimate' && typeof window._plScheduleRender === 'function') {
+      window._plScheduleRender(30);
+    } else if (typeof window._plScheduleRender === 'function') {
+      window._plScheduleRender(50);
+    }
   };
   window.plInlineSetSelect = function(id, field, value) {
     var cur = plLoad().find(function(i){ return String(i.id) === String(id); });
@@ -45230,13 +45229,21 @@ window.addEventListener('DOMContentLoaded', () => {
     var row = document.querySelector('tr[data-plid="' + id + '"]');
     if (row) {
       var checkbox = row.querySelector('button[onclick*="plToggleBidFocus"]');
-      if (checkbox) {
-        var dotBg = nextOn ? '#ff6b6b' : 'transparent';
-        var dotBd = nextOn ? 'rgba(255,107,107,.75)' : 'rgba(255,255,255,.26)';
-        var boxShadow = nextOn ? '0 0 0 2px rgba(255,107,107,.2)' : 'none';
-        checkbox.style.background = dotBg;
-        checkbox.style.borderColor = dotBd;
-        checkbox.style.boxShadow = boxShadow;
+      if (checkbox && nextOn) {
+        // 체크박스를 켰을 때: 날짜 색상을 가져와서 적용
+        var dateButton = row.querySelector('button[id$="_s"][data-k*="biddate"]');
+        if (dateButton) {
+          var dateColor = window.getComputedStyle(dateButton).color;
+          // RGB to hex 변환 (간단한 방식)
+          checkbox.style.background = dateColor;
+          checkbox.style.borderColor = dateColor;
+          checkbox.style.boxShadow = '0 0 6px ' + dateColor + '99';
+        }
+      } else if (checkbox) {
+        // 체크박스를 껐을 때
+        checkbox.style.background = 'transparent';
+        checkbox.style.borderColor = 'rgba(255,255,255,.26)';
+        checkbox.style.boxShadow = 'none';
       }
     }
     
@@ -45252,8 +45259,9 @@ window.addEventListener('DOMContentLoaded', () => {
     if (!display || display === '—') display = '미정';
     var rawValue = String(it && it.biddate || '');
     var focused = plIsBidFocusOn(it && it.bidFocus);
-    var dotBg = focused ? '#ff6b6b' : 'transparent';
-    var dotBd = focused ? 'rgba(255,107,107,.75)' : 'rgba(255,255,255,.26)';
+    // 체크박스 색상을 날짜 색상에 맞춤
+    var dotBg = focused ? ddayColor : 'transparent';
+    var dotBd = focused ? ddayColor : 'rgba(255,255,255,.26)';
     
     // D-day 뱃지 생성 (테두리 포함)
     var ddayBadge = ddayLabel 
@@ -45263,7 +45271,7 @@ window.addEventListener('DOMContentLoaded', () => {
     return ''
       + '<div style="display:flex;align-items:center;gap:6px;min-width:0;">'
       +   '<button type="button" onclick="event.preventDefault();event.stopPropagation();plToggleBidFocus(\'' + plEscHtml(id) + '\')" '
-      +   'style="width:10px;height:10px;border-radius:999px;border:1.5px solid ' + dotBd + ';background:' + dotBg + ';box-shadow:' + (focused ? '0 0 0 2px rgba(255,107,107,.2)' : 'none') + ';cursor:pointer;flex-shrink:0;" '
+      +   'style="width:11px;height:11px;border-radius:999px;border:1.5px solid ' + dotBd + ';background:' + dotBg + ';box-shadow:' + (focused ? '0 0 6px ' + ddayColor + '99' : 'none') + ';cursor:pointer;flex-shrink:0;transition:all .2s;" '
       +   'title="중요 입찰 표시"></button>'
       +   '<div style="display:flex;align-items:center;min-width:0;flex-wrap:nowrap;">'
       +     '<button type="button" id="' + key + '_s" data-k="' + plEscHtml(key) + '" onclick="event.preventDefault();event.stopPropagation();plStartInlineEdit(\'' + plEscHtml(key) + '\')" '
