@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260428-calendar-scroll-conditional-tight';
+    window.__SK_BUILD = '20260428-calendar-month-label';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -34265,7 +34265,10 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         const rows = byDay.get(key) || [];
         const inactive = d < firstMonth || d > lastMonthEnd;
         const isFirstOfMonth = d.getDate() === 1;
-        const dayLabel = isFirstOfMonth ? ((d.getMonth() + 1) + '/1') : String(d.getDate());
+        const dayLabel = isFirstOfMonth ? ((d.getMonth() + 1) + '월 1일') : String(d.getDate());
+        const monthLabelStyle = isFirstOfMonth
+          ? 'display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:999px;background:rgba(96,165,250,.14);border:1px solid rgba(96,165,250,.32);color:#bfdbfe;font-weight:900;'
+          : '';
         const hasScroll = rows.length > 3;
         const chips = rows.map(entry => {
           const it = entry.item;
@@ -34283,10 +34286,13 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         }).join('');
         const more = hasScroll ? `<div style="position:absolute;right:7px;top:6px;font-size:11px;font-weight:900;color:#dbeafe;background:rgba(59,130,246,.25);border:1px solid rgba(147,197,253,.65);border-radius:999px;padding:2px 7px;line-height:1;z-index:2;">+${rows.length - 3}</div>` : '';
         const cellBg = inactive ? 'rgba(22,29,41,.70)' : 'rgba(10,14,22,.76)';
-        const cellBorder = inactive ? '1px dashed rgba(148,163,184,.20)' : '1px solid rgba(255,255,255,.08)';
-        cells.push(`<div data-pcal-day="${key}" style="min-height:176px;border:${cellBorder};background:${cellBg};border-radius:8px;padding:6px;display:flex;flex-direction:column;gap:5px;position:relative;box-sizing:border-box;overflow:hidden;">
+        const cellBorder = inactive
+          ? '1px dashed rgba(148,163,184,.20)'
+          : (isFirstOfMonth ? '1px solid rgba(96,165,250,.30)' : '1px solid rgba(255,255,255,.08)');
+        const monthInset = isFirstOfMonth ? 'box-shadow:inset 3px 0 0 rgba(96,165,250,.42);' : '';
+        cells.push(`<div data-pcal-day="${key}" style="min-height:176px;border:${cellBorder};background:${cellBg};border-radius:8px;padding:6px;display:flex;flex-direction:column;gap:5px;position:relative;box-sizing:border-box;overflow:hidden;${monthInset}">
           ${more}
-          <div style="font-size:11px;font-weight:800;color:${inactive ? 'rgba(203,213,225,.38)' : '#d8e2ff'};padding-right:${hasScroll ? '38px' : '0'};height:14px;line-height:14px;flex:0 0 auto;">${dayLabel}</div>
+          <div style="font-size:11px;font-weight:800;color:${inactive ? 'rgba(203,213,225,.38)' : '#d8e2ff'};padding-right:${hasScroll ? '38px' : '0'};height:16px;line-height:16px;flex:0 0 auto;"><span style="${monthLabelStyle}">${dayLabel}</span></div>
           <div style="display:flex;flex-direction:column;gap:5px;overflow-y:${hasScroll ? 'auto' : 'visible'};overflow-x:hidden;padding-right:${hasScroll ? '3px' : '0'};height:${hasScroll ? '130px' : 'auto'};max-height:${hasScroll ? '130px' : 'none'};box-sizing:border-box;${hasScroll ? 'overscroll-behavior:contain;' : ''}">
             ${chips || '<div style="height:1px;flex:0 0 auto;"></div>'}
           </div>
