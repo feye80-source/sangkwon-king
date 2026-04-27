@@ -43518,15 +43518,8 @@ window.addEventListener('DOMContentLoaded', () => {
       if (!u) it.updatedAt = Number(it.createdAt || now);
       return plNormalizeItem(it);
     });
-    
-    // 즉시 메모리 캐시 업데이트 (렌더링이 최신 값을 읽도록)
-    if (window._idbCache) window._idbCache[PL_KEY] = full;
-    
-    // localStorage 즉시 업데이트
-    try { localStorage.setItem(PL_KEY, JSON.stringify(full)); } catch (e) {}
-    
-    // IDB는 지연 저장
     if (typeof _sbPersistCachedArray === 'function') _sbPersistCachedArray(PL_KEY, full, { delay: 120 });
+    else localStorage.setItem(PL_KEY, JSON.stringify(full));
     if (typeof window._sbMarkKvDirty === 'function') window._sbMarkKvDirty(PL_KEY);
     if (typeof window._sbScheduleSavePlItems === 'function') window._sbScheduleSavePlItems(full, 260);
   }
@@ -43834,11 +43827,20 @@ window.addEventListener('DOMContentLoaded', () => {
     }
     if (item.deposit) putField('보증금_만원', plParseAmountText(item.deposit));
     if (item.monthly) putField('월세_만원', plParseAmountText(item.monthly));
-    if (item.estimate) {
-      var estimateWon = Number(plParseWonText(item.estimate));
-      if (Number.isFinite(estimateWon) && estimateWon > 0) {
-        putField('예상입찰가', Math.round(estimateWon));
-        putField('예상입찰가_만원', Math.round(estimateWon / 10000));
+    if (Object.prototype.hasOwnProperty.call(item, 'estimate')) {
+      var estimateRaw = String(item.estimate === null || item.estimate === undefined ? '' : item.estimate).trim();
+      if (estimateRaw) {
+        var estimateWon = Number(plParseWonText(estimateRaw));
+        if (Number.isFinite(estimateWon) && estimateWon > 0) {
+          putField('예상입찰가', Math.round(estimateWon));
+          putField('예상입찰가_만원', Math.round(estimateWon / 10000));
+        }
+      } else {
+        // 물건리스트에서 나의입찰가를 비우면 연결된 저장목록의 기존 입찰가도 함께 비워야
+        // 다음 동기화/재렌더에서 예전 금액이 다시 살아나지 않는다.
+        ['예상입찰가','예상입찰가_만원','추천낙찰가','추천낙찰가_만원','추천입찰가','추천입찰가_만원','입찰가'].forEach(function(key){
+          if (d[key] !== undefined && d[key] !== '') putField(key, '');
+        });
       }
     }
     {
@@ -45181,8 +45183,8 @@ window.addEventListener('DOMContentLoaded', () => {
       var cur0 = plLoad().find(function(i){ return String(i.id) === String(id); });
       if (!cur0) return;
       var wonVal = plNormalizeWonInputText(rawValue);
-      var oldWon = plNormalizeWonInputText(cur0.result && cur0.result.won ? String(cur0.result.won) : '');
-      if (String(oldWon) === String(wonVal || '')) return;
+      var oldWon = plNormalizeWonInputText((cur0.result && Object.prototype.hasOwnProperty.call(cur0.result, 'won')) ? String(cur0.result.won) : '');
+      if (String(oldWon) === String(wonVal)) return;
       var nextResult = Object.assign({}, cur0.result || {});
       nextResult.won = wonVal;
       plUpdateItem(id, { result: nextResult });
@@ -45197,18 +45199,25 @@ window.addEventListener('DOMContentLoaded', () => {
     
     // 값이 실제로 바뀌지 않으면 저장/동기화 생략
     var cur = plLoad().find(function(i){ return String(i.id) === String(id); });
-    var currentValue = String(cur && cur[field] || '');
-    var newValue = String(value || '');
+    if (!cur) return;
+    // 빈 값/0도 정상적인 수정값이다. 로 비교하면 삭제/0원 입력이 기존값에 밀려 저장되지 않는다.
+    var hasCurrentField = Object.prototype.hasOwnProperty.call(cur, field);
+    var currentValue = String(hasCurrentField && cur[field] !== null && cur[field] !== undefined ? cur[field] : '');
+    var newValue = String(value !== null && value !== undefined ? value : '');
     
     if (currentValue === newValue) {
+      // 값이 같으면 아무것도 안 함
       return;
     }
     
-    // 값이 다르면 저장 (plSave에서 즉시 메모리 캐시 업데이트)
+    // 값이 다르면 저장
     patch[field] = value;
     plUpdateItem(id, patch);
     
-    // 렌더링 예약
+    // 중요: plCancelInlineEdit에서 즉시 렌더링하는 것을 차단
+    window.__plListRenderPending = false;
+    
+    // 저장 직후 렌더링 예약 (50ms 지연으로 깜빡임 최소화)
     if (typeof window._plScheduleRender === 'function') {
       window._plScheduleRender(50);
     }
