@@ -43465,6 +43465,7 @@ window.addEventListener('DOMContentLoaded', () => {
       deposit: it.deposit || '',
       monthly: it.monthly || '',
       site: String(it.site || '0'),
+      bidFocus: it.bidFocus || '',
       bidders: it.bidders || '',
       memo: it.memo || '',
       result: it.result || null,
@@ -45172,11 +45173,36 @@ window.addEventListener('DOMContentLoaded', () => {
     if (['appraisal','minprice','deposit','monthly'].indexOf(field) >= 0) value = plParseAmountText(rawValue);
     if (field === 'estimate') value = plNormalizeWonInputText(rawValue);
     if (field === 'biddate') value = plNormalizeDateInput(rawValue);
+    
     // 값이 실제로 바뀌지 않으면 저장/동기화 생략 (클릭만 해도 동기화 재시도되는 현상 방지)
     var cur = plLoad().find(function(i){ return String(i.id) === String(id); });
-    if (cur && String(cur[field] || '') === String(value || '')) return;
+    if (cur && String(cur[field] || '') === String(value || '')) {
+      // 값이 같더라도 표시값은 업데이트 (빈 값 처리를 위해)
+      var key = plDomKey(id, field);
+      var span = document.getElementById(key + '_s');
+      if (span) {
+        var displayVal = value;
+        if (field === 'estimate' || field === 'result_won') displayVal = plDisplayWonInput(value);
+        else if (['appraisal','minprice','deposit','monthly'].indexOf(field) >= 0) displayVal = plDisplayMan(value);
+        span.textContent = displayVal || '—';
+      }
+      return;
+    }
+    
     patch[field] = value;
     plUpdateItem(id, patch);
+    
+    // 저장 후 즉시 표시값 업데이트
+    var key = plDomKey(id, field);
+    var span = document.getElementById(key + '_s');
+    if (span) {
+      var displayVal = value;
+      if (field === 'estimate' || field === 'result_won') displayVal = plDisplayWonInput(value);
+      else if (['appraisal','minprice','deposit','monthly'].indexOf(field) >= 0) displayVal = plDisplayMan(value);
+      else if (field === 'biddate') displayVal = fmtDate(value);
+      span.textContent = displayVal || '—';
+    }
+    
     if (typeof window._plScheduleRender === 'function') window._plScheduleRender(50);
   };
   window.plInlineSetSelect = function(id, field, value) {
