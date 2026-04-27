@@ -14843,10 +14843,22 @@ window.wr2SummaryCancelEdit = function() {
       const c = map.getCenter();
       const lat = c.getLat().toFixed(6);
       const lng = c.getLng().toFixed(6);
-      // 오픈업(openub) 상권분석 — 좌표는 클립보드에 복사
-      try { navigator.clipboard.writeText(lat + ',' + lng); } catch(e) {}
+      // 오픈업 - 카카오 역지오코딩으로 주소 가져오기
+      if (window.kakao && window.kakao.maps && window.kakao.maps.services) {
+        const gc = new kakao.maps.services.Geocoder();
+        gc.coord2Address(parseFloat(lng), parseFloat(lat), function(result, status) {
+          if (status === kakao.maps.services.Status.OK && result[0]) {
+            const addr = result[0].road_address 
+              ? result[0].road_address.address_name 
+              : (result[0].address ? result[0].address.address_name : '');
+            if (addr) {
+              try { navigator.clipboard.writeText(addr); } catch(e) {}
+              showToast('📋 주소 복사됨: ' + addr, 'ok');
+            }
+          }
+        });
+      }
       window.open('https://www.openub.com/', '_blank');
-      showToast('📋 좌표 복사됨: ' + lat + ',' + lng + ' (오픈업에서 검색)', 'ok');
     }
     window.openOpenub = openOpenub;
     function openNiceBizFlow() {
@@ -44394,7 +44406,11 @@ window.addEventListener('DOMContentLoaded', () => {
     i.style.display = 'none';
     s.style.display = '';
     if (window.__plInlineEditKey === String(key || '')) window.__plInlineEditKey = '';
-    if (window.__plListRenderPending && typeof renderPropertyList === 'function') {
+    
+    // estimate/biddate 필드는 이미 span이 업데이트되었으므로 렌더링 건너뛰기
+    var isEstimateOrDate = key.indexOf('_estimate') >= 0 || key.indexOf('_biddate') >= 0;
+    
+    if (window.__plListRenderPending && typeof renderPropertyList === 'function' && !isEstimateOrDate) {
       window.__plListRenderPending = false;
       setTimeout(function(){ try { renderPropertyList(); } catch(e) {} }, 0);
     }
@@ -45201,10 +45217,9 @@ window.addEventListener('DOMContentLoaded', () => {
       span.textContent = displayVal || '—';
     }
     
-    // estimate 필드는 반드시 렌더링 예약 (빈 값 처리 보장)
-    if (field === 'estimate' && typeof window._plScheduleRender === 'function') {
-      window._plScheduleRender(30);
-    } else if (typeof window._plScheduleRender === 'function') {
+    // estimate/biddate 필드는 렌더링 예약하지 않음 (span 직접 업데이트로 충분)
+    // 다른 필드만 렌더링 예약
+    if (field !== 'estimate' && field !== 'biddate' && typeof window._plScheduleRender === 'function') {
       window._plScheduleRender(50);
     }
   };
