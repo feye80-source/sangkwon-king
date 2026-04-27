@@ -43518,8 +43518,15 @@ window.addEventListener('DOMContentLoaded', () => {
       if (!u) it.updatedAt = Number(it.createdAt || now);
       return plNormalizeItem(it);
     });
+    
+    // 즉시 메모리 캐시 업데이트 (렌더링이 최신 값을 읽도록)
+    if (window._idbCache) window._idbCache[PL_KEY] = full;
+    
+    // localStorage 즉시 업데이트
+    try { localStorage.setItem(PL_KEY, JSON.stringify(full)); } catch (e) {}
+    
+    // IDB는 지연 저장
     if (typeof _sbPersistCachedArray === 'function') _sbPersistCachedArray(PL_KEY, full, { delay: 120 });
-    else localStorage.setItem(PL_KEY, JSON.stringify(full));
     if (typeof window._sbMarkKvDirty === 'function') window._sbMarkKvDirty(PL_KEY);
     if (typeof window._sbScheduleSavePlItems === 'function') window._sbScheduleSavePlItems(full, 260);
   }
@@ -45194,18 +45201,14 @@ window.addEventListener('DOMContentLoaded', () => {
     var newValue = String(value || '');
     
     if (currentValue === newValue) {
-      // 값이 같으면 아무것도 안 함
       return;
     }
     
-    // 값이 다르면 저장
+    // 값이 다르면 저장 (plSave에서 즉시 메모리 캐시 업데이트)
     patch[field] = value;
     plUpdateItem(id, patch);
     
-    // 중요: plCancelInlineEdit에서 즉시 렌더링하는 것을 차단
-    window.__plListRenderPending = false;
-    
-    // 저장 직후 렌더링 예약 (50ms 지연으로 깜빡임 최소화)
+    // 렌더링 예약
     if (typeof window._plScheduleRender === 'function') {
       window._plScheduleRender(50);
     }
