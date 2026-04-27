@@ -43471,7 +43471,9 @@ window.addEventListener('DOMContentLoaded', () => {
       minprice: it.minprice || '',
       round: it.round || '',
       biddate: _plNormalizeBiddateValue(it.biddate || ''),
-      estimate: it.estimate || '',
+      // 나의입찰가(estimate)는 물건리스트 전용 편집값이다.
+      // 빈 문자열('')도 사용자가 '삭제'한 정상 값이므로 fallback으로 되살리면 안 된다.
+      estimate: (it.estimate === undefined || it.estimate === null) ? '' : String(it.estimate),
       deposit: it.deposit || '',
       monthly: it.monthly || '',
       site: String(it.site || '0'),
@@ -43749,7 +43751,11 @@ window.addEventListener('DOMContentLoaded', () => {
         if (nextSimple === 'changed') return currentBid || mappedBid || '';
         return mappedBid || currentBid || '';
       })(),
-      estimate: mapped.estimate || curItem.estimate || '',
+      // 나의입찰가(estimate)는 생성 이후에는 로컬 물건리스트 값을 우선한다.
+      // 저장목록 원본의 추천/예상입찰가가 있어도 사용자가 0원/빈값으로 지운 값을 되살리면 안 된다.
+      estimate: (curItem && curItem.estimate !== undefined && curItem.estimate !== null)
+        ? String(curItem.estimate || '')
+        : (mapped.estimate || ''),
       deposit: mapped.deposit || curItem.deposit || '',
       monthly: mapped.monthly || curItem.monthly || '',
       result: nextResult,
@@ -43827,22 +43833,10 @@ window.addEventListener('DOMContentLoaded', () => {
     }
     if (item.deposit) putField('보증금_만원', plParseAmountText(item.deposit));
     if (item.monthly) putField('월세_만원', plParseAmountText(item.monthly));
-    if (Object.prototype.hasOwnProperty.call(item, 'estimate')) {
-      var estimateRaw = String(item.estimate === null || item.estimate === undefined ? '' : item.estimate).trim();
-      if (estimateRaw) {
-        var estimateWon = Number(plParseWonText(estimateRaw));
-        if (Number.isFinite(estimateWon) && estimateWon > 0) {
-          putField('예상입찰가', Math.round(estimateWon));
-          putField('예상입찰가_만원', Math.round(estimateWon / 10000));
-        }
-      } else {
-        // 물건리스트에서 나의입찰가를 비우면 연결된 저장목록의 기존 입찰가도 함께 비워야
-        // 다음 동기화/재렌더에서 예전 금액이 다시 살아나지 않는다.
-        ['예상입찰가','예상입찰가_만원','추천낙찰가','추천낙찰가_만원','추천입찰가','추천입찰가_만원','입찰가'].forEach(function(key){
-          if (d[key] !== undefined && d[key] !== '') putField(key, '');
-        });
-      }
-    }
+    // 나의입찰가(estimate)는 물건리스트 전용 필드로 취급한다.
+    // 저장목록 원본의 '예상입찰가/추천입찰가'와 상호 덮어쓰기하면
+    // 사용자가 estimate를 비웠을 때 원본값이 다시 살아나는 문제가 생긴다.
+    // 따라서 여기서는 저장목록으로 역동기화하지 않는다.
     {
       var bidDateNorm = String(item.biddate || '').trim();
       putField('입찰기일', bidDateNorm);
@@ -45183,8 +45177,8 @@ window.addEventListener('DOMContentLoaded', () => {
       var cur0 = plLoad().find(function(i){ return String(i.id) === String(id); });
       if (!cur0) return;
       var wonVal = plNormalizeWonInputText(rawValue);
-      var oldWon = plNormalizeWonInputText((cur0.result && Object.prototype.hasOwnProperty.call(cur0.result, 'won')) ? String(cur0.result.won) : '');
-      if (String(oldWon) === String(wonVal)) return;
+      var oldWon = plNormalizeWonInputText(cur0.result && cur0.result.won ? String(cur0.result.won) : '');
+      if (String(oldWon) === String(wonVal || '')) return;
       var nextResult = Object.assign({}, cur0.result || {});
       nextResult.won = wonVal;
       plUpdateItem(id, { result: nextResult });
@@ -45199,11 +45193,8 @@ window.addEventListener('DOMContentLoaded', () => {
     
     // 값이 실제로 바뀌지 않으면 저장/동기화 생략
     var cur = plLoad().find(function(i){ return String(i.id) === String(id); });
-    if (!cur) return;
-    // 빈 값/0도 정상적인 수정값이다. 로 비교하면 삭제/0원 입력이 기존값에 밀려 저장되지 않는다.
-    var hasCurrentField = Object.prototype.hasOwnProperty.call(cur, field);
-    var currentValue = String(hasCurrentField && cur[field] !== null && cur[field] !== undefined ? cur[field] : '');
-    var newValue = String(value !== null && value !== undefined ? value : '');
+    var currentValue = String(cur && cur[field] != null ? cur[field] : '');
+    var newValue = String(value != null ? value : '');
     
     if (currentValue === newValue) {
       // 값이 같으면 아무것도 안 함
