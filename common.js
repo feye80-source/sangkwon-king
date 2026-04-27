@@ -34223,12 +34223,12 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             const dday = Math.round((entry.date - today) / 86400000);
             const tone = _plGetDdayTone(dday);
             const intentChip = _plIntentChip(entry.intent);
-            const bidDot = entry.bidFocus
-              ? '<span style="display:inline-block;width:8px;height:8px;border-radius:999px;background:#34d399;box-shadow:0 0 0 2px rgba(52,211,153,.25);"></span>'
-              : '';
-            return `<button onclick="event.stopPropagation();openPopup('${String(it.id).replace(/'/g, "\\'")}')" style="display:block;width:100%;text-align:left;padding:5px 6px;background:${tone.color}14;border:1px solid ${tone.color}55;border-radius:7px;color:var(--tx);font-size:10px;cursor:pointer;overflow:hidden;">
+            // bidFocus가 true면 빨간색 테두리로 강조
+            const borderColor = entry.bidFocus ? '#ff6b6b' : (tone.color + '55');
+            const borderWidth = entry.bidFocus ? '2px' : '1px';
+            const bgColor = entry.bidFocus ? 'rgba(255,107,107,.08)' : (tone.color + '14');
+            return `<button onclick="event.stopPropagation();openPopup('${String(it.id).replace(/'/g, "\\'")}')" style="display:block;width:100%;text-align:left;padding:5px 6px;background:${bgColor};border:${borderWidth} solid ${borderColor};border-radius:7px;color:var(--tx);font-size:10px;cursor:pointer;overflow:hidden;">
               <div style="display:flex;align-items:center;gap:4px;min-width:0;">
-                ${bidDot}
                 ${intentChip}
                 <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${_plEsc(it.title || (it.data||{}).소재지 || it.id)}</span>
               </div>
@@ -45206,36 +45206,23 @@ window.addEventListener('DOMContentLoaded', () => {
     if (!display || display === '—') display = '미정';
     var rawValue = String(it && it.biddate || '');
     var focused = plIsBidFocusOn(it && it.bidFocus);
-    var dotBg = focused ? '#34d399' : 'transparent';
-    var dotBd = focused ? 'rgba(52,211,153,.75)' : 'rgba(255,255,255,.26)';
-    
-    // 의향 chip 추가
-    var intentChip = '';
-    var intent = String(it.intent || '').trim();
-    if (intent === '상') intentChip = '<span style="display:inline-flex;align-items:center;padding:1px 5px;border-radius:999px;border:1px solid #ff6b6b88;background:rgba(255,107,107,.16);color:#ff6b6b;font-size:9px;font-weight:800;line-height:1.2;margin-left:4px;">상</span>';
-    else if (intent === '중') intentChip = '<span style="display:inline-flex;align-items:center;padding:1px 5px;border-radius:999px;border:1px solid #60a5fa88;background:rgba(96,165,250,.16);color:#60a5fa;font-size:9px;font-weight:800;line-height:1.2;margin-left:4px;">중</span>';
-    else if (intent === '하') intentChip = '<span style="display:inline-flex;align-items:center;padding:1px 5px;border-radius:999px;border:1px solid #4ade8088;background:rgba(74,222,128,.16);color:#4ade80;font-size:9px;font-weight:800;line-height:1.2;margin-left:4px;">하</span>';
+    var dotBg = focused ? '#ff6b6b' : 'transparent';
+    var dotBd = focused ? 'rgba(255,107,107,.75)' : 'rgba(255,255,255,.26)';
     
     return ''
       + '<div style="display:flex;align-items:center;gap:6px;min-width:0;">'
       +   '<button type="button" onclick="event.preventDefault();event.stopPropagation();plToggleBidFocus(\'' + plEscHtml(id) + '\')" '
-      +   'style="width:12px;height:12px;border-radius:999px;border:1.5px solid ' + dotBd + ';background:' + dotBg + ';box-shadow:' + (focused ? '0 0 0 2px rgba(52,211,153,.2)' : 'none') + ';cursor:pointer;flex-shrink:0;" '
-      +   'title="이번 회차 입찰 체크"></button>'
-      +   '<div style="display:flex;align-items:center;min-width:0;flex:1;">'
-      +     '<button type="button" id="' + key + '_s" data-k="' + plEscHtml(key) + '" onclick="event.preventDefault();event.stopPropagation();plToggleBidFocus(\'' + plEscHtml(id) + '\')" '
-      +     'style="display:inline-flex;align-items:center;justify-content:flex-start;padding:0;border:none;background:transparent;color:' + ddayColor + ';font-size:13px;font-weight:700;cursor:pointer;border-bottom:1px dashed rgba(255,255,255,.14);text-align:left;white-space:nowrap;">'
-      +       plEscHtml(display)
-      +     '</button>'
-      +     intentChip
-      +   '</div>'
+      +   'style="width:10px;height:10px;border-radius:999px;border:1.5px solid ' + dotBd + ';background:' + dotBg + ';box-shadow:' + (focused ? '0 0 0 2px rgba(255,107,107,.2)' : 'none') + ';cursor:pointer;flex-shrink:0;" '
+      +   'title="중요 입찰 표시"></button>'
+      +   '<button type="button" id="' + key + '_s" data-k="' + plEscHtml(key) + '" onclick="event.preventDefault();event.stopPropagation();plStartInlineEdit(\'' + plEscHtml(key) + '\')" '
+      +   'style="display:inline-flex;align-items:center;justify-content:flex-start;padding:0;border:none;background:transparent;color:' + ddayColor + ';font-size:13px;font-weight:700;cursor:pointer;border-bottom:1px dashed rgba(255,255,255,.14);text-align:left;white-space:nowrap;">'
+      +     plEscHtml(display)
+      +   '</button>'
       +   '<input id="' + key + '_i" data-k="' + plEscHtml(key) + '" data-id="' + plEscHtml(id) + '" data-field="biddate" type="text" value="' + plEscHtml(rawValue) + '" '
       +   'onkeydown="if(event.key===\'Enter\'){this.blur();} if(event.key===\'Escape\'){plCancelInlineEdit(this.dataset.k);}" '
       +   'onblur="plFinishInlineEdit(this.dataset.id,this.dataset.field,this.dataset.k)" '
       +   'onclick="event.stopPropagation()" placeholder="YYYY-MM-DD" '
       +   'style="display:none;width:112px;min-width:82px;padding:4px 6px;border:1px solid rgba(255,255,255,.12);border-radius:6px;background:rgba(0,0,0,.25);color:var(--tx);font-size:12px;text-align:left;outline:none;">'
-      +   '<button type="button" onclick="event.preventDefault();event.stopPropagation();plStartInlineEdit(\'' + plEscHtml(key) + '\')" '
-      +   'style="padding:1px 5px;border-radius:5px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.04);color:var(--di);font-size:10px;cursor:pointer;flex-shrink:0;" '
-      +   'title="입찰기일 수정">수정</button>'
       + '</div>'
       + (ddayLabel ? '<div style="margin-top:2px;font-size:10px;color:' + ddayColor + ';font-weight:800;">' + ddayLabel + '</div>' : '');
   }
