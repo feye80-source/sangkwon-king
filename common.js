@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260427-maplink-pp-flicker01';
+    window.__SK_BUILD = '20260427-external-link-copy-fix';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -14579,12 +14579,7 @@ window.wr2SummaryCancelEdit = function() {
       let extraRows = '';
       if (ia) {
         if (n.감정가_만원) extraRows += _sied('감정가', '감정가', fM(n.감정가_만원), d.감정가, true);
-        {
-          const _ppAreaM2 = Number(n.면적_m2 || n.전용면적_m2 || n.건물면적_m2 || d.전용면적_m2 || d.건물면적_m2 || 0);
-          const _ppPriceMan = Number(n.최저가_만원 || (d.최저가 ? Number(String(d.최저가).replace(/[^0-9]/g, '')) / 10000 : 0) || n.감정가_만원 || 0);
-          const _ppMan = (_ppPriceMan > 0 && _ppAreaM2 > 0) ? Math.round((_ppPriceMan / (_ppAreaM2 / 3.3058)) * 10) / 10 : Number(n.평당가_만원 || 0);
-          if (_ppMan > 0) extraRows += _sied('평단가', '평당가_만원', (function (v) { const nv = Math.round(v); return nv.toLocaleString() + '만원/평'; })(_ppMan), _ppMan, true);
-        }
+        if (n.평당가_만원) extraRows += _sied('평단가', '평당가_만원', (function (v) { const nv = Math.round(v); if (nv >= 10000) { const e = Math.floor(nv / 10000), m = nv % 10000; return m ? e + '억 ' + m.toLocaleString() + '만원/평' : e + '억원/평'; } return nv.toLocaleString() + '만원/평'; })(n.평당가_만원), n.평당가_만원, true);
         if (saleDateRaw) {
           const tone = isSaleOverdue ? '#ff6b7a' : (saleDday != null && saleDday <= 3 ? '#ff8c42' : '#4ade80');
           const saleText = saleDdayLabel
@@ -14841,123 +14836,147 @@ window.wr2SummaryCancelEdit = function() {
     }
 
     // ── 외부 링크 사이트 바로가기 ──────────────────────────────
-    function _skGetMapCenterInfo() {
-      if (typeof map === 'undefined' || !map || !map.getCenter) return null;
-      var c = map.getCenter();
-      var lat = Number(c.getLat ? c.getLat() : c.Ma || c.La || 0);
-      var lng = Number(c.getLng ? c.getLng() : c.La || c.Ma || 0);
-      var level = (map.getLevel && map.getLevel()) || 4;
-      if (!isFinite(lat) || !isFinite(lng)) return null;
-      return { lat: lat, lng: lng, level: level, coordText: lat.toFixed(6) + ', ' + lng.toFixed(6) };
+    // 현재 지도 좌상단에 표시 중인 행정동/주소(mapAddr)를 우선 복사한다.
+    // mapAddr가 아직 갱신되지 않았을 때만 카카오 역지오코딩으로 보완한다.
+    function _skNormalizeMapAddrText(txt) {
+      var raw = String(txt || '').replace(/\s+/g, ' ').trim();
+      if (!raw) return '';
+      var m = raw.match(/((?:서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충북|충남|전북|전남|경북|경남|제주)[^\n]*?(?:동|읍|면|가|리))/);
+      if (m && m[1]) return m[1].trim();
+      return raw;
     }
-    function _skCopyText(text) {
-      var t = String(text || '').trim();
-      if (!t) return Promise.resolve(false);
-      var done = false;
-      function fallbackCopy() {
-        try {
-          var ta = document.createElement('textarea');
-          ta.value = t;
-          ta.setAttribute('readonly', 'readonly');
-          ta.style.position = 'fixed';
-          ta.style.left = '-9999px';
-          ta.style.top = '0';
-          document.body.appendChild(ta);
-          ta.focus();
-          ta.select();
-          var ok = document.execCommand('copy');
-          document.body.removeChild(ta);
-          return !!ok;
-        } catch(e) { return false; }
-      }
+    function _skCopyTextFallback(text) {
+      var value = String(text || '').trim();
+      if (!value) return false;
+      try {
+        var ta = document.createElement('textarea');
+        ta.value = value;
+        ta.setAttribute('readonly', 'readonly');
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        ta.style.top = '0';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        var ok = false;
+        try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+        document.body.removeChild(ta);
+        return !!ok;
+      } catch (e) { return false; }
+    }
+    function _skCopyTextNow(text) {
+      var value = String(text || '').trim();
+      if (!value) return false;
+      _skCopyTextFallback(value);
       try {
         if (navigator.clipboard && navigator.clipboard.writeText) {
-          return navigator.clipboard.writeText(t).then(function(){ return true; }).catch(function(){ return fallbackCopy(); });
+          navigator.clipboard.writeText(value).catch(function () {});
         }
-      } catch(e) {}
-      return Promise.resolve(fallbackCopy());
+      } catch (e) {}
+      return true;
     }
-    function _skReverseGeocodeMapCenter(info) {
-      return new Promise(function(resolve) {
-        if (!info) { resolve(''); return; }
-        try {
-          if (window.kakao && window.kakao.maps && window.kakao.maps.services) {
-            var gc = new kakao.maps.services.Geocoder();
-            gc.coord2Address(info.lng, info.lat, function(result, status) {
-              var addr = '';
-              try {
-                if (status === kakao.maps.services.Status.OK && result && result[0]) {
-                  addr = result[0].road_address && result[0].road_address.address_name
-                    ? result[0].road_address.address_name
-                    : (result[0].address && result[0].address.address_name ? result[0].address.address_name : '');
-                }
-              } catch(e) {}
-              resolve(addr || info.coordText);
-            });
-            return;
-          }
-        } catch(e) {}
-        resolve(info.coordText);
-      });
+    function _skGetDisplayedMapAddress() {
+      var el = document.getElementById('mapAddr');
+      if (!el) return '';
+      return _skNormalizeMapAddrText(el.innerText || el.textContent || '');
     }
-    function _skOpenExternalWithMapAddress(url, label) {
-      if (typeof map === 'undefined' || !map) {
-        showToast('지도 탭을 먼저 열어주세요', 'warn'); return;
-      }
-      var info = _skGetMapCenterInfo();
-      if (!info) { showToast('현재 지도 위치를 읽지 못했습니다', 'warn'); return; }
-      var w = null;
-      try { w = window.open('about:blank', '_blank'); } catch(e) {}
-      // 좌표를 URL에 직접 넣지 않는다. 외부 사이트 검색창에는 주소를 붙여넣도록 클립보드만 채운다.
-      _skReverseGeocodeMapCenter(info).then(function(text) {
-        return _skCopyText(text).then(function(ok) {
-          if (typeof showToast === 'function') {
-            showToast(ok ? ('📋 현재 지도 위치 복사됨: ' + text) : ('현재 위치 복사 실패. 직접 입력: ' + text), ok ? 'ok' : 'warn');
-          }
+    function _skReverseMapCenterAddress(callback) {
+      try {
+        if (typeof map === 'undefined' || !map || !window.kakao || !window.kakao.maps || !window.kakao.maps.services) {
+          callback(''); return;
+        }
+        var c = map.getCenter();
+        var gc = new kakao.maps.services.Geocoder();
+        gc.coord2RegionCode(c.getLng(), c.getLat(), function (res, status) {
+          var addr = '';
           try {
-            if (w && !w.closed) w.location.href = url;
-            else window.open(url, '_blank');
-          } catch(e) { window.open(url, '_blank'); }
+            if (status === kakao.maps.services.Status.OK && res && res.length) {
+              var hit = res.find(function (r) { return r.region_type === 'H'; }) || res[0];
+              addr = hit && hit.address_name ? hit.address_name : '';
+            }
+          } catch (e) {}
+          callback(_skNormalizeMapAddrText(addr));
         });
-      });
+      } catch (e) { callback(''); }
     }
+    function _skCopyCurrentMapLocationForExternal(siteLabel) {
+      if (typeof map === 'undefined' || !map) {
+        showToast('지도 탭을 먼저 열어주세요', 'warn');
+        return false;
+      }
+      var displayedAddr = _skGetDisplayedMapAddress();
+      if (displayedAddr) {
+        _skCopyTextNow(displayedAddr);
+        showToast('📋 현재 지도 위치 복사됨: ' + displayedAddr, 'ok');
+        return true;
+      }
+      var c = map.getCenter();
+      var coord = c.getLat().toFixed(6) + ', ' + c.getLng().toFixed(6);
+      _skCopyTextNow(coord);
+      showToast('📋 현재 지도 좌표 복사됨: ' + coord, 'ok');
+      _skReverseMapCenterAddress(function (addr) {
+        if (addr) {
+          _skCopyTextNow(addr);
+          showToast('📋 현재 지도 주소 복사됨: ' + addr, 'ok');
+        }
+      });
+      return true;
+    }
+    window._skCopyCurrentMapLocationForExternal = _skCopyCurrentMapLocationForExternal;
+
     function openOpenub() {
-      _skOpenExternalWithMapAddress('https://www.openub.com/', '오픈업');
+      if (!_skCopyCurrentMapLocationForExternal('오픈업')) return;
+      window.open('https://www.openub.com/', '_blank');
     }
     window.openOpenub = openOpenub;
     function openNiceBizFlow() {
-      _skOpenExternalWithMapAddress('https://m.nicebizmap.co.kr/explorer/flowpop', '유동인구');
+      if (!_skCopyCurrentMapLocationForExternal('유동인구')) return;
+      window.open('https://m.nicebizmap.co.kr/explorer/flowpop', '_blank');
     }
     window.openNiceBizFlow = openNiceBizFlow;
     function openMyFranchise() {
-      _skOpenExternalWithMapAddress('https://myfranchise.kr/map', '마이프차');
+      if (!_skCopyCurrentMapLocationForExternal('마이프차')) return;
+      window.open('https://myfranchise.kr/map', '_blank');
     }
     window.openMyFranchise = openMyFranchise;
+
     function openKwonrigum() {
-      _skOpenExternalWithMapAddress('https://kwonrigum.com/reports', '권리금닷컴');
+      if (!_skCopyCurrentMapLocationForExternal('권리금닷컴')) return;
+      window.open('https://kwonrigum.com/reports', '_blank');
     }
     window.openKwonrigum = openKwonrigum;
 
-    // 화면 표시명 보정: HTML에 박힌 기존 '상권분석' 문구도 공통 JS에서 외부 링크로 바꾼다.
-    (function _skPatchExternalLinkLabel(){
-      function patch(root) {
-        try {
-          var walker = document.createTreeWalker(root || document.body, NodeFilter.SHOW_TEXT, null);
-          var n;
-          while ((n = walker.nextNode())) {
-            if (!n.nodeValue) continue;
-            if (n.nodeValue.indexOf('상권분석 바로가기') >= 0) n.nodeValue = n.nodeValue.replace(/상권분석 바로가기/g, '외부 링크 바로가기');
-            if (/^\s*상권분석\s*$/.test(n.nodeValue)) n.nodeValue = n.nodeValue.replace('상권분석', '외부 링크');
-          }
-        } catch(e) {}
-      }
-      function run(){ if (document.body) patch(document.body); }
-      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run);
-      else run();
+    // index.html/mobile.html에 박힌 기존 문구까지 화면에서 일관되게 정리한다.
+    function _skApplyExternalLinkLabels(root) {
       try {
-        var mo = new MutationObserver(function(){ run(); });
-        if (document.documentElement) mo.observe(document.documentElement, { childList:true, subtree:true, characterData:true });
-      } catch(e) { setInterval(run, 1500); }
+        var scope = root && root.querySelectorAll ? root : document;
+        var nodes = [];
+        if (scope.querySelectorAll) {
+          nodes = Array.prototype.slice.call(scope.querySelectorAll('button, .btn, div, span, b, strong'));
+        }
+        if (scope !== document && scope.nodeType === 1) nodes.unshift(scope);
+        nodes.forEach(function (el) {
+          if (!el || (el.children && el.children.length > 3)) return;
+          var t = (el.textContent || '').trim();
+          if (!t || t.indexOf('상권분석') < 0) return;
+          var nt = t.replace(/상권분석/g, '외부 링크');
+          if (nt !== t) el.textContent = nt;
+        });
+      } catch (e) {}
+    }
+    window._skApplyExternalLinkLabels = _skApplyExternalLinkLabels;
+    (function () {
+      function run() { _skApplyExternalLinkLabels(document); }
+      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run);
+      else setTimeout(run, 0);
+      try {
+        var mo = new MutationObserver(function (muts) {
+          muts.forEach(function (m) {
+            if (m && m.addedNodes) Array.prototype.forEach.call(m.addedNodes, function (n) { _skApplyExternalLinkLabels(n); });
+          });
+        });
+        mo.observe(document.documentElement, { childList: true, subtree: true });
+      } catch (e) {}
     })();
 
     // ── 디스코/BDS 지도 위치로 열기 ──────────────────────────
@@ -18541,13 +18560,11 @@ ${combinedText}
         const m = String(d.소재지).match(/(\d+)층/);
         if (m) 층수표시 = m[1] + '층';
       }
-      // 평단가 계산: 저장된 평당가_만원은 단위 오류가 섞일 수 있어 최저가/면적으로 우선 재계산
-      let 평단가 = null;
-      {
+      // 평단가 계산 (없으면 자동 계산)
+      let 평단가 = d.평당가_만원;
+      if (!평단가 && d.최저가) {
         const area = parseFloat(d.전용면적_m2 || d.건물면적_m2 || 0);
-        const minWon = Number(String(d.최저가 || d.최저가_원 || '').replace(/[^0-9]/g, ''));
-        if (area > 0 && minWon > 0) 평단가 = Math.round((minWon / 10000) / (area / 3.3058) * 10) / 10;
-        else if (d.평당가_만원) 평단가 = Number(d.평당가_만원);
+        if (area > 0) 평단가 = Math.round((parseInt(d.최저가) / 10000) / (area / 3.3058) * 10) / 10;
       }
       return `<div class="shdr">📋 경매 정보</div><div class="fgrid">
 ${fi(d.경매번호, '경매번호', 'text', idx, '경매번호', isPopup)}
@@ -18562,7 +18579,7 @@ ${fi(층수표시, '층수', 'text', idx, '해당층', isPopup)}
 <div class="shdr">💰 금액 정보</div><div class="fgrid">
 ${fi(d.감정가, '감정가', 'big', idx, '감정가', isPopup)}
 ${fi(d.최저가, '최저가', 'money_raw', idx, '최저가', isPopup)}
-${평단가 ? fi((Math.round(평단가 * 10) / 10).toLocaleString('ko-KR') + '만원/평', '평단가(최저)', 'text', idx, '평당가_만원', isPopup) : ''}
+${평단가 ? `<div class="fi"><div class="fl">평단가(최저)</div><div class="fv money">${Number(평단가).toLocaleString()}만원/평</div></div>` : ''}
 ${fi(d.청구액, '청구액', 'money', idx, '청구액', isPopup)}
 </div>
 <div class="shdr">📅 일정 정보</div><div class="fgrid">
@@ -45251,15 +45268,6 @@ window.addEventListener('DOMContentLoaded', () => {
     if (['appraisal','minprice','deposit','monthly'].indexOf(field) >= 0) value = plParseAmountText(rawValue);
     if (field === 'estimate') value = plNormalizeWonInputText(rawValue);
     if (field === 'biddate') value = plNormalizeDateInput(rawValue);
-    if (field === 'estimate') {
-      try {
-        var _domId = plDomKey(id, field);
-        var _el = document.getElementById(_domId);
-        if (_el) _el.textContent = plDisplayWonInput(value);
-        var _inp = document.getElementById(_domId + '_inp');
-        if (_inp) _inp.value = plDisplayWonInput(value);
-      } catch(e) {}
-    }
     
     // 값이 실제로 바뀌지 않으면 저장/동기화 생략
     var cur = plLoad().find(function(i){ return String(i.id) === String(id); });
@@ -45510,7 +45518,7 @@ window.addEventListener('DOMContentLoaded', () => {
           + '<td style="padding:8px 10px;white-space:nowrap;">'
           +   plBiddateCellHtml(it, ddayLabel, ddayColor)
           + '</td>'
-          + '<td style="padding:8px 10px;text-align:right;"><span style="'+(it.estimate?'background:rgba(255,209,102,.12);border-radius:4px;padding:1px 4px;':'')+'">'+plEditCellHtml(it.id,'estimate',plDisplayWonInput(it.estimate == null ? '' : it.estimate),plDisplayWonInput(it.estimate == null ? '' : it.estimate),{type:'text',align:'right',minw:'72px',placeholder:'원',spanStyle:'color:#ffd166;font-weight:700;'})+'</span></td>'
+          + '<td style="padding:8px 10px;text-align:right;"><span style="'+(it.estimate?'background:rgba(255,209,102,.12);border-radius:4px;padding:1px 4px;':'')+'">'+plEditCellHtml(it.id,'estimate',plDisplayWonInput(it.estimate||''),plDisplayWonInput(it.estimate||''),{type:'text',align:'right',minw:'72px',placeholder:'원',spanStyle:'color:#ffd166;font-weight:700;'})+'</span></td>'
           + '<td style="padding:8px 10px;text-align:center;cursor:pointer;" onclick="event.stopPropagation();plToggleSite(\''+it.id+'\')">'+siteDots(it.site)+'</td>'
           + '<td style="padding:8px 10px;" onclick="event.stopPropagation()">'+wrLink+'</td>'
           + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'result_won',plDisplayWonInput((it.result&&it.result.won)||''),plDisplayWonInput((it.result&&it.result.won)||''),{type:'text',align:'right',minw:'76px',placeholder:'원',spanStyle:'color:#4caf87;font-weight:700;'})+'</td>'
