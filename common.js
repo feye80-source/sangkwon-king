@@ -34224,6 +34224,46 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         }, 0);
       }
     }
+
+    function _plEnsureCalendarMonthBadge() {
+      let badge = document.getElementById('plCalendarMonthBadge');
+      if (!badge) {
+        badge = document.createElement('span');
+        badge.id = 'plCalendarMonthBadge';
+        badge.style.cssText = 'display:none;align-items:center;margin-right:8px;padding:5px 10px;border-radius:999px;border:1px solid rgba(96,165,250,.34);background:rgba(96,165,250,.12);color:#bfdbfe;font-size:12px;font-weight:900;white-space:nowrap;box-shadow:inset 0 0 0 1px rgba(255,255,255,.03);';
+        const btn = document.getElementById('plViewCalBtn');
+        const parent = btn && btn.parentElement ? btn.parentElement : null;
+        if (parent) parent.insertBefore(badge, parent.firstChild);
+      }
+      return badge;
+    }
+    function _plSetCalendarMonthBadgeText(text) {
+      const badge = _plEnsureCalendarMonthBadge();
+      if (!badge) return;
+      const show = (window.__wrPipelineView === 'calendar') && !!text;
+      badge.style.display = show ? 'inline-flex' : 'none';
+      if (show) badge.textContent = text;
+    }
+    function _plUpdateCalendarVisibleMonth(host) {
+      try {
+        if (!host || window.__wrPipelineView !== 'calendar') { _plSetCalendarMonthBadgeText(''); return; }
+        const cells = Array.from(host.querySelectorAll('[data-pcal-day][data-pcal-month-label]'));
+        if (!cells.length) { _plSetCalendarMonthBadgeText(''); return; }
+        const hostRect = host.getBoundingClientRect();
+        const probeY = hostRect.top + Math.min(Math.max(hostRect.height * 0.22, 80), 180);
+        let best = null;
+        let bestDist = Infinity;
+        cells.forEach(el => {
+          const r = el.getBoundingClientRect();
+          if (r.bottom < hostRect.top + 12 || r.top > hostRect.bottom - 12) return;
+          const dist = Math.abs(r.top - probeY);
+          if (dist < bestDist) { best = el; bestDist = dist; }
+        });
+        if (!best) best = cells[0];
+        _plSetCalendarMonthBadgeText(best.getAttribute('data-pcal-month-label') || '');
+      } catch (_) {}
+    }
+
     function renderPipelineCalendarBoard() {
       const host = document.getElementById('pipelineListBoard');
       if (!host) return;
@@ -34236,6 +34276,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         .sort((a, b) => (a.date - b.date) || _plCalendarEntryCompare(a, b));
       if (!items.length) {
         host.innerHTML = '<div style="padding:28px;text-align:center;color:var(--di);font-size:12px;">달력에 표시할 기일 데이터가 없습니다.</div>';
+        _plSetCalendarMonthBadgeText('');
         if (calScrollState.locked) _plSetPipelineScrollTop(host, 'calendar', prevTop);
         return;
       }
@@ -34260,12 +34301,13 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
       const cells = [];
       for (let dt = new Date(startDate); dt <= endDate; dt.setDate(dt.getDate() + 1)) {
-        const d = new Date(dt);
-        const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        const dateObj = new Date(dt);
+        const key = dateObj.getFullYear() + '-' + String(dateObj.getMonth() + 1).padStart(2, '0') + '-' + String(dateObj.getDate()).padStart(2, '0');
         const rows = byDay.get(key) || [];
-        const inactive = d < firstMonth || d > lastMonthEnd;
-        const isFirstOfMonth = d.getDate() === 1;
-        const dayLabel = isFirstOfMonth ? ((d.getMonth() + 1) + '월 1일') : String(d.getDate());
+        const inactive = dateObj < firstMonth || dateObj > lastMonthEnd;
+        const isFirstOfMonth = dateObj.getDate() === 1;
+        const monthLabelText = _plFmtMonthTitle(dateObj.getFullYear(), dateObj.getMonth() + 1);
+        const dayLabel = isFirstOfMonth ? ((dateObj.getMonth() + 1) + '월 1일') : String(dateObj.getDate());
         const monthLabelStyle = isFirstOfMonth
           ? 'display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:999px;background:rgba(96,165,250,.14);border:1px solid rgba(96,165,250,.32);color:#bfdbfe;font-weight:900;'
           : '';
@@ -34275,9 +34317,18 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           const ddata = it.data || {};
           const price = _plFmtMoneyWon(ddata.최저가 || ddata.감정가 || ddata.매매가, ddata.매매가_만원);
           const labelPrice = String(price || '').replace(/만원$/,'만');
+          const now = new Date();
+          const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          const dday = Math.round((entry.date - today) / 86400000);
+          const tone = _plGetDdayTone(dday);
+          const toneColor = tone.color || '#34d399';
           const intentChip = _plIntentChip(entry.intent);
           const checked = entry.bidFocus ? ' data-bid-focus="1"' : '';
-          return `<button type="button"${checked} onclick="event.stopPropagation();openPopup('${String(it.id).replace(/'/g, "\\'")}')" style="width:100%;height:40px;min-height:40px;flex:0 0 40px;box-sizing:border-box;border:1px solid ${entry.bidFocus ? '#34d399' : 'rgba(52,211,153,.45)'};background:${entry.bidFocus ? 'rgba(16,185,129,.18)' : 'rgba(16,185,129,.10)'};color:var(--tx);border-radius:7px;padding:5px 7px;text-align:left;cursor:pointer;overflow:hidden;box-shadow:${entry.bidFocus ? '0 0 0 1px rgba(52,211,153,.50) inset' : 'none'};">
+          const borderColor = entry.bidFocus ? '#34d399' : (toneColor + '88');
+          const borderWidth = entry.bidFocus ? '2px' : '1px';
+          const bgColor = entry.bidFocus ? 'rgba(16,185,129,.18)' : (toneColor + '14');
+          const focusShadow = entry.bidFocus ? '0 0 0 1px rgba(52,211,153,.50) inset' : 'none';
+          return `<button type="button"${checked} onclick="event.stopPropagation();openPopup('${String(it.id).replace(/'/g, "\\'")}')" style="width:100%;height:40px;min-height:40px;flex:0 0 40px;box-sizing:border-box;border:${borderWidth} solid ${borderColor};background:${bgColor};color:var(--tx);border-radius:7px;padding:5px 7px;text-align:left;cursor:pointer;overflow:hidden;box-shadow:${focusShadow};">
               <div style="display:flex;align-items:center;gap:5px;min-width:0;line-height:15px;height:15px;">
                 ${intentChip}<span style="font-weight:700;font-size:11px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${_plEsc(it.title || ddata.소재지 || it.id)}</span>
               </div>
@@ -34286,11 +34337,12 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         }).join('');
         const more = hasScroll ? `<div style="position:absolute;right:7px;top:6px;font-size:11px;font-weight:900;color:#dbeafe;background:rgba(59,130,246,.25);border:1px solid rgba(147,197,253,.65);border-radius:999px;padding:2px 7px;line-height:1;z-index:2;">+${rows.length - 3}</div>` : '';
         const cellBg = inactive ? 'rgba(22,29,41,.70)' : 'rgba(10,14,22,.76)';
-        const cellBorder = inactive
-          ? '1px dashed rgba(148,163,184,.20)'
-          : (isFirstOfMonth ? '1px solid rgba(96,165,250,.30)' : '1px solid rgba(255,255,255,.08)');
-        const monthInset = isFirstOfMonth ? 'box-shadow:inset 3px 0 0 rgba(96,165,250,.42);' : '';
-        cells.push(`<div data-pcal-day="${key}" style="min-height:176px;border:${cellBorder};background:${cellBg};border-radius:8px;padding:6px;display:flex;flex-direction:column;gap:5px;position:relative;box-sizing:border-box;overflow:hidden;${monthInset}">
+        const baseBorderColor = inactive ? 'rgba(148,163,184,.20)' : 'rgba(255,255,255,.08)';
+        const cellBorderStyle = inactive ? 'dashed' : 'solid';
+        const monthStartBorder = isFirstOfMonth
+          ? 'border-left:3px solid rgba(96,165,250,.72);border-top-color:rgba(96,165,250,.30);border-bottom-color:rgba(96,165,250,.30);border-right-color:' + baseBorderColor + ';box-shadow:inset 2px 0 0 rgba(96,165,250,.16);'
+          : '';
+        cells.push(`<div data-pcal-day="${key}" data-pcal-month-label="${monthLabelText}" style="min-height:176px;border:1px ${cellBorderStyle} ${baseBorderColor};background:${cellBg};border-radius:8px;padding:6px;display:flex;flex-direction:column;gap:5px;position:relative;box-sizing:border-box;overflow:hidden;${monthStartBorder}">
           ${more}
           <div style="font-size:11px;font-weight:800;color:${inactive ? 'rgba(203,213,225,.38)' : '#d8e2ff'};padding-right:${hasScroll ? '38px' : '0'};height:16px;line-height:16px;flex:0 0 auto;"><span style="${monthLabelStyle}">${dayLabel}</span></div>
           <div style="display:flex;flex-direction:column;gap:5px;overflow-y:${hasScroll ? 'auto' : 'visible'};overflow-x:hidden;padding-right:${hasScroll ? '3px' : '0'};height:${hasScroll ? '130px' : 'auto'};max-height:${hasScroll ? '130px' : 'none'};box-sizing:border-box;${hasScroll ? 'overscroll-behavior:contain;' : ''}">
@@ -34307,11 +34359,18 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           ${cells.join('')}
         </div>`;
 
+      if (!host.__plCalendarMonthBadgeBound) {
+        host.__plCalendarMonthBadgeBound = true;
+        host.addEventListener('scroll', function() { _plUpdateCalendarVisibleMonth(host); }, { passive: true });
+      }
+      _plUpdateCalendarVisibleMonth(host);
+
       if (calScrollState.locked) {
         setTimeout(() => {
           try {
             const keepTop = (typeof calScrollState.top === 'number') ? calScrollState.top : prevTop;
             _plSetPipelineScrollTop(host, 'calendar', keepTop);
+            _plUpdateCalendarVisibleMonth(host);
           } catch (_) {}
         }, 0);
         return;
@@ -34326,6 +34385,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           const target = todayEl || future || allDays[allDays.length - 1];
           if (!target) return;
           _plSetPipelineScrollTop(host, 'calendar', Math.max(0, target.offsetTop - 12));
+          _plUpdateCalendarVisibleMonth(host);
         } catch (_) {}
       }, 0);
     }
@@ -34347,6 +34407,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       if (next === 'kanban' && btnK) btnK.classList.add('active');
       if (next === 'list' && btnL) btnL.classList.add('active');
       if (next === 'calendar' && btnC) btnC.classList.add('active');
+      if (next !== 'calendar') _plSetCalendarMonthBadgeText('');
       if (next === 'list') renderPipelineListBoard();
       if (next === 'calendar') renderPipelineCalendarBoard();
       if (next === 'kanban') {
