@@ -34184,8 +34184,9 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const prevTop = host.scrollTop || 0;
       const _plCalendarRoundNum = function(entry) {
         try {
-          const d = (entry && entry.item && entry.item.data) || {};
-          const raw = String((entry && entry.item && (entry.item.round || entry.item.회차)) || d.유찰횟수 || d.유찰회차 || d.회차 || '').trim();
+          const it = (entry && entry.item) || {};
+          const d = it.data || {};
+          const raw = String(it.round || it.회차 || d.유찰횟수 || d.유찰회차 || d.회차 || '').trim();
           const n = parseInt((raw.match(/\d+/) || ['0'])[0], 10);
           return Number.isFinite(n) ? n : 0;
         } catch (_) { return 0; }
@@ -34194,18 +34195,14 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         try {
           const it = (entry && entry.item) || {};
           const d = it.data || {};
-          const raw = d.최저가 || d.최저가_원 || d.감정가 || d.매매가 || d.매매가_만원 || it.minprice || it.appraisal || '';
+          const raw = d.최저가 || d.최저가_원 || d.최저가_만원 || d.감정가 || d.매매가 || d.매매가_만원 || it.minprice || it.appraisal || '';
           const n = Number(String(raw || '').replace(/[^0-9]/g, ''));
           if (!Number.isFinite(n) || n <= 0) return Number.MAX_SAFE_INTEGER;
-          // 저장목록의 *_만원 필드 또는 작은 숫자는 만원 단위로 보고 원 단위로 환산
-          if (raw === d.매매가_만원 || raw === d.최저가_만원 || n < 1000000) return n * 10000;
+          if (raw === d.최저가_만원 || raw === d.매매가_만원 || n < 1000000) return n * 10000;
           return n;
         } catch (_) { return Number.MAX_SAFE_INTEGER; }
       };
-      const _plCalendarSort = function(a, b) {
-        const da = a.date ? a.date.getTime() : Number.MAX_SAFE_INTEGER;
-        const db = b.date ? b.date.getTime() : Number.MAX_SAFE_INTEGER;
-        if (da !== db) return da - db;
+      const _plCalendarEntrySort = function(a, b) {
         if (!!a.bidFocus !== !!b.bidFocus) return a.bidFocus ? -1 : 1;
         const ra = _plCalendarRoundNum(a);
         const rb = _plCalendarRoundNum(b);
@@ -34220,7 +34217,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const items = _plCollectPipelineRows()
         .filter(entry => entry.saleDt)
         .map(entry => ({ item: entry.item, date: entry.saleDt, intent: entry.intent, bidFocus: !!entry.bidFocus }))
-        .sort(_plCalendarSort);
+        .sort((a, b) => a.date - b.date);
       if (!items.length) {
         host.innerHTML = '<div style="padding:28px;text-align:center;color:var(--di);font-size:12px;">달력에 표시할 기일 데이터가 없습니다.</div>';
         if (calScrollState.locked) _plSetPipelineScrollTop(host, 'calendar', prevTop);
@@ -34258,7 +34255,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             continue;
           }
           const dayKey = mm.y + '-' + String(mm.m).padStart(2, '0') + '-' + String(dayNum).padStart(2, '0');
-          const rows = (byDay.get(dayKey) || []).slice().sort(_plCalendarSort);
+          const rows = (byDay.get(dayKey) || []).slice().sort(_plCalendarEntrySort);
           const chips = rows.map(entry => {
             const it = entry.item;
             const raw = ((it.data || {}).최저가 || (it.data || {}).감정가 || (it.data || {}).매매가 || (it.data || {}).매매가_만원 || '');
@@ -34268,33 +34265,23 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             const dday = Math.round((entry.date - today) / 86400000);
             const tone = _plGetDdayTone(dday);
             const intentChip = _plIntentChip(entry.intent);
-            const roundNo = _plCalendarRoundNum(entry);
             // bidFocus가 true면 날짜 색상 테두리로 강조
             const borderColor = entry.bidFocus ? tone.color : (tone.color + '55');
             const borderWidth = entry.bidFocus ? '2px' : '1px';
             const bgColor = entry.bidFocus ? (tone.color + '18') : (tone.color + '14');
-            const focusMark = entry.bidFocus ? '<span style="flex-shrink:0;font-size:9px;font-weight:900;color:#052e1b;background:#34d399;border-radius:999px;padding:1px 4px;">체크</span>' : '';
-            const roundMark = roundNo > 0 ? '<span style="flex-shrink:0;font-size:9px;color:#93c5fd;">' + roundNo + '회</span>' : '';
             return `<button onclick="event.stopPropagation();openPopup('${String(it.id).replace(/'/g, "\\'")}')" style="display:block;width:100%;text-align:left;padding:5px 6px;background:${bgColor};border:${borderWidth} solid ${borderColor};border-radius:7px;color:var(--tx);font-size:10px;cursor:pointer;overflow:hidden;">
               <div style="display:flex;align-items:center;gap:4px;min-width:0;">
                 ${intentChip}
-                ${focusMark}
                 <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${_plEsc(it.title || (it.data||{}).소재지 || it.id)}</span>
               </div>
-              <div style="margin-top:2px;display:flex;align-items:center;justify-content:space-between;gap:4px;color:var(--mu);white-space:nowrap;overflow:hidden;">
-                <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;">${_plEsc(labelPrice)}</span>${roundMark}
-              </div>
+              <div style="margin-top:2px;color:var(--mu);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${_plEsc(labelPrice)}</div>
             </button>`;
           }).join('');
-          const more = rows.length > 3 ? `<div style="position:sticky;bottom:0;z-index:2;margin-top:2px;padding:4px 6px;border-radius:7px;background:rgba(96,165,250,.18);border:1px solid rgba(96,165,250,.45);color:#bfdbfe;font-size:11px;font-weight:900;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.18);">+${rows.length - 3}건 더 · 스크롤</div>` : '';
-          dayCells += `<div style="min-height:122px;border:1px solid rgba(255,255,255,.08);background:rgba(12,16,24,.72);border-radius:8px;padding:6px;display:flex;flex-direction:column;gap:5px;overflow:hidden;">
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;">
-              <div style="font-size:11px;font-weight:700;color:#d8e2ff;">${dayNum}</div>
-              ${rows.length > 3 ? `<div style="font-size:10px;font-weight:900;color:#bfdbfe;background:rgba(96,165,250,.18);border:1px solid rgba(96,165,250,.35);border-radius:999px;padding:1px 6px;">+${rows.length - 3}</div>` : ''}
-            </div>
-            <div style="flex:1;min-height:0;max-height:96px;overflow-y:${rows.length > 3 ? 'auto' : 'hidden'};display:flex;flex-direction:column;gap:5px;padding-right:${rows.length > 3 ? '2px' : '0'};">
+          const moreBadge = rows.length > 3 ? `<span style="flex-shrink:0;font-size:10px;font-weight:800;color:#bfdbfe;background:rgba(96,165,250,.18);border:1px solid rgba(96,165,250,.38);border-radius:999px;padding:1px 6px;">+${rows.length - 3}</span>` : '';
+          dayCells += `<div style="height:122px;border:1px solid rgba(255,255,255,.08);background:rgba(12,16,24,.72);border-radius:8px;padding:6px;display:flex;flex-direction:column;gap:5px;overflow:hidden;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;flex-shrink:0;"><span style="font-size:11px;font-weight:700;color:#d8e2ff;">${dayNum}</span>${moreBadge}</div>
+            <div style="flex:1;min-height:0;overflow-y:${rows.length > 3 ? 'auto' : 'hidden'};display:flex;flex-direction:column;gap:5px;padding-right:${rows.length > 3 ? '2px' : '0'};">
               ${chips || '<div style="flex:1;"></div>'}
-              ${more}
             </div>
           </div>`;
         }
@@ -48740,51 +48727,30 @@ window.addEventListener('DOMContentLoaded', () => {
   }
 })();
 
-
-/* ---- SK patch: calendar overflow + sticky property-list header (2026-04-27) ---- */
+/* ---- SK patch: calendar day scroll + property-list sticky header (2026-04-27) ---- */
 (function(){
   function ensureStyle(){
-    if (document.getElementById('sk-calendar-list-sticky-fix')) return;
+    if (document.getElementById('sk-calendar-scroll-and-pl-header')) return;
     var st = document.createElement('style');
-    st.id = 'sk-calendar-list-sticky-fix';
+    st.id = 'sk-calendar-scroll-and-pl-header';
     st.textContent = `
-      #pipelineListBoard [data-pcal-month] ::-webkit-scrollbar { width: 6px; height: 6px; }
-      #pipelineListBoard [data-pcal-month] ::-webkit-scrollbar-thumb { background: rgba(148,163,184,.45); border-radius: 999px; }
-      #pipelineListBoard [data-pcal-month] ::-webkit-scrollbar-track { background: rgba(15,23,42,.25); border-radius: 999px; }
+      #pipelineListBoard [data-pcal-month] div[style*="overflow-y:auto"]::-webkit-scrollbar { width: 6px; }
+      #pipelineListBoard [data-pcal-month] div[style*="overflow-y:auto"]::-webkit-scrollbar-thumb { background: rgba(148,163,184,.45); border-radius: 999px; }
+      #pipelineListBoard [data-pcal-month] div[style*="overflow-y:auto"]::-webkit-scrollbar-track { background: rgba(15,23,42,.25); border-radius: 999px; }
 
-      #pm-panel-list table thead,
-      #pm-panel-list table thead tr,
-      #pm-panel-list table thead th,
-      .pm-panel-list table thead,
-      .pm-panel-list table thead tr,
-      .pm-panel-list table thead th {
+      #pl-table thead,
+      #pl-thead-row { position: sticky !important; top: 112px !important; z-index: 90 !important; }
+      #pl-table thead th,
+      #pl-thead-row th {
         position: sticky !important;
-        top: 0 !important;
-        z-index: 80 !important;
-      }
-      #pm-panel-list table thead tr,
-      .pm-panel-list table thead tr {
-        background: #0b1220 !important;
-        box-shadow: 0 1px 0 rgba(148,163,184,.18), 0 8px 16px rgba(0,0,0,.25) !important;
-      }
-      #pm-panel-list table thead th,
-      .pm-panel-list table thead th {
-        background: #0b1220 !important;
+        top: 112px !important;
+        z-index: 91 !important;
+        background: #07101b !important;
+        box-shadow: 0 1px 0 rgba(148,163,184,.22), 0 8px 14px rgba(0,0,0,.25) !important;
       }
     `;
     document.head.appendChild(st);
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ensureStyle);
   else ensureStyle();
-
-  if (typeof window.renderPropertyList === 'function' && !window.renderPropertyList.__skStickyHeaderOnlyPatch) {
-    var _rplStickyOrig = window.renderPropertyList;
-    window.renderPropertyList = function(){
-      var out = _rplStickyOrig.apply(this, arguments);
-      try { ensureStyle(); } catch(e) {}
-      return out;
-    };
-    window.renderPropertyList.__skStickyHeaderOnlyPatch = true;
-  }
 })();
-
