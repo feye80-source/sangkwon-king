@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260428-calendar-final-polish';
+    window.__SK_BUILD = '20260428-calendar-start-month-sunday';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -34318,11 +34318,14 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         const rows = byDay.get(key) || [];
         const inactive = dateObj < firstMonth || dateObj > lastMonthEnd;
         const isFirstOfMonth = dateObj.getDate() === 1;
+        const isSunday = dateObj.getDay() === 0;
         const monthLabelText = _plFmtMonthTitle(dateObj.getFullYear(), dateObj.getMonth() + 1);
-        const dayLabel = isFirstOfMonth ? ((dateObj.getMonth() + 1) + '월 1일') : String(dateObj.getDate());
+        const dayLabel = isFirstOfMonth
+          ? ((dateObj.getMonth() + 1) + '월 1일')
+          : (isSunday ? ((dateObj.getMonth() + 1) + '월 ' + dateObj.getDate() + '일') : String(dateObj.getDate()));
         const monthLabelStyle = isFirstOfMonth
           ? 'display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:999px;background:rgba(96,165,250,.14);border:1px solid rgba(96,165,250,.32);color:#bfdbfe;font-weight:900;'
-          : '';
+          : (isSunday ? 'color:#ff6b6b;font-weight:900;' : '');
         const hasScroll = rows.length > 3;
         const chips = rows.map(entry => {
           const it = entry.item;
@@ -34392,12 +34395,20 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         try {
           const now = new Date();
           const todayKey = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
+          const monthStartKey = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-01';
+          const monthStartEl = host.querySelector('[data-pcal-day="' + monthStartKey + '"]');
           const todayEl = host.querySelector('[data-pcal-day="' + todayKey + '"]');
           const allDays = Array.from(host.querySelectorAll('[data-pcal-day]'));
+          const currentMonthDays = allDays.filter(el => {
+            const key = String(el.getAttribute('data-pcal-day') || '');
+            return key.slice(0, 7) === monthStartKey.slice(0, 7);
+          });
           const future = allDays.find(el => String(el.getAttribute('data-pcal-day') || '') >= todayKey);
-          const target = todayEl || future || allDays[allDays.length - 1];
+          // 첫 진입은 오늘이 속한 '월 전체'가 보이도록 월 시작 주간에 맞춘다.
+          // 현재 월 데이터가 없을 때만 오늘/가까운 미래 일정으로 fallback.
+          const target = monthStartEl || currentMonthDays[0] || todayEl || future || allDays[allDays.length - 1];
           if (!target) return;
-          _plSetPipelineScrollTop(host, 'calendar', Math.max(0, target.offsetTop - 12));
+          _plSetPipelineScrollTop(host, 'calendar', Math.max(0, target.offsetTop - 28));
           _plUpdateCalendarVisibleMonth(host);
         } catch (_) {}
       }, 0);
