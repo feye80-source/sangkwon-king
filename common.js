@@ -44406,11 +44406,7 @@ window.addEventListener('DOMContentLoaded', () => {
     i.style.display = 'none';
     s.style.display = '';
     if (window.__plInlineEditKey === String(key || '')) window.__plInlineEditKey = '';
-    
-    // estimate/biddate 필드는 이미 span이 업데이트되었으므로 렌더링 건너뛰기
-    var isEstimateOrDate = key.indexOf('_estimate') >= 0 || key.indexOf('_biddate') >= 0;
-    
-    if (window.__plListRenderPending && typeof renderPropertyList === 'function' && !isEstimateOrDate) {
+    if (window.__plListRenderPending && typeof renderPropertyList === 'function') {
       window.__plListRenderPending = false;
       setTimeout(function(){ try { renderPropertyList(); } catch(e) {} }, 0);
     }
@@ -45206,20 +45202,11 @@ window.addEventListener('DOMContentLoaded', () => {
     patch[field] = value;
     plUpdateItem(id, patch);
     
-    // 저장 후 즉시 표시값 업데이트 (특히 빈 값 처리)
-    var key = plDomKey(id, field);
-    var span = document.getElementById(key + '_s');
-    if (span) {
-      var displayVal = value;
-      if (field === 'estimate' || field === 'result_won') displayVal = plDisplayWonInput(value);
-      else if (['appraisal','minprice','deposit','monthly'].indexOf(field) >= 0) displayVal = plDisplayMan(value);
-      else if (field === 'biddate') displayVal = fmtDate(value);
-      span.textContent = displayVal || '—';
-    }
+    // 중요: plCancelInlineEdit에서 즉시 렌더링하는 것을 차단
+    window.__plListRenderPending = false;
     
-    // estimate/biddate 필드는 렌더링 예약하지 않음 (span 직접 업데이트로 충분)
-    // 다른 필드만 렌더링 예약
-    if (field !== 'estimate' && field !== 'biddate' && typeof window._plScheduleRender === 'function') {
+    // 저장 직후 렌더링 예약 (50ms 지연으로 깜빡임 최소화)
+    if (typeof window._plScheduleRender === 'function') {
       window._plScheduleRender(50);
     }
   };
