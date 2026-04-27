@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260428-calendar-start-month-sunday';
+    window.__SK_BUILD = '20260428-calendar-today-week-offset';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -34426,7 +34426,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           // 데이터 범위 밖이면 월 시작/오늘/가까운 미래 일정으로 fallback.
           const target = weekStartEl || todayEl || monthStartEl || currentMonthDays[0] || future || allDays[allDays.length - 1];
           if (!target) return;
-          _plSetPipelineScrollTop(host, 'calendar', Math.max(0, target.offsetTop - 28));
+          _plSetPipelineScrollTop(host, 'calendar', Math.max(0, target.offsetTop - 72));
           _plUpdateCalendarVisibleMonth(host);
         } catch (_) {}
       }, 0);
