@@ -45164,7 +45164,7 @@ window.addEventListener('DOMContentLoaded', () => {
       var nextResult = Object.assign({}, cur0.result || {});
       nextResult.won = wonVal;
       plUpdateItem(id, { result: nextResult });
-      if (typeof window._plScheduleRender === 'function') window._plScheduleRender(80);
+      if (typeof window._plScheduleRender === 'function') window._plScheduleRender(50);
       return;
     }
     var patch = {};
@@ -45177,7 +45177,7 @@ window.addEventListener('DOMContentLoaded', () => {
     if (cur && String(cur[field] || '') === String(value || '')) return;
     patch[field] = value;
     plUpdateItem(id, patch);
-    if (typeof window._plScheduleRender === 'function') window._plScheduleRender(80);
+    if (typeof window._plScheduleRender === 'function') window._plScheduleRender(50);
   };
   window.plInlineSetSelect = function(id, field, value) {
     var cur = plLoad().find(function(i){ return String(i.id) === String(id); });
@@ -45196,9 +45196,27 @@ window.addEventListener('DOMContentLoaded', () => {
     var item = items.find(function(i){ return String(i.id) === String(id); });
     if (!item) return false;
     var nextOn = !plIsBidFocusOn(item.bidFocus);
+    
+    // 데이터 업데이트
     plUpdateItem(id, { bidFocus: nextOn ? 1 : '' });
-    // 즉시 렌더링
-    renderPropertyList();
+    
+    // DOM 직접 업데이트 (렌더링 차단 우회)
+    var row = document.querySelector('tr[data-plid="' + id + '"]');
+    if (row) {
+      var checkbox = row.querySelector('button[onclick*="plToggleBidFocus"]');
+      if (checkbox) {
+        var dotBg = nextOn ? '#ff6b6b' : 'transparent';
+        var dotBd = nextOn ? 'rgba(255,107,107,.75)' : 'rgba(255,255,255,.26)';
+        var boxShadow = nextOn ? '0 0 0 2px rgba(255,107,107,.2)' : 'none';
+        checkbox.style.background = dotBg;
+        checkbox.style.borderColor = dotBd;
+        checkbox.style.boxShadow = boxShadow;
+      }
+    }
+    
+    // 파이프라인/달력 업데이트를 위해 지연 렌더링
+    if (typeof window._plScheduleRender === 'function') window._plScheduleRender(150);
+    
     return nextOn;
   };
   function plBiddateCellHtml(it, ddayLabel, ddayColor) {
