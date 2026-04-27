@@ -14843,10 +14843,10 @@ window.wr2SummaryCancelEdit = function() {
       const c = map.getCenter();
       const lat = c.getLat().toFixed(6);
       const lng = c.getLng().toFixed(6);
-      // 오픈업(openub) 상권분석 — 좌표 기반 이동
-      const openubUrl = 'https://www.openub.com/report/tbd?lat=' + lat + '&lng=' + lng;
-      window.open(openubUrl, '_blank');
-      showToast('오픈업 상권분석으로 이동합니다', 'ok');
+      // 오픈업(openub) 상권분석 — 좌표는 클립보드에 복사
+      try { navigator.clipboard.writeText(lat + ',' + lng); } catch(e) {}
+      window.open('https://www.openub.com/', '_blank');
+      showToast('📋 좌표 복사됨: ' + lat + ',' + lng + ' (오픈업에서 검색)', 'ok');
     }
     window.openOpenub = openOpenub;
     function openNiceBizFlow() {
@@ -34221,10 +34221,10 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             const dday = Math.round((entry.date - today) / 86400000);
             const tone = _plGetDdayTone(dday);
             const intentChip = _plIntentChip(entry.intent);
-            // bidFocus가 true면 빨간색 테두리로 강조
-            const borderColor = entry.bidFocus ? '#ff6b6b' : (tone.color + '55');
+            // bidFocus가 true면 날짜 색상 테두리로 강조
+            const borderColor = entry.bidFocus ? tone.color : (tone.color + '55');
             const borderWidth = entry.bidFocus ? '2px' : '1px';
-            const bgColor = entry.bidFocus ? 'rgba(255,107,107,.08)' : (tone.color + '14');
+            const bgColor = entry.bidFocus ? (tone.color + '18') : (tone.color + '14');
             return `<button onclick="event.stopPropagation();openPopup('${String(it.id).replace(/'/g, "\\'")}')" style="display:block;width:100%;text-align:left;padding:5px 6px;background:${bgColor};border:${borderWidth} solid ${borderColor};border-radius:7px;color:var(--tx);font-size:10px;cursor:pointer;overflow:hidden;">
               <div style="display:flex;align-items:center;gap:4px;min-width:0;">
                 ${intentChip}
@@ -44403,8 +44403,12 @@ window.addEventListener('DOMContentLoaded', () => {
     var i = document.getElementById(key + '_i');
     if (!i) { window.plCancelInlineEdit && window.plCancelInlineEdit(key); return; }
     var val = (i.value !== undefined) ? i.value : (i.textContent || '');
-    window.plCancelInlineEdit && window.plCancelInlineEdit(key);
+    
+    // 먼저 plInlineSet 호출해서 데이터 저장 + span 업데이트
     if (typeof window.plInlineSet === 'function') window.plInlineSet(String(id), String(field), String(val));
+    
+    // 그 다음 plCancelInlineEdit (렌더링이 덮어쓰는 것 방지)
+    window.plCancelInlineEdit && window.plCancelInlineEdit(key);
   };
 
   // ── 작업룸 연동 ─────────────────────────
