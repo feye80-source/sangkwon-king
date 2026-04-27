@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260425-tab-mobile01';
+    window.__SK_BUILD = '20260428-calendar-3cards-scroll';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -34267,7 +34267,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         for (let idx = 0; idx < totalCells; idx++) {
           const dayNum = idx - startWeek + 1;
           if (dayNum < 1 || dayNum > monthLast) {
-            dayCells += '<div style="min-height:156px;border:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.01);border-radius:8px;"></div>';
+            dayCells += '<div style="min-height:190px;border:1px dashed rgba(96,165,250,.12);background:rgba(96,165,250,.035);border-radius:8px;opacity:.72;"></div>';
             continue;
           }
           const dayKey = mm.y + '-' + String(mm.m).padStart(2, '0') + '-' + String(dayNum).padStart(2, '0');
@@ -34285,7 +34285,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             const borderColor = entry.bidFocus ? tone.color : (tone.color + '55');
             const borderWidth = entry.bidFocus ? '2px' : '1px';
             const bgColor = entry.bidFocus ? (tone.color + '18') : (tone.color + '14');
-            return `<button onclick="event.stopPropagation();openPopup('${String(it.id).replace(/'/g, "\\'")}')" style="display:block;width:100%;text-align:left;padding:6px 7px;background:${bgColor};border:${borderWidth} solid ${borderColor};border-radius:7px;color:var(--tx);font-size:10px;line-height:1.25;cursor:pointer;overflow:hidden;">
+            return `<button onclick="event.stopPropagation();openPopup('${String(it.id).replace(/'/g, "\\'")}')" style="display:block;width:100%;flex:0 0 auto;min-height:42px;text-align:left;padding:7px 8px;background:${bgColor};border:${borderWidth} solid ${borderColor};border-radius:8px;color:var(--tx);font-size:10px;line-height:1.28;cursor:pointer;overflow:hidden;box-sizing:border-box;">
               <div style="display:flex;align-items:center;gap:4px;min-width:0;">
                 ${intentChip}
                 <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${_plEsc(it.title || (it.data||{}).소재지 || it.id)}</span>
@@ -34294,10 +34294,10 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             </button>`;
           }).join('');
           const more = rows.length > 3 ? `<div style="position:absolute;right:7px;top:6px;font-size:11px;font-weight:900;color:#dbeafe;background:rgba(59,130,246,.22);border:1px solid rgba(147,197,253,.55);border-radius:999px;padding:2px 7px;line-height:1;">+${rows.length - 3}</div>` : '';
-          dayCells += `<div style="min-height:156px;border:1px solid rgba(255,255,255,.08);background:rgba(12,16,24,.72);border-radius:8px;padding:7px;display:flex;flex-direction:column;gap:5px;position:relative;box-sizing:border-box;">
+          dayCells += `<div style="min-height:190px;border:1px solid rgba(255,255,255,.08);background:rgba(12,16,24,.72);border-radius:8px;padding:8px;display:flex;flex-direction:column;gap:6px;position:relative;box-sizing:border-box;">
             ${more}
             <div style="font-size:11px;font-weight:700;color:#d8e2ff;padding-right:${rows.length > 3 ? '36px' : '0'};">${dayNum}</div>
-            <div style="display:flex;flex-direction:column;gap:5px;overflow-y:${rows.length > 3 ? 'auto' : 'visible'};padding-right:${rows.length > 3 ? '3px' : '0'};max-height:${rows.length > 3 ? '126px' : 'none'};box-sizing:border-box;">
+            <div style="display:flex;flex-direction:column;gap:6px;overflow-y:${rows.length > 3 ? 'auto' : 'visible'};padding-right:${rows.length > 3 ? '4px' : '0'};max-height:${rows.length > 3 ? '144px' : 'none'};box-sizing:border-box;overscroll-behavior:contain;">
               ${chips || '<div style="flex:1;"></div>'}
             </div>
           </div>`;
