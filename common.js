@@ -45192,11 +45192,13 @@ window.addEventListener('DOMContentLoaded', () => {
     return s === '1' || s === 'true' || s === 'y' || s === 'yes' || s === 'on';
   }
   window.plToggleBidFocus = function(id) {
-    var item = plLoad().find(function(i){ return String(i.id) === String(id); });
+    var items = plLoad();
+    var item = items.find(function(i){ return String(i.id) === String(id); });
     if (!item) return false;
     var nextOn = !plIsBidFocusOn(item.bidFocus);
     plUpdateItem(id, { bidFocus: nextOn ? 1 : '' });
-    if (typeof window._plScheduleRender === 'function') window._plScheduleRender(60);
+    // 즉시 렌더링
+    renderPropertyList();
     return nextOn;
   };
   function plBiddateCellHtml(it, ddayLabel, ddayColor) {
@@ -45209,22 +45211,29 @@ window.addEventListener('DOMContentLoaded', () => {
     var dotBg = focused ? '#ff6b6b' : 'transparent';
     var dotBd = focused ? 'rgba(255,107,107,.75)' : 'rgba(255,255,255,.26)';
     
+    // D-day 뱃지 생성 (테두리 포함)
+    var ddayBadge = ddayLabel 
+      ? '<span style="padding:2px 6px;border-radius:4px;border:1px solid ' + ddayColor + '66;background:' + ddayColor + '18;color:' + ddayColor + ';font-size:10px;font-weight:800;white-space:nowrap;margin-left:6px;">' + ddayLabel + '</span>'
+      : '';
+    
     return ''
       + '<div style="display:flex;align-items:center;gap:6px;min-width:0;">'
       +   '<button type="button" onclick="event.preventDefault();event.stopPropagation();plToggleBidFocus(\'' + plEscHtml(id) + '\')" '
       +   'style="width:10px;height:10px;border-radius:999px;border:1.5px solid ' + dotBd + ';background:' + dotBg + ';box-shadow:' + (focused ? '0 0 0 2px rgba(255,107,107,.2)' : 'none') + ';cursor:pointer;flex-shrink:0;" '
       +   'title="중요 입찰 표시"></button>'
-      +   '<button type="button" id="' + key + '_s" data-k="' + plEscHtml(key) + '" onclick="event.preventDefault();event.stopPropagation();plStartInlineEdit(\'' + plEscHtml(key) + '\')" '
-      +   'style="display:inline-flex;align-items:center;justify-content:flex-start;padding:0;border:none;background:transparent;color:' + ddayColor + ';font-size:13px;font-weight:700;cursor:pointer;border-bottom:1px dashed rgba(255,255,255,.14);text-align:left;white-space:nowrap;">'
-      +     plEscHtml(display)
-      +   '</button>'
+      +   '<div style="display:flex;align-items:center;min-width:0;flex-wrap:nowrap;">'
+      +     '<button type="button" id="' + key + '_s" data-k="' + plEscHtml(key) + '" onclick="event.preventDefault();event.stopPropagation();plStartInlineEdit(\'' + plEscHtml(key) + '\')" '
+      +     'style="display:inline-flex;align-items:center;justify-content:flex-start;padding:0;border:none;background:transparent;color:' + ddayColor + ';font-size:13px;font-weight:700;cursor:pointer;border-bottom:1px dashed rgba(255,255,255,.14);text-align:left;white-space:nowrap;">'
+      +       plEscHtml(display)
+      +     '</button>'
+      +     ddayBadge
+      +   '</div>'
       +   '<input id="' + key + '_i" data-k="' + plEscHtml(key) + '" data-id="' + plEscHtml(id) + '" data-field="biddate" type="text" value="' + plEscHtml(rawValue) + '" '
       +   'onkeydown="if(event.key===\'Enter\'){this.blur();} if(event.key===\'Escape\'){plCancelInlineEdit(this.dataset.k);}" '
       +   'onblur="plFinishInlineEdit(this.dataset.id,this.dataset.field,this.dataset.k)" '
       +   'onclick="event.stopPropagation()" placeholder="YYYY-MM-DD" '
       +   'style="display:none;width:112px;min-width:82px;padding:4px 6px;border:1px solid rgba(255,255,255,.12);border-radius:6px;background:rgba(0,0,0,.25);color:var(--tx);font-size:12px;text-align:left;outline:none;">'
-      + '</div>'
-      + (ddayLabel ? '<div style="margin-top:2px;font-size:10px;color:' + ddayColor + ';font-weight:800;">' + ddayLabel + '</div>' : '');
+      + '</div>';
   }
   function plInputCell(id, field, value, opts) {
     opts = opts || {};
