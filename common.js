@@ -7529,29 +7529,40 @@ window.wr2SummaryCancelEdit = function() {
 
                 // 지도 연동: 주소를 중심으로 map setCenter (가능할 때만)
                 function openOnMapByAddress(address) {
-                  const addr = (address || '').trim();
-                  if (!addr) { alert('주소가 없습니다.'); return; }
+                  const addr = _trimAddr(address);
+                  const candidates = (typeof _buildMapAddressCandidates === 'function')
+                    ? _buildMapAddressCandidates(addr)
+                    : [addr].filter(Boolean);
+                  if (!candidates.length) { alert('주소가 없습니다.'); return; }
                   if (!window.kakao || !window.kakao.maps || !window.geocoder || !window.map) {
                     alert('지도 시스템이 준비되지 않았습니다. (kakao/maps/geocoder/map 확인 필요)');
                     return;
                   }
-                  window.geocoder.addressSearch(addr, function (result, status) {
-                    if (status !== window.kakao.maps.services.Status.OK || !result || !result.length) {
+                  const trySearch = function(idx) {
+                    if (idx >= candidates.length) {
                       alert('주소를 지도에서 찾지 못했습니다.');
                       return;
                     }
-                    const y = parseFloat(result[0].y);
-                    const x = parseFloat(result[0].x);
-                    const pos = new window.kakao.maps.LatLng(y, x);
-                    window.map.setCenter(pos);
-                    // 너무 과도한 줌 변경은 피하고, 적당히만
-                    try { window.map.setLevel(Math.min(4, window.map.getLevel ? window.map.getLevel() : 4)); } catch (e) { }
-                    // 지도 탭으로 이동(존재하면)
-                    if (typeof window.goPage === 'function') {
-                      // 본 파일의 메인 탭 인덱스가 다를 수 있어 안전하게 try
-                      try { window.goPage(2); } catch (e) { }
-                    }
-                  });
+                    const q = candidates[idx];
+                    window.geocoder.addressSearch(q, function (result, status) {
+                      if (status !== window.kakao.maps.services.Status.OK || !result || !result.length) {
+                        trySearch(idx + 1);
+                        return;
+                      }
+                      const y = parseFloat(result[0].y);
+                      const x = parseFloat(result[0].x);
+                      const pos = new window.kakao.maps.LatLng(y, x);
+                      window.map.setCenter(pos);
+                      // 너무 과도한 줌 변경은 피하고, 적당히만
+                      try { window.map.setLevel(Math.min(4, window.map.getLevel ? window.map.getLevel() : 4)); } catch (e) { }
+                      // 지도 탭으로 이동(존재하면)
+                      if (typeof window.goPage === 'function') {
+                        // 본 파일의 메인 탭 인덱스가 다를 수 있어 안전하게 try
+                        try { window.goPage(2); } catch (e) { }
+                      }
+                    });
+                  };
+                  trySearch(0);
                 }
 
                 // ── v241: 필터칩 핸들러 ───────────────────────────
@@ -12412,7 +12423,7 @@ window.wr2SummaryCancelEdit = function() {
 
     // ── 지도탭 필터 패널 토글 ──────────────────────────────────────
     function _positionMapGFilterPanel(panel, btn) {
-      if (!panel || !btn || window.innerWidth <= 768) return;
+      if (!panel || !btn || _isCompactMapUi()) return;
       const rect = btn.getBoundingClientRect();
       const width = Math.min(460, Math.max(320, window.innerWidth - 24));
       let left = rect.left;
@@ -13008,9 +13019,59 @@ window.wr2SummaryCancelEdit = function() {
       return String(v || '').trim();
     }
 
+    function _isTouchMapDevice() {
+      try {
+        if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) return true;
+      } catch (e) {}
+      try {
+        if (typeof navigator !== 'undefined' && Number(navigator.maxTouchPoints || 0) > 0) return true;
+      } catch (e) {}
+      return ('ontouchstart' in window);
+    }
+    function _isCompactMapUi() {
+      if (!_isTouchMapDevice()) return window.innerWidth <= 768;
+      const w = Number(window.innerWidth || 0);
+      const h = Number(window.innerHeight || 0);
+      // iPad(가로 1024~1366)도 폰과 동일한 지도 제스처 UX 경로를 사용
+      return (w <= 1366 && h <= 1200) || w <= 768;
+    }
+
+    function _normalizeMapAddress(raw) {
+      let s = _trimAddr(raw);
+      if (!s) return '';
+      s = s.replace(/\s+/g, ' ');
+      // "외 1필지" 꼬리 문구 제거 (지번은 유지)
+      s = s.replace(/\s*[,)]?\s*외\s*\d+\s*필지(?:\s*[\),])?/g, ' ');
+      s = s.replace(/\s+외\s*필지/g, ' ');
+      return s.replace(/\s+/g, ' ').trim();
+    }
+
+    function _buildMapAddressCandidates(raw) {
+      const base = _normalizeMapAddress(raw);
+      if (!base) return [];
+      const out = [];
+      const push = (v) => {
+        const s = _trimAddr(v);
+        if (!s) return;
+        if (!out.includes(s)) out.push(s);
+      };
+      push(base);
+      push(base.replace(/\s*\([^)]*\)\s*$/, '')); // 끝 괄호 제거
+      push(base.replace(/\s*,\s*[^,]*$/, '')); // 마지막 comma 이하 제거
+      push(base.replace(/\s+\d+동\s*\d+호.*$/, '')); // 동/호 제거
+      push(base.replace(/\s+\d+층.*$/, '')); // 층수 꼬리 제거
+      push(base.replace(/\s+(?:아파트|오피스텔|상가|빌딩)\s+\S*$/, '')); // 건물명 꼬리 제거
+      if (out.length > 1) {
+        // 지번/도로명 조합에서 끝 숫자 지번은 보존하되, 과도한 상세는 추가로 축약
+        const head = out[0].split(/\s+/).slice(0, 5).join(' ');
+        push(head);
+      }
+      return out;
+    }
+
     function _getItemMapAddress(item) {
       const d = (item && item.data) || {};
-      return _trimAddr(
+      return _normalizeMapAddress(
         d.소재지 ||
         d.주소 ||
         d.address ||
@@ -15675,6 +15736,14 @@ window.wr2SummaryCancelEdit = function() {
           const fixed = inner.replace(/\\(?!["\\\/bfnrtu])/g, '\\\\');
           return '"' + fixed + '"';
         });
+        // 3단계: 흔한 비표준 토큰 보정
+        // - trailing comma
+        s = s.replace(/,\s*([}\]])/g, '$1');
+        // - NaN/Infinity 같은 JSON 비표준 값
+        s = s.replace(/:\s*(NaN|Infinity|-Infinity)\b/g, ': null');
+        // - 따옴표 없이 내려온 날짜/점표기 숫자(예: 2026.04.29, 3.)를 문자열로 감싸기
+        s = s.replace(/:\s*([+-]?\d+\.(?:\d+\.)+\d+)(\s*[,}\]])/g, ': "$1"$2');
+        s = s.replace(/:\s*([+-]?\d+\.)(\s*[,}\]])/g, ': "$1"$2');
         return s;
       }
 
@@ -15698,7 +15767,13 @@ window.wr2SummaryCancelEdit = function() {
         );
         return JSON.parse(noNewline);
       } catch (e5) {
-        throw new Error('JSON 파싱 실패 — ' + e5.message);
+        // 5차: 추출 블록 + 강한 정제 조합 재시도
+        try {
+          const block = (txt.match(/\{[\s\S]*\}/) || [txt])[0];
+          return JSON.parse(fixJson(block));
+        } catch (e6) {
+          throw new Error('JSON 파싱 실패 — ' + e6.message);
+        }
       }
     }
 
@@ -15925,55 +16000,6 @@ window.wr2SummaryCancelEdit = function() {
         }
         if (statusEl) statusEl.textContent = '✅ 파싱 완료! 아래 항목을 원본과 대조해 확인하세요.';
         _a1ShowVerify(parsed);
-
-        if (statusEl) statusEl.textContent = '✅ 파싱 완료! 🤖 AI 분석 중...';
-        try {
-          const aiPrompt = `당신은 부동산 경매 전문 투자 분석가입니다. 아래 경매 물건 데이터를 바탕으로 투자 분석을 해주세요.
-
-경매 데이터:
-${JSON.stringify(parsed, null, 2)}
-
-원본 페이지 텍스트:
-${inputDesc.substring(0, 3000)}
-
-【1차 종합 분석】
-
-## 물건 기본 정보
-- 정확한 위치 및 접근성 (주요 상권, 교통)
-- 건물 구조, 층수, 시설 현황
-- 면적 및 용도
-
-## 가격 분석
-- 감정가 대비 최저가 비율
-- 유찰 횟수별 가격 하락 현황
-- 예상 낙찰가 범위 (감정가 대비 %)
-
-## 수익성 분석
-- 현재 임차인 현황 (있는 경우)
-- 예상 월 임대료 및 연 수익률
-- 추가 비용 고려사항
-
-## 리스크 평가
-- 권리관계 위험 (말소기준권리, 임차인 대항력 등)
-- 건물 상태 및 업종 전환 가능성
-- 공실 위험
-
-## 투자 의견
-강점: [3-4가지]
-주의점: [2-3가지]
-추천전략: [구체적 조언]
-
-응답 형식:
-{
-  "AI기본분석": "위 형식을 정확히 따라 작성한 전체 분석 내용"
-}`;
-          const aiText = await _a1CallGeminiAnalysis(aiPrompt);
-          if (aiText) _a1Data.AI기본분석 = aiText;
-          if (statusEl) statusEl.textContent = '✅ 파싱 + AI 분석 완료! 아래 항목을 원본과 대조해 확인하세요.';
-        } catch (aiErr) {
-          console.warn('AI 분석 실패:', aiErr);
-          if (statusEl) statusEl.textContent = '✅ 파싱 완료! (AI 분석 실패) 아래 항목을 원본과 대조해 확인하세요.';
-        }
       } catch (err) {
         if (statusEl) statusEl.textContent = '❌ 실패: ' + err.message;
         showToast('옥션원 파싱 오류: ' + err.message, 'warn');
@@ -16095,7 +16121,7 @@ ${inputDesc.substring(0, 3000)}
           const html = fetchData.html || '';
           if (html.length < 500) throw new Error('HTML이 너무 짧음 — 로그인 실패 또는 접근 차단 가능성');
           sourceText = _a1CleanHtmlToText(html);
-          inputDesc = `경매 페이지 텍스트 (auction1.co.kr):\n${sourceText.substring(0, 50000)}`;
+          inputDesc = `경매 페이지 텍스트 (auction1.co.kr):\n${sourceText.substring(0, 22000)}`;
           if (statusEl) statusEl.textContent = '⏳ Gemini 파싱 중...';
         } catch (fetchErr) {
           if (statusEl) statusEl.textContent = '⚠ HTML 가져오기 실패: ' + fetchErr.message + ' — 페이지 소스(Ctrl+U → 전체복사)를 붙여넣으세요';
@@ -16104,7 +16130,7 @@ ${inputDesc.substring(0, 3000)}
         }
       } else {
         sourceText = _a1CleanHtmlToText(payload);
-        inputDesc = `HTML 소스 (앞 50000자):\n${sourceText.substring(0, 50000)}`;
+        inputDesc = `HTML 소스 (앞 22000자):\n${sourceText.substring(0, 22000)}`;
       }
       const srcSignal = _a1SourceSignalInfo(sourceText);
       if (srcSignal.score < 2) {
@@ -16158,56 +16184,6 @@ ${inputDesc.substring(0, 3000)}
         }
         if (statusEl) statusEl.textContent = '✅ 파싱 완료! 아래 항목을 원본과 대조해 확인하세요.';
         _a1ShowVerifyTo(parsed, verifyBoxId, verifyFieldsId);
-
-        // ── 1차 AI 분석 자동 실행 ──
-        if (statusEl) statusEl.textContent = '✅ 파싱 완료! 🤖 AI 분석 중...';
-        try {
-          const aiPrompt = `당신은 부동산 경매 전문 투자 분석가입니다. 아래 경매 물건 데이터를 바탕으로 투자 분석을 해주세요.
-
-경매 데이터:
-${JSON.stringify(parsed, null, 2)}
-
-원본 페이지 텍스트:
-${inputDesc.substring(0, 3000)}
-
-【1차 종합 분석】
-
-## 물건 기본 정보
-- 정확한 위치 및 접근성 (주요 상권, 교통)
-- 건물 구조, 층수, 시설 현황
-- 면적 및 용도
-
-## 가격 분석
-- 감정가 대비 최저가 비율
-- 유찰 횟수별 가격 하락 현황
-- 예상 낙찰가 범위 (감정가 대비 %)
-
-## 수익성 분석
-- 현재 임차인 현황 (있는 경우)
-- 예상 월 임대료 및 연 수익률
-- 추가 비용 고려사항
-
-## 리스크 평가
-- 권리관계 위험 (말소기준권리, 임차인 대항력 등)
-- 건물 상태 및 업종 전환 가능성
-- 공실 위험
-
-## 투자 의견
-강점: [3-4가지]
-주의점: [2-3가지]
-추천전략: [구체적 조언]
-
-응답 형식:
-{
-  "AI기본분석": "위 형식을 정확히 따라 작성한 전체 분석 내용"
-}`;
-          const aiText = await _a1CallGeminiAnalysis(aiPrompt);
-          if (aiText) _a1DataMap[payloadId].AI기본분석 = aiText;
-          if (statusEl) statusEl.textContent = '✅ 파싱 + AI 분석 완료! 아래 항목을 원본과 대조해 확인하세요.';
-        } catch (aiErr) {
-          console.warn('AI 분석 실패:', aiErr);
-          if (statusEl) statusEl.textContent = '✅ 파싱 완료! (AI 분석 실패) 아래 항목을 원본과 대조해 확인하세요.';
-        }
       } catch (err) {
         if (statusEl) statusEl.textContent = '❌ 실패: ' + err.message;
         showToast('옥션원 파싱 오류: ' + err.message, 'warn');
@@ -16468,7 +16444,7 @@ ${inputDesc.substring(0, 3000)}
           oObj.isOpen = true;
           try { oObj.overlay.setMap(map); } catch (e) { }
           // 모바일: 바텀시트로 카드 내용 표시
-          if (window.innerWidth <= 768 && typeof window.mbShowCardBottomSheet === 'function') {
+          if (_isCompactMapUi() && typeof window.mbShowCardBottomSheet === 'function') {
             try { window.mbShowCardBottomSheet(oObj.id); } catch(e) {}
           }
           try { oObj.marker.setMap(map); } catch (e) { }
@@ -16946,7 +16922,7 @@ ${inputDesc.substring(0, 3000)}
           if (_isAssa) extBtns.push(`<button class="popup-src-btn" style="${bStyle}" onclick="assaOpenDetail('${esc(_detailURL)}')">🔗 상세</button>`);
           else extBtns.push(`<a href="${esc(_detailURL)}" target="_blank" class="popup-src-btn" style="${bStyle}">🔗 상세</a>`);
         }
-        extBtns.push(`<button class="popup-src-btn" id="popEditUrlBtn" style="background:rgba(255,255,255,.06);color:#aab4cc;border-color:rgba(255,255,255,.24);" onclick="showPopupUrlInput('${id}')">${_detailURL ? '✏️ URL수정' : '🔗 URL추가'}</button>`);
+        extBtns.push(`<button class="popup-src-btn" id="popEditUrlBtn" style="background:rgba(255,255,255,.06);color:#aab4cc;border-color:rgba(255,255,255,.24);" onclick="event.stopPropagation();showPopupUrlInput('${id}')">${_detailURL ? '✏️ URL수정' : '🔗 URL추가'}</button>`);
         if (_siteMapURL === 'copy_planet') {
           extBtns.push(`<button class="popup-src-btn" style="background:rgba(100,180,100,.12);color:#7ecf7e;border-color:rgba(100,180,100,.35);" onclick="(()=>{const addr='${esc(_addrQ)}';if(addr){navigator.clipboard.writeText(addr).catch(()=>{});const ta=document.createElement('textarea');ta.value=addr;document.body.appendChild(ta);ta.select();try{document.execCommand('copy');}catch(e){}document.body.removeChild(ta);}window.open('https://www.bdsplanet.com/map/realprice_map.ytp','_blank');})()">🌍 플래닛</button>`);
         } else if (_siteMapURL) {
@@ -16969,21 +16945,6 @@ ${inputDesc.substring(0, 3000)}
         if (extBtns.length) html += `<div class="popup-src-group external"><span class="popup-src-group-label">외부 페이지</span><div class="popup-src-group-body">${extBtns.join('')}</div></div>`;
         if (appBtns.length) html += `<div class="popup-src-group internal"><span class="popup-src-group-label">내 사이트</span><div class="popup-src-group-body">${appBtns.join('')}</div></div>`;
         popSrcTabsEl.innerHTML = html;
-        // URL 입력 영역 생성 (초기 숨김)
-        if (!document.getElementById('popUrlInputWrap')) {
-          const wrap = document.createElement('div');
-          wrap.id = 'popUrlInputWrap';
-          wrap.style.cssText = 'display:none;margin-top:6px;display:none;';
-          wrap.innerHTML = `<div style="display:flex;gap:6px;align-items:center;">
-        <input id="popUrlInput" type="text" placeholder="https://new.land.naver.com/..." 
-          style="flex:1;padding:6px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.2);border-radius:6px;color:#e0e6ff;font-size:11px;outline:none;"
-          oninput="this.style.borderColor=this.value?'rgba(79,142,255,.6)':'rgba(255,255,255,.2)'"
-          onkeydown="if(event.key==='Enter')savePopupUrl('${id}')">
-        <button onclick="savePopupUrl('${id}')" style="padding:5px 12px;background:rgba(79,142,255,.2);color:#7aa8ff;border:1px solid rgba(79,142,255,.4);border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;">저장</button>
-        <button onclick="document.getElementById('popUrlInputWrap').style.display='none'" style="padding:5px 10px;background:none;color:#6b7590;border:1px solid rgba(255,255,255,.15);border-radius:6px;font-size:11px;cursor:pointer;">취소</button>
-      </div>`;
-          popSrcTabsEl.appendChild(wrap);
-        }
         } catch (err) {
           console.error('[openPopup topbar error]', err);
           popSrcTabsEl.innerHTML = `<span class="popup-src-badge" style="background:rgba(79,142,255,.15);color:#7aa8ff;border:1px solid rgba(79,142,255,.4);">${esc(src || item.title || '매물')}</span>`;
@@ -17425,26 +17386,47 @@ ${inputDesc.substring(0, 3000)}
   </div>`;
     }
 
-    // URL 추가 팝업 함수
-    window.showPopupUrlInput = function (id) {
-      let wrap = document.getElementById('popUrlInputWrap');
+    function _ensurePopupUrlWrap(id) {
+      const host = document.getElementById('popSrcTabs');
+      if (!host) return null;
+      let wrap = host.querySelector('#popUrlInputWrap');
       if (!wrap) {
         wrap = document.createElement('div');
         wrap.id = 'popUrlInputWrap';
-        const sv = getSv(); const item = sv.find(s => s.id === id);
-        const existUrl = (item && item.data && item.data.상세URL) || '';
-        wrap.innerHTML = `<div style="display:flex;gap:6px;align-items:center;margin-top:6px;">
-      <input id="popUrlInput" type="text" value="${existUrl}" placeholder="https://new.land.naver.com/..."
+        wrap.style.cssText = 'display:none;margin-top:6px;';
+        wrap.innerHTML = `<div style="display:flex;gap:6px;align-items:center;">
+      <input id="popUrlInput" type="text" placeholder="https://new.land.naver.com/..." 
         style="flex:1;padding:6px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.2);border-radius:6px;color:#e0e6ff;font-size:11px;outline:none;"
-        onkeydown="if(event.key==='Enter')window.savePopupUrl('${id}')">
-      <button onclick="window.savePopupUrl('${id}')" style="padding:5px 12px;background:rgba(79,142,255,.2);color:#7aa8ff;border:1px solid rgba(79,142,255,.4);border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;">저장</button>
-      <button onclick="document.getElementById('popUrlInputWrap').remove()" style="padding:5px 10px;background:none;color:#6b7590;border:1px solid rgba(255,255,255,.15);border-radius:6px;font-size:11px;cursor:pointer;">취소</button>
+        oninput="this.style.borderColor=this.value?'rgba(79,142,255,.6)':'rgba(255,255,255,.2)'"
+        onkeydown="if(event.key==='Enter')savePopupUrl('${id}')">
+      <button onclick="savePopupUrl('${id}')" style="padding:5px 12px;background:rgba(79,142,255,.2);color:#7aa8ff;border:1px solid rgba(79,142,255,.4);border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;">저장</button>
+      <button onclick="hidePopupUrlInput()" style="padding:5px 10px;background:none;color:#6b7590;border:1px solid rgba(255,255,255,.15);border-radius:6px;font-size:11px;cursor:pointer;">취소</button>
     </div>`;
-        document.getElementById('popSrcTabs').appendChild(wrap);
-      } else {
-        wrap.style.display = wrap.style.display === 'none' ? '' : 'none';
+        host.appendChild(wrap);
       }
-      setTimeout(() => { const inp = document.getElementById('popUrlInput'); if (inp) inp.focus(); }, 50);
+      return wrap;
+    }
+    // URL 추가 팝업 함수
+    window.showPopupUrlInput = function (id) {
+      const wrap = _ensurePopupUrlWrap(id);
+      if (!wrap) return;
+      const sv = getSv();
+      const item = sv.find(s => String(s && s.id) === String(id));
+      const existUrl = String((item && item.data && item.data.상세URL) || '').trim();
+      const inp = wrap.querySelector('#popUrlInput');
+      if (inp) {
+        inp.value = existUrl;
+        inp.onkeydown = function(e) {
+          if (e.key === 'Enter') window.savePopupUrl(id);
+          if (e.key === 'Escape') window.hidePopupUrlInput();
+        };
+      }
+      wrap.style.display = 'block';
+      setTimeout(() => { if (inp) { inp.focus(); inp.select(); } }, 20);
+    };
+    window.hidePopupUrlInput = function() {
+      const wrap = document.getElementById('popUrlInputWrap');
+      if (wrap) wrap.style.display = 'none';
     };
 
     window.savePopupUrl = function (id) {
@@ -18896,23 +18878,40 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
     // 지오코딩 (캐시 우선 조회 → 없으면 API 호출 후 저장)
     async function geocodeWithCache(address) {
-      // 1. 캐시 먼저 확인
-      const cached = await getCachedCoords(address);
-      if (cached) return cached; // {lat, lng}
+      const candidates = _buildMapAddressCandidates(address);
+      if (!candidates.length) return null;
+      const primaryKey = candidates[0];
 
-      // 2. 캐시 없으면 카카오 API 호출
+      // 1) 캐시 먼저 확인 (정규화 주소 → 후보 주소 순)
+      for (const key of candidates) {
+        const cached = await getCachedCoords(key);
+        if (cached && Number.isFinite(cached.lat) && Number.isFinite(cached.lng)) {
+          if (key !== primaryKey) saveCachedCoords(primaryKey, cached.lat, cached.lng);
+          return cached;
+        }
+      }
+
+      // 2) 캐시 없으면 카카오 API 호출 (후보 주소 순차 재시도)
       return new Promise((resolve) => {
         if (!geocoder) { resolve(null); return; }
-        geocoder.addressSearch(address, (result, status) => {
-          if (status === kakao.maps.services.Status.OK && result.length > 0) {
-            const lat = parseFloat(result[0].y);
-            const lng = parseFloat(result[0].x);
-            saveCachedCoords(address, lat, lng); // 캐시에 저장
-            resolve({ lat, lng });
-          } else {
-            resolve(null);
-          }
-        });
+        const trySearch = function(idx) {
+          if (idx >= candidates.length) { resolve(null); return; }
+          const q = candidates[idx];
+          geocoder.addressSearch(q, (result, status) => {
+            if (status === kakao.maps.services.Status.OK && result.length > 0) {
+              const lat = parseFloat(result[0].y);
+              const lng = parseFloat(result[0].x);
+              if (Number.isFinite(lat) && Number.isFinite(lng)) {
+                saveCachedCoords(q, lat, lng);
+                if (q !== primaryKey) saveCachedCoords(primaryKey, lat, lng);
+                resolve({ lat, lng });
+                return;
+              }
+            }
+            trySearch(idx + 1);
+          });
+        };
+        trySearch(0);
       });
     }
 
@@ -19035,6 +19034,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       }
 
       const container = document.getElementById('map');
+      try { container.style.touchAction = 'pan-x pan-y pinch-zoom'; } catch (e) {}
       const options = {
         center: new kakao.maps.LatLng(37.5665, 126.9780),
         level: 4,
@@ -19936,12 +19936,12 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       if (moveMap) map.setCenter(latlng);
 
       // 중심 핀
-      if (!radiusCenterMarker) {
-        radiusCenterMarker = new kakao.maps.Marker({
-          position: latlng,
-          draggable: true,
-          zIndex: 9999
-        });
+        if (!radiusCenterMarker) {
+          radiusCenterMarker = new kakao.maps.Marker({
+            position: latlng,
+            draggable: !_isTouchMapDevice(),
+            zIndex: 9999
+          });
         radiusCenterMarker.setMap(map);
         kakao.maps.event.addListener(radiusCenterMarker, 'dragend', function () {
           radiusCenterLatLng = radiusCenterMarker.getPosition();
@@ -21092,7 +21092,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const marker = new kakao.maps.Marker({
         position: position,
         image: markerImage,
-        draggable: true
+        draggable: !_isTouchMapDevice()
       });
 
       // 카드 콘텐츠 생성
@@ -21113,7 +21113,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         if (typeof handleMergePickClick === 'function' && handleMergePickClick(id)) return;
 
         // 📱 모바일: 바텀시트로 표시
-        if (window.innerWidth <= 768 && typeof window.mbShowCardBottomSheet === 'function') {
+        if (_isCompactMapUi() && typeof window.mbShowCardBottomSheet === 'function') {
           window.mbShowCardBottomSheet(id);
           return;
         }
@@ -21253,7 +21253,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
         // ── 카드 상태 처리 ─────────────────────────────────
         // 📱 모바일: 드래그 후에도 카드 오버레이 표시 안 함
-        if (window.innerWidth <= 768) {
+        if (_isCompactMapUi()) {
           // 모바일은 바텀시트로만 표시 - 오버레이 카드 숨김
         } else if (newGroupMembers.length > 0) {
           // 같은 위치 마커와 합류 → openAllCardsAtSamePos로 그룹 전체를 스택으로 표시
@@ -21327,7 +21327,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       });
 
       const layerType = _getMapLayerType(item, propertyType);
-      const initialCardOpen = (window.innerWidth > 768)
+      const initialCardOpen = (!_isCompactMapUi())
         && _isMapCardTypeOpen(layerType)
         && (window._mapOpenOnlyItemId ? (item.id === window._mapOpenOnlyItemId) : true);
 
@@ -21347,7 +21347,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       marker.setMap(mapFilters[filterKey] !== false ? map : null);
 
       // 카드도 즉시 표시 (해당 카드만 또는 전체)
-      if (mapFilters[filterKey] !== false && initialCardOpen && window.innerWidth > 768) {  // 📱 모바일: 카드 표시 안 함
+      if (mapFilters[filterKey] !== false && initialCardOpen && !_isCompactMapUi()) {  // 📱 모바일: 카드 표시 안 함
         overlay.setMap(map);
 
         // 카드 크기 및 연결선 즉시 적용
@@ -22216,6 +22216,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     }
 
     window.dragMapCard = function (e, id) {
+      if (_isTouchMapDevice()) return;
       // 배지·버튼·닫기·floating버튼영역 클릭은 드래그로 처리하지 않음
       if (e.target.classList && (
         e.target.classList.contains('card-count-badge') ||
@@ -22285,6 +22286,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     // 카드 개별 리사이즈 (우측 하단 핸들)
     // ===================================================
     window.resizeMapCard = function (e, id) {
+      if (_isTouchMapDevice()) return;
       e.preventDefault();
       e.stopPropagation();
       if (map) { map.setDraggable(false); map.setZoomable(false); }
@@ -22326,7 +22328,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     // ===================================================
     function updateMapLine(id) {
       // 📱 모바일에서는 연결선 업데이트 안 함
-      if (window.innerWidth <= 768) return;
+      if (_isCompactMapUi()) return;
 
       const card = document.getElementById(id);
       if (!card) return;
@@ -22425,7 +22427,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     // ===================================================
     function openAllCardsAtSamePos(id) {
       // 📱 모바일에서는 카드 오버레이/연결선 표시 안 함 (바텀시트 전용)
-      if (window.innerWidth <= 768) return;
+      if (_isCompactMapUi()) return;
 
       const obj = mapOverlays.find(o => o.id === id);
       if (!obj) return;
@@ -23106,7 +23108,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         }
         if (bounds.contain(pos) && typeOk && yearOk && gfOk) {
           obj.marker.setMap(map);
-          if (obj.isOpen && window.innerWidth > 768) {  // 📱 모바일: overlay 표시 안 함
+          if (obj.isOpen && !_isCompactMapUi()) {  // 📱 모바일: overlay 표시 안 함
             obj.overlay.setMap(map);
           } else {
             obj.overlay.setMap(null);
@@ -23479,10 +23481,10 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const key = obj.stackKey || getStackKeyFromPos(obj.marker?.getPosition?.());
       if (!key) return;
       obj.stackKey = key;
-      obj.isOpen = window.innerWidth > 768;  // 📱 모바일 차단
+      obj.isOpen = !_isCompactMapUi();  // 📱 모바일 차단
       const sameOpen = mapOverlays.filter(o => o && o.id !== obj.id && o.isOpen && o.stackKey === key);
       if (sameOpen.length > 0) {
-        if (window.innerWidth > 768) { try { obj.overlay.setMap(map); } catch (e) { } }
+        if (!_isCompactMapUi()) { try { obj.overlay.setMap(map); } catch (e) { } }
         setTimeout(() => { openAllCardsAtSamePos(sameOpen[0].id); }, 30);
         return;
       }
@@ -24496,8 +24498,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           else if (_src === '네이버부동산' || _src === '네이버' || _pt === 'listing') _tl = 'naver';
           else _tl = 'general';
           ov.stackKey = `${_tl}_${newLat.toFixed(6)}_${newLng.toFixed(6)}`;
-          ov.isOpen = window.innerWidth > 768;  // 📱 모바일: 복원 시도 차단
-          if (window.innerWidth > 768) { try { if (ov.overlay) ov.overlay.setMap(map); } catch (e) { } }
+          ov.isOpen = !_isCompactMapUi();  // 📱 모바일: 복원 시도 차단
+          if (!_isCompactMapUi()) { try { if (ov.overlay) ov.overlay.setMap(map); } catch (e) { } }
 
           const el = document.getElementById(eid);
           if (el) {
@@ -24567,8 +24569,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           ov.marker.setPosition(targetPos);
           if (ov.overlay) ov.overlay.setPosition(targetPos);
           ov.stackKey = newKey;
-          ov.isOpen = window.innerWidth > 768;  // 📱 모바일 차단
-          if (window.innerWidth > 768) { try { if (ov.overlay) ov.overlay.setMap(map); } catch (e) { } }
+          ov.isOpen = !_isCompactMapUi();  // 📱 모바일 차단
+          if (!_isCompactMapUi()) { try { if (ov.overlay) ov.overlay.setMap(map); } catch (e) { } }
 
           // 모이기 flash 애니메이션
           const el = document.getElementById(eid);
@@ -26009,7 +26011,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const marker = new kakao.maps.Marker({
         position: position,
         image: kakaoMarkerImage,
-        draggable: true
+        draggable: !_isTouchMapDevice()
       });
 
       // 카드 콘텐츠
@@ -26039,7 +26041,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         yAnchor: 0,
         zIndex: 10
       });
-      const initialTradeCardOpen = (window.innerWidth > 768)
+      const initialTradeCardOpen = (!_isCompactMapUi())
         && mapFilters.transaction !== false
         && _isMapCardTypeOpen('transaction');
       // mapOverlays에 먼저 등록 (클릭 이벤트가 이 배열을 참조하므로 선행 등록 필수)
@@ -26059,7 +26061,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       // 마커 클릭 이벤트 - mapOverlays 배열 기반으로 상태 관리
       kakao.maps.event.addListener(marker, 'click', function () {
         // 📱 모바일: 바텀시트로 표시
-        if (window.innerWidth <= 768 && typeof window.mbShowCardBottomSheet === 'function') {
+        if (_isCompactMapUi() && typeof window.mbShowCardBottomSheet === 'function') {
           window.mbShowCardBottomSheet(id);
           return;
         }
@@ -26808,6 +26810,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
     // 마커 핀 드래그 (지도 위 위치 이동)
     window.dragMemoPin = function (e, id) {
+      if (_isTouchMapDevice()) return;
       e.preventDefault();
       e.stopPropagation();
       if (map) { map.setDraggable(false); map.setZoomable(false); }
@@ -26881,6 +26884,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     }
 
     window.dragMemoCard = function (e, id) {
+      if (_isTouchMapDevice()) return;
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'LABEL') return;
       e.preventDefault();
       e.stopPropagation();
@@ -26920,6 +26924,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
     // 메모 카드 크기 조절 (우측 하단 핸들 드래그)
     window.resizeMemoCard = function (e, id) {
+      if (_isTouchMapDevice()) return;
       e.preventDefault();
       e.stopPropagation();
       if (map) { map.setDraggable(false); map.setZoomable(false); }
@@ -27126,7 +27131,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         const show = selectedYears.size === 0 || selectedYears.has(year);
         if (show) {
           o.marker.setMap(map);
-          if (o.isOpen && window.innerWidth > 768) o.overlay.setMap(map);  // 📱 모바일 차단
+          if (o.isOpen && !_isCompactMapUi()) o.overlay.setMap(map);  // 📱 모바일 차단
         } else {
           o.marker.setMap(null);
           o.overlay.setMap(null);
@@ -27958,7 +27963,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const marker = new kakao.maps.Marker({
         position: position,
         image: markerImage,
-        draggable: true
+        draggable: !_isTouchMapDevice()
       });
 
       // 카드 콘텐츠 생성 - 자동 배치
@@ -28005,7 +28010,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         yAnchor: 0,
         zIndex: 10
       });
-      const initialTradeCardOpen = (window.innerWidth > 768)
+      const initialTradeCardOpen = (!_isCompactMapUi())
         && mapFilters.transaction !== false
         && _isMapCardTypeOpen('transaction');
 
@@ -28029,7 +28034,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         // 🧲 결합 픽 모드면 결합 처리 후 종료
         if (typeof handleMergePickClick === 'function' && handleMergePickClick(id)) return;
         // 📱 모바일: 바텀시트로 표시
-        if (window.innerWidth <= 768 && typeof window.mbShowCardBottomSheet === 'function') {
+        if (_isCompactMapUi() && typeof window.mbShowCardBottomSheet === 'function') {
           window.mbShowCardBottomSheet(id);
           return;
         }
@@ -28096,7 +28101,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       marker.setMap(mapFilters.transaction ? map : null);
 
       // 카드도 즉시 표시 (📱 모바일 제외)
-      if (mapFilters.transaction && initialTradeCardOpen && window.innerWidth > 768) {
+      if (mapFilters.transaction && initialTradeCardOpen && !_isCompactMapUi()) {
         overlay.setMap(map);
 
         // ✅ 동일 좌표 실거래는 대표 1장만 열리도록 등록(+N 배지/순환)
@@ -28106,7 +28111,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         adjustCardSizeByZoom();
         setTimeout(() => { refreshMapView(); adjustCardSizeByZoom(); if (overlayObj.isOpen) updateMapLine(overlayObj.id); updateStackedCards(); }, 0);
         setTimeout(() => { if (overlayObj.isOpen) updateMapLine(overlayObj.id); updateStackedCards(); }, 200);
-      } else if (mapFilters.transaction && window.innerWidth <= 768) {
+      } else if (mapFilters.transaction && _isCompactMapUi()) {
         // 모바일: isOpen은 false로 유지, overlay 표시 안 함
         overlayObj.isOpen = false;
       }
@@ -34151,7 +34156,9 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         if (!status && String(it.mode || '').toLowerCase() === 'auction') status = 'interest';
         if (!status || status === 'pass') return null;
         const meta = propMetaBySaved[itemId] || {};
-        const saleDt = _plParseAuctionDate(d.매각일 || d.매각기일 || '');
+        const saleDt = _plParseAuctionDate(
+          d.매각일 || d.매각기일 || d.입찰기일 || d.입찰일 || ''
+        );
         return {
           item: it,
           saleDt: saleDt,
@@ -34183,7 +34190,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         const price = _plFmtMoneyWon(d.최저가 || d.감정가 || d.매매가, d.매매가_만원);
         const saleDate = entry.saleDt
           ? (entry.saleDt.getFullYear() + '.' + String(entry.saleDt.getMonth() + 1).padStart(2, '0') + '.' + String(entry.saleDt.getDate()).padStart(2, '0'))
-          : (d.매각일 || d.매각기일 || '-');
+          : (d.매각일 || d.매각기일 || d.입찰기일 || d.입찰일 || '-');
         const st = statusMap[entry.status] || entry.status;
         const intentChip = _plIntentChip(entry.intent);
         const bidDot = entry.bidFocus
@@ -40561,7 +40568,7 @@ ${newsContext}
           { offset: new kakao.maps.Point(12, 35) }  // 하단 중앙이 실제 클릭 위치
         );
         _sbizPinMarker = new kakao.maps.Marker({
-          map: window.map, position: pos, draggable: true, zIndex: 50,
+          map: window.map, position: pos, draggable: !_isTouchMapDevice(), zIndex: 50,
           image: pinImg, title: '드래그로 위치 조정'
         });
         // 반경 원
@@ -45592,7 +45599,6 @@ window.addEventListener('DOMContentLoaded', () => {
           + '<td style="padding:8px 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+plEditCellHtml(it.id,'feature',it.feature||'',it.feature||'',{type:'text',align:'left',minw:'100px',placeholder:'특징 입력',empty:'—',spanStyle:'font-size:12px;color:var(--fg2);'})+'</td>'
           + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'appraisal',plDisplayMoney(it.appraisal||''),plDisplayMan(it.appraisal||''),{type:'text',align:'right',minw:'70px',placeholder:'만원'})+'</td>'
           + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'minprice',plDisplayMoney(it.minprice||''),plDisplayMan(it.minprice||''),{type:'text',align:'right',minw:'70px',placeholder:'만원',spanStyle:'color:#fb923c;font-weight:700;'})+'</td>'
-          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'deposit',plDisplayMoney(it.deposit||''),plDisplayMan(it.deposit||''),{type:'text',align:'right',minw:'60px',placeholder:'만원'})+'</td>'
           + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'monthly',plDisplayMoney(it.monthly||''),plDisplayMan(it.monthly||''),{type:'text',align:'right',minw:'60px',placeholder:'만원'})+'</td>'
           + '<td style="padding:8px 10px;text-align:center;font-size:12px;">'+(it.round||'—')+'</td>'
           + '<td style="padding:8px 10px;white-space:nowrap;">'
@@ -47138,6 +47144,11 @@ window.addEventListener('DOMContentLoaded', () => {
       move(t.clientX, t.clientY);
     }, { passive: true });
     scrollEl.addEventListener('touchend', end);
+    scrollEl.addEventListener('scroll', function() {
+      var ss = window.__skSchedScrollState = window.__skSchedScrollState || { locked: false, left: 0 };
+      ss.locked = true;
+      ss.left = scrollEl.scrollLeft || 0;
+    }, { passive: true });
     scrollEl.dataset.skDragScrollBound = '1';
   }
 
@@ -47189,7 +47200,7 @@ window.addEventListener('DOMContentLoaded', () => {
       return true;
     }).map(function (item) {
       var d = item.data || {};
-      var dt = parseSaleDate(d['매각일'] || d['매각기일'] || '');
+      var dt = parseSaleDate(d['매각일'] || d['매각기일'] || d['입찰기일'] || d['입찰일'] || '');
       if (!dt) return null;
       return { item: item, date: dt, key: ymdKey(dt), dday: calcDday(dt) };
     }).filter(Boolean).sort(function (a, b) {
@@ -47225,10 +47236,6 @@ window.addEventListener('DOMContentLoaded', () => {
     var showAll = !!window.__skSchedShowAll;
     var visible = groups.slice();
     var hiddenCount = 0;
-    if (!showAll && groups.length > 140) {
-      visible = groups.filter(function (_, idx) { return Math.abs(idx - focusIdx) <= 55; });
-      hiddenCount = groups.length - visible.length;
-    }
 
     board.innerHTML = ''
       + '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;flex-wrap:wrap;">'
@@ -47273,12 +47280,7 @@ window.addEventListener('DOMContentLoaded', () => {
           + '<div style="display:flex;flex-direction:column;gap:6px;">' + lines + more + '</div>'
           + '</div>';
       }).join('')
-      + '</div>'
-      + (groups.length > 140 ? '<div style="margin-top:7px;font-size:10px;color:var(--di);">'
-        + (showAll
-          ? '<button id="skFocusDays" class="sk-reveal-all">오늘 기준 구간 보기</button>'
-          : '<button id="skRevealAllDays" class="sk-reveal-all">전체 날짜 보기</button>')
-        + '</div>' : '');
+      + '</div>';
 
     var revealBtn = board.querySelector('#skRevealAllDays');
     if (revealBtn) {
@@ -47298,11 +47300,16 @@ window.addEventListener('DOMContentLoaded', () => {
     var scroll = board.querySelector('#skSchedScroll');
     if (scroll) {
       bindScheduleDragScroll(scroll);
-      var key = (visible.find(function (g) { return g.key >= todayKey; }) || visible[visible.length - 1] || {}).key;
-      if (key) {
-        var target = scroll.querySelector('[data-sched-key="' + key + '"]');
-        if (target) {
-          scroll.scrollLeft = Math.max(0, target.offsetLeft - 4);
+      var ss = window.__skSchedScrollState = window.__skSchedScrollState || { locked: false, left: 0 };
+      if (ss.locked) {
+        scroll.scrollLeft = Math.max(0, Number(ss.left || 0));
+      } else {
+        var key = (visible.find(function (g) { return g.key >= todayKey; }) || visible[visible.length - 1] || {}).key;
+        if (key) {
+          var target = scroll.querySelector('[data-sched-key="' + key + '"]');
+          if (target) {
+            scroll.scrollLeft = Math.max(0, target.offsetLeft - 4);
+          }
         }
       }
     }
