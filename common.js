@@ -16922,7 +16922,7 @@ window.wr2SummaryCancelEdit = function() {
           if (_isAssa) extBtns.push(`<button class="popup-src-btn" style="${bStyle}" onclick="assaOpenDetail('${esc(_detailURL)}')">🔗 상세</button>`);
           else extBtns.push(`<a href="${esc(_detailURL)}" target="_blank" class="popup-src-btn" style="${bStyle}">🔗 상세</a>`);
         }
-        extBtns.push(`<button class="popup-src-btn" id="popEditUrlBtn" style="background:rgba(255,255,255,.06);color:#aab4cc;border-color:rgba(255,255,255,.24);" onclick="showPopupUrlInput('${id}')">${_detailURL ? '✏️ URL수정' : '🔗 URL추가'}</button>`);
+        extBtns.push(`<button class="popup-src-btn" id="popEditUrlBtn" style="background:rgba(255,255,255,.06);color:#aab4cc;border-color:rgba(255,255,255,.24);" onclick="event.stopPropagation();showPopupUrlInput('${id}')">${_detailURL ? '✏️ URL수정' : '🔗 URL추가'}</button>`);
         if (_siteMapURL === 'copy_planet') {
           extBtns.push(`<button class="popup-src-btn" style="background:rgba(100,180,100,.12);color:#7ecf7e;border-color:rgba(100,180,100,.35);" onclick="(()=>{const addr='${esc(_addrQ)}';if(addr){navigator.clipboard.writeText(addr).catch(()=>{});const ta=document.createElement('textarea');ta.value=addr;document.body.appendChild(ta);ta.select();try{document.execCommand('copy');}catch(e){}document.body.removeChild(ta);}window.open('https://www.bdsplanet.com/map/realprice_map.ytp','_blank');})()">🌍 플래닛</button>`);
         } else if (_siteMapURL) {
@@ -16945,21 +16945,6 @@ window.wr2SummaryCancelEdit = function() {
         if (extBtns.length) html += `<div class="popup-src-group external"><span class="popup-src-group-label">외부 페이지</span><div class="popup-src-group-body">${extBtns.join('')}</div></div>`;
         if (appBtns.length) html += `<div class="popup-src-group internal"><span class="popup-src-group-label">내 사이트</span><div class="popup-src-group-body">${appBtns.join('')}</div></div>`;
         popSrcTabsEl.innerHTML = html;
-        // URL 입력 영역 생성 (초기 숨김)
-        if (!document.getElementById('popUrlInputWrap')) {
-          const wrap = document.createElement('div');
-          wrap.id = 'popUrlInputWrap';
-          wrap.style.cssText = 'display:none;margin-top:6px;display:none;';
-          wrap.innerHTML = `<div style="display:flex;gap:6px;align-items:center;">
-        <input id="popUrlInput" type="text" placeholder="https://new.land.naver.com/..." 
-          style="flex:1;padding:6px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.2);border-radius:6px;color:#e0e6ff;font-size:11px;outline:none;"
-          oninput="this.style.borderColor=this.value?'rgba(79,142,255,.6)':'rgba(255,255,255,.2)'"
-          onkeydown="if(event.key==='Enter')savePopupUrl('${id}')">
-        <button onclick="savePopupUrl('${id}')" style="padding:5px 12px;background:rgba(79,142,255,.2);color:#7aa8ff;border:1px solid rgba(79,142,255,.4);border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;">저장</button>
-        <button onclick="document.getElementById('popUrlInputWrap').style.display='none'" style="padding:5px 10px;background:none;color:#6b7590;border:1px solid rgba(255,255,255,.15);border-radius:6px;font-size:11px;cursor:pointer;">취소</button>
-      </div>`;
-          popSrcTabsEl.appendChild(wrap);
-        }
         } catch (err) {
           console.error('[openPopup topbar error]', err);
           popSrcTabsEl.innerHTML = `<span class="popup-src-badge" style="background:rgba(79,142,255,.15);color:#7aa8ff;border:1px solid rgba(79,142,255,.4);">${esc(src || item.title || '매물')}</span>`;
@@ -17401,26 +17386,47 @@ window.wr2SummaryCancelEdit = function() {
   </div>`;
     }
 
-    // URL 추가 팝업 함수
-    window.showPopupUrlInput = function (id) {
-      let wrap = document.getElementById('popUrlInputWrap');
+    function _ensurePopupUrlWrap(id) {
+      const host = document.getElementById('popSrcTabs');
+      if (!host) return null;
+      let wrap = host.querySelector('#popUrlInputWrap');
       if (!wrap) {
         wrap = document.createElement('div');
         wrap.id = 'popUrlInputWrap';
-        const sv = getSv(); const item = sv.find(s => s.id === id);
-        const existUrl = (item && item.data && item.data.상세URL) || '';
-        wrap.innerHTML = `<div style="display:flex;gap:6px;align-items:center;margin-top:6px;">
-      <input id="popUrlInput" type="text" value="${existUrl}" placeholder="https://new.land.naver.com/..."
+        wrap.style.cssText = 'display:none;margin-top:6px;';
+        wrap.innerHTML = `<div style="display:flex;gap:6px;align-items:center;">
+      <input id="popUrlInput" type="text" placeholder="https://new.land.naver.com/..." 
         style="flex:1;padding:6px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.2);border-radius:6px;color:#e0e6ff;font-size:11px;outline:none;"
-        onkeydown="if(event.key==='Enter')window.savePopupUrl('${id}')">
-      <button onclick="window.savePopupUrl('${id}')" style="padding:5px 12px;background:rgba(79,142,255,.2);color:#7aa8ff;border:1px solid rgba(79,142,255,.4);border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;">저장</button>
-      <button onclick="document.getElementById('popUrlInputWrap').remove()" style="padding:5px 10px;background:none;color:#6b7590;border:1px solid rgba(255,255,255,.15);border-radius:6px;font-size:11px;cursor:pointer;">취소</button>
+        oninput="this.style.borderColor=this.value?'rgba(79,142,255,.6)':'rgba(255,255,255,.2)'"
+        onkeydown="if(event.key==='Enter')savePopupUrl('${id}')">
+      <button onclick="savePopupUrl('${id}')" style="padding:5px 12px;background:rgba(79,142,255,.2);color:#7aa8ff;border:1px solid rgba(79,142,255,.4);border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;">저장</button>
+      <button onclick="hidePopupUrlInput()" style="padding:5px 10px;background:none;color:#6b7590;border:1px solid rgba(255,255,255,.15);border-radius:6px;font-size:11px;cursor:pointer;">취소</button>
     </div>`;
-        document.getElementById('popSrcTabs').appendChild(wrap);
-      } else {
-        wrap.style.display = wrap.style.display === 'none' ? '' : 'none';
+        host.appendChild(wrap);
       }
-      setTimeout(() => { const inp = document.getElementById('popUrlInput'); if (inp) inp.focus(); }, 50);
+      return wrap;
+    }
+    // URL 추가 팝업 함수
+    window.showPopupUrlInput = function (id) {
+      const wrap = _ensurePopupUrlWrap(id);
+      if (!wrap) return;
+      const sv = getSv();
+      const item = sv.find(s => String(s && s.id) === String(id));
+      const existUrl = String((item && item.data && item.data.상세URL) || '').trim();
+      const inp = wrap.querySelector('#popUrlInput');
+      if (inp) {
+        inp.value = existUrl;
+        inp.onkeydown = function(e) {
+          if (e.key === 'Enter') window.savePopupUrl(id);
+          if (e.key === 'Escape') window.hidePopupUrlInput();
+        };
+      }
+      wrap.style.display = 'block';
+      setTimeout(() => { if (inp) { inp.focus(); inp.select(); } }, 20);
+    };
+    window.hidePopupUrlInput = function() {
+      const wrap = document.getElementById('popUrlInputWrap');
+      if (wrap) wrap.style.display = 'none';
     };
 
     window.savePopupUrl = function (id) {
