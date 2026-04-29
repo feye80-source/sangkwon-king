@@ -13109,6 +13109,28 @@ window.wr2SummaryCancelEdit = function() {
       return !!(item && (item.lat || item.lng || d.lat || d.lng || _getItemMapAddress(item)));
     }
 
+    function _buildNaverLandUrl(item) {
+      const d = (item && item.data) || {};
+      const detailUrl = String(d.상세URL || '').trim();
+      if (detailUrl && /new\.land\.naver\.com/i.test(detailUrl)) return detailUrl;
+      const articleNo = String(d.매물번호 || '').trim();
+      if (articleNo) return `https://new.land.naver.com/offices?articleNo=${encodeURIComponent(articleNo)}`;
+
+      const addrRaw =
+        d.소재지 || d.주소 || d.address || d['도로명주소'] || d['지번주소'] || item?.address || '';
+      const addr = _normalizeMapAddress(addrRaw);
+      const candidates = _buildMapAddressCandidates(addr);
+      const queryAddr = String((candidates && candidates[0]) || '').trim();
+      if (queryAddr) {
+        return `https://new.land.naver.com/offices?query=${encodeURIComponent(queryAddr)}&a=SG:SMS:APTHGJ&e=RETAIL`;
+      }
+
+      const lat = d.lat || item?.lat;
+      const lng = d.lng || item?.lng;
+      if (lat && lng) return `https://new.land.naver.com/offices?ms=${lat},${lng},17&a=SG:SMS:APTHGJ&e=RETAIL`;
+      return 'https://new.land.naver.com/';
+    }
+
     function _setDualAddressFields(target, roadAddr, jibunAddr) {
       if (!target || typeof target !== 'object') return target;
       const road = _trimAddr(roadAddr);
@@ -14843,10 +14865,10 @@ window.wr2SummaryCancelEdit = function() {
           ${(src === '네이버부동산' || src === '네이버' || src === 'naver') ? `<a href="${(() => { const lat = d.lat || item.lat; const lng = d.lng || item.lng; return (lat && lng) ? `https://new.land.naver.com/offices?ms=${lat},${lng},17&a=SG:SMS:APTHGJ&e=RETAIL` : `https://new.land.naver.com/`; })()}" target="_blank" onclick="event.stopPropagation()" class="sc-btn sc-btn-map">🗺️ 지도</a>` : ''}
           ${_isAssaSource(src) ? `<a href="https://xn--v69ap5so3hsnb81e1wfh6z.com/map" target="_blank" onclick="event.stopPropagation()" class="sc-btn sc-btn-map">🗺️ 지도</a>` : ''}
           ${src === '부동산플래닛' ? `<button onclick="event.stopPropagation();(()=>{const _a=(item.data&&item.data.소재지)||d.소재지||'';if(_a){try{navigator.clipboard.writeText(_a);}catch(e){}const ta=document.createElement('textarea');ta.value=_a;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.focus();ta.select();try{document.execCommand('copy');}catch(e){}document.body.removeChild(ta);}window.open('https://www.bdsplanet.com/map/realprice_map.ytp','_blank');})()" class="sc-btn sc-btn-map" style="background:rgba(17,157,237,.12);color:#119ded;border-color:rgba(17,157,237,.4);" title="${esc(String((item.data && item.data.소재지) || d.소재지 || ''))}">🌍 플래닛</button>` : ''}
-          ${(ia && d.소재지 && d.소재지.trim().length >= 3) ? `<a href="https://map.naver.com/v5/search/${encodeURIComponent(d.소재지.trim())}" target="_blank" onclick="event.stopPropagation()" class="sc-btn" style="background:rgba(4,222,91,.12);color:#04de5b;border-color:rgba(4,222,91,.4);">🗺️ 지도</a>` : ''}
-          ${(ia && d.소재지 && d.소재지.trim().length >= 3) ? `<a href="https://new.land.naver.com/offices?query=${encodeURIComponent(d.소재지.trim())}&a=SG:SMS:APTHGJ&e=RETAIL" target="_blank" onclick="event.stopPropagation()" class="sc-btn" style="background:rgba(4,222,91,.12);color:#04de5b;border-color:rgba(4,222,91,.4);">🏠 부동산</a>` : ''}
-          ${(!ia && !d.상세URL && d.소재지 && d.소재지.trim().length >= 3 && item.mode !== 'transaction' && src !== '디스코' && src !== '부동산플래닛') ? `<a href="https://map.naver.com/v5/search/${encodeURIComponent(d.소재지.trim())}" target="_blank" onclick="event.stopPropagation()" class="sc-btn" style="background:rgba(4,222,91,.12);color:#04de5b;border-color:rgba(4,222,91,.4);">🗺️ 지도</a>` : ''}
-          ${(!ia && !d.상세URL && d.소재지 && d.소재지.trim().length >= 3 && item.mode !== 'transaction' && src !== '디스코' && src !== '부동산플래닛') ? `<a href="https://new.land.naver.com/offices?query=${encodeURIComponent(d.소재지.trim())}&a=SG:SMS:APTHGJ&e=RETAIL" target="_blank" onclick="event.stopPropagation()" class="sc-btn" style="background:rgba(4,222,91,.12);color:#04de5b;border-color:rgba(4,222,91,.4);">🏠 부동산</a>` : ''}
+          ${((() => { const _q=_normalizeMapAddress(d.소재지||d.주소||d.address||''); return _q && ia; })()) ? `<a href="https://map.naver.com/v5/search/${encodeURIComponent(_normalizeMapAddress(d.소재지||d.주소||d.address||''))}" target="_blank" onclick="event.stopPropagation()" class="sc-btn" style="background:rgba(4,222,91,.12);color:#04de5b;border-color:rgba(4,222,91,.4);">🗺️ 지도</a>` : ''}
+          ${((() => { const _q=_normalizeMapAddress(d.소재지||d.주소||d.address||''); return _q && ia; })()) ? `<a href="${_buildNaverLandUrl(item)}" target="_blank" onclick="event.stopPropagation()" class="sc-btn" style="background:rgba(4,222,91,.12);color:#04de5b;border-color:rgba(4,222,91,.4);">🏠 부동산</a>` : ''}
+          ${((() => { const _q=_normalizeMapAddress(d.소재지||d.주소||d.address||''); return _q && !ia && !d.상세URL && item.mode !== 'transaction' && src !== '디스코' && src !== '부동산플래닛'; })()) ? `<a href="https://map.naver.com/v5/search/${encodeURIComponent(_normalizeMapAddress(d.소재지||d.주소||d.address||''))}" target="_blank" onclick="event.stopPropagation()" class="sc-btn" style="background:rgba(4,222,91,.12);color:#04de5b;border-color:rgba(4,222,91,.4);">🗺️ 지도</a>` : ''}
+          ${((() => { const _q=_normalizeMapAddress(d.소재지||d.주소||d.address||''); return _q && !ia && !d.상세URL && item.mode !== 'transaction' && src !== '디스코' && src !== '부동산플래닛'; })()) ? `<a href="${_buildNaverLandUrl(item)}" target="_blank" onclick="event.stopPropagation()" class="sc-btn" style="background:rgba(4,222,91,.12);color:#04de5b;border-color:rgba(4,222,91,.4);">🏠 부동산</a>` : ''}
           ${_hasItemMapTarget(item) ? `<button onclick="event.stopPropagation();goToMapFromCard('${item.id}')" class="sc-btn sc-btn-mymap">📍 내 지도</button>` : ''}
           ${listBtnHtml}
           ${roomBtnHtml}
@@ -16896,9 +16918,9 @@ window.wr2SummaryCancelEdit = function() {
                         : (src || '매물');
         // 상세URL
         const _detailURL = d.상세URL || (_isNaver && d.매물번호 ? `https://new.land.naver.com/offices?articleNo=${d.매물번호}` : '');
-        const _addrQ = String(d.소재지 || d.address || item.address || item.title || '').trim();
+        const _addrQ = _normalizeMapAddress(d.소재지 || d.주소 || d.address || d['도로명주소'] || d['지번주소'] || item.address || '');
         const _naverMapQ = _addrQ ? ('https://map.naver.com/v5/search/' + encodeURIComponent(_addrQ)) : '';
-        const _naverLandQ = _addrQ ? ('https://new.land.naver.com/offices?query=' + encodeURIComponent(_addrQ) + '&a=SG:SMS:APTHGJ&e=RETAIL') : '';
+        const _naverLandQ = _buildNaverLandUrl(item);
         // 사이트 지도 URL
         const _siteMapURL = _isJumpo ? 'https://map.jumpoline.com/main'
           : _isAssa ? 'https://xn--v69ap5so3hsnb81e1wfh6z.com/map'
