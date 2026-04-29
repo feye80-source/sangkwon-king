@@ -15986,55 +15986,6 @@ window.wr2SummaryCancelEdit = function() {
         }
         if (statusEl) statusEl.textContent = '✅ 파싱 완료! 아래 항목을 원본과 대조해 확인하세요.';
         _a1ShowVerify(parsed);
-
-        if (statusEl) statusEl.textContent = '✅ 파싱 완료! 🤖 AI 분석 중...';
-        try {
-          const aiPrompt = `당신은 부동산 경매 전문 투자 분석가입니다. 아래 경매 물건 데이터를 바탕으로 투자 분석을 해주세요.
-
-경매 데이터:
-${JSON.stringify(parsed, null, 2)}
-
-원본 페이지 텍스트:
-${inputDesc.substring(0, 3000)}
-
-【1차 종합 분석】
-
-## 물건 기본 정보
-- 정확한 위치 및 접근성 (주요 상권, 교통)
-- 건물 구조, 층수, 시설 현황
-- 면적 및 용도
-
-## 가격 분석
-- 감정가 대비 최저가 비율
-- 유찰 횟수별 가격 하락 현황
-- 예상 낙찰가 범위 (감정가 대비 %)
-
-## 수익성 분석
-- 현재 임차인 현황 (있는 경우)
-- 예상 월 임대료 및 연 수익률
-- 추가 비용 고려사항
-
-## 리스크 평가
-- 권리관계 위험 (말소기준권리, 임차인 대항력 등)
-- 건물 상태 및 업종 전환 가능성
-- 공실 위험
-
-## 투자 의견
-강점: [3-4가지]
-주의점: [2-3가지]
-추천전략: [구체적 조언]
-
-응답 형식:
-{
-  "AI기본분석": "위 형식을 정확히 따라 작성한 전체 분석 내용"
-}`;
-          const aiText = await _a1CallGeminiAnalysis(aiPrompt);
-          if (aiText) _a1Data.AI기본분석 = aiText;
-          if (statusEl) statusEl.textContent = '✅ 파싱 + AI 분석 완료! 아래 항목을 원본과 대조해 확인하세요.';
-        } catch (aiErr) {
-          console.warn('AI 분석 실패:', aiErr);
-          if (statusEl) statusEl.textContent = '✅ 파싱 완료! (AI 분석 실패) 아래 항목을 원본과 대조해 확인하세요.';
-        }
       } catch (err) {
         if (statusEl) statusEl.textContent = '❌ 실패: ' + err.message;
         showToast('옥션원 파싱 오류: ' + err.message, 'warn');
@@ -16156,7 +16107,7 @@ ${inputDesc.substring(0, 3000)}
           const html = fetchData.html || '';
           if (html.length < 500) throw new Error('HTML이 너무 짧음 — 로그인 실패 또는 접근 차단 가능성');
           sourceText = _a1CleanHtmlToText(html);
-          inputDesc = `경매 페이지 텍스트 (auction1.co.kr):\n${sourceText.substring(0, 50000)}`;
+          inputDesc = `경매 페이지 텍스트 (auction1.co.kr):\n${sourceText.substring(0, 22000)}`;
           if (statusEl) statusEl.textContent = '⏳ Gemini 파싱 중...';
         } catch (fetchErr) {
           if (statusEl) statusEl.textContent = '⚠ HTML 가져오기 실패: ' + fetchErr.message + ' — 페이지 소스(Ctrl+U → 전체복사)를 붙여넣으세요';
@@ -16165,7 +16116,7 @@ ${inputDesc.substring(0, 3000)}
         }
       } else {
         sourceText = _a1CleanHtmlToText(payload);
-        inputDesc = `HTML 소스 (앞 50000자):\n${sourceText.substring(0, 50000)}`;
+        inputDesc = `HTML 소스 (앞 22000자):\n${sourceText.substring(0, 22000)}`;
       }
       const srcSignal = _a1SourceSignalInfo(sourceText);
       if (srcSignal.score < 2) {
@@ -16219,56 +16170,6 @@ ${inputDesc.substring(0, 3000)}
         }
         if (statusEl) statusEl.textContent = '✅ 파싱 완료! 아래 항목을 원본과 대조해 확인하세요.';
         _a1ShowVerifyTo(parsed, verifyBoxId, verifyFieldsId);
-
-        // ── 1차 AI 분석 자동 실행 ──
-        if (statusEl) statusEl.textContent = '✅ 파싱 완료! 🤖 AI 분석 중...';
-        try {
-          const aiPrompt = `당신은 부동산 경매 전문 투자 분석가입니다. 아래 경매 물건 데이터를 바탕으로 투자 분석을 해주세요.
-
-경매 데이터:
-${JSON.stringify(parsed, null, 2)}
-
-원본 페이지 텍스트:
-${inputDesc.substring(0, 3000)}
-
-【1차 종합 분석】
-
-## 물건 기본 정보
-- 정확한 위치 및 접근성 (주요 상권, 교통)
-- 건물 구조, 층수, 시설 현황
-- 면적 및 용도
-
-## 가격 분석
-- 감정가 대비 최저가 비율
-- 유찰 횟수별 가격 하락 현황
-- 예상 낙찰가 범위 (감정가 대비 %)
-
-## 수익성 분석
-- 현재 임차인 현황 (있는 경우)
-- 예상 월 임대료 및 연 수익률
-- 추가 비용 고려사항
-
-## 리스크 평가
-- 권리관계 위험 (말소기준권리, 임차인 대항력 등)
-- 건물 상태 및 업종 전환 가능성
-- 공실 위험
-
-## 투자 의견
-강점: [3-4가지]
-주의점: [2-3가지]
-추천전략: [구체적 조언]
-
-응답 형식:
-{
-  "AI기본분석": "위 형식을 정확히 따라 작성한 전체 분석 내용"
-}`;
-          const aiText = await _a1CallGeminiAnalysis(aiPrompt);
-          if (aiText) _a1DataMap[payloadId].AI기본분석 = aiText;
-          if (statusEl) statusEl.textContent = '✅ 파싱 + AI 분석 완료! 아래 항목을 원본과 대조해 확인하세요.';
-        } catch (aiErr) {
-          console.warn('AI 분석 실패:', aiErr);
-          if (statusEl) statusEl.textContent = '✅ 파싱 완료! (AI 분석 실패) 아래 항목을 원본과 대조해 확인하세요.';
-        }
       } catch (err) {
         if (statusEl) statusEl.textContent = '❌ 실패: ' + err.message;
         showToast('옥션원 파싱 오류: ' + err.message, 'warn');
