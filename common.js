@@ -15736,6 +15736,14 @@ window.wr2SummaryCancelEdit = function() {
           const fixed = inner.replace(/\\(?!["\\\/bfnrtu])/g, '\\\\');
           return '"' + fixed + '"';
         });
+        // 3단계: 흔한 비표준 토큰 보정
+        // - trailing comma
+        s = s.replace(/,\s*([}\]])/g, '$1');
+        // - NaN/Infinity 같은 JSON 비표준 값
+        s = s.replace(/:\s*(NaN|Infinity|-Infinity)\b/g, ': null');
+        // - 따옴표 없이 내려온 날짜/점표기 숫자(예: 2026.04.29, 3.)를 문자열로 감싸기
+        s = s.replace(/:\s*([+-]?\d+\.(?:\d+\.)+\d+)(\s*[,}\]])/g, ': "$1"$2');
+        s = s.replace(/:\s*([+-]?\d+\.)(\s*[,}\]])/g, ': "$1"$2');
         return s;
       }
 
@@ -15759,7 +15767,13 @@ window.wr2SummaryCancelEdit = function() {
         );
         return JSON.parse(noNewline);
       } catch (e5) {
-        throw new Error('JSON 파싱 실패 — ' + e5.message);
+        // 5차: 추출 블록 + 강한 정제 조합 재시도
+        try {
+          const block = (txt.match(/\{[\s\S]*\}/) || [txt])[0];
+          return JSON.parse(fixJson(block));
+        } catch (e6) {
+          throw new Error('JSON 파싱 실패 — ' + e6.message);
+        }
       }
     }
 
