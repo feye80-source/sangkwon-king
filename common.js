@@ -4821,7 +4821,7 @@ var _safeLocalSet = function(key, value) {
                     const priceRaw = metaInfo.priceRaw;
                     const price = fmtMetaPrice(priceRaw) || String(priceRaw || '').trim();
                     const intent = String(metaInfo.intent || '').trim();
-                    const intentColor = intent === '상' ? '#ff6b6b' : (intent === '중' ? '#60a5fa' : (intent === '하' ? '#4ade80' : '#8ea7c9'));
+                    const intentColor = intent === '최상' ? '#d4af37' : (intent === '상' ? '#ff6b6b' : (intent === '중' ? '#60a5fa' : (intent === '하' ? '#4ade80' : '#8ea7c9')));
                     const intentChip = intent
                       ? ('<span style="padding:1px 6px;border-radius:999px;border:1px solid ' + intentColor + '55;background:' + intentColor + '18;color:' + intentColor + ';font-size:10px;font-weight:800;white-space:nowrap;">' + esc(intent) + '</span>')
                       : '';
@@ -34267,6 +34267,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     }
     function _plIntentTone(intent) {
       const v = String(intent || '').trim();
+      if (v === '최상') return { color: '#d4af37', bg: 'rgba(212,175,55,.16)' };
       if (v === '상') return { color: '#ff6b6b', bg: 'rgba(255,107,107,.16)' };
       if (v === '중') return { color: '#60a5fa', bg: 'rgba(96,165,250,.16)' };
       if (v === '하') return { color: '#4ade80', bg: 'rgba(74,222,128,.16)' };
@@ -44590,18 +44591,18 @@ window.addEventListener('DOMContentLoaded', () => {
   };
   function intentBadge(v) {
     if (!v) return '<span style="color:#555;">—</span>';
-    var map = { '최상':'#ff4d6d', '상':'#ff6b6b', '중':'#60a5fa', '하':'#4ade80' };
+    var map = { '최상':'#d4af37', '상':'#ff6b6b', '중':'#60a5fa', '하':'#4ade80' };
     return '<span style="font-weight:700;color:'+ (map[v]||'#aaa') +';">'+v+'</span>';
   }
   function intentCell(it) {
     var v = it.intent || '';
-    var cm = { '최상':'#ff4d6d', '상':'#ff6b6b', '중':'#60a5fa', '하':'#4ade80' };
+    var cm = { '최상':'#d4af37', '상':'#ff6b6b', '중':'#60a5fa', '하':'#4ade80' };
     var col = cm[v] || '#555';
     var idEsc = plEscHtml(it.id);
     return '<select onclick="event.stopPropagation()" onchange="plInlineSetSelect(\'' + idEsc + '\',\'intent\',this.value);event.stopPropagation()" '
       + 'style="appearance:none;-webkit-appearance:none;border:none;background:transparent;color:'+col+';font-size:13px;font-weight:800;cursor:pointer;text-align:center;padding:2px;width:100%;">'
       + '<option value=""'+(v===''?' selected':'')+'>—</option>'
-      + '<option value="최상"'+(v==='최상'?' selected':'')+' style="color:#ff4d6d">최상</option>'
+      + '<option value="최상"'+(v==='최상'?' selected':'')+' style="color:#d4af37">최상</option>'
       + '<option value="상"'+(v==='상'?' selected':'')+' style="color:#ff6b6b">상</option>'
       + '<option value="중"'+(v==='중'?' selected':'')+' style="color:#60a5fa">중</option>'
       + '<option value="하"'+(v==='하'?' selected':'')+' style="color:#4ade80">하</option>'
