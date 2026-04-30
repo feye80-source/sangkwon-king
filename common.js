@@ -803,6 +803,15 @@
       _dirtyItems[table].add(itemId);
       _persistDirtyState();
     }
+    function _clearDirtyIds(table, ids) {
+      const set = _dirtyItems[table];
+      if (!set || !set.size) return;
+      (Array.isArray(ids) ? ids : []).forEach(function(id) {
+        if (id) set.delete(id);
+      });
+      if (!set.size) _dirtyItems[table] = new Set();
+      _persistDirtyState();
+    }
     function _clearDirty(table) {
       _dirtyItems[table] = new Set();
       _persistDirtyState();
@@ -869,7 +878,10 @@
           );
           if (error) throw error;
         }
-        _clearDirty(table);
+        if (dirty && dirty.size > 0) {
+          const savedIds = toSave.map(item => item && (item.id || item.item_id)).filter(Boolean);
+          _clearDirtyIds(table, savedIds);
+        }
       } catch(e) { console.warn('[SB] tblSaveDirty error', table, e); }
     }
 
@@ -936,6 +948,7 @@
           );
           if (error) throw error;
         }
+        _clearDirtyIds(table, itemIds);
       } catch(e) { console.warn('[SB] tblSoftDelete error', table, e); }
     }
 
@@ -1730,6 +1743,10 @@
     };
     window._wrRefreshFromCloud = async function(opts) {
       const options = opts || {};
+      const localBusy = Number(window.__wr2UploadBusy || 0) > 0 || !!window.__wr2SaveRoomsTimer;
+      if (options.force === true && localBusy) {
+        return { rooms: null, sections: null, skipped: 'local_edit_busy' };
+      }
       let roomPayload = null;
       let sectionPayload = null;
       if (_dirtyItems.workrooms && _dirtyItems.workrooms.size && window._sbSaveRooms) {
@@ -7694,23 +7711,31 @@ window.wr2SummaryCancelEdit = function() {
                   if (!Array.isArray(note.attachments)) note.attachments = [];
                   let ok = 0, fail = 0;
                   if (files.length) showToast('파일 업로드 중...', 'info');
-                  for (const file of files) {
-                    try {
-                      const { url, path } = await window._sbUploadImage(file, 'attachments');
-                      note.attachments.push({
-                        name: file.name,
-                        type: file.type || 'application/octet-stream',
-                        url,
-                        storagePath: path
-                      });
-                      ok++;
-                    } catch (e) {
-                      console.error('[wr2HandleFilesArray]', e);
-                      fail++;
+                  window.__wr2UploadBusy = Number(window.__wr2UploadBusy || 0) + 1;
+                  try {
+                    for (const file of files) {
+                      try {
+                        const { url, path } = await window._sbUploadImage(file, 'attachments');
+                        note.attachments.push({
+                          name: file.name,
+                          type: file.type || 'application/octet-stream',
+                          url,
+                          storagePath: path
+                        });
+                        ok++;
+                      } catch (e) {
+                        console.error('[wr2HandleFilesArray]', e);
+                        fail++;
+                      }
                     }
+                  } finally {
+                    window.__wr2UploadBusy = Math.max(0, Number(window.__wr2UploadBusy || 1) - 1);
                   }
-                  room.updatedAt = Date.now();
+                  const stamp = Date.now();
+                  note.updatedAt = stamp;
+                  room.updatedAt = stamp;
                   saveRooms();
+                  if (typeof window.__wr2FlushSaveRooms === 'function') window.__wr2FlushSaveRooms();
                   if (ok) wr2PushActivity(room, '노트 첨부 ' + ok + '개를 추가했습니다', room.phase || room.status);
                   renderAttachments(room);
                   if (ok) showToast(`📎 ${ok}개 첨부 완료`, fail ? 'warn' : 'ok');
@@ -11180,77 +11205,99 @@ window.wr2SummaryCancelEdit = function() {
       const scene = scenes.find(s => s.name === name && s.parentName === (parentName || null));
       if (!scene) { showToast('⚠️ 스냅샷을 찾을 수 없음', 'warn'); return; }
       const latestSaved = (typeof getSv === 'function') ? (getSv() || []) : [];
+      const applySceneState = function(card, attempt) {
+        const tryCount = Number(attempt || 0);
+        const el = document.getElementById(card.id);
+        const ov = mapOverlays.find(o => o.id === card.id);
+        if (!el || !ov) {
+          if (tryCount < 12) {
+            setTimeout(function() { applySceneState(card, tryCount + 1); }, 80);
+          }
+          return;
+        }
+        const left = Number.isFinite(parseFloat(card.left)) ? parseFloat(card.left) : 0;
+        const top = Number.isFinite(parseFloat(card.top)) ? parseFloat(card.top) : 0;
+        el.style.left = left + 'px';
+        el.style.top = top + 'px';
+        el.dataset.baseLeft = String(left);
+        el.dataset.baseTop = String(top);
+        ov.isOpen = !!card.isOpen;
+        try { ov.overlay.setMap(card.isOpen ? map : null); } catch (e) {}
+        ov._isSnap = true;
+        ov._userLoaded = true;
+        if (ov.item) ov.item._isSnap = true;
+        const mk = mapMarkers.find(m => m.id === card.id);
+        if (mk) {
+          mk._isSnap = true;
+          mk._userLoaded = true;
+          if (mk.item) mk.item._isSnap = true;
+        }
+        if (typeof updateMapLine === 'function') updateMapLine(card.id);
+      };
+      const restoreCore = function() {
+        if (scene.mapCenter && map) {
+          map.setCenter(new kakao.maps.LatLng(scene.mapCenter.lat, scene.mapCenter.lng));
+          map.setLevel(scene.mapLevel || 4);
+          try {
+            localStorage.setItem('map_view_state_v1', JSON.stringify({
+              lat: scene.mapCenter.lat,
+              lng: scene.mapCenter.lng,
+              level: scene.mapLevel || 4,
+              t: Date.now()
+            }));
+          } catch (e) {}
+        }
+        const cards = (scene.cards || []).filter(function(c) {
+          return c && c.lat != null && c.lng != null;
+        });
+        cards.forEach(function(c, idx) {
+          setTimeout(function() {
+            try {
+              const lat = parseFloat(c.lat);
+              const lng = parseFloat(c.lng);
+              if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+              const coords = new kakao.maps.LatLng(lat, lng);
+              const snapItem = (c.item && typeof c.item === 'object') ? c.item : {};
+              const baseItemId = String(snapItem.id || c.id || ('snap_' + idx)).replace(/^marker_/, '');
+              const liveItem = latestSaved.find(function(it) { return it && String(it.id) === baseItemId; });
+              const loadItem = liveItem
+                ? JSON.parse(JSON.stringify(liveItem))
+                : JSON.parse(JSON.stringify(snapItem));
+              if (!loadItem.id) loadItem.id = baseItemId;
+              if (!loadItem.data || typeof loadItem.data !== 'object') loadItem.data = {};
+              loadItem.lat = lat;
+              loadItem.lng = lng;
+              loadItem.data.lat = lat;
+              loadItem.data.lng = lng;
+              addMapMarker(loadItem, coords);
+            } catch (e) {
+              console.warn('[swLoadSnap]', e);
+            }
+          }, idx * 34);
+        });
+        const settleDelay = cards.length * 34 + 260;
+        setTimeout(function() {
+          (scene.cards || []).forEach(function(c) {
+            if (c && c.id) applySceneState(c, 0);
+          });
+          setTimeout(function() {
+            if (typeof updateStackedCards === 'function') updateStackedCards();
+            if (typeof refreshMapView === 'function') refreshMapView();
+            window._lastLoadedSnap = name;
+            showToast('✅ 스냅샷 복원됨: ' + name, 'ok');
+          }, 260);
+        }, settleDelay);
+      };
       if (typeof window.mbGoPage === 'function') {
         window.mbGoPage('map', document.getElementById('mb-tab-map'));
-        setTimeout(function() { clearMapMarkers(); }, 500);
-      } else { clearMapMarkers(); }
-      if (scene.mapCenter && map) {
-        map.setCenter(new kakao.maps.LatLng(scene.mapCenter.lat, scene.mapCenter.lng));
-        map.setLevel(scene.mapLevel || 4);
-        try { localStorage.setItem('map_view_state_v1', JSON.stringify({lat:scene.mapCenter.lat,lng:scene.mapCenter.lng,level:scene.mapLevel||4,t:Date.now()})); } catch(e) {}
+        setTimeout(function() {
+          clearMapMarkers();
+          setTimeout(restoreCore, 80);
+        }, 520);
+      } else {
+        clearMapMarkers();
+        restoreCore();
       }
-      const cardsWithItem = (scene.cards || []).filter(c => c.item && c.lat && c.lng);
-      cardsWithItem.forEach((c, idx) => {
-        setTimeout(() => {
-          try {
-            const coords = new kakao.maps.LatLng(parseFloat(c.lat), parseFloat(c.lng));
-            const snapItem = c.item || {};
-            const snapItemId = String(snapItem.id || c.id || '').replace(/^marker_/, '');
-            const liveItem = latestSaved.find(function(it) { return it && String(it.id) === snapItemId; });
-            const loadItem = liveItem
-              ? JSON.parse(JSON.stringify(liveItem))
-              : JSON.parse(JSON.stringify(snapItem));
-            loadItem.lat = parseFloat(c.lat);
-            loadItem.lng = parseFloat(c.lng);
-            if (!loadItem.data) loadItem.data = {};
-            loadItem.data.lat = loadItem.lat;
-            loadItem.data.lng = loadItem.lng;
-            addMapMarker(loadItem, coords);
-            // ★ [FIX] 스냅샷으로 추가된 마커에 _isSnap + _userLoaded 플래그 부여
-            setTimeout(() => {
-              const ov = mapOverlays.find(o => o.id === c.id);
-              if (ov) { ov._isSnap = true; ov._userLoaded = true; if (ov.item) ov.item._isSnap = true; }
-              const mk = mapMarkers.find(m => m.id === c.id);
-              if (mk) { mk._isSnap = true; mk._userLoaded = true; if (mk.item) mk.item._isSnap = true; }
-            }, 0);
-          }
-          catch (e) { console.warn('[swLoadSnap]', e); }
-        }, idx * 30);
-      });
-      setTimeout(() => {
-        scene.cards.forEach(c => {
-          const el = document.getElementById(c.id); if (!el) return;
-          el.style.left = c.left + 'px'; el.style.top = c.top + 'px';
-          el.dataset.baseLeft = String(c.left); el.dataset.baseTop = String(c.top);
-          const ov = mapOverlays.find(o => o.id === c.id);
-          if (ov) { ov.isOpen = c.isOpen; try { ov.overlay.setMap(c.isOpen ? map : null); } catch (e) { } }
-          updateMapLine && updateMapLine(c.id);
-          // ★ 최신 저장 데이터 기반 메모 사용 (스냅샷은 레이아웃만 복원)
-          const liveOv = mapOverlays.find(o => o.id === c.id);
-          const memo = (liveOv && liveOv.item && liveOv.item.memo) || '';
-          const memoTA = el.querySelector('.map-card-memo');
-          if (memoTA) {
-            memoTA.value = memo;
-            // 메모 표시 토글 상태도 갱신
-            const triArea = memoTA.closest('.memo-tri-area');
-            if (triArea) {
-              triArea.classList.toggle('open', !!memo);
-              const triBtn = triArea.previousElementSibling;
-              if (triBtn && triBtn.classList.contains('memo-tri-toggle')) triBtn.classList.toggle('has-memo', !!memo);
-            }
-            const memoArea = memoTA.closest('.map-card-memo-area');
-            if (memoArea) {
-              memoArea.classList.toggle('open', !!memo);
-              const memoBtn = memoArea.previousElementSibling;
-              if (memoBtn && memoBtn.classList.contains('mca-memo-btn')) memoBtn.classList.toggle('has-memo', !!memo);
-            }
-          }
-        });
-        updateStackedCards && updateStackedCards();
-        refreshMapView && refreshMapView();
-        window._lastLoadedSnap = name;
-        showToast('✅ 스냅샷 복원됨: ' + name, 'ok');
-      }, cardsWithItem.length * 30 + 200);
     };
 
     window.swDeleteSnap = function (name, parentName) {
@@ -46602,6 +46649,8 @@ window.addEventListener('DOMContentLoaded', () => {
       var ae = document.activeElement;
       var typing = !!(ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable));
       if (typing) return;
+      if (Number(window.__wr2UploadBusy || 0) > 0) return;
+      if (window.__wr2SaveRoomsTimer) return;
       var lastMutation = Number(window.__plLastLocalStatusMutationAt || 0);
       if (lastMutation && (Date.now() - lastMutation) < 45000) return;
       if (typeof window._plRefreshFromCloud === 'function') {
@@ -46632,6 +46681,8 @@ window.addEventListener('DOMContentLoaded', () => {
       var last = Number(window.__plQuickCloudPullAt || 0);
       if (last && (now - last) < 5000) return;
       window.__plQuickCloudPullAt = now;
+      if (Number(window.__wr2UploadBusy || 0) > 0) return;
+      if (window.__wr2SaveRoomsTimer) return;
       if (typeof window._plRefreshFromCloud === 'function') {
         window._plRefreshFromCloud({ render: false, force: true, sync: true }).then(function() {
           if (window.__pmActiveTab === 'list' && typeof window.renderPropertyList === 'function') window.renderPropertyList();
