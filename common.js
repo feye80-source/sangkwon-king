@@ -12190,6 +12190,7 @@ window.wr2SummaryCancelEdit = function() {
       if (!confirm(`조건에 맞지 않는 ${toDelete.length}개를 삭제하시겠습니까?\n되돌릴 수 없습니다.`)) return;
       const delIds = new Set(toDelete.map(i => i.id));
       setSv(sv.filter(i => !delIds.has(i.id)));
+      try { if (window.__skCascadeDeleteSavedIds) window.__skCascadeDeleteSavedIds(toDelete.map(function(i){ return i && i.id; }), { refresh: false }); } catch(e) {}
       toDelete.forEach(i => { try { removeMapItemBySavedId(i.id); } catch (e) { } });
       updSvCnt();
       window._lfActive = false;
@@ -13704,9 +13705,11 @@ window.wr2SummaryCancelEdit = function() {
       // 저장목록 삭제 → 지도에서도 같이 제거
       removeMapItemBySavedId(id);
       setSv(getSv().filter(s => s.id !== id));
+      try { if (window.__skCascadeDeleteSavedIds) window.__skCascadeDeleteSavedIds([id], { refresh: false }); } catch(e) {}
       renderSaved();
       updSvCnt();
     }
+    window.delSv = delSv;
 
 
     function clearAll() {
@@ -13718,6 +13721,7 @@ window.wr2SummaryCancelEdit = function() {
       });
       _selectedIds.clear();
       setSv([]);
+      try { if (window.__skCascadeDeleteSavedIds) window.__skCascadeDeleteSavedIds(current.map(function(x){return x && x.id;}), { refresh: false }); } catch(e) {}
       renderSaved();
       updSvCnt();
     }
@@ -13785,12 +13789,14 @@ window.wr2SummaryCancelEdit = function() {
           try { if (typeof removeMapItemBySavedId === 'function') removeMapItemBySavedId(item.id); } catch(e) {}
         }
       });
+      const removedIds = Array.from(_selectedIds);
       const newSv = sv.filter(s => !_selectedIds.has(s.id));
       _selectedIds.clear();
       const allChk = document.getElementById('selectAllChk');
       if (allChk) { allChk.checked = false; allChk.indeterminate = false; }
       updateSelectCount();
       setSv(newSv);
+      try { if (window.__skCascadeDeleteSavedIds) window.__skCascadeDeleteSavedIds(removedIds, { refresh: false }); } catch(e) {}
       renderSaved();
       updSvCnt();
       showToast(`🗑 ${n}개 항목 삭제됨`, 'ok');
@@ -14213,9 +14219,11 @@ window.wr2SummaryCancelEdit = function() {
       targets.forEach(item => {
         if (item && item.id) removeMapItemBySavedId(item.id);
       });
+      const removedIds = targets.map(function(t){ return t && t.id; });
       const remaining = sv.filter(s => !targetIds.has(s.id));
       _selectedIds.forEach(id => { if (targetIds.has(id)) _selectedIds.delete(id); });
       setSv(remaining);
+      try { if (window.__skCascadeDeleteSavedIds) window.__skCascadeDeleteSavedIds(removedIds, { refresh: false }); } catch(e) {}
       renderSaved();
       updSvCnt();
     }
@@ -15741,63 +15749,77 @@ window.wr2SummaryCancelEdit = function() {
     }
 
     async function _a1CallGeminiJson(prompt) {
-      const out = await callGEx([{ text: prompt }], {
-        generationConfig: { temperature: 0, maxOutputTokens: 4096 }
-      });
-      let txt = String(out.text || '').replace(/```json|```/g, '').trim();
-      if (!txt) throw new Error('Gemini 응답이 비어있습니다');
-
-      // JSON 정제 헬퍼 — 문자열 값 내부의 잘못된 이스케이프만 수정
-      function fixJson(s) {
-        // 1단계: 제어문자 제거 (탭/줄바꿈 제외)
+      function fixJson(raw) {
+        var s = String(raw || '');
         s = s.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
-        // 2단계: JSON 문자열 값 내부만 순회하며 잘못된 백슬래시 수정
-        // JSON 문자열 토큰을 찾아서 그 안에서만 처리
-        s = s.replace(/"((?:[^"\\]|\\[\s\S])*)"/g, (match, inner) => {
-          // 유효한 이스케이프 시퀀스가 아닌 백슬래시를 이중 이스케이프
-          const fixed = inner.replace(/\\(?!["\\\/bfnrtu])/g, '\\\\');
+        s = s.replace(/"((?:[^"\\]|\\[\s\S])*)"/g, function(match, inner) {
+          var fixed = String(inner || '').replace(/\\(?!["\\\/bfnrtu])/g, '\\\\');
           return '"' + fixed + '"';
         });
-        // 3단계: 흔한 비표준 토큰 보정
-        // - trailing comma
         s = s.replace(/,\s*([}\]])/g, '$1');
-        // - NaN/Infinity 같은 JSON 비표준 값
         s = s.replace(/:\s*(NaN|Infinity|-Infinity)\b/g, ': null');
-        // - 따옴표 없이 내려온 날짜/점표기 숫자(예: 2026.04.29, 3.)를 문자열로 감싸기
         s = s.replace(/:\s*([+-]?\d+\.(?:\d+\.)+\d+)(\s*[,}\]])/g, ': "$1"$2');
         s = s.replace(/:\s*([+-]?\d+\.)(\s*[,}\]])/g, ': "$1"$2');
         return s;
       }
 
-      // 1차: 그대로 파싱
-      try { return JSON.parse(txt); } catch (e1) {}
+      function tryParse(text) {
+        var txt = String(text || '').replace(/```json|```/g, '').trim();
+        if (!txt) throw new Error('Gemini 응답이 비어있습니다');
+        try { return JSON.parse(txt); } catch (e1) {}
+        try { return JSON.parse(fixJson(txt)); } catch (e2) {}
+        var block = txt.match(/\{[\s\S]*\}/);
+        if (block) {
+          try { return JSON.parse(block[0]); } catch (e3) {}
+          try { return JSON.parse(fixJson(block[0])); } catch (e4) {}
+        }
+        try {
+          var noNl = txt.replace(/:\s*"((?:[^"\\]|\\.)*)"/g, function(m, v){
+            return ': "' + String(v || '').replace(/\n/g, ' ').replace(/\r/g, '') + '"';
+          });
+          return JSON.parse(noNl);
+        } catch (e5) {}
 
-      // 2차: 정제 후 파싱
-      try { return JSON.parse(fixJson(txt)); } catch (e2) {}
-
-      // 3차: JSON 블록 추출 후 정제 파싱
-      const match = txt.match(/\{[\s\S]*\}/);
-      if (match) {
-        try { return JSON.parse(match[0]); } catch (e3) {}
-        try { return JSON.parse(fixJson(match[0])); } catch (e4) {}
+        var tail = txt;
+        if (!/[}\]]\s*$/.test(tail)) {
+          var openObj = (tail.match(/\{/g) || []).length;
+          var closeObj = (tail.match(/\}/g) || []).length;
+          var openArr = (tail.match(/\[/g) || []).length;
+          var closeArr = (tail.match(/\]/g) || []).length;
+          while (closeArr < openArr) { tail += ']'; closeArr++; }
+          while (closeObj < openObj) { tail += '}'; closeObj++; }
+        }
+        return JSON.parse(fixJson(tail));
       }
 
-      // 4차: 값에서 줄바꿈 제거 후 파싱 (멀티라인 문자열 대응)
-      try {
-        const noNewline = txt.replace(/:\s*"((?:[^"\\]|\\.)*)"/g, (m, v) =>
-          ': "' + v.replace(/\n/g, ' ').replace(/\r/g, '') + '"'
-        );
-        return JSON.parse(noNewline);
-      } catch (e5) {
-        // 5차: 추출 블록 + 강한 정제 조합 재시도
+      var lastErr = null;
+      for (var attempt = 0; attempt < 3; attempt++) {
         try {
-          const block = (txt.match(/\{[\s\S]*\}/) || [txt])[0];
-          return JSON.parse(fixJson(block));
-        } catch (e6) {
-          throw new Error('JSON 파싱 실패 — ' + e6.message);
+          var out = await callGEx([{ text: prompt }], {
+            generationConfig: {
+              temperature: 0,
+              maxOutputTokens: 4096,
+              responseMimeType: 'application/json'
+            }
+          });
+          return tryParse(out.text || '');
+        } catch (e) {
+          lastErr = e;
+          var msg = String((e && e.message) || e || '');
+          if (/429|quota|rate|TooManyRequests/i.test(msg) && attempt < 2) {
+            await new Promise(function(res){ setTimeout(res, 450 * (attempt + 1)); });
+            continue;
+          }
+          if (/JSON 파싱 실패|Unexpected end|Unterminated|Unexpected token/i.test(msg) && attempt < 2) {
+            await new Promise(function(res){ setTimeout(res, 220 * (attempt + 1)); });
+            continue;
+          }
+          if (attempt < 2) continue;
         }
       }
+      throw new Error('JSON 파싱 실패 — ' + String((lastErr && lastErr.message) || lastErr || '응답 오류'));
     }
+
 
     async function _a1CallGeminiAnalysis(prompt) {
       const out = await callGEx([{ text: prompt }], {
@@ -19056,7 +19078,11 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       }
 
       const container = document.getElementById('map');
-      try { container.style.touchAction = 'pan-x pan-y pinch-zoom'; } catch (e) {}
+      try {
+        const _ua = navigator.userAgent || '';
+        const _isAppleTouch = /iPad|iPhone|iPod/.test(_ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        container.style.touchAction = _isAppleTouch ? 'manipulation' : 'pan-x pan-y pinch-zoom';
+      } catch (e) {}
       const options = {
         center: new kakao.maps.LatLng(37.5665, 126.9780),
         level: 4,
@@ -19100,7 +19126,11 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       // 지도 컨테이너에 캡처 단계(useCapture:true) pointerdown을 걸어
       // 클릭 대상이 map-card 내부면 지도가 드래그를 선점하지 못하게 막는다.
       container.addEventListener('pointerdown', function (e) {
-        if (e.target.closest('.map-card')) {
+        try {
+          // 터치 디바이스(iPad/iPhone/Android)에서는 제스처 부드러움을 우선한다.
+          if (e && (e.pointerType === 'touch' || e.pointerType === 'pen')) return;
+        } catch(_e) {}
+        if (e.target && e.target.closest && e.target.closest('.map-card')) {
           e.stopPropagation();
         }
       }, true); // true = 캡처 단계 (카카오맵보다 먼저 실행)
@@ -47217,10 +47247,10 @@ window.addEventListener('DOMContentLoaded', () => {
     }
     var saleItems = sv.filter(function (item) {
       if (!item) return false;
-      var id = String(item.id || '');
-      var effectiveStatus = normalizeStatus(item.watchStatus || statusByItem[id]);
-      if (!effectiveStatus || effectiveStatus === 'pass') return false;
-      return true;
+      var d0 = item.data || {};
+      var hasAuctionSignal = item.mode === 'auction' || !!(d0['경매번호'] || d0['사건번호'] || d0['옥션원URL']);
+      if (!hasAuctionSignal) return false;
+      return !!(d0['매각일'] || d0['매각기일'] || d0['입찰기일'] || d0['입찰일']);
     }).map(function (item) {
       var d = item.data || {};
       var dt = parseSaleDate(d['매각일'] || d['매각기일'] || d['입찰기일'] || d['입찰일'] || '');
@@ -47279,7 +47309,7 @@ window.addEventListener('DOMContentLoaded', () => {
         var cardBg = isPast ? 'rgba(11,13,19,.72)' : 'rgba(14,17,24,.92)';
         var cardBd = isPast ? 'rgba(255,255,255,.05)' : 'rgba(255,255,255,.1)';
         var cardOp = isPast ? '0.72' : '1';
-        var lines = group.items.slice(0, 4).map(function (entry) {
+        var lines = group.items.map(function (entry) {
           var it = entry.item || {};
           var d = it.data || {};
           var title = escHtml(it.title || d['소재지'] || it.id || '');
@@ -47292,15 +47322,12 @@ window.addEventListener('DOMContentLoaded', () => {
             + '<div style="font-size:10px;color:var(--mu);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + addr + '</div>'
             + '</button>';
         }).join('');
-        var more = group.items.length > 4
-          ? '<button type="button" class="sk-more-btn" onclick="event.stopPropagation();window.__skOpenSchedModal && window.__skOpenSchedModal(\'' + group.key + '\')">+' + (group.items.length - 4) + '건 더보기</button>'
-          : '';
         return '<div data-sched-key="' + group.key + '" style="min-width:220px;max-width:220px;background:' + cardBg + ';border:1px solid ' + cardBd + ';border-radius:10px;padding:10px;opacity:' + cardOp + ';">'
           + '<div onclick="window.__skOpenSchedModal && window.__skOpenSchedModal(\'' + group.key + '\')" style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:8px;cursor:pointer;">'
           + '<div><div style="font-size:13px;font-weight:700;color:#e8edf5;">' + fmtShort(group.date) + '</div><div style="font-size:10px;color:var(--mu);margin-top:2px;">' + group.key + ' · ' + group.items.length + '건</div></div>'
           + '<span style="flex-shrink:0;font-size:10px;font-weight:700;color:' + color + ';background:' + color + '18;border:1px solid ' + color + '33;padding:2px 7px;border-radius:999px;">' + ddayLabel + '</span>'
           + '</div>'
-          + '<div style="display:flex;flex-direction:column;gap:6px;">' + lines + more + '</div>'
+          + '<div style="display:flex;flex-direction:column;gap:6px;max-height:240px;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-right:2px;">' + lines + '</div>'
           + '</div>';
       }).join('')
       + '</div>';
@@ -48879,5 +48906,281 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   } catch (e) {
     console.warn('[lifecycle local override patch]', e);
+  }
+})();
+
+/* v240-hotfix: delete cascade, property-row delete, url-edit fallback, iPad map zoom buttons */
+(function(){
+  try {
+    function _asSet(ids){
+      var st = new Set();
+      (ids || []).forEach(function(v){ var s = String(v || '').trim(); if (s) st.add(s); });
+      return st;
+    }
+    function _refreshAllLists(){
+      try { if (typeof renderSaved === 'function') renderSaved(); } catch(e) {}
+      try { if (typeof updSvCnt === 'function') updSvCnt(); } catch(e) {}
+      try { if (typeof renderPropertyList === 'function') renderPropertyList(); } catch(e) {}
+      try { if (typeof wr2Render === 'function') wr2Render(); } catch(e) {}
+      try { if (typeof window.mbRenderSaved === 'function') window.mbRenderSaved(); } catch(e) {}
+      try { if (typeof window.mbRoomRefreshSel === 'function') window.mbRoomRefreshSel(); } catch(e) {}
+      try { if (typeof window.mbPlistRender === 'function') window.mbPlistRender(); } catch(e) {}
+      try { if (typeof window.mbRenderPipeline === 'function') window.mbRenderPipeline(); } catch(e) {}
+    }
+
+    window.__skCascadeDeleteSavedIds = function(ids, opts){
+      opts = opts || {};
+      var idSet = _asSet(ids);
+      if (!idSet.size) return { removedItems:0, removedRooms:0 };
+
+      // 1) 물건리스트 정리
+      var removedItems = 0;
+      try {
+        if (typeof window.plLoad === 'function' && typeof window.plSave === 'function') {
+          var items = window.plLoad() || [];
+          var kept = [];
+          items.forEach(function(it){
+            var linked = [it && it.linkedSavedId, it && it.savedId, it && it.sourceSavedId, it && it.auctionId, it && it.listingId, it && it.id]
+              .map(function(v){ return String(v || '').trim(); })
+              .filter(Boolean);
+            var hit = linked.some(function(v){ return idSet.has(v); });
+            if (hit) removedItems += 1;
+            else kept.push(it);
+          });
+          if (removedItems > 0) window.plSave(kept);
+        }
+      } catch(e) { console.warn('[cascade-delete:pl]', e); }
+
+      // 2) 작업룸 정리 (링크된 룸은 종료가 아니라 삭제 처리)
+      var removedRooms = 0;
+      try {
+        var allRooms = (window._wrGetRoomsCache && window._wrGetRoomsCache().slice())
+          || ((window.wr2State && window.wr2State.rooms) ? window.wr2State.rooms.slice() : []);
+        var now = Date.now();
+        var deletedRoomIds = [];
+        allRooms.forEach(function(r){
+          if (!r || !r.id) return;
+          var keys = [];
+          keys.push(String(r.linkedSavedId || '').trim());
+          keys.push(String(r.auctionId || '').trim());
+          keys.push(String(r.listingId || '').trim());
+          (Array.isArray(r.linkedItems) ? r.linkedItems : []).forEach(function(v){ keys.push(String(v || '').trim()); });
+          keys = keys.filter(Boolean);
+          var hit = keys.some(function(v){ return idSet.has(v); });
+          if (hit) {
+            if (!r.deletedAt) removedRooms += 1;
+            r.deletedAt = now;
+            r.updatedAt = now;
+            deletedRoomIds.push(String(r.id));
+          } else if (Array.isArray(r.linkedItems)) {
+            r.linkedItems = r.linkedItems.map(function(v){ return String(v || '').trim(); }).filter(function(v){ return !idSet.has(v); });
+          }
+        });
+        if (deletedRoomIds.length) {
+          if (window._wrPersistRooms) window._wrPersistRooms(allRooms, { keepDeletedInState: true, syncState: false });
+          else if (window._wrPersistRoomCache) window._wrPersistRoomCache(allRooms, { keepDeletedInState: true, syncState: false });
+          // 섹션 정리
+          var secAll = (window._wrGetSectionsCache && window._wrGetSectionsCache())
+            || ((window._idbCache && window._idbCache['wr2_sections']) || JSON.parse(localStorage.getItem('wr2_sections') || '[]'));
+          var dead = new Set(deletedRoomIds);
+          var secKept = (secAll || []).filter(function(s){
+            var rid = String((s && (s.roomId || s.room_id)) || '').trim();
+            return !dead.has(rid);
+          });
+          if (window._wrPersistSections) window._wrPersistSections(secKept, { syncState: false });
+          else if (window._wrPersistSectionsCache) window._wrPersistSectionsCache(secKept, { syncState: false });
+        }
+      } catch(e) { console.warn('[cascade-delete:rooms]', e); }
+
+      if (opts.refresh !== false) _refreshAllLists();
+      return { removedItems: removedItems, removedRooms: removedRooms };
+    };
+
+    function _diffRemoved(beforeIds, afterIds){
+      var afterSet = new Set((afterIds || []).map(function(v){ return String(v || ''); }));
+      return (beforeIds || []).filter(function(v){ return !afterSet.has(String(v || '')); });
+    }
+
+    // 저장목록 삭제 계열 래핑
+    if (typeof window.delSv === 'function' && !window.delSv.__skCascadePatched) {
+      var _origDelSv = window.delSv;
+      window.delSv = function(id){
+        var sid = String(id || '').trim();
+        var out = _origDelSv.apply(this, arguments);
+        if (sid) window.__skCascadeDeleteSavedIds([sid], { refresh: true });
+        return out;
+      };
+      window.delSv.__skCascadePatched = true;
+    }
+    if (typeof window.deleteCheckedItems === 'function' && !window.deleteCheckedItems.__skCascadePatched) {
+      var _origDeleteChecked = window.deleteCheckedItems;
+      window.deleteCheckedItems = function(){
+        var before = (typeof getSv === 'function' ? (getSv() || []).map(function(s){ return s.id; }) : []);
+        var out = _origDeleteChecked.apply(this, arguments);
+        var after = (typeof getSv === 'function' ? (getSv() || []).map(function(s){ return s.id; }) : []);
+        var removed = _diffRemoved(before, after);
+        if (removed.length) window.__skCascadeDeleteSavedIds(removed, { refresh: true });
+        return out;
+      };
+      window.deleteCheckedItems.__skCascadePatched = true;
+    }
+    if (typeof window.clearCurrentTab === 'function' && !window.clearCurrentTab.__skCascadePatched) {
+      var _origClearTab = window.clearCurrentTab;
+      window.clearCurrentTab = function(){
+        var before = (typeof getSv === 'function' ? (getSv() || []).map(function(s){ return s.id; }) : []);
+        var out = _origClearTab.apply(this, arguments);
+        var after = (typeof getSv === 'function' ? (getSv() || []).map(function(s){ return s.id; }) : []);
+        var removed = _diffRemoved(before, after);
+        if (removed.length) window.__skCascadeDeleteSavedIds(removed, { refresh: true });
+        return out;
+      };
+      window.clearCurrentTab.__skCascadePatched = true;
+    }
+    if (typeof window.clearAll === 'function' && !window.clearAll.__skCascadePatched) {
+      var _origClearAll = window.clearAll;
+      window.clearAll = function(){
+        var before = (typeof getSv === 'function' ? (getSv() || []).map(function(s){ return s.id; }) : []);
+        var out = _origClearAll.apply(this, arguments);
+        if (before.length) window.__skCascadeDeleteSavedIds(before, { refresh: true });
+        return out;
+      };
+      window.clearAll.__skCascadePatched = true;
+    }
+    if (typeof window.deleteByListFilter === 'function' && !window.deleteByListFilter.__skCascadePatched) {
+      var _origDeleteByFilter = window.deleteByListFilter;
+      window.deleteByListFilter = function(){
+        var before = (typeof getSv === 'function' ? (getSv() || []).map(function(s){ return s.id; }) : []);
+        var out = _origDeleteByFilter.apply(this, arguments);
+        var after = (typeof getSv === 'function' ? (getSv() || []).map(function(s){ return s.id; }) : []);
+        var removed = _diffRemoved(before, after);
+        if (removed.length) window.__skCascadeDeleteSavedIds(removed, { refresh: true });
+        return out;
+      };
+      window.deleteByListFilter.__skCascadePatched = true;
+    }
+
+    // 물건리스트 개별 삭제
+    window.plDeleteRow = function(itemId){
+      var id = String(itemId || '').trim();
+      if (!id) return;
+      var items = (typeof window.plLoad === 'function') ? (window.plLoad() || []) : [];
+      var target = items.find(function(it){ return String(it && it.id || '') === id; });
+      if (!target) {
+        if (typeof showToast === 'function') showToast('삭제할 물건을 찾지 못했습니다', 'warn');
+        return;
+      }
+      var msg = '이 물건을 물건리스트에서 삭제할까요?';
+      if (target.linkedSavedId) msg += '\n(저장목록/작업룸 연결도 함께 정리됩니다)';
+      if (!confirm(msg)) return;
+
+      var next = items.filter(function(it){ return String(it && it.id || '') !== id; });
+      if (typeof window.plSave === 'function') window.plSave(next);
+
+      var sid = String(target.linkedSavedId || '').trim();
+      if (sid && typeof getSv === 'function' && typeof setSv === 'function') {
+        try { if (typeof removeMapItemBySavedId === 'function') removeMapItemBySavedId(sid); } catch(e) {}
+        var sv = getSv() || [];
+        setSv(sv.filter(function(s){ return String(s && s.id || '') !== sid; }));
+        window.__skCascadeDeleteSavedIds([sid], { refresh: true });
+      } else {
+        // linkedSavedId가 없는 경우 roomId 기준으로 작업룸만 정리
+        var rid = String(target.roomId || '').trim();
+        if (rid) {
+          try {
+            var allRooms = (window._wrGetRoomsCache && window._wrGetRoomsCache().slice()) || [];
+            var room = allRooms.find(function(r){ return String(r && r.id || '') === rid; });
+            if (room) {
+              room.deletedAt = Date.now();
+              room.updatedAt = Date.now();
+              if (window._wrPersistRooms) window._wrPersistRooms(allRooms, { keepDeletedInState: true, syncState: false });
+              else if (window._wrPersistRoomCache) window._wrPersistRoomCache(allRooms, { keepDeletedInState: true, syncState: false });
+            }
+          } catch(e) {}
+        }
+        _refreshAllLists();
+      }
+      if (typeof showToast === 'function') showToast('🗑 물건을 삭제했습니다', 'ok');
+    };
+
+    if (typeof window.renderPropertyList === 'function' && !window.renderPropertyList.__skRowDeleteBtnPatched) {
+      var _origRenderPropertyList = window.renderPropertyList;
+      window.renderPropertyList = function(){
+        var out = _origRenderPropertyList.apply(this, arguments);
+        try {
+          var rows = document.querySelectorAll('#pl-tbody tr[data-plid]');
+          rows.forEach(function(tr){
+            var id = String(tr.getAttribute('data-plid') || '');
+            if (!id) return;
+            var cell = tr.lastElementChild;
+            if (!cell) return;
+            if (!cell.querySelector('.pl-row-del-btn')) {
+              var btn = document.createElement('button');
+              btn.className = 'pl-row-del-btn';
+              btn.textContent = '🗑';
+              btn.title = '물건 삭제';
+              btn.style.cssText = 'margin-left:4px;background:none;border:1px solid rgba(255,80,80,.35);color:#ff8b8b;border-radius:5px;font-size:11px;padding:2px 5px;cursor:pointer;';
+              btn.onclick = function(e){ e.stopPropagation(); window.plDeleteRow(id); };
+              cell.appendChild(btn);
+            }
+          });
+        } catch(e) {}
+        return out;
+      };
+      window.renderPropertyList.__skRowDeleteBtnPatched = true;
+    }
+
+    // URL수정 버튼 폴백
+    if (typeof window.showPopupUrlInput === 'function' && !window.showPopupUrlInput.__skFallbackPatched) {
+      var _origShowPopupUrlInput = window.showPopupUrlInput;
+      window.showPopupUrlInput = function(id){
+        var host = document.getElementById('popSrcTabs');
+        if (!host) {
+          if (typeof window.promptSavedOriginalUrl === 'function') return window.promptSavedOriginalUrl(id);
+          return;
+        }
+        try { return _origShowPopupUrlInput.apply(this, arguments); }
+        catch(e) {
+          console.warn('[showPopupUrlInput fallback]', e);
+          if (typeof window.promptSavedOriginalUrl === 'function') return window.promptSavedOriginalUrl(id);
+        }
+      };
+      window.showPopupUrlInput.__skFallbackPatched = true;
+    }
+
+    // iPad/터치용 확대축소 버튼 강제 노출 (우하단)
+    function ensureTouchZoomButtons(){
+      try {
+        if (!window.map || !document.getElementById('mapWrap')) return;
+        var ua = navigator.userAgent || '';
+        var isTouch = /iPad|iPhone|iPod|Android/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        if (!isTouch) return;
+        var wrap = document.getElementById('mapWrap');
+        if (!wrap || document.getElementById('skTouchZoomBox')) return;
+        var box = document.createElement('div');
+        box.id = 'skTouchZoomBox';
+        box.style.cssText = 'position:absolute;right:12px;bottom:12px;z-index:55;display:flex;flex-direction:column;gap:8px;';
+        function mk(label, step){
+          var b = document.createElement('button');
+          b.textContent = label;
+          b.type = 'button';
+          b.style.cssText = 'width:44px;height:44px;border:none;border-radius:12px;background:rgba(10,14,22,.86);color:#dce7ff;font-size:24px;font-weight:700;box-shadow:0 8px 20px rgba(0,0,0,.35);';
+          b.addEventListener('click', function(ev){
+            ev.preventDefault(); ev.stopPropagation();
+            try {
+              var lv = window.map.getLevel();
+              window.map.setLevel(Math.max(1, Math.min(14, Math.round(lv + step))), { animate: true });
+            } catch(e) {}
+          });
+          return b;
+        }
+        box.appendChild(mk('+', -1));
+        box.appendChild(mk('−', 1));
+        wrap.appendChild(box);
+      } catch(e) {}
+    }
+    setTimeout(ensureTouchZoomButtons, 500);
+    setTimeout(ensureTouchZoomButtons, 1800);
+  } catch(e) {
+    console.warn('[v240-hotfix common]', e);
   }
 })();

@@ -5698,6 +5698,7 @@ input, textarea, select {
       }
       room.updatedAt = Date.now();
       _mbPersistRooms(rooms, room.id);
+      window.__mbRoomLocalWriteUntil = Date.now() + 4500;
       if (ok && window.wr2PushActivity) window.wr2PushActivity(room, '작업 이미지 ' + ok + '개를 추가했습니다', room.phase || room.status);
       _mbRenderOvCapture(room);
       if (ok) mbToast('작업 이미지 ' + ok + '개 업로드됨', fail ? 'warn' : 'ok');
@@ -5815,6 +5816,7 @@ input, textarea, select {
       }
       room.updatedAt = Date.now();
       _mbPersistRooms(rooms, room.id);
+      window.__mbRoomLocalWriteUntil = Date.now() + 4500;
       if (ok && window.wr2PushActivity) window.wr2PushActivity(room, '노트 첨부 ' + ok + '개를 추가했습니다', room.phase || room.status);
       _mbRenderNoteAttachments(room);
       _mbRenderNoteSummary(room);
@@ -7122,7 +7124,12 @@ input, textarea, select {
       scheduleEl.style.maxHeight = '34vh';
       scheduleEl.style.overflowY = 'auto';
       scheduleEl.style.webkitOverflowScrolling = 'touch';
-      var auctionItems = normalizedSv.filter(function(it){ return it && it.mode==='auction'; })
+      var auctionItems = normalizedSv.filter(function(it){
+        if (!it) return false;
+        if (it.mode === 'auction') return true;
+        var d0 = it.data || {};
+        return !!(d0['경매번호'] || d0['사건번호'] || d0['매각일'] || d0['매각기일'] || d0['입찰기일'] || d0['옥션원URL']);
+      })
         .map(function(it){
           var dt = parseSaleDate((it.data||{})['매각일'] || (it.data||{})['매각기일']);
           return dt ? { it: it, dt: dt, dday: calcDday(dt) } : null;
@@ -7132,7 +7139,7 @@ input, textarea, select {
       } else {
         scheduleEl.style.display = 'block';
         var html = '<div style="font-size:12px;font-weight:700;color:var(--tx);margin-bottom:8px;">📅 매각기일 보드 <span style="font-size:10px;color:var(--di);">'+auctionItems.length+'건</span></div>';
-        html += '<div style="display:flex;align-items:flex-start;gap:8px;overflow-x:auto;padding-bottom:4px;">';
+        html += '<div id="mb-sched-strip" style="display:flex;align-items:flex-start;gap:8px;overflow-x:auto;padding-bottom:4px;">';
         var grouped = [];
         auctionItems.forEach(function(e){
           var key = localDateKey(e.dt);
@@ -7144,7 +7151,7 @@ input, textarea, select {
           var c = g.dday<0?'#6b7280':g.dday===0?'#ff6370':g.dday<=3?'#ff8c42':g.dday<=7?'#fbbf24':'#4ade80';
           var dl = g.dday<0?'종료':g.dday===0?'D-Day':'D-'+g.dday;
           var mo = g.dt.getMonth()+1, da = g.dt.getDate(), wd=['일','월','화','수','목','금','토'][g.dt.getDay()];
-          html += '<div style="min-width:150px;max-height:250px;overflow-y:auto;-webkit-overflow-scrolling:touch;background:rgba(14,17,24,.92);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:8px;flex-shrink:0;">';
+          html += '<div data-day-key="'+g.key+'" style="min-width:150px;max-height:250px;overflow-y:auto;-webkit-overflow-scrolling:touch;background:rgba(14,17,24,.92);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:8px;flex-shrink:0;">';
           html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">';
           html += '<span style="font-size:12px;font-weight:700;color:#e8edf5;">'+mo+'/'+da+' ('+wd+')</span>';
           html += '<span style="font-size:10px;font-weight:700;color:'+c+';background:'+c+'18;border:1px solid '+c+'33;padding:1px 6px;border-radius:99px;">'+dl+'</span></div>';
@@ -7167,6 +7174,34 @@ input, textarea, select {
         });
         html += '</div>';
         scheduleEl.innerHTML = html;
+        try {
+          var strip = scheduleEl.querySelector('#mb-sched-strip');
+          if (strip) {
+            var today = new Date();
+            today.setHours(0,0,0,0);
+            var tKey = localDateKey(today);
+            var st = window.__mbPipeSchedState || {};
+            var targetKey = st.anchorKey || '';
+            if (!targetKey) {
+              var near = grouped.find(function(g){ return g.key >= tKey; }) || grouped[grouped.length - 1] || grouped[0];
+              targetKey = near ? near.key : '';
+            }
+            if (targetKey) {
+              var target = strip.querySelector('[data-day-key="' + targetKey + '"]');
+              if (target) strip.scrollLeft = Math.max(0, target.offsetLeft - 6);
+            }
+            if (st.scrollLeft && !isNaN(st.scrollLeft)) strip.scrollLeft = Math.max(0, st.scrollLeft);
+            strip.addEventListener('scroll', function(){
+              var cards = Array.prototype.slice.call(strip.querySelectorAll('[data-day-key]'));
+              var left = strip.scrollLeft || 0;
+              var anchor = cards.find(function(el){ return el.offsetLeft + el.offsetWidth >= left + 12; }) || cards[0];
+              window.__mbPipeSchedState = {
+                scrollLeft: left,
+                anchorKey: anchor ? String(anchor.getAttribute('data-day-key') || '') : ''
+              };
+            }, { passive: true });
+          }
+        } catch (e) {}
       }
     }
 
@@ -8888,6 +8923,7 @@ input, textarea, select {
     try {
       var now = Date.now();
       if (window.__mbSyncRunning) return false;
+      if (window.__mbRoomLocalWriteUntil && now < window.__mbRoomLocalWriteUntil) return false;
       if (now - (window.__mbLastSyncAt || 0) < 2500) return false;
       window.__mbSyncRunning = true;
       window.__mbLastSyncAt = now;
