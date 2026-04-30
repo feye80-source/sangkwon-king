@@ -27935,33 +27935,35 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       }
 
       loadedTransactions = filtered;
-
-      // ★ 기존 마커 재사용: 현재 bounds 내에 있는 기존 마커는 setMap(map)으로 바로 표시
-      let reused = 0;
-      const existingMarkerAddresses = new Set();
-      const _reYears = getSelectedTransactionYears();
-      mapMarkers.forEach(m => {
-        if (m.propertyType !== 'transaction') return;
-        const pos = m.marker.getPosition();
-        if (!pos) return;
-        const lat = pos.getLat(), lng = pos.getLng();
-        // ★ 연도 필터 체크
-        const mYear = String(m.item && m.item.year || '').replace(/[^0-9]/g, '').substring(0, 4);
-        const yearPass = _reYears.size === 0 || _reYears.has(mYear);
-        if (_ftInArea(lat, lng) && yearPass) {
-          m.marker.setMap(map);
-          reused++;
-          if (m.item && m.item.address) existingMarkerAddresses.add(m.item.address + '|' + (m.item.year || '') + '|' + (m.item.month || ''));
+      // ★ 근원 안정화:
+      // 실거래는 호출 시마다 transaction 마커/오버레이 캐시를 비우고 재구성한다.
+      // (이전 스냅샷/중복키 상태가 남아 새 호출이 막히는 현상 방지)
+      const keepMarkers = [];
+      const txMarkerIds = new Set();
+      mapMarkers.forEach(function(m) {
+        if (m && m.propertyType === 'transaction') {
+          try { m.marker && m.marker.setMap(null); } catch (e) {}
+          if (m.id) txMarkerIds.add(m.id);
+        } else if (m) {
+          keepMarkers.push(m);
         }
       });
+      mapMarkers = keepMarkers;
 
-      // filtered 중에서 기존 마커가 없는 것만 새로 생성
-      const newFiltered = filtered.filter(item => {
-        const key = (item.address || '') + '|' + (item.year || '') + '|' + (item.month || '');
-        return !existingMarkerAddresses.has(key);
+      const keepOverlays = [];
+      mapOverlays.forEach(function(o) {
+        if (o && o.propertyType === 'transaction') {
+          try { o.overlay && o.overlay.setMap(null); } catch (e) {}
+          if (o.id) txMarkerIds.add(o.id);
+        } else if (o) {
+          keepOverlays.push(o);
+        }
       });
+      mapOverlays = keepOverlays;
+      window.mapOverlays = mapOverlays;
+      txMarkerIds.forEach(function(id) { loadedMarkerIds.delete(id); });
 
-      showTransactionMarkers(newFiltered);
+      showTransactionMarkers(filtered);
 
       // 실거래 마커/오버레이가 즉시 보이도록 화면 갱신
       map.relayout();
@@ -27982,7 +27984,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       updateFilterCounts();
 
       const regionName = region.r2 || region.r1 || '현재 지역';
-      showToast(`✅ ${regionName} 실거래 ${filtered.length.toLocaleString()}건 표시 (신규 ${newFiltered.length.toLocaleString()}건)`, 'ok');
+      showToast(`✅ ${regionName} 실거래 ${filtered.length.toLocaleString()}건 표시`, 'ok');
     }
 
     // 실거래가 숨기기 (마커는 메모리에 유지, 화면에서만 숨김)
