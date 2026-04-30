@@ -16966,7 +16966,7 @@ window.wr2SummaryCancelEdit = function() {
           if (_isAssa) extBtns.push(`<button class="popup-src-btn" style="${bStyle}" onclick="assaOpenDetail('${esc(_detailURL)}')">🔗 상세</button>`);
           else extBtns.push(`<a href="${esc(_detailURL)}" target="_blank" class="popup-src-btn" style="${bStyle}">🔗 상세</a>`);
         }
-        extBtns.push(`<button class="popup-src-btn" id="popEditUrlBtn" style="background:rgba(255,255,255,.06);color:#aab4cc;border-color:rgba(255,255,255,.24);" onclick="event.stopPropagation();showPopupUrlInput('${id}')">${_detailURL ? '✏️ URL수정' : '🔗 URL추가'}</button>`);
+        extBtns.push(`<button class="popup-src-btn" id="popEditUrlBtn" style="background:rgba(255,255,255,.06);color:#aab4cc;border-color:rgba(255,255,255,.24);" onclick="showPopupUrlInput('${id}');return false;">${_detailURL ? '✏️ URL수정' : '🔗 URL추가'}</button>`);
         if (_siteMapURL === 'copy_planet') {
           extBtns.push(`<button class="popup-src-btn" style="background:rgba(100,180,100,.12);color:#7ecf7e;border-color:rgba(100,180,100,.35);" onclick="(()=>{const addr='${esc(_addrQ)}';if(addr){navigator.clipboard.writeText(addr).catch(()=>{});const ta=document.createElement('textarea');ta.value=addr;document.body.appendChild(ta);ta.select();try{document.execCommand('copy');}catch(e){}document.body.removeChild(ta);}window.open('https://www.bdsplanet.com/map/realprice_map.ytp','_blank');})()">🌍 플래닛</button>`);
         } else if (_siteMapURL) {
@@ -45833,18 +45833,23 @@ window.addEventListener('DOMContentLoaded', () => {
     var board = document.getElementById('watchScheduleBoard');
     if (!resizer || !board) return;
 
-    // 모바일은 리사이저 숨김
     if (isMobile) {
       resizer.style.display = 'none';
       return;
     }
 
-    // 상단 보드가 표시 중일 때만 리사이저 노출
     var boardVisible = board.style.display !== 'none' && board.offsetHeight > 0;
     resizer.style.display = boardVisible ? '' : 'none';
     if (!boardVisible) return;
 
-    // 저장된 높이 복원
+    // 높이 제한 해제 (기존 max-height 때문에 드래그가 안 먹히던 문제 보정)
+    board.style.maxHeight = 'none';
+    board.style.minHeight = '80px';
+
+    if (!board.style.height || board.style.height === 'auto') {
+      board.style.height = Math.max(120, board.offsetHeight || 230) + 'px';
+    }
+
     try {
       var saved = parseInt(localStorage.getItem('pipelineBoardHeight') || '', 10);
       if (!isNaN(saved) && saved >= 80 && saved <= 2000) {
@@ -45852,7 +45857,6 @@ window.addEventListener('DOMContentLoaded', () => {
       }
     } catch(e) {}
 
-    // 중복 바인딩 방지
     if (resizer.__rzBound) return;
     resizer.__rzBound = true;
 
@@ -45860,41 +45864,40 @@ window.addEventListener('DOMContentLoaded', () => {
     var startY = 0;
     var startHeight = 0;
 
-    var onMove = function(e) {
+    var onMove = function(clientY){
       if (!dragging) return;
-      var y = (e.touches && e.touches[0]) ? e.touches[0].clientY : e.clientY;
-      var dy = y - startY;
+      var dy = clientY - startY;
       var viewport = window.innerHeight || 800;
-      // 최소 80px, 최대 뷰포트의 80%
-      var newH = Math.max(80, Math.min(Math.round(viewport * 0.8), startHeight + dy));
+      var newH = Math.max(80, Math.min(Math.round(viewport * 0.82), startHeight + dy));
       board.style.height = newH + 'px';
-      e.preventDefault();
+      try { localStorage.setItem('pipelineBoardHeight', String(newH)); } catch(e) {}
     };
-    var onUp = function() {
+    var stopDrag = function(){
       if (!dragging) return;
       dragging = false;
       resizer.classList.remove('dragging');
       document.body.classList.remove('pipeline-resizing');
-      try { localStorage.setItem('pipelineBoardHeight', String(parseInt(board.style.height, 10) || 230)); } catch(e) {}
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
-      document.removeEventListener('touchmove', onMove);
-      document.removeEventListener('touchend', onUp);
     };
-    var onDown = function(e) {
+
+    resizer.addEventListener('pointerdown', function(e){
       dragging = true;
-      startY = (e.touches && e.touches[0]) ? e.touches[0].clientY : e.clientY;
-      startHeight = board.offsetHeight;
+      startY = e.clientY;
+      startHeight = Math.max(80, board.offsetHeight || parseInt(board.style.height,10) || 230);
       resizer.classList.add('dragging');
       document.body.classList.add('pipeline-resizing');
-      document.addEventListener('mousemove', onMove);
-      document.addEventListener('mouseup', onUp);
-      document.addEventListener('touchmove', onMove, { passive: false });
-      document.addEventListener('touchend', onUp);
+      try { resizer.setPointerCapture && resizer.setPointerCapture(e.pointerId); } catch(_e) {}
       e.preventDefault();
-    };
-    resizer.addEventListener('mousedown', onDown);
-    resizer.addEventListener('touchstart', onDown, { passive: false });
+    });
+
+    resizer.addEventListener('pointermove', function(e){
+      if (!dragging) return;
+      onMove(e.clientY);
+      e.preventDefault();
+    });
+
+    resizer.addEventListener('pointerup', function(){ stopDrag(); });
+    resizer.addEventListener('pointercancel', function(){ stopDrag(); });
+    window.addEventListener('pointerup', function(){ stopDrag(); });
   };
 
   // ── 작업룸 이동 ─────────────────────────
@@ -47327,7 +47330,7 @@ window.addEventListener('DOMContentLoaded', () => {
           + '<div><div style="font-size:13px;font-weight:700;color:#e8edf5;">' + fmtShort(group.date) + '</div><div style="font-size:10px;color:var(--mu);margin-top:2px;">' + group.key + ' · ' + group.items.length + '건</div></div>'
           + '<span style="flex-shrink:0;font-size:10px;font-weight:700;color:' + color + ';background:' + color + '18;border:1px solid ' + color + '33;padding:2px 7px;border-radius:999px;">' + ddayLabel + '</span>'
           + '</div>'
-          + '<div style="display:flex;flex-direction:column;gap:6px;max-height:240px;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-right:2px;">' + lines + '</div>'
+          + '<div class="sk-day-list" style="display:flex;flex-direction:column;gap:6px;max-height:240px;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-right:2px;">' + lines + '</div>'
           + '</div>';
       }).join('')
       + '</div>';
@@ -47350,6 +47353,20 @@ window.addEventListener('DOMContentLoaded', () => {
     var scroll = board.querySelector('#skSchedScroll');
     if (scroll) {
       bindScheduleDragScroll(scroll);
+      try {
+        scroll.querySelectorAll('.sk-day-list').forEach(function(dayList){
+          if (dayList.dataset.skWheelBound === '1') return;
+          dayList.dataset.skWheelBound = '1';
+          dayList.addEventListener('wheel', function(ev){
+            var dy = Number(ev.deltaY || 0);
+            if (!dy) return;
+            var prevTop = dayList.scrollTop;
+            dayList.scrollTop = prevTop + dy;
+            ev.preventDefault();
+            ev.stopPropagation();
+          }, { passive: false });
+        });
+      } catch(e) {}
       var ss = window.__skSchedScrollState = window.__skSchedScrollState || { locked: false, left: 0 };
       if (ss.locked) {
         scroll.scrollLeft = Math.max(0, Number(ss.left || 0));
