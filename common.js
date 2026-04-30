@@ -749,6 +749,7 @@
 
     // ── dirty tracking: 변경된 item_id만 추적 ──────────────────
     const _dirtyItems = {};
+    const _dirtyRev = {};
     const _dirtyKv = new Set();
     const _SB_DIRTY_STATE_KEY = 'sb_dirty_state_v1';
     let _dirtyStatePersistTimer = null;
@@ -801,16 +802,38 @@
     function _markDirty(table, itemId) {
       if (!_dirtyItems[table]) _dirtyItems[table] = new Set();
       _dirtyItems[table].add(itemId);
+      if (!_dirtyRev[table]) _dirtyRev[table] = Object.create(null);
+      _dirtyRev[table][itemId] = Number(_dirtyRev[table][itemId] || 0) + 1;
       _persistDirtyState();
     }
-    function _clearDirtyIds(table, ids) {
+    function _snapshotDirtyRev(table, ids) {
+      const revMap = _dirtyRev[table] || Object.create(null);
+      const snap = Object.create(null);
+      (Array.isArray(ids) ? ids : []).forEach(function(id) {
+        if (!id) return;
+        snap[id] = Number(revMap[id] || 0);
+      });
+      return snap;
+    }
+    function _clearDirtyIdsWithRev(table, ids, revSnapshot) {
       const set = _dirtyItems[table];
       if (!set || !set.size) return;
+      const revMap = _dirtyRev[table] || Object.create(null);
       (Array.isArray(ids) ? ids : []).forEach(function(id) {
-        if (id) set.delete(id);
+        if (!id) return;
+        const keepIfChanged = revSnapshot && Object.prototype.hasOwnProperty.call(revSnapshot, id);
+        if (keepIfChanged) {
+          const currentRev = Number(revMap[id] || 0);
+          const savedRev = Number(revSnapshot[id] || 0);
+          if (currentRev !== savedRev) return;
+        }
+        set.delete(id);
       });
       if (!set.size) _dirtyItems[table] = new Set();
       _persistDirtyState();
+    }
+    function _clearDirtyIds(table, ids) {
+      _clearDirtyIdsWithRev(table, ids, null);
     }
     function _clearDirty(table) {
       _dirtyItems[table] = new Set();
@@ -863,6 +886,8 @@
           ? arr.filter(item => dirty.has(item.id || item.item_id))
           : (table === 'workrooms' ? [] : arr); // workrooms는 dirty 없으면 skip (tombstone 덮어쓰기 방지)
         if (!toSave.length) return;
+        const savedIds = toSave.map(item => item && (item.id || item.item_id)).filter(Boolean);
+        const dirtyRevSnapshot = _snapshotDirtyRev(table, savedIds);
         const rows = toSave.map(item => ({
           id: uid + '_' + (item.id || item.item_id || Math.random().toString(36).slice(2)),
           user_id: uid,
@@ -879,8 +904,7 @@
           if (error) throw error;
         }
         if (dirty && dirty.size > 0) {
-          const savedIds = toSave.map(item => item && (item.id || item.item_id)).filter(Boolean);
-          _clearDirtyIds(table, savedIds);
+          _clearDirtyIdsWithRev(table, savedIds, dirtyRevSnapshot);
         }
       } catch(e) { console.warn('[SB] tblSaveDirty error', table, e); }
     }
@@ -1744,7 +1768,7 @@
     window._wrRefreshFromCloud = async function(opts) {
       const options = opts || {};
       const localBusy = Number(window.__wr2UploadBusy || 0) > 0 || !!window.__wr2SaveRoomsTimer;
-      if (options.force === true && localBusy) {
+      if (localBusy) {
         return { rooms: null, sections: null, skipped: 'local_edit_busy' };
       }
       let roomPayload = null;
