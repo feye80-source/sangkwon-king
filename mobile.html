@@ -741,7 +741,10 @@ body {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  white-space: normal;
 }
 .mb-pl-badges { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; }
 .mb-pl-actions { display:inline-flex; align-items:center; gap:4px; margin-left:2px; }
@@ -773,6 +776,7 @@ body {
 .mb-pl-chip.st-changed { color: #ffd166; background: rgba(245,158,11,.14); border-color: rgba(245,158,11,.34); }
 .mb-pl-chip.st-closed { color: #9aa3b2; background: rgba(255,255,255,.07); border-color: rgba(255,255,255,.12); }
 .mb-pl-chip.intent-high { color: #ff7b7b; background: rgba(255,99,112,.14); border-color: rgba(255,99,112,.3); }
+.mb-pl-chip.intent-top { color: #ff4d6d; background: rgba(255,77,109,.16); border-color: rgba(255,77,109,.34); }
 .mb-pl-chip.intent-mid { color: #60a5fa; background: rgba(96,165,250,.14); border-color: rgba(96,165,250,.32); }
 .mb-pl-chip.intent-low { color: #4ade80; background: rgba(74,222,128,.14); border-color: rgba(74,222,128,.32); }
 .mb-pl-meta {
@@ -1307,9 +1311,22 @@ body {
     font-size:13px;
     font-weight:700;
     color:var(--tx);
-    white-space:nowrap;
+    white-space:normal;
+    overflow:hidden;
+    display:-webkit-box;
+    -webkit-line-clamp:2;
+    -webkit-box-orient:vertical;
+    line-height:1.35;
+  }
+  .mb-room-option-title-text {
+    min-width:0;
     overflow:hidden;
     text-overflow:ellipsis;
+    display:-webkit-box;
+    -webkit-line-clamp:2;
+    -webkit-box-orient:vertical;
+    white-space:normal;
+    line-height:1.35;
   }
   .mb-room-option-meta {
     margin-top:4px;
@@ -2637,8 +2654,36 @@ input, textarea, select {
           <button class="mb-pl-stab" data-v="changed" onclick="mbPlSetStatusFilter('changed')">변경</button>
           <button class="mb-pl-stab" data-v="closed" onclick="mbPlSetStatusFilter('closed')">종료</button>
         </div>
+        <div style="padding:6px 12px;display:flex;gap:6px;align-items:center;flex-shrink:0;border-bottom:1px solid var(--b1);">
+          <select id="mb-plist-sort" onchange="mbPlistRender()"
+            style="flex:1;min-width:0;padding:6px 8px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;color:var(--tx);font-size:11px;outline:none;">
+            <option value="biddate_near">정렬: 기일 임박순</option>
+            <option value="biddate_far">정렬: 기일 먼순</option>
+            <option value="price_desc">정렬: 최저가 높은순</option>
+            <option value="price_asc">정렬: 최저가 낮은순</option>
+            <option value="name_asc">정렬: 이름순</option>
+            <option value="updated_desc">정렬: 최신순</option>
+          </select>
+          <select id="mb-plist-type" onchange="mbPlistRender()"
+            style="width:84px;min-width:84px;padding:6px 6px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;color:var(--tx);font-size:11px;outline:none;">
+            <option value="">유형</option>
+            <option value="경매">경매</option>
+            <option value="공매">공매</option>
+            <option value="온비드">온비드</option>
+            <option value="일반">일반</option>
+            <option value="NPL">NPL</option>
+          </select>
+          <select id="mb-plist-intent" onchange="mbPlistRender()"
+            style="width:84px;min-width:84px;padding:6px 6px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;color:var(--tx);font-size:11px;outline:none;">
+            <option value="">의향</option>
+            <option value="최상">최상</option>
+            <option value="상">상</option>
+            <option value="중">중</option>
+            <option value="하">하</option>
+          </select>
+        </div>
         <!-- 리스트 -->
-        <div id="mb-plist-body" style="flex:1;min-height:0;overflow-y:auto;padding:6px 8px 2px;"></div>
+        <div id="mb-plist-body" style="flex:1;min-height:0;overflow-y:auto;padding:6px 8px 2px;touch-action:pan-y;-webkit-overflow-scrolling:touch;"></div>
       </div>
     </div>
 
@@ -6776,12 +6821,50 @@ input, textarea, select {
     if (typeof window.mbPlistRender === 'function') window.mbPlistRender();
   };
 
+  function mbPlistBindTouchScrollFix() {
+    var body = document.getElementById('mb-plist-body');
+    var panel = document.getElementById('mb-panel-plist');
+    if (!body || body.__touchFixBound) return;
+    body.__touchFixBound = true;
+    var blurIfNeeded = function(evt) {
+      var t = evt && evt.target;
+      if (t && t.closest && t.closest('input,textarea,select,[contenteditable="true"]')) return;
+      var ae = document.activeElement;
+      if (!ae) return;
+      var tag = String(ae.tagName || '').toUpperCase();
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
+        try { ae.blur(); } catch (e) {}
+      }
+    };
+    body.addEventListener('touchstart', blurIfNeeded, { passive: true });
+    body.addEventListener('touchmove', blurIfNeeded, { passive: true });
+    body.addEventListener('pointerdown', blurIfNeeded, { passive: true });
+    body.addEventListener('pointermove', blurIfNeeded, { passive: true });
+    body.addEventListener('scroll', function() {
+      var ae = document.activeElement;
+      if (!ae) return;
+      var tag = String(ae.tagName || '').toUpperCase();
+      if (tag === 'INPUT' || tag === 'TEXTAREA') {
+        try { ae.blur(); } catch (e) {}
+      }
+    }, { passive: true });
+    if (panel && !panel.__touchFixBound) {
+      panel.__touchFixBound = true;
+      panel.addEventListener('touchmove', blurIfNeeded, { passive: true });
+      panel.addEventListener('pointermove', blurIfNeeded, { passive: true });
+    }
+  }
+
   // ── 모바일 물건리스트 렌더 ──────────────────────────────────
   window.mbPlistRender = function() {
     var body = document.getElementById('mb-plist-body');
     if (!body) return;
+    mbPlistBindTouchScrollFix();
     var q = ((document.getElementById('mb-plist-search') || {}).value || '').toLowerCase();
     var statusFilter = (document.getElementById('mb-plist-status') || {}).value || '';
+    var typeFilter = (document.getElementById('mb-plist-type') || {}).value || '';
+    var intentFilter = (document.getElementById('mb-plist-intent') || {}).value || '';
+    var sortKey = (document.getElementById('mb-plist-sort') || {}).value || 'biddate_near';
     var items = (typeof plLoad === 'function') ? plLoad() : [];
     if (!items.length && window._idbCache && window._idbCache['pl_items_v3']) items = window._idbCache['pl_items_v3'];
     if (!items.length && window._idbCache && window._idbCache['pl_items']) items = window._idbCache['pl_items'];
@@ -6947,6 +7030,8 @@ input, textarea, select {
       };
     }).filter(function(v) {
       if (statusFilter && v.st !== statusFilter) return false;
+      if (typeFilter && String(v.raw.type || '') !== String(typeFilter)) return false;
+      if (intentFilter && String(v.intent || '') !== String(intentFilter)) return false;
       if (q) {
         var hay = (v.title + ' ' + v.sub + ' ' + (v.raw.memo || '')).toLowerCase();
         if (hay.indexOf(q) < 0) return false;
@@ -6962,9 +7047,23 @@ input, textarea, select {
       };
       var ra = rank(aDays);
       var rb = rank(bDays);
-      if (ra !== rb) return ra - rb;
-      if (ra === 0 && aDays !== bDays) return aDays - bDays;
-      if (ra === 1 && aDays !== bDays) return bDays - aDays;
+      if (sortKey === 'price_desc' || sortKey === 'price_asc') {
+        if (a.price !== b.price) return sortKey === 'price_desc' ? (b.price - a.price) : (a.price - b.price);
+      } else if (sortKey === 'name_asc') {
+        var nn = String(a.title || '').localeCompare(String(b.title || ''), 'ko');
+        if (nn !== 0) return nn;
+      } else if (sortKey === 'updated_desc') {
+        var au = Number(a.raw && a.raw.updatedAt || 0), bu = Number(b.raw && b.raw.updatedAt || 0);
+        if (au !== bu) return bu - au;
+      } else if (sortKey === 'biddate_far') {
+        if (ra !== rb) return ra - rb;
+        if (ra === 0 && aDays !== bDays) return bDays - aDays;
+        if (ra === 1 && aDays !== bDays) return aDays - bDays;
+      } else {
+        if (ra !== rb) return ra - rb;
+        if (ra === 0 && aDays !== bDays) return aDays - bDays;
+        if (ra === 1 && aDays !== bDays) return bDays - aDays;
+      }
       if (a.price !== b.price) return b.price - a.price;
       return String(a.title || '').localeCompare(String(b.title || ''), 'ko');
     });
@@ -6977,7 +7076,8 @@ input, textarea, select {
     var rowsHtml = items.map(function(v) {
       var it = v.raw;
       var intentChip = '';
-      if (v.intent === '상') intentChip = '<span class="mb-pl-chip intent-high">상</span>';
+      if (v.intent === '최상') intentChip = '<span class="mb-pl-chip intent-top">최상</span>';
+      else if (v.intent === '상') intentChip = '<span class="mb-pl-chip intent-high">상</span>';
       else if (v.intent === '중') intentChip = '<span class="mb-pl-chip intent-mid">중</span>';
       else if (v.intent === '하') intentChip = '<span class="mb-pl-chip intent-low">하</span>';
       var dateMain = v.bidRaw ? esc(v.bidRaw.replace('T', ' ').slice(0, 10)) : '미입력';
@@ -7348,7 +7448,7 @@ input, textarea, select {
       var rooms = _mbGetRoomsArray();
       var groupFilter = '';
       var lifecycleFilter = window._mbRoomDropFilter || 'all';
-      var sortMode = window._mbRoomDropSort || 'updated_desc';
+      var sortMode = window._mbRoomDropSort || 'saledate_asc';
       function getLifecycleKey(room) {
         var raw = String((room && room.lifecycleStatus) || '').trim();
         if (raw === 'changed' || raw === 'closed') return raw;
@@ -7365,6 +7465,21 @@ input, textarea, select {
         return '#4f8eff';
       }
       function compareRooms(a, b) {
+        var ma = getRoomMeta(a);
+        var mb = getRoomMeta(b);
+        var rankDate = function(meta) {
+          if (!meta || !meta.saleDate) return 2;
+          if (meta.saleDday == null) return 2;
+          if (meta.saleDday >= 0) return 0;
+          return 1;
+        };
+        if (sortMode === 'saledate_asc') {
+          var rda = rankDate(ma);
+          var rdb = rankDate(mb);
+          if (rda !== rdb) return rda - rdb;
+          if (rda === 0 && ma.saleDday !== mb.saleDday) return ma.saleDday - mb.saleDday;
+          if (rda === 1 && ma.saleDday !== mb.saleDday) return mb.saleDday - ma.saleDday;
+        }
         if (sortMode === 'title_asc') {
           return String(a.title || a.name || '').localeCompare(String(b.title || b.name || ''), 'ko');
         }
@@ -7372,6 +7487,7 @@ input, textarea, select {
         var ra = rankMap[getLifecycleKey(a)] || 0;
         var rb = rankMap[getLifecycleKey(b)] || 0;
         if (ra !== rb) return ra - rb;
+        if (sortMode === 'updated_desc') return (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0);
         return (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0);
       }
       var visibleRooms = rooms.filter(function(r) {
@@ -7394,7 +7510,7 @@ input, textarea, select {
         if (n >= 100000000) return (n / 100000000).toFixed(1) + '억';
         return Math.round(n / 10000).toLocaleString('ko-KR') + '만';
       };
-      var getRoomMeta = function(room) {
+      function getRoomMeta(room) {
         if (!room || !room.id) return { caseNo: '', addr: '', price: '' };
         if (roomMetaCache[room.id]) return roomMetaCache[room.id];
         var linkedIds = [];
@@ -7411,9 +7527,25 @@ input, textarea, select {
         var caseNo = String(d['경매번호'] || d['사건번호'] || room.caseNo || room.casenum || '').trim();
         var addr = String((linked && (linked.title || d['소재지'])) || room.address || room.addr || '').trim();
         var price = moneyFormat(d['최저가'] || d['감정가'] || d['매매가'] || d['매매가_만원'] || room.price || '');
-        roomMetaCache[room.id] = { caseNo: caseNo, addr: addr, price: price };
+        var saleRaw = String(d['매각일'] || d['매각기일'] || d['입찰기일'] || room.biddate || '').trim();
+        var saleDate = null;
+        var saleDday = null;
+        if (saleRaw) {
+          var m = saleRaw.replace(/\./g, '-').match(/(20\d{2})[-/년\s]*(\d{1,2})[-/월\s]*(\d{1,2})/);
+          if (m) {
+            saleDate = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+            if (!isNaN(saleDate.getTime())) {
+              var today = new Date();
+              today.setHours(0,0,0,0);
+              saleDday = Math.round((saleDate - today) / 86400000);
+            } else {
+              saleDate = null;
+            }
+          }
+        }
+        roomMetaCache[room.id] = { caseNo: caseNo, addr: addr, price: price, saleDate: saleDate, saleDday: saleDday, saleRaw: saleRaw };
         return roomMetaCache[room.id];
-      };
+      }
       var buckets = [];
       var bucketMap = {};
       (((window.wr2State && window.wr2State.folders) || [])).forEach(function(folder) {
@@ -7453,6 +7585,7 @@ input, textarea, select {
           + '<option value="closed"' + (lifecycleFilter === 'closed' ? ' selected' : '') + '>상태: 종료</option>'
           + '</select>'
           + '<select onchange="window._mbRoomDropSort=this.value;mbRoomRefreshSel();" style="width:102px;height:30px;padding:0 8px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;color:var(--tx);font-size:11px;outline:none;">'
+          + '<option value="saledate_asc"' + (sortMode === 'saledate_asc' ? ' selected' : '') + '>기일임박순</option>'
           + '<option value="updated_desc"' + (sortMode === 'updated_desc' ? ' selected' : '') + '>최신순</option>'
           + '<option value="title_asc"' + (sortMode === 'title_asc' ? ' selected' : '') + '>이름순</option>'
           + '</select>'
@@ -7485,7 +7618,7 @@ input, textarea, select {
               var lifeColor = lifecycleColor(life);
               return '<div onclick="mbRoomDropSelect(\'' + r.id + '\',\'' + title + '\')" class="mb-room-option">'
                 + '<div class="mb-room-option-title" style="display:flex;align-items:center;justify-content:space-between;gap:8px;">'
-                + '<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (r.title||r.name||'이름 없음') + '</span>'
+                + '<span class="mb-room-option-title-text">' + (r.title||r.name||'이름 없음') + '</span>'
                 + '<span style="padding:1px 6px;border-radius:999px;font-size:9px;font-weight:700;color:' + lifeColor + ';background:' + lifeColor + '1a;border:1px solid ' + lifeColor + '44;">' + lifeLabel + '</span>'
                 + '</div>'
                 + '<div class="mb-room-option-meta">'

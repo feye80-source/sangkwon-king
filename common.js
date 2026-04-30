@@ -44417,17 +44417,18 @@ window.addEventListener('DOMContentLoaded', () => {
   };
   function intentBadge(v) {
     if (!v) return '<span style="color:#555;">—</span>';
-    var map = { '상':'#ff6b6b', '중':'#60a5fa', '하':'#4ade80' };
+    var map = { '최상':'#ff4d6d', '상':'#ff6b6b', '중':'#60a5fa', '하':'#4ade80' };
     return '<span style="font-weight:700;color:'+ (map[v]||'#aaa') +';">'+v+'</span>';
   }
   function intentCell(it) {
     var v = it.intent || '';
-    var cm = { '상':'#ff6b6b', '중':'#60a5fa', '하':'#4ade80' };
+    var cm = { '최상':'#ff4d6d', '상':'#ff6b6b', '중':'#60a5fa', '하':'#4ade80' };
     var col = cm[v] || '#555';
     var idEsc = plEscHtml(it.id);
     return '<select onclick="event.stopPropagation()" onchange="plInlineSetSelect(\'' + idEsc + '\',\'intent\',this.value);event.stopPropagation()" '
       + 'style="appearance:none;-webkit-appearance:none;border:none;background:transparent;color:'+col+';font-size:13px;font-weight:800;cursor:pointer;text-align:center;padding:2px;width:100%;">'
       + '<option value=""'+(v===''?' selected':'')+'>—</option>'
+      + '<option value="최상"'+(v==='최상'?' selected':'')+' style="color:#ff4d6d">최상</option>'
       + '<option value="상"'+(v==='상'?' selected':'')+' style="color:#ff6b6b">상</option>'
       + '<option value="중"'+(v==='중'?' selected':'')+' style="color:#60a5fa">중</option>'
       + '<option value="하"'+(v==='하'?' selected':'')+' style="color:#4ade80">하</option>'
@@ -45259,6 +45260,9 @@ window.addEventListener('DOMContentLoaded', () => {
   function plVisibleItems(items, roomById) {
     var q = ((document.getElementById('pl-search')||{}).value||'').toLowerCase();
     var fs = (document.getElementById('pl-filter-status')||{}).value||'';
+    var ft = (document.getElementById('pl-filter-type')||{}).value||'';
+    var fi = (document.getElementById('pl-filter-intent')||{}).value||'';
+    var sortKey = (document.getElementById('pl-sort-key')||{}).value||'biddate_near';
     var showArchived = !!((document.getElementById('pl-show-archived')||{}).checked);
     var showClosed = !!((document.getElementById('pl-show-closed')||{}).checked);
     var canonicalRoomBySaved = {};
@@ -45290,6 +45294,8 @@ window.addEventListener('DOMContentLoaded', () => {
       } else {
         if (!showClosed && simple === 'closed') return false;
       }
+      if (ft && String(it.type || '') !== String(ft)) return false;
+      if (fi && String(it.intent || '') !== String(fi)) return false;
       // 종료 포함을 켜면 archived(숨김)도 함께 보이게 하여 실제 종료 항목 누락 방지
       if (!showArchived && !showClosed && isArchived) return false;
       if (q) {
@@ -45298,7 +45304,7 @@ window.addEventListener('DOMContentLoaded', () => {
       }
       return true;
     }).sort(function(a,b){
-      // 작업룸 정렬과 동일: D-1, D-2 ... → 지난기일(D+1...) → 미정
+      // 기본 정렬: 작업룸과 동일(D-1, D-2 ... → 지난기일(D+1...) → 미정)
       var ad = daysDiff(a.biddate);
       var bd = daysDiff(b.biddate);
       var rank = function(dday) {
@@ -45308,10 +45314,6 @@ window.addEventListener('DOMContentLoaded', () => {
       };
       var ra = rank(ad);
       var rb = rank(bd);
-      if (ra !== rb) return ra - rb;
-      if (ra === 0 && ad !== bd) return ad - bd;
-      if (ra === 1 && ad !== bd) return bd - ad;
-
       var priceMan = function(it) {
         var minp = Number(plParseAmountText(it.minprice || '')) || 0;
         if (minp > 0) return minp;
@@ -45323,10 +45325,34 @@ window.addEventListener('DOMContentLoaded', () => {
       };
       var ap = priceMan(a);
       var bp = priceMan(b);
-      if (ap !== bp) return bp - ap;
-
       var an = String(a.casenum || a.addr || a.id || '');
       var bn = String(b.casenum || b.addr || b.id || '');
+      var byBidNear = function() {
+        if (ra !== rb) return ra - rb;
+        if (ra === 0 && ad !== bd) return ad - bd;
+        if (ra === 1 && ad !== bd) return bd - ad;
+        return 0;
+      };
+      var byBidFar = function() {
+        if (ra !== rb) return ra - rb;
+        if (ra === 0 && ad !== bd) return bd - ad;
+        if (ra === 1 && ad !== bd) return ad - bd;
+        return 0;
+      };
+      if (sortKey === 'price_desc' || sortKey === 'price_asc') {
+        if (ap !== bp) return sortKey === 'price_desc' ? (bp - ap) : (ap - bp);
+      } else if (sortKey === 'name_asc') {
+        if (an !== bn) return an.localeCompare(bn, 'ko');
+      } else if (sortKey === 'updated_desc') {
+        var au = Number(a.updatedAt||0), bu = Number(b.updatedAt||0);
+        if (au !== bu) return bu - au;
+      } else if (sortKey === 'biddate_far') {
+        var far = byBidFar();
+        if (far !== 0) return far;
+      } else {
+        var near = byBidNear();
+        if (near !== 0) return near;
+      }
       if (an !== bn) return an.localeCompare(bn, 'ko');
       return Number(b.updatedAt||0) - Number(a.updatedAt||0);
     });
