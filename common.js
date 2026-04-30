@@ -37646,6 +37646,10 @@ ${newsContext}
 
     // ── 메인 수집 함수 ──────────────────────────────────
     async function doShopCollect(site, skipDetail = false) {
+      // 소스 전환 시 이전 수집의 최대개수 카운터가 섞이지 않도록 매번 초기화
+      window._collectCount = 0;
+      var _progEl = document.getElementById('efCollectProgress');
+      if (_progEl) _progEl.textContent = '대기중';
       shopCollectedData[_normalizeShopSiteKey(site)] = [];
       shopStatus(site, '⏳ 수집 중...', 'var(--mu)');
       // ★ FIX: 'naver_auto' → 'naverCollectPreview', 'disco_auto' → 'discoPreview' 등
