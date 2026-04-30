@@ -14868,7 +14868,6 @@ window.wr2SummaryCancelEdit = function() {
                   ? `<button onclick="event.stopPropagation();assaOpenDetail('${esc(originalUrl)}')" class="sc-btn sc-btn-detail">🔗 원본</button>`
                   : `<a href="${esc(originalUrl)}" target="_blank" onclick="event.stopPropagation()" class="sc-btn sc-btn-detail">🔗 원본</a>`)
                 : `<button onclick="event.stopPropagation();promptSavedOriginalUrl('${item.id}')" class="sc-btn sc-btn-detail" style="background:rgba(255,255,255,.05);color:var(--di);border-style:dashed;">🔗 원본없음</button>`)}
-          <button onclick="event.stopPropagation();openPopupAndEdit('${itemIdJs}')" class="sc-btn" style="background:rgba(79,142,255,.12);color:#8ab8ff;border-color:rgba(79,142,255,.38);" title="상세 페이지에서 수정">✏️ 상세수정</button>
           ${src === '점포라인' ? `<a href="https://map.jumpoline.com/main" target="_blank" onclick="event.stopPropagation()" class="sc-btn sc-btn-map">🗺️ 지도</a>` : ''}
           ${(src === '네이버부동산' || src === '네이버' || src === 'naver') ? `<a href="${(() => { const lat = d.lat || item.lat; const lng = d.lng || item.lng; return (lat && lng) ? `https://new.land.naver.com/offices?ms=${lat},${lng},17&a=SG:SMS:APTHGJ&e=RETAIL` : `https://new.land.naver.com/`; })()}" target="_blank" onclick="event.stopPropagation()" class="sc-btn sc-btn-map">🗺️ 지도</a>` : ''}
           ${_isAssaSource(src) ? `<a href="https://xn--v69ap5so3hsnb81e1wfh6z.com/map" target="_blank" onclick="event.stopPropagation()" class="sc-btn sc-btn-map">🗺️ 지도</a>` : ''}
@@ -43836,6 +43835,38 @@ window.addEventListener('DOMContentLoaded', () => {
     var disp = plDisplayMoney(v);
     return disp ? (disp + '만') : '';
   }
+  function plMoneyManToWonAmount(v) {
+    var raw = plMoneyNum(v);
+    if (!raw) return 0;
+    var n = parseInt(raw, 10);
+    if (!isFinite(n) || n <= 0) return 0;
+    // 기존 저장은 만원 단위가 기본이지만, 간헐적으로 원 단위가 들어온 데이터도 존재한다.
+    // 1천만 이상 값은 원 단위로 간주하여 과대 표기(×1만) 오류를 방지한다.
+    return (n >= 10000000) ? n : (n * 10000);
+  }
+  function plDisplayListWonInput(v) {
+    var won = plMoneyManToWonAmount(v);
+    return won ? Number(won).toLocaleString('ko-KR') : '';
+  }
+  function plParseListMoneyToMan(v) {
+    var raw = String(v || '').trim();
+    if (!raw) return '';
+    var cleaned = raw.replace(/,/g, '').replace(/\s+/g, '');
+    // "억/만" 단위가 있고 "원"이 없으면 만원 단위 입력으로 해석
+    if (/[억만천백]/.test(cleaned) && cleaned.indexOf('원') < 0) {
+      return plParseAmountText(cleaned);
+    }
+    // 그 외에는 원 단위 입력으로 파싱 후 만원 단위로 정규화
+    var won = Number(plParseWonText(cleaned));
+    if (isFinite(won) && won > 0) return String(Math.round(won / 10000));
+    var digits = cleaned.replace(/[^0-9]/g, '');
+    if (!digits) return '';
+    var n = parseInt(digits, 10);
+    if (!isFinite(n) || n <= 0) return '';
+    // 숫자만 입력한 경우: 큰 값은 원 단위, 작은 값은 기존 호환을 위해 만원 단위로 간주
+    if (n >= 10000000) return String(Math.round(n / 10000));
+    return String(n);
+  }
   function plNormalizeDateInput(v) {
     var raw = String(v || '').trim();
     if (!raw) return '';
@@ -45404,7 +45435,7 @@ window.addEventListener('DOMContentLoaded', () => {
     }
     var patch = {};
     var value = rawValue;
-    if (['appraisal','minprice','deposit','monthly'].indexOf(field) >= 0) value = plParseAmountText(rawValue);
+    if (['appraisal','minprice','deposit','monthly'].indexOf(field) >= 0) value = plParseListMoneyToMan(rawValue);
     if (field === 'estimate') value = plNormalizeWonInputText(rawValue);
     if (field === 'biddate') value = plNormalizeDateInput(rawValue);
     
@@ -45649,10 +45680,10 @@ window.addEventListener('DOMContentLoaded', () => {
           + '<td style="padding:8px 10px;overflow:hidden;" onclick="event.stopPropagation()">'+casenumCell+'</td>'
           + '<td style="padding:8px 10px;font-size:12px;color:var(--fg2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+(it.region||'—')+'</td>'
           + '<td style="padding:8px 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+plEditCellHtml(it.id,'feature',it.feature||'',it.feature||'',{type:'text',align:'left',minw:'100px',placeholder:'특징 입력',empty:'—',spanStyle:'font-size:12px;color:var(--fg2);'})+'</td>'
-          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'appraisal',plDisplayMoney(it.appraisal||''),plDisplayMan(it.appraisal||''),{type:'text',align:'right',minw:'70px',placeholder:'만원'})+'</td>'
-          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'minprice',plDisplayMoney(it.minprice||''),plDisplayMan(it.minprice||''),{type:'text',align:'right',minw:'70px',placeholder:'만원',spanStyle:'color:#fb923c;font-weight:700;'})+'</td>'
-          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'deposit',plDisplayMoney(it.deposit||''),plDisplayMan(it.deposit||''),{type:'text',align:'right',minw:'60px',placeholder:'만원',spanStyle:'font-size:12px;color:var(--fg2);'})+'</td>'
-          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'monthly',plDisplayMoney(it.monthly||''),plDisplayMan(it.monthly||''),{type:'text',align:'right',minw:'60px',placeholder:'만원',spanStyle:'font-size:12px;color:var(--fg2);'})+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'appraisal',plDisplayListWonInput(it.appraisal||''),plDisplayListWonInput(it.appraisal||''),{type:'text',align:'right',minw:'96px',placeholder:'원'})+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'minprice',plDisplayListWonInput(it.minprice||''),plDisplayListWonInput(it.minprice||''),{type:'text',align:'right',minw:'96px',placeholder:'원',spanStyle:'color:#fb923c;font-weight:700;'})+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'deposit',plDisplayListWonInput(it.deposit||''),plDisplayListWonInput(it.deposit||''),{type:'text',align:'right',minw:'90px',placeholder:'원',spanStyle:'font-size:12px;color:var(--fg2);'})+'</td>'
+          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'monthly',plDisplayListWonInput(it.monthly||''),plDisplayListWonInput(it.monthly||''),{type:'text',align:'right',minw:'90px',placeholder:'원',spanStyle:'font-size:12px;color:var(--fg2);'})+'</td>'
           + '<td style="padding:8px 10px;text-align:center;font-size:12px;">'+(it.round||'—')+'</td>'
           + '<td style="padding:8px 10px;white-space:nowrap;">'
           +   plBiddateCellHtml(it, ddayLabel, ddayColor)
@@ -45663,7 +45694,12 @@ window.addEventListener('DOMContentLoaded', () => {
           + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'result_won',plDisplayWonInput((it.result&&it.result.won)||''),plDisplayWonInput((it.result&&it.result.won)||''),{type:'text',align:'right',minw:'76px',placeholder:'원',spanStyle:'color:#4caf87;font-weight:700;'})+'</td>'
           + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'bidders',it.bidders||'',it.bidders||'',{type:'text',align:'right',minw:'44px',placeholder:'—',empty:'—',spanStyle:'font-size:11px;'})+'</td>'
           + '<td style="padding:8px 10px;min-width:210px;max-width:260px;overflow:visible;">'+plEditMemoCellHtml(it.id,it.memo||'')+'</td>'
-          + '<td style="padding:8px 6px;text-align:center;"><button onclick="event.stopPropagation();plOpenEdit(\''+it.id+'\')" style="background:none;border:none;color:var(--fg3);cursor:pointer;font-size:15px;padding:2px 4px;">···</button></td>'
+          + '<td style="padding:8px 6px;text-align:center;">'
+          +   '<div style="display:inline-flex;align-items:center;gap:6px;">'
+          +     '<button onclick="event.stopPropagation();plOpenEdit(\''+it.id+'\')" title="상세 수정" style="background:rgba(79,142,255,.12);border:1px solid rgba(79,142,255,.35);color:#8ab8ff;border-radius:7px;font-size:11px;padding:4px 7px;cursor:pointer;">수정</button>'
+          +     '<button class="pl-row-del-btn" onclick="event.stopPropagation();plDeleteRow(\''+it.id+'\')" title="삭제" style="background:none;border:1px solid rgba(255,80,80,.35);color:#ff8b8b;border-radius:7px;font-size:11px;padding:4px 7px;cursor:pointer;">삭제</button>'
+          +   '</div>'
+          + '</td>'
           + '</tr>';
       }).join('');
     }
