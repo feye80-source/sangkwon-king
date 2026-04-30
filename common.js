@@ -25834,6 +25834,24 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const reader = new FileReader();
       reader.onload = function (e) {
         try {
+          const csvSplitKeepEmpty = (line) => {
+            const out = [];
+            let cur = '';
+            let inQ = false;
+            for (let i = 0; i < line.length; i++) {
+              const ch = line[i];
+              if (ch === '"') {
+                if (inQ && line[i + 1] === '"') { cur += '"'; i++; continue; }
+                inQ = !inQ;
+                continue;
+              }
+              if (ch === ',' && !inQ) { out.push(cur); cur = ''; continue; }
+              cur += ch;
+            }
+            out.push(cur);
+            return out.map(v => String(v ?? '').trim());
+          };
+          const normHeader = (h) => String(h || '').replace(/^\uFEFF/, '').replace(/\s+/g, '').trim();
           const text = e.target.result;
           const lines = text.split(/\r?\n/).filter(l => l.trim());
 
@@ -25850,21 +25868,22 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           const items = [];
           // 헤더 인덱스 맵 구성 (handleMapCSV와 동일 방식)
           const hLine = startIdx > 0 ? lines[startIdx - 1] : null;
-          const hdrRow = hLine ? hLine.split(',').map(h => h.replace(/^"|"$/g, '').trim()) : [];
+          const hdrRow = hLine ? csvSplitKeepEmpty(hLine) : [];
           const hIdx2 = {};
-          hdrRow.forEach((h, i) => { hIdx2[h] = i; });
+          hdrRow.forEach((h, i) => { hIdx2[normHeader(h)] = i; });
           const getC = (row, names, fallback) => {
             for (const n of names) {
-              if (hIdx2[n] !== undefined && row[hIdx2[n]] !== undefined && row[hIdx2[n]] !== '') return row[hIdx2[n]];
+              const key = normHeader(n);
+              if (hIdx2[key] !== undefined && row[hIdx2[key]] !== undefined && row[hIdx2[key]] !== '') return row[hIdx2[key]];
             }
             return fallback !== undefined ? fallback : '';
           };
           for (let i = startIdx; i < lines.length; i++) {
             const line = lines[i];
-            const row = line.match(/(".*?"|[^",]+)(?=\s*,|\s*$)/g);
+            const row = csvSplitKeepEmpty(line);
             if (!row || row.length < 5) continue;
 
-            const cleaned = row.map(v => v.replace(/^"|"$/g, '').trim());
+            const cleaned = row.map(v => String(v || '').trim());
 
             // 헤더 기반 동적 파싱 (상업업무용 실거래 포맷 지원)
             // NO, 시군구, 유형, 지번, 도로명, 용도지역, 건축물주용도, 도로조건, 전용/연면적(㎡), 대지면적(㎡), 거래금액(만원), 층, 매수자, 매도자, 계약년월, 계약일, 지분구분, 건축년도, ...
@@ -27032,6 +27051,24 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const reader = new FileReader();
       reader.onload = function (e) {
         try {
+          const csvSplitKeepEmpty = (line) => {
+            const out = [];
+            let cur = '';
+            let inQ = false;
+            for (let i = 0; i < line.length; i++) {
+              const ch = line[i];
+              if (ch === '"') {
+                if (inQ && line[i + 1] === '"') { cur += '"'; i++; continue; }
+                inQ = !inQ;
+                continue;
+              }
+              if (ch === ',' && !inQ) { out.push(cur); cur = ''; continue; }
+              cur += ch;
+            }
+            out.push(cur);
+            return out.map(v => String(v ?? '').trim());
+          };
+          const normHeader = (h) => String(h || '').replace(/^\uFEFF/, '').replace(/\s+/g, '').trim();
           const text = e.target.result;
           const lines = text.split(/\r?\n/).filter(l => l.trim());
 
@@ -27040,7 +27077,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           let headerRow = null;
           for (let i = 0; i < lines.length; i++) {
             if (lines[i].includes('시군구') && lines[i].includes('거래금액')) {
-              headerRow = lines[i].split(',').map(h => h.replace(/^"|"$/g, '').trim());
+              headerRow = csvSplitKeepEmpty(lines[i]);
               startIdx = i + 1;
               break;
             }
@@ -27049,12 +27086,13 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           // 헤더 인덱스 맵 (동적 컬럼 매핑)
           const hIdx = {};
           if (headerRow) {
-            headerRow.forEach((h, i) => { hIdx[h] = i; });
+            headerRow.forEach((h, i) => { hIdx[normHeader(h)] = i; });
           }
           // 헤더가 없을 경우 기본 인덱스(이전 방식) 사용
           const getCol = (row, names, fallback) => {
             for (const n of names) {
-              if (hIdx[n] !== undefined && row[hIdx[n]] !== undefined && row[hIdx[n]] !== '') return row[hIdx[n]];
+              const key = normHeader(n);
+              if (hIdx[key] !== undefined && row[hIdx[key]] !== undefined && row[hIdx[key]] !== '') return row[hIdx[key]];
             }
             return fallback !== undefined ? fallback : '';
           };
@@ -27065,10 +27103,10 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
           for (let i = startIdx; i < lines.length; i++) {
             const line = lines[i];
-            const row = line.match(/(".*?"|[^",]+)(?=\s*,|\s*$)/g);
+            const row = csvSplitKeepEmpty(line);
             if (!row || row.length < 5) continue;
 
-            const cleaned = row.map(v => v.replace(/^"|"$/g, '').trim());
+            const cleaned = row.map(v => String(v || '').trim());
 
             // 헤더 기반 동적 파싱
             const sigungu = getCol(cleaned, ['시군구'], cleaned[1] || '');
