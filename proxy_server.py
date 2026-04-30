@@ -321,6 +321,12 @@ class ProxyHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urllib.parse.urlparse(self.path)
+        def _read_max_n(payload, default=None):
+            try:
+                v = int(payload.get('max_n', 0))
+                return v if v > 0 else default
+            except Exception:
+                return default
 
         # ★ 신규: HTML에서 토큰/쿠키를 실시간으로 서버에 적용 (py 재시작 불필요)
         if parsed.path == '/api/set_token':
@@ -388,6 +394,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
             swlat = payload.get('swlat', '')
             nelng = payload.get('nelng', '')
             swlng = payload.get('swlng', '')
+            max_n = _read_max_n(payload)
             ids   = payload.get('ids', [])  # 구형 fallback
             if not cisession and not ids:
                 self._error(400, 'cisession 쿠키 또는 ids가 필요합니다')
@@ -400,6 +407,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 nelat=nelat, swlat=swlat,
                 nelng=nelng, swlng=swlng,
                 ids=ids,
+                max_n=max_n,
             )
 
         elif parsed.path == '/api/jumpo':
@@ -418,6 +426,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
             swlat = payload.get('swlat', '')
             nelng = payload.get('nelng', '')
             swlng = payload.get('swlng', '')
+            max_n = _read_max_n(payload)
             if not lat:
                 self._error(400, '좌표(lat/lng)가 필요합니다')
                 return
@@ -428,6 +437,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 lat=lat, lng=lng,
                 nelat=nelat, swlat=swlat,
                 nelng=nelng, swlng=swlng,
+                max_n=max_n,
             )
 
         elif parsed.path == '/api/nemo':
@@ -445,6 +455,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
             swlat = payload.get('swlat', '')
             nelng = payload.get('nelng', '')
             swlng = payload.get('swlng', '')
+            max_n = _read_max_n(payload)
             if not lat:
                 self._error(400, '좌표(lat/lng)가 필요합니다')
                 return
@@ -454,6 +465,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 lat=lat, lng=lng,
                 nelat=nelat, swlat=swlat,
                 nelng=nelng, swlng=swlng,
+                max_n=max_n,
             )
 
         elif parsed.path == '/api/disco':
@@ -471,11 +483,12 @@ class ProxyHandler(BaseHTTPRequestHandler):
             nelng = payload.get('nelng', '')
             swlng = payload.get('swlng', '')
             kakao_rest_key = payload.get('kakao_rest_key', '')
+            max_n = _read_max_n(payload)
             if not lat:
                 self._error(400, '좌표(lat/lng)가 필요합니다')
                 return
             print(f"\n  🟣 디스코 수집 시작 (lat={lat}, lng={lng})...")
-            self._collect_disco(lat=lat, lng=lng, nelat=nelat, swlat=swlat, nelng=nelng, swlng=swlng, kakao_rest_key=kakao_rest_key)
+            self._collect_disco(lat=lat, lng=lng, nelat=nelat, swlat=swlat, nelng=nelng, swlng=swlng, kakao_rest_key=kakao_rest_key, max_n=max_n)
 
         elif parsed.path == '/api/bds':
             length = int(self.headers.get('Content-Length', 0))
@@ -493,11 +506,12 @@ class ProxyHandler(BaseHTTPRequestHandler):
             swlng = payload.get('swlng', '')
             cookie = payload.get('cookie', '')   # ★ 브라우저 쿠키 직접 수신
             kakao_rest_key = payload.get('kakao_rest_key', '')
+            max_n = _read_max_n(payload)
             if not lat:
                 self._error(400, '좌표(lat/lng)가 필요합니다')
                 return
             print(f"\n  🌍 부동산플래닛 수집 시작 (lat={lat}, lng={lng})...")
-            self._collect_bds(lat=lat, lng=lng, nelat=nelat, swlat=swlat, nelng=nelng, swlng=swlng, cookie=cookie, kakao_rest_key=kakao_rest_key)
+            self._collect_bds(lat=lat, lng=lng, nelat=nelat, swlat=swlat, nelng=nelng, swlng=swlng, cookie=cookie, kakao_rest_key=kakao_rest_key, max_n=max_n)
 
         elif parsed.path == '/api/naver_map':
             # ★ 신규: 토큰 없이 모바일 API로 지도 바운딩박스 수집
@@ -1932,7 +1946,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
 
     def _collect_assa(self, cisession='', kakao_rest_key='',
                        lat='', lng='', nelat='', swlat='', nelng='', swlng='',
-                       ids=None):
+                       ids=None, max_n=None):
         """
         아싸점포거래소 수집.
         - 신규 방식: cisession 쿠키 + 바운딩박스 → /item/get_item_json/map/0/0/0
@@ -2045,61 +2059,96 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 # 쿠키에 lat/lng/level 포함 (사이트 방식 그대로)
                 extra_cookie = f'lat={lat}; lng={lng}; level=2'
                 headers = make_headers(extra_cookie)
-                body_params = urllib.parse.urlencode({
-                    'lat':          lat,
-                    'lng':          lng,
-                    'nelat':        nelat,
-                    'swlat':        swlat,
-                    'nelng':        nelng,
-                    'swlng':        swlng,
-                    'offset':       '30',
-                    'start':        '0',
-                    'level':        '2',
-                    'franchise_id': '',
-                }).encode('utf-8')
+                offset = 30
+                start = 0
+                max_target = max_n if (max_n and max_n > 0) else None
+                map_ids = []
+                seen_ids = set()
+                map_fallback_items = []
 
-                req = urllib.request.Request(
-                    ASSA_BASE + '/item/get_item_json/map/0/0/0',
-                    data=body_params,
-                    headers=headers,
-                    method='POST'
-                )
-                print(f"  🌐 지도 API 호출: /item/get_item_json/map/0/0/0")
-                with _urlopen(req, timeout=15) as resp:
-                    raw = json.loads(resp.read().decode('utf-8'))
+                while True:
+                    body_params = urllib.parse.urlencode({
+                        'lat':          lat,
+                        'lng':          lng,
+                        'nelat':        nelat,
+                        'swlat':        swlat,
+                        'nelng':        nelng,
+                        'swlng':        swlng,
+                        'offset':       str(offset),
+                        'start':        str(start),
+                        'level':        '2',
+                        'franchise_id': '',
+                    }).encode('utf-8')
 
-                item_map = raw.get('item_map', [])
-                item_detail_one = raw.get('item', [])  # 이미 포함된 상세 1개
-
-                print(f"  📍 item_map: {len(item_map)}개 ID 수신")
-
-                # item_map의 ID 목록으로 일괄 상세 조회
-                if item_map:
-                    map_ids = [str(it.get('id', '')) for it in item_map if it.get('id')]
-                    ids_str = ','.join(map_ids) + ','
-                    body2 = f'ids={urllib.parse.quote(ids_str)}'.encode('utf-8')
-                    req2 = urllib.request.Request(
-                        ASSA_BASE + '/item/get_item_json/',
-                        data=body2,
-                        headers=make_headers(),
+                    req = urllib.request.Request(
+                        ASSA_BASE + '/item/get_item_json/map/0/0/0',
+                        data=body_params,
+                        headers=headers,
                         method='POST'
                     )
-                    print(f"  📦 일괄 상세 조회: {len(map_ids)}개 ID")
-                    with _urlopen(req2, timeout=20) as resp2:
-                        raw2 = resp2.read().decode('utf-8')
-                    detail_raw = json.loads(raw2)
-                    if isinstance(detail_raw, list):
-                        all_items_raw = detail_raw
-                    elif isinstance(detail_raw, dict):
-                        # ids= 방식 실패 시 (에러 응답) → item_detail_one만 사용
-                        if detail_raw.get('error') or not detail_raw.get('data'):
-                            print(f"  ⚠️ 일괄 조회 실패, item 단건 데이터 사용")
-                            all_items_raw = item_detail_one if isinstance(item_detail_one, list) else []
+                    print(f"  🌐 지도 API 호출: /item/get_item_json/map/0/0/0 (start={start}, offset={offset})")
+                    with _urlopen(req, timeout=15) as resp:
+                        raw = json.loads(resp.read().decode('utf-8'))
+
+                    item_map = raw.get('item_map', []) if isinstance(raw, dict) else []
+                    item_detail_one = raw.get('item', []) if isinstance(raw, dict) else []
+                    if item_detail_one:
+                        if isinstance(item_detail_one, list):
+                            map_fallback_items.extend(item_detail_one)
                         else:
-                            all_items_raw = detail_raw.get('data') or detail_raw.get('list') or []
-                    # 결과가 없으면 이미 받은 단건이라도 사용
-                    if not all_items_raw and item_detail_one:
-                        all_items_raw = item_detail_one if isinstance(item_detail_one, list) else [item_detail_one]
+                            map_fallback_items.append(item_detail_one)
+
+                    added_this_page = 0
+                    for it in item_map:
+                        iid = str(it.get('id', '')).strip()
+                        if not iid or iid in seen_ids:
+                            continue
+                        seen_ids.add(iid)
+                        map_ids.append(iid)
+                        added_this_page += 1
+                        if max_target and len(map_ids) >= max_target:
+                            break
+                    print(f"  📍 item_map 누적 ID: {len(map_ids)}개")
+
+                    if max_target and len(map_ids) >= max_target:
+                        break
+                    if added_this_page < offset:
+                        break
+                    start += offset
+                    if start > 3000:
+                        break
+
+                # item_map의 ID 목록으로 상세 조회 (chunk)
+                if map_ids:
+                    if max_target:
+                        map_ids = map_ids[:max_target]
+                    print(f"  📦 상세 조회 대상 ID: {len(map_ids)}개")
+                    chunk_size = 80
+                    detail_rows = []
+                    for i in range(0, len(map_ids), chunk_size):
+                        chunk = map_ids[i:i + chunk_size]
+                        ids_str = ','.join(chunk) + ','
+                        body2 = f'ids={urllib.parse.quote(ids_str)}'.encode('utf-8')
+                        req2 = urllib.request.Request(
+                            ASSA_BASE + '/item/get_item_json/',
+                            data=body2,
+                            headers=make_headers(),
+                            method='POST'
+                        )
+                        with _urlopen(req2, timeout=20) as resp2:
+                            raw2 = resp2.read().decode('utf-8')
+                        detail_raw = json.loads(raw2)
+                        if isinstance(detail_raw, list):
+                            detail_rows.extend(detail_raw)
+                        elif isinstance(detail_raw, dict):
+                            rows = detail_raw.get('data') or detail_raw.get('list') or detail_raw.get('items') or []
+                            if isinstance(rows, list):
+                                detail_rows.extend(rows)
+                    all_items_raw = detail_rows
+
+                # 결과가 없으면 지도 응답에 포함된 단건 fallback 사용
+                if not all_items_raw and map_fallback_items:
+                    all_items_raw = map_fallback_items
 
             # ── 구형 fallback: ids 배열로 직접 상세 조회 ────────────────
             elif ids:
@@ -2121,6 +2170,9 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 self._ok(json.dumps({'status': 'error', 'message': 'cisession과 좌표, 또는 ids가 필요합니다', 'data': []}, ensure_ascii=False))
                 return
 
+            if max_n and max_n > 0 and isinstance(all_items_raw, list):
+                all_items_raw = all_items_raw[:max_n]
+
             print(f"  📋 {len(all_items_raw)}개 매물 수신")
 
             if not all_items_raw:
@@ -2128,6 +2180,9 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 return
 
             result_items = parse_items(all_items_raw)
+            if max_n and max_n > 0:
+                result_items = result_items[:max_n]
+                print(f"  🎯 상권킹 최대 개수 적용: {len(result_items)}개")
 
             # 역지오코딩 (소재지가 없는 매물만)
             if kakao_rest_key:
@@ -2171,7 +2226,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
             self._ok(json.dumps({'status': 'error', 'message': str(e), 'data': []}, ensure_ascii=False))
 
 
-    def _collect_disco(self, lat='', lng='', nelat='', swlat='', nelng='', swlng='', kakao_rest_key=''):
+    def _collect_disco(self, lat='', lng='', nelat='', swlat='', nelng='', swlng='', kakao_rest_key='', max_n=None):
         """디스코 실거래가 수집: /home/hello/ API"""
         try:
             ts = int(time.time() * 1000)
@@ -2276,6 +2331,10 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     '출처':          '디스코',
                 })
 
+            if max_n and max_n > 0:
+                result_items = result_items[:max_n]
+                print(f"  🎯 상권킹 최대 개수 적용: {len(result_items)}개")
+
             # ★ 역지오코딩: 카카오 REST API로 좌표→주소 변환
             if kakao_rest_key:
                 to_geo = [it for it in result_items if it.get('lat') and it.get('lng') and not it.get('소재지')]
@@ -2318,7 +2377,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
             print(f"  ❌ 디스코 수집 실패: {e}\n{traceback.format_exc()}")
             self._ok(json.dumps({'status': 'error', 'message': str(e), 'data': []}, ensure_ascii=False))
 
-    def _collect_bds(self, lat='', lng='', nelat='', swlat='', nelng='', swlng='', cookie='', kakao_rest_key=''):
+    def _collect_bds(self, lat='', lng='', nelat='', swlat='', nelng='', swlng='', cookie='', kakao_rest_key='', max_n=None):
         """부동산플래닛 실거래가 수집: getRealpriceMapMarker.ytp
         
         ★ v120 변경사항:
@@ -2356,6 +2415,8 @@ class ProxyHandler(BaseHTTPRequestHandler):
             _swlat = float(swlat) if swlat else _lat - 0.008
             _nelng = float(nelng) if nelng else _lng + 0.008
             _swlng = float(swlng) if swlng else _lng - 0.008
+            request_limit = max_n if (max_n and max_n > 0) else 1000
+            request_limit = max(50, min(int(request_limit), 2000))
 
             print(f"  🌍 부동산플래닛 수집 시작 (lat={_lat}, lng={_lng})...")
 
@@ -2443,7 +2504,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     'y1': str(_swlng),   # swlng (남서 경도)
                     'y2': str(_nelng),   # nelng (북동 경도)
                     'zoom': '18',        # ★ 실제 요청과 동일하게 18
-                    'limit_cnt': '150',  # ★ 실제 요청과 동일하게 150
+                    'limit_cnt': str(request_limit),
                     't_type': t_type_val,
                     'search_erasure_status': 'N',
                 })
@@ -2635,6 +2696,10 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     '_bldg_area_m2':  float(d['bldg_area_m2']) if d.get('bldg_area_m2') else None,
                 })
 
+            if max_n and max_n > 0:
+                result_items = result_items[:max_n]
+                print(f"  🎯 상권킹 최대 개수 적용: {len(result_items)}개")
+
             # ★ 역지오코딩: 플래닛은 원본 지번주소를 대표 소재지로 유지하고, 도로명주소만 보조로 채움
             if kakao_rest_key:
                 to_geo = [it for it in result_items if it.get('lat') and it.get('lng')]
@@ -2677,7 +2742,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
 
 
     def _collect_nemo(self, kakao_rest_key='',
-                      lat='', lng='', nelat='', swlat='', nelng='', swlng=''):
+                      lat='', lng='', nelat='', swlat='', nelng='', swlng='', max_n=None):
         """네모 수집: www.nemoapp.kr/api/store/search-list"""
         NEMO_API = 'https://www.nemoapp.kr/api/store/search-list'
 
@@ -2807,18 +2872,6 @@ class ProxyHandler(BaseHTTPRequestHandler):
             _nelng = float(nelng) if nelng else _lng + 0.005
             _swlng = float(swlng) if swlng else _lng - 0.005
 
-            params = urllib.parse.urlencode({
-                'CompletedOnly': 'false',
-                'NELat': _nelat,
-                'NELng': _nelng,
-                'SWLat': _swlat,
-                'SWLng': _swlng,
-                'Zoom': 17,
-                'SortBy': 29,
-                'PageIndex': 0,
-            })
-            url = f'{NEMO_API}?{params}'
-
             headers = {
                 'accept': 'application/json, text/plain, */*',
                 'accept-language': 'ko-KR,ko;q=0.9',
@@ -2826,13 +2879,39 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 'referer': 'https://www.nemoapp.kr/',
                 'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
             }
-
-            req = urllib.request.Request(url, headers=headers)
-            print(f"  🌐 네모 API 호출...")
-            with _urlopen(req, timeout=15) as resp:
-                raw = json.loads(resp.read().decode('utf-8'))
-
-            items = raw.get('items', [])
+            target_n = max_n if (max_n and max_n > 0) else None
+            items = []
+            page_index = 0
+            while True:
+                params = urllib.parse.urlencode({
+                    'CompletedOnly': 'false',
+                    'NELat': _nelat,
+                    'NELng': _nelng,
+                    'SWLat': _swlat,
+                    'SWLng': _swlng,
+                    'Zoom': 17,
+                    'SortBy': 29,
+                    'PageIndex': page_index,
+                })
+                url = f'{NEMO_API}?{params}'
+                req = urllib.request.Request(url, headers=headers)
+                print(f"  🌐 네모 API 호출... (page={page_index})")
+                with _urlopen(req, timeout=15) as resp:
+                    raw = json.loads(resp.read().decode('utf-8'))
+                page_items = raw.get('items', []) if isinstance(raw, dict) else []
+                if not page_items:
+                    break
+                items.extend(page_items)
+                if target_n and len(items) >= target_n:
+                    break
+                if len(page_items) < 20:
+                    break
+                page_index += 1
+                if page_index > 50:
+                    break
+            if target_n:
+                items = items[:target_n]
+                print(f"  🎯 상권킹 최대 개수 적용: {len(items)}개")
             print(f"  📋 {len(items)}개 매물 수신")
 
             if not items:
@@ -2955,7 +3034,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
             self._ok(json.dumps({'status': 'error', 'message': str(e), 'data': []}, ensure_ascii=False))
 
     def _collect_jumpo(self, cookie='', kakao_rest_key='',
-                        lat='', lng='', nelat='', swlat='', nelng='', swlng=''):
+                        lat='', lng='', nelat='', swlat='', nelng='', swlng='', max_n=None):
         """점포라인 수집: api.jumpoline.com/Api/Maps/findrt"""
         JUMPO_API = 'https://api.jumpoline.com/Api/Maps/findrt'
 
@@ -3004,6 +3083,9 @@ class ProxyHandler(BaseHTTPRequestHandler):
 
             items = raw.get('contents', [])
             print(f"  📋 {len(items)}개 매물 수신")
+            if max_n and max_n > 0:
+                items = items[:max_n]
+                print(f"  🎯 상권킹 최대 개수 적용: {len(items)}개")
 
             if not items:
                 self._ok(json.dumps({'status': 'warn', 'message': '매물 없음 (해당 지역 매물 없거나 쿠키 필요)', 'data': []}, ensure_ascii=False))
@@ -3101,6 +3183,8 @@ class ProxyHandler(BaseHTTPRequestHandler):
                         except: pass
                     print(f"  ✅ 주소 변환 완료: {converted}건")
 
+            if max_n and max_n > 0:
+                result_items = result_items[:max_n]
             msg = f'{len(result_items)}개 수집 완료'
             print(f"  ✅ {msg}")
             self._ok(json.dumps({'status': 'success', 'message': msg, 'data': result_items}, ensure_ascii=False))

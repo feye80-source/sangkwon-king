@@ -15147,6 +15147,7 @@ window.wr2SummaryCancelEdit = function() {
     // ── 디스코 자동수집 ──
     async function collectDiscoAuto() {
       const proxyBase = window.PROXY_URL;
+      const maxN = getCollectMaxCountForRequest();
 
       let bounds = window._discoBounds || null;
       const regionInput = (document.getElementById('discoRegionInput')?.value || '').trim();
@@ -15186,7 +15187,8 @@ window.wr2SummaryCancelEdit = function() {
             lat: String(bounds.lat), lng: String(bounds.lng),
             nelat: String(bounds.nelat || ''), swlat: String(bounds.swlat || ''),
             nelng: String(bounds.nelng || ''), swlng: String(bounds.swlng || ''),
-            kakao_rest_key: localStorage.getItem('kakao_rest_key') || '58c8f459e2c2de75d3bf136a9978388a'
+            kakao_rest_key: localStorage.getItem('kakao_rest_key') || '58c8f459e2c2de75d3bf136a9978388a',
+            max_n: maxN
           })
         });
         data = await resp.json();
@@ -15204,6 +15206,7 @@ window.wr2SummaryCancelEdit = function() {
     // ── 부동산플래닛 자동수집 ──
     async function collectBdsAuto() {
       const proxyBase = window.PROXY_URL;
+      const maxN = getCollectMaxCountForRequest();
 
       let bounds = window._bdsBounds || null;
       const regionInput = (document.getElementById('bdsRegionInput')?.value || '').trim();
@@ -15243,7 +15246,8 @@ window.wr2SummaryCancelEdit = function() {
             lat: String(bounds.lat), lng: String(bounds.lng),
             nelat: String(bounds.nelat), swlat: String(bounds.swlat),
             nelng: String(bounds.nelng), swlng: String(bounds.swlng),
-            kakao_rest_key: localStorage.getItem('kakao_rest_key') || '58c8f459e2c2de75d3bf136a9978388a'
+            kakao_rest_key: localStorage.getItem('kakao_rest_key') || '58c8f459e2c2de75d3bf136a9978388a',
+            max_n: maxN
           })
         });
         data = await resp.json();
@@ -27378,7 +27382,19 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         const umd = _txXmlText(item, ['umdNm', 'UMD_NM', '법정동']);
         const jibun = _txXmlText(item, ['jibun', 'JIBUN', '지번']);
         const bld = _txXmlText(item, ['buildingNm', 'BLDG_NM', '건물명']);
-        const floor = _txXmlText(item, ['flr', 'FLR', '층']);
+        let floor = _txXmlText(item, [
+          'flr', 'FLR', '층', '층수',
+          'flrNo', 'FLR_NO', 'flr_no',
+          'floor', 'FLOOR', 'floorNo', 'FLOOR_NO', 'floor_no'
+        ]);
+        if (!floor) {
+          floor = _pickAnyNumeric(item, tag => /(flr|floor|층|층수)/i.test(tag));
+        }
+        if (floor) {
+          const fs = String(floor).trim();
+          const m = fs.match(/([Bb]?\d+)/);
+          if (m) floor = m[1].toUpperCase();
+        }
         const area = _txParseFloat(_txXmlText(item, ['archArea', 'ARCH_AREA', 'excluUseAr', 'EXCLU_USE_AR', 'buildingAr', 'BLDG_AREA', '전용면적']));
         const dealDay = _txXmlText(item, ['dealDay', 'DEAL_DAY', '거래일', '계약일']);
         const address = [regionLabel, umd, jibun].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
@@ -37681,6 +37697,11 @@ ${newsContext}
       }
     }
 
+    function getCollectMaxCountForRequest() {
+      const raw = parseInt(document.getElementById('efMaxCount')?.value || '', 10);
+      return (!isNaN(raw) && raw > 0) ? raw : null;
+    }
+
     // ── 네이버 자동수집 (토큰 불필요) ───────────────────
     function naverUseMapCenter() {
       if (typeof map === 'undefined' || !map) {
@@ -37724,11 +37745,10 @@ ${newsContext}
       const cookie = (document.getElementById('naverCookie')?.value || localStorage.getItem('naver_cookie') || '').trim();
       const areaMode = (typeof getAreaSearchMode === 'function') ? getAreaSearchMode() : 'bounds';
       const radiusCfg = (typeof getRadiusConfig === 'function') ? getRadiusConfig() : { radiusM: 300, maxN: 20 };
-      const efMaxRaw = parseInt(document.getElementById('efMaxCount')?.value || '', 10);
-      const efMaxCount = (!isNaN(efMaxRaw) && efMaxRaw > 0) ? efMaxRaw : null;
+      const efMaxCount = getCollectMaxCountForRequest();
       const serverMaxN = areaMode === 'radius'
-        ? radiusCfg.maxN
-        : Math.max(efMaxCount || 0, 300);
+        ? (efMaxCount || radiusCfg.maxN || 20)
+        : (efMaxCount || 2000);
       try {
         await fetch(proxyBase + '/', { signal: window._skTimeoutSignal(2000), mode: 'no-cors' });
       } catch (_) {
@@ -38168,6 +38188,7 @@ ${newsContext}
     // 자동 수집 (py 서버 경유)
     async function collectJumpoAuto() {
       const proxyBase = window.PROXY_URL;
+      const maxN = getCollectMaxCountForRequest();
 
       let bounds = window._jumpoBounds || null;
       const regionInput = (document.getElementById('jumpoRegionInput')?.value || '').trim();
@@ -38217,6 +38238,7 @@ ${newsContext}
             swlat: String(bounds.swlat),
             nelng: String(bounds.nelng),
             swlng: String(bounds.swlng),
+            max_n: maxN,
           })
         });
         data = await resp.json();
@@ -38277,6 +38299,7 @@ ${newsContext}
     // ── 네모 자동수집 ────────────────────────────────────
     async function collectNemoAuto() {
       const proxyBase = window._getProxyBase();
+      const maxN = getCollectMaxCountForRequest();
 
       let bounds = window._nemoBounds || null;
       const regionInput = (document.getElementById('nemoRegionInput')?.value || '').trim();
@@ -38326,6 +38349,7 @@ ${newsContext}
             swlat: String(bounds.swlat),
             nelng: String(bounds.nelng),
             swlng: String(bounds.swlng),
+            max_n: maxN,
           })
         });
         data = await resp.json();
@@ -38774,6 +38798,7 @@ ${newsContext}
       }
 
       const proxyBase = window.PROXY_URL;
+      const maxN = getCollectMaxCountForRequest();
 
       // 좌표 결정: 지도 중심 > 카카오 지오코더로 주소 변환 > 기본값
       let bounds = window._assaBounds || null;
@@ -38831,6 +38856,7 @@ ${newsContext}
             swlat: String(bounds.swlat),
             nelng: String(bounds.nelng),
             swlng: String(bounds.swlng),
+            max_n: maxN,
           })
         });
         data = await resp.json();
