@@ -11312,6 +11312,9 @@ window.wr2SummaryCancelEdit = function() {
                 txItem.floor = txItem.floor || txItem.data.해당층 || txItem.data.층수 || '-';
                 txItem.year = txItem.year || String(txItem.data.거래년월 || '').slice(0, 4);
                 txItem.month = txItem.month || String(txItem.data.거래년월 || '').slice(4, 6);
+                // 스냅샷 복원 시에는 카드 단위 고유키를 강제해
+                // 동일 가격/주소 실거래가 여러 건이어도 1건으로 합쳐지지 않게 한다.
+                txItem.__snapDupKey = String(c.id || ('tx_' + idx));
                 showTransactionMarker(txItem);
               } else {
                 addMapMarker(loadItem, coords);
@@ -28126,7 +28129,10 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const position = new kakao.maps.LatLng(item.lat, item.lng);
       // ★ [BUG FIX v123] 카운터+랜덤 방식으로 id 생성 → 드래그 버그 해결
       // 중복 방지는 데이터 비교(dupKey)로 별도 처리
-      const dupKey = (item.address || item.dong || '') + '_' + (item.year || '') + '_' + (item.month || '') + '_' + (item.price || '') + '_' + (item.floor || '');
+      const snapDupKey = item && item.__snapDupKey ? String(item.__snapDupKey) : '';
+      const dupKey = snapDupKey
+        ? ('snap_' + snapDupKey)
+        : ((item.address || item.dong || '') + '_' + (item.year || '') + '_' + (item.month || '') + '_' + (item.price || '') + '_' + (item.floor || ''));
       const alreadyExists = mapOverlays.some(o => o.transactionDupKey === dupKey);
       if (alreadyExists) return;
       const id = stableId('transaction', dupKey);
