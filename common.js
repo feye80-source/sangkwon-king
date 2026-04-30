@@ -11293,7 +11293,29 @@ window.wr2SummaryCancelEdit = function() {
               loadItem.lng = lng;
               loadItem.data.lat = lat;
               loadItem.data.lng = lng;
-              addMapMarker(loadItem, coords);
+              const _src = String(loadItem.source || loadItem.data.출처 || '');
+              const _isTxSnap =
+                loadItem.mode === 'transaction' ||
+                loadItem.propertyType === 'transaction' ||
+                _src === '국토부실거래API' ||
+                _src === 'RTMS_API' ||
+                _src === '실거래';
+              if (_isTxSnap && typeof showTransactionMarker === 'function') {
+                // 실거래 카드는 전용 생성기(stableId/중복키 기준)로 복원해야
+                // 스냅샷 저장 당시 카드 id와 일치하고 누락/중복이 발생하지 않는다.
+                const txItem = Object.assign({}, loadItem);
+                txItem.mode = 'transaction';
+                txItem.source = txItem.source || '국토부실거래API';
+                txItem.name = txItem.name || txItem.name2 || txItem.data.건물명 || txItem.data.소재지 || '실거래';
+                txItem.address = txItem.address || txItem.data.소재지 || '';
+                txItem.price = txItem.price || txItem.data.실거래가_만원 || txItem.data.매매가_만원 || 0;
+                txItem.floor = txItem.floor || txItem.data.해당층 || txItem.data.층수 || '-';
+                txItem.year = txItem.year || String(txItem.data.거래년월 || '').slice(0, 4);
+                txItem.month = txItem.month || String(txItem.data.거래년월 || '').slice(4, 6);
+                showTransactionMarker(txItem);
+              } else {
+                addMapMarker(loadItem, coords);
+              }
             } catch (e) {
               console.warn('[swLoadSnap]', e);
             }
