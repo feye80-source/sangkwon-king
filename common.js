@@ -8340,12 +8340,15 @@ window.wr2SummaryCancelEdit = function() {
     }
     function _toApiTransactionRows(arr) {
       if (!Array.isArray(arr)) return [];
-      return arr.filter(_isApiTransactionRow).map(item => ({
+      return arr.filter(_isApiTransactionRow).map(item => {
+        const floorRaw = item.floor ?? (item.data && (item.data.해당층 ?? item.data.층수 ?? item.data.floor ?? item.data.fl ?? item.data.flr));
+        const floorText = (floorRaw == null || floorRaw === '') ? '-' : String(floorRaw).trim();
+        return {
         name: item.name || '',
         address: item.address || item.sigungu || (item.dong ? (item.sigungu || '') + ' ' + item.dong : ''),
         price: item.price,
         area: item.area || '-',
-        floor: item.floor || '-',
+        floor: floorText,
         year: item.year || '',
         month: item.month || '',
         day: item.day || '',
@@ -8366,13 +8369,14 @@ window.wr2SummaryCancelEdit = function() {
           실거래가_만원: item.price || '',
           거래년월: String(item.year || '') + String(item.month || ''),
           전용면적_m2: item.area || '',
-          해당층: item.floor || '',
-          층수: item.floor || '',
+          해당층: floorText === '-' ? '' : floorText,
+          층수: floorText === '-' ? '' : floorText,
           매물유형: '실거래',
           거래유형: '실거래',
           출처: item.source || '국토부실거래API'
         }, (item.data && typeof item.data === 'object') ? item.data : {})
-      }));
+      };
+      });
     }
     function _applyTxApiOnlyUI() {
       if (!TX_API_ONLY_MODE) return;
@@ -27421,7 +27425,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         const jibun = _txXmlText(item, ['jibun', 'JIBUN', '지번']);
         const bld = _txXmlText(item, ['buildingNm', 'BLDG_NM', '건물명']);
         let floor = _txXmlText(item, [
-          'flr', 'FLR', '층', '층수',
+          'fl', 'FL', 'flr', 'FLR', '층', '층수',
           'flrNo', 'FLR_NO', 'flr_no',
           'floor', 'FLOOR', 'floorNo', 'FLOOR_NO', 'floor_no'
         ]);
