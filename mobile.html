@@ -4169,8 +4169,7 @@ input, textarea, select {
   window.mbOpenSavedDetail = function(itemId) {
     try {
       var items = ((window._idbCache&&window._idbCache['re_sv'])||JSON.parse(localStorage.getItem('re_sv')||'[]'));
-      var item = itemId ? items.find(function(x) { return x.id === itemId; }) : null;
-      if (!item && !isNaN(itemId)) item = items[parseInt(itemId)];
+      var item = _mbFindById(items, itemId);
       if (!item) { mbToast('매물 정보를 찾을 수 없어요', 'err'); return; }
 
       var bs     = document.getElementById('mb-map-bs');
@@ -4479,10 +4478,10 @@ input, textarea, select {
         actions.innerHTML = '';
         var iid = item.id || '';
         var mode2 = item.mode || '';
-        var url2 = (item.data || {})['상세URL'] || (item.data || {})['옥션원URL'] || '';
+        var url2 = _mbGetOriginalUrl(item);
         var auctionOneUrl = (item.data || {})['옥션원URL'] || '';
-        var naverMapUrl = addr ? ('https://map.naver.com/v5/search/' + encodeURIComponent(addr)) : '';
-        var naverLandUrl = addr ? ('https://new.land.naver.com/offices?query=' + encodeURIComponent(addr) + '&a=SG:SMS:APTHGJ&e=RETAIL') : '';
+        var naverMapUrl = _mbGetNaverMapUrl(item, addr);
+        var naverLandUrl = _mbGetNaverLandUrl(item, addr);
         var planetUrl = src === '부동산플래닛' ? 'https://www.bdsplanet.com/map/realprice_map.ytp' : '';
 
         // 상세
@@ -4612,7 +4611,7 @@ input, textarea, select {
         // re_sv에서 아이템 찾아 좌표로 이동
         var sv = [];
         try { sv = ((window._idbCache&&window._idbCache['re_sv'])||JSON.parse(localStorage.getItem('re_sv')||'[]')); } catch(e) {}
-        var it = sv.find(function(x){ return x.id === itemId; });
+        var it = _mbFindById(sv, itemId);
         if (it) {
           var lat = parseFloat(it.lat), lng = parseFloat(it.lng);
           if (!isNaN(lat) && !isNaN(lng) && window.map) {
@@ -4967,6 +4966,23 @@ input, textarea, select {
       _mbPersistRoomsNow(payload.rooms, payload.activeRoomId);
     }, 220);
   }
+
+  async function _mbForceSyncRoomsNow() {
+    try {
+      var rooms = (window._wrGetRoomsCache && window._wrGetRoomsCache())
+        || ((window._idbCache && window._idbCache['wr2_rooms'])
+          || JSON.parse(localStorage.getItem('wr2_rooms') || '[]'));
+      if (!Array.isArray(rooms) || !rooms.length) return false;
+      if (typeof window._sbSaveRooms === 'function') {
+        await window._sbSaveRooms(rooms.filter(function(r){ return r && r.id; }));
+        return true;
+      }
+      return false;
+    } catch (e) {
+      console.warn('[mb force room sync]', e);
+      return false;
+    }
+  }
   function _mbPersistSections(sections) {
     if (!Array.isArray(sections)) return;
     if (window._wrPersistSections) {
@@ -5061,6 +5077,82 @@ input, textarea, select {
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
+  }
+
+  function _mbNormSrcKey(src) {
+    return String(src || '').trim().toLowerCase().replace(/\s+/g, '');
+  }
+
+  function _mbIdKey(v) {
+    return String(v == null ? '' : v).trim();
+  }
+
+  function _mbSameId(a, b) {
+    var ak = _mbIdKey(a);
+    var bk = _mbIdKey(b);
+    return !!ak && !!bk && ak === bk;
+  }
+
+  function _mbFindById(list, id) {
+    var target = _mbIdKey(id);
+    if (!target || !Array.isArray(list)) return null;
+    for (var i = 0; i < list.length; i += 1) {
+      var row = list[i];
+      if (row && _mbSameId(row.id, target)) return row;
+    }
+    return null;
+  }
+
+  function _mbNormAddr(raw) {
+    return String(raw || '').replace(/\s+/g, ' ').trim();
+  }
+
+  function _mbGetItemAddr(item, addrHint) {
+    var d = (item && item.data) || {};
+    var base = addrHint || d['소재지'] || d['도로명주소'] || d['지번주소'] || d['주소'] || d.address || item && (item.address || item.title) || '';
+    return _mbNormAddr(base);
+  }
+
+  function _mbGetOriginalUrl(item) {
+    var d = (item && item.data) || {};
+    var srcKey = _mbNormSrcKey((item && item.source) || d['출처'] || '');
+    var isNaverSrc = (srcKey === '네이버부동산' || srcKey === '네이버' || srcKey === 'naver');
+    var detailUrl = String(d['상세URL'] || '').trim();
+    var auctionOneUrl = String(d['옥션원URL'] || '').trim();
+    if (srcKey === '네모' && detailUrl.indexOf('/store/') >= 0 && detailUrl.indexOf('/share/store/') < 0) {
+      detailUrl = detailUrl.replace('/store/', '/share/store/');
+    }
+    if (detailUrl && /new\.land\.naver\.com/i.test(detailUrl) && !isNaverSrc) {
+      detailUrl = '';
+    }
+    return detailUrl || auctionOneUrl || '';
+  }
+
+  function _mbGetNaverMapUrl(item, addrHint) {
+    var addr = _mbGetItemAddr(item, addrHint);
+    return addr ? ('https://map.naver.com/v5/search/' + encodeURIComponent(addr)) : '';
+  }
+
+  function _mbGetNaverLandUrl(item, addrHint) {
+    var d = (item && item.data) || {};
+    var srcKey = _mbNormSrcKey((item && item.source) || d['출처'] || '');
+    var isNaverSrc = (srcKey === '네이버부동산' || srcKey === '네이버' || srcKey === 'naver');
+    var detailUrl = String(d['상세URL'] || '').trim();
+    if (isNaverSrc && detailUrl && /new\.land\.naver\.com/i.test(detailUrl)) return detailUrl;
+    var articleNo = String(d['매물번호'] || '').trim();
+    if (isNaverSrc && /^\d{6,14}$/.test(articleNo)) {
+      return 'https://new.land.naver.com/offices?articleNo=' + encodeURIComponent(articleNo);
+    }
+    var addr = _mbGetItemAddr(item, addrHint);
+    if (addr) {
+      return 'https://new.land.naver.com/offices?query=' + encodeURIComponent(addr) + '&a=SG:SMS:APTHGJ&e=RETAIL';
+    }
+    var lat = parseFloat(d.lat || (item && item.lat));
+    var lng = parseFloat(d.lng || (item && item.lng));
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      return 'https://new.land.naver.com/offices?ms=' + lat + ',' + lng + ',17&a=SG:SMS:APTHGJ&e=RETAIL';
+    }
+    return '';
   }
 
   function _mbOpenExternalUrl(url, opts) {
@@ -5745,6 +5837,7 @@ input, textarea, select {
     if (!room) return;
     var roomId = room.id;
     (async function() {
+      window.__mbRoomLocalWriteUntil = Math.max(Number(window.__mbRoomLocalWriteUntil || 0), Date.now() + 180000);
       window.__wr2UploadBusy = Number(window.__wr2UploadBusy || 0) + 1;
       var ok = 0;
       var fail = 0;
@@ -5775,7 +5868,8 @@ input, textarea, select {
             targetRoom.captureImages = targetRoom.captureImages.concat(entries);
           }, { immediate: true });
         }
-        window.__mbRoomLocalWriteUntil = Date.now() + 45000;
+        window.__mbRoomLocalWriteUntil = Date.now() + 180000;
+        await _mbForceSyncRoomsNow();
         if (ok && latestRoom && window.wr2PushActivity) window.wr2PushActivity(latestRoom, '작업 이미지 ' + ok + '개를 추가했습니다', latestRoom.phase || latestRoom.status);
         if (latestRoom) _mbRenderOvCapture(latestRoom);
         if (ok) mbToast('작업 이미지 ' + ok + '개 업로드됨', fail ? 'warn' : 'ok');
@@ -5873,6 +5967,7 @@ input, textarea, select {
     var roomId = room.id;
     var noteId = note.id;
     (async function() {
+      window.__mbRoomLocalWriteUntil = Math.max(Number(window.__mbRoomLocalWriteUntil || 0), Date.now() + 180000);
       window.__wr2UploadBusy = Number(window.__wr2UploadBusy || 0) + 1;
       var ok = 0;
       var fail = 0;
@@ -5914,7 +6009,8 @@ input, textarea, select {
             targetRoom.lastNoteId = noteId;
           }, { immediate: true });
         }
-        window.__mbRoomLocalWriteUntil = Date.now() + 45000;
+        window.__mbRoomLocalWriteUntil = Date.now() + 180000;
+        await _mbForceSyncRoomsNow();
         if (ok && latestRoom && window.wr2PushActivity) window.wr2PushActivity(latestRoom, '노트 첨부 ' + ok + '개를 추가했습니다', latestRoom.phase || latestRoom.status);
         if (latestRoom) {
           _mbRenderNoteAttachments(latestRoom);
@@ -6356,14 +6452,12 @@ input, textarea, select {
     if (d['사건번호']) rows.push(['사건번호', d['사건번호']]);
     if (d['매각기일']||d['매각일']) rows.push(['매각기일', d['매각기일']||d['매각일']]);
     if (nm.수익률) rows.push(['수익률', '<span style="color:#4ade80;">'+nm.수익률.toFixed(1)+'%</span>']);
-    var detailUrl = d['상세URL']||d['옥션원URL']||'';
+    var detailUrl = _mbGetOriginalUrl(item);
     var auctionOneUrl = d['옥션원URL'] || '';
-    var mapUrl = addr ? ('https://map.naver.com/v5/search/' + encodeURIComponent(addr)) : '';
-    var landUrl = addr ? ('https://new.land.naver.com/offices?query=' + encodeURIComponent(addr) + '&a=SG:SMS:APTHGJ&e=RETAIL') : '';
+    var mapUrl = _mbGetNaverMapUrl(item, addr);
+    var landUrl = _mbGetNaverLandUrl(item, addr);
     var planetUrl = src === '부동산플래닛' ? 'https://www.bdsplanet.com/map/realprice_map.ytp' : '';
     var firstPdfDoc = _mbFindPrimaryPdfDoc(item);
-    if (src==='네모'&&detailUrl.indexOf('/store/')!==-1&&detailUrl.indexOf('/share/store/')===-1)
-      detailUrl = detailUrl.replace('/store/','/share/store/');
     var html = '<div style="padding:12px 12px 10px;">';
     html += '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;">'
       + '<div style="font-size:13px;font-weight:800;color:var(--tx);line-height:1.45;">' + (item.title || addr || '연결 매물') + '</div>'
@@ -6557,7 +6651,7 @@ input, textarea, select {
     var linkedItems = room.linkedItems || [];
     var items = [];
     if (linkedId) {
-      var found = savedItems.find(function(x){ return x.id === linkedId; });
+      var found = _mbFindById(savedItems, linkedId);
       if (found) items.push(found);
     }
     if (!items.length && linkedItems.length) items = linkedItems;
@@ -6600,10 +6694,10 @@ input, textarea, select {
       var floorRaw = (nm.층 != null ? nm.층 : d['해당층']);
       var floor = floorRaw ? (String(floorRaw).indexOf('층') >= 0 ? String(floorRaw) : (floorRaw + '층')) : '';
       var direction = d['방향'] || '';
-      var detailUrl = d['상세URL'] || d['옥션원URL'] || '#';
+      var detailUrl = _mbGetOriginalUrl(it) || '#';
       var auctionOneUrl = d['옥션원URL'] || '';
-      var mapUrl = addr ? ('https://map.naver.com/v5/search/' + encodeURIComponent(addr)) : '';
-      var landUrl = addr ? ('https://new.land.naver.com/offices?query=' + encodeURIComponent(addr) + '&a=SG:SMS:APTHGJ&e=RETAIL') : '';
+      var mapUrl = _mbGetNaverMapUrl(it, addr);
+      var landUrl = _mbGetNaverLandUrl(it, addr);
       var planetUrl = src === '부동산플래닛' ? 'https://www.bdsplanet.com/map/realprice_map.ytp' : '';
       var _eid = (it.id||'').replace(/'/g,"\'");
       html += '<div style="padding:12px;background:linear-gradient(180deg,rgba(0,212,170,.06),transparent);border:1px solid rgba(0,212,170,.18);border-radius:12px;margin-bottom:8px;">';
@@ -6736,7 +6830,7 @@ input, textarea, select {
       if (window.wr2State) window.wr2State.activeRoomId = roomId;
       _mbActiveNoteId = null; // 룸 바뀌면 노트 선택 초기화
       var rooms = _mbGetRoomsArray();
-      var room = rooms.find(function(r) { return r.id === roomId; });
+      var room = rooms.find(function(r) { return r && _mbSameId(r.id, roomId); });
       if (!room) {
         mbToast('룸을 찾을 수 없어요', 'err');
         mbRoomRefreshSel();
@@ -8560,7 +8654,7 @@ input, textarea, select {
       // item 객체가 들어온 경우 → overlays에서 id 찾기
       var _itemId = markerIdOrItem.id;
       var _overlays = window.mapOverlays || [];
-      var _found = _overlays.find(function(o){ return o && o.item && o.item.id === _itemId; });
+      var _found = _overlays.find(function(o){ return o && o.item && _mbSameId(o.item.id, _itemId); });
       _mbBsCurrentId = _found ? _found.id : ('marker_' + _itemId);
     } else {
       _mbBsCurrentId = markerIdOrItem;
@@ -8595,7 +8689,7 @@ input, textarea, select {
     // 패널 생성
     var saved = [];
     try { saved = ((window._idbCache&&window._idbCache['re_sv'])||JSON.parse(localStorage.getItem('re_sv')||'[]')); } catch(e) {}
-    var item = saved.find(function(x){ return x.id === itemId; });
+    var item = _mbFindById(saved, itemId);
     var d = (item && item.data) || {};
     var container = document.getElementById('mb-map-bs-body');
     if (!container) return;
@@ -8860,11 +8954,15 @@ input, textarea, select {
 
     if (tab === 'card') {
       var overlays = window.mapOverlays || [];
-      var obj = overlays.find(function(o) { return o && (o.id === _mbBsCurrentId || (o.item && o.item.id === _mbBsCurrentId)); });
+      var obj = overlays.find(function(o) {
+        return o && (_mbSameId(o.id, _mbBsCurrentId) || (o.item && _mbSameId(o.item.id, _mbBsCurrentId)));
+      });
       if (!obj || !obj.item) {
         var sv2 = [];
         try { sv2 = ((window._idbCache&&window._idbCache['re_sv'])||JSON.parse(localStorage.getItem('re_sv')||'[]')); } catch(e) {}
-        var svItem = sv2.find(function(x){ return x.id === _mbBsCurrentId || ('marker_' + x.id) === _mbBsCurrentId; });
+        var svItem = sv2.find(function(x){
+          return _mbSameId(x && x.id, _mbBsCurrentId) || ('marker_' + String(x && x.id || '')) === String(_mbBsCurrentId || '');
+        });
         if (svItem) {
           mbOpenSavedDetail(svItem.id);
           return;
@@ -8882,7 +8980,7 @@ input, textarea, select {
 
       var iid = (item.id || '').replace(/^marker_/, '');
       var mode = item.mode || '';
-      var 상세URL = d['상세URL'] || d['옥션원URL'] || '';
+      var 상세URL = _mbGetOriginalUrl(item);
       var auctionURL = mode === 'auction' ? 'https://www.courtauction.go.kr/' : '';
       if (actions) {
         actions.innerHTML = '';
@@ -8988,7 +9086,7 @@ input, textarea, select {
   window.mbBsSelectAuction = function(itemId) {
     // 저장목록 item → 해당 마커 찾기
     var overlays = window.mapOverlays || [];
-    var ov = overlays.find(function(o) { return o && o.item && o.item.id === itemId; });
+    var ov = overlays.find(function(o) { return o && o.item && _mbSameId(o.item.id, itemId); });
     if (ov) {
       _mbBsCurrentId = ov.id;
     } else {
