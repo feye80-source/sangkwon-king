@@ -15892,6 +15892,7 @@ window.wr2SummaryCancelEdit = function() {
       shopPreview('bds', normalizedItems);
       const sv = getSv();
       let added = 0, updated = 0, skipped = 0;
+      let clientFilterDropped = 0, duplicateOlderDropped = 0, clientReceived = Array.isArray(normalizedItems) ? normalizedItems.length : 0;
       const now = Date.now();
       const bdsByKey = new Map();
       const bdsByAddr = new Map();
@@ -15960,9 +15961,9 @@ window.wr2SummaryCancelEdit = function() {
         const addrIdx = addrKey ? bdsByAddr.get(addrKey) : undefined;
         const existsIdx = keyIdx != null ? keyIdx : addrIdx;
         const exists = existsIdx != null ? sv[existsIdx] : null;
-        if (!checkCollectFilter(entry.data, entry.lat, entry.lng)) return; // ★ 수집 필터
+        if (!checkCollectFilter(entry.data, entry.lat, entry.lng)) { clientFilterDropped++; return; } // ★ 수집 필터/반경
         if (exists) {
-          if (!_bdsIsBetter(entry, exists)) return;
+          if (!_bdsIsBetter(entry, exists)) { duplicateOlderDropped++; return; }
           Object.assign(exists, entry);
           if (key) bdsByKey.set(key, existsIdx);
           if (addrKey) bdsByAddr.set(addrKey, existsIdx);
@@ -16004,7 +16005,11 @@ window.wr2SummaryCancelEdit = function() {
           if (meta.after_server_filter_count != null) parts.push(`상가/업무 필터 후 ${meta.after_server_filter_count}건`);
           if (meta.after_dedupe_count != null && meta.after_dedupe_count !== meta.after_server_filter_count) parts.push(`주소 최신거래 정리 후 ${meta.after_dedupe_count}건`);
           if (meta.max_n_applied) parts.push(`최대개수 ${meta.max_n_applied}건 적용`);
-          if (parts.length) metaMsg = `<br><span style="color:#8ab2ff;font-size:11px;">수집 진단: ${parts.join(' → ')}</span>`;
+          parts.push(`프론트 수신 ${clientReceived}건`);
+          if (clientFilterDropped) parts.push(`화면/반경 필터 제외 ${clientFilterDropped}건`);
+          if (duplicateOlderDropped) parts.push(`기존 최신거래 중복 ${duplicateOlderDropped}건`);
+          parts.push(`신규 ${added}건` + (updated ? `, 업데이트 ${updated}건` : ``));
+          if (parts.length) metaMsg = ` / 수집 진단: ${parts.join(' → ')}`;
         }
       } catch(e) {}
       shopStatus('bds', '✅ ' + msg + skipMsg + metaMsg, '#119ded');
