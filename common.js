@@ -11317,12 +11317,26 @@ window.wr2SummaryCancelEdit = function() {
               loadItem.data.lat = lat;
               loadItem.data.lng = lng;
               const _src = String(loadItem.source || loadItem.data.출처 || '');
+              const _ptype = String(c.propertyType || snapItem.propertyType || loadItem.propertyType || '').toLowerCase();
+              const _isListingLikeTxnSource =
+                _ptype === 'disco' ||
+                _ptype === 'bds' ||
+                _ptype === 'jumpo' ||
+                _ptype === 'nemo' ||
+                _ptype === 'assa' ||
+                _src === '디스코' ||
+                _src === '부동산플래닛' ||
+                _src === '점포라인' ||
+                _src === '네모' ||
+                _isAssaSource(_src);
               const _isTxSnap =
-                loadItem.mode === 'transaction' ||
-                loadItem.propertyType === 'transaction' ||
-                _src === '국토부실거래API' ||
-                _src === 'RTMS_API' ||
-                _src === '실거래';
+                !_isListingLikeTxnSource && (
+                  loadItem.mode === 'transaction' ||
+                  loadItem.propertyType === 'transaction' ||
+                  _src === '국토부실거래API' ||
+                  _src === 'RTMS_API' ||
+                  _src === '실거래'
+                );
               if (_isTxSnap && typeof showTransactionMarker === 'function') {
                 // 실거래 카드는 전용 생성기(stableId/중복키 기준)로 복원해야
                 // 스냅샷 저장 당시 카드 id와 일치하고 누락/중복이 발생하지 않는다.
@@ -13273,7 +13287,7 @@ window.wr2SummaryCancelEdit = function() {
         return `https://new.land.naver.com/offices?ms=${lat},${lng},17&a=SG:SMS:APTHGJ&e=RETAIL`;
       }
 
-      return 'https://new.land.naver.com/';
+      return '';
     }
 
     function _setDualAddressFields(target, roadAddr, jibunAddr) {
@@ -15013,7 +15027,7 @@ window.wr2SummaryCancelEdit = function() {
                   : `<a href="${esc(originalUrl)}" target="_blank" onclick="event.stopPropagation()" class="sc-btn sc-btn-detail">🔗 원본</a>`)
                 : `<button onclick="event.stopPropagation();promptSavedOriginalUrl('${item.id}')" class="sc-btn sc-btn-detail" style="background:rgba(255,255,255,.05);color:var(--di);border-style:dashed;">🔗 원본없음</button>`)}
           ${src === '점포라인' ? `<a href="https://map.jumpoline.com/main" target="_blank" onclick="event.stopPropagation()" class="sc-btn sc-btn-map">🗺️ 지도</a>` : ''}
-          ${(src === '네이버부동산' || src === '네이버' || src === 'naver') ? `<a href="${(() => { const lat = d.lat || item.lat; const lng = d.lng || item.lng; return (lat && lng) ? `https://new.land.naver.com/offices?ms=${lat},${lng},17&a=SG:SMS:APTHGJ&e=RETAIL` : `https://new.land.naver.com/`; })()}" target="_blank" onclick="event.stopPropagation()" class="sc-btn sc-btn-map">🗺️ 지도</a>` : ''}
+          ${(src === '네이버부동산' || src === '네이버' || src === 'naver') ? (() => { const _u = _buildNaverLandUrl(item); return _u ? `<a href="${_u}" target="_blank" onclick="event.stopPropagation()" class="sc-btn sc-btn-map">🗺️ 지도</a>` : ''; })() : ''}
           ${_isAssaSource(src) ? `<a href="https://xn--v69ap5so3hsnb81e1wfh6z.com/map" target="_blank" onclick="event.stopPropagation()" class="sc-btn sc-btn-map">🗺️ 지도</a>` : ''}
           ${src === '부동산플래닛' ? `<button onclick="event.stopPropagation();(()=>{const _a=(item.data&&item.data.소재지)||d.소재지||'';if(_a){try{navigator.clipboard.writeText(_a);}catch(e){}const ta=document.createElement('textarea');ta.value=_a;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.focus();ta.select();try{document.execCommand('copy');}catch(e){}document.body.removeChild(ta);}window.open('https://www.bdsplanet.com/map/realprice_map.ytp','_blank');})()" class="sc-btn sc-btn-map" style="background:rgba(17,157,237,.12);color:#119ded;border-color:rgba(17,157,237,.4);" title="${esc(String((item.data && item.data.소재지) || d.소재지 || ''))}">🌍 플래닛</button>` : ''}
           ${((() => { const _q=_normalizeMapAddress(d.소재지||d.주소||d.address||''); return _q && ia; })()) ? `<a href="https://map.naver.com/v5/search/${encodeURIComponent(_normalizeMapAddress(d.소재지||d.주소||d.address||''))}" target="_blank" onclick="event.stopPropagation()" class="sc-btn" style="background:rgba(4,222,91,.12);color:#04de5b;border-color:rgba(4,222,91,.4);">🗺️ 지도</a>` : ''}
@@ -17093,7 +17107,7 @@ window.wr2SummaryCancelEdit = function() {
         // 사이트 지도 URL
         const _siteMapURL = _isJumpo ? 'https://map.jumpoline.com/main'
           : _isAssa ? 'https://xn--v69ap5so3hsnb81e1wfh6z.com/map'
-            : _isNaver ? (() => { const lat = d.lat || item.lat; const lng = d.lng || item.lng; return (lat && lng) ? `https://new.land.naver.com/offices?ms=${lat},${lng},17&a=SG:SMS:APTHGJ&e=RETAIL` : `https://new.land.naver.com/`; })()
+            : _isNaver ? (_buildNaverLandUrl(item) || '')
               : _isDisco ? (() => { const lat = d.lat || item.lat; const lng = d.lng || item.lng; return (lat && lng) ? `https://www.disco.re/map?lat=${lat}&lng=${lng}&zoom=15` : `https://www.disco.re`; })()
                 : _isBds ? 'copy_planet'
                   : '';
@@ -18787,7 +18801,7 @@ ${fi(d.기타사항, '기타사항', 'text', idx, '기타사항', isPopup)}
         : '';
       const siteMapURL = _isJumpo ? 'https://map.jumpoline.com/main'
         : _isAssa ? 'https://xn--v69ap5so3hsnb81e1wfh6z.com/map'
-          : _isNaver ? (() => { const lat = d.lat || item?.lat; const lng = d.lng || item?.lng; return (lat && lng) ? `https://new.land.naver.com/offices?ms=${lat},${lng},17&a=SG:SMS:APTHGJ&e=RETAIL` : `https://new.land.naver.com/`; })()
+          : _isNaver ? (_buildNaverLandUrl(item) || '')
             : _isDisco ? (() => { const lat = d.lat || item?.lat; const lng = d.lng || item?.lng; return (lat && lng) ? `https://www.disco.re/map?lat=${lat}&lng=${lng}&zoom=15` : `https://www.disco.re`; })()
               : _isBds ? 'copy_planet'
                 : '';
@@ -34277,10 +34291,11 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
     function _plIntentRank(intent) {
       const s = String(intent || '').trim();
-      if (s === '상') return 0;
-      if (s === '중') return 1;
-      if (s === '하') return 2;
-      return 3;
+      if (s === '최상') return 0;
+      if (s === '상') return 1;
+      if (s === '중') return 2;
+      if (s === '하') return 3;
+      return 4;
     }
     function _plRoundScore(entry) {
       const it = entry && entry.item ? entry.item : {};
@@ -34398,7 +34413,11 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         keys.forEach(raw => {
           const key = String(raw || '').trim();
           if (!key) return;
-          if (!map[key]) map[key] = meta;
+          const prev = map[key];
+          if (!prev) { map[key] = meta; return; }
+          const prevScore = (prev.intent ? 2 : 0) + (prev.bidFocus ? 1 : 0);
+          const nextScore = (meta.intent ? 2 : 0) + (meta.bidFocus ? 1 : 0);
+          if (nextScore > prevScore) map[key] = meta;
         });
       });
       return map;
@@ -44287,8 +44306,12 @@ window.addEventListener('DOMContentLoaded', () => {
       estimate: (curItem && curItem.estimate !== undefined && curItem.estimate !== null)
         ? String(curItem.estimate || '')
         : (mapped.estimate || ''),
-      deposit: mapped.deposit || curItem.deposit || '',
-      monthly: mapped.monthly || curItem.monthly || '',
+      deposit: (curItem && curItem.deposit !== undefined && curItem.deposit !== null)
+        ? String(curItem.deposit || '')
+        : (mapped.deposit || ''),
+      monthly: (curItem && curItem.monthly !== undefined && curItem.monthly !== null)
+        ? String(curItem.monthly || '')
+        : (mapped.monthly || ''),
       result: nextResult,
       bidders: nextBidders,
       memo: nextMemo
@@ -46721,14 +46744,12 @@ window.addEventListener('DOMContentLoaded', () => {
     var monthlyTenantMan = monthlyFromTenantRaw
       ? String(Math.round(parseInt(String(monthlyFromTenantRaw).replace(/[^0-9]/g, ''), 10) / 10000))
       : '';
-    var deposit = depManFromOcc
-      || depositTenantMan
-      || ((!isAuctionItem || !hasTenantFields) ? plSavedField(norm, ['보증금_만원'], '') : '')
-      || src.deposit || '';
-    var monthly = monManFromOcc
-      || monthlyTenantMan
-      || ((!isAuctionItem || !hasTenantFields) ? plSavedField(norm, ['월세_만원'], '') : '')
-      || src.monthly || '';
+    var deposit = isAuctionItem
+      ? (depManFromOcc || depositTenantMan || src.deposit || '')
+      : (depManFromOcc || depositTenantMan || plSavedField(norm, ['보증금_만원'], '') || src.deposit || '');
+    var monthly = isAuctionItem
+      ? (monManFromOcc || monthlyTenantMan || src.monthly || '')
+      : (monManFromOcc || monthlyTenantMan || plSavedField(norm, ['월세_만원'], '') || src.monthly || '');
     var failCount = plSavedField(norm,['유찰횟수'],'') || plSavedField(raw,['유찰횟수'],'') || '';
     var estimateWonRaw = plSavedField(raw, ['예상입찰가','추천낙찰가','추천입찰가','입찰가'], '');
     var estimateManRaw = plSavedField(raw, ['예상입찰가_만원','추천낙찰가_만원','추천입찰가_만원'], '');
