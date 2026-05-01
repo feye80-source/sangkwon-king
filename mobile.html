@@ -4899,10 +4899,35 @@ input, textarea, select {
     return { roomId: targetId, rooms: rooms, room: room };
   }
 
+  function _mbCloneRoomRecord(room) {
+    if (!room || typeof room !== 'object') return room;
+    try { return structuredClone(room); } catch (e) {}
+    try { return JSON.parse(JSON.stringify(room)); } catch (e2) {}
+    return Object.assign({}, room);
+  }
+  function _mbCloneRoomsArray(rooms) {
+    return (Array.isArray(rooms) ? rooms : []).map(function(r) { return _mbCloneRoomRecord(r); }).filter(Boolean);
+  }
+  function _mbApplyRoomMutation(roomId, mutator, opts) {
+    var targetId = String(roomId || '').trim();
+    if (!targetId || typeof mutator !== 'function') return null;
+    var rooms = _mbCloneRoomsArray(_mbGetRoomsArray());
+    var idx = rooms.findIndex(function(r) { return r && String(r.id || '') === targetId; });
+    if (idx < 0) return null;
+    var room = rooms[idx];
+    var result = mutator(room, rooms);
+    if (result === false) return null;
+    room.updatedAt = Date.now();
+    rooms[idx] = room;
+    _mbPersistRooms(rooms, targetId, Object.assign({ immediate: true }, opts || {}));
+    return room;
+  }
+
   var _mbPersistRoomsTimer = 0;
   var _mbPersistRoomsPending = null;
   function _mbPersistRoomsNow(rooms, activeRoomId) {
     if (!Array.isArray(rooms)) return;
+    window.__mbRoomLocalWriteUntil = Math.max(Number(window.__mbRoomLocalWriteUntil || 0), Date.now() + 15000);
     if (activeRoomId && window._sbMarkRoomDirty) window._sbMarkRoomDirty(activeRoomId);
     if (window._wrPersistRooms) window._wrPersistRooms(rooms, { syncState: false });
     else if (window._wrPersistAndSyncRooms) window._wrPersistAndSyncRooms(rooms, { syncState: false });
@@ -5716,14 +5741,14 @@ input, textarea, select {
     var files = Array.prototype.slice.call(fileList || []).filter(Boolean);
     if (!files.length) return;
     var ctx = _mbGetRoomContext();
-    var rooms = ctx.rooms;
     var room = ctx.room;
     if (!room) return;
-    if (!room.captureImages) room.captureImages = [];
+    var roomId = room.id;
     (async function() {
       window.__wr2UploadBusy = Number(window.__wr2UploadBusy || 0) + 1;
       var ok = 0;
       var fail = 0;
+      var entries = [];
       try {
         for (var i = 0; i < files.length; i++) {
           var file = files[i];
@@ -5731,7 +5756,7 @@ input, textarea, select {
             var uploaded;
             if (window._sbUploadImage) uploaded = await window._sbUploadImage(file, 'captures');
             else uploaded = { url: await _mbReadFileAsDataUrl(file), path: '' };
-            room.captureImages.push({
+            entries.push({
               src: uploaded.url,
               storagePath: uploaded.path || '',
               savedAt: Date.now(),
@@ -5743,11 +5768,16 @@ input, textarea, select {
             fail++;
           }
         }
-        room.updatedAt = Date.now();
-        _mbPersistRooms(rooms, room.id, { immediate: true });
-        window.__mbRoomLocalWriteUntil = Date.now() + 20000;
-        if (ok && window.wr2PushActivity) window.wr2PushActivity(room, '작업 이미지 ' + ok + '개를 추가했습니다', room.phase || room.status);
-        _mbRenderOvCapture(room);
+        var latestRoom = null;
+        if (entries.length) {
+          latestRoom = _mbApplyRoomMutation(roomId, function(targetRoom) {
+            if (!Array.isArray(targetRoom.captureImages)) targetRoom.captureImages = [];
+            targetRoom.captureImages = targetRoom.captureImages.concat(entries);
+          }, { immediate: true });
+        }
+        window.__mbRoomLocalWriteUntil = Date.now() + 45000;
+        if (ok && latestRoom && window.wr2PushActivity) window.wr2PushActivity(latestRoom, '작업 이미지 ' + ok + '개를 추가했습니다', latestRoom.phase || latestRoom.status);
+        if (latestRoom) _mbRenderOvCapture(latestRoom);
         if (ok) mbToast('작업 이미지 ' + ok + '개 업로드됨', fail ? 'warn' : 'ok');
         else if (fail) mbToast('작업 이미지 업로드 실패', 'err');
       } finally {
@@ -5829,22 +5859,24 @@ input, textarea, select {
     var files = Array.prototype.slice.call(fileList || []).filter(Boolean);
     if (!files.length) return;
     var ctx = _mbGetRoomContext();
-    var rooms = ctx.rooms;
     var room = ctx.room;
     if (!room) return;
     _mbEnsureRoomNotes(room);
     var note = _mbGetActiveNote(room);
     if (!note) {
       window.mbRoomNoteAdd();
-      note = _mbGetActiveNote(ctx.room);
+      var newCtx = _mbGetRoomContext();
+      room = newCtx.room;
+      note = room ? _mbGetActiveNote(room) : null;
     }
-    if (!note) return;
-    if (!note.attachments) note.attachments = [];
-    room.lastNoteId = note.id;
+    if (!room || !note) return;
+    var roomId = room.id;
+    var noteId = note.id;
     (async function() {
       window.__wr2UploadBusy = Number(window.__wr2UploadBusy || 0) + 1;
       var ok = 0;
       var fail = 0;
+      var entries = [];
       try {
         for (var i = 0; i < files.length; i++) {
           var file = files[i];
@@ -5852,7 +5884,7 @@ input, textarea, select {
             var uploaded2;
             if (window._sbUploadImage) uploaded2 = await window._sbUploadImage(file, 'attachments');
             else uploaded2 = { url: await _mbReadFileAsDataUrl(file), path: '' };
-            note.attachments.push({
+            entries.push({
               name: file.name,
               type: file.type || '',
               size: file.size || 0,
@@ -5866,14 +5898,30 @@ input, textarea, select {
             fail++;
           }
         }
-        room.updatedAt = Date.now();
-        _mbPersistRooms(rooms, room.id, { immediate: true });
-        window.__mbRoomLocalWriteUntil = Date.now() + 20000;
-        if (ok && window.wr2PushActivity) window.wr2PushActivity(room, '노트 첨부 ' + ok + '개를 추가했습니다', room.phase || room.status);
-        _mbRenderNoteAttachments(room);
-        _mbRenderNoteSummary(room);
-        _mbRenderNoteAllAttachments(room);
-        _mbRenderOvNote(room);
+        var latestRoom = null;
+        if (entries.length) {
+          latestRoom = _mbApplyRoomMutation(roomId, function(targetRoom) {
+            _mbEnsureRoomNotes(targetRoom);
+            var targetNote = (targetRoom.notes || []).find(function(n) { return n && n.id === noteId; });
+            if (!targetNote) {
+              targetNote = { id: noteId, title: note.title || '노트', body: note.body || '', attachments: [], createdAt: Date.now(), updatedAt: Date.now() };
+              targetRoom.notes = Array.isArray(targetRoom.notes) ? targetRoom.notes : [];
+              targetRoom.notes.push(targetNote);
+            }
+            if (!Array.isArray(targetNote.attachments)) targetNote.attachments = [];
+            targetNote.attachments = targetNote.attachments.concat(entries);
+            targetNote.updatedAt = Date.now();
+            targetRoom.lastNoteId = noteId;
+          }, { immediate: true });
+        }
+        window.__mbRoomLocalWriteUntil = Date.now() + 45000;
+        if (ok && latestRoom && window.wr2PushActivity) window.wr2PushActivity(latestRoom, '노트 첨부 ' + ok + '개를 추가했습니다', latestRoom.phase || latestRoom.status);
+        if (latestRoom) {
+          _mbRenderNoteAttachments(latestRoom);
+          _mbRenderNoteSummary(latestRoom);
+          _mbRenderNoteAllAttachments(latestRoom);
+          _mbRenderOvNote(latestRoom);
+        }
         if (ok) mbToast('첨부 ' + ok + '개 업로드됨', fail ? 'warn' : 'ok');
         else if (fail) mbToast('첨부 업로드 실패', 'err');
       } finally {
