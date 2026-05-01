@@ -1767,7 +1767,10 @@
     };
     window._wrRefreshFromCloud = async function(opts) {
       const options = opts || {};
-      const localBusy = Number(window.__wr2UploadBusy || 0) > 0 || !!window.__wr2SaveRoomsTimer;
+      const localBusy =
+        Number(window.__wr2UploadBusy || 0) > 0 ||
+        !!window.__wr2SaveRoomsTimer ||
+        (Number(window.__mbRoomLocalWriteUntil || 0) > Date.now());
       if (localBusy) {
         return { rooms: null, sections: null, skipped: 'local_edit_busy' };
       }
@@ -5524,26 +5527,32 @@ var _safeLocalSet = function(key, value) {
                   if (!imageFiles.length) return;
                   showToast('이미지 업로드 중...', 'info');
                   if (!room.captureImages) room.captureImages = [];
+                  window.__wr2UploadBusy = Number(window.__wr2UploadBusy || 0) + 1;
                   let ok = 0;
                   let fail = 0;
-                  for (const file of imageFiles) {
-                    try {
-                      const { url, path } = await window._sbUploadImage(file, 'captures');
-                      room.captureImages.push({ src: url, storagePath: path, savedAt: Date.now(), snapName: _snapName });
-                      ok++;
-                    } catch(e) {
-                      console.error('[wr2 capture upload]', e);
-                      fail++;
+                  try {
+                    for (const file of imageFiles) {
+                      try {
+                        const { url, path } = await window._sbUploadImage(file, 'captures');
+                        room.captureImages.push({ src: url, storagePath: path, savedAt: Date.now(), snapName: _snapName });
+                        ok++;
+                      } catch(e) {
+                        console.error('[wr2 capture upload]', e);
+                        fail++;
+                      }
                     }
+                    if (!ok && fail) {
+                      showToast('이미지 업로드 실패', 'error');
+                      return;
+                    }
+                    room.updatedAt = Date.now();
+                    saveRooms();
+                    if (typeof window.__wr2FlushSaveRooms === 'function') window.__wr2FlushSaveRooms();
+                    renderCaptureWidget(room);
+                    showToast('📸 이미지 ' + ok + '개 저장됨' + (fail ? ' · 일부 실패' : ''), fail ? 'warn' : 'ok');
+                  } finally {
+                    window.__wr2UploadBusy = Math.max(0, Number(window.__wr2UploadBusy || 1) - 1);
                   }
-                  if (!ok && fail) {
-                    showToast('이미지 업로드 실패', 'error');
-                    return;
-                  }
-                  room.updatedAt = Date.now();
-                  saveRooms();
-                  renderCaptureWidget(room);
-                  showToast('📸 이미지 ' + ok + '개 저장됨' + (fail ? ' · 일부 실패' : ''), fail ? 'warn' : 'ok');
                 }
                 window.wr2DeleteCapture = async function () {
                   const room = getActiveRoom(); if (!room) return;
@@ -7752,18 +7761,18 @@ window.wr2SummaryCancelEdit = function() {
                         fail++;
                       }
                     }
+                    const stamp = Date.now();
+                    note.updatedAt = stamp;
+                    room.updatedAt = stamp;
+                    saveRooms();
+                    if (typeof window.__wr2FlushSaveRooms === 'function') window.__wr2FlushSaveRooms();
+                    if (ok) wr2PushActivity(room, '노트 첨부 ' + ok + '개를 추가했습니다', room.phase || room.status);
+                    renderAttachments(room);
+                    if (ok) showToast(`📎 ${ok}개 첨부 완료`, fail ? 'warn' : 'ok');
+                    else if (fail) showToast('첨부 업로드 실패', 'warn');
                   } finally {
                     window.__wr2UploadBusy = Math.max(0, Number(window.__wr2UploadBusy || 1) - 1);
                   }
-                  const stamp = Date.now();
-                  note.updatedAt = stamp;
-                  room.updatedAt = stamp;
-                  saveRooms();
-                  if (typeof window.__wr2FlushSaveRooms === 'function') window.__wr2FlushSaveRooms();
-                  if (ok) wr2PushActivity(room, '노트 첨부 ' + ok + '개를 추가했습니다', room.phase || room.status);
-                  renderAttachments(room);
-                  if (ok) showToast(`📎 ${ok}개 첨부 완료`, fail ? 'warn' : 'ok');
-                  else if (fail) showToast('첨부 업로드 실패', 'warn');
                 }
 
                 // INIT
@@ -13234,23 +13243,18 @@ window.wr2SummaryCancelEdit = function() {
 
     function _buildNaverLandUrl(item) {
       const d = (item && item.data) || {};
+      // 네이버 매물일 때만 상세URL/articleNo를 신뢰한다.
+      // (타 소스에서 잘못 저장된 new.land URL로 엉뚱한 위치로 가는 문제 방지)
+      const src = String((item && item.source) || d.출처 || '').trim();
+      const isNaverSrc = src === '네이버부동산' || src === '네이버' || src === '네이버 부동산' || src === 'naver';
       const detailUrl = String(d.상세URL || '').trim();
-      if (detailUrl && /new\.land\.naver\.com/i.test(detailUrl)) return detailUrl;
+      if (isNaverSrc && detailUrl && /new\.land\.naver\.com/i.test(detailUrl)) return detailUrl;
 
       // 네이버 매물일 때만 articleNo를 사용한다.
       // (경매/기타 소스의 숫자 필드가 잘못 articleNo로 해석되면 엉뚱한 페이지로 이동함)
-      const src = String((item && item.source) || d.출처 || '').trim();
-      const isNaverSrc = src === '네이버부동산' || src === '네이버' || src === '네이버 부동산' || src === 'naver';
       const articleNo = String(d.매물번호 || '').trim();
       if (isNaverSrc && /^\d{6,14}$/.test(articleNo)) {
         return `https://new.land.naver.com/offices?articleNo=${encodeURIComponent(articleNo)}`;
-      }
-
-      // 좌표가 있으면 좌표 중심으로 우선 이동 (주소 모호성/동명이동 리스크 최소화)
-      const lat = parseFloat(d.lat || item?.lat);
-      const lng = parseFloat(d.lng || item?.lng);
-      if (Number.isFinite(lat) && Number.isFinite(lng)) {
-        return `https://new.land.naver.com/offices?ms=${lat},${lng},17&a=SG:SMS:APTHGJ&e=RETAIL`;
       }
 
       const addrRaw =
@@ -13260,6 +13264,13 @@ window.wr2SummaryCancelEdit = function() {
       const queryAddr = String((candidates && candidates[0]) || '').trim();
       if (queryAddr) {
         return `https://new.land.naver.com/offices?query=${encodeURIComponent(queryAddr)}&a=SG:SMS:APTHGJ&e=RETAIL`;
+      }
+
+      // 주소가 비어있을 때만 좌표 fallback 사용
+      const lat = parseFloat(d.lat || item?.lat);
+      const lng = parseFloat(d.lng || item?.lng);
+      if (Number.isFinite(lat) && Number.isFinite(lng)) {
+        return `https://new.land.naver.com/offices?ms=${lat},${lng},17&a=SG:SMS:APTHGJ&e=RETAIL`;
       }
 
       return 'https://new.land.naver.com/';
@@ -34358,6 +34369,17 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       if (!tone) return '';
       return `<span style="display:inline-flex;align-items:center;padding:1px 6px;border-radius:999px;border:1px solid ${tone.color}55;background:${tone.bg};color:${tone.color};font-size:10px;font-weight:800;line-height:1.25;white-space:nowrap;">${_plEsc(intent)}</span>`;
     }
+    function _plMetaNormKey(v) {
+      return String(v || '').replace(/\s+/g, '').replace(/[^\w가-힣]/g, '').toLowerCase();
+    }
+    function _plMetaCaseKey(v) {
+      const raw = String(v || '').trim();
+      if (!raw) return '';
+      const base = raw.replace(/\(\d+\)\s*$/, '').replace(/\s+/g, ' ');
+      const m = base.match(/(\d{4})\s*타경\s*(\d+)/);
+      if (m) return String(m[1]) + '타경' + String(m[2]);
+      return _plMetaNormKey(base);
+    }
     function _plBuildPropertyMetaBySavedId() {
       const map = {};
       if (typeof plLoad !== 'function') return map;
@@ -34370,6 +34392,9 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           bidFocus: !!(it.bidFocus === true || String(it.bidFocus || '').trim() === '1' || String(it.bidFocus || '').trim().toLowerCase() === 'true')
         };
         const keys = [it.linkedSavedId, it.id];
+        if (it.casenum) keys.push('case:' + _plMetaCaseKey(it.casenum));
+        if (it.region) keys.push('addr:' + _plMetaNormKey(it.region));
+        if (it.addr) keys.push('name:' + _plMetaNormKey(it.addr));
         keys.forEach(raw => {
           const key = String(raw || '').trim();
           if (!key) return;
@@ -34446,7 +34471,11 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         // 상태가 비어 있어도 경매물건은 파이프라인에서 기본 개요로 노출
         if (!status && String(it.mode || '').toLowerCase() === 'auction') status = 'interest';
         if (!status || status === 'pass') return null;
-        const meta = propMetaBySaved[itemId] || {};
+        const meta = propMetaBySaved[itemId]
+          || propMetaBySaved['case:' + _plMetaCaseKey(d.경매번호 || d.사건번호 || '')]
+          || propMetaBySaved['addr:' + _plMetaNormKey(d.소재지 || d.주소 || d.address || '')]
+          || propMetaBySaved['name:' + _plMetaNormKey(it.title || '')]
+          || {};
         const saleDt = _plParseAuctionDate(
           d.매각일 || d.매각기일 || d.입찰기일 || d.입찰일 || ''
         );
@@ -44341,6 +44370,17 @@ window.addEventListener('DOMContentLoaded', () => {
       putField('임차인_보증금', depWon);
       putField('임차보증금', depWon);
       putField('보증금_만원', depMan); // 일반 매물 호환 필드
+      if (Array.isArray(d['임차인_목록']) && d['임차인_목록'].length) {
+        var t0 = d['임차인_목록'][0] || {};
+        var nextTenants = d['임차인_목록'].slice();
+        var t0next = Object.assign({}, t0);
+        if (plDiffers(t0next['보증금_만원'], depMan)) {
+          t0next['보증금_만원'] = depMan;
+          nextTenants[0] = t0next;
+          d['임차인_목록'] = nextTenants;
+          changed = true;
+        }
+      }
     }
     {
       var monMan = plParseAmountText(item.monthly || '');
@@ -44348,6 +44388,17 @@ window.addEventListener('DOMContentLoaded', () => {
       putField('임차인_월세', monWon);
       putField('임차월세', monWon);
       putField('월세_만원', monMan);
+      if (Array.isArray(d['임차인_목록']) && d['임차인_목록'].length) {
+        var mt0 = d['임차인_목록'][0] || {};
+        var mNextTenants = d['임차인_목록'].slice();
+        var mt0next = Object.assign({}, mt0);
+        if (plDiffers(mt0next['월세_만원'], monMan)) {
+          mt0next['월세_만원'] = monMan;
+          mNextTenants[0] = mt0next;
+          d['임차인_목록'] = mNextTenants;
+          changed = true;
+        }
+      }
     }
     // 나의입찰가(estimate)는 물건리스트 전용 필드로 취급한다.
     // 저장목록 원본의 '예상입찰가/추천입찰가'와 상호 덮어쓰기하면
@@ -46317,12 +46368,12 @@ window.addEventListener('DOMContentLoaded', () => {
       if (mapped.casenum) old.casenum = mapped.casenum;
       if (mapped.region) old.region = mapped.region;
       if (mapped.feature) old.feature = mapped.feature;
-      if (mapped.appraisal) old.appraisal = mapped.appraisal;
-      if (mapped.minprice) old.minprice = mapped.minprice;
-      if (mapped.round) old.round = mapped.round;
-      if (mapped.biddate) old.biddate = mapped.biddate;
-      if (mapped.deposit) old.deposit = mapped.deposit;
-      if (mapped.monthly) old.monthly = mapped.monthly;
+      if (mapped.appraisal !== undefined && mapped.appraisal !== null) old.appraisal = mapped.appraisal;
+      if (mapped.minprice !== undefined && mapped.minprice !== null) old.minprice = mapped.minprice;
+      if (mapped.round !== undefined && mapped.round !== null) old.round = mapped.round;
+      if (mapped.biddate !== undefined && mapped.biddate !== null) old.biddate = mapped.biddate;
+      if (mapped.deposit !== undefined && mapped.deposit !== null) old.deposit = mapped.deposit;
+      if (mapped.monthly !== undefined && mapped.monthly !== null) old.monthly = mapped.monthly;
       old.archived = false;
       if (old.status === 'archived') old.status = 'review';
       old.updatedAt = Date.now();
@@ -46772,12 +46823,12 @@ window.addEventListener('DOMContentLoaded', () => {
         if (mapped.casenum) old.casenum = mapped.casenum;
         if (mapped.region) old.region = mapped.region;
         if (mapped.feature) old.feature = mapped.feature;
-        if (mapped.appraisal) old.appraisal = mapped.appraisal;
-        if (mapped.minprice) old.minprice = mapped.minprice;
-        if (mapped.round) old.round = mapped.round;
-        if (mapped.biddate) old.biddate = mapped.biddate;
-        if (mapped.deposit) old.deposit = mapped.deposit;
-        if (mapped.monthly) old.monthly = mapped.monthly;
+        if (mapped.appraisal !== undefined && mapped.appraisal !== null) old.appraisal = mapped.appraisal;
+        if (mapped.minprice !== undefined && mapped.minprice !== null) old.minprice = mapped.minprice;
+        if (mapped.round !== undefined && mapped.round !== null) old.round = mapped.round;
+        if (mapped.biddate !== undefined && mapped.biddate !== null) old.biddate = mapped.biddate;
+        if (mapped.deposit !== undefined && mapped.deposit !== null) old.deposit = mapped.deposit;
+        if (mapped.monthly !== undefined && mapped.monthly !== null) old.monthly = mapped.monthly;
         old.archived = false;
         if (old.status === 'archived') old.status = 'review';
         old.updatedAt = Date.now();

@@ -5721,33 +5721,38 @@ input, textarea, select {
     if (!room) return;
     if (!room.captureImages) room.captureImages = [];
     (async function() {
+      window.__wr2UploadBusy = Number(window.__wr2UploadBusy || 0) + 1;
       var ok = 0;
       var fail = 0;
-      for (var i = 0; i < files.length; i++) {
-        var file = files[i];
-        try {
-          var uploaded;
-          if (window._sbUploadImage) uploaded = await window._sbUploadImage(file, 'captures');
-          else uploaded = { url: await _mbReadFileAsDataUrl(file), path: '' };
-          room.captureImages.push({
-            src: uploaded.url,
-            storagePath: uploaded.path || '',
-            savedAt: Date.now(),
-            snapName: null
-          });
-          ok++;
-        } catch (e) {
-          console.warn('[mbRoomCaptureFiles]', e);
-          fail++;
+      try {
+        for (var i = 0; i < files.length; i++) {
+          var file = files[i];
+          try {
+            var uploaded;
+            if (window._sbUploadImage) uploaded = await window._sbUploadImage(file, 'captures');
+            else uploaded = { url: await _mbReadFileAsDataUrl(file), path: '' };
+            room.captureImages.push({
+              src: uploaded.url,
+              storagePath: uploaded.path || '',
+              savedAt: Date.now(),
+              snapName: null
+            });
+            ok++;
+          } catch (e) {
+            console.warn('[mbRoomCaptureFiles]', e);
+            fail++;
+          }
         }
+        room.updatedAt = Date.now();
+        _mbPersistRooms(rooms, room.id, { immediate: true });
+        window.__mbRoomLocalWriteUntil = Date.now() + 20000;
+        if (ok && window.wr2PushActivity) window.wr2PushActivity(room, '작업 이미지 ' + ok + '개를 추가했습니다', room.phase || room.status);
+        _mbRenderOvCapture(room);
+        if (ok) mbToast('작업 이미지 ' + ok + '개 업로드됨', fail ? 'warn' : 'ok');
+        else if (fail) mbToast('작업 이미지 업로드 실패', 'err');
+      } finally {
+        window.__wr2UploadBusy = Math.max(0, Number(window.__wr2UploadBusy || 1) - 1);
       }
-      room.updatedAt = Date.now();
-      _mbPersistRooms(rooms, room.id);
-      window.__mbRoomLocalWriteUntil = Date.now() + 4500;
-      if (ok && window.wr2PushActivity) window.wr2PushActivity(room, '작업 이미지 ' + ok + '개를 추가했습니다', room.phase || room.status);
-      _mbRenderOvCapture(room);
-      if (ok) mbToast('작업 이미지 ' + ok + '개 업로드됨', fail ? 'warn' : 'ok');
-      else if (fail) mbToast('작업 이미지 업로드 실패', 'err');
     })();
   };
 
@@ -5837,38 +5842,43 @@ input, textarea, select {
     if (!note.attachments) note.attachments = [];
     room.lastNoteId = note.id;
     (async function() {
+      window.__wr2UploadBusy = Number(window.__wr2UploadBusy || 0) + 1;
       var ok = 0;
       var fail = 0;
-      for (var i = 0; i < files.length; i++) {
-        var file = files[i];
-        try {
-          var uploaded2;
-          if (window._sbUploadImage) uploaded2 = await window._sbUploadImage(file, 'attachments');
-          else uploaded2 = { url: await _mbReadFileAsDataUrl(file), path: '' };
-          note.attachments.push({
-            name: file.name,
-            type: file.type || '',
-            size: file.size || 0,
-            url: uploaded2.url,
-            storagePath: uploaded2.path || '',
-            createdAt: Date.now()
-          });
-          ok++;
-        } catch (e) {
-          console.warn('[mbRoomAttachFiles]', e);
-          fail++;
+      try {
+        for (var i = 0; i < files.length; i++) {
+          var file = files[i];
+          try {
+            var uploaded2;
+            if (window._sbUploadImage) uploaded2 = await window._sbUploadImage(file, 'attachments');
+            else uploaded2 = { url: await _mbReadFileAsDataUrl(file), path: '' };
+            note.attachments.push({
+              name: file.name,
+              type: file.type || '',
+              size: file.size || 0,
+              url: uploaded2.url,
+              storagePath: uploaded2.path || '',
+              createdAt: Date.now()
+            });
+            ok++;
+          } catch (e) {
+            console.warn('[mbRoomAttachFiles]', e);
+            fail++;
+          }
         }
+        room.updatedAt = Date.now();
+        _mbPersistRooms(rooms, room.id, { immediate: true });
+        window.__mbRoomLocalWriteUntil = Date.now() + 20000;
+        if (ok && window.wr2PushActivity) window.wr2PushActivity(room, '노트 첨부 ' + ok + '개를 추가했습니다', room.phase || room.status);
+        _mbRenderNoteAttachments(room);
+        _mbRenderNoteSummary(room);
+        _mbRenderNoteAllAttachments(room);
+        _mbRenderOvNote(room);
+        if (ok) mbToast('첨부 ' + ok + '개 업로드됨', fail ? 'warn' : 'ok');
+        else if (fail) mbToast('첨부 업로드 실패', 'err');
+      } finally {
+        window.__wr2UploadBusy = Math.max(0, Number(window.__wr2UploadBusy || 1) - 1);
       }
-      room.updatedAt = Date.now();
-      _mbPersistRooms(rooms, room.id);
-      window.__mbRoomLocalWriteUntil = Date.now() + 4500;
-      if (ok && window.wr2PushActivity) window.wr2PushActivity(room, '노트 첨부 ' + ok + '개를 추가했습니다', room.phase || room.status);
-      _mbRenderNoteAttachments(room);
-      _mbRenderNoteSummary(room);
-      _mbRenderNoteAllAttachments(room);
-      _mbRenderOvNote(room);
-      if (ok) mbToast('첨부 ' + ok + '개 업로드됨', fail ? 'warn' : 'ok');
-      else if (fail) mbToast('첨부 업로드 실패', 'err');
     })();
   };
 
@@ -9057,6 +9067,7 @@ input, textarea, select {
       var now = Date.now();
       if (window.__mbSyncRunning) return false;
       if (window.__mbRoomLocalWriteUntil && now < window.__mbRoomLocalWriteUntil) return false;
+      if (Number(window.__wr2UploadBusy || 0) > 0) return false;
       if (now - (window.__mbLastSyncAt || 0) < 2500) return false;
       window.__mbSyncRunning = true;
       window.__mbLastSyncAt = now;
