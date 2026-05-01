@@ -505,14 +505,13 @@ class ProxyHandler(BaseHTTPRequestHandler):
             nelng = payload.get('nelng', '')
             swlng = payload.get('swlng', '')
             cookie = payload.get('cookie', '')   # ★ 브라우저 쿠키 직접 수신
-            request_url = payload.get('request_url', '')  # ★ F12 실제 getRealpriceMapMarker Request URL
             kakao_rest_key = payload.get('kakao_rest_key', '')
             max_n = _read_max_n(payload)
             if not lat:
                 self._error(400, '좌표(lat/lng)가 필요합니다')
                 return
             print(f"\n  🌍 부동산플래닛 수집 시작 (lat={lat}, lng={lng})...")
-            self._collect_bds(lat=lat, lng=lng, nelat=nelat, swlat=swlat, nelng=nelng, swlng=swlng, cookie=cookie, request_url=request_url, kakao_rest_key=kakao_rest_key, max_n=max_n)
+            self._collect_bds(lat=lat, lng=lng, nelat=nelat, swlat=swlat, nelng=nelng, swlng=swlng, cookie=cookie, kakao_rest_key=kakao_rest_key, max_n=max_n)
 
         elif parsed.path == '/api/naver_map':
             # ★ 신규: 토큰 없이 모바일 API로 지도 바운딩박스 수집
@@ -2281,9 +2280,6 @@ class ProxyHandler(BaseHTTPRequestHandler):
             if not items_raw:
                 print(f"  ⚠️ 응답 타입: {type(raw).__name__}, 미리보기: {str(raw)[:200]}")
 
-            if bds_cookie and all_raw_items and cookie_source in ('user', 'cache'):
-                BDS_COOKIE_CACHE = bds_cookie
-
             def clean(v):
                 if v is None or v == '' or v == '0': return None
                 try:
@@ -2381,7 +2377,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
             print(f"  ❌ 디스코 수집 실패: {e}\n{traceback.format_exc()}")
             self._ok(json.dumps({'status': 'error', 'message': str(e), 'data': []}, ensure_ascii=False))
 
-    def _collect_bds(self, lat='', lng='', nelat='', swlat='', nelng='', swlng='', cookie='', request_url='', kakao_rest_key='', max_n=None):
+    def _collect_bds(self, lat='', lng='', nelat='', swlat='', nelng='', swlng='', cookie='', kakao_rest_key='', max_n=None):
         """부동산플래닛 실거래가 수집: getRealpriceMapMarker.ytp
         
         ★ v120 변경사항:
@@ -2419,64 +2415,37 @@ class ProxyHandler(BaseHTTPRequestHandler):
             _swlat = float(swlat) if swlat else _lat - 0.008
             _nelng = float(nelng) if nelng else _lng + 0.008
             _swlng = float(swlng) if swlng else _lng - 0.008
-
-            # ★ [BDS v15] 프론트에서 bbox가 점 하나로 들어오는 경우 서버에서도 안전 보정.
-            # 부동산플래닛 getRealpriceMapMarker는 x1/x2/y1/y2 면적이 없으면 200/빈 응답을 반환할 수 있다.
-            if _swlat > _nelat:
-                _swlat, _nelat = _nelat, _swlat
-            if _swlng > _nelng:
-                _swlng, _nelng = _nelng, _swlng
-            if abs(_nelat - _swlat) < 0.002:
-                _nelat = _lat + 0.01
-                _swlat = _lat - 0.01
-                print(f"  🧭 BDS bbox 위도 보정: swlat={_swlat}, nelat={_nelat}")
-            if abs(_nelng - _swlng) < 0.002:
-                _nelng = _lng + 0.01
-                _swlng = _lng - 0.01
-                print(f"  🧭 BDS bbox 경도 보정: swlng={_swlng}, nelng={_nelng}")
-
-            request_limit = max_n if (max_n and max_n > 0) else 150
-            request_limit = max(50, min(int(request_limit), 150))
+            request_limit = max_n if (max_n and max_n > 0) else 1000
+            request_limit = max(50, min(int(request_limit), 2000))
 
             print(f"  🌍 부동산플래닛 수집 시작 (lat={_lat}, lng={_lng})...")
 
-            # ★ 쿠키 우선순위: (1) 브라우저 직접 전달 → (2) 이전에 성공/저장된 캐시 → (3) 자동취득
-            # 자동취득 쿠키는 bdsp_usid 정도만 잡히는 경우가 있어 실거래 API가 200/빈 응답을 줄 수 있다.
+            # ★ 쿠키 우선순위: (1) 브라우저에서 직접 전달 → (2) 자동취득 시도
             global BDS_COOKIE_CACHE
             bds_cookie = sanitize_cookie(cookie) if cookie and cookie.strip() else ''
-            cookie_source = ''
             if bds_cookie:
-                BDS_COOKIE_CACHE = bds_cookie
-                cookie_source = 'user'
+                BDS_COOKIE_CACHE = bds_cookie  # ✨ 전역 캐시에 저장
                 print(f"  🍪 브라우저 쿠키 사용: {bds_cookie[:80]}...")
             else:
-                cached_cookie = sanitize_cookie(BDS_COOKIE_CACHE) if BDS_COOKIE_CACHE else ''
-                if cached_cookie:
-                    bds_cookie = cached_cookie
-                    cookie_source = 'cache'
-                    print(f"  🍪 캐시 쿠키 사용: {bds_cookie[:80]}...")
-                else:
-                    print(f"  🔄 쿠키 미입력/캐시 없음 — 자동 취득 시도...")
-                    try:
-                        import http.cookiejar
-                        cj = http.cookiejar.CookieJar()
-                        opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
-                        init_req = urllib.request.Request(
-                            'https://www.bdsplanet.com/map/realprice_map',
-                            headers={
-                                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-                                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                                'Accept-Language': 'ko-KR,ko;q=0.9',
-                            }
-                        )
-                        opener.open(init_req, timeout=10)
-                        bds_cookie = '; '.join([f'{c.name}={c.value}' for c in cj])
-                        cookie_source = 'auto'
-                        print(f"  🍪 자동취득 쿠키: {bds_cookie[:80]}...")
-                        # 자동취득 쿠키는 권한이 부족할 수 있으므로 성공 전까지 전역 캐시를 덮어쓰지 않는다.
-                    except Exception as ce:
-                        cookie_source = 'none'
-                        print(f"  ⚠️ 쿠키 자동취득 실패: {ce} — 쿠키 없이 시도")
+                print(f"  🔄 쿠키 미입력 — 자동 취득 시도...")
+                try:
+                    import http.cookiejar
+                    cj = http.cookiejar.CookieJar()
+                    opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
+                    init_req = urllib.request.Request(
+                        'https://www.bdsplanet.com/map/realprice_map',
+                        headers={
+                            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+                            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                            'Accept-Language': 'ko-KR,ko;q=0.9',
+                        }
+                    )
+                    opener.open(init_req, timeout=10)
+                    bds_cookie = '; '.join([f'{c.name}={c.value}' for c in cj])
+                    print(f"  🍪 자동취득 쿠키: {bds_cookie[:80]}...")
+                    BDS_COOKIE_CACHE = bds_cookie  # ♋ 전역 캐시에 저장
+                except Exception as ce:
+                    print(f"  ⚠️ 쿠키 자동취득 실패: {ce} — 쿠키 없이 시도")
 
             # ★ F12에서 확인한 실제 공통 헤더
             base_headers = {
@@ -2491,76 +2460,14 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 'Sec-Fetch-Site': 'same-origin',
                 'Connection': 'keep-alive',
             }
-            def _merge_cookie_pair(cookie_text, name, value):
-                parts = []
-                found = False
-                for part in str(cookie_text or '').split(';'):
-                    part = part.strip()
-                    if not part or '=' not in part:
-                        continue
-                    k, v = part.split('=', 1)
-                    if k.strip() == name:
-                        parts.append(f'{name}={value}')
-                        found = True
-                    else:
-                        parts.append(f'{k.strip()}={v.strip()}')
-                if not found:
-                    parts.insert(0, f'{name}={value}')
-                return '; '.join(parts)
-
             if bds_cookie:
-                # 실제 브라우저 요청처럼 현재 지도 위치 쿠키를 갱신한다.
-                try:
-                    last_pos = urllib.parse.quote(json.dumps({'lat': _lat, 'lng': _lng, 'zoom': 18}, separators=(',', ':')))
-                    bds_cookie = _merge_cookie_pair(bds_cookie, 'lastMapPosition', last_pos)
-                    bds_cookie = _merge_cookie_pair(bds_cookie, 'newSaveAddr', 'N')
-                except Exception:
-                    pass
                 base_headers['Cookie'] = bds_cookie
-            base_headers.update({
-                'sec-ch-ua': '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
-                'sec-ch-ua-mobile': '?0',
-                'sec-ch-ua-platform': '"macOS"',
-                'Priority': 'u=1, i',
-            })
-
-            def _build_bds_url_from_template(template_url, t_type_val, keep_original=False):
-                """브라우저에서 복사한 실제 Request URL을 기준으로 좌표/limit만 현재 값으로 교체."""
-                raw_url = str(template_url or '').strip()
-                if not raw_url or 'getRealpriceMapMarker.ytp' not in raw_url:
-                    return ''
-                try:
-                    parsed_u = urllib.parse.urlsplit(raw_url)
-                    if keep_original:
-                        # 사용자가 복사한 URL을 그대로 먼저 시도한다. 이게 브라우저와 가장 동일한 요청이다.
-                        return 'https://www.bdsplanet.com/map/getRealpriceMapMarker.ytp?' + parsed_u.query
-                    # 호스트는 항상 www.bdsplanet.com으로 고정하되, 기존 query 구조는 최대 보존
-                    q = urllib.parse.parse_qs(parsed_u.query, keep_blank_values=True)
-                    def set1(k, v): q[k] = [str(v)]
-                    set1('x1', _swlat)
-                    set1('x2', _nelat)
-                    set1('y1', _swlng)
-                    set1('y2', _nelng)
-                    set1('zoom', '18')
-                    set1('limit_cnt', request_limit)
-                    set1('t_type', t_type_val)
-                    set1('search_t_type', t_type_val)
-                    if 'search_erasure_status' not in q: set1('search_erasure_status', 'N')
-                    # doseq=True로 기존 다중값/빈값 보존
-                    query = urllib.parse.urlencode(q, doseq=True)
-                    return 'https://www.bdsplanet.com/map/getRealpriceMapMarker.ytp?' + query
-                except Exception as te:
-                    print(f"  ⚠️ BDS 요청 URL 템플릿 파싱 실패: {te}")
-                    return ''
 
             all_raw_items = []
-            empty_response_seen = False
-            parse_error_seen = False
-            unknown_structure_seen = False
             for t_type_val in ('1',):  # 매매만 수집 (임대 제외)
                 # ★ F12 실제 URL 파라미터 완전 반영 (누락 항목 추가)
                 params = urllib.parse.urlencode({
-                    'search_r_type': 'B,G,F',
+                    'search_r_type': '',
                     'search_t_type': t_type_val,
                     'search_year': '',
                     'search_price_tab': 'C0',
@@ -2576,7 +2483,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     'search_price_exclusive_from': '',  # ★ 추가
                     'search_price_exclusive_to': '',    # ★ 추가
                     'search_area_tab': 'A1',
-                    'search_area_set_tab': 'supply',
+                    'search_area_set_tab': 'exclusive',
                     'search_area_unit': 'py',
                     'search_area_bldg_from': '',        # ★ 추가
                     'search_area_bldg_to': '',          # ★ 추가
@@ -2601,100 +2508,59 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     't_type': t_type_val,
                     'search_erasure_status': 'N',
                 })
-                attempts = []
-                if request_url and 'getRealpriceMapMarker.ytp' in str(request_url):
-                    exact_url = _build_bds_url_from_template(request_url, t_type_val, keep_original=True)
-                    templ_url = _build_bds_url_from_template(request_url, t_type_val, keep_original=False)
-                    if exact_url: attempts.append(('복사한 URL 그대로', exact_url))
-                    if templ_url and templ_url != exact_url: attempts.append(('복사 URL+현재 bounds', templ_url))
-                attempts.append(('기본 생성 URL', f'https://www.bdsplanet.com/map/getRealpriceMapMarker.ytp?{params}'))
-
-                raw_text = ''
-                used_attempt_label = ''
+                url = f'https://www.bdsplanet.com/map/getRealpriceMapMarker.ytp?{params}'
                 print(f"  🌐 부동산플래닛 API 호출 (t_type={t_type_val})...")
-                for attempt_label, url in attempts:
-                    print(f"     [{attempt_label}] URL: {url[:160]}...")
-                    try:
-                        req = urllib.request.Request(url, headers=base_headers, method='GET')
-                        with _urlopen(req, timeout=20) as resp:
-                            raw_text = resp.read().decode('utf-8', errors='replace').strip()
-                        print(f"  🔍 응답 미리보기 ({attempt_label}): {raw_text[:200]}")
-                        if raw_text:
-                            used_attempt_label = attempt_label
-                            break
-                        print(f"  ⚠️ 빈 응답 ({attempt_label})")
-                    except urllib.error.HTTPError as e:
-                        err_body = ''
-                        try: err_body = e.read().decode('utf-8', errors='replace')[:200]
-                        except: pass
-                        print(f"  ⚠️ HTTP {e.code} 오류 ({attempt_label}) — {err_body}")
-                    except Exception as e:
-                        print(f"  ⚠️ 요청 실패 ({attempt_label}) — {e}")
+                print(f"     URL: {url[:120]}...")
+                try:
+                    req = urllib.request.Request(url, headers=base_headers)
+                    with _urlopen(req, timeout=20) as resp:
+                        raw_text = resp.read().decode('utf-8').strip()
+                except urllib.error.HTTPError as e:
+                    err_body = ''
+                    try: err_body = e.read().decode('utf-8')[:200]
+                    except: pass
+                    print(f"  ⚠️ HTTP {e.code} 오류 (t_type={t_type_val}) — {err_body}")
+                    continue
 
+                print(f"  🔍 응답 미리보기 (t_type={t_type_val}): {raw_text[:200]}")
                 if not raw_text:
-                    empty_response_seen = True
-                    print(f"  ⚠️ 모든 요청이 빈 응답 (t_type={t_type_val})")
+                    print(f"  ⚠️ 빈 응답 (t_type={t_type_val}) — 건너뜀")
                     continue
 
                 try:
                     raw = json.loads(raw_text)
                 except Exception as je:
-                    parse_error_seen = True
                     print(f"  ⚠️ JSON 파싱 실패 (t_type={t_type_val}): {je}")
                     print(f"     응답 원문: {raw_text[:500]}")
                     continue
 
-                def _find_bds_items(obj, depth=0):
-                    if depth > 5 or obj is None:
-                        return []
-                    if isinstance(obj, list):
-                        # 실거래 row는 dict 배열인 경우가 대부분이다.
-                        if not obj:
-                            return []
-                        if any(isinstance(x, dict) for x in obj):
-                            return obj
-                        return []
-                    if isinstance(obj, dict):
-                        # 부동산플래닛 응답 구조 변경 대비: 실거래 목록 후보 키 우선 탐색
-                        priority_keys = (
-                            'realpriceDealList', 'realPriceDealList', 'realpriceMapMarkerList',
-                            'markerList', 'dealList', 'list', 'items', 'contents', 'data', 'result',
-                            'body', 'payload', 'rows'
-                        )
-                        for key in priority_keys:
-                            if key in obj:
-                                found = _find_bds_items(obj.get(key), depth + 1)
-                                if found:
-                                    return found
-                        for val in obj.values():
-                            found = _find_bds_items(val, depth + 1)
-                            if found:
-                                return found
-                    return []
-
-                items_raw = _find_bds_items(raw)
-                if isinstance(raw, dict) and not items_raw:
-                    unknown_structure_seen = True
-                    print(f"  ⚠️ 알 수 없는 응답 구조 — 키 목록: {list(raw.keys())}")
+                items_raw = []
+                if isinstance(raw, list):
+                    items_raw = raw
+                elif isinstance(raw, dict):
+                    # 가능한 키 모두 시도
+                    for key in ('data', 'list', 'result', 'items', 'contents'):
+                        candidate = raw.get(key)
+                        if candidate:
+                            if isinstance(candidate, list):
+                                items_raw = candidate
+                                break
+                            elif isinstance(candidate, dict):
+                                for sub in ('list', 'data', 'items'):
+                                    if isinstance(candidate.get(sub), list):
+                                        items_raw = candidate[sub]
+                                        break
+                            if items_raw:
+                                break
+                    if not items_raw:
+                        print(f"  ⚠️ 알 수 없는 응답 구조 — 키 목록: {list(raw.keys())}")
 
                 print(f"  📋 t_type={t_type_val}: {len(items_raw)}개 수신")
                 all_raw_items.extend(items_raw)
 
             if not all_raw_items:
-                if empty_response_seen:
-                    msg = '부동산플래닛 API가 빈 응답을 반환했습니다. 자동취득/캐시 쿠키로는 권한이 부족할 수 있으니 브라우저 Cookie를 입력해 주세요.'
-                    if cookie_source == 'user':
-                        msg = '입력한 부동산플래닛 Cookie로도 빈 응답이 왔습니다. Cookie가 만료됐거나 다른 요청의 Cookie일 수 있습니다.'
-                    self._ok(json.dumps({'status': 'cookie_required', 'message': msg, 'data': [], 'cookie_source': cookie_source}, ensure_ascii=False))
-                    return
-                if parse_error_seen or unknown_structure_seen:
-                    self._ok(json.dumps({'status': 'warn', 'message': '부동산플래닛 응답 구조를 읽지 못했습니다. proxy_server.py 파서 업데이트가 필요합니다.', 'data': []}, ensure_ascii=False))
-                    return
-                self._ok(json.dumps({'status': 'warn', 'message': '해당 지도 범위의 부동산플래닛 실거래 데이터가 없습니다.', 'data': []}, ensure_ascii=False))
+                self._ok(json.dumps({'status': 'warn', 'message': '해당 지역 부동산플래닛 실거래 데이터 없음 (쿠키가 만료됐을 수 있습니다)', 'data': []}, ensure_ascii=False))
                 return
-
-            if bds_cookie and all_raw_items and cookie_source in ('user', 'cache'):
-                BDS_COOKIE_CACHE = bds_cookie
 
             def clean(v):
                 if v is None or v == '' or v == '0': return None
