@@ -2044,7 +2044,7 @@ input, textarea, select {
       <button class="mb-ins-tab" id="mb-itab-note"        onclick="mbInsTab('note')" role="tab">📓 노트</button>
       <button class="mb-ins-tab" id="mb-itab-kcard"       onclick="mbInsTab('kcard')" role="tab">⭐ 알짜</button>
       <button class="mb-ins-tab" id="mb-itab-calc"        onclick="mbInsTab('calc')" role="tab">🧮 계산기</button>
-      <button class="mb-ins-tab" id="mb-itab-pipe"        onclick="mbInsTab('pipe')" role="tab">🎯 파이프라인</button>
+      <button class="mb-ins-tab" id="mb-itab-pipe"        onclick="mbInsTab('pipe')" role="tab">🎯 플래너</button>
       <button class="mb-ins-tab" id="mb-itab-plist"       onclick="mbInsTab('plist')" role="tab">📋 물건리스트</button>
       <button class="mb-ins-tab" id="mb-itab-site"        onclick="mbInsTab('site')" role="tab">🔗 사이트</button>
       <button class="mb-ins-tab" id="mb-itab-clip"        onclick="mbInsTab('clip')" role="tab">📰 클리핑</button>
@@ -2609,7 +2609,7 @@ input, textarea, select {
     <div id="mb-ins-pipe" class="mb-ins-panel" style="padding:0;overflow:hidden;">
       <!-- 헤더 -->
       <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px 8px;flex-shrink:0;">
-        <div style="font-size:14px;font-weight:700;color:var(--tx);">🎯 파이프라인</div>
+        <div style="font-size:14px;font-weight:700;color:var(--tx);">🎯 플래너</div>
         <select id="mb-watch-sort" onchange="mbRenderPipeline()" style="padding:4px 8px;background:var(--s2);border:1px solid var(--b1);border-radius:6px;color:var(--tx);font-size:11px;outline:none;">
           <option value="savedAt">저장순</option>
           <option value="saledate">매각기일순</option>
@@ -7811,7 +7811,7 @@ input, textarea, select {
       nav.innerHTML = `
         <button type="button" onclick="mbCloseNtEditor();if(typeof mbInsTab==='function')mbInsTab('note');" style="height:30px;padding:0 10px;border-radius:999px;border:1px solid var(--b1);background:var(--s2);color:var(--tx);font-size:11px;font-weight:700;cursor:pointer;">목록</button>
         <button type="button" onclick="mbCloseNtEditor();if(typeof mbInsTab==='function')mbInsTab('room');" style="height:30px;padding:0 10px;border-radius:999px;border:1px solid rgba(79,142,255,.32);background:rgba(79,142,255,.14);color:#8ab8ff;font-size:11px;font-weight:700;cursor:pointer;">작업룸</button>
-        <button type="button" onclick="mbCloseNtEditor();if(typeof mbInsTab==='function')mbInsTab('pipe');" style="height:30px;padding:0 10px;border-radius:999px;border:1px solid rgba(255,140,66,.34);background:rgba(255,140,66,.14);color:#ffb47b;font-size:11px;font-weight:700;cursor:pointer;">파이프라인</button>`;
+        <button type="button" onclick="mbCloseNtEditor();if(typeof mbInsTab==='function')mbInsTab('pipe');" style="height:30px;padding:0 10px;border-radius:999px;border:1px solid rgba(255,140,66,.34);background:rgba(255,140,66,.14);color:#ffb47b;font-size:11px;font-weight:700;cursor:pointer;">플래너</button>`;
       main.appendChild(nav);
     }
     nav.style.display = 'flex';

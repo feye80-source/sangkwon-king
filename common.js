@@ -11209,6 +11209,8 @@ window.wr2SummaryCancelEdit = function() {
         const markerPos = mObj && mObj.marker ? mObj.marker.getPosition() : null;
         cards.push({
           id: ov.id, left: parseFloat(el.style.left) || 0, top: parseFloat(el.style.top) || 0,
+          width: parseFloat(el.style.width) || null,
+          minHeight: parseFloat(el.style.minHeight) || null,
           isOpen: ov.isOpen, item: ov.item, propertyType: ov.propertyType,
           lat: markerPos ? markerPos.getLat() : (ov.item && ov.item.lat),
           lng: markerPos ? markerPos.getLng() : (ov.item && ov.item.lng)
@@ -11245,7 +11247,16 @@ window.wr2SummaryCancelEdit = function() {
         el.style.top = top + 'px';
         el.dataset.baseLeft = String(left);
         el.dataset.baseTop = String(top);
+        if (card.width != null && card.width !== '') {
+          var w = Number(card.width);
+          if (Number.isFinite(w) && w > 0) el.style.width = w + 'px';
+        }
+        if (card.minHeight != null && card.minHeight !== '') {
+          var mh = Number(card.minHeight);
+          if (Number.isFinite(mh) && mh > 0) el.style.minHeight = mh + 'px';
+        }
         ov.isOpen = !!card.isOpen;
+        ov.savedPos = { left: left, top: top };
         try { ov.overlay.setMap(card.isOpen ? map : null); } catch (e) {}
         ov._isSnap = true;
         ov._userLoaded = true;
@@ -11258,6 +11269,9 @@ window.wr2SummaryCancelEdit = function() {
         }
         if (typeof updateMapLine === 'function') updateMapLine(card.id);
       };
+      // 스냅샷 복원 중에는 실거래 카드 자동 스택 재정렬을 잠시 비활성화하여
+      // 저장해둔 카드 위치/크기를 그대로 복원한다.
+      window.__skipTransactionAutoStack = true;
       const restoreCore = function() {
         if (scene.mapCenter && map) {
           map.setCenter(new kakao.maps.LatLng(scene.mapCenter.lat, scene.mapCenter.lng));
@@ -11315,6 +11329,7 @@ window.wr2SummaryCancelEdit = function() {
                 // 스냅샷 복원 시에는 카드 단위 고유키를 강제해
                 // 동일 가격/주소 실거래가 여러 건이어도 1건으로 합쳐지지 않게 한다.
                 txItem.__snapDupKey = String(c.id || ('tx_' + idx));
+                txItem.__snapCardId = String(c.id || '');
                 showTransactionMarker(txItem);
               } else {
                 addMapMarker(loadItem, coords);
@@ -11330,10 +11345,11 @@ window.wr2SummaryCancelEdit = function() {
             if (c && c.id) applySceneState(c, 0);
           });
           setTimeout(function() {
-            if (typeof updateStackedCards === 'function') updateStackedCards();
+            // 복원 직후 강제 스택 정렬은 저장 위치를 깨트릴 수 있어 생략
             if (typeof refreshMapView === 'function') refreshMapView();
             window._lastLoadedSnap = name;
             showToast('✅ 스냅샷 복원됨: ' + name, 'ok');
+            setTimeout(function() { window.__skipTransactionAutoStack = false; }, 240);
           }, 260);
         }, settleDelay);
       };
@@ -11581,6 +11597,8 @@ window.wr2SummaryCancelEdit = function() {
         const pos = mObj && mObj.marker ? mObj.marker.getPosition() : null;
         cards.push({
           id: ov.id, left: parseFloat(el.style.left) || 0, top: parseFloat(el.style.top) || 0,
+          width: parseFloat(el.style.width) || null,
+          minHeight: parseFloat(el.style.minHeight) || null,
           isOpen: ov.isOpen, item: ov.item, propertyType: ov.propertyType,
           lat: pos ? pos.getLat() : (ov.item && ov.item.lat), lng: pos ? pos.getLng() : (ov.item && ov.item.lng)
         });
@@ -12118,6 +12136,8 @@ window.wr2SummaryCancelEdit = function() {
         var pos = mObj && mObj.marker ? mObj.marker.getPosition() : null;
         cards.push({
           id: ov.id, left: parseFloat(el.style.left) || 0, top: parseFloat(el.style.top) || 0,
+          width: parseFloat(el.style.width) || null,
+          minHeight: parseFloat(el.style.minHeight) || null,
           isOpen: ov.isOpen, item: ov.item, propertyType: ov.propertyType,
           lat: pos ? pos.getLat() : (ov.item && ov.item.lat),
           lng: pos ? pos.getLng() : (ov.item && ov.item.lng)
@@ -12182,6 +12202,8 @@ window.wr2SummaryCancelEdit = function() {
         var pos = mObj && mObj.marker ? mObj.marker.getPosition() : null;
         cards.push({
           id: ov.id, left: parseFloat(el.style.left) || 0, top: parseFloat(el.style.top) || 0,
+          width: parseFloat(el.style.width) || null,
+          minHeight: parseFloat(el.style.minHeight) || null,
           isOpen: ov.isOpen, item: ov.item, propertyType: ov.propertyType,
           lat: pos ? pos.getLat() : (ov.item && ov.item.lat),
           lng: pos ? pos.getLng() : (ov.item && ov.item.lng)
@@ -24032,6 +24054,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
 
     function updateStackedCards(onlyKey) {
+      if (window.__skipTransactionAutoStack) return;
       const openObjs = mapOverlays.filter(o => o && o.isOpen && (!onlyKey || o.stackKey === onlyKey));
 
       // ── 그룹 구성 ──────────────────────────────────────
@@ -27946,6 +27969,27 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       }
 
       loadedTransactions = filtered;
+      // 실거래 재호출 시 사용자 카드 위치/크기 레이아웃을 먼저 캡처한다.
+      // (새 호출이 와도 기존 배치 복원 가능)
+      var txLayoutCache = {};
+      mapOverlays.forEach(function(o) {
+        if (!o || o.propertyType !== 'transaction' || !o.transactionDupKey) return;
+        var el = document.getElementById(o.id);
+        var left = Number(o.savedPos && o.savedPos.left);
+        var top = Number(o.savedPos && o.savedPos.top);
+        if ((!Number.isFinite(left) || !Number.isFinite(top)) && el) {
+          left = parseFloat(el.style.left);
+          top = parseFloat(el.style.top);
+        }
+        txLayoutCache[String(o.transactionDupKey)] = {
+          left: Number.isFinite(left) ? left : 0,
+          top: Number.isFinite(top) ? top : 0,
+          width: el ? (parseFloat(el.style.width) || null) : null,
+          minHeight: el ? (parseFloat(el.style.minHeight) || null) : null,
+          isOpen: !!o.isOpen
+        };
+      });
+      window.__txLayoutCache = txLayoutCache;
       // ★ 근원 안정화:
       // 실거래는 호출 시마다 transaction 마커/오버레이 캐시를 비우고 재구성한다.
       // (이전 스냅샷/중복키 상태가 남아 새 호출이 막히는 현상 방지)
@@ -28143,12 +28187,14 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       // ★ [BUG FIX v123] 카운터+랜덤 방식으로 id 생성 → 드래그 버그 해결
       // 중복 방지는 데이터 비교(dupKey)로 별도 처리
       const snapDupKey = item && item.__snapDupKey ? String(item.__snapDupKey) : '';
+      const snapCardId = item && item.__snapCardId ? String(item.__snapCardId) : '';
       const dupKey = snapDupKey
         ? ('snap_' + snapDupKey)
         : ((item.address || item.dong || '') + '_' + (item.year || '') + '_' + (item.month || '') + '_' + (item.price || '') + '_' + (item.floor || ''));
       const alreadyExists = mapOverlays.some(o => o.transactionDupKey === dupKey);
       if (alreadyExists) return;
-      const id = stableId('transaction', dupKey);
+      const id = snapCardId || stableId('transaction', dupKey);
+      const isSnapshotRestore = !!snapCardId;
       // seq는 내부 z-index/정렬에만 사용 (id는 stable)
       transactionOverlaySeq = (transactionOverlaySeq || 0) + 1;
 
@@ -28189,6 +28235,9 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
       // 카드 콘텐츠 생성 - 자동 배치
       const autoPos = getAutoCardPosition(position);
+      const layoutCache = (window.__txLayoutCache && window.__txLayoutCache[dupKey]) ? window.__txLayoutCache[dupKey] : null;
+      const initLeft = (layoutCache && Number.isFinite(Number(layoutCache.left))) ? Number(layoutCache.left) : autoPos.left;
+      const initTop = (layoutCache && Number.isFinite(Number(layoutCache.top))) ? Number(layoutCache.top) : autoPos.top;
 
       // ✅ 실거래(transaction) 카드 본문은 공통 빌더를 사용(메모 제거/정보 밀도 개선)
       const tItem = Object.assign({ mode: 'transaction' }, item);
@@ -28200,7 +28249,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       cardWrap.className = 'overlay-wrap';
       cardWrap.innerHTML = `
     <svg class="conn-svg"><line class="conn-line" x1="0" y1="0" x2="0" y2="0" style="stroke:#eab308;"/></svg>
-    <div class="map-card transaction-card" id="${id}" style="left:${autoPos.left}px;top:${autoPos.top}px;" data-base-left="${autoPos.left}" data-base-top="${autoPos.top}">
+    <div class="map-card transaction-card" id="${id}" style="left:${initLeft}px;top:${initTop}px;" data-base-left="${initLeft}" data-base-top="${initTop}">
       <div class="map-card-header">
         <input class="map-card-title" id="title_${id}" value="${esc(item.name || '실거래')}" readonly onclick="editCardTitle('${id}')"/>
         <div class="map-card-header-right">
@@ -28231,9 +28280,11 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         yAnchor: 0,
         zIndex: 10
       });
-      const initialTradeCardOpen = (!_isCompactMapUi())
-        && mapFilters.transaction !== false
-        && _isMapCardTypeOpen('transaction');
+      const initialTradeCardOpen = (layoutCache && typeof layoutCache.isOpen === 'boolean')
+        ? !!layoutCache.isOpen
+        : ((!_isCompactMapUi())
+          && mapFilters.transaction !== false
+          && _isMapCardTypeOpen('transaction'));
 
       // mapOverlays에 먼저 등록 (클릭 이벤트가 이 배열을 참조하므로 선행 등록 필수)
       const overlayObj = {
@@ -28245,8 +28296,10 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         propertyType: 'transaction',
         stackKey: getStackKeyFromPos(position),
         transactionDupKey: dupKey,  // ★ 중복 방지용 키
-        _userLoaded: true            // ★ 사용자 불러오기 마커
+        _userLoaded: true,           // ★ 사용자 불러오기 마커
+        _isSnap: isSnapshotRestore
       };
+      overlayObj.savedPos = { left: initLeft, top: initTop };
       mapOverlays.push(overlayObj);
       window.mapOverlays = mapOverlays; // 📱 모바일 동기화
 
@@ -28320,18 +28373,34 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       });
 
       marker.setMap(mapFilters.transaction ? map : null);
+      setTimeout(function() {
+        var cardEl = document.getElementById(id);
+        if (!cardEl || !layoutCache) return;
+        if (layoutCache.width && Number(layoutCache.width) > 0) cardEl.style.width = Number(layoutCache.width) + 'px';
+        if (layoutCache.minHeight && Number(layoutCache.minHeight) > 0) cardEl.style.minHeight = Number(layoutCache.minHeight) + 'px';
+      }, 0);
 
       // 카드도 즉시 표시 (📱 모바일 제외)
       if (mapFilters.transaction && initialTradeCardOpen && !_isCompactMapUi()) {
         overlay.setMap(map);
 
         // ✅ 동일 좌표 실거래는 대표 1장만 열리도록 등록(+N 배지/순환)
-        stackRegisterOpenTransaction(overlayObj);
+        if (!(window.__skipTransactionAutoStack && isSnapshotRestore)) {
+          stackRegisterOpenTransaction(overlayObj);
+        }
 
         // 즉시 + 지연 1회 보정
         adjustCardSizeByZoom();
-        setTimeout(() => { refreshMapView(); adjustCardSizeByZoom(); if (overlayObj.isOpen) updateMapLine(overlayObj.id); updateStackedCards(); }, 0);
-        setTimeout(() => { if (overlayObj.isOpen) updateMapLine(overlayObj.id); updateStackedCards(); }, 200);
+        setTimeout(() => {
+          refreshMapView();
+          adjustCardSizeByZoom();
+          if (overlayObj.isOpen) updateMapLine(overlayObj.id);
+          if (!(window.__skipTransactionAutoStack && isSnapshotRestore)) updateStackedCards();
+        }, 0);
+        setTimeout(() => {
+          if (overlayObj.isOpen) updateMapLine(overlayObj.id);
+          if (!(window.__skipTransactionAutoStack && isSnapshotRestore)) updateStackedCards();
+        }, 200);
       } else if (mapFilters.transaction && _isCompactMapUi()) {
         // 모바일: isOpen은 false로 유지, overlay 표시 안 함
         overlayObj.isOpen = false;
@@ -29934,7 +30003,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         if (p) p.style.display = (i === n) ? '' : 'none';
         if (t) t.classList.toggle('on', i === n);
       });
-      const labels = { 0: '노트', 1: '계산기', 3: '뉴스 클리핑', 4: '알짜정보', 5: '파이프라인', 6: '사이트', 8: '작업룸', 9: '소상공인 상권' };
+      const labels = { 0: '노트', 1: '계산기', 3: '뉴스 클리핑', 4: '알짜정보', 5: '플래너', 6: '사이트', 8: '작업룸', 9: '소상공인 상권' };
       const lbl = document.getElementById('insTabLabel');
       if (lbl) lbl.textContent = labels[n] || '';
 
@@ -30348,7 +30417,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       // 빈 상태 메시지
       if (!list.length) {
         const emptyMsg = _ntMode === 'study' ? '학습·정보 노트가 없습니다<br><span style="font-size:10px;">물건 연결 없이 만든 노트가 여기 쌓여요</span>'
-          : _ntMode === 'deal' ? '물건 기록이 없습니다<br><span style="font-size:10px;">파이프라인에서 노트 추가하거나 물건 연결하세요</span>'
+          : _ntMode === 'deal' ? '물건 기록이 없습니다<br><span style="font-size:10px;">플래너에서 노트 추가하거나 물건 연결하세요</span>'
             : '노트가 없습니다';
         el.innerHTML = `<div style="text-align:center;color:var(--di);font-size:12px;padding:30px 10px;line-height:1.8;">${emptyMsg}</div>`;
         return;
@@ -31297,7 +31366,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         + '<div style="display:flex;align-items:center;gap:6px;padding:8px 10px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:10px;">'
         +   '<button type="button" onclick="(function(){var m=document.getElementById(\'ntEditorMain\');if(m)m.style.display=\'none\';if(typeof mbInsTab===\'function\')mbInsTab(\'note\');})()" style="padding:5px 10px;border-radius:8px;border:1px solid var(--b1);background:var(--s2);color:var(--tx);font-size:11px;cursor:pointer;white-space:nowrap;">← 목록</button>'
         +   '<button type="button" onclick="(function(){var m=document.getElementById(\'ntEditorMain\');if(m)m.style.display=\'none\';if(typeof mbInsTab===\'function\')mbInsTab(\'room\');})()" style="padding:5px 9px;border-radius:8px;border:1px solid rgba(79,142,255,.24);background:rgba(79,142,255,.10);color:#8ab8ff;font-size:11px;cursor:pointer;white-space:nowrap;">작업룸</button>'
-        +   '<button type="button" onclick="(function(){var m=document.getElementById(\'ntEditorMain\');if(m)m.style.display=\'none\';if(typeof mbInsTab===\'function\')mbInsTab(\'pipe\');})()" style="padding:5px 9px;border-radius:8px;border:1px solid rgba(255,140,66,.24);background:rgba(255,140,66,.10);color:#ffb47b;font-size:11px;cursor:pointer;white-space:nowrap;">파이프라인</button>'
+        +   '<button type="button" onclick="(function(){var m=document.getElementById(\'ntEditorMain\');if(m)m.style.display=\'none\';if(typeof mbInsTab===\'function\')mbInsTab(\'pipe\');})()" style="padding:5px 9px;border-radius:8px;border:1px solid rgba(255,140,66,.24);background:rgba(255,140,66,.10);color:#ffb47b;font-size:11px;cursor:pointer;white-space:nowrap;">플래너</button>'
         +   '<span id="ntSimpleSaveHint" style="margin-left:auto;font-size:10px;color:var(--di);white-space:nowrap;">자동저장</span>'
         + '</div>'
         + '<div style="display:flex;align-items:center;gap:8px;padding:2px 0 0;">'
@@ -34479,7 +34548,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         const nodes = Array.from(document.querySelectorAll('h1,h2,h3,h4,div,span'));
         const title = nodes.find(el => {
           const txt = String(el.childNodes && el.childNodes.length ? Array.from(el.childNodes).filter(n => n.nodeType === 3).map(n => n.textContent).join('') : el.textContent || '').trim();
-          return txt === '🎯 파이프라인' || txt === '파이프라인' || /^🎯s*파이프라인$/.test(txt);
+          return txt === '🎯 파이프라인' || txt === '파이프라인' || txt === '🎯 플래너' || txt === '플래너' || /^🎯s*파이프라인$/.test(txt) || /^🎯s*플래너$/.test(txt);
         });
         if (title && badge.parentElement !== title) {
           if (badge.parentElement) badge.parentElement.removeChild(badge);
@@ -44264,8 +44333,22 @@ window.addEventListener('DOMContentLoaded', () => {
         putField('최저가_만원', Math.round(minWon / 10000));
       }
     }
-    if (item.deposit) putField('보증금_만원', plParseAmountText(item.deposit));
-    if (item.monthly) putField('월세_만원', plParseAmountText(item.monthly));
+    // 임차보증금/월세는 빈 값도 저장(=삭제)되어야 한다.
+    // 기존 truthy 조건은 "지워도 다시 살아나는" 문제를 만든다.
+    {
+      var depMan = plParseAmountText(item.deposit || '');
+      var depWon = depMan ? String(Math.round(Number(depMan) * 10000)) : '';
+      putField('임차인_보증금', depWon);
+      putField('임차보증금', depWon);
+      putField('보증금_만원', depMan); // 일반 매물 호환 필드
+    }
+    {
+      var monMan = plParseAmountText(item.monthly || '');
+      var monWon = monMan ? String(Math.round(Number(monMan) * 10000)) : '';
+      putField('임차인_월세', monWon);
+      putField('임차월세', monWon);
+      putField('월세_만원', monMan);
+    }
     // 나의입찰가(estimate)는 물건리스트 전용 필드로 취급한다.
     // 저장목록 원본의 '예상입찰가/추천입찰가'와 상호 덮어쓰기하면
     // 사용자가 estimate를 비웠을 때 원본값이 다시 살아나는 문제가 생긴다.
@@ -45066,6 +45149,9 @@ window.addEventListener('DOMContentLoaded', () => {
     }
     if (item.addr && String(room.title || '') !== String(item.addr || '')) patch.title = item.addr;
     if (item.region && String(room.address || '') !== String(item.region || '')) patch.address = item.region;
+    // 물건리스트 인라인 수정값(기일/최저가)을 작업룸에도 즉시 반영해서 플래너와 값이 갈라지지 않게 한다.
+    if (item.biddate !== undefined) patch.biddate = _plNormalizeBiddateValue(item.biddate || '');
+    if (item.minprice !== undefined) patch.minprice = String(item.minprice || '').trim();
     if (simple === 'closed') {
       var nextSummary = Object.assign({}, room.closedSummary || {});
       var csChanged = false;
@@ -45444,12 +45530,13 @@ window.addEventListener('DOMContentLoaded', () => {
   // ── 선택/일괄 처리 ──────────────────────
   function plVisibleItems(items, roomById) {
     var q = ((document.getElementById('pl-search')||{}).value||'').toLowerCase();
-    var fs = (document.getElementById('pl-filter-status')||{}).value||'';
-    var ft = (document.getElementById('pl-filter-type')||{}).value||'';
-    var fi = (document.getElementById('pl-filter-intent')||{}).value||'';
+    var fs = String((document.getElementById('pl-filter-status')||{}).value||'').trim();
+    var ft = String((document.getElementById('pl-filter-type')||{}).value||'').trim();
+    var fi = String((document.getElementById('pl-filter-intent')||{}).value||'').trim();
     var sortKey = (document.getElementById('pl-sort-key')||{}).value||'biddate_near';
     var showArchived = !!((document.getElementById('pl-show-archived')||{}).checked);
     var showClosed = !!((document.getElementById('pl-show-closed')||{}).checked);
+    if (fs === 'all') fs = '';
     var canonicalRoomBySaved = {};
     var canonicalRoomTsBySaved = {};
     if (roomById) {
@@ -45474,6 +45561,14 @@ window.addEventListener('DOMContentLoaded', () => {
       if (sid && canonicalRoomBySaved[sid] && String(it.roomId || '') !== String(canonicalRoomBySaved[sid])) return false;
       var isArchived = !!it.archived;
       var simple = plEffectiveSimpleStatus(it, roomById);
+      // 필터 안정성: 작업룸 lifecycle이 더 최신이면 필터 기준은 작업룸 상태를 우선한다.
+      var room = roomById && it.roomId ? roomById[String(it.roomId)] : null;
+      if (room) {
+        var roomSimple = plSimpleStatusKey(room.lifecycleStatus || room.status || room.phase || '');
+        var roomTs = Number(room.updatedAt || 0);
+        var itemTs = Number(it.updatedAt || 0);
+        if (roomSimple && roomSimple !== simple && roomTs >= (itemTs - 500)) simple = roomSimple;
+      }
       if (fs) {
         if (simple !== fs) return false;
       } else {
@@ -45612,6 +45707,7 @@ window.addEventListener('DOMContentLoaded', () => {
     plSave(items);
     syncToWorkroom(changedItem);
     try { plSyncItemToSaved(changedItem); } catch(e) {}
+    try { if (typeof renderWatchBoard === 'function') setTimeout(renderWatchBoard, 40); } catch(e) {}
     return changedItem;
   }
   // [FIX] 물건관리 내부 함수 전역 노출: 작업룸/콘솔/유찰 처리에서 동일 원본 사용
@@ -46553,8 +46649,35 @@ window.addEventListener('DOMContentLoaded', () => {
     var bidDate = plSavedField(raw, ['매각기일','매각일','입찰기일'], '') || plSavedField(norm, ['입찰기일'], '') || src.bidDate || src.biddate || '';
     var appraisal = plSavedField(norm, ['감정가_만원'], '') || (plSavedField(raw, ['감정가'], '') ? String(Math.round(parseInt(String(plSavedField(raw,['감정가'],'')).replace(/[^0-9]/g,''),10)/10000)) : '') || src.appraisal || '';
     var minprice = plSavedField(norm, ['최저가_만원'], '') || (plSavedField(raw, ['최저가'], '') ? String(Math.round(parseInt(String(plSavedField(raw,['최저가'],'')).replace(/[^0-9]/g,''),10)/10000)) : '') || src.minprice || '';
-    var deposit = plSavedField(norm, ['보증금_만원'], '') || (plSavedField(raw, ['임차인_보증금'], '') ? String(Math.round(parseInt(String(plSavedField(raw,['임차인_보증금'],'')).replace(/[^0-9]/g,''),10)/10000)) : '') || src.deposit || '';
-    var monthly = plSavedField(norm, ['월세_만원'], '') || plSavedField(raw, ['임차인_월세'], '') || src.monthly || '';
+    var occ = (typeof _getSavedOccupancySnapshot === 'function') ? _getSavedOccupancySnapshot(src, raw) : null;
+    var depManFromOcc = (occ && occ.leaseDepositWon > 0) ? String(Math.round(Number(occ.leaseDepositWon || 0) / 10000)) : '';
+    var monManFromOcc = (occ && occ.monthlyRentWon > 0) ? String(Math.round(Number(occ.monthlyRentWon || 0) / 10000)) : '';
+    var isAuctionItem = !!(typeof plIsAuctionCandidateSaved === 'function' ? plIsAuctionCandidateSaved(src) : plIsPublicAuctionSaved(src));
+    var hasTenantFields = !!(
+      depManFromOcc
+      || monManFromOcc
+      || plSavedField(raw, ['임차인_보증금','임차보증금','임차인 보증금','임차인_월세','임차월세','임차인 월세','임차인명','임차인'], '')
+      || (Array.isArray(raw['임차인_목록']) && raw['임차인_목록'].length)
+    );
+    // 핵심 정책:
+    // - 경매 물건의 보증금/월세는 "임차인 정보"를 우선 사용한다.
+    // - 경매에서 임차인 정보가 존재할 때는 일반 보증금_만원(입찰보증금 성격)으로 대체하지 않는다.
+    var depositFromTenantRaw = plSavedField(raw, ['임차인_보증금','임차보증금','임차인 보증금'], '');
+    var monthlyFromTenantRaw = plSavedField(raw, ['임차인_월세','임차월세','임차인 월세'], '');
+    var depositTenantMan = depositFromTenantRaw
+      ? String(Math.round(parseInt(String(depositFromTenantRaw).replace(/[^0-9]/g, ''), 10) / 10000))
+      : '';
+    var monthlyTenantMan = monthlyFromTenantRaw
+      ? String(Math.round(parseInt(String(monthlyFromTenantRaw).replace(/[^0-9]/g, ''), 10) / 10000))
+      : '';
+    var deposit = depManFromOcc
+      || depositTenantMan
+      || ((!isAuctionItem || !hasTenantFields) ? plSavedField(norm, ['보증금_만원'], '') : '')
+      || src.deposit || '';
+    var monthly = monManFromOcc
+      || monthlyTenantMan
+      || ((!isAuctionItem || !hasTenantFields) ? plSavedField(norm, ['월세_만원'], '') : '')
+      || src.monthly || '';
     var failCount = plSavedField(norm,['유찰횟수'],'') || plSavedField(raw,['유찰횟수'],'') || '';
     var estimateWonRaw = plSavedField(raw, ['예상입찰가','추천낙찰가','추천입찰가','입찰가'], '');
     var estimateManRaw = plSavedField(raw, ['예상입찰가_만원','추천낙찰가_만원','추천입찰가_만원'], '');
