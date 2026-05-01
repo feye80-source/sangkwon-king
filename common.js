@@ -45,7 +45,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260502-mapcard-tx-stable-v20';
+    window.__SK_BUILD = '20260502-card-tx-fix-v21';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -18802,7 +18802,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       }
 
       // 하나라도 불러올 게 있는지 사전 체크
-      const loadCSV = loadType === 'transaction' || getCb('filterTransaction');
+      const loadCSV = loadType === 'transaction' || (!loadType && getCb('filterTransaction'));
       const willLoadAny = loadType !== null || getCb('filterAuction') || getCb('filterNaver') || getCb('filterJumpo') || getCb('filterNemo') || getCb('filterAssa') || getCb('filterDisco') || getCb('filterBds') || loadCSV;
       if (!willLoadAny) {
         alert('표시할 매물 유형을 선택해주세요');
@@ -21899,8 +21899,6 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           const 매물명 = d.매물명 || d.r_type_nm || '-';
           return `
         ${editableRowTx('매매가', '매매가', 매매가str, true)}
-        ${editableRowTx('보증금', '기보증금_만원', nT.보증금_만원 ? fM(nT.보증금_만원) : '-', true)}
-        ${editableRowTx('월세', '월세_만원', nT.월세_만원 ? fM(nT.월세_만원) : '-', true)}
         ${row('매매 평당가', 평당가str)}
         ${row(면적라벨, 면적str ? 면적str : '-')}
         <div class="map-card-row"><span class="map-card-label">층수</span><span class="map-card-value map-card-value-inline" id="floor_disp_${item.id}" onclick="inlineEditFloor('${item.id}','floor')" onmousedown="event.stopPropagation()" ontouchstart="event.stopPropagation()" title="클릭하여 수정" style="cursor:pointer;border-bottom:1px dashed rgba(255,255,255,.2);">${층str}</span></div>
