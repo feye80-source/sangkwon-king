@@ -4169,8 +4169,7 @@ input, textarea, select {
   window.mbOpenSavedDetail = function(itemId) {
     try {
       var items = ((window._idbCache&&window._idbCache['re_sv'])||JSON.parse(localStorage.getItem('re_sv')||'[]'));
-      var item = itemId ? items.find(function(x) { return x.id === itemId; }) : null;
-      if (!item && !isNaN(itemId)) item = items[parseInt(itemId)];
+      var item = _mbFindById(items, itemId);
       if (!item) { mbToast('매물 정보를 찾을 수 없어요', 'err'); return; }
 
       var bs     = document.getElementById('mb-map-bs');
@@ -4612,7 +4611,7 @@ input, textarea, select {
         // re_sv에서 아이템 찾아 좌표로 이동
         var sv = [];
         try { sv = ((window._idbCache&&window._idbCache['re_sv'])||JSON.parse(localStorage.getItem('re_sv')||'[]')); } catch(e) {}
-        var it = sv.find(function(x){ return x.id === itemId; });
+        var it = _mbFindById(sv, itemId);
         if (it) {
           var lat = parseFloat(it.lat), lng = parseFloat(it.lng);
           if (!isNaN(lat) && !isNaN(lng) && window.map) {
@@ -4967,6 +4966,23 @@ input, textarea, select {
       _mbPersistRoomsNow(payload.rooms, payload.activeRoomId);
     }, 220);
   }
+
+  async function _mbForceSyncRoomsNow() {
+    try {
+      var rooms = (window._wrGetRoomsCache && window._wrGetRoomsCache())
+        || ((window._idbCache && window._idbCache['wr2_rooms'])
+          || JSON.parse(localStorage.getItem('wr2_rooms') || '[]'));
+      if (!Array.isArray(rooms) || !rooms.length) return false;
+      if (typeof window._sbSaveRooms === 'function') {
+        await window._sbSaveRooms(rooms.filter(function(r){ return r && r.id; }));
+        return true;
+      }
+      return false;
+    } catch (e) {
+      console.warn('[mb force room sync]', e);
+      return false;
+    }
+  }
   function _mbPersistSections(sections) {
     if (!Array.isArray(sections)) return;
     if (window._wrPersistSections) {
@@ -5065,6 +5081,26 @@ input, textarea, select {
 
   function _mbNormSrcKey(src) {
     return String(src || '').trim().toLowerCase().replace(/\s+/g, '');
+  }
+
+  function _mbIdKey(v) {
+    return String(v == null ? '' : v).trim();
+  }
+
+  function _mbSameId(a, b) {
+    var ak = _mbIdKey(a);
+    var bk = _mbIdKey(b);
+    return !!ak && !!bk && ak === bk;
+  }
+
+  function _mbFindById(list, id) {
+    var target = _mbIdKey(id);
+    if (!target || !Array.isArray(list)) return null;
+    for (var i = 0; i < list.length; i += 1) {
+      var row = list[i];
+      if (row && _mbSameId(row.id, target)) return row;
+    }
+    return null;
   }
 
   function _mbNormAddr(raw) {
@@ -5801,6 +5837,7 @@ input, textarea, select {
     if (!room) return;
     var roomId = room.id;
     (async function() {
+      window.__mbRoomLocalWriteUntil = Math.max(Number(window.__mbRoomLocalWriteUntil || 0), Date.now() + 180000);
       window.__wr2UploadBusy = Number(window.__wr2UploadBusy || 0) + 1;
       var ok = 0;
       var fail = 0;
@@ -5831,7 +5868,8 @@ input, textarea, select {
             targetRoom.captureImages = targetRoom.captureImages.concat(entries);
           }, { immediate: true });
         }
-        window.__mbRoomLocalWriteUntil = Date.now() + 45000;
+        window.__mbRoomLocalWriteUntil = Date.now() + 180000;
+        await _mbForceSyncRoomsNow();
         if (ok && latestRoom && window.wr2PushActivity) window.wr2PushActivity(latestRoom, '작업 이미지 ' + ok + '개를 추가했습니다', latestRoom.phase || latestRoom.status);
         if (latestRoom) _mbRenderOvCapture(latestRoom);
         if (ok) mbToast('작업 이미지 ' + ok + '개 업로드됨', fail ? 'warn' : 'ok');
@@ -5929,6 +5967,7 @@ input, textarea, select {
     var roomId = room.id;
     var noteId = note.id;
     (async function() {
+      window.__mbRoomLocalWriteUntil = Math.max(Number(window.__mbRoomLocalWriteUntil || 0), Date.now() + 180000);
       window.__wr2UploadBusy = Number(window.__wr2UploadBusy || 0) + 1;
       var ok = 0;
       var fail = 0;
@@ -5970,7 +6009,8 @@ input, textarea, select {
             targetRoom.lastNoteId = noteId;
           }, { immediate: true });
         }
-        window.__mbRoomLocalWriteUntil = Date.now() + 45000;
+        window.__mbRoomLocalWriteUntil = Date.now() + 180000;
+        await _mbForceSyncRoomsNow();
         if (ok && latestRoom && window.wr2PushActivity) window.wr2PushActivity(latestRoom, '노트 첨부 ' + ok + '개를 추가했습니다', latestRoom.phase || latestRoom.status);
         if (latestRoom) {
           _mbRenderNoteAttachments(latestRoom);
@@ -6611,7 +6651,7 @@ input, textarea, select {
     var linkedItems = room.linkedItems || [];
     var items = [];
     if (linkedId) {
-      var found = savedItems.find(function(x){ return x.id === linkedId; });
+      var found = _mbFindById(savedItems, linkedId);
       if (found) items.push(found);
     }
     if (!items.length && linkedItems.length) items = linkedItems;
@@ -6790,7 +6830,7 @@ input, textarea, select {
       if (window.wr2State) window.wr2State.activeRoomId = roomId;
       _mbActiveNoteId = null; // 룸 바뀌면 노트 선택 초기화
       var rooms = _mbGetRoomsArray();
-      var room = rooms.find(function(r) { return r.id === roomId; });
+      var room = rooms.find(function(r) { return r && _mbSameId(r.id, roomId); });
       if (!room) {
         mbToast('룸을 찾을 수 없어요', 'err');
         mbRoomRefreshSel();
@@ -8614,7 +8654,7 @@ input, textarea, select {
       // item 객체가 들어온 경우 → overlays에서 id 찾기
       var _itemId = markerIdOrItem.id;
       var _overlays = window.mapOverlays || [];
-      var _found = _overlays.find(function(o){ return o && o.item && o.item.id === _itemId; });
+      var _found = _overlays.find(function(o){ return o && o.item && _mbSameId(o.item.id, _itemId); });
       _mbBsCurrentId = _found ? _found.id : ('marker_' + _itemId);
     } else {
       _mbBsCurrentId = markerIdOrItem;
@@ -8649,7 +8689,7 @@ input, textarea, select {
     // 패널 생성
     var saved = [];
     try { saved = ((window._idbCache&&window._idbCache['re_sv'])||JSON.parse(localStorage.getItem('re_sv')||'[]')); } catch(e) {}
-    var item = saved.find(function(x){ return x.id === itemId; });
+    var item = _mbFindById(saved, itemId);
     var d = (item && item.data) || {};
     var container = document.getElementById('mb-map-bs-body');
     if (!container) return;
@@ -8914,11 +8954,15 @@ input, textarea, select {
 
     if (tab === 'card') {
       var overlays = window.mapOverlays || [];
-      var obj = overlays.find(function(o) { return o && (o.id === _mbBsCurrentId || (o.item && o.item.id === _mbBsCurrentId)); });
+      var obj = overlays.find(function(o) {
+        return o && (_mbSameId(o.id, _mbBsCurrentId) || (o.item && _mbSameId(o.item.id, _mbBsCurrentId)));
+      });
       if (!obj || !obj.item) {
         var sv2 = [];
         try { sv2 = ((window._idbCache&&window._idbCache['re_sv'])||JSON.parse(localStorage.getItem('re_sv')||'[]')); } catch(e) {}
-        var svItem = sv2.find(function(x){ return x.id === _mbBsCurrentId || ('marker_' + x.id) === _mbBsCurrentId; });
+        var svItem = sv2.find(function(x){
+          return _mbSameId(x && x.id, _mbBsCurrentId) || ('marker_' + String(x && x.id || '')) === String(_mbBsCurrentId || '');
+        });
         if (svItem) {
           mbOpenSavedDetail(svItem.id);
           return;
@@ -9042,7 +9086,7 @@ input, textarea, select {
   window.mbBsSelectAuction = function(itemId) {
     // 저장목록 item → 해당 마커 찾기
     var overlays = window.mapOverlays || [];
-    var ov = overlays.find(function(o) { return o && o.item && o.item.id === itemId; });
+    var ov = overlays.find(function(o) { return o && o.item && _mbSameId(o.item.id, itemId); });
     if (ov) {
       _mbBsCurrentId = ov.id;
     } else {
