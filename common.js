@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260501-bds-cookie-v14';
+    window.__SK_BUILD = '20260502-bds-bounds-v15';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -15677,6 +15677,40 @@ window.wr2SummaryCancelEdit = function() {
       }
       if (!bounds) { shopStatus('bds', '❌ 지역을 입력하거나 📍 버튼을 클릭하세요.', '#ff4d4d'); return; }
 
+      // ★ [BDS v15] 부동산플래닛은 bbox가 점 하나이면 200/빈 응답을 주는 경우가 많다.
+      // 지도 bounds가 숨김/축소 상태에서 center와 동일하게 들어와도 최소 수집 범위를 보장한다.
+      function _bdsEnsureAreaBounds(raw) {
+        const b = Object.assign({}, raw || {});
+        const lat = parseFloat(b.lat);
+        const lng = parseFloat(b.lng);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return raw;
+        let neLat = parseFloat(b.nelat);
+        let swLat = parseFloat(b.swlat);
+        let neLng = parseFloat(b.nelng);
+        let swLng = parseFloat(b.swlng);
+        if (!Number.isFinite(neLat)) neLat = lat;
+        if (!Number.isFinite(swLat)) swLat = lat;
+        if (!Number.isFinite(neLng)) neLng = lng;
+        if (!Number.isFinite(swLng)) swLng = lng;
+        if (swLat > neLat) { const t = swLat; swLat = neLat; neLat = t; }
+        if (swLng > neLng) { const t = swLng; swLng = neLng; neLng = t; }
+        const minHalfLat = 0.01;
+        const minHalfLng = 0.01;
+        const tooSmallLat = Math.abs(neLat - swLat) < 0.002;
+        const tooSmallLng = Math.abs(neLng - swLng) < 0.002;
+        if (tooSmallLat) { neLat = lat + minHalfLat; swLat = lat - minHalfLat; }
+        if (tooSmallLng) { neLng = lng + minHalfLng; swLng = lng - minHalfLng; }
+        b.lat = lat; b.lng = lng;
+        b.nelat = neLat; b.swlat = swLat;
+        b.nelng = neLng; b.swlng = swLng;
+        b._bdsBoundsFixed = !!(tooSmallLat || tooSmallLng);
+        return b;
+      }
+      bounds = _bdsEnsureAreaBounds(bounds);
+      if (bounds && bounds._bdsBoundsFixed) {
+        console.warn('[BDS] zero/small bounds 보정:', bounds);
+      }
+
       shopStatus('bds', `⏳ py 서버로 수집 중... (${bounds.lat.toFixed(4)}, ${bounds.lng.toFixed(4)})`, 'var(--mu)');
 
       const _bdsCookieKey = 'bds_cookie';
@@ -15700,6 +15734,7 @@ window.wr2SummaryCancelEdit = function() {
           max_n: maxN
         };
         if (cookieText) payload.cookie = cookieText;
+        try { console.log('[BDS payload]', Object.assign({}, payload, { cookie: payload.cookie ? '[saved-cookie:' + payload.cookie.length + ']' : '' })); } catch(e) {}
         const resp = await fetch(proxyBase + '/api/bds', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

@@ -2418,6 +2418,22 @@ class ProxyHandler(BaseHTTPRequestHandler):
             _swlat = float(swlat) if swlat else _lat - 0.008
             _nelng = float(nelng) if nelng else _lng + 0.008
             _swlng = float(swlng) if swlng else _lng - 0.008
+
+            # ★ [BDS v15] 프론트에서 bbox가 점 하나로 들어오는 경우 서버에서도 안전 보정.
+            # 부동산플래닛 getRealpriceMapMarker는 x1/x2/y1/y2 면적이 없으면 200/빈 응답을 반환할 수 있다.
+            if _swlat > _nelat:
+                _swlat, _nelat = _nelat, _swlat
+            if _swlng > _nelng:
+                _swlng, _nelng = _nelng, _swlng
+            if abs(_nelat - _swlat) < 0.002:
+                _nelat = _lat + 0.01
+                _swlat = _lat - 0.01
+                print(f"  🧭 BDS bbox 위도 보정: swlat={_swlat}, nelat={_nelat}")
+            if abs(_nelng - _swlng) < 0.002:
+                _nelng = _lng + 0.01
+                _swlng = _lng - 0.01
+                print(f"  🧭 BDS bbox 경도 보정: swlng={_swlng}, nelng={_nelng}")
+
             request_limit = max_n if (max_n and max_n > 0) else 1000
             request_limit = max(50, min(int(request_limit), 2000))
 
