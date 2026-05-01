@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260501-intent-color-v6';
+    window.__SK_BUILD = '20260501-intent-color-v8-original-ui';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -4998,17 +4998,9 @@ var _safeLocalSet = function(key, value) {
                     const priceRaw = metaInfo.priceRaw;
                     const price = fmtMetaPrice(priceRaw) || String(priceRaw || '').trim();
                     const intent = String(metaInfo.intent || '').trim();
-                    const intentTone = intent === '최상'
-                      ? { label: '👑 최상', color: '#ffffff', bg: 'linear-gradient(135deg,#ff3b5f,#ff7a45)', border: 'rgba(255,150,120,.95)', shadow: '0 0 12px rgba(255,80,100,.45)' }
-                      : (intent === '상'
-                        ? { label: '상', color: '#1f1300', bg: 'linear-gradient(135deg,#f59e0b,#facc15)', border: 'rgba(255,220,120,.95)', shadow: '0 0 10px rgba(245,158,11,.35)' }
-                        : (intent === '중'
-                          ? { label: '중', color: '#9fc3ff', bg: 'rgba(79,142,255,.16)', border: 'rgba(79,142,255,.45)', shadow: 'none' }
-                          : (intent === '하'
-                            ? { label: '하', color: '#aab3c5', bg: 'rgba(107,117,144,.16)', border: 'rgba(107,117,144,.35)', shadow: 'none' }
-                            : null)));
-                    const intentChip = intentTone
-                      ? ('<span style="padding:1px 7px;border-radius:999px;border:1px solid ' + intentTone.border + ';background:' + intentTone.bg + ';color:' + intentTone.color + ';box-shadow:' + intentTone.shadow + ';font-size:10px;font-weight:900;white-space:nowrap;">' + esc(intentTone.label) + '</span>')
+                    const intentColor = intent === '최상' ? '#ff4f69' : (intent === '상' ? '#f59e0b' : (intent === '중' ? '#60a5fa' : (intent === '하' ? '#4ade80' : '#8ea7c9')));
+                    const intentChip = intent
+                      ? ('<span style="padding:1px 6px;border-radius:999px;border:1px solid ' + intentColor + '55;background:' + intentColor + '18;color:' + intentColor + ';font-size:10px;font-weight:800;white-space:nowrap;">' + esc(intent) + '</span>')
                       : '';
                     const ddayLabel = (saleDday == null)
                       ? ''
@@ -34678,16 +34670,16 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     }
     function _plIntentTone(intent) {
       const v = String(intent || '').trim();
-      if (v === '최상') return { label: '👑 최상', color: '#ffffff', bg: 'linear-gradient(135deg,#ff3b5f,#ff7a45)', border: 'rgba(255,150,120,.95)', shadow: '0 0 12px rgba(255,80,100,.45)' };
-      if (v === '상') return { label: '상', color: '#1f1300', bg: 'linear-gradient(135deg,#f59e0b,#facc15)', border: 'rgba(255,220,120,.95)', shadow: '0 0 10px rgba(245,158,11,.35)' };
-      if (v === '중') return { label: '중', color: '#9fc3ff', bg: 'rgba(79,142,255,.16)', border: 'rgba(79,142,255,.45)', shadow: 'none' };
-      if (v === '하') return { label: '하', color: '#aab3c5', bg: 'rgba(107,117,144,.16)', border: 'rgba(107,117,144,.35)', shadow: 'none' };
+      if (v === '최상') return { color: '#ff4f69', bg: 'rgba(255,79,105,.16)' };
+      if (v === '상') return { color: '#f59e0b', bg: 'rgba(245,158,11,.16)' };
+      if (v === '중') return { color: '#60a5fa', bg: 'rgba(96,165,250,.16)' };
+      if (v === '하') return { color: '#4ade80', bg: 'rgba(74,222,128,.16)' };
       return null;
     }
     function _plIntentChip(intent) {
       const tone = _plIntentTone(intent);
       if (!tone) return '';
-      return `<span style="display:inline-flex;align-items:center;justify-content:center;min-width:38px;height:22px;padding:0 9px;border-radius:999px;border:1px solid ${tone.border};background:${tone.bg};color:${tone.color};box-shadow:${tone.shadow};font-size:11px;font-weight:900;line-height:1;white-space:nowrap;letter-spacing:-.2px;">${_plEsc(tone.label)}</span>`;
+      return `<span style="display:inline-flex;align-items:center;padding:1px 6px;border-radius:999px;border:1px solid ${tone.color}55;background:${tone.bg};color:${tone.color};font-size:10px;font-weight:800;line-height:1.25;white-space:nowrap;">${_plEsc(intent)}</span>`;
     }
     function _plMetaNormKey(v) {
       return String(v || '').replace(/\s+/g, '').replace(/[^\w가-힣]/g, '').toLowerCase();
@@ -45064,27 +45056,21 @@ window.addEventListener('DOMContentLoaded', () => {
   };
   function intentBadge(v) {
     if (!v) return '<span style="color:#555;">—</span>';
-    var tone = {
-      '최상': { label:'👑 최상', color:'#ffffff', bg:'linear-gradient(135deg,#ff3b5f,#ff7a45)', border:'rgba(255,150,120,.95)', shadow:'0 0 12px rgba(255,80,100,.45)' },
-      '상': { label:'상', color:'#1f1300', bg:'linear-gradient(135deg,#f59e0b,#facc15)', border:'rgba(255,220,120,.95)', shadow:'0 0 10px rgba(245,158,11,.35)' },
-      '중': { label:'중', color:'#9fc3ff', bg:'rgba(79,142,255,.16)', border:'rgba(79,142,255,.45)', shadow:'none' },
-      '하': { label:'하', color:'#aab3c5', bg:'rgba(107,117,144,.16)', border:'rgba(107,117,144,.35)', shadow:'none' }
-    }[v];
-    if (!tone) return '<span style="color:#aaa;font-weight:700;">'+plEscHtml(v)+'</span>';
-    return '<span style="display:inline-flex;align-items:center;justify-content:center;min-width:38px;height:22px;padding:0 9px;border-radius:999px;border:1px solid '+tone.border+';background:'+tone.bg+';color:'+tone.color+';box-shadow:'+tone.shadow+';font-size:11px;font-weight:900;line-height:1;white-space:nowrap;letter-spacing:-.2px;">'+plEscHtml(tone.label)+'</span>';
+    var map = { '최상':'#ff4f69', '상':'#f59e0b', '중':'#60a5fa', '하':'#4ade80' };
+    return '<span style="font-weight:700;color:'+ (map[v]||'#aaa') +';">'+plEscHtml(v)+'</span>';
   }
   function intentCell(it) {
     var v = it.intent || '';
-    var cm = { '최상':'#ff4f69', '상':'#f59e0b', '중':'#60a5fa', '하':'#aab3c5' };
+    var cm = { '최상':'#ff4f69', '상':'#f59e0b', '중':'#60a5fa', '하':'#4ade80' };
     var col = cm[v] || '#555';
     var idEsc = plEscHtml(it.id);
     return '<select onclick="event.stopPropagation()" onchange="plInlineSetSelect(\'' + idEsc + '\',\'intent\',this.value);event.stopPropagation()" '
-      + 'style="appearance:none;-webkit-appearance:none;border:none;background:transparent;color:'+col+';font-size:13px;font-weight:900;cursor:pointer;text-align:center;padding:2px;width:100%;">'
+      + 'style="appearance:none;-webkit-appearance:none;border:none;background:transparent;color:'+col+';font-size:13px;font-weight:800;cursor:pointer;text-align:center;padding:2px;width:100%;">'
       + '<option value=""'+(v===''?' selected':'')+'>—</option>'
-      + '<option value="최상"'+(v==='최상'?' selected':'')+' style="color:#ff4f69">👑 최상</option>'
+      + '<option value="최상"'+(v==='최상'?' selected':'')+' style="color:#ff4f69">최상</option>'
       + '<option value="상"'+(v==='상'?' selected':'')+' style="color:#f59e0b">상</option>'
       + '<option value="중"'+(v==='중'?' selected':'')+' style="color:#60a5fa">중</option>'
-      + '<option value="하"'+(v==='하'?' selected':'')+' style="color:#aab3c5">하</option>'
+      + '<option value="하"'+(v==='하'?' selected':'')+' style="color:#4ade80">하</option>'
       + '</select>';
   }
   function statusCell(item, forcedSimple) {
