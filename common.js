@@ -11307,22 +11307,60 @@ window.wr2SummaryCancelEdit = function() {
               const snapItem = (c.item && typeof c.item === 'object') ? c.item : {};
               const baseItemId = String(snapItem.id || c.id || ('snap_' + idx)).replace(/^marker_/, '');
               const liveItem = latestSaved.find(function(it) { return it && String(it.id) === baseItemId; });
-              const loadItem = liveItem
-                ? JSON.parse(JSON.stringify(liveItem))
-                : JSON.parse(JSON.stringify(snapItem));
+              const _normSrc = function(v) { return String(v || '').trim().toLowerCase().replace(/\s+/g, ''); };
+              const _pickSrc = function(item) {
+                if (!item || typeof item !== 'object') return '';
+                const data = (item.data && typeof item.data === 'object') ? item.data : {};
+                return _normSrc(item.source || data.출처 || '');
+              };
+              const _normType = function(v) { return String(v || '').trim().toLowerCase(); };
+              const snapSrcKey = _pickSrc(snapItem);
+              const liveSrcKey = _pickSrc(liveItem || {});
+              const snapTypeKey = _normType((snapItem && snapItem.propertyType) || c.propertyType || '');
+              const liveTypeKey = _normType((liveItem && liveItem.propertyType) || '');
+              const snapHasCore = !!(snapItem && (
+                snapItem.source ||
+                snapItem.address ||
+                snapItem.title ||
+                (snapItem.data && Object.keys(snapItem.data).length)
+              ));
+              const canUseLive = !!(liveItem && (
+                !snapHasCore ||
+                (snapSrcKey && liveSrcKey && snapSrcKey === liveSrcKey) ||
+                (snapTypeKey && liveTypeKey && snapTypeKey === liveTypeKey)
+              ));
+              const baseItem = canUseLive ? liveItem : snapItem;
+              const loadItem = baseItem ? JSON.parse(JSON.stringify(baseItem)) : {};
               if (!loadItem.id) loadItem.id = baseItemId;
               if (!loadItem.data || typeof loadItem.data !== 'object') loadItem.data = {};
+              if (!loadItem.propertyType && c.propertyType) loadItem.propertyType = c.propertyType;
+              if (!loadItem.source && snapItem && snapItem.source) loadItem.source = snapItem.source;
               loadItem.lat = lat;
               loadItem.lng = lng;
               loadItem.data.lat = lat;
               loadItem.data.lng = lng;
               const _src = String(loadItem.source || loadItem.data.출처 || '');
+              const _srcKey = _normSrc(_src);
+              const _ptype = String(c.propertyType || snapItem.propertyType || loadItem.propertyType || '').toLowerCase();
+              const _isListingLikeTxnSource =
+                _ptype === 'disco' ||
+                _ptype === 'bds' ||
+                _ptype === 'jumpo' ||
+                _ptype === 'nemo' ||
+                _ptype === 'assa' ||
+                _srcKey === '디스코' ||
+                _srcKey === '부동산플래닛' ||
+                _srcKey === '점포라인' ||
+                _srcKey === '네모' ||
+                _isAssaSource(_src);
               const _isTxSnap =
-                loadItem.mode === 'transaction' ||
-                loadItem.propertyType === 'transaction' ||
-                _src === '국토부실거래API' ||
-                _src === 'RTMS_API' ||
-                _src === '실거래';
+                !_isListingLikeTxnSource && (
+                  loadItem.mode === 'transaction' ||
+                  loadItem.propertyType === 'transaction' ||
+                  _src === '국토부실거래API' ||
+                  _src === 'RTMS_API' ||
+                  _src === '실거래'
+                );
               if (_isTxSnap && typeof showTransactionMarker === 'function') {
                 // 실거래 카드는 전용 생성기(stableId/중복키 기준)로 복원해야
                 // 스냅샷 저장 당시 카드 id와 일치하고 누락/중복이 발생하지 않는다.
@@ -45529,6 +45567,7 @@ window.addEventListener('DOMContentLoaded', () => {
     item.__allowLifecycleReopen = true;
     plSave(items.map(plNormalizeItem));
     window.__plLastLocalStatusMutationAt = Date.now();
+    window.__plLastLocalMutationAt = window.__plLastLocalStatusMutationAt;
     syncToWorkroom(item);
     try { delete item.__allowLifecycleReopen; } catch(e) {}
     try { plSyncItemToSaved(item); } catch(e) {}
@@ -45569,7 +45608,10 @@ window.addEventListener('DOMContentLoaded', () => {
     if (window.__plInlineEditKey) return;
     if (window.__plListRefreshRunning) return;
     if (typeof window._plRefreshFromCloud !== 'function') return;
-    var lastMutation = Number(window.__plLastLocalStatusMutationAt || 0);
+    var lastMutation = Math.max(
+      Number(window.__plLastLocalStatusMutationAt || 0),
+      Number(window.__plLastLocalMutationAt || 0)
+    );
     if (lastMutation && (Date.now() - lastMutation) < 45000) return;
     var now = Date.now();
     var last = Number(window.__plListRefreshAt || 0);
@@ -45735,6 +45777,8 @@ window.addEventListener('DOMContentLoaded', () => {
       return plNormalizeItem(it);
     });
     plSave(items.map(plNormalizeItem));
+    window.__plLastLocalStatusMutationAt = Date.now();
+    window.__plLastLocalMutationAt = window.__plLastLocalStatusMutationAt;
     plSelectedMap = {};
     if (val === 'closed' && ids.length === 1) setTimeout(function(){ plOpenResultModal(ids[0]); }, 180);
     renderPropertyList();
@@ -45751,20 +45795,24 @@ window.addEventListener('DOMContentLoaded', () => {
       return plNormalizeItem(it);
     });
     plSave(items.map(plNormalizeItem));
+    window.__plLastLocalStatusMutationAt = Date.now();
+    window.__plLastLocalMutationAt = window.__plLastLocalStatusMutationAt;
     plSelectedMap = {};
     renderPropertyList();
   };
 
   function plUpdateItem(id, patch) {
     var items = plLoad();
+    var nowTs = Date.now();
     var changedItem = null;
     items = items.map(function(it){
       if (it.id !== id) return it;
-      changedItem = plNormalizeItem(Object.assign({}, it, patch || {}, { updatedAt: Date.now() }));
+      changedItem = plNormalizeItem(Object.assign({}, it, patch || {}, { updatedAt: nowTs }));
       return changedItem;
     });
     if (!changedItem) return null;
     plSave(items);
+    window.__plLastLocalMutationAt = nowTs;
     syncToWorkroom(changedItem);
     try { plSyncItemToSaved(changedItem); } catch(e) {}
     try { if (typeof renderWatchBoard === 'function') setTimeout(renderWatchBoard, 40); } catch(e) {}
@@ -46610,6 +46658,7 @@ window.addEventListener('DOMContentLoaded', () => {
     }
     var normalized = items.map(plNormalizeItem);
     plSave(normalized);
+    window.__plLastLocalMutationAt = Date.now();
     syncToWorkroom(item);
     try { plSyncItemToSaved(plNormalizeItem(item)); } catch(e) {}
     // 종료 상태로 저장 시 결과 팝업
@@ -46628,6 +46677,8 @@ window.addEventListener('DOMContentLoaded', () => {
     if (!it) return;
     it.status = 'archived'; it.archived = true; it.updatedAt = Date.now();
     plSave(items);
+    window.__plLastLocalStatusMutationAt = Date.now();
+    window.__plLastLocalMutationAt = window.__plLastLocalStatusMutationAt;
     syncToWorkroom(it);
     try { plSyncItemToSaved(it); } catch(e) {}
   };
@@ -46668,6 +46719,8 @@ window.addEventListener('DOMContentLoaded', () => {
     };
     it.status = 'closed';
     plSave(items.map(plNormalizeItem));
+    window.__plLastLocalStatusMutationAt = Date.now();
+    window.__plLastLocalMutationAt = window.__plLastLocalStatusMutationAt;
     syncToWorkroom(it);
     try { plSyncItemToSaved(it); } catch(e) {}
     plCloseResultModal();
@@ -46898,7 +46951,10 @@ window.addEventListener('DOMContentLoaded', () => {
       if (typing) return;
       if (Number(window.__wr2UploadBusy || 0) > 0) return;
       if (window.__wr2SaveRoomsTimer) return;
-      var lastMutation = Number(window.__plLastLocalStatusMutationAt || 0);
+      var lastMutation = Math.max(
+        Number(window.__plLastLocalStatusMutationAt || 0),
+        Number(window.__plLastLocalMutationAt || 0)
+      );
       if (lastMutation && (Date.now() - lastMutation) < 45000) return;
       if (typeof window._plRefreshFromCloud === 'function') {
         window._plRefreshFromCloud({ render: false, force: true, sync: true }).then(function() {
@@ -46930,6 +46986,11 @@ window.addEventListener('DOMContentLoaded', () => {
       window.__plQuickCloudPullAt = now;
       if (Number(window.__wr2UploadBusy || 0) > 0) return;
       if (window.__wr2SaveRoomsTimer) return;
+      var lastMutation = Math.max(
+        Number(window.__plLastLocalStatusMutationAt || 0),
+        Number(window.__plLastLocalMutationAt || 0)
+      );
+      if (lastMutation && (Date.now() - lastMutation) < 45000) return;
       if (typeof window._plRefreshFromCloud === 'function') {
         window._plRefreshFromCloud({ render: false, force: true, sync: true }).then(function() {
           if (window.__pmActiveTab === 'list' && typeof window.renderPropertyList === 'function') window.renderPropertyList();
