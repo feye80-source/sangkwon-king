@@ -505,13 +505,14 @@ class ProxyHandler(BaseHTTPRequestHandler):
             nelng = payload.get('nelng', '')
             swlng = payload.get('swlng', '')
             cookie = payload.get('cookie', '')   # ★ 브라우저 쿠키 직접 수신
+            request_url = payload.get('request_url', '')  # ★ F12 실제 getRealpriceMapMarker Request URL
             kakao_rest_key = payload.get('kakao_rest_key', '')
             max_n = _read_max_n(payload)
             if not lat:
                 self._error(400, '좌표(lat/lng)가 필요합니다')
                 return
             print(f"\n  🌍 부동산플래닛 수집 시작 (lat={lat}, lng={lng})...")
-            self._collect_bds(lat=lat, lng=lng, nelat=nelat, swlat=swlat, nelng=nelng, swlng=swlng, cookie=cookie, kakao_rest_key=kakao_rest_key, max_n=max_n)
+            self._collect_bds(lat=lat, lng=lng, nelat=nelat, swlat=swlat, nelng=nelng, swlng=swlng, cookie=cookie, request_url=request_url, kakao_rest_key=kakao_rest_key, max_n=max_n)
 
         elif parsed.path == '/api/naver_map':
             # ★ 신규: 토큰 없이 모바일 API로 지도 바운딩박스 수집
@@ -2380,7 +2381,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
             print(f"  ❌ 디스코 수집 실패: {e}\n{traceback.format_exc()}")
             self._ok(json.dumps({'status': 'error', 'message': str(e), 'data': []}, ensure_ascii=False))
 
-    def _collect_bds(self, lat='', lng='', nelat='', swlat='', nelng='', swlng='', cookie='', kakao_rest_key='', max_n=None):
+    def _collect_bds(self, lat='', lng='', nelat='', swlat='', nelng='', swlng='', cookie='', request_url='', kakao_rest_key='', max_n=None):
         """부동산플래닛 실거래가 수집: getRealpriceMapMarker.ytp
         
         ★ v120 변경사항:
@@ -2493,6 +2494,32 @@ class ProxyHandler(BaseHTTPRequestHandler):
             if bds_cookie:
                 base_headers['Cookie'] = bds_cookie
 
+            def _build_bds_url_from_template(template_url, t_type_val):
+                """브라우저에서 복사한 실제 Request URL을 기준으로 좌표/limit만 현재 값으로 교체."""
+                raw_url = str(template_url or '').strip()
+                if not raw_url or 'getRealpriceMapMarker.ytp' not in raw_url:
+                    return ''
+                try:
+                    parsed_u = urllib.parse.urlsplit(raw_url)
+                    # 호스트는 항상 www.bdsplanet.com으로 고정하되, 기존 query 구조는 최대 보존
+                    q = urllib.parse.parse_qs(parsed_u.query, keep_blank_values=True)
+                    def set1(k, v): q[k] = [str(v)]
+                    set1('x1', _swlat)
+                    set1('x2', _nelat)
+                    set1('y1', _swlng)
+                    set1('y2', _nelng)
+                    set1('zoom', '18')
+                    set1('limit_cnt', request_limit)
+                    set1('t_type', t_type_val)
+                    set1('search_t_type', t_type_val)
+                    if 'search_erasure_status' not in q: set1('search_erasure_status', 'N')
+                    # doseq=True로 기존 다중값/빈값 보존
+                    query = urllib.parse.urlencode(q, doseq=True)
+                    return 'https://www.bdsplanet.com/map/getRealpriceMapMarker.ytp?' + query
+                except Exception as te:
+                    print(f"  ⚠️ BDS 요청 URL 템플릿 파싱 실패: {te}")
+                    return ''
+
             all_raw_items = []
             empty_response_seen = False
             parse_error_seen = False
@@ -2541,8 +2568,10 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     't_type': t_type_val,
                     'search_erasure_status': 'N',
                 })
-                url = f'https://www.bdsplanet.com/map/getRealpriceMapMarker.ytp?{params}'
+                url = _build_bds_url_from_template(request_url, t_type_val) or f'https://www.bdsplanet.com/map/getRealpriceMapMarker.ytp?{params}'
                 print(f"  🌐 부동산플래닛 API 호출 (t_type={t_type_val})...")
+                if request_url and 'getRealpriceMapMarker.ytp' in str(request_url):
+                    print('     실제 Request URL 템플릿 사용')
                 print(f"     URL: {url[:120]}...")
                 try:
                     req = urllib.request.Request(url, headers=base_headers)

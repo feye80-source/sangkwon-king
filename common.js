@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260502-bds-planet-params-v16';
+    window.__SK_BUILD = '20260502-bds-ui-url-v17';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -15644,6 +15644,35 @@ window.wr2SummaryCancelEdit = function() {
       window._discoBounds = null;
     }
 
+    // ── 부동산플래닛 쿠키/실제 요청URL 저장 UI ──
+    window.bdsSetCookieUI = function() {
+      const key = 'bds_cookie';
+      const prev = (() => { try { return localStorage.getItem(key) || ''; } catch(e) { return ''; } })();
+      const v = window.prompt('부동산플래닛 Cookie 전체를 붙여넣으세요.\nF12 → Network → getRealpriceMapMarker.ytp → Headers → Request Headers → Cookie', prev);
+      if (v === null) return;
+      const clean = String(v || '').trim();
+      try {
+        if (clean) localStorage.setItem(key, clean);
+        else localStorage.removeItem(key);
+      } catch(e) {}
+      const len = clean.length;
+      try { shopStatus('bds', len ? `✅ 플래닛 쿠키 저장됨 (${len}자)` : '⚠️ 플래닛 쿠키 삭제됨', len ? '#00d4aa' : '#ff8c42'); } catch(e) {}
+      try { showToast(len ? `부동산플래닛 쿠키 저장됨 (${len}자)` : '부동산플래닛 쿠키 삭제됨', len ? 'ok' : 'warn'); } catch(e) {}
+    };
+    window.bdsSetRequestUrlUI = function() {
+      const key = 'bds_request_url';
+      const prev = (() => { try { return localStorage.getItem(key) || ''; } catch(e) { return ''; } })();
+      const v = window.prompt('부동산플래닛 실제 요청 URL을 붙여넣으세요.\nF12 → Network → getRealpriceMapMarker.ytp → Headers → General → Request URL', prev);
+      if (v === null) return;
+      const clean = String(v || '').trim();
+      try {
+        if (clean) localStorage.setItem(key, clean);
+        else localStorage.removeItem(key);
+      } catch(e) {}
+      try { shopStatus('bds', clean ? '✅ 플래닛 실제 요청 URL 저장됨' : '⚠️ 플래닛 요청 URL 삭제됨', clean ? '#00d4aa' : '#ff8c42'); } catch(e) {}
+      try { showToast(clean ? '부동산플래닛 요청 URL 저장됨' : '부동산플래닛 요청 URL 삭제됨', clean ? 'ok' : 'warn'); } catch(e) {}
+    };
+
     // ── 부동산플래닛 자동수집 ──
     async function collectBdsAuto() {
       const proxyBase = window.PROXY_URL;
@@ -15733,6 +15762,8 @@ window.wr2SummaryCancelEdit = function() {
           kakao_rest_key: localStorage.getItem('kakao_rest_key') || '58c8f459e2c2de75d3bf136a9978388a',
           max_n: maxN
         };
+        const savedReqUrl = (() => { try { return String(localStorage.getItem('bds_request_url') || '').trim(); } catch(e) { return ''; } })();
+        if (savedReqUrl) payload.request_url = savedReqUrl;
         if (cookieText) payload.cookie = cookieText;
         try { console.log('[BDS payload]', Object.assign({}, payload, { cookie: payload.cookie ? '[saved-cookie:' + payload.cookie.length + ']' : '' })); } catch(e) {}
         const resp = await fetch(proxyBase + '/api/bds', {
