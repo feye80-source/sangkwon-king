@@ -13214,8 +13214,22 @@ window.wr2SummaryCancelEdit = function() {
       const d = (item && item.data) || {};
       const detailUrl = String(d.상세URL || '').trim();
       if (detailUrl && /new\.land\.naver\.com/i.test(detailUrl)) return detailUrl;
+
+      // 네이버 매물일 때만 articleNo를 사용한다.
+      // (경매/기타 소스의 숫자 필드가 잘못 articleNo로 해석되면 엉뚱한 페이지로 이동함)
+      const src = String((item && item.source) || d.출처 || '').trim();
+      const isNaverSrc = src === '네이버부동산' || src === '네이버' || src === '네이버 부동산' || src === 'naver';
       const articleNo = String(d.매물번호 || '').trim();
-      if (articleNo) return `https://new.land.naver.com/offices?articleNo=${encodeURIComponent(articleNo)}`;
+      if (isNaverSrc && /^\d{6,14}$/.test(articleNo)) {
+        return `https://new.land.naver.com/offices?articleNo=${encodeURIComponent(articleNo)}`;
+      }
+
+      // 좌표가 있으면 좌표 중심으로 우선 이동 (주소 모호성/동명이동 리스크 최소화)
+      const lat = parseFloat(d.lat || item?.lat);
+      const lng = parseFloat(d.lng || item?.lng);
+      if (Number.isFinite(lat) && Number.isFinite(lng)) {
+        return `https://new.land.naver.com/offices?ms=${lat},${lng},17&a=SG:SMS:APTHGJ&e=RETAIL`;
+      }
 
       const addrRaw =
         d.소재지 || d.주소 || d.address || d['도로명주소'] || d['지번주소'] || item?.address || '';
@@ -13226,9 +13240,6 @@ window.wr2SummaryCancelEdit = function() {
         return `https://new.land.naver.com/offices?query=${encodeURIComponent(queryAddr)}&a=SG:SMS:APTHGJ&e=RETAIL`;
       }
 
-      const lat = d.lat || item?.lat;
-      const lng = d.lng || item?.lng;
-      if (lat && lng) return `https://new.land.naver.com/offices?ms=${lat},${lng},17&a=SG:SMS:APTHGJ&e=RETAIL`;
       return 'https://new.land.naver.com/';
     }
 
