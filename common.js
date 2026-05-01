@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260502-bds-cookie-strict-v19';
+    window.__SK_BUILD = '20260502-bds-manual-countfix-v20';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -15837,7 +15837,7 @@ window.wr2SummaryCancelEdit = function() {
       if (data.status !== 'success') { shopStatus('bds', '❌ ' + (data.message || '수집 실패'), '#ff4d4d'); return; }
 
       const items = data.data || [];
-      _bdsSaveToList(items);
+      _bdsSaveToList(items, data.meta || null);
       window._bdsBounds = null;
     }
 
@@ -15884,7 +15884,7 @@ window.wr2SummaryCancelEdit = function() {
     }
 
     // ── 부동산플래닛 저장 공통 로직 ──
-    function _bdsSaveToList(items) {
+    function _bdsSaveToList(items, meta) {
       window._collectCount = 0; // ★ 수집 개수 카운터 초기화
       const _progEl2 = document.getElementById('efCollectProgress');
       if (_progEl2) _progEl2.textContent = '대기중';
@@ -15996,7 +15996,18 @@ window.wr2SummaryCancelEdit = function() {
       setSv(sv); updSvCnt(); renderSaved && renderSaved();
       const msg = updated > 0 ? `${added}개 추가, ${updated}개 업데이트 완료!` : `${added}개 저장목록에 추가 완료!`;
       const skipMsg = skipped > 0 ? ` (토지/공장/창고 ${skipped}건 제외)` : '';
-      shopStatus('bds', '✅ ' + msg + skipMsg, '#119ded');
+      let metaMsg = '';
+      try {
+        if (meta && typeof meta === 'object') {
+          const parts = [];
+          if (meta.raw_count != null) parts.push(`원본 ${meta.raw_count}건`);
+          if (meta.after_server_filter_count != null) parts.push(`상가/업무 필터 후 ${meta.after_server_filter_count}건`);
+          if (meta.after_dedupe_count != null && meta.after_dedupe_count !== meta.after_server_filter_count) parts.push(`주소 최신거래 정리 후 ${meta.after_dedupe_count}건`);
+          if (meta.max_n_applied) parts.push(`최대개수 ${meta.max_n_applied}건 적용`);
+          if (parts.length) metaMsg = `<br><span style="color:#8ab2ff;font-size:11px;">수집 진단: ${parts.join(' → ')}</span>`;
+        }
+      } catch(e) {}
+      shopStatus('bds', '✅ ' + msg + skipMsg + metaMsg, '#119ded');
       showToast(`🌍 부동산플래닛 ${added}개 추가됨${skipped > 0 ? ' (' + skipped + '건 제외)' : ''}`, 'ok');
       const eb = document.getElementById('bdsExportBtn');
       if (eb) eb.style.display = '';
@@ -38561,6 +38572,10 @@ ${newsContext}
     }
 
     function getCollectMaxCountForRequest() {
+      // 수집 조건 필터가 비활성인 상태에서는 '최대 개수' 값도 적용하지 않는다.
+      // 이전 입력값이 남아 있으면 플래닛/디스코/네이버 수집이 1~2건으로 잘리는 원인이 된다.
+      const enabledEl = document.getElementById('efEnabled');
+      if (enabledEl && !enabledEl.checked) return null;
       const raw = parseInt(document.getElementById('efMaxCount')?.value || '', 10);
       return (!isNaN(raw) && raw > 0) ? raw : null;
     }

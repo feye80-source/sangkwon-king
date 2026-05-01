@@ -2689,6 +2689,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
 
             latest_by_addr = {}
             skipped_residential = 0
+            server_filter_kept = 0
             for d in all_raw_items:
                 # r_type_nm으로 주거용/오피스텔 필터링
                 r_nm = str(d.get('r_type_nm') or '').strip()
@@ -2714,6 +2715,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
                         continue
                     # r_type_nm도 없고 코드도 없으면 일단 수집 (주소로 사후 판단)
 
+                server_filter_kept += 1
                 addr_key = bds_addr_key(d)
                 if addr_key:
                     prev = latest_by_addr.get(addr_key)
@@ -2771,7 +2773,9 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     '_bldg_area_m2':  float(d['bldg_area_m2']) if d.get('bldg_area_m2') else None,
                 })
 
+            max_n_applied = None
             if max_n and max_n > 0:
+                max_n_applied = int(max_n)
                 result_items = result_items[:max_n]
                 print(f"  🎯 상권킹 최대 개수 적용: {len(result_items)}개")
 
@@ -2807,8 +2811,16 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     print(f"  ✅ 부동산플래닛 주소 변환 완료: {converted}건")
 
             msg = f'{len(result_items)}개 수집 완료'
-            print(f"  ✅ {msg}")
-            self._ok(json.dumps({'status': 'success', 'message': msg, 'data': result_items}, ensure_ascii=False))
+            meta = {
+                'raw_count': len(all_raw_items),
+                'skipped_residential': skipped_residential,
+                'after_server_filter_count': server_filter_kept,
+                'after_dedupe_count': len(latest_by_addr),
+                'final_count': len(result_items),
+                'max_n_applied': max_n_applied,
+            }
+            print(f"  ✅ {msg} / 진단: {meta}")
+            self._ok(json.dumps({'status': 'success', 'message': msg, 'data': result_items, 'meta': meta}, ensure_ascii=False))
 
         except Exception as e:
             import traceback
