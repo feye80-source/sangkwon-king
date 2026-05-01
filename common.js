@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260501-intent-color-v8-original-ui';
+    window.__SK_BUILD = '20260501-tx-floor-v9';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -24090,9 +24090,38 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         const priceText = priceNum ? `[실거래] ${moneyShortMan(priceNum)}` : '[실거래] -';
         const areaNum = parseFloat(item.area) || 0;
         const areaStr = fmtArea(item.area);
-        const floor = item.floor ? String(item.floor).trim() : '';
-        const floorNum = parseInt(floor, 10);
-        const floorLabel = (floor && floor !== '-' && floor !== '0' && !isNaN(floorNum)) ? floorNum + '층' : '-';
+        // 실거래 층수는 저장/복원 시점에 따라 item.floor, data.해당층/층수/층,
+        // 원 API 필드(fl/flr/t_floor/floor_level 등) 중 한 곳에만 남는 경우가 있다.
+        // 카드 렌더링에서는 한 필드만 보지 말고 모든 alias를 정규화해서 표시한다.
+        function _txFloorCandidate() {
+          const sources = [
+            item.floor, item.해당층, item.층수, item.층, item.fl, item.flr, item.t_floor, item.floor_level, item.floorNo, item.floor_no, item.obj_floor, item.bldg_flr, item.f_nm,
+            d.해당층, d.층수, d.층, d.floor, d.fl, d.flr, d.t_floor, d.floor_level, d.floorNo, d.floor_no, d.obj_floor, d.bldg_flr, d.f_nm, d.FLOOR_NO_NM, d.FLOOR_NM
+          ];
+          for (const v of sources) {
+            if (v === null || v === undefined) continue;
+            const t = String(v).trim();
+            if (!t || t === '-' || t === 'null' || t === 'undefined') continue;
+            return t;
+          }
+          // 마지막 fallback: 제목/주소 안에 "3층", "B1층", "지하1층" 같은 표기가 있으면 추출
+          const text = [item.name, item.title, item.address, d.소재지, d.주소, d.건물명].filter(Boolean).join(' ');
+          const m1 = text.match(/(지하\s*\d+\s*층|B\s*\d+\s*층|b\s*\d+\s*층|\d+\s*층)/);
+          return m1 ? m1[1] : '';
+        }
+        function _txFormatFloor(raw) {
+          let t = String(raw || '').trim();
+          if (!t || t === '-' || t === '0') return '-';
+          t = t.replace(/\s+/g, '');
+          if (/^지하\d+층?$/.test(t)) return t.endsWith('층') ? t : t + '층';
+          if (/^[Bb]\d+층?$/.test(t)) return t.toUpperCase().endsWith('층') ? t.toUpperCase() : t.toUpperCase() + '층';
+          const first = t.split(/[\/|,]/)[0].trim();
+          const n = parseInt(first.replace(/[^0-9\-]/g, ''), 10);
+          if (!isNaN(n) && n !== 0) return n < 0 ? ('B' + Math.abs(n) + '층') : (n + '층');
+          if (/층$/.test(t)) return t;
+          return t;
+        }
+        const floorLabel = _txFormatFloor(_txFloorCandidate());
         const y = item.year || '', m = item.month || '', day = item.day ? '.' + item.day : '';
         const dateText = (y && m) ? `${y}.${m}${day}` : '-';
         const type = item.type ? String(item.type).trim() : '';
