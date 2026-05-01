@@ -49,7 +49,9 @@ NAVER_MOBILE_HOME = 'https://m.land.naver.com/'
 NAVER_MOBILE_ORIGIN = 'https://m.land.naver.com'
 
 def _naver_article_page_url(article_no):
-    return f'https://fin.land.naver.com/articles/{article_no}'
+    # 앱 저장목록의 원본 상세 링크는 구 네이버부동산 상세 URL로 통일한다.
+    # fin.land API는 수집용으로만 사용하고, 저장 데이터에는 articleNo 기반 new.land URL을 남긴다.
+    return f'https://new.land.naver.com/offices?articleNo={article_no}'
 
 def _naver_detail_api_url(article_no):
     return f'https://new.land.naver.com/api/articles/{article_no}'

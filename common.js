@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260428-calendar-today-week-context-v2';
+    window.__SK_BUILD = '20260501-naver-legacy-link-v4';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -1673,13 +1673,65 @@
       }
       return cloned;
     };
+    function _wrRoomImageStamp(room) {
+      return Number(room && (room._captureImagesUpdatedAt || room.captureImagesUpdatedAt || room.imagesUpdatedAt || 0)) || 0;
+    }
+    function _wrRoomHasOwnImages(room) {
+      return !!(room && Object.prototype.hasOwnProperty.call(room, 'captureImages'));
+    }
+    function _wrNormalizeLegacyCaptureImages(room) {
+      const out = [];
+      if (!room || typeof room !== 'object') return out;
+      if (Array.isArray(room.captureImages)) out.push.apply(out, room.captureImages);
+      if (room.captureImage) out.push({ src: room.captureImage, savedAt: room.updatedAt || room.createdAt || Date.now(), snapName: null });
+      return out;
+    }
+    function _wrMergeRoomPreserveImages(prevRoom, nextRoom, opts) {
+      const options = opts || {};
+      if (!prevRoom) return nextRoom;
+      if (!nextRoom) return prevRoom;
+      const merged = Object.assign({}, prevRoom, nextRoom);
+      const prevImgs = _wrNormalizeLegacyCaptureImages(prevRoom);
+      const nextHasImages = _wrRoomHasOwnImages(nextRoom) || !!nextRoom.captureImage;
+      const nextImgs = _wrNormalizeLegacyCaptureImages(nextRoom);
+      const prevStamp = _wrRoomImageStamp(prevRoom);
+      const nextStamp = _wrRoomImageStamp(nextRoom);
+      // 삭제/전체교체처럼 이미지 필드를 명시적으로 비운 경우만 빈 배열을 존중한다.
+      // 그 외에는 오래된 room 객체의 빈 captureImages가 기존 이미지를 덮지 못하게 한다.
+      if (nextHasImages) {
+        if (!nextImgs.length && (nextStamp || options.explicitEmptyImages)) {
+          if (!prevStamp || nextStamp >= prevStamp || options.explicitEmptyImages) {
+            merged.captureImages = [];
+            merged._captureImagesUpdatedAt = nextStamp || Date.now();
+          } else {
+            merged.captureImages = _wrMergeCaptureImages(prevImgs);
+            merged._captureImagesUpdatedAt = prevStamp;
+          }
+        } else if (nextImgs.length) {
+          merged.captureImages = _wrMergeCaptureImages(prevImgs, nextImgs);
+          merged._captureImagesUpdatedAt = Math.max(prevStamp, nextStamp, Number(merged.updatedAt || 0), Date.now());
+        } else if (prevImgs.length) {
+          merged.captureImages = _wrMergeCaptureImages(prevImgs);
+          merged._captureImagesUpdatedAt = prevStamp || Number(merged.updatedAt || 0) || Date.now();
+        }
+      } else if (prevImgs.length) {
+        merged.captureImages = _wrMergeCaptureImages(prevImgs);
+        merged._captureImagesUpdatedAt = prevStamp || Number(merged.updatedAt || 0) || Date.now();
+      }
+      delete merged.captureImage;
+      return merged;
+    }
     window._wrPersistRoomCache = function(arr, opts) {
       const options = opts || {};
       const prev = window._wrGetRoomsCache ? window._wrGetRoomsCache() : _sbPruneTombstones(_sbGetCachedArray('wr2_rooms')).filter(r => r && r.id);
-      const sanitized = _wrStripFreeTableLegacyRooms(arr);
+      const prevMap = new Map((prev || []).filter(r => r && r.id).map(r => [r.id, r]));
+      const sanitized = _wrStripFreeTableLegacyRooms(arr).map(function(r) {
+        if (!r || !r.id) return r;
+        return _wrMergeRoomPreserveImages(prevMap.get(r.id), r, options);
+      });
       const full = _sbPruneTombstones(_sbKeepTombstones(prev, sanitized)).filter(r => r && r.id);
       const active = window._wrFilterActiveRooms(full);
-      _sbPersistCachedArray('wr2_rooms', full);
+      _sbPersistCachedArray('wr2_rooms', full, { immediate: options.immediate === true });
       if (window.wr2State && options.syncState !== false) {
         window.wr2State.rooms = options.keepDeletedInState ? full : active;
       }
@@ -1693,7 +1745,9 @@
       const persisted = window._wrPersistRoomCache
         ? window._wrPersistRoomCache(arr, {
             syncState: options.syncState,
-            keepDeletedInState: !!options.keepDeletedInState
+            keepDeletedInState: !!options.keepDeletedInState,
+            immediate: options.immediate === true,
+            explicitEmptyImages: options.explicitEmptyImages === true
           })
         : { full: (Array.isArray(arr) ? arr : []).filter(r => r && r.id), active: window._wrFilterActiveRooms(arr) };
       const changedIds = _sbChangedIds(prev, persisted.full);
@@ -1701,7 +1755,7 @@
         if (id && window._sbMarkRoomDirty) window._sbMarkRoomDirty(id);
       });
       if (options.sync !== false && changedIds.length && window._sbScheduleSaveRooms) {
-        window._sbScheduleSaveRooms(persisted.full);
+        window._sbScheduleSaveRooms(persisted.full, options.immediate === true ? 0 : undefined);
       } else if (options.sync !== false && changedIds.length && window._sbSaveRooms) {
         window._sbSaveRooms(persisted.full).catch(e => console.warn('[SB] room sync fail', e));
       }
@@ -1713,17 +1767,21 @@
         return window._wrPersistAndSyncRooms(arr, {
           sync: options.sync !== false,
           syncState: options.syncState,
-          keepDeletedInState: !!options.keepDeletedInState
+          keepDeletedInState: !!options.keepDeletedInState,
+          immediate: options.immediate === true,
+          explicitEmptyImages: options.explicitEmptyImages === true
         });
       }
       const persisted = window._wrPersistRoomCache
         ? window._wrPersistRoomCache(arr, {
             syncState: options.syncState,
-            keepDeletedInState: !!options.keepDeletedInState
+            keepDeletedInState: !!options.keepDeletedInState,
+            immediate: options.immediate === true,
+            explicitEmptyImages: options.explicitEmptyImages === true
           })
         : { full: (Array.isArray(arr) ? arr : []).filter(r => r && r.id), active: window._wrFilterActiveRooms(arr) };
       if (options.sync !== false && window._sbScheduleSaveRooms) {
-        window._sbScheduleSaveRooms(persisted.full);
+        window._sbScheduleSaveRooms(persisted.full, options.immediate === true ? 0 : undefined);
       } else if (options.sync !== false && window._sbSaveRooms) {
         window._sbSaveRooms(persisted.full).catch(e => console.warn('[SB] room sync fallback fail', e));
       }
@@ -1756,6 +1814,7 @@
       const options = opts || {};
       const now = Date.now();
       const newEntry = Object.assign({}, entry, { savedAt: entry.savedAt || now, src: entry.src || entry.url || '' });
+      window.__wr2ImageWriteUntil = Date.now() + 15000;
       const cacheRooms = window._wrGetRoomsCache ? window._wrGetRoomsCache() : _sbGetCachedArray('wr2_rooms');
       const stateRooms = (window.wr2State && Array.isArray(window.wr2State.rooms)) ? window.wr2State.rooms : [];
       const cacheRoom = (cacheRooms || []).find(function(r) { return r && r.id === roomId; }) || null;
@@ -1771,6 +1830,7 @@
         [newEntry]
       );
       delete baseRoom.captureImage;
+      baseRoom._captureImagesUpdatedAt = now;
       baseRoom.updatedAt = now;
       if (window._sbMarkRoomDirty) window._sbMarkRoomDirty(roomId);
       const fullMap = new Map();
@@ -1779,12 +1839,14 @@
       fullMap.set(roomId, baseRoom);
       const fullRooms = Array.from(fullMap.values()).filter(function(r) { return r && r.id; });
       if (window._wrPersistRooms) {
-        window._wrPersistRooms(fullRooms, { keepDeletedInState: true, syncState: false, sync: options.sync !== false });
+        window._wrPersistRooms(fullRooms, { keepDeletedInState: true, syncState: false, sync: options.sync !== false, immediate: true });
       } else if (window._wrPersistRoomCache) {
         window._wrPersistRoomCache(fullRooms, { keepDeletedInState: true, syncState: false });
         if (options.sync !== false && window._sbSaveRooms) window._sbSaveRooms(fullRooms).catch(function(e){ console.warn('[SB] room image sync fail', e); });
       }
       try { if (window.idbSet) window.idbSet('wr2_rooms', fullRooms).catch(function(){}); } catch(e) {}
+      if (options.sync !== false && window._sbScheduleSaveRooms) window._sbScheduleSaveRooms(fullRooms, 0);
+      else if (options.sync !== false && window._sbSaveRooms) window._sbSaveRooms(fullRooms).catch(function(e){ console.warn('[SB] room image immediate sync fail', e); });
       if (stateRoom) {
         Object.assign(stateRoom, baseRoom);
       } else if (window.wr2State && Array.isArray(window.wr2State.rooms) && !baseRoom.deletedAt) {
@@ -1794,6 +1856,7 @@
     };
     window._wrSetCaptureImages = function(roomId, images, opts) {
       if (!roomId) return null;
+      window.__wr2ImageWriteUntil = Date.now() + 15000;
       const options = opts || {};
       const now = Date.now();
       const cacheRooms = window._wrGetRoomsCache ? window._wrGetRoomsCache() : _sbGetCachedArray('wr2_rooms');
@@ -1803,6 +1866,7 @@
       const baseRoom = Object.assign({}, cacheRoom || {}, stateRoom || {}, { id: roomId });
       baseRoom.captureImages = _wrMergeCaptureImages(images || []);
       delete baseRoom.captureImage;
+      baseRoom._captureImagesUpdatedAt = now;
       baseRoom.updatedAt = now;
       if (window._sbMarkRoomDirty) window._sbMarkRoomDirty(roomId);
       const fullMap = new Map();
@@ -1810,9 +1874,11 @@
       (stateRooms || []).forEach(function(r) { if (r && r.id) fullMap.set(r.id, r); });
       fullMap.set(roomId, baseRoom);
       const fullRooms = Array.from(fullMap.values()).filter(function(r) { return r && r.id; });
-      if (window._wrPersistRooms) window._wrPersistRooms(fullRooms, { keepDeletedInState: true, syncState: false, sync: options.sync !== false });
+      if (window._wrPersistRooms) window._wrPersistRooms(fullRooms, { keepDeletedInState: true, syncState: false, sync: options.sync !== false, immediate: true, explicitEmptyImages: true });
       else if (window._wrPersistRoomCache) window._wrPersistRoomCache(fullRooms, { keepDeletedInState: true, syncState: false });
       try { if (window.idbSet) window.idbSet('wr2_rooms', fullRooms).catch(function(){}); } catch(e) {}
+      if (options.sync !== false && window._sbScheduleSaveRooms) window._sbScheduleSaveRooms(fullRooms, 0);
+      else if (options.sync !== false && window._sbSaveRooms) window._sbSaveRooms(fullRooms).catch(function(e){ console.warn('[SB] room image set immediate sync fail', e); });
       if (stateRoom) Object.assign(stateRoom, baseRoom);
       return stateRoom || baseRoom;
     };
@@ -1858,6 +1924,7 @@
       const localBusy =
         Number(window.__wr2UploadBusy || 0) > 0 ||
         !!window.__wr2SaveRoomsTimer ||
+        (Number(window.__wr2ImageWriteUntil || 0) > Date.now()) ||
         (Number(window.__mbRoomLocalWriteUntil || 0) > Date.now());
       if (localBusy) {
         return { rooms: null, sections: null, skipped: 'local_edit_busy' };
@@ -1940,7 +2007,11 @@
       let synced = false;
       try {
         const prev = window._wrGetRoomsCache ? window._wrGetRoomsCache() : [];
-        const cleanArr = _wrStripFreeTableLegacyRooms(arr);
+        const prevMap = new Map((prev || []).filter(r => r && r.id).map(r => [r.id, r]));
+        const cleanArr = _wrStripFreeTableLegacyRooms(arr).map(function(r) {
+          if (!r || !r.id) return r;
+          return _wrMergeRoomPreserveImages(prevMap.get(r.id), r);
+        });
         const full = _sbPruneTombstones(_sbKeepTombstones(prev, cleanArr)).filter(r => r && r.id);
         const changedIds = _sbChangedIds(prev, full);
         const hasDirty = !!(_dirtyItems.workrooms && _dirtyItems.workrooms.size);
@@ -2951,13 +3022,28 @@
       const dirty = _dirtyItems[table];
       const localArr = (Array.isArray(local) ? local : []).filter(item => item && item.id);
       const merged = _sbMergeById(cloud, localArr);
-      if (!dirty || !dirty.size) return merged;
       const localById = new Map(localArr.map(item => [item.id, item]));
       const outMap = new Map((Array.isArray(merged) ? merged : []).map(item => [item.id, item]));
+      if (!dirty || !dirty.size) {
+        if (table === 'workrooms') {
+          localById.forEach(function(localRoom, id) {
+            const current = outMap.get(id);
+            if (current) outMap.set(id, _wrMergeRoomPreserveImages(localRoom, current));
+          });
+          return Array.from(outMap.values());
+        }
+        return merged;
+      }
       dirty.forEach(id => {
         if (!localById.has(id)) return;
         outMap.set(id, localById.get(id));
       });
+      if (table === 'workrooms') {
+        localById.forEach(function(localRoom, id) {
+          const current = outMap.get(id);
+          if (current) outMap.set(id, _wrMergeRoomPreserveImages(localRoom, current));
+        });
+      }
       return Array.from(outMap.values());
     }
     function _sbTakeCloudArray(arr) {
@@ -5454,9 +5540,11 @@ var _safeLocalSet = function(key, value) {
                   if (img && img.storagePath) {
                     window._sbDeleteImages([img.storagePath]).catch(()=>{});
                   }
-                  room.captureImages.splice(idx, 1);
-                  room.updatedAt = Date.now();
-                  saveRooms(); renderCaptureWidget(room);
+                  const nextImages = (room.captureImages || []).filter(function(_, i) { return i !== idx; });
+                  const savedRoom = window._wrSetCaptureImages ? window._wrSetCaptureImages(room.id, nextImages, { explicitEmptyImages: true }) : null;
+                  if (savedRoom) room.captureImages = savedRoom.captureImages || [];
+                  else { room.captureImages = nextImages; room.updatedAt = Date.now(); saveRooms(); }
+                  renderCaptureWidget(room);
                 };
 
                 window.wr2GoToSnap = function(snapName, parentSnapName) {
@@ -5653,9 +5741,11 @@ var _safeLocalSet = function(key, value) {
                   // Storage에서 실제 파일 삭제
                   const paths = (room.captureImages || []).filter(i => i.storagePath).map(i => i.storagePath);
                   if (paths.length) window._sbDeleteImages(paths).catch(()=>{});
-                  if (window._wrSetCaptureImages) window._wrSetCaptureImages(room.id, []);
-                  else { room.captureImages = []; delete room.captureImage; room.updatedAt = Date.now(); saveRooms(); }
-                  room.captureImages = []; delete room.captureImage;
+                  if (window._wrSetCaptureImages) {
+                    const savedRoom = window._wrSetCaptureImages(room.id, [], { explicitEmptyImages: true });
+                    room.captureImages = savedRoom && savedRoom.captureImages ? savedRoom.captureImages : [];
+                    delete room.captureImage;
+                  } else { room.captureImages = []; delete room.captureImage; room.updatedAt = Date.now(); saveRooms(); }
                   renderCaptureWidget(room);
                 };
                 window.wr2CaptureMap = async function () {
@@ -13388,38 +13478,68 @@ window.wr2SummaryCancelEdit = function() {
       return src === '네이버부동산' || src === '네이버' || src === 'naver';
     }
 
-    // 저장목록/물건정보의 “원본 상세” 링크: 네이버 출처일 때만 상세URL/articleNo를 신뢰한다.
-    // 지도/검색 링크와 분리해서 이전 지역 URL이 지도 버튼에 섞이는 문제를 차단한다.
+    function _extractNaverArticleNoFromUrl(url) {
+      const raw = String(url || '').trim();
+      if (!raw) return '';
+      // 저장목록 상세 링크는 구 네이버부동산(new.land) 상세 URL로 통일한다.
+      // 최근 proxy가 fin.land.naver.com/articles/{articleNo} 형태를 저장한 경우도
+      // articleNo만 추출해서 new.land URL로 재생성한다.
+      if (!/(?:new|fin|m)\.land\.naver\.com/i.test(raw) && !/articleNo/i.test(raw)) return '';
+      try {
+        const u = new URL(raw, location.href);
+        const q = u.searchParams.get('articleNo') || u.searchParams.get('articleNoList') || '';
+        let m = String(q || '').match(/(\d{6,14})/);
+        if (m) return m[1];
+        m = String(u.pathname || '').match(/\/(?:articles?|article)\/(\d{6,14})(?:\/|$)/i);
+        if (m) return m[1];
+      } catch (e) {}
+      const m = raw.match(/(?:articleNo=|articleNoList=|\/(?:articles?|article)\/)(\d{6,14})/i) || raw.match(/(?:^|\D)(\d{6,14})(?:\D|$)/);
+      return m ? m[1] : '';
+    }
+    function _buildNaverArticlePageUrl(articleNo) {
+      const no = String(articleNo || '').trim();
+      if (!/^\d{6,14}$/.test(no)) return '';
+      // 네이버 원본 상세 전용. 지도/검색 URL과 절대 섞지 않는다.
+      return `https://new.land.naver.com/offices?articleNo=${encodeURIComponent(no)}`;
+    }
+
+    // 저장목록/물건정보의 “원본 상세” 링크.
+    // 네이버 출처일 때는 articleNo를 최우선으로 삼고, 저장된 상세URL은 같은 articleNo일 때만 보조로 신뢰한다.
+    // item.originalUrl / item.url 같은 임시 탐색 URL은 이전 지역이 섞일 수 있으므로 원본 상세 fallback에서 제외한다.
     function _buildNaverArticleUrl(item) {
       const d = (item && item.data) || {};
       if (!_isNaverSavedSource(item)) return '';
-      const detailUrl = String(d.상세URL || item?.originalUrl || item?.url || '').trim();
-      if (detailUrl && /new\.land\.naver\.com/i.test(detailUrl)) return detailUrl;
-      const articleNo = String(d.매물번호 || d.articleNo || item?.articleNo || '').trim();
-      if (/^\d{6,14}$/.test(articleNo)) {
-        return `https://new.land.naver.com/offices?articleNo=${encodeURIComponent(articleNo)}`;
-      }
+      const articleNo = String(d.매물번호 || d.articleNo || d.article_no || item?.articleNo || '').trim();
+      if (/^\d{6,14}$/.test(articleNo)) return _buildNaverArticlePageUrl(articleNo);
+      const detailUrl = String(d.상세URL || '').trim();
+      const fromUrl = _extractNaverArticleNoFromUrl(detailUrl);
+      if (fromUrl) return _buildNaverArticlePageUrl(fromUrl);
       return '';
     }
 
-    // 저장목록/물건정보의 네이버 “지도/부동산 검색” 링크 전용.
-    // 절대 상세URL/articleNo를 반환하지 않는다. 우클릭 ctxNaverLand()와 별개이며 건드리지 않는다.
-    function _buildNaverLandUrl(item) {
+    function _getSavedItemLatLng(item) {
       const d = (item && item.data) || {};
-      const addrRaw =
-        d.소재지 || d.주소 || d.address || d['도로명주소'] || d['지번주소'] || item?.address || '';
+      const lat = parseFloat(d.lat ?? d.latitude ?? d.위도 ?? item?.lat ?? item?.latitude);
+      const lng = parseFloat(d.lng ?? d.lon ?? d.longitude ?? d.경도 ?? item?.lng ?? item?.lon ?? item?.longitude);
+      return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+    }
+    function _buildSavedNaverMapUrl(item) {
+      const d = (item && item.data) || {};
+      const addrRaw = d.소재지 || d.주소 || d.address || d['도로명주소'] || d['지번주소'] || item?.address || '';
       const addr = _normalizeMapAddress(addrRaw);
-      const candidates = _buildMapAddressCandidates(addr);
-      const queryAddr = String((candidates && candidates[0]) || '').trim();
-      if (queryAddr) {
-        return `https://new.land.naver.com/offices?query=${encodeURIComponent(queryAddr)}&a=SG:SMS:APTHGJ&e=RETAIL`;
-      }
-      const lat = parseFloat(d.lat || item?.lat);
-      const lng = parseFloat(d.lng || item?.lng);
-      if (Number.isFinite(lat) && Number.isFinite(lng)) {
-        return `https://new.land.naver.com/offices?ms=${lat},${lng},17&a=SG:SMS:APTHGJ&e=RETAIL`;
-      }
+      if (addr) return `https://map.naver.com/v5/search/${encodeURIComponent(addr)}`;
+      const pos = _getSavedItemLatLng(item);
+      if (pos) return `https://map.naver.com/v5/?c=${pos.lng},${pos.lat},17,0,0,0,dh`;
       return '';
+    }
+
+    // 저장목록/물건정보의 네이버 “부동산 주변 탐색” 링크 전용.
+    // 상세URL/articleNo/query URL을 반환하지 않는다. 주소-only query는 new.land가 이전 세션 위치를 재사용할 수 있어 네이버지도 검색으로 내린다.
+    // 지도탭 우클릭 ctxNaverLand()와 별개이며 이 함수에서는 건드리지 않는다.
+    function _buildNaverLandUrl(item) {
+      const pos = _getSavedItemLatLng(item);
+      if (pos) return `https://new.land.naver.com/offices?ms=${pos.lat},${pos.lng},19&a=SG:SMS:APTHGJ&e=RETAIL&ad=true`;
+      return _buildSavedNaverMapUrl(item);
     }
 
     function _setDualAddressFields(target, roadAddr, jibunAddr) {
@@ -15159,13 +15279,13 @@ window.wr2SummaryCancelEdit = function() {
                   : `<a href="${esc(originalUrl)}" target="_blank" onclick="event.stopPropagation()" class="sc-btn sc-btn-detail">🔗 원본</a>`)
                 : `<button onclick="event.stopPropagation();promptSavedOriginalUrl('${item.id}')" class="sc-btn sc-btn-detail" style="background:rgba(255,255,255,.05);color:var(--di);border-style:dashed;">🔗 원본없음</button>`)}
           ${src === '점포라인' ? `<a href="https://map.jumpoline.com/main" target="_blank" onclick="event.stopPropagation()" class="sc-btn sc-btn-map">🗺️ 지도</a>` : ''}
-          ${(src === '네이버부동산' || src === '네이버' || src === 'naver') ? (() => { const _u = _buildNaverLandUrl(item); return _u ? `<a href="${_u}" target="_blank" onclick="event.stopPropagation()" class="sc-btn sc-btn-map">🗺️ 지도</a>` : ''; })() : ''}
+          ${(src === '네이버부동산' || src === '네이버' || src === 'naver') ? (() => { const _u = _buildSavedNaverMapUrl(item); return _u ? `<a href="${esc(_u)}" target="_blank" onclick="event.stopPropagation()" class="sc-btn sc-btn-map">🗺️ 지도</a>` : ''; })() : ''}
           ${_isAssaSource(src) ? `<a href="https://xn--v69ap5so3hsnb81e1wfh6z.com/map" target="_blank" onclick="event.stopPropagation()" class="sc-btn sc-btn-map">🗺️ 지도</a>` : ''}
           ${src === '부동산플래닛' ? `<button onclick="event.stopPropagation();(()=>{const _a=(item.data&&item.data.소재지)||d.소재지||'';if(_a){try{navigator.clipboard.writeText(_a);}catch(e){}const ta=document.createElement('textarea');ta.value=_a;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.focus();ta.select();try{document.execCommand('copy');}catch(e){}document.body.removeChild(ta);}window.open('https://www.bdsplanet.com/map/realprice_map.ytp','_blank');})()" class="sc-btn sc-btn-map" style="background:rgba(17,157,237,.12);color:#119ded;border-color:rgba(17,157,237,.4);" title="${esc(String((item.data && item.data.소재지) || d.소재지 || ''))}">🌍 플래닛</button>` : ''}
           ${((() => { const _q=_normalizeMapAddress(d.소재지||d.주소||d.address||''); return _q && ia; })()) ? `<a href="https://map.naver.com/v5/search/${encodeURIComponent(_normalizeMapAddress(d.소재지||d.주소||d.address||''))}" target="_blank" onclick="event.stopPropagation()" class="sc-btn" style="background:rgba(4,222,91,.12);color:#04de5b;border-color:rgba(4,222,91,.4);">🗺️ 지도</a>` : ''}
-          ${((() => { const _q=_normalizeMapAddress(d.소재지||d.주소||d.address||''); return _q && ia; })()) ? `<a href="${_buildNaverLandUrl(item)}" target="_blank" onclick="event.stopPropagation()" class="sc-btn" style="background:rgba(4,222,91,.12);color:#04de5b;border-color:rgba(4,222,91,.4);">🏠 부동산</a>` : ''}
+          ${((() => { const _q=_normalizeMapAddress(d.소재지||d.주소||d.address||''); return _q && ia; })()) ? (() => { const _u=_buildNaverLandUrl(item); return _u ? `<a href="${esc(_u)}" target="_blank" onclick="event.stopPropagation()" class="sc-btn" style="background:rgba(4,222,91,.12);color:#04de5b;border-color:rgba(4,222,91,.4);">🏠 부동산</a>` : ''; })() : ''}
           ${((() => { const _q=_normalizeMapAddress(d.소재지||d.주소||d.address||''); return _q && !ia && !d.상세URL && item.mode !== 'transaction' && src !== '디스코' && src !== '부동산플래닛'; })()) ? `<a href="https://map.naver.com/v5/search/${encodeURIComponent(_normalizeMapAddress(d.소재지||d.주소||d.address||''))}" target="_blank" onclick="event.stopPropagation()" class="sc-btn" style="background:rgba(4,222,91,.12);color:#04de5b;border-color:rgba(4,222,91,.4);">🗺️ 지도</a>` : ''}
-          ${((() => { const _q=_normalizeMapAddress(d.소재지||d.주소||d.address||''); return _q && !ia && !d.상세URL && item.mode !== 'transaction' && src !== '디스코' && src !== '부동산플래닛'; })()) ? `<a href="${_buildNaverLandUrl(item)}" target="_blank" onclick="event.stopPropagation()" class="sc-btn" style="background:rgba(4,222,91,.12);color:#04de5b;border-color:rgba(4,222,91,.4);">🏠 부동산</a>` : ''}
+          ${((() => { const _q=_normalizeMapAddress(d.소재지||d.주소||d.address||''); return _q && !ia && !d.상세URL && item.mode !== 'transaction' && src !== '디스코' && src !== '부동산플래닛'; })()) ? (() => { const _u=_buildNaverLandUrl(item); return _u ? `<a href="${esc(_u)}" target="_blank" onclick="event.stopPropagation()" class="sc-btn" style="background:rgba(4,222,91,.12);color:#04de5b;border-color:rgba(4,222,91,.4);">🏠 부동산</a>` : ''; })() : ''}
           ${_hasItemMapTarget(item) ? `<button onclick="event.stopPropagation();goToMapFromCard('${item.id}')" class="sc-btn sc-btn-mymap">📍 내 지도</button>` : ''}
           ${listBtnHtml}
           ${roomBtnHtml}
@@ -17239,7 +17359,7 @@ window.wr2SummaryCancelEdit = function() {
         // 사이트 지도 URL
         const _siteMapURL = _isJumpo ? 'https://map.jumpoline.com/main'
           : _isAssa ? 'https://xn--v69ap5so3hsnb81e1wfh6z.com/map'
-            : _isNaver ? (_buildNaverLandUrl(item) || '')
+            : _isNaver ? (_buildSavedNaverMapUrl(item) || '')
               : _isDisco ? (() => { const lat = d.lat || item.lat; const lng = d.lng || item.lng; return (lat && lng) ? `https://www.disco.re/map?lat=${lat}&lng=${lng}&zoom=15` : `https://www.disco.re`; })()
                 : _isBds ? 'copy_planet'
                   : '';
@@ -18933,7 +19053,7 @@ ${fi(d.기타사항, '기타사항', 'text', idx, '기타사항', isPopup)}
         : '';
       const siteMapURL = _isJumpo ? 'https://map.jumpoline.com/main'
         : _isAssa ? 'https://xn--v69ap5so3hsnb81e1wfh6z.com/map'
-          : _isNaver ? (_buildNaverLandUrl(item) || '')
+          : _isNaver ? (_buildSavedNaverMapUrl(item) || '')
             : _isDisco ? (() => { const lat = d.lat || item?.lat; const lng = d.lng || item?.lng; return (lat && lng) ? `https://www.disco.re/map?lat=${lat}&lng=${lng}&zoom=15` : `https://www.disco.re`; })()
               : _isBds ? 'copy_planet'
                 : '';
