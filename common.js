@@ -1729,6 +1729,94 @@
       }
       return persisted;
     };
+    // ─── 작업룸 이미지 append-merge 저장 ─────────────────────────────
+    // 이미지/캡처는 room 전체 덮어쓰기 저장이 아니라 captureImages 필드만 union-append로 확정한다.
+    // 오래된 room 객체가 최신 captureImages 배열을 덮어써서 이미지가 몇 초 뒤 사라지는 문제를 막는다.
+    function _wrCaptureImageKey(img) {
+      if (!img || typeof img !== 'object') return '';
+      return String(img.storagePath || img.path || img.src || img.url || '') ||
+        [img.snapName || '', img.parentSnapName || '', img.savedAt || ''].join('|');
+    }
+    function _wrMergeCaptureImages() {
+      const out = [];
+      const seen = new Set();
+      Array.prototype.slice.call(arguments).forEach(function(list) {
+        (Array.isArray(list) ? list : []).forEach(function(img) {
+          if (!img || typeof img !== 'object') return;
+          const key = _wrCaptureImageKey(img);
+          if (!key || seen.has(key)) return;
+          seen.add(key);
+          out.push(Object.assign({}, img, { src: img.src || img.url || '' }));
+        });
+      });
+      return out.sort(function(a, b) { return Number(a.savedAt || 0) - Number(b.savedAt || 0); });
+    }
+    window._wrAppendCaptureImage = function(roomId, entry, opts) {
+      if (!roomId || !entry) return null;
+      const options = opts || {};
+      const now = Date.now();
+      const newEntry = Object.assign({}, entry, { savedAt: entry.savedAt || now, src: entry.src || entry.url || '' });
+      const cacheRooms = window._wrGetRoomsCache ? window._wrGetRoomsCache() : _sbGetCachedArray('wr2_rooms');
+      const stateRooms = (window.wr2State && Array.isArray(window.wr2State.rooms)) ? window.wr2State.rooms : [];
+      const cacheRoom = (cacheRooms || []).find(function(r) { return r && r.id === roomId; }) || null;
+      const stateRoom = (stateRooms || []).find(function(r) { return r && r.id === roomId; }) || null;
+      const baseRoom = Object.assign({}, cacheRoom || {}, stateRoom || {}, { id: roomId });
+      const legacy = [];
+      if (baseRoom.captureImage) legacy.push({ src: baseRoom.captureImage, savedAt: baseRoom.updatedAt || baseRoom.createdAt || now, snapName: null });
+      baseRoom.captureImages = _wrMergeCaptureImages(
+        legacy,
+        cacheRoom && cacheRoom.captureImages,
+        stateRoom && stateRoom.captureImages,
+        baseRoom.captureImages,
+        [newEntry]
+      );
+      delete baseRoom.captureImage;
+      baseRoom.updatedAt = now;
+      if (window._sbMarkRoomDirty) window._sbMarkRoomDirty(roomId);
+      const fullMap = new Map();
+      (cacheRooms || []).forEach(function(r) { if (r && r.id) fullMap.set(r.id, r); });
+      (stateRooms || []).forEach(function(r) { if (r && r.id) fullMap.set(r.id, r); });
+      fullMap.set(roomId, baseRoom);
+      const fullRooms = Array.from(fullMap.values()).filter(function(r) { return r && r.id; });
+      if (window._wrPersistRooms) {
+        window._wrPersistRooms(fullRooms, { keepDeletedInState: true, syncState: false, sync: options.sync !== false });
+      } else if (window._wrPersistRoomCache) {
+        window._wrPersistRoomCache(fullRooms, { keepDeletedInState: true, syncState: false });
+        if (options.sync !== false && window._sbSaveRooms) window._sbSaveRooms(fullRooms).catch(function(e){ console.warn('[SB] room image sync fail', e); });
+      }
+      try { if (window.idbSet) window.idbSet('wr2_rooms', fullRooms).catch(function(){}); } catch(e) {}
+      if (stateRoom) {
+        Object.assign(stateRoom, baseRoom);
+      } else if (window.wr2State && Array.isArray(window.wr2State.rooms) && !baseRoom.deletedAt) {
+        window.wr2State.rooms.unshift(baseRoom);
+      }
+      return stateRoom || baseRoom;
+    };
+    window._wrSetCaptureImages = function(roomId, images, opts) {
+      if (!roomId) return null;
+      const options = opts || {};
+      const now = Date.now();
+      const cacheRooms = window._wrGetRoomsCache ? window._wrGetRoomsCache() : _sbGetCachedArray('wr2_rooms');
+      const stateRooms = (window.wr2State && Array.isArray(window.wr2State.rooms)) ? window.wr2State.rooms : [];
+      const cacheRoom = (cacheRooms || []).find(function(r) { return r && r.id === roomId; }) || null;
+      const stateRoom = (stateRooms || []).find(function(r) { return r && r.id === roomId; }) || null;
+      const baseRoom = Object.assign({}, cacheRoom || {}, stateRoom || {}, { id: roomId });
+      baseRoom.captureImages = _wrMergeCaptureImages(images || []);
+      delete baseRoom.captureImage;
+      baseRoom.updatedAt = now;
+      if (window._sbMarkRoomDirty) window._sbMarkRoomDirty(roomId);
+      const fullMap = new Map();
+      (cacheRooms || []).forEach(function(r) { if (r && r.id) fullMap.set(r.id, r); });
+      (stateRooms || []).forEach(function(r) { if (r && r.id) fullMap.set(r.id, r); });
+      fullMap.set(roomId, baseRoom);
+      const fullRooms = Array.from(fullMap.values()).filter(function(r) { return r && r.id; });
+      if (window._wrPersistRooms) window._wrPersistRooms(fullRooms, { keepDeletedInState: true, syncState: false, sync: options.sync !== false });
+      else if (window._wrPersistRoomCache) window._wrPersistRoomCache(fullRooms, { keepDeletedInState: true, syncState: false });
+      try { if (window.idbSet) window.idbSet('wr2_rooms', fullRooms).catch(function(){}); } catch(e) {}
+      if (stateRoom) Object.assign(stateRoom, baseRoom);
+      return stateRoom || baseRoom;
+    };
+
     window._wrMarkRoomsDirty = function(arr) {
       (Array.isArray(arr) ? arr : []).forEach(r => {
         if (r && r.id && window._sbMarkRoomDirty) window._sbMarkRoomDirty(r.id);
@@ -5534,7 +5622,10 @@ var _safeLocalSet = function(key, value) {
                     for (const file of imageFiles) {
                       try {
                         const { url, path } = await window._sbUploadImage(file, 'captures');
-                        room.captureImages.push({ src: url, storagePath: path, savedAt: Date.now(), snapName: _snapName });
+                        const _imgEntry = { src: url, storagePath: path, savedAt: Date.now(), snapName: _snapName };
+                        const _savedRoom = window._wrAppendCaptureImage ? window._wrAppendCaptureImage(room.id, _imgEntry) : null;
+                        if (_savedRoom) room.captureImages = _savedRoom.captureImages;
+                        else room.captureImages.push(_imgEntry);
                         ok++;
                       } catch(e) {
                         console.error('[wr2 capture upload]', e);
@@ -5546,8 +5637,10 @@ var _safeLocalSet = function(key, value) {
                       return;
                     }
                     room.updatedAt = Date.now();
-                    saveRooms();
-                    if (typeof window.__wr2FlushSaveRooms === 'function') window.__wr2FlushSaveRooms();
+                    if (!window._wrAppendCaptureImage) {
+                      saveRooms();
+                      if (typeof window.__wr2FlushSaveRooms === 'function') window.__wr2FlushSaveRooms();
+                    }
                     renderCaptureWidget(room);
                     showToast('📸 이미지 ' + ok + '개 저장됨' + (fail ? ' · 일부 실패' : ''), fail ? 'warn' : 'ok');
                   } finally {
@@ -5560,9 +5653,10 @@ var _safeLocalSet = function(key, value) {
                   // Storage에서 실제 파일 삭제
                   const paths = (room.captureImages || []).filter(i => i.storagePath).map(i => i.storagePath);
                   if (paths.length) window._sbDeleteImages(paths).catch(()=>{});
+                  if (window._wrSetCaptureImages) window._wrSetCaptureImages(room.id, []);
+                  else { room.captureImages = []; delete room.captureImage; room.updatedAt = Date.now(); saveRooms(); }
                   room.captureImages = []; delete room.captureImage;
-                  room.updatedAt = Date.now();
-                  saveRooms(); renderCaptureWidget(room);
+                  renderCaptureWidget(room);
                 };
                 window.wr2CaptureMap = async function () {
                   const mapEl = document.getElementById('map');
@@ -5583,9 +5677,13 @@ var _safeLocalSet = function(key, value) {
                         try {
                           const { url, path } = await window._sbUploadImage(blob, 'captures');
                           if (!room.captureImages) room.captureImages = [];
-                          room.captureImages.push({ src: url, storagePath: path, savedAt: Date.now(), snapName: _snapName });
+                          const _imgEntry = { src: url, storagePath: path, savedAt: Date.now(), snapName: _snapName };
+                          const _savedRoom = window._wrAppendCaptureImage ? window._wrAppendCaptureImage(room.id, _imgEntry) : null;
+                          if (_savedRoom) room.captureImages = _savedRoom.captureImages;
+                          else room.captureImages.push(_imgEntry);
                           room.updatedAt = Date.now();
-                          saveRooms(); renderCaptureWidget(room);
+                          if (!window._wrAppendCaptureImage) saveRooms();
+                          renderCaptureWidget(room);
                           showToast('📸 캡처 저장됨' + (_snapName ? ' (📷 ' + _snapName + ')' : ''), 'ok');
                         } catch(e) {
                           console.error('[wr2CaptureMap upload]', e);
@@ -11307,16 +11405,40 @@ window.wr2SummaryCancelEdit = function() {
               const snapItem = (c.item && typeof c.item === 'object') ? c.item : {};
               const baseItemId = String(snapItem.id || c.id || ('snap_' + idx)).replace(/^marker_/, '');
               const liveItem = latestSaved.find(function(it) { return it && String(it.id) === baseItemId; });
-              const loadItem = liveItem
-                ? JSON.parse(JSON.stringify(liveItem))
-                : JSON.parse(JSON.stringify(snapItem));
+              const _normSrc = function(v) { return String(v || '').trim().toLowerCase().replace(/\s+/g, ''); };
+              const _pickSrc = function(item) {
+                if (!item || typeof item !== 'object') return '';
+                const data = (item.data && typeof item.data === 'object') ? item.data : {};
+                return _normSrc(item.source || data.출처 || '');
+              };
+              const _normType = function(v) { return String(v || '').trim().toLowerCase(); };
+              const snapSrcKey = _pickSrc(snapItem);
+              const liveSrcKey = _pickSrc(liveItem || {});
+              const snapTypeKey = _normType((snapItem && snapItem.propertyType) || c.propertyType || '');
+              const liveTypeKey = _normType((liveItem && liveItem.propertyType) || '');
+              const snapHasCore = !!(snapItem && (
+                snapItem.source ||
+                snapItem.address ||
+                snapItem.title ||
+                (snapItem.data && Object.keys(snapItem.data).length)
+              ));
+              const canUseLive = !!(liveItem && (
+                !snapHasCore ||
+                (snapSrcKey && liveSrcKey && snapSrcKey === liveSrcKey) ||
+                (snapTypeKey && liveTypeKey && snapTypeKey === liveTypeKey)
+              ));
+              const baseItem = canUseLive ? liveItem : snapItem;
+              const loadItem = baseItem ? JSON.parse(JSON.stringify(baseItem)) : {};
               if (!loadItem.id) loadItem.id = baseItemId;
               if (!loadItem.data || typeof loadItem.data !== 'object') loadItem.data = {};
+              if (!loadItem.propertyType && c.propertyType) loadItem.propertyType = c.propertyType;
+              if (!loadItem.source && snapItem && snapItem.source) loadItem.source = snapItem.source;
               loadItem.lat = lat;
               loadItem.lng = lng;
               loadItem.data.lat = lat;
               loadItem.data.lng = lng;
               const _src = String(loadItem.source || loadItem.data.출처 || '');
+              const _srcKey = _normSrc(_src);
               const _ptype = String(c.propertyType || snapItem.propertyType || loadItem.propertyType || '').toLowerCase();
               const _isListingLikeTxnSource =
                 _ptype === 'disco' ||
@@ -11324,10 +11446,10 @@ window.wr2SummaryCancelEdit = function() {
                 _ptype === 'jumpo' ||
                 _ptype === 'nemo' ||
                 _ptype === 'assa' ||
-                _src === '디스코' ||
-                _src === '부동산플래닛' ||
-                _src === '점포라인' ||
-                _src === '네모' ||
+                _srcKey === '디스코' ||
+                _srcKey === '부동산플래닛' ||
+                _srcKey === '점포라인' ||
+                _srcKey === '네모' ||
                 _isAssaSource(_src);
               const _isTxSnap =
                 !_isListingLikeTxnSource && (
@@ -11353,6 +11475,11 @@ window.wr2SummaryCancelEdit = function() {
                 // 동일 가격/주소 실거래가 여러 건이어도 1건으로 합쳐지지 않게 한다.
                 txItem.__snapDupKey = String(c.id || ('tx_' + idx));
                 txItem.__snapCardId = String(c.id || '');
+                txItem.__snapLeft = c.left;
+                txItem.__snapTop = c.top;
+                txItem.__snapWidth = c.width;
+                txItem.__snapMinHeight = c.minHeight;
+                txItem.__snapIsOpen = !!c.isOpen;
                 showTransactionMarker(txItem);
               } else {
                 addMapMarker(loadItem, coords);
@@ -11573,7 +11700,7 @@ window.wr2SummaryCancelEdit = function() {
             parentEntry.children.push({ name: scene.name, cards: scene.cards, mapCenter: scene.mapCenter, mapLevel: scene.mapLevel, savedAt: now });
             if (scene.thumbnailSrc) {
               const entry = await _uploadSnapThumb(scene.thumbnailSrc, scene.name, parentSnapName);
-              if (entry) room.captureImages.push(entry);
+              if (entry) { const _savedRoom = window._wrAppendCaptureImage ? window._wrAppendCaptureImage(room.id, entry) : null; if (_savedRoom) room.captureImages = _savedRoom.captureImages; else room.captureImages.push(entry); }
             }
           } else {
             const allScenes2 = getWorkScenes();
@@ -11583,12 +11710,12 @@ window.wr2SummaryCancelEdit = function() {
             if (existIdx >= 0) room.mapScenes[existIdx] = newEntry; else room.mapScenes.push(newEntry);
             if (scene.thumbnailSrc && !room.captureImages.find(i => i.snapName === scene.name && !i.parentSnapName)) {
               const entry = await _uploadSnapThumb(scene.thumbnailSrc, scene.name, null);
-              if (entry) room.captureImages.push(entry);
+              if (entry) { const _savedRoom = window._wrAppendCaptureImage ? window._wrAppendCaptureImage(room.id, entry) : null; if (_savedRoom) room.captureImages = _savedRoom.captureImages; else room.captureImages.push(entry); }
             }
             for (const ch of children2) {
               if (ch.thumbnailSrc && !room.captureImages.find(i => i.snapName === ch.name)) {
                 const entry = await _uploadSnapThumb(ch.thumbnailSrc, ch.name, scene.name);
-                if (entry) room.captureImages.push(entry);
+                if (entry) { const _savedRoom = window._wrAppendCaptureImage ? window._wrAppendCaptureImage(room.id, entry) : null; if (_savedRoom) room.captureImages = _savedRoom.captureImages; else room.captureImages.push(entry); }
               }
             }
           }
@@ -13255,22 +13382,30 @@ window.wr2SummaryCancelEdit = function() {
       return !!(item && (item.lat || item.lng || d.lat || d.lng || _getItemMapAddress(item)));
     }
 
-    function _buildNaverLandUrl(item) {
+    function _isNaverSavedSource(item) {
       const d = (item && item.data) || {};
-      // 네이버 매물일 때만 상세URL/articleNo를 신뢰한다.
-      // (타 소스에서 잘못 저장된 new.land URL로 엉뚱한 위치로 가는 문제 방지)
-      const src = String((item && item.source) || d.출처 || '').trim();
-      const isNaverSrc = src === '네이버부동산' || src === '네이버' || src === '네이버 부동산' || src === 'naver';
-      const detailUrl = String(d.상세URL || '').trim();
-      if (isNaverSrc && detailUrl && /new\.land\.naver\.com/i.test(detailUrl)) return detailUrl;
+      const src = String((item && item.source) || d.출처 || '').trim().toLowerCase().replace(/\s+/g, '');
+      return src === '네이버부동산' || src === '네이버' || src === 'naver';
+    }
 
-      // 네이버 매물일 때만 articleNo를 사용한다.
-      // (경매/기타 소스의 숫자 필드가 잘못 articleNo로 해석되면 엉뚱한 페이지로 이동함)
-      const articleNo = String(d.매물번호 || '').trim();
-      if (isNaverSrc && /^\d{6,14}$/.test(articleNo)) {
+    // 저장목록/물건정보의 “원본 상세” 링크: 네이버 출처일 때만 상세URL/articleNo를 신뢰한다.
+    // 지도/검색 링크와 분리해서 이전 지역 URL이 지도 버튼에 섞이는 문제를 차단한다.
+    function _buildNaverArticleUrl(item) {
+      const d = (item && item.data) || {};
+      if (!_isNaverSavedSource(item)) return '';
+      const detailUrl = String(d.상세URL || item?.originalUrl || item?.url || '').trim();
+      if (detailUrl && /new\.land\.naver\.com/i.test(detailUrl)) return detailUrl;
+      const articleNo = String(d.매물번호 || d.articleNo || item?.articleNo || '').trim();
+      if (/^\d{6,14}$/.test(articleNo)) {
         return `https://new.land.naver.com/offices?articleNo=${encodeURIComponent(articleNo)}`;
       }
+      return '';
+    }
 
+    // 저장목록/물건정보의 네이버 “지도/부동산 검색” 링크 전용.
+    // 절대 상세URL/articleNo를 반환하지 않는다. 우클릭 ctxNaverLand()와 별개이며 건드리지 않는다.
+    function _buildNaverLandUrl(item) {
+      const d = (item && item.data) || {};
       const addrRaw =
         d.소재지 || d.주소 || d.address || d['도로명주소'] || d['지번주소'] || item?.address || '';
       const addr = _normalizeMapAddress(addrRaw);
@@ -13279,14 +13414,11 @@ window.wr2SummaryCancelEdit = function() {
       if (queryAddr) {
         return `https://new.land.naver.com/offices?query=${encodeURIComponent(queryAddr)}&a=SG:SMS:APTHGJ&e=RETAIL`;
       }
-
-      // 주소가 비어있을 때만 좌표 fallback 사용
       const lat = parseFloat(d.lat || item?.lat);
       const lng = parseFloat(d.lng || item?.lng);
       if (Number.isFinite(lat) && Number.isFinite(lng)) {
         return `https://new.land.naver.com/offices?ms=${lat},${lng},17&a=SG:SMS:APTHGJ&e=RETAIL`;
       }
-
       return '';
     }
 
@@ -14941,7 +15073,7 @@ window.wr2SummaryCancelEdit = function() {
       }
 
       const ts = item.timestamp ? new Date(item.timestamp).toLocaleDateString('ko-KR') : '날짜 없음';
-      const originalUrl = String(d.상세URL || '').trim();
+      const originalUrl = _isNaverSavedSource(item) ? _buildNaverArticleUrl(item) : String(d.상세URL || '').trim();
       const auctionSiteUrl = String(
         d.상세URL ||
         d.옥션원URL ||
@@ -17100,7 +17232,7 @@ window.wr2SummaryCancelEdit = function() {
                       : _isNaver ? '네이버'
                         : (src || '매물');
         // 상세URL
-        const _detailURL = d.상세URL || (_isNaver && d.매물번호 ? `https://new.land.naver.com/offices?articleNo=${d.매물번호}` : '');
+        const _detailURL = _isNaver ? _buildNaverArticleUrl(item) : (d.상세URL || '');
         const _addrQ = _normalizeMapAddress(d.소재지 || d.주소 || d.address || d['도로명주소'] || d['지번주소'] || item.address || '');
         const _naverMapQ = _addrQ ? ('https://map.naver.com/v5/search/' + encodeURIComponent(_addrQ)) : '';
         const _naverLandQ = _buildNaverLandUrl(item);
@@ -18795,7 +18927,7 @@ ${fi(d.기타사항, '기타사항', 'text', idx, '기타사항', isPopup)}
       const _srcRgb = getSrcRgb(_srcLabel, '79,142,255');
       const srcBadge = `<span style="font-size:10px;padding:1px 7px;border-radius:10px;background:rgba(${_srcRgb},.15);color:${_srcColor};border:1px solid rgba(${_srcRgb},.45);font-weight:600;">${esc(_srcLabel)}</span>`;
       // 액션 버튼들
-      const _detailURL = d.상세URL || (_isNaver && d.매물번호 ? `https://new.land.naver.com/offices?articleNo=${d.매물번호}` : '');
+      const _detailURL = _isNaver ? _buildNaverArticleUrl(item) : (d.상세URL || '');
       const detailBtn = _detailURL
         ? `<a href="${esc(_detailURL)}" target="_blank" style="font-size:10px;padding:2px 8px;background:rgba(${_srcRgb},.12);color:${_srcColor};border:1px solid rgba(${_srcRgb},.4);border-radius:5px;text-decoration:none;font-weight:600;">🔗 상세</a>`
         : '';
@@ -28261,8 +28393,10 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       // 카드 콘텐츠 생성 - 자동 배치
       const autoPos = getAutoCardPosition(position);
       const layoutCache = (window.__txLayoutCache && window.__txLayoutCache[dupKey]) ? window.__txLayoutCache[dupKey] : null;
-      const initLeft = (layoutCache && Number.isFinite(Number(layoutCache.left))) ? Number(layoutCache.left) : autoPos.left;
-      const initTop = (layoutCache && Number.isFinite(Number(layoutCache.top))) ? Number(layoutCache.top) : autoPos.top;
+      const snapLeft = snapCardId && Number.isFinite(Number(item.__snapLeft)) ? Number(item.__snapLeft) : null;
+      const snapTop = snapCardId && Number.isFinite(Number(item.__snapTop)) ? Number(item.__snapTop) : null;
+      const initLeft = snapLeft !== null ? snapLeft : ((layoutCache && Number.isFinite(Number(layoutCache.left))) ? Number(layoutCache.left) : autoPos.left);
+      const initTop = snapTop !== null ? snapTop : ((layoutCache && Number.isFinite(Number(layoutCache.top))) ? Number(layoutCache.top) : autoPos.top);
 
       // ✅ 실거래(transaction) 카드 본문은 공통 빌더를 사용(메모 제거/정보 밀도 개선)
       const tItem = Object.assign({ mode: 'transaction' }, item);
@@ -28305,11 +28439,13 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         yAnchor: 0,
         zIndex: 10
       });
-      const initialTradeCardOpen = (layoutCache && typeof layoutCache.isOpen === 'boolean')
-        ? !!layoutCache.isOpen
-        : ((!_isCompactMapUi())
-          && mapFilters.transaction !== false
-          && _isMapCardTypeOpen('transaction'));
+      const initialTradeCardOpen = (snapCardId && typeof item.__snapIsOpen === 'boolean')
+        ? !!item.__snapIsOpen
+        : ((layoutCache && typeof layoutCache.isOpen === 'boolean')
+          ? !!layoutCache.isOpen
+          : ((!_isCompactMapUi())
+            && mapFilters.transaction !== false
+            && _isMapCardTypeOpen('transaction')));
 
       // mapOverlays에 먼저 등록 (클릭 이벤트가 이 배열을 참조하므로 선행 등록 필수)
       const overlayObj = {
@@ -28397,16 +28533,18 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         propertyType: 'transaction'
       });
 
-      marker.setMap(mapFilters.transaction ? map : null);
+      marker.setMap((isSnapshotRestore || mapFilters.transaction) ? map : null);
       setTimeout(function() {
         var cardEl = document.getElementById(id);
         if (!cardEl || !layoutCache) return;
-        if (layoutCache.width && Number(layoutCache.width) > 0) cardEl.style.width = Number(layoutCache.width) + 'px';
-        if (layoutCache.minHeight && Number(layoutCache.minHeight) > 0) cardEl.style.minHeight = Number(layoutCache.minHeight) + 'px';
+        const _w = isSnapshotRestore ? item.__snapWidth : layoutCache.width;
+        const _mh = isSnapshotRestore ? item.__snapMinHeight : layoutCache.minHeight;
+        if (_w && Number(_w) > 0) cardEl.style.width = Number(_w) + 'px';
+        if (_mh && Number(_mh) > 0) cardEl.style.minHeight = Number(_mh) + 'px';
       }, 0);
 
       // 카드도 즉시 표시 (📱 모바일 제외)
-      if (mapFilters.transaction && initialTradeCardOpen && !_isCompactMapUi()) {
+      if ((isSnapshotRestore || mapFilters.transaction) && initialTradeCardOpen && !_isCompactMapUi()) {
         overlay.setMap(map);
 
         // ✅ 동일 좌표 실거래는 대표 1장만 열리도록 등록(+N 배지/순환)
@@ -28426,7 +28564,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           if (overlayObj.isOpen) updateMapLine(overlayObj.id);
           if (!(window.__skipTransactionAutoStack && isSnapshotRestore)) updateStackedCards();
         }, 200);
-      } else if (mapFilters.transaction && _isCompactMapUi()) {
+      } else if ((isSnapshotRestore || mapFilters.transaction) && _isCompactMapUi()) {
         // 모바일: isOpen은 false로 유지, overlay 표시 안 함
         overlayObj.isOpen = false;
       }
@@ -28944,10 +29082,15 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           // Storage 업로드 후 URL 저장
           try {
             const { url, path } = await window._sbUploadImage(_uploadSource, 'captures');
-            room.captureImages.push({ src: url, storagePath: path, savedAt: Date.now(), snapName: _snapName });
+            const _imgEntry = { src: url, storagePath: path, savedAt: Date.now(), snapName: _snapName };
+            const _savedRoom = window._wrAppendCaptureImage ? window._wrAppendCaptureImage(room.id, _imgEntry) : null;
+            if (_savedRoom) room.captureImages = _savedRoom.captureImages;
+            else room.captureImages.push(_imgEntry);
             room.updatedAt = Date.now();
-            if (window._wrPersistRooms) window._wrPersistRooms(_allRooms, { syncState: false });
-            else if (typeof window._sbSaveRooms === 'function') window._sbSaveRooms(_allRooms).catch(()=>{});
+            if (!window._wrAppendCaptureImage) {
+              if (window._wrPersistRooms) window._wrPersistRooms(_allRooms, { syncState: false });
+              else if (typeof window._sbSaveRooms === 'function') window._sbSaveRooms(_allRooms).catch(()=>{});
+            }
             if (typeof window.wr2Render === 'function') window.wr2Render();
             setTimeout(function() {
               try {
@@ -45543,6 +45686,7 @@ window.addEventListener('DOMContentLoaded', () => {
     item.__allowLifecycleReopen = true;
     plSave(items.map(plNormalizeItem));
     window.__plLastLocalStatusMutationAt = Date.now();
+    window.__plLastLocalMutationAt = window.__plLastLocalStatusMutationAt;
     syncToWorkroom(item);
     try { delete item.__allowLifecycleReopen; } catch(e) {}
     try { plSyncItemToSaved(item); } catch(e) {}
@@ -45583,7 +45727,10 @@ window.addEventListener('DOMContentLoaded', () => {
     if (window.__plInlineEditKey) return;
     if (window.__plListRefreshRunning) return;
     if (typeof window._plRefreshFromCloud !== 'function') return;
-    var lastMutation = Number(window.__plLastLocalStatusMutationAt || 0);
+    var lastMutation = Math.max(
+      Number(window.__plLastLocalStatusMutationAt || 0),
+      Number(window.__plLastLocalMutationAt || 0)
+    );
     if (lastMutation && (Date.now() - lastMutation) < 45000) return;
     var now = Date.now();
     var last = Number(window.__plListRefreshAt || 0);
@@ -45749,6 +45896,8 @@ window.addEventListener('DOMContentLoaded', () => {
       return plNormalizeItem(it);
     });
     plSave(items.map(plNormalizeItem));
+    window.__plLastLocalStatusMutationAt = Date.now();
+    window.__plLastLocalMutationAt = window.__plLastLocalStatusMutationAt;
     plSelectedMap = {};
     if (val === 'closed' && ids.length === 1) setTimeout(function(){ plOpenResultModal(ids[0]); }, 180);
     renderPropertyList();
@@ -45765,20 +45914,24 @@ window.addEventListener('DOMContentLoaded', () => {
       return plNormalizeItem(it);
     });
     plSave(items.map(plNormalizeItem));
+    window.__plLastLocalStatusMutationAt = Date.now();
+    window.__plLastLocalMutationAt = window.__plLastLocalStatusMutationAt;
     plSelectedMap = {};
     renderPropertyList();
   };
 
   function plUpdateItem(id, patch) {
     var items = plLoad();
+    var nowTs = Date.now();
     var changedItem = null;
     items = items.map(function(it){
       if (it.id !== id) return it;
-      changedItem = plNormalizeItem(Object.assign({}, it, patch || {}, { updatedAt: Date.now() }));
+      changedItem = plNormalizeItem(Object.assign({}, it, patch || {}, { updatedAt: nowTs }));
       return changedItem;
     });
     if (!changedItem) return null;
     plSave(items);
+    window.__plLastLocalMutationAt = nowTs;
     syncToWorkroom(changedItem);
     try { plSyncItemToSaved(changedItem); } catch(e) {}
     try { if (typeof renderWatchBoard === 'function') setTimeout(renderWatchBoard, 40); } catch(e) {}
@@ -46624,6 +46777,7 @@ window.addEventListener('DOMContentLoaded', () => {
     }
     var normalized = items.map(plNormalizeItem);
     plSave(normalized);
+    window.__plLastLocalMutationAt = Date.now();
     syncToWorkroom(item);
     try { plSyncItemToSaved(plNormalizeItem(item)); } catch(e) {}
     // 종료 상태로 저장 시 결과 팝업
@@ -46642,6 +46796,8 @@ window.addEventListener('DOMContentLoaded', () => {
     if (!it) return;
     it.status = 'archived'; it.archived = true; it.updatedAt = Date.now();
     plSave(items);
+    window.__plLastLocalStatusMutationAt = Date.now();
+    window.__plLastLocalMutationAt = window.__plLastLocalStatusMutationAt;
     syncToWorkroom(it);
     try { plSyncItemToSaved(it); } catch(e) {}
   };
@@ -46682,6 +46838,8 @@ window.addEventListener('DOMContentLoaded', () => {
     };
     it.status = 'closed';
     plSave(items.map(plNormalizeItem));
+    window.__plLastLocalStatusMutationAt = Date.now();
+    window.__plLastLocalMutationAt = window.__plLastLocalStatusMutationAt;
     syncToWorkroom(it);
     try { plSyncItemToSaved(it); } catch(e) {}
     plCloseResultModal();
@@ -46912,7 +47070,10 @@ window.addEventListener('DOMContentLoaded', () => {
       if (typing) return;
       if (Number(window.__wr2UploadBusy || 0) > 0) return;
       if (window.__wr2SaveRoomsTimer) return;
-      var lastMutation = Number(window.__plLastLocalStatusMutationAt || 0);
+      var lastMutation = Math.max(
+        Number(window.__plLastLocalStatusMutationAt || 0),
+        Number(window.__plLastLocalMutationAt || 0)
+      );
       if (lastMutation && (Date.now() - lastMutation) < 45000) return;
       if (typeof window._plRefreshFromCloud === 'function') {
         window._plRefreshFromCloud({ render: false, force: true, sync: true }).then(function() {
@@ -46944,6 +47105,11 @@ window.addEventListener('DOMContentLoaded', () => {
       window.__plQuickCloudPullAt = now;
       if (Number(window.__wr2UploadBusy || 0) > 0) return;
       if (window.__wr2SaveRoomsTimer) return;
+      var lastMutation = Math.max(
+        Number(window.__plLastLocalStatusMutationAt || 0),
+        Number(window.__plLastLocalMutationAt || 0)
+      );
+      if (lastMutation && (Date.now() - lastMutation) < 45000) return;
       if (typeof window._plRefreshFromCloud === 'function') {
         window._plRefreshFromCloud({ render: false, force: true, sync: true }).then(function() {
           if (window.__pmActiveTab === 'list' && typeof window.renderPropertyList === 'function') window.renderPropertyList();
