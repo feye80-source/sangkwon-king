@@ -36,7 +36,7 @@ LOCAL_UPLOAD_ROOT = os.path.join(BASE_DIR, '_proxy_uploads')
 ALLOWED_STORAGE_BUCKETS = {'attachments', 'room-images', 'kcard-images'}
 
 # 플래닛 쿠키 전역 캐시 (수집 시 자동 저장, 층수 조회 시 재사용)
-BDS_COOKIE_CACHE = 'bdsp_usid=MTU0Y2Q1NTUtNGZmNC00YmZjLWFmNzktOGZhNDYzZTE1ZDM4; real=NTMwM2UzNDItZWFkOC00OTk3LWJlYzktNjA5NTcyMDgzNzYy; _gcl_au=1.1.1914616534.1771765987; _fbp=fb.1.1771765987807.808252917601495943; _gid=GA1.2.1315729604.1771765988; ckSsPpPopup=true; lastLoggedInSNS_b=naver; skele=Y; refresh=eyJhbGciOiJIUzI1NiJ9.eyJjYXRlZ29yeSI6Ijk3eW5XOGh1TDBtNThtR25PaW9UYlE9PSIsInVzZXJfY29kZSI6ImEzMndIYlFlNWM3dGpqbURyM1JkM0tjR3FUNjEzMStFcVpVNXZwOW5EVCtVdXJnckhhR3ZwQT09Iiwicm9sZSI6IkM3RlFkMzRwTnpDK1hLSGdBZEo3cktSUkdpczBDaHRzIiwiZW1haWwiOiJMNDZUWWxFaEtDZFpOZGlyMzlsR09CMDZhYml6R3ZucXZ1ZzBvTnV0SENJPSIsImF0ayI6Ik1OUVRUSGcvL1hwbzBJdHZ1bndxUjJMS3ZJZjVWVlNNNmZrZHdHTjA3Ykl2ZXQ3dEpScEhSV2pwVU8vanpxRURoNks0TGNuOG9HRXRGdEM2WURPUFBzVWY1YlA4K0lhTTgvd1dlY1lFbUp6cDdiYmFCSUROUFRxRGVRY21UZGhEaWF6NTNSK3Z6d3gwVHR4STc5Mnp0Z3JjV0tUcUx2cE1mS2ZnWUtibUtkSXY4T3h1VlNXcVErNGFVcXRMdDhoNXNGdS9QZ0hidS9XcTBYME9YZnRySFMzK3ZhdHhtQkQxRytYVFJvSWxTaDhTbzNEbjVVTzJaNVFYZmxsUjZQNFA3eThYUDhwWVNTQUdWbW1ZYnk3bXNRdDNJV25qTjlkOXVUNEs1SnQvWE1JWng0MmVTTWNKQ0tGc3plcEw5SHRwVXF1SzhzUEExbFNsV1R1WHd3b2FnWTZ3d3ZTeWMzZVZIYVpGMU1xR1ViaW1PREVMWTcxZ3g0eWtpMTY4dld0OURFVXc3cGlqYnF1M2ZINm00NFpRQzMwNkZ1em9wSTlHbk9lNVBibExlSEM5b3hGc2tkbDJZZjBNN0FuZ25jYjdsY2xkcjBWcjF4MTZpZkFyNE5DYzJoMlAvaHJNd2hyQ2ZaYW5YUTdGd2kwT2VJMzZYc2trNHZsaWRaSkxveVJPdlZtem5PZXJmeHZuNWZpbC9JR0NMUmxYcndFWXJ3Q2RlVERkeDk2dS9WYTdrZzBJaWZRNXFLekJwblFCSmhrS2dRcGNBYk9wK1JpRCtkZGVPakhLQXZxV2M0a1ppUWM2IiwiaWF0IjoxNzcxODYyMTM2LCJleHAiOjE3NzE5NDg1MzZ9.jKfkEmxCF7pQS6YTWGCqbBHu8-z_xwEKuDRmUVzvR5A; access=eyJhbGciOiJIUzI1NiJ9.eyJjYXRlZ29yeSI6ImRWbmdzajZOY0xXaG90OWYxYkhBbkE9PSIsInVzZXJfY29kZSI6IkRkeDBwc0t3eFQvR3pCbFFCQjdkY24xaHI4eEh6dTFwZ2x4bmtiSytlVVFlWXlaSnFMbW5yZz09Iiwicm9sZSI6IlRISlcyMTE1OG9Qc1pWcGFtVGE5MDh2TnpKSGxaRnE2IiwiZW1haWwiOiJtVXlqckZmRWI4UzRNTlp2ZzFaS21nQnJ5TUtoQ3o2ODltcktLaGpIV2pBPSIsImF0ayI6IlB3bkkvbmlpNVZLYy8renkrQ0wrTGtpZGxFaENMY05zIiwiaWF0IjoxNzcxODYyMTM2LCJleHAiOjE3NzE5MDUzMzZ9.u8AvZq6absVkp7BWp5u9iLx9_TOesPAq_TVCGWF_ObE; _ga_W0HCMCWKMZ=GS2.1.s1771861450$o6$g1$t1771862137$j60$l0$h0; mp_5c381f458032505385ed0973771610c7_mixpanel=%7B%22distinct_id%22%3A%22%24device%3Aa47863bf-15c2-490d-a7ce-80388027a301%22%2C%22%24device_id%22%3A%22a47863bf-15c2-490d-a7ce-80388027a301%22%2C%22%24initial_referrer%22%3A%22https%3A%2F%2Fproperty.bdsplanet.com%2F%22%2C%22%24initial_referring_domain%22%3A%22property.bdsplanet.com%22%2C%22__mps%22%3A%7B%7D%2C%22__mpso%22%3A%7B%22%24initial_referrer%22%3A%22https%3A%2F%2Fproperty.bdsplanet.com%2F%22%2C%22%24initial_referring_domain%22%3A%22property.bdsplanet.com%22%7D%2C%22__mpus%22%3A%7B%7D%2C%22__mpa%22%3A%7B%7D%2C%22__mpu%22%3A%7B%7D%2C%22__mpr%22%3A%5B%5D%2C%22__mpap%22%3A%5B%5D%2C%22user_code%22%3A%22USER_20250814174456000001%22%2C%22__alias%22%3A%22USER_20250814174456000001%22%2C%22%24user_id%22%3A%22USER_20250814174456000001%22%7D; _ga=GA1.2.2073191771.1771765985; _ga_ZMYFVJ62R4=GS2.1.s1771860671$o12$g1$t1771862827$j57$l0$h0; _gat_UA-72361022-1=1'
+BDS_COOKIE_CACHE = ''  # 사용자가 입력해 성공한 쿠키만 런타임 캐시. 오래된 하드코딩 쿠키 금지.
 
 TOKEN  = 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IlJFQUxFU1RBVEUiLCJpYXQiOjE3NzE4MzQ0NjgsImV4cCI6MTc3MTg0NTI2OH0.0JrIMhLcyMaiwG53ZCrWlQSJCYjBv7aU8CvBZVvwhRg'
 COOKIE = 'nhn.realestate.article.trade_type_cd=""; nhn.realestate.article.ipaddress_city=1100000000; _fwb=181mH6x2wXJDj21u5GAHx4P.1771610345285; landHomeFlashUseYn=Y; NAC=PHbTB8QuizZH; NNB=XFGGRJ7JUCMGS; BUC=uuOcrBxBEVOhIzqj7sRxhTfUr72bhkrkpOycivPRMwQ=; nhn.realestate.article.rlet_type_cd=A01; REALESTATE=Mon%20Feb%2023%202026%2017%3A14%3A28%20GMT%2B0900%20(Korean%20Standard%20Time); PROP_TEST_KEY=1771834468230.b0106ce42c27dcd1b4a1d804e79d6b08ae096517f2981164c4ccf057c170ccb5; PROP_TEST_ID=a4861023da9c97cf6f3bcd9052feceb7b1ce4cac9539cab47f65e3fc1625cd8b; _fwb=181mH6x2wXJDj21u5GAHx4P.1771610345285; NACT=1; SHOW_FIN_BADGE=Y; bnb_tooltip_shown_finance_v1=true; SRT30=1771834421; SRT5=1771834421'
@@ -2281,7 +2281,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
             if not items_raw:
                 print(f"  ⚠️ 응답 타입: {type(raw).__name__}, 미리보기: {str(raw)[:200]}")
 
-            if bds_cookie and all_raw_items and cookie_source in ('user', 'cache'):
+            if bds_cookie and all_raw_items and cookie_source in ('user', 'runtime_cache'):
                 BDS_COOKIE_CACHE = bds_cookie
 
             def clean(v):
@@ -2440,43 +2440,28 @@ class ProxyHandler(BaseHTTPRequestHandler):
 
             print(f"  🌍 부동산플래닛 수집 시작 (lat={_lat}, lng={_lng})...")
 
-            # ★ 쿠키 우선순위: (1) 브라우저 직접 전달 → (2) 이전에 성공/저장된 캐시 → (3) 자동취득
-            # 자동취득 쿠키는 bdsp_usid 정도만 잡히는 경우가 있어 실거래 API가 200/빈 응답을 줄 수 있다.
+            # ★ 쿠키 정책 v20260502:
+            # - 오래된 하드코딩 쿠키/자동취득 쿠키를 쓰지 않는다.
+            # - 사용자가 F12에서 복사한 Cookie를 최우선으로 사용한다.
+            # - 서버 런타임 캐시는 "사용자 쿠키로 실제 수집 성공"한 경우에만 보조로 재사용한다.
+            # - 실패/빈 응답 쿠키는 캐시에 저장하지 않는다.
             global BDS_COOKIE_CACHE
             bds_cookie = sanitize_cookie(cookie) if cookie and cookie.strip() else ''
             cookie_source = ''
             if bds_cookie:
-                BDS_COOKIE_CACHE = bds_cookie
                 cookie_source = 'user'
-                print(f"  🍪 브라우저 쿠키 사용: {bds_cookie[:80]}...")
+                print(f"  🍪 사용자 입력 쿠키 사용: {bds_cookie[:80]}...")
             else:
                 cached_cookie = sanitize_cookie(BDS_COOKIE_CACHE) if BDS_COOKIE_CACHE else ''
                 if cached_cookie:
                     bds_cookie = cached_cookie
-                    cookie_source = 'cache'
-                    print(f"  🍪 캐시 쿠키 사용: {bds_cookie[:80]}...")
+                    cookie_source = 'runtime_cache'
+                    print(f"  🍪 성공 쿠키 런타임 캐시 사용: {bds_cookie[:80]}...")
                 else:
-                    print(f"  🔄 쿠키 미입력/캐시 없음 — 자동 취득 시도...")
-                    try:
-                        import http.cookiejar
-                        cj = http.cookiejar.CookieJar()
-                        opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
-                        init_req = urllib.request.Request(
-                            'https://www.bdsplanet.com/map/realprice_map',
-                            headers={
-                                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-                                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                                'Accept-Language': 'ko-KR,ko;q=0.9',
-                            }
-                        )
-                        opener.open(init_req, timeout=10)
-                        bds_cookie = '; '.join([f'{c.name}={c.value}' for c in cj])
-                        cookie_source = 'auto'
-                        print(f"  🍪 자동취득 쿠키: {bds_cookie[:80]}...")
-                        # 자동취득 쿠키는 권한이 부족할 수 있으므로 성공 전까지 전역 캐시를 덮어쓰지 않는다.
-                    except Exception as ce:
-                        cookie_source = 'none'
-                        print(f"  ⚠️ 쿠키 자동취득 실패: {ce} — 쿠키 없이 시도")
+                    cookie_source = 'none'
+                    msg = '부동산플래닛 수집에는 getRealpriceMapMarker.ytp 요청의 Cookie가 필요합니다. 플래닛 로그인 후 F12 → Network에서 해당 요청의 Request Headers → Cookie 전체를 입력하세요.'
+                    self._ok(json.dumps({'status': 'cookie_required', 'message': msg, 'data': [], 'cookie_source': cookie_source}, ensure_ascii=False))
+                    return
 
             # ★ F12에서 확인한 실제 공통 헤더
             base_headers = {
@@ -2636,9 +2621,11 @@ class ProxyHandler(BaseHTTPRequestHandler):
 
             if not all_raw_items:
                 if empty_response_seen:
-                    msg = '부동산플래닛 API가 빈 응답을 반환했습니다. 자동취득/캐시 쿠키로는 권한이 부족할 수 있으니 브라우저 Cookie를 입력해 주세요.'
+                    msg = '부동산플래닛 API가 빈 응답을 반환했습니다. 저장된 쿠키가 없거나 권한이 부족합니다. getRealpriceMapMarker.ytp 요청의 Cookie 전체를 다시 입력하세요.'
                     if cookie_source == 'user':
-                        msg = '입력한 부동산플래닛 Cookie로도 빈 응답이 왔습니다. Cookie가 만료됐거나 다른 요청의 Cookie일 수 있습니다.'
+                        msg = '입력한 부동산플래닛 Cookie로도 빈 응답이 왔습니다. Cookie가 만료됐거나, getRealpriceMapMarker.ytp가 아닌 다른 요청의 Cookie일 가능성이 큽니다.'
+                    if not request_url:
+                        msg += ' 가능하면 같은 요청의 Request URL도 함께 저장하세요.'
                     self._ok(json.dumps({'status': 'cookie_required', 'message': msg, 'data': [], 'cookie_source': cookie_source}, ensure_ascii=False))
                     return
                 if parse_error_seen or unknown_structure_seen:
@@ -2647,7 +2634,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 self._ok(json.dumps({'status': 'warn', 'message': '해당 지도 범위의 부동산플래닛 실거래 데이터가 없습니다.', 'data': []}, ensure_ascii=False))
                 return
 
-            if bds_cookie and all_raw_items and cookie_source in ('user', 'cache'):
+            if bds_cookie and all_raw_items and cookie_source in ('user', 'runtime_cache'):
                 BDS_COOKIE_CACHE = bds_cookie
 
             def clean(v):

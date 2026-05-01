@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260502-kakao-map-restore-v18';
+    window.__SK_BUILD = '20260502-bds-cookie-strict-v19';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -15645,12 +15645,29 @@ window.wr2SummaryCancelEdit = function() {
     }
 
     // ── 부동산플래닛 쿠키/실제 요청URL 저장 UI ──
+    function _bdsCleanCookieInput(raw) {
+      let v = String(raw || '').trim();
+      // DevTools에서 헤더 여러 줄을 통째로 복사한 경우 Cookie 줄만 추출
+      const cookieLine = v.split(/[\r\n]+/).find(line => /^\s*cookie\s*:/i.test(line));
+      if (cookieLine) v = cookieLine.replace(/^\s*cookie\s*:\s*/i, '').trim();
+      v = v.split(/[\r\n]+/)[0].trim();
+      // 흔한 실수: "Cookie:" 접두어만 붙여넣은 경우 제거
+      v = v.replace(/^cookie\s*:\s*/i, '').trim();
+      return v;
+    }
+    function _bdsCleanRequestUrlInput(raw) {
+      let v = String(raw || '').trim();
+      const urlLine = v.split(/[\r\n]+/).find(line => /getRealpriceMapMarker\.ytp/i.test(line));
+      if (urlLine) v = urlLine.trim();
+      v = v.replace(/^request\s*url\s*:\s*/i, '').trim();
+      return v.split(/[\r\n]+/)[0].trim();
+    }
     window.bdsSetCookieUI = function() {
       const key = 'bds_cookie';
       const prev = (() => { try { return localStorage.getItem(key) || ''; } catch(e) { return ''; } })();
       const v = window.prompt('부동산플래닛 Cookie 전체를 붙여넣으세요.\nF12 → Network → getRealpriceMapMarker.ytp → Headers → Request Headers → Cookie', prev);
       if (v === null) return;
-      const clean = String(v || '').trim();
+      const clean = _bdsCleanCookieInput(v);
       try {
         if (clean) localStorage.setItem(key, clean);
         else localStorage.removeItem(key);
@@ -15664,7 +15681,12 @@ window.wr2SummaryCancelEdit = function() {
       const prev = (() => { try { return localStorage.getItem(key) || ''; } catch(e) { return ''; } })();
       const v = window.prompt('부동산플래닛 실제 요청 URL을 붙여넣으세요.\nF12 → Network → getRealpriceMapMarker.ytp → Headers → General → Request URL', prev);
       if (v === null) return;
-      const clean = String(v || '').trim();
+      const clean = _bdsCleanRequestUrlInput(v);
+      if (clean && !/getRealpriceMapMarker\.ytp/i.test(clean)) {
+        try { shopStatus('bds', '⚠️ getRealpriceMapMarker.ytp 요청 URL이 아닙니다.', '#ff8c42'); } catch(e) {}
+        try { showToast('부동산플래닛 getRealpriceMapMarker.ytp 요청 URL을 넣어주세요.', 'warn'); } catch(e) {}
+        return;
+      }
       try {
         if (clean) localStorage.setItem(key, clean);
         else localStorage.removeItem(key);
@@ -15747,7 +15769,7 @@ window.wr2SummaryCancelEdit = function() {
         try { return String(localStorage.getItem(_bdsCookieKey) || '').trim(); } catch(e) { return ''; }
       };
       const _bdsSaveCookie = function(cookieText) {
-        const v = String(cookieText || '').trim();
+        const v = _bdsCleanCookieInput(cookieText);
         try {
           if (v) localStorage.setItem(_bdsCookieKey, v);
           else localStorage.removeItem(_bdsCookieKey);
@@ -15774,9 +15796,20 @@ window.wr2SummaryCancelEdit = function() {
         return await resp.json();
       };
 
+      let firstCookie = _bdsGetSavedCookie();
+      if (!firstCookie) {
+        const pasted = window.prompt('부동산플래닛 Cookie가 없습니다.\n\n플래닛 로그인 → F12 → Network → getRealpriceMapMarker.ytp → Request Headers → Cookie 전체를 붙여넣으세요.', '');
+        firstCookie = _bdsSaveCookie(pasted || '');
+        if (!firstCookie) { shopStatus('bds', '⚠️ 부동산플래닛 쿠키가 없어 수집을 중단했습니다.', '#ff8c42'); return; }
+      }
+      const firstReqUrl = (() => { try { return String(localStorage.getItem('bds_request_url') || '').trim(); } catch(e) { return ''; } })();
+      if (!firstReqUrl) {
+        try { shopStatus('bds', 'ℹ️ Request URL 미입력 — 기본 URL로 시도합니다. 실패하면 🔗 URL도 저장하세요.', '#ff8c42'); } catch(e) {}
+      }
+
       let data;
       try {
-        data = await _bdsRequest(_bdsGetSavedCookie());
+        data = await _bdsRequest(firstCookie);
       } catch (e) {
         shopStatus('bds', '❌ py 서버 연결 실패: ' + e.message, '#ff4d4d'); return;
       }
@@ -15784,7 +15817,7 @@ window.wr2SummaryCancelEdit = function() {
       // 부동산플래닛은 자동취득 쿠키만으로 빈 응답을 주는 경우가 많다.
       // 이 경우 한 번만 사용자가 복사한 브라우저 Cookie를 받아 저장하고 재시도한다.
       if (data && data.status === 'cookie_required') {
-        const msg = (data.message || '부동산플래닛 쿠키가 필요합니다.') + '\n\n부동산플래닛 로그인/지도 화면에서 F12 → Network → getRealpriceMapMarker.ytp 요청의 Request Headers → Cookie 값을 복사해 붙여넣으세요.\n\n취소하면 자동취득/기존 쿠키로는 수집하지 않습니다.';
+        const msg = (data.message || '부동산플래닛 쿠키가 필요합니다.') + '\n\n부동산플래닛 로그인/지도 화면에서 F12 → Network → getRealpriceMapMarker.ytp 요청의 Request Headers → Cookie 값을 복사해 붙여넣으세요.\n같은 요청의 Request URL도 🔗 URL 버튼에 저장하면 더 정확합니다.\n\n취소하면 수집을 중단합니다.';
         const pasted = window.prompt(msg, _bdsGetSavedCookie());
         const nextCookie = _bdsSaveCookie(pasted || '');
         if (!nextCookie) { shopStatus('bds', '⚠️ 부동산플래닛 쿠키 입력이 취소되어 수집을 중단했습니다.', '#ff8c42'); return; }
