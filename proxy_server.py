@@ -2491,16 +2491,49 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 'Sec-Fetch-Site': 'same-origin',
                 'Connection': 'keep-alive',
             }
-            if bds_cookie:
-                base_headers['Cookie'] = bds_cookie
+            def _merge_cookie_pair(cookie_text, name, value):
+                parts = []
+                found = False
+                for part in str(cookie_text or '').split(';'):
+                    part = part.strip()
+                    if not part or '=' not in part:
+                        continue
+                    k, v = part.split('=', 1)
+                    if k.strip() == name:
+                        parts.append(f'{name}={value}')
+                        found = True
+                    else:
+                        parts.append(f'{k.strip()}={v.strip()}')
+                if not found:
+                    parts.insert(0, f'{name}={value}')
+                return '; '.join(parts)
 
-            def _build_bds_url_from_template(template_url, t_type_val):
+            if bds_cookie:
+                # 실제 브라우저 요청처럼 현재 지도 위치 쿠키를 갱신한다.
+                try:
+                    last_pos = urllib.parse.quote(json.dumps({'lat': _lat, 'lng': _lng, 'zoom': 18}, separators=(',', ':')))
+                    bds_cookie = _merge_cookie_pair(bds_cookie, 'lastMapPosition', last_pos)
+                    bds_cookie = _merge_cookie_pair(bds_cookie, 'newSaveAddr', 'N')
+                except Exception:
+                    pass
+                base_headers['Cookie'] = bds_cookie
+            base_headers.update({
+                'sec-ch-ua': '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+                'sec-ch-ua-mobile': '?0',
+                'sec-ch-ua-platform': '"macOS"',
+                'Priority': 'u=1, i',
+            })
+
+            def _build_bds_url_from_template(template_url, t_type_val, keep_original=False):
                 """브라우저에서 복사한 실제 Request URL을 기준으로 좌표/limit만 현재 값으로 교체."""
                 raw_url = str(template_url or '').strip()
                 if not raw_url or 'getRealpriceMapMarker.ytp' not in raw_url:
                     return ''
                 try:
                     parsed_u = urllib.parse.urlsplit(raw_url)
+                    if keep_original:
+                        # 사용자가 복사한 URL을 그대로 먼저 시도한다. 이게 브라우저와 가장 동일한 요청이다.
+                        return 'https://www.bdsplanet.com/map/getRealpriceMapMarker.ytp?' + parsed_u.query
                     # 호스트는 항상 www.bdsplanet.com으로 고정하되, 기존 query 구조는 최대 보존
                     q = urllib.parse.parse_qs(parsed_u.query, keep_blank_values=True)
                     def set1(k, v): q[k] = [str(v)]
@@ -2568,26 +2601,39 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     't_type': t_type_val,
                     'search_erasure_status': 'N',
                 })
-                url = _build_bds_url_from_template(request_url, t_type_val) or f'https://www.bdsplanet.com/map/getRealpriceMapMarker.ytp?{params}'
-                print(f"  🌐 부동산플래닛 API 호출 (t_type={t_type_val})...")
+                attempts = []
                 if request_url and 'getRealpriceMapMarker.ytp' in str(request_url):
-                    print('     실제 Request URL 템플릿 사용')
-                print(f"     URL: {url[:120]}...")
-                try:
-                    req = urllib.request.Request(url, headers=base_headers)
-                    with _urlopen(req, timeout=20) as resp:
-                        raw_text = resp.read().decode('utf-8').strip()
-                except urllib.error.HTTPError as e:
-                    err_body = ''
-                    try: err_body = e.read().decode('utf-8')[:200]
-                    except: pass
-                    print(f"  ⚠️ HTTP {e.code} 오류 (t_type={t_type_val}) — {err_body}")
-                    continue
+                    exact_url = _build_bds_url_from_template(request_url, t_type_val, keep_original=True)
+                    templ_url = _build_bds_url_from_template(request_url, t_type_val, keep_original=False)
+                    if exact_url: attempts.append(('복사한 URL 그대로', exact_url))
+                    if templ_url and templ_url != exact_url: attempts.append(('복사 URL+현재 bounds', templ_url))
+                attempts.append(('기본 생성 URL', f'https://www.bdsplanet.com/map/getRealpriceMapMarker.ytp?{params}'))
 
-                print(f"  🔍 응답 미리보기 (t_type={t_type_val}): {raw_text[:200]}")
+                raw_text = ''
+                used_attempt_label = ''
+                print(f"  🌐 부동산플래닛 API 호출 (t_type={t_type_val})...")
+                for attempt_label, url in attempts:
+                    print(f"     [{attempt_label}] URL: {url[:160]}...")
+                    try:
+                        req = urllib.request.Request(url, headers=base_headers, method='GET')
+                        with _urlopen(req, timeout=20) as resp:
+                            raw_text = resp.read().decode('utf-8', errors='replace').strip()
+                        print(f"  🔍 응답 미리보기 ({attempt_label}): {raw_text[:200]}")
+                        if raw_text:
+                            used_attempt_label = attempt_label
+                            break
+                        print(f"  ⚠️ 빈 응답 ({attempt_label})")
+                    except urllib.error.HTTPError as e:
+                        err_body = ''
+                        try: err_body = e.read().decode('utf-8', errors='replace')[:200]
+                        except: pass
+                        print(f"  ⚠️ HTTP {e.code} 오류 ({attempt_label}) — {err_body}")
+                    except Exception as e:
+                        print(f"  ⚠️ 요청 실패 ({attempt_label}) — {e}")
+
                 if not raw_text:
                     empty_response_seen = True
-                    print(f"  ⚠️ 빈 응답 (t_type={t_type_val}) — 쿠키/세션 부족 가능성이 큼")
+                    print(f"  ⚠️ 모든 요청이 빈 응답 (t_type={t_type_val})")
                     continue
 
                 try:

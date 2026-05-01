@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260502-bds-ui-url-v17';
+    window.__SK_BUILD = '20260502-bds-links-restored-v19';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -15799,7 +15799,21 @@ window.wr2SummaryCancelEdit = function() {
         }
       }
 
-      if (data.status === 'cookie_required') { shopStatus('bds', '⚠️ ' + data.message, '#ff8c42'); return; }
+      if (data.status === 'cookie_required') {
+        const hasReqUrl = (() => { try { return !!String(localStorage.getItem('bds_request_url') || '').trim(); } catch(e) { return false; } })();
+        if (!hasReqUrl) {
+          const askUrl = window.confirm('플래닛 응답이 비었습니다. 실제 요청 URL을 저장하면 수집 성공률이 높아집니다.
+
+지금 getRealpriceMapMarker.ytp Request URL을 붙여넣을까요?');
+          if (askUrl && typeof window.bdsSetRequestUrlUI === 'function') {
+            window.bdsSetRequestUrlUI();
+            shopStatus('bds', '⏳ 저장한 URL 템플릿으로 다시 수집 중...', 'var(--mu)');
+            try { data = await _bdsRequest(_bdsGetSavedCookie()); }
+            catch(e) { shopStatus('bds', '❌ py 서버 연결 실패: ' + e.message, '#ff4d4d'); return; }
+          }
+        }
+        if (data.status === 'cookie_required') { shopStatus('bds', '⚠️ ' + data.message, '#ff8c42'); return; }
+      }
       if (data.status === 'warn') { shopStatus('bds', '⚠️ ' + data.message, '#ff8c42'); return; }
       if (data.status !== 'success') { shopStatus('bds', '❌ ' + (data.message || '수집 실패'), '#ff4d4d'); return; }
 
@@ -16881,10 +16895,28 @@ window.wr2SummaryCancelEdit = function() {
       let json;
       try { json = JSON.parse(raw); } catch (e) { shopStatus('bds', '❌ JSON 파싱 실패: ' + e.message, '#ff4d4d'); return; }
 
-      // realpriceDealList 구조 우선 처리 (플래닛 상세 팝업 API 응답)
-      const rawItems = json.realpriceDealList || json.result?.list || json.data?.list || json.list || json.data || json.items || json.contents || [];
+      // realpriceDealList / getRealpriceMapMarker / 중첩 응답 모두 대응
+      function findBdsItems(obj, depth) {
+        if (!obj || depth > 6) return [];
+        if (Array.isArray(obj)) return obj.some(x => x && typeof x === 'object') ? obj : [];
+        if (typeof obj === 'object') {
+          const keys = ['realpriceDealList','realPriceDealList','realpriceMapMarkerList','markerList','dealList','list','items','contents','rows','data','result','body','payload'];
+          for (const k of keys) {
+            if (Object.prototype.hasOwnProperty.call(obj, k)) {
+              const found = findBdsItems(obj[k], (depth || 0) + 1);
+              if (found.length) return found;
+            }
+          }
+          for (const v of Object.values(obj)) {
+            const found = findBdsItems(v, (depth || 0) + 1);
+            if (found.length) return found;
+          }
+        }
+        return [];
+      }
+      const rawItems = findBdsItems(json, 0);
       if (!rawItems.length) {
-        shopStatus('bds', '⚠️ 매물 없음 — JSON 구조: ' + Object.keys(json).join(', '), '#ff8c42');
+        shopStatus('bds', '⚠️ 매물 없음 — JSON 구조: ' + (json && typeof json === 'object' ? Object.keys(json).join(', ') : typeof json), '#ff8c42');
         return;
       }
 
@@ -20038,6 +20070,18 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     }
     window.ctxNaverLand = ctxNaverLand;
 
+    // 카카오맵 지도 바로가기
+    function ctxKakaoMap() {
+      _hideMapCtxMenu();
+      const lat = Number(window._ctxLat);
+      const lng = Number(window._ctxLng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      const name = encodeURIComponent('선택 위치');
+      window.open(`https://map.kakao.com/link/map/${name},${lat.toFixed(6)},${lng.toFixed(6)}`, '_blank');
+      showToast('카카오맵이 열렸습니다.', 'ok');
+    }
+    window.ctxKakaoMap = ctxKakaoMap;
+
     function _getCleanContextAddress() {
       const addrEl = document.getElementById('ctxAddrText');
       const raw = addrEl ? String(addrEl.textContent || '').trim() : '';
@@ -20081,76 +20125,71 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const lat = Number(window._ctxLat);
       const lng = Number(window._ctxLng);
       const hasCoord = Number.isFinite(lat) && Number.isFinite(lng);
-      const popup = window.open('about:blank', '_blank');
+      const popup = window.open('about:blank', '_blank'); // 팝업 차단 방지: 비동기 주소조회 전 먼저 열기
       _hideMapCtxMenu();
-      const addr = await _resolveMapContextAddress(lat, lng);
-
+      const addr = await _resolveMapContextAddress(lat, lng).catch(() => '') || _getCleanContextAddress();
       const encodedAddr = encodeURIComponent(String(addr || '').trim());
-      const encodedCoord = hasCoord ? `${lat.toFixed(6)},${lng.toFixed(6)}` : '';
+      const coordText = hasCoord ? `${lat.toFixed(6)}, ${lng.toFixed(6)}` : '';
+      const encodedCoord = encodeURIComponent(coordText);
+
       const config = {
         jumpo: {
           label: '점포라인',
           url: hasCoord
             ? `https://map.jumpoline.com/viewmap.asp?locDaX=${lng.toFixed(6)}&locDaY=${lat.toFixed(6)}&Page=1`
             : 'https://map.jumpoline.com/main',
-          copyAddress: !hasCoord || !!addr
+          copy: addr || coordText,
+          note: '좌표 이동이 안 되면 복사된 주소로 검색하세요.'
         },
         assa: {
           label: '아싸점포',
           url: hasCoord
             ? `https://xn--v69ap5so3hsnb81e1wfh6z.com/map?lat=${lat.toFixed(6)}&lng=${lng.toFixed(6)}${encodedAddr ? `&q=${encodedAddr}` : ''}`
             : `https://xn--v69ap5so3hsnb81e1wfh6z.com/map${encodedAddr ? `?q=${encodedAddr}` : ''}`,
-          copyAddress: true
+          copy: addr || coordText,
+          note: '복사된 주소/좌표로 검색하세요.'
         },
         nemo: {
           label: '네모',
           url: hasCoord
             ? `https://www.nemoapp.kr/store?lat=${lat.toFixed(6)}&lng=${lng.toFixed(6)}${encodedAddr ? `&q=${encodedAddr}` : ''}`
             : `https://www.nemoapp.kr/store${encodedAddr ? `?q=${encodedAddr}` : ''}`,
-          copyAddress: true
+          copy: addr || coordText,
+          note: '복사된 주소/좌표로 검색하세요.'
         },
         disco: {
           label: '디스코',
           url: hasCoord
             ? `https://www.disco.re/map?lat=${lat.toFixed(6)}&lng=${lng.toFixed(6)}&zoom=17${encodedAddr ? `&q=${encodedAddr}` : ''}`
             : `https://www.disco.re${encodedAddr ? `?q=${encodedAddr}` : ''}`,
-          copyAddress: !hasCoord || !!addr
+          copy: addr || '',
+          note: addr ? '주소도 복사했습니다.' : ''
         },
         bds: {
           label: '플래닛',
           url: hasCoord
-            ? `https://www.bdsplanet.com/map/realprice_map.ytp?lat=${lat.toFixed(6)}&lng=${lng.toFixed(6)}&zoom=17${encodedAddr ? `&q=${encodedAddr}` : ''}`
+            ? `https://www.bdsplanet.com/map/realprice_map.ytp?ubt_mode=explore_basic&lat=${lat.toFixed(6)}&lng=${lng.toFixed(6)}&zoom=18${encodedAddr ? `&q=${encodedAddr}` : ''}`
             : `https://www.bdsplanet.com/map/realprice_map.ytp${encodedAddr ? `?q=${encodedAddr}` : ''}`,
-          copyAddress: true
+          copy: addr || coordText,
+          note: '플래닛은 좌표 URL을 무시할 수 있어 주소/좌표를 복사했습니다.'
         },
         valueup: {
           label: '밸류맵',
-          // 현재 지도 우클릭 좌표를 URL 파라미터로 함께 전달한다.
-          // 밸류맵이 일부 파라미터를 무시해도 주소/좌표는 복사되어 바로 검색할 수 있다.
           url: hasCoord
             ? `https://www.valueupmap.com/?lat=${lat.toFixed(6)}&lng=${lng.toFixed(6)}&latitude=${lat.toFixed(6)}&longitude=${lng.toFixed(6)}&x=${lng.toFixed(6)}&y=${lat.toFixed(6)}&center=${lat.toFixed(6)},${lng.toFixed(6)}&zoom=18${encodedAddr ? `&keyword=${encodedAddr}&address=${encodedAddr}` : ''}`
             : `https://www.valueupmap.com/${encodedAddr ? `?keyword=${encodedAddr}&address=${encodedAddr}` : ''}`,
-          copyAddress: true
+          copy: addr || coordText,
+          note: '밸류맵은 좌표 URL을 무시할 수 있어 주소/좌표를 복사했습니다.'
         }
       };
       const cfg = config[key];
-      if (!cfg) return;
+      if (!cfg) { if (popup) popup.close(); return; }
 
-      if (cfg.copyAddress) {
-        const copyValue = addr || (encodedCoord ? encodedCoord.replace(',', ', ') : '');
-        _copyTextForExternalOpen(copyValue, addr ? `${cfg.label}용 주소를 복사했습니다` : `${cfg.label}용 좌표를 복사했습니다`);
-      }
-
+      if (cfg.copy) _copyTextForExternalOpen(cfg.copy, `${cfg.label}용 ${addr ? '주소' : '좌표'}를 복사했습니다`);
       try {
         if (popup) popup.location.href = cfg.url;
         else window.open(cfg.url, '_blank');
-        showToast(
-          (cfg.copyAddress && (addr || hasCoord))
-            ? `${cfg.label}를 열었습니다. 복사된 주소/좌표를 붙여넣으세요.`
-            : `${cfg.label}를 열었습니다.`,
-          'ok',
-          3500
-        );
+        showToast(`${cfg.label}를 열었습니다.${cfg.note ? ' ' + cfg.note : ''}`, 'ok', 4000);
       } catch (e) {
         showToast(`${cfg.label} 열기에 실패했습니다.`, 'warn');
       }
