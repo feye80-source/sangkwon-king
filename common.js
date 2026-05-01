@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260501-naver-legacy-link-v4';
+    window.__SK_BUILD = '20260501-naver-links-normalized-v5';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -13481,20 +13481,28 @@ window.wr2SummaryCancelEdit = function() {
     function _extractNaverArticleNoFromUrl(url) {
       const raw = String(url || '').trim();
       if (!raw) return '';
-      // 저장목록 상세 링크는 구 네이버부동산(new.land) 상세 URL로 통일한다.
-      // 최근 proxy가 fin.land.naver.com/articles/{articleNo} 형태를 저장한 경우도
-      // articleNo만 추출해서 new.land URL로 재생성한다.
-      if (!/(?:new|fin|m)\.land\.naver\.com/i.test(raw) && !/articleNo/i.test(raw)) return '';
+      // 저장된 네이버 URL은 저장 시점에 따라 new.land / fin.land articles / fin.land map / 네이버지도 URL이 섞여 있다.
+      // 원본 상세 링크에는 articleNo/atclNo처럼 명확한 매물번호만 사용하고,
+      // fin.land.com/map?layer=... 같은 지도 상태 URL의 임의 숫자는 절대 매물번호로 추정하지 않는다.
+      if (!/(?:new|fin|m)\.land\.naver\.com|articleNo|atclNo/i.test(raw)) return '';
       try {
         const u = new URL(raw, location.href);
-        const q = u.searchParams.get('articleNo') || u.searchParams.get('articleNoList') || '';
-        let m = String(q || '').match(/(\d{6,14})/);
-        if (m) return m[1];
-        m = String(u.pathname || '').match(/\/(?:articles?|article)\/(\d{6,14})(?:\/|$)/i);
+        const params = ['articleNo', 'articleNoList', 'atclNo', 'atclNoList', 'article_no'];
+        for (const k of params) {
+          const q = u.searchParams.get(k) || '';
+          const m = String(q || '').match(/(\d{6,14})/);
+          if (m) return m[1];
+        }
+        let m = String(u.pathname || '').match(/\/(?:articles?|article)\/(\d{6,14})(?:\/|$)/i);
         if (m) return m[1];
       } catch (e) {}
-      const m = raw.match(/(?:articleNo=|articleNoList=|\/(?:articles?|article)\/)(\d{6,14})/i) || raw.match(/(?:^|\D)(\d{6,14})(?:\D|$)/);
-      return m ? m[1] : '';
+      const m = raw.match(/(?:articleNo|articleNoList|atclNo|atclNoList|article_no)=([^&#]+)/i);
+      if (m) {
+        const n = String(m[1] || '').match(/(\d{6,14})/);
+        if (n) return n[1];
+      }
+      const p = raw.match(/\/(?:articles?|article)\/(\d{6,14})(?:[/?#]|$)/i);
+      return p ? p[1] : '';
     }
     function _buildNaverArticlePageUrl(articleNo) {
       const no = String(articleNo || '').trim();
@@ -13509,11 +13517,13 @@ window.wr2SummaryCancelEdit = function() {
     function _buildNaverArticleUrl(item) {
       const d = (item && item.data) || {};
       if (!_isNaverSavedSource(item)) return '';
-      const articleNo = String(d.매물번호 || d.articleNo || d.article_no || item?.articleNo || '').trim();
+      const articleNo = String(d.매물번호 || d.articleNo || d.article_no || d.atclNo || item?.articleNo || item?.atclNo || '').trim();
       if (/^\d{6,14}$/.test(articleNo)) return _buildNaverArticlePageUrl(articleNo);
-      const detailUrl = String(d.상세URL || '').trim();
-      const fromUrl = _extractNaverArticleNoFromUrl(detailUrl);
-      if (fromUrl) return _buildNaverArticlePageUrl(fromUrl);
+      const urlFields = [d.상세URL, d.originalUrl, d.url, item && item.originalUrl, item && item.url].filter(Boolean);
+      for (const u of urlFields) {
+        const fromUrl = _extractNaverArticleNoFromUrl(u);
+        if (fromUrl) return _buildNaverArticlePageUrl(fromUrl);
+      }
       return '';
     }
 
@@ -13539,7 +13549,27 @@ window.wr2SummaryCancelEdit = function() {
     function _buildNaverLandUrl(item) {
       const pos = _getSavedItemLatLng(item);
       if (pos) return `https://new.land.naver.com/offices?ms=${pos.lat},${pos.lng},19&a=SG:SMS:APTHGJ&e=RETAIL&ad=true`;
-      return _buildSavedNaverMapUrl(item);
+      // 주소만으로 new.land query를 만들면 이전 지도 세션/지역으로 열리는 케이스가 있어 부동산 링크로는 만들지 않는다.
+      return '';
+    }
+
+    function _isNaverMapStateUrl(url) {
+      const raw = String(url || '').trim();
+      if (!raw) return false;
+      return /(?:^|\.)fin\.land\.naver\.com\/map(?:[?#/]|$)/i.test(raw) || /(?:^|\.)map\.naver\.com/i.test(raw);
+    }
+    function _buildSavedSourceLinkUrl(item) {
+      const d = (item && item.data) || {};
+      if (_isNaverSavedSource(item)) {
+        return _buildNaverArticleUrl(item) || _buildNaverLandUrl(item) || '';
+      }
+      const raw = String(d.상세URL || d.옥션원URL || d.온비드URL || '').trim();
+      if (_isNaverMapStateUrl(raw)) return '';
+      return raw;
+    }
+    function _buildSavedSourceLinkLabel(item) {
+      if (!_isNaverSavedSource(item)) return '🔗 링크';
+      return _buildNaverArticleUrl(item) ? '🔗 원본' : '🏠 부동산';
     }
 
     function _setDualAddressFields(target, roadAddr, jibunAddr) {
@@ -17551,7 +17581,8 @@ window.wr2SummaryCancelEdit = function() {
 
       // ── 요약 헤더 ───────────────────────────────────────────────
       const srcBadge = `<span style="font-size:10px;padding:1px 7px;border-radius:10px;background:rgba(${colorRgb},.15);color:${color};border:1px solid rgba(${colorRgb},.45);font-weight:600;">${esc(src || '정보')}</span>`;
-      const srcLinkBtn = d.상세URL ? `<a href="${esc(d.상세URL)}" target="_blank" style="font-size:10px;padding:2px 8px;background:rgba(79,142,255,.12);color:var(--ac);border:1px solid rgba(79,142,255,.4);border-radius:5px;text-decoration:none;font-weight:600;">🔗 원본</a>` : '';
+      const _srcLinkUrl = _buildSavedSourceLinkUrl(item);
+      const srcLinkBtn = _srcLinkUrl ? `<a href="${esc(_srcLinkUrl)}" target="_blank" style="font-size:10px;padding:2px 8px;background:rgba(79,142,255,.12);color:var(--ac);border:1px solid rgba(79,142,255,.4);border-radius:5px;text-decoration:none;font-weight:600;">${esc(_buildSavedSourceLinkLabel(item)).replace(/&amp;/g,'&')}</a>` : '';
       const primaryAddr = d.소재지 || d['도로명주소'] || d['지번주소'] || d['주소'] || '';
       const roadAddr = d['도로명주소'] || '';
       const jibunAddr = d['지번주소'] || '';
@@ -23983,6 +24014,9 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       if (!item) return '';
       const mode = item.mode || item.propertyType || '';
       const d = item.data || {};
+      const cardSourceUrl = _buildSavedSourceLinkUrl(item);
+      const cardSourceLabel = _buildSavedSourceLinkLabel(item);
+      const cardSourceLinkHtml = cardSourceUrl ? `<a href="${esc(cardSourceUrl)}" target="_blank" class="mca-btn link-a" onmousedown="event.stopPropagation()" ontouchstart="event.stopPropagation()" onclick="window.open(this.href,'_blank');return false;" style="text-decoration:none;">${esc(cardSourceLabel).replace(/&amp;/g,'&')}</a>` : '';
 
       // ── 공통 헬퍼 ──────────────────────────────────
       function row(label, value, redText) {
@@ -24044,7 +24078,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         ${src === '부동산플래닛' ? row('용도', 매물명) : ''}
         <div class="map-card-action-row">
           <button class="mca-btn saved" onclick="goToSavedFromMap('${item.id}')" onmousedown="event.stopPropagation()">📋 목록</button>
-          ${src === '부동산플래닛' ? `<button class="mca-btn link-a" onmousedown="event.stopPropagation()" onclick="(()=>{const _a='${esc(d.소재지 || '')}';if(_a){try{navigator.clipboard.writeText(_a);}catch(e){}const ta=document.createElement('textarea');ta.value=_a;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.focus();ta.select();try{document.execCommand('copy');}catch(e){}document.body.removeChild(ta);}window.open('https://www.bdsplanet.com/map/realprice_map.ytp','_blank');})()" title="주소복사+플래닛">🌍 링크</button>` : (d.상세URL ? `<a href="${esc(d.상세URL)}" target="_blank" class="mca-btn link-a" onmousedown="event.stopPropagation()" ontouchstart="event.stopPropagation()" onclick="window.open(this.href,'_blank');return false;" style="text-decoration:none;">🔗 링크</a>` : '')}
+          ${src === '부동산플래닛' ? `<button class="mca-btn link-a" onmousedown="event.stopPropagation()" onclick="(()=>{const _a='${esc(d.소재지 || '')}';if(_a){try{navigator.clipboard.writeText(_a);}catch(e){}const ta=document.createElement('textarea');ta.value=_a;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.focus();ta.select();try{document.execCommand('copy');}catch(e){}document.body.removeChild(ta);}window.open('https://www.bdsplanet.com/map/realprice_map.ytp','_blank');})()" title="주소복사+플래닛">🌍 링크</button>` : cardSourceLinkHtml}
           <button class="mca-btn yield" onclick="toggleYieldPanel('${item.id}')" onmousedown="event.stopPropagation()">💰 수익</button>
         </div>
         <div class="memo-tri-toggle ${item.memo ? 'has-memo' : ''}" onclick="toggleMapCardMemo(this)" onmousedown="event.stopPropagation()" title="메모"></div>
@@ -24267,7 +24301,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     ${거래년월str && 거래년월str !== '-' ? row('거래년월', 거래년월str) : ''}
     <div class="map-card-action-row">
       <button class="mca-btn saved" onclick="goToSavedFromMap('${item.id}')" onmousedown="event.stopPropagation()">📋 목록</button>
-      ${d.상세URL ? `<a href="${esc(d.상세URL)}" target="_blank" class="mca-btn link-a" onmousedown="event.stopPropagation()" ontouchstart="event.stopPropagation()" onclick="window.open(this.href,'_blank');return false;" style="text-decoration:none;">🔗 링크</a>` : ''}
+      ${cardSourceLinkHtml}
       <button class="mca-btn yield" onclick="toggleYieldPanel('${item.id}')" onmousedown="event.stopPropagation()">💰 수익</button>
     </div>
     <div class="memo-tri-toggle ${item.memo ? 'has-memo' : ''}" onclick="toggleMapCardMemo(this)" onmousedown="event.stopPropagation()" title="메모"></div>
@@ -24319,7 +24353,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     <div class="map-card-row"><span class="map-card-label">방향</span><span class="map-card-value map-card-value-inline" id="dir_disp_${item.id}" onclick="inlineEditFloor('${item.id}','dir')" onmousedown="event.stopPropagation()" ontouchstart="event.stopPropagation()" title="클릭하여 수정" style="cursor:pointer;border-bottom:1px dashed rgba(255,255,255,.2);">${방향 || '-'}</span></div>
     <div class="map-card-action-row">
       <button class="mca-btn saved" onclick="goToSavedFromMap('${item.id}')" onmousedown="event.stopPropagation()">📋 목록</button>
-      ${d.상세URL ? `<a href="${esc(d.상세URL)}" target="_blank" class="mca-btn link-a" onmousedown="event.stopPropagation()" ontouchstart="event.stopPropagation()" onclick="window.open(this.href,'_blank');return false;" style="text-decoration:none;">🔗 링크</a>` : ''}
+      ${cardSourceLinkHtml}
       <button class="mca-btn yield" onclick="toggleYieldPanel('${item.id}')" onmousedown="event.stopPropagation()">💰 수익</button>
     </div>
     <div class="memo-tri-toggle ${item.memo ? 'has-memo' : ''}" onclick="toggleMapCardMemo(this)" onmousedown="event.stopPropagation()" title="메모"></div>
