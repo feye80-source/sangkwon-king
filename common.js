@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260501-valueup-tx-floor-v10';
+    window.__SK_BUILD = '20260501-bds-cookie-v14';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -15678,23 +15678,62 @@ window.wr2SummaryCancelEdit = function() {
       if (!bounds) { shopStatus('bds', '❌ 지역을 입력하거나 📍 버튼을 클릭하세요.', '#ff4d4d'); return; }
 
       shopStatus('bds', `⏳ py 서버로 수집 중... (${bounds.lat.toFixed(4)}, ${bounds.lng.toFixed(4)})`, 'var(--mu)');
-      let data;
-      try {
+
+      const _bdsCookieKey = 'bds_cookie';
+      const _bdsGetSavedCookie = function() {
+        try { return String(localStorage.getItem(_bdsCookieKey) || '').trim(); } catch(e) { return ''; }
+      };
+      const _bdsSaveCookie = function(cookieText) {
+        const v = String(cookieText || '').trim();
+        try {
+          if (v) localStorage.setItem(_bdsCookieKey, v);
+          else localStorage.removeItem(_bdsCookieKey);
+        } catch(e) {}
+        return v;
+      };
+      const _bdsRequest = async function(cookieText) {
+        const payload = {
+          lat: String(bounds.lat), lng: String(bounds.lng),
+          nelat: String(bounds.nelat), swlat: String(bounds.swlat),
+          nelng: String(bounds.nelng), swlng: String(bounds.swlng),
+          kakao_rest_key: localStorage.getItem('kakao_rest_key') || '58c8f459e2c2de75d3bf136a9978388a',
+          max_n: maxN
+        };
+        if (cookieText) payload.cookie = cookieText;
         const resp = await fetch(proxyBase + '/api/bds', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            lat: String(bounds.lat), lng: String(bounds.lng),
-            nelat: String(bounds.nelat), swlat: String(bounds.swlat),
-            nelng: String(bounds.nelng), swlng: String(bounds.swlng),
-            kakao_rest_key: localStorage.getItem('kakao_rest_key') || '58c8f459e2c2de75d3bf136a9978388a',
-            max_n: maxN
-          })
+          body: JSON.stringify(payload)
         });
-        data = await resp.json();
+        return await resp.json();
+      };
+
+      let data;
+      try {
+        data = await _bdsRequest(_bdsGetSavedCookie());
       } catch (e) {
         shopStatus('bds', '❌ py 서버 연결 실패: ' + e.message, '#ff4d4d'); return;
       }
+
+      // 부동산플래닛은 자동취득 쿠키만으로 빈 응답을 주는 경우가 많다.
+      // 이 경우 한 번만 사용자가 복사한 브라우저 Cookie를 받아 저장하고 재시도한다.
+      if (data && data.status === 'cookie_required') {
+        const msg = (data.message || '부동산플래닛 쿠키가 필요합니다.') + '\n\n부동산플래닛 로그인/지도 화면에서 F12 → Network → getRealpriceMapMarker.ytp 요청의 Request Headers → Cookie 값을 복사해 붙여넣으세요.\n\n취소하면 자동취득/기존 쿠키로는 수집하지 않습니다.';
+        const pasted = window.prompt(msg, _bdsGetSavedCookie());
+        const nextCookie = _bdsSaveCookie(pasted || '');
+        if (!nextCookie) { shopStatus('bds', '⚠️ 부동산플래닛 쿠키 입력이 취소되어 수집을 중단했습니다.', '#ff8c42'); return; }
+        shopStatus('bds', '⏳ 입력한 쿠키로 다시 수집 중...', 'var(--mu)');
+        try {
+          data = await _bdsRequest(nextCookie);
+        } catch (e) {
+          shopStatus('bds', '❌ py 서버 연결 실패: ' + e.message, '#ff4d4d'); return;
+        }
+        if (data && data.status === 'success') {
+          try { localStorage.setItem(_bdsCookieKey, nextCookie); } catch(e) {}
+        }
+      }
+
+      if (data.status === 'cookie_required') { shopStatus('bds', '⚠️ ' + data.message, '#ff8c42'); return; }
       if (data.status === 'warn') { shopStatus('bds', '⚠️ ' + data.message, '#ff8c42'); return; }
       if (data.status !== 'success') { shopStatus('bds', '❌ ' + (data.message || '수집 실패'), '#ff4d4d'); return; }
 
@@ -15993,6 +16032,30 @@ window.wr2SummaryCancelEdit = function() {
     function _auctionHydrateDataFields(d) {
       if (!d || typeof d !== 'object') return d;
       const isAuctionRecord = !!(d.경매번호 || d.사건번호 || d.product_id || d.옥션원URL || d.매각기일 || d.매각일);
+      try {
+        if (typeof _onbidCleanTenantValue === 'function') {
+          ['임차인', '임차인현황', '임차인_요약'].forEach(function(k) {
+            if (d[k] == null || d[k] === '') return;
+            const cleanedTenant = _onbidCleanTenantValue(d[k]);
+            if (cleanedTenant) d[k] = cleanedTenant;
+            else delete d[k];
+          });
+          if (Array.isArray(d.임차인_목록)) {
+            d.임차인_목록 = d.임차인_목록.map(function(t) {
+              if (!t || typeof t !== 'object') return t;
+              const nt = Object.assign({}, t);
+              if (nt.임차인명 != null) {
+                const cleanedName = _onbidCleanTenantValue(nt.임차인명);
+                if (cleanedName) nt.임차인명 = cleanedName;
+                else delete nt.임차인명;
+              }
+              return nt;
+            }).filter(function(t) {
+              return t && Object.keys(t).some(function(k) { return t[k] != null && String(t[k]).trim() !== ''; });
+            });
+          }
+        }
+      } catch(e) {}
       if (!d.매각일 && d.매각기일) d.매각일 = d.매각기일;
       if (!d.매각기일 && d.매각일) d.매각기일 = d.매각일;
       if (isAuctionRecord && !d.입찰보증금 && (d.입찰보증금_만원 || d.보증금_만원 || d.보증금)) {
@@ -19803,9 +19866,9 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         btn.className = 'ctx-shortcut-btn ctx-valueup';
         btn.title = '밸류맵';
         btn.textContent = '밸';
-        btn.style.color = '#fbbf24';
-        btn.style.borderColor = 'rgba(251, 191, 36, .40)';
-        btn.style.background = 'rgba(251, 191, 36, .11)';
+        btn.style.color = '#3C73FF';
+        btn.style.borderColor = 'rgba(47, 98, 232, .62)';
+        btn.style.background = 'rgba(47, 98, 232, .16)';
         btn.onclick = function(e) {
           if (e) { e.preventDefault(); e.stopPropagation(); }
           if (typeof ctxOpenExternalService === 'function') ctxOpenExternalService('valueup');
@@ -19996,8 +20059,11 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         },
         valueup: {
           label: '밸류맵',
-          // 밸류맵은 외부 URL 파라미터가 자주 바뀌므로 안전하게 메인 지도를 열고 주소를 복사한다.
-          url: 'https://www.valueupmap.com/',
+          // 현재 지도 우클릭 좌표를 URL 파라미터로 함께 전달한다.
+          // 밸류맵이 일부 파라미터를 무시해도 주소/좌표는 복사되어 바로 검색할 수 있다.
+          url: hasCoord
+            ? `https://www.valueupmap.com/?lat=${lat.toFixed(6)}&lng=${lng.toFixed(6)}&latitude=${lat.toFixed(6)}&longitude=${lng.toFixed(6)}&x=${lng.toFixed(6)}&y=${lat.toFixed(6)}&center=${lat.toFixed(6)},${lng.toFixed(6)}&zoom=18${encodedAddr ? `&keyword=${encodedAddr}&address=${encodedAddr}` : ''}`
+            : `https://www.valueupmap.com/${encodedAddr ? `?keyword=${encodedAddr}&address=${encodedAddr}` : ''}`,
           copyAddress: true
         }
       };
@@ -36621,6 +36687,28 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       }
       return '';
     }
+    function _onbidIsTenantNoticeText(v) {
+      var s = String(v == null ? '' : v).replace(/\s+/g, ' ').trim();
+      if (!s) return false;
+      // 온비드/공매 상세의 '유의사항/입찰 안내' 문구가 임차인 라벨로 오인되는 것을 차단한다.
+      var hardNotice = /(상가건물의\s*경우|매수인은|매수신청인|입찰에\s*참가|입찰\s*시\s*유의|공매재산|방치된\s*폐기물|자동차\s*등록|토지이용계획|기한\s*내\s*미제출|입찰은\s*무효|우리\s*공사에\s*직접\s*제출|사전\s*조사|실물\s*확인|상태\s*점검|인도와\s*사업자등록|임대차\s*관계\s*등에\s*대하여)/;
+      if (hardNotice.test(s)) return true;
+      if (s.length >= 90 && /(경우|바랍니다|확인|책임|공매|입찰|매수|제출|무효)/.test(s)) return true;
+      // 실제 임차인명/점유자 값은 보통 짧다. 긴 문장형 값은 임차인으로 저장하지 않는다.
+      if (s.length >= 140) return true;
+      return false;
+    }
+    function _onbidCleanTenantValue(v) {
+      var s = String(v == null ? '' : v).replace(/\s+/g, ' ').trim();
+      if (!s || s === '-' || s === '—') return '';
+      s = s.replace(/^[:：\-–—\s]+/, '').trim();
+      if (!s || s === '-' || s === '—') return '';
+      if (_onbidIsTenantNoticeText(s)) return '';
+      // 라벨이 같이 붙은 짧은 값 정리: "임차인 홍길동" → "홍길동"
+      s = s.replace(/^(임차인|점유자|점유현황|임차인현황)\s*[:：]?\s*/,'').trim();
+      if (_onbidIsTenantNoticeText(s)) return '';
+      return s;
+    }
     function _onbidLabelKey(v) {
       return String(v || '').replace(/\s+/g, '').replace(/[()\[\]{}:：·ㆍ]/g, '').trim();
     }
@@ -36773,8 +36861,11 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         if (rightsDateMatch && !out.말소기준등기일) out.말소기준등기일 = rightsDateMatch[1];
         var rightsMatch = bodyText.match(/말소기준(?:권리|등기)\s*([^\n]+)/);
         if (rightsMatch && !out.말소기준권리) out.말소기준권리 = rightsMatch[1].trim();
-        var tenantMatch = bodyText.match(/임차인\s*([^\n]+)/);
-        if (tenantMatch && !out.임차인) out.임차인 = tenantMatch[1].trim();
+        var tenantMatch = bodyText.match(/(?:^|\n)\s*(?:임차인|점유자|점유현황|임차인현황)\s*[:：]?\s*([^\n]+)/);
+        if (tenantMatch && !out.임차인) {
+          var tenantCandidate = _onbidCleanTenantValue(tenantMatch[1]);
+          if (tenantCandidate) out.임차인 = tenantCandidate;
+        }
         var unsold = bodyText.match(/(\d+)\s*회\s*유찰/);
         if (unsold) out.유찰횟수 = parseInt(unsold[1], 10) || 0;
         if (!out.상태) {
@@ -36845,7 +36936,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       out.말소기준권리 = _onbidPickFirst(out.말소기준권리, findByLabels(['말소기준권리', '말소기준']));
       out.말소기준등기일 = _onbidNormalizeDateTime(_onbidPickFirst(out.말소기준등기일, findByLabels(['말소기준등기일', '말소기준권리일'])));
       out.채무자겸소유자 = _onbidPickFirst(out.채무자겸소유자, findByLabels(['채무자겸소유자', '소유자', '채무자']));
-      out.임차인 = _onbidPickFirst(out.임차인, findByLabels(['임차인', '점유자']));
+      out.임차인 = _onbidCleanTenantValue(_onbidPickFirst(out.임차인, findByLabels(['임차인', '점유자', '점유현황', '임차인현황'])));
       out.임차인_보증금 = out.임차인_보증금 || _onbidPublicToWon(findByLabels(['임차인보증금', '임차보증금']));
       out.임차인_월세 = out.임차인_월세 || _onbidPublicToMan(findByLabels(['임차인월세', '월세', '차임']));
       out.전입일자 = _onbidNormalizeDateTime(_onbidPickFirst(out.전입일자, findByLabels(['전입일자'])));
@@ -37039,7 +37130,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           '말소기준권리': _onbidPickFirst(deterministic.말소기준권리, parsed.말소기준권리),
           '말소기준등기일': _onbidNormalizeDateTime(_onbidPickFirst(deterministic.말소기준등기일, parsed.말소기준등기일, parsed.말소기준권리일)),
           '채무자겸소유자': _onbidPickFirst(deterministic.채무자겸소유자, parsed.채무자겸소유자),
-          '임차인': _onbidPickFirst(deterministic.임차인, parsed.임차인),
+          '임차인': _onbidCleanTenantValue(_onbidPickFirst(deterministic.임차인, parsed.임차인, parsed.점유자, parsed.점유현황, parsed.임차인현황)),
           '임차인_보증금': tenantDepositWon || 0,
           '임차인_월세': tenantMonthlyMan || 0,
           '전입일자': _onbidNormalizeDateTime(_onbidPickFirst(deterministic.전입일자, parsed.전입일자)),
