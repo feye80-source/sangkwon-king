@@ -2434,8 +2434,8 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 _swlng = _lng - 0.01
                 print(f"  🧭 BDS bbox 경도 보정: swlng={_swlng}, nelng={_nelng}")
 
-            request_limit = max_n if (max_n and max_n > 0) else 1000
-            request_limit = max(50, min(int(request_limit), 2000))
+            request_limit = max_n if (max_n and max_n > 0) else 150
+            request_limit = max(50, min(int(request_limit), 150))
 
             print(f"  🌍 부동산플래닛 수집 시작 (lat={_lat}, lng={_lng})...")
 
@@ -2500,7 +2500,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
             for t_type_val in ('1',):  # 매매만 수집 (임대 제외)
                 # ★ F12 실제 URL 파라미터 완전 반영 (누락 항목 추가)
                 params = urllib.parse.urlencode({
-                    'search_r_type': '',
+                    'search_r_type': 'B,G,F',
                     'search_t_type': t_type_val,
                     'search_year': '',
                     'search_price_tab': 'C0',
@@ -2516,7 +2516,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     'search_price_exclusive_from': '',  # ★ 추가
                     'search_price_exclusive_to': '',    # ★ 추가
                     'search_area_tab': 'A1',
-                    'search_area_set_tab': 'exclusive',
+                    'search_area_set_tab': 'supply',
                     'search_area_unit': 'py',
                     'search_area_bldg_from': '',        # ★ 추가
                     'search_area_bldg_to': '',          # ★ 추가
