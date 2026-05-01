@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260501-tx-floor-v9';
+    window.__SK_BUILD = '20260501-valueup-tx-floor-v10';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -10053,8 +10053,9 @@ window.wr2SummaryCancelEdit = function() {
             return Math.round((priceMan / pyeong) * 10) / 10; // 소수1자리
           })(),
 
-          해당층: row['층'] || row['해당층'] || '',
-          총층: row['건물층수'] || row['총층'] || '',
+          해당층: row['층'] || row['해당층'] || row['층수'] || row['거래층'] || row['전용층'] || row['건물층'] || row['floor'] || row['flr'] || '',
+          층수: row['층수'] || row['층'] || row['해당층'] || row['거래층'] || row['전용층'] || row['건물층'] || row['floor'] || row['flr'] || '',
+          총층: row['건물층수'] || row['총층'] || row['총층수'] || '',
           월세_만원: (() => {
             const n = parseInt(String(row['월세'] ?? row['월세_만원'] ?? '').replace(/[,\s]/g, ''), 10);
             return Number.isFinite(n) && n > 0 ? n : null;
@@ -19793,9 +19794,30 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       });
     }
 
+    function _ensureValueupCtxButton() {
+      try {
+        const row = document.querySelector('#mapContextMenu .ctx-shortcut-row');
+        if (!row || row.querySelector('.ctx-valueup')) return;
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'ctx-shortcut-btn ctx-valueup';
+        btn.title = '밸류맵';
+        btn.textContent = '밸';
+        btn.style.color = '#fbbf24';
+        btn.style.borderColor = 'rgba(251, 191, 36, .40)';
+        btn.style.background = 'rgba(251, 191, 36, .11)';
+        btn.onclick = function(e) {
+          if (e) { e.preventDefault(); e.stopPropagation(); }
+          if (typeof ctxOpenExternalService === 'function') ctxOpenExternalService('valueup');
+        };
+        row.appendChild(btn);
+      } catch (e) {}
+    }
+
     function _showMapCtxMenu(canvasX, canvasY) {
       const menu = document.getElementById('mapContextMenu');
       if (!menu) return;
+      _ensureValueupCtxButton();
       const lat = window._ctxLat, lng = window._ctxLng;
       document.getElementById('ctxCoordText').textContent =
         `${lat.toFixed(5)},  ${lng.toFixed(5)}`;
@@ -19970,6 +19992,12 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           url: hasCoord
             ? `https://www.bdsplanet.com/map/realprice_map.ytp?lat=${lat.toFixed(6)}&lng=${lng.toFixed(6)}&zoom=17${encodedAddr ? `&q=${encodedAddr}` : ''}`
             : `https://www.bdsplanet.com/map/realprice_map.ytp${encodedAddr ? `?q=${encodedAddr}` : ''}`,
+          copyAddress: true
+        },
+        valueup: {
+          label: '밸류맵',
+          // 밸류맵은 외부 URL 파라미터가 자주 바뀌므로 안전하게 메인 지도를 열고 주소를 복사한다.
+          url: 'https://www.valueupmap.com/',
           copyAddress: true
         }
       };
@@ -24094,18 +24122,50 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         // 원 API 필드(fl/flr/t_floor/floor_level 등) 중 한 곳에만 남는 경우가 있다.
         // 카드 렌더링에서는 한 필드만 보지 말고 모든 alias를 정규화해서 표시한다.
         function _txFloorCandidate() {
-          const sources = [
-            item.floor, item.해당층, item.층수, item.층, item.fl, item.flr, item.t_floor, item.floor_level, item.floorNo, item.floor_no, item.obj_floor, item.bldg_flr, item.f_nm,
-            d.해당층, d.층수, d.층, d.floor, d.fl, d.flr, d.t_floor, d.floor_level, d.floorNo, d.floor_no, d.obj_floor, d.bldg_flr, d.f_nm, d.FLOOR_NO_NM, d.FLOOR_NM
-          ];
-          for (const v of sources) {
-            if (v === null || v === undefined) continue;
-            const t = String(v).trim();
-            if (!t || t === '-' || t === 'null' || t === 'undefined') continue;
-            return t;
+          const aliases = ['floor','층','층수','해당층','거래층','전용층','건물층','대상층','층정보','fl','flr','t_floor','floor_level','floorNo','floor_no','obj_floor','bldg_flr','f_nm','FLOOR_NO_NM','FLOOR_NM'];
+          function pick(obj) {
+            if (!obj || typeof obj !== 'object') return '';
+            for (const k of aliases) {
+              if (obj[k] === null || obj[k] === undefined) continue;
+              const t = String(obj[k]).trim();
+              if (!t || t === '-' || t === 'null' || t === 'undefined') continue;
+              return t;
+            }
+            return '';
+          }
+          const direct = [item, d, item.data, item.originalData, item.rawData, item.raw, item.row, item.original, item.original_data];
+          for (const obj of direct) {
+            const v = pick(obj);
+            if (v) return v;
+          }
+          // 기존 카드/스냅샷에서 층 필드가 빠진 경우, 같은 주소·가격·면적·거래월의 원본 실거래 캐시에서 재조회한다.
+          function normAddr(v) { return String(v || '').replace(/\s+/g, '').trim(); }
+          function digits(v) { return String(v || '').replace(/[^0-9.\-]/g, ''); }
+          const addrKey = normAddr(item.address || item.소재지 || d.소재지 || d.주소 || (item.originalData && item.originalData.소재지));
+          const priceKey = digits(item.price || d.매매가 || d['거래금액(만원)'] || (item.originalData && (item.originalData.매매가 || item.originalData['거래금액(만원)'])));
+          const areaKey = digits(item.area || d.전용면적_m2 || d['전용/연면적(㎡)'] || (item.originalData && (item.originalData.전용면적_m2 || item.originalData['전용/연면적(㎡)'])));
+          const ymKey = String(item.year || '').trim() + String(item.month || '').trim();
+          const pools = [];
+          try { if (Array.isArray(transactionDataRaw)) pools.push.apply(pools, transactionDataRaw); } catch (e) {}
+          try {
+            if (Array.isArray(csvDatasets)) csvDatasets.forEach(ds => { if (ds && Array.isArray(ds.data)) pools.push.apply(pools, ds.data); });
+          } catch (e) {}
+          for (const row of pools) {
+            if (!row) continue;
+            const rowData = row.data || row.originalData || row;
+            const rAddr = normAddr(row.address || row.소재지 || rowData.소재지 || rowData.주소);
+            if (addrKey && rAddr && !(addrKey.includes(rAddr) || rAddr.includes(addrKey))) continue;
+            const rPrice = digits(row.price || rowData.매매가 || rowData['거래금액(만원)']);
+            if (priceKey && rPrice && priceKey !== rPrice) continue;
+            const rArea = digits(row.area || rowData.전용면적_m2 || rowData['전용/연면적(㎡)']);
+            if (areaKey && rArea && Math.abs(parseFloat(areaKey) - parseFloat(rArea)) > 0.05) continue;
+            const rYm = String(row.year || '').trim() + String(row.month || '').trim();
+            if (ymKey && rYm && ymKey !== rYm) continue;
+            const v = pick(row) || pick(rowData);
+            if (v) return v;
           }
           // 마지막 fallback: 제목/주소 안에 "3층", "B1층", "지하1층" 같은 표기가 있으면 추출
-          const text = [item.name, item.title, item.address, d.소재지, d.주소, d.건물명].filter(Boolean).join(' ');
+          const text = [item.name, item.title, item.address, d.소재지, d.주소, d.건물명, item.originalData && item.originalData.소재지].filter(Boolean).join(' ');
           const m1 = text.match(/(지하\s*\d+\s*층|B\s*\d+\s*층|b\s*\d+\s*층|\d+\s*층)/);
           return m1 ? m1[1] : '';
         }
@@ -25322,11 +25382,12 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
               address: rowData.소재지,
               price: rowData.매매가 || 0,
               area: rowData.전용면적_m2 || 0,
-              floor: rowData.해당층 || '',
+              floor: rowData.해당층 || rowData.층수 || rowData.층 || '',
               year: y,
               month: m,
               lat: null,
               lng: null,
+              data: rowData,
               originalData: rowData,
               datasetId: dataset.id,
               _uid: `tx_${dataset.id}_${idx}`
@@ -26566,6 +26627,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const cardContent = document.createElement('div');
       cardContent.className = 'overlay-wrap';
       const tItemForCard = Object.assign({ mode: 'transaction' }, item);
+      if (!tItemForCard.data && tItemForCard.originalData) tItemForCard.data = tItemForCard.originalData;
+      if (!tItemForCard.floor && tItemForCard.data) tItemForCard.floor = tItemForCard.data.해당층 || tItemForCard.data.층수 || tItemForCard.data.층 || tItemForCard.data.floor || tItemForCard.data.flr || '';
       cardContent.innerHTML = `
     <svg class="conn-svg"><line class="conn-line" x1="0" y1="0" x2="0" y2="0"/></svg>
     <div class="map-card transaction-card" id="${id}" style="left:30px;top:-70px;">
@@ -49996,3 +50059,21 @@ window.addEventListener('DOMContentLoaded', () => {
     console.warn('[v240-hotfix common]', e);
   }
 })();
+
+
+// v10 diagnostic: 선택한 실거래 카드/주소의 층수 원본 필드를 콘솔에서 확인
+window.skDebugTxFloor = window.skDebugTxFloor || function(keyword) {
+  const q = String(keyword || '').replace(/\s+/g, '').trim();
+  const aliases = ['floor','층','층수','해당층','거래층','전용층','건물층','대상층','층정보','fl','flr','t_floor','floor_level','floorNo','floor_no','obj_floor','bldg_flr','f_nm','FLOOR_NO_NM','FLOOR_NM'];
+  function pick(obj) {
+    const out = {};
+    if (!obj || typeof obj !== 'object') return out;
+    aliases.forEach(k => { if (obj[k] !== undefined && obj[k] !== null && String(obj[k]).trim() !== '') out[k] = obj[k]; });
+    return out;
+  }
+  const rows = [];
+  try { (window.mapOverlays || []).forEach(o => { const it=o && o.item; if (!it) return; const text=String((it.address||'')+' '+(it.name||'')+' '+(it.id||'')).replace(/\s+/g,''); if (!q || text.includes(q)) rows.push({where:'overlay', id:o.id, address:it.address, price:it.price, floorFields:Object.assign({}, pick(it), pick(it.data), pick(it.originalData)), item:it}); }); } catch(e) {}
+  try { (window.mapMarkers || []).forEach(o => { const it=o && o.item; if (!it) return; const text=String((it.address||'')+' '+(it.name||'')+' '+(it.id||'')).replace(/\s+/g,''); if (!q || text.includes(q)) rows.push({where:'marker', id:o.id, address:it.address, price:it.price, floorFields:Object.assign({}, pick(it), pick(it.data), pick(it.originalData)), item:it}); }); } catch(e) {}
+  console.table(rows.map(r => ({where:r.where, id:r.id, address:r.address, price:r.price, floorFields:JSON.stringify(r.floorFields)})));
+  return rows;
+};
