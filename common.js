@@ -45,7 +45,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260503-jumpo-rent-area-v25';
+    window.__SK_BUILD = '20260502-card-position-stable-v24';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -13376,13 +13376,6 @@ window.wr2SummaryCancelEdit = function() {
           }
         }
 
-        if (d.관리비포함 === true && d.추정월세_만원) {
-          extraRows += _sied('추정 월세', '추정월세_만원', fM(d.추정월세_만원), d.추정월세_만원, false, 'color:#7dd3fc;font-weight:700;');
-        }
-        if (d.관리비포함 === true && d.관리비_추정_만원) {
-          extraRows += _sied('추정 관리비', '관리비_추정_만원', fM(d.관리비_추정_만원), d.관리비_추정_만원, false);
-        }
-
         // [공통 금액] — raw 직접 참조 유지 (권리금/관리비/월수익은 _norm 미포함)
         if (d.권리금_만원) extraRows += _sied('권리금', '권리금_만원', fM(d.권리금_만원), d.권리금_만원, true);
         if (d.관리비_만원 && d.관리비포함 !== true) extraRows += _sied('관리비', '관리비_만원', fM(d.관리비_만원), d.관리비_만원, true);
@@ -17231,8 +17224,6 @@ ${has매매 ? `
 ${nB.거래년월 ? fi(fmtYearMonth(nB.거래년월), '거래년월', 'text', idx, '거래년월', isPopup) : ''}
 ${!_hideLeaseOnMapCard ? fi(nB.보증금_만원, '보증금', 'money_m', idx, '기보증금_만원', isPopup) : ''}
 ${!_hideLeaseOnMapCard ? (nB.월세_만원 ? `<div class="fi"><div class="fl">월세</div><div class="fv money">${fM(nB.월세_만원)}${d.관리비포함 === true ? ' <span style="font-size:10px;color:var(--mu);">(관리비포함)</span>' : ''}</div></div>` : fi(null, '월세', 'money_m', idx, '월세_만원', isPopup)) : ''}
-${d.관리비포함 === true && d.추정월세_만원 ? fi(d.추정월세_만원, '추정 월세', 'money_m', idx, '추정월세_만원', isPopup) : ''}
-${d.관리비포함 === true && d.관리비_추정_만원 ? fi(d.관리비_추정_만원, '추정 관리비', 'money_m', idx, '관리비_추정_만원', isPopup) : ''}
 ${has임대 ? fi(월세평당가, '임대 평당가', 'money_m', idx, '', isPopup) : ''}
 ${fi(d.권리금_만원, '권리금', 'money_m', idx, '권리금_만원', isPopup)}
 ${fi(d.관리비_만원, '관리비', 'money_m', idx, '관리비_만원', isPopup)}
@@ -22135,8 +22126,6 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const 매매가str = nL.매매가_만원 ? fM(nL.매매가_만원) : null;
       const 보증금str = nL.보증금_만원 ? fM(nL.보증금_만원) : null;
       const 월세str = nL.월세_만원 ? (fM(nL.월세_만원) + (d.관리비포함 === true ? ' <span style="font-size:10px;color:rgba(255,255,255,.55);">(관리비포함)</span>' : '')) : null;
-      const 추정월세str = d.추정월세_만원 ? fM(d.추정월세_만원) : null;
-      const 관리비추정str = d.관리비_추정_만원 ? fM(d.관리비_추정_만원) : null;
       const 권리금str = d.권리금_만원 ? fM(d.권리금_만원) : null;
       const 관리비str = d.관리비_만원 ? fM(d.관리비_만원) : null;
       const 면적num2 = nL.면적_m2 || 0;
@@ -22209,10 +22198,9 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     ${식별info ? `<div style="padding:3px 6px 4px;margin-bottom:2px;font-size:11px;font-weight:700;color:#fff;background:rgba(255,255,255,0.06);border-radius:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${esc(식별info)}">${esc(식별info)}</div>` : ''}
     ${editableRow('보증금', '기보증금_만원', 보증금str, true)}
     ${editableRow('월세', '월세_만원', 월세str, true)}
-    ${d.관리비포함 === true && 추정월세str ? row('추정 월세', `<span style="color:#7dd3fc;font-weight:700;">${추정월세str}</span>`) : ''}
     ${평당가Row}
     ${editableRow('권리금', '권리금_만원', 권리금str, false, '#7dd3fc')}
-    ${d.관리비포함 === true ? row('관리비', 관리비추정str ? `<span class="map-card-value-right-accent">포함 / 추정 ${관리비추정str}</span>` : '<span class="map-card-value-right-accent">월세 포함</span>') : editableRow('관리비', '관리비_만원', 관리비str, false, '#7dd3fc')}
+    ${d.관리비포함 === true ? row('관리비', '<span class="map-card-value-right-accent">월세 포함</span>') : editableRow('관리비', '관리비_만원', 관리비str, false, '#7dd3fc')}
     ${row('면적', areaStr || '-')}
     <div class="map-card-row"><span class="map-card-label">층수</span><span class="map-card-value map-card-value-inline" id="floor_disp_${item.id}" onclick="inlineEditFloor('${item.id}','floor')" onmousedown="event.stopPropagation()" ontouchstart="event.stopPropagation()" title="클릭하여 수정" style="cursor:pointer;border-bottom:1px dashed rgba(255,255,255,.2);">${층표기}</span></div>
     <div class="map-card-row"><span class="map-card-label">방향</span><span class="map-card-value map-card-value-inline" id="dir_disp_${item.id}" onclick="inlineEditFloor('${item.id}','dir')" onmousedown="event.stopPropagation()" ontouchstart="event.stopPropagation()" title="클릭하여 수정" style="cursor:pointer;border-bottom:1px dashed rgba(255,255,255,.2);">${방향 || '-'}</span></div>
@@ -34651,38 +34639,14 @@ ${newsContext}
         const n = parseFloat(s);
         return isNaN(n) ? null : n;
       };
-      const toManAuto = v => {
-        const n = cleanNum(v);
-        if (n == null) return null;
-        return n >= 100000 ? Math.round(n / 10000) : Math.round(n);
-      };
 
       const now = Date.now();
       const savedItems = items.map((d, i) => {
         // ★ 첫 번째 아이템의 모든 필드를 콘솔에 출력 (주소 필드명 확인용)
         const wid = String(d.idx || d.webjofrsid || d.id || i);
-        // 점포라인 비용 단위 자동 감지: 10만 이상이면 원단위(÷10000), 미만이면 이미 만원단위
-        const MngFee_만 = toManAuto(d.MngFee);
-        const FranCost_만 = toManAuto(d.FranCost);
-        const 면적_m2 = cleanNum(d.size); // 점포라인 상세에 면적이 하나만 있으면 전용면적으로 취급
-        const 면적_평 = 면적_m2 ? (면적_m2 / 3.3058) : null;
-        const rentRaw_만 = toManAuto(d.rent);
-        const 입점비용_만 = toManAuto(d.monthlyCost || d.input_cost || d.monthly_cost);
-        let 월세_만 = rentRaw_만;
-        let 관리비포함 = false;
-        let 월세산출방식 = 'jumpo_rent';
-        if (rentRaw_만 && MngFee_만) {
-          관리비포함 = false; // 월세/관리비가 명확히 분리된 케이스
-          월세산출방식 = 'jumpo_exact_rent_mgmt_split';
-        } else if (입점비용_만) {
-          월세_만 = 입점비용_만; // 입점비용(관리비포함)을 월세 항목에 그대로 표시
-          관리비포함 = true;
-          월세산출방식 = 'jumpo_entry_cost_mgmt_included';
-        }
-        const 관리비추정_만 = 관리비포함 && 면적_평 ? Math.round(면적_평 * 2) : null; // 평당 2만원 기준
-        const 추정월세_만 = 관리비포함 && 월세_만
-          ? Math.max(Math.round(월세_만 - (관리비추정_만 || 0)), 0)
-          : null;
+        // MngFee 단위 자동 감지: 10만 이상이면 원단위(÷10000), 미만이면 이미 만원단위
+        const MngFee_만 = d.MngFee ? (parseFloat(d.MngFee) >= 100000 ? Math.round(parseFloat(d.MngFee) / 10000) : Math.round(parseFloat(d.MngFee))) : null;
+        const FranCost_만 = d.FranCost ? (parseFloat(d.FranCost) >= 100000 ? Math.round(parseFloat(d.FranCost) / 10000) : Math.round(parseFloat(d.FranCost))) : null;
         return {
           id: `jumpo_${wid}_${now}`,
           title: (d.subject && d.subject.trim()) || (d.frncName && d.frncName.trim()) || (d.title && d.title.trim()) || `점포라인 ${d.number || wid}`,
@@ -34702,19 +34666,13 @@ ${newsContext}
             해당층: d.floor ? parseInt(d.floor) || null : null,
             총층: null,
             계약면적_m2: null,
-            전용면적_m2: 면적_m2,  // ★ 면적이 하나만 있으면 전용면적으로 취급
+            전용면적_m2: cleanNum(d.size),  // ★ size = 전용면적으로 취급
             방향: '',
             가게상호: d.frncName || '',  // 프랜차이즈는 JSON에서, 개인매장은 상세페이지에서 보완
-            기보증금_만원: toManAuto(d.deposit),
-            월세_만원: 월세_만,
-            관리비_만원: 관리비포함 ? null : MngFee_만,
-            관리비포함: 관리비포함,
-            월세_관리비포함: 관리비포함,
-            입점비용_만원: 입점비용_만,
-            관리비_추정_만원: 관리비추정_만,
-            추정월세_만원: 추정월세_만,
-            월세_산출방식: 월세산출방식,
-            권리금_만원: toManAuto(d.premium),
+            기보증금_만원: cleanNum(d.deposit),
+            월세_만원: cleanNum(d.rent),
+            관리비_만원: MngFee_만,
+            권리금_만원: cleanNum(d.premium),
             수익률_퍼센트: null, // 자동계산 안 함. 매매가+월세+보증금 있을 때만 표시탭에서 계산
             월수익_만원: cleanNum(d.profit),
             월매출_만원: null,
@@ -34842,10 +34800,8 @@ ${newsContext}
                   // ★ 전용면적 저장
                   if (detail.전용면적_m2) {
                     target.data.전용면적_m2 = detail.전용면적_m2;
-                  } else if (!target.data.전용면적_m2 && detail._계약면적_상세) {
-                    // 점포라인 상세에 '면적' 하나만 있으면 전용면적으로 취급
-                    target.data.전용면적_m2 = detail._계약면적_상세;
-                    target.data.계약면적_m2 = null;
+                  } else if (!target.data.계약면적_m2 && detail._계약면적_상세) {
+                    target.data.계약면적_m2 = detail._계약면적_상세;
                   }
                   setSv(svNow);
                 }

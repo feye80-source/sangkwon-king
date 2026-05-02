@@ -3133,35 +3133,29 @@ class ProxyHandler(BaseHTTPRequestHandler):
             for d in items:
                 wid = str(d.get('idx') or d.get('number') or '')
                 number = str(d.get('number') or wid)
-                def to_man_auto(v):
-                    n = clean(v)
-                    if n is None: return None
-                    return round(n / 10000) if n >= 100000 else round(n)
+                mgmt = clean(d.get('MngFee'))
+                if mgmt and mgmt > 10000: mgmt = round(mgmt / 10000)  # 원→만원
 
-                mgmt = to_man_auto(d.get('MngFee'))
-                deposit = to_man_auto(d.get('deposit'))
-                premium = to_man_auto(d.get('premium'))
-                area_m2 = clean(d.get('size'))
-                area_py = (area_m2 / 3.3058) if area_m2 else None
-                입점비용 = to_man_auto(d.get('monthlyCost') or d.get('input_cost') or d.get('monthly_cost'))
-                rent_raw = to_man_auto(d.get('rent'))
+                deposit = clean(d.get('deposit'))
+                premium = clean(d.get('premium'))
+                입점비용 = clean(d.get('monthlyCost') or d.get('input_cost'))
 
-                rent = rent_raw
-                관리비포함 = False
-                월세_산출방식 = 'jumpo_rent'
-                if rent_raw and mgmt:
-                    관리비포함 = False  # 월세/관리비 각각 있음
-                    월세_산출방식 = 'jumpo_exact_rent_mgmt_split'
-                elif 입점비용:
-                    rent = 입점비용       # 입점비용(관리비포함)을 월세 항목에 그대로 표시
-                    관리비포함 = True
-                    월세_산출방식 = 'jumpo_entry_cost_mgmt_included'
-
-                관리비_추정 = round(area_py * 2) if 관리비포함 and area_py else None
-                추정월세 = max(round((rent or 0) - (관리비_추정 or 0)), 0) if 관리비포함 and rent else None
+                rent = clean(d.get('rent'))
+                if not rent and 입점비용:
+                    rent = max((입점비용 or 0) - (mgmt or 0), 0) or 입점비용
 
                 실투입 = (deposit or 0) + (premium or 0)
                 yield율 = round(rent * 12 / 실투입 * 100, 2) if rent and 실투입 > 0 else clean(d.get('profitRate'))
+
+                # 점포라인 관리비포함 여부 판단
+                rent_raw   = clean(d.get('rent'))
+                mgmt_raw2  = clean(d.get('MngFee'))
+                관리비포함 = None
+                if mgmt_raw2 and mgmt_raw2 > 10000: mgmt_raw2 = round(mgmt_raw2/10000)
+                if rent_raw and mgmt_raw2:
+                    관리비포함 = False  # 월세/관리비 각각 있음
+                elif 입점비용 and not mgmt_raw2:
+                    관리비포함 = True   # 입점비용=관리비포함
 
                 result_items.append({
                     '매물번호':      number,
@@ -3174,19 +3168,14 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     '기보증금_만원': deposit,
                     '월세_만원':     rent,
                     '권리금_만원':   premium,
-                    '관리비_만원':   None if 관리비포함 else mgmt,
+                    '관리비_만원':   mgmt,
                     '관리비포함':    관리비포함,
-                    '월세_관리비포함': 관리비포함,
-                    '입점비용_만원': 입점비용,
-                    '관리비_추정_만원': 관리비_추정,
-                    '추정월세_만원': 추정월세,
-                    '월세_산출방식': 월세_산출방식,
                     '월수익_만원':   clean(d.get('profit')) or None,
                     '월매출_만원':   None,
                     '마진율':        None,
                     '사용기간':      d.get('useperiod') or None,
-                    '계약면적_m2':   None,
-                    '전용면적_m2':   area_m2 or None,  # 점포라인에 면적이 하나만 있으면 전용면적으로 취급
+                    '계약면적_m2':   clean(d.get('size')) or None,
+                    '전용면적_m2':   None,
                     '해당층':        clean(d.get('floor')) or None,
                     '총층':          None,
                     '방향':          None,
