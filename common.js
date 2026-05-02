@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260502-bds-manual-countfix-v20';
+    window.__SK_BUILD = '20260503-disco-bds-card-pos-jumpo-v27';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -22986,8 +22986,9 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         const newTop = upCard ? (parseFloat(upCard.style.top) || 0) : 0;
         if (upCard) upCard.dataset.baseLeft = String(newLeft);
         if (upCard) upCard.dataset.baseTop = String(newTop);
+        if (upCard) upCard.dataset.userPlaced = '1';
         const dragObj = mapOverlays.find(o => o.id === id);
-        if (dragObj) dragObj.savedPos = { left: newLeft, top: newTop };
+        if (dragObj) { dragObj.savedPos = { left: newLeft, top: newTop }; dragObj.userPlaced = true; }
       }
 
       document.addEventListener('mousemove', onMouseMove);
@@ -23487,6 +23488,11 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const expandMode = key && window.cardExpandState ? cardExpandState.get(key) : null;
 
       closeMode = closeMode || 'group';
+      const __posSnapBeforeClose = _snapshotOtherCardPositions(key);
+      const __safeUpdateStackAfterClose = function() {
+        if (typeof updateStackedCards === 'function') updateStackedCards(key || null);
+        setTimeout(function(){ _restoreOtherCardPositions(__posSnapBeforeClose); }, 0);
+      };
 
       // ✅ X 버튼 단일 닫기 모드: 스택 상태여도 '해당 카드만' 닫는다
       // - grid 모드는 기존 로직(overlay 유지 + display:none)을 그대로 사용
@@ -23506,7 +23512,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           if (grp.length > 0) _stackGroups.set(key, grp);
           else { _stackGroups.delete(key); if (window.cardExpandState) cardExpandState.delete(key); }
         }
-        updateStackedCards();
+        __safeUpdateStackAfterClose();
         return;
       }
 
@@ -23534,7 +23540,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             try { obj.overlay.setMap(null); } catch (e) { }
           }
         }
-        updateStackedCards();
+        __safeUpdateStackAfterClose();
         return;
       }
 
@@ -23555,7 +23561,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           if (grp.length > 0) _stackGroups.set(key, grp);
           else { _stackGroups.delete(key); if (window.cardExpandState) cardExpandState.delete(key); }
         }
-        updateStackedCards();
+        __safeUpdateStackAfterClose();
         return;
       }
 
@@ -23584,7 +23590,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         }
       });
 
-      updateStackedCards();
+      __safeUpdateStackAfterClose();
     }
 
     // ===================================================
@@ -24289,8 +24295,6 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           const 매물명 = d.매물명 || d.r_type_nm || '-';
           return `
         ${editableRowTx('매매가', '매매가', 매매가str, true)}
-        ${editableRowTx('보증금', '기보증금_만원', nT.보증금_만원 ? fM(nT.보증금_만원) : '-', true)}
-        ${editableRowTx('월세', '월세_만원', nT.월세_만원 ? fM(nT.월세_만원) : '-', true)}
         ${row('매매 평단가', 평단가str)}
         ${row(면적라벨, 면적str ? 면적str : '-')}
         <div class="map-card-row"><span class="map-card-label">층수</span><span class="map-card-value map-card-value-inline" id="floor_disp_${item.id}" onclick="inlineEditFloor('${item.id}','floor')" onmousedown="event.stopPropagation()" ontouchstart="event.stopPropagation()" title="클릭하여 수정" style="cursor:pointer;border-bottom:1px dashed rgba(255,255,255,.2);">${층str}</span></div>
@@ -24498,12 +24502,16 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const nL = item._norm || {};
       const src = item.source || d.출처 || '';
       const isTransferSrc = (src === '점포라인' || _isAssaSource(src));
+      const hideLeaseRowsForDiscoBds = (src === '디스코' || src === '부동산플래닛');
 
       const 매매가str = nL.매매가_만원 ? fM(nL.매매가_만원) : null;
       const 보증금str = nL.보증금_만원 ? fM(nL.보증금_만원) : null;
       const 월세str = nL.월세_만원 ? (fM(nL.월세_만원) + (d.관리비포함 === true ? ' <span style="font-size:10px;color:rgba(255,255,255,.55);">(관리비포함)</span>' : '')) : null;
       const 권리금str = d.권리금_만원 ? fM(d.권리금_만원) : null;
       const 관리비str = d.관리비_만원 ? fM(d.관리비_만원) : null;
+      const isJumpoRentIncluded = (src === '점포라인' && (d.월세_관리비포함 === true || d.관리비포함 === true));
+      const 추정월세str = d.추정월세_만원 ? fM(d.추정월세_만원) : null;
+      const 추정관리비str = d.관리비_추정_만원 ? fM(d.관리비_추정_만원) : null;
       const 면적num2 = nL.면적_m2 || 0;
       const _areaLbl = nL.면적기준 ? nL.면적기준 + ' ' : '';
       const areaStr = 면적num2 > 0 ? (_areaLbl + fmtArea(면적num2)) : null;
@@ -24574,6 +24582,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     ${식별info ? `<div style="padding:3px 6px 4px;margin-bottom:2px;font-size:11px;font-weight:700;color:#fff;background:rgba(255,255,255,0.06);border-radius:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${esc(식별info)}">${esc(식별info)}</div>` : ''}
     ${editableRow('보증금', '기보증금_만원', 보증금str, true)}
     ${editableRow('월세', '월세_만원', 월세str, true)}
+    ${isJumpoRentIncluded && 추정월세str ? row('추정월세', 추정월세str) : ''}
+    ${isJumpoRentIncluded && 추정관리비str ? row('관리비추정', 추정관리비str) : ''}
     ${평단가Row}
     ${editableRow('권리금', '권리금_만원', 권리금str, false, '#7dd3fc')}
     ${d.관리비포함 === true ? row('관리비', '<span class="map-card-value-right-accent">월세 포함</span>') : editableRow('관리비', '관리비_만원', 관리비str, false, '#7dd3fc')}
@@ -24594,12 +24604,12 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       return `
     ${식별info ? `<div style="padding:3px 6px 4px;margin-bottom:2px;font-size:11px;font-weight:700;color:#fff;background:rgba(255,255,255,0.06);border-radius:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${esc(식별info)}">${esc(식별info)}</div>` : ''}
     ${editableRow('매매가', '매매가', 매매가str, true)}
-    ${editableRow('보증금', '기보증금_만원', 보증금str, true)}
-    ${editableRow('월세', '월세_만원', 월세str, true)}
+    ${hideLeaseRowsForDiscoBds ? '' : editableRow('보증금', '기보증금_만원', 보증금str, true)}
+    ${hideLeaseRowsForDiscoBds ? '' : editableRow('월세', '월세_만원', 월세str, true)}
     ${평단가Row}
     ${거래년월str && 거래년월str !== '-' ? row('거래년월', 거래년월str) : ''}
     ${수익률str ? row('수익률', 수익률str) : ''}
-    ${isSale ? `
+    ${(isSale && !hideLeaseRowsForDiscoBds) ? `
     <div class="map-card-row" id="ycd_price_${item.id}">
       <span class="map-card-label">보증금</span>
       <span class="map-card-value">
@@ -24645,6 +24655,47 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     // 전역 노출 (mobile.html의 mbShowCardBottomSheet에서 사용)
     window.buildMapCardBodyHTML = buildMapCardBodyHTML;
 
+
+
+    // 카드 위치 안정화: 사용자가 직접 배치한 카드 위치는 자동 정렬/닫기 과정에서 보존
+    function _rememberMapCardPosition(id, userPlaced) {
+      const el = document.getElementById(id);
+      const ov = (window.mapOverlays || []).find(o => o && o.id === id);
+      if (!el || !ov) return;
+      const left = parseFloat(el.style.left) || 0;
+      const top = parseFloat(el.style.top) || 0;
+      el.dataset.baseLeft = String(left);
+      el.dataset.baseTop = String(top);
+      if (userPlaced) el.dataset.userPlaced = '1';
+      ov.savedPos = { left, top };
+      if (userPlaced) ov.userPlaced = true;
+    }
+    function _snapshotOtherCardPositions(exceptKey) {
+      const snap = [];
+      (window.mapOverlays || []).forEach(o => {
+        if (!o || !o.id || !o.isOpen) return;
+        if (exceptKey && o.stackKey === exceptKey) return;
+        const el = document.getElementById(o.id);
+        if (!el || el.style.display === 'none') return;
+        snap.push({ id: o.id, left: parseFloat(el.style.left) || 0, top: parseFloat(el.style.top) || 0, userPlaced: !!o.userPlaced || el.dataset.userPlaced === '1' });
+      });
+      return snap;
+    }
+    function _restoreOtherCardPositions(snap) {
+      (snap || []).forEach(p => {
+        const el = document.getElementById(p.id);
+        const ov = (window.mapOverlays || []).find(o => o && o.id === p.id);
+        if (!el || !ov) return;
+        el.style.left = p.left + 'px';
+        el.style.top = p.top + 'px';
+        el.dataset.baseLeft = String(p.left);
+        el.dataset.baseTop = String(p.top);
+        if (p.userPlaced) el.dataset.userPlaced = '1';
+        ov.savedPos = { left: p.left, top: p.top };
+        if (p.userPlaced) ov.userPlaced = true;
+        try { if (typeof updateMapLine === 'function') updateMapLine(p.id); } catch(e) {}
+      });
+    }
 
     function updateStackedCards(onlyKey) {
       if (window.__skipTransactionAutoStack) return;
@@ -24718,10 +24769,17 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         // open 모드: 카드 위치를 건드리지 않음 (마지막 위치 그대로)
         // stack(false) 모드: baseLeft 없으면 저장, 있으면 복원
         if (!isGrid && !isOpenMode) {
-          // ★ [FIX] grid→stack 전환 시 현재 style.left는 그리드 좌표 → savedPos 우선 복원
+          // 사용자가 직접 배치한 카드는 자동 정렬이 좌표를 덮지 않도록 savedPos를 최우선 복원
+          const isUserPlaced = !!o.userPlaced || el.dataset.userPlaced === '1';
           const savedL = o.savedPos ? o.savedPos.left : null;
           const savedT = o.savedPos ? o.savedPos.top : null;
-          if (el.dataset.baseLeft) {
+          if (isUserPlaced && savedL !== null && savedT !== null) {
+            el.style.left = savedL + 'px';
+            el.style.top = savedT + 'px';
+            el.dataset.baseLeft = String(savedL);
+            el.dataset.baseTop = String(savedT);
+            el.dataset.userPlaced = '1';
+          } else if (el.dataset.baseLeft) {
             el.style.left = el.dataset.baseLeft + 'px';
             el.style.top = el.dataset.baseTop + 'px';
           } else if (savedL !== null) {
@@ -38333,6 +38391,92 @@ ${newsContext}
       return String(site || '').replace(/_auto$/, '');
     }
 
+
+    // 점포라인 전용: 앞으로 새로 수집되는 데이터의 월세/관리비/면적 해석 보정
+    function _jumpoNumToMan(v) {
+      if (v === null || v === undefined || v === '') return null;
+      const raw = String(v).replace(/,/g, '').trim();
+      if (!raw || raw === '-' || raw === 'null' || raw === 'undefined') return null;
+      const n = parseFloat(raw.replace(/[^0-9.\-]/g, ''));
+      if (!Number.isFinite(n) || n <= 0) return null;
+      // 점포라인 원본 필드는 원 단위로 올 때가 있어 10만 이상이면 만원으로 환산
+      return Math.round(n >= 100000 ? n / 10000 : n);
+    }
+
+    function _jumpoNum(v) {
+      if (v === null || v === undefined || v === '') return null;
+      const n = parseFloat(String(v).replace(/,/g, '').replace(/[^0-9.\-]/g, ''));
+      return Number.isFinite(n) && n > 0 ? n : null;
+    }
+
+    function _applyJumpoRentAreaRules(d) {
+      if (!d || typeof d !== 'object') return d;
+      // 면적이 하나만 들어오는 점포라인 데이터는 전용면적으로 취급
+      const oneArea = _jumpoNum(d.전용면적_m2)
+        || _jumpoNum(d.size)
+        || _jumpoNum(d['면적(㎡)'])
+        || _jumpoNum(d.면적_m2)
+        || ((!d.전용면적_m2 && !d.공급면적_m2 && !d.토지면적_m2) ? _jumpoNum(d.계약면적_m2) : null);
+      if (!d.전용면적_m2 && oneArea) {
+        d.전용면적_m2 = oneArea;
+        d.면적기준 = d.면적기준 || '전용';
+        if (d.계약면적_m2 && !d.공급면적_m2 && !d.토지면적_m2) d.계약면적_m2 = null;
+      }
+
+      const mgmt = _jumpoNumToMan(d.관리비_만원 ?? d.MngFee ?? d.mngFee ?? d.managementFee);
+      const rentRaw = _jumpoNumToMan(d.월세_만원 ?? d.rent ?? d.Rent ?? d.monthlyRent);
+      const inputCost = _jumpoNumToMan(d.입점비용_만원 ?? d.input_cost ?? d.monthlyCost ?? d.monthly_cost ?? d.입점비용);
+      const rawText = [d.입점비용_원문, d.비용구분, d.costLabel, d.rentLabel, d.WebTrait, d.subject, d.특이사항]
+        .map(v => String(v || '')).join(' ');
+      const explicitIncluded = d.월세_관리비포함 === true || d.관리비포함 === true || /관리비\s*포함|관리비포함|입점비용/.test(rawText);
+
+      if (mgmt && rentRaw) {
+        // 월세/관리비가 명확히 분리된 경우: 정확 월세
+        d.월세_만원 = rentRaw;
+        d.관리비_만원 = mgmt;
+        d.관리비포함 = false;
+        d.월세_관리비포함 = false;
+        delete d.관리비_추정_만원;
+        delete d.추정월세_만원;
+        d.월세_산출방식 = 'jumpo_exact_separated';
+        return d;
+      }
+
+      if (mgmt && !rentRaw && inputCost) {
+        // 입점비용과 관리비가 같이 있는 드문 경우: 입점비용-관리비를 정확 월세에 가깝게 사용
+        d.월세_만원 = Math.max(0, inputCost - mgmt);
+        d.관리비_만원 = mgmt;
+        d.관리비포함 = false;
+        d.월세_관리비포함 = false;
+        d.입점비용_만원 = inputCost;
+        d.월세_산출방식 = 'jumpo_input_minus_mgmt';
+        return d;
+      }
+
+      if (explicitIncluded || inputCost) {
+        const included = inputCost || rentRaw;
+        if (included) {
+          d.월세_만원 = included;
+          d.입점비용_만원 = included;
+          d.관리비포함 = true;
+          d.월세_관리비포함 = true;
+          const areaM2 = _jumpoNum(d.전용면적_m2);
+          if (areaM2) {
+            const areaPy = areaM2 / 3.3058;
+            const estMgmt = Math.max(0, Math.round(areaPy * 2)); // 평당 2만원
+            d.관리비_추정_만원 = estMgmt;
+            d.추정월세_만원 = Math.max(0, Math.round(included - estMgmt));
+          }
+          d.월세_산출방식 = 'jumpo_included_estimated';
+        }
+        return d;
+      }
+
+      if (rentRaw) d.월세_만원 = rentRaw;
+      if (mgmt) d.관리비_만원 = mgmt;
+      return d;
+    }
+
     function _inferShopItemMode(site, d) {
       const baseSite = _normalizeShopSiteKey(site);
       if (SHOP_SITE_MODE_MAP[baseSite]) return SHOP_SITE_MODE_MAP[baseSite];
@@ -38394,6 +38538,7 @@ ${newsContext}
       if (!d.매물특징 && d.특징) d.매물특징 = d.특징;
       if (!d.매물특징 && d.특이사항) d.매물특징 = d.특이사항;
       if (!d.특이사항 && d.매물특징) d.특이사항 = d.매물특징;
+      if (baseSite === 'jumpo') _applyJumpoRentAreaRules(d);
       _normalizeDualAddressFields(d);
       if (!d.address && d['소재지']) d.address = d['소재지'];
       return d;
@@ -39139,7 +39284,8 @@ ${newsContext}
 
     // 공통 저장 로직
     function _jumpoSaveToList(items) {
-      const normalizedItems = _setShopCollectedData('jumpo', items);
+      const normalizedItems = _setShopCollectedData('jumpo', items).map(_applyJumpoRentAreaRules);
+      shopCollectedData.jumpo = normalizedItems;
       shopPreview('jumpo', normalizedItems);
 
       const sv = getSv();
@@ -39363,6 +39509,9 @@ ${newsContext}
         // MngFee 단위 자동 감지: 10만 이상이면 원단위(÷10000), 미만이면 이미 만원단위
         const MngFee_만 = d.MngFee ? (parseFloat(d.MngFee) >= 100000 ? Math.round(parseFloat(d.MngFee) / 10000) : Math.round(parseFloat(d.MngFee))) : null;
         const FranCost_만 = d.FranCost ? (parseFloat(d.FranCost) >= 100000 ? Math.round(parseFloat(d.FranCost) / 10000) : Math.round(parseFloat(d.FranCost))) : null;
+        const _jumpoRentRaw = cleanNum(d.rent);
+        const _jumpoInputCost = cleanNum(d.monthlyCost ?? d.input_cost ?? d.inputCost ?? d.rent);
+        const _jumpoMgmtIncluded = !MngFee_만 && !!_jumpoInputCost;
         return {
           id: `jumpo_${wid}_${now}`,
           title: (d.subject && d.subject.trim()) || (d.frncName && d.frncName.trim()) || (d.title && d.title.trim()) || `점포라인 ${d.number || wid}`,
@@ -39382,12 +39531,16 @@ ${newsContext}
             해당층: d.floor ? parseInt(d.floor) || null : null,
             총층: null,
             계약면적_m2: null,
-            전용면적_m2: cleanNum(d.size),  // ★ size = 전용면적으로 취급
+            전용면적_m2: cleanNum(d.size || d['면적(㎡)'] || d.area),  // ★ 점포라인 면적 1개 = 전용면적
+            면적기준: '전용',
             방향: '',
             가게상호: d.frncName || '',  // 프랜차이즈는 JSON에서, 개인매장은 상세페이지에서 보완
             기보증금_만원: cleanNum(d.deposit),
-            월세_만원: cleanNum(d.rent),
+            월세_만원: _jumpoMgmtIncluded ? _jumpoInputCost : _jumpoRentRaw,
             관리비_만원: MngFee_만,
+            입점비용_만원: _jumpoMgmtIncluded ? _jumpoInputCost : null,
+            관리비포함: _jumpoMgmtIncluded,
+            월세_관리비포함: _jumpoMgmtIncluded,
             권리금_만원: cleanNum(d.premium),
             수익률_퍼센트: null, // 자동계산 안 함. 매매가+월세+보증금 있을 때만 표시탭에서 계산
             월수익_만원: cleanNum(d.profit),
@@ -39402,6 +39555,7 @@ ${newsContext}
         };
       });
 
+      savedItems.forEach(item => { if (item && item.data) _applyJumpoRentAreaRules(item.data); });
       const previewItems = _setShopCollectedData('jumpo', savedItems.map(item => item.data));
       shopPreview('jumpo', previewItems);
 
