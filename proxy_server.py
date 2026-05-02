@@ -36,7 +36,7 @@ LOCAL_UPLOAD_ROOT = os.path.join(BASE_DIR, '_proxy_uploads')
 ALLOWED_STORAGE_BUCKETS = {'attachments', 'room-images', 'kcard-images'}
 
 # 플래닛 쿠키 전역 캐시 (수집 시 자동 저장, 층수 조회 시 재사용)
-BDS_COOKIE_CACHE = ''  # 사용자가 입력해 성공한 쿠키만 런타임 캐시. 오래된 하드코딩 쿠키 금지.
+BDS_COOKIE_CACHE = 'bdsp_usid=MTU0Y2Q1NTUtNGZmNC00YmZjLWFmNzktOGZhNDYzZTE1ZDM4; real=NTMwM2UzNDItZWFkOC00OTk3LWJlYzktNjA5NTcyMDgzNzYy; _gcl_au=1.1.1914616534.1771765987; _fbp=fb.1.1771765987807.808252917601495943; _gid=GA1.2.1315729604.1771765988; ckSsPpPopup=true; lastLoggedInSNS_b=naver; skele=Y; refresh=eyJhbGciOiJIUzI1NiJ9.eyJjYXRlZ29yeSI6Ijk3eW5XOGh1TDBtNThtR25PaW9UYlE9PSIsInVzZXJfY29kZSI6ImEzMndIYlFlNWM3dGpqbURyM1JkM0tjR3FUNjEzMStFcVpVNXZwOW5EVCtVdXJnckhhR3ZwQT09Iiwicm9sZSI6IkM3RlFkMzRwTnpDK1hLSGdBZEo3cktSUkdpczBDaHRzIiwiZW1haWwiOiJMNDZUWWxFaEtDZFpOZGlyMzlsR09CMDZhYml6R3ZucXZ1ZzBvTnV0SENJPSIsImF0ayI6Ik1OUVRUSGcvL1hwbzBJdHZ1bndxUjJMS3ZJZjVWVlNNNmZrZHdHTjA3Ykl2ZXQ3dEpScEhSV2pwVU8vanpxRURoNks0TGNuOG9HRXRGdEM2WURPUFBzVWY1YlA4K0lhTTgvd1dlY1lFbUp6cDdiYmFCSUROUFRxRGVRY21UZGhEaWF6NTNSK3Z6d3gwVHR4STc5Mnp0Z3JjV0tUcUx2cE1mS2ZnWUtibUtkSXY4T3h1VlNXcVErNGFVcXRMdDhoNXNGdS9QZ0hidS9XcTBYME9YZnRySFMzK3ZhdHhtQkQxRytYVFJvSWxTaDhTbzNEbjVVTzJaNVFYZmxsUjZQNFA3eThYUDhwWVNTQUdWbW1ZYnk3bXNRdDNJV25qTjlkOXVUNEs1SnQvWE1JWng0MmVTTWNKQ0tGc3plcEw5SHRwVXF1SzhzUEExbFNsV1R1WHd3b2FnWTZ3d3ZTeWMzZVZIYVpGMU1xR1ViaW1PREVMWTcxZ3g0eWtpMTY4dld0OURFVXc3cGlqYnF1M2ZINm00NFpRQzMwNkZ1em9wSTlHbk9lNVBibExlSEM5b3hGc2tkbDJZZjBNN0FuZ25jYjdsY2xkcjBWcjF4MTZpZkFyNE5DYzJoMlAvaHJNd2hyQ2ZaYW5YUTdGd2kwT2VJMzZYc2trNHZsaWRaSkxveVJPdlZtem5PZXJmeHZuNWZpbC9JR0NMUmxYcndFWXJ3Q2RlVERkeDk2dS9WYTdrZzBJaWZRNXFLekJwblFCSmhrS2dRcGNBYk9wK1JpRCtkZGVPakhLQXZxV2M0a1ppUWM2IiwiaWF0IjoxNzcxODYyMTM2LCJleHAiOjE3NzE5NDg1MzZ9.jKfkEmxCF7pQS6YTWGCqbBHu8-z_xwEKuDRmUVzvR5A; access=eyJhbGciOiJIUzI1NiJ9.eyJjYXRlZ29yeSI6ImRWbmdzajZOY0xXaG90OWYxYkhBbkE9PSIsInVzZXJfY29kZSI6IkRkeDBwc0t3eFQvR3pCbFFCQjdkY24xaHI4eEh6dTFwZ2x4bmtiSytlVVFlWXlaSnFMbW5yZz09Iiwicm9sZSI6IlRISlcyMTE1OG9Qc1pWcGFtVGE5MDh2TnpKSGxaRnE2IiwiZW1haWwiOiJtVXlqckZmRWI4UzRNTlp2ZzFaS21nQnJ5TUtoQ3o2ODltcktLaGpIV2pBPSIsImF0ayI6IlB3bkkvbmlpNVZLYy8renkrQ0wrTGtpZGxFaENMY05zIiwiaWF0IjoxNzcxODYyMTM2LCJleHAiOjE3NzE5MDUzMzZ9.u8AvZq6absVkp7BWp5u9iLx9_TOesPAq_TVCGWF_ObE; _ga_W0HCMCWKMZ=GS2.1.s1771861450$o6$g1$t1771862137$j60$l0$h0; mp_5c381f458032505385ed0973771610c7_mixpanel=%7B%22distinct_id%22%3A%22%24device%3Aa47863bf-15c2-490d-a7ce-80388027a301%22%2C%22%24device_id%22%3A%22a47863bf-15c2-490d-a7ce-80388027a301%22%2C%22%24initial_referrer%22%3A%22https%3A%2F%2Fproperty.bdsplanet.com%2F%22%2C%22%24initial_referring_domain%22%3A%22property.bdsplanet.com%22%2C%22__mps%22%3A%7B%7D%2C%22__mpso%22%3A%7B%22%24initial_referrer%22%3A%22https%3A%2F%2Fproperty.bdsplanet.com%2F%22%2C%22%24initial_referring_domain%22%3A%22property.bdsplanet.com%22%7D%2C%22__mpus%22%3A%7B%7D%2C%22__mpa%22%3A%7B%7D%2C%22__mpu%22%3A%7B%7D%2C%22__mpr%22%3A%5B%5D%2C%22__mpap%22%3A%5B%5D%2C%22user_code%22%3A%22USER_20250814174456000001%22%2C%22__alias%22%3A%22USER_20250814174456000001%22%2C%22%24user_id%22%3A%22USER_20250814174456000001%22%7D; _ga=GA1.2.2073191771.1771765985; _ga_ZMYFVJ62R4=GS2.1.s1771860671$o12$g1$t1771862827$j57$l0$h0; _gat_UA-72361022-1=1'
 
 TOKEN  = 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IlJFQUxFU1RBVEUiLCJpYXQiOjE3NzE4MzQ0NjgsImV4cCI6MTc3MTg0NTI2OH0.0JrIMhLcyMaiwG53ZCrWlQSJCYjBv7aU8CvBZVvwhRg'
 COOKIE = 'nhn.realestate.article.trade_type_cd=""; nhn.realestate.article.ipaddress_city=1100000000; _fwb=181mH6x2wXJDj21u5GAHx4P.1771610345285; landHomeFlashUseYn=Y; NAC=PHbTB8QuizZH; NNB=XFGGRJ7JUCMGS; BUC=uuOcrBxBEVOhIzqj7sRxhTfUr72bhkrkpOycivPRMwQ=; nhn.realestate.article.rlet_type_cd=A01; REALESTATE=Mon%20Feb%2023%202026%2017%3A14%3A28%20GMT%2B0900%20(Korean%20Standard%20Time); PROP_TEST_KEY=1771834468230.b0106ce42c27dcd1b4a1d804e79d6b08ae096517f2981164c4ccf057c170ccb5; PROP_TEST_ID=a4861023da9c97cf6f3bcd9052feceb7b1ce4cac9539cab47f65e3fc1625cd8b; _fwb=181mH6x2wXJDj21u5GAHx4P.1771610345285; NACT=1; SHOW_FIN_BADGE=Y; bnb_tooltip_shown_finance_v1=true; SRT30=1771834421; SRT5=1771834421'
@@ -505,14 +505,14 @@ class ProxyHandler(BaseHTTPRequestHandler):
             nelng = payload.get('nelng', '')
             swlng = payload.get('swlng', '')
             cookie = payload.get('cookie', '')   # ★ 브라우저 쿠키 직접 수신
-            request_url = payload.get('request_url', '')  # ★ F12 실제 getRealpriceMapMarker Request URL
+            bds_request_url = payload.get('bds_request_url', '')
             kakao_rest_key = payload.get('kakao_rest_key', '')
             max_n = _read_max_n(payload)
             if not lat:
                 self._error(400, '좌표(lat/lng)가 필요합니다')
                 return
             print(f"\n  🌍 부동산플래닛 수집 시작 (lat={lat}, lng={lng})...")
-            self._collect_bds(lat=lat, lng=lng, nelat=nelat, swlat=swlat, nelng=nelng, swlng=swlng, cookie=cookie, request_url=request_url, kakao_rest_key=kakao_rest_key, max_n=max_n)
+            self._collect_bds(lat=lat, lng=lng, nelat=nelat, swlat=swlat, nelng=nelng, swlng=swlng, cookie=cookie, bds_request_url=bds_request_url, kakao_rest_key=kakao_rest_key, max_n=max_n)
 
         elif parsed.path == '/api/naver_map':
             # ★ 신규: 토큰 없이 모바일 API로 지도 바운딩박스 수집
@@ -2281,9 +2281,6 @@ class ProxyHandler(BaseHTTPRequestHandler):
             if not items_raw:
                 print(f"  ⚠️ 응답 타입: {type(raw).__name__}, 미리보기: {str(raw)[:200]}")
 
-            if bds_cookie and all_raw_items and cookie_source in ('user', 'runtime_cache'):
-                BDS_COOKIE_CACHE = bds_cookie
-
             def clean(v):
                 if v is None or v == '' or v == '0': return None
                 try:
@@ -2381,7 +2378,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
             print(f"  ❌ 디스코 수집 실패: {e}\n{traceback.format_exc()}")
             self._ok(json.dumps({'status': 'error', 'message': str(e), 'data': []}, ensure_ascii=False))
 
-    def _collect_bds(self, lat='', lng='', nelat='', swlat='', nelng='', swlng='', cookie='', request_url='', kakao_rest_key='', max_n=None):
+    def _collect_bds(self, lat='', lng='', nelat='', swlat='', nelng='', swlng='', cookie='', bds_request_url='', kakao_rest_key='', max_n=None):
         """부동산플래닛 실거래가 수집: getRealpriceMapMarker.ytp
         
         ★ v120 변경사항:
@@ -2419,49 +2416,49 @@ class ProxyHandler(BaseHTTPRequestHandler):
             _swlat = float(swlat) if swlat else _lat - 0.008
             _nelng = float(nelng) if nelng else _lng + 0.008
             _swlng = float(swlng) if swlng else _lng - 0.008
-
-            # ★ [BDS v15] 프론트에서 bbox가 점 하나로 들어오는 경우 서버에서도 안전 보정.
-            # 부동산플래닛 getRealpriceMapMarker는 x1/x2/y1/y2 면적이 없으면 200/빈 응답을 반환할 수 있다.
+            if abs(_nelat - _swlat) < 0.00005:
+                print('  🧭 BDS bbox 위도 보정')
+                _nelat = _lat + 0.006
+                _swlat = _lat - 0.006
+            if abs(_nelng - _swlng) < 0.00005:
+                print('  🧭 BDS bbox 경도 보정')
+                _nelng = _lng + 0.008
+                _swlng = _lng - 0.008
             if _swlat > _nelat:
                 _swlat, _nelat = _nelat, _swlat
             if _swlng > _nelng:
                 _swlng, _nelng = _nelng, _swlng
-            if abs(_nelat - _swlat) < 0.002:
-                _nelat = _lat + 0.01
-                _swlat = _lat - 0.01
-                print(f"  🧭 BDS bbox 위도 보정: swlat={_swlat}, nelat={_nelat}")
-            if abs(_nelng - _swlng) < 0.002:
-                _nelng = _lng + 0.01
-                _swlng = _lng - 0.01
-                print(f"  🧭 BDS bbox 경도 보정: swlng={_swlng}, nelng={_nelng}")
-
             request_limit = max_n if (max_n and max_n > 0) else 150
             request_limit = max(50, min(int(request_limit), 150))
 
             print(f"  🌍 부동산플래닛 수집 시작 (lat={_lat}, lng={_lng})...")
 
-            # ★ 쿠키 정책 v20260502:
-            # - 오래된 하드코딩 쿠키/자동취득 쿠키를 쓰지 않는다.
-            # - 사용자가 F12에서 복사한 Cookie를 최우선으로 사용한다.
-            # - 서버 런타임 캐시는 "사용자 쿠키로 실제 수집 성공"한 경우에만 보조로 재사용한다.
-            # - 실패/빈 응답 쿠키는 캐시에 저장하지 않는다.
+            # ★ 쿠키 우선순위: (1) 브라우저에서 직접 전달 → (2) 자동취득 시도
             global BDS_COOKIE_CACHE
             bds_cookie = sanitize_cookie(cookie) if cookie and cookie.strip() else ''
-            cookie_source = ''
             if bds_cookie:
-                cookie_source = 'user'
-                print(f"  🍪 사용자 입력 쿠키 사용: {bds_cookie[:80]}...")
+                BDS_COOKIE_CACHE = bds_cookie  # ✨ 전역 캐시에 저장
+                print(f"  🍪 브라우저 쿠키 사용: {bds_cookie[:80]}...")
             else:
-                cached_cookie = sanitize_cookie(BDS_COOKIE_CACHE) if BDS_COOKIE_CACHE else ''
-                if cached_cookie:
-                    bds_cookie = cached_cookie
-                    cookie_source = 'runtime_cache'
-                    print(f"  🍪 성공 쿠키 런타임 캐시 사용: {bds_cookie[:80]}...")
-                else:
-                    cookie_source = 'none'
-                    msg = '부동산플래닛 수집에는 getRealpriceMapMarker.ytp 요청의 Cookie가 필요합니다. 플래닛 로그인 후 F12 → Network에서 해당 요청의 Request Headers → Cookie 전체를 입력하세요.'
-                    self._ok(json.dumps({'status': 'cookie_required', 'message': msg, 'data': [], 'cookie_source': cookie_source}, ensure_ascii=False))
-                    return
+                print(f"  🔄 쿠키 미입력 — 자동 취득 시도...")
+                try:
+                    import http.cookiejar
+                    cj = http.cookiejar.CookieJar()
+                    opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
+                    init_req = urllib.request.Request(
+                        'https://www.bdsplanet.com/map/realprice_map',
+                        headers={
+                            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+                            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                            'Accept-Language': 'ko-KR,ko;q=0.9',
+                        }
+                    )
+                    opener.open(init_req, timeout=10)
+                    bds_cookie = '; '.join([f'{c.name}={c.value}' for c in cj])
+                    print(f"  🍪 자동취득 쿠키: {bds_cookie[:80]}...")
+                    BDS_COOKIE_CACHE = bds_cookie  # ♋ 전역 캐시에 저장
+                except Exception as ce:
+                    print(f"  ⚠️ 쿠키 자동취득 실패: {ce} — 쿠키 없이 시도")
 
             # ★ F12에서 확인한 실제 공통 헤더
             base_headers = {
@@ -2479,39 +2476,10 @@ class ProxyHandler(BaseHTTPRequestHandler):
             if bds_cookie:
                 base_headers['Cookie'] = bds_cookie
 
-            def _build_bds_url_from_template(template_url, t_type_val):
-                """브라우저에서 복사한 실제 Request URL을 기준으로 좌표/limit만 현재 값으로 교체."""
-                raw_url = str(template_url or '').strip()
-                if not raw_url or 'getRealpriceMapMarker.ytp' not in raw_url:
-                    return ''
-                try:
-                    parsed_u = urllib.parse.urlsplit(raw_url)
-                    # 호스트는 항상 www.bdsplanet.com으로 고정하되, 기존 query 구조는 최대 보존
-                    q = urllib.parse.parse_qs(parsed_u.query, keep_blank_values=True)
-                    def set1(k, v): q[k] = [str(v)]
-                    set1('x1', _swlat)
-                    set1('x2', _nelat)
-                    set1('y1', _swlng)
-                    set1('y2', _nelng)
-                    set1('zoom', '18')
-                    set1('limit_cnt', request_limit)
-                    set1('t_type', t_type_val)
-                    set1('search_t_type', t_type_val)
-                    if 'search_erasure_status' not in q: set1('search_erasure_status', 'N')
-                    # doseq=True로 기존 다중값/빈값 보존
-                    query = urllib.parse.urlencode(q, doseq=True)
-                    return 'https://www.bdsplanet.com/map/getRealpriceMapMarker.ytp?' + query
-                except Exception as te:
-                    print(f"  ⚠️ BDS 요청 URL 템플릿 파싱 실패: {te}")
-                    return ''
-
             all_raw_items = []
-            empty_response_seen = False
-            parse_error_seen = False
-            unknown_structure_seen = False
             for t_type_val in ('1',):  # 매매만 수집 (임대 제외)
-                # ★ F12 실제 URL 파라미터 완전 반영 (누락 항목 추가)
-                params = urllib.parse.urlencode({
+                # ★ F12 실제 URL 파라미터 기반. 저장된 정상 URL이 있으면 그 구조를 템플릿으로 사용한다.
+                base_params = {
                     'search_r_type': 'B,G,F',
                     'search_t_type': t_type_val,
                     'search_year': '',
@@ -2519,44 +2487,66 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     'search_price_unit': 'py',
                     'search_price_from': '',
                     'search_price_to': '',
-                    'search_price_bldg_from': '',       # ★ 추가
-                    'search_price_bldg_to': '',         # ★ 추가
-                    'search_price_land_from': '',       # ★ 추가
-                    'search_price_land_to': '',         # ★ 추가
-                    'search_price_supply_from': '',     # ★ 추가
-                    'search_price_supply_to': '',       # ★ 추가
-                    'search_price_exclusive_from': '',  # ★ 추가
-                    'search_price_exclusive_to': '',    # ★ 추가
+                    'search_price_bldg_from': '',
+                    'search_price_bldg_to': '',
+                    'search_price_land_from': '',
+                    'search_price_land_to': '',
+                    'search_price_supply_from': '',
+                    'search_price_supply_to': '',
+                    'search_price_exclusive_from': '',
+                    'search_price_exclusive_to': '',
                     'search_area_tab': 'A1',
                     'search_area_set_tab': 'supply',
                     'search_area_unit': 'py',
-                    'search_area_bldg_from': '',        # ★ 추가
-                    'search_area_bldg_to': '',          # ★ 추가
-                    'search_area_land_from': '',        # ★ 추가
-                    'search_area_land_to': '',          # ★ 추가
+                    'search_area_bldg_from': '',
+                    'search_area_bldg_to': '',
+                    'search_area_land_from': '',
+                    'search_area_land_to': '',
                     'search_area_set_from': '',
                     'search_area_set_to': '',
-                    'search_area_land_right_from': '',  # ★ 추가
-                    'search_area_land_right_to': '',    # ★ 추가
+                    'search_area_land_right_from': '',
+                    'search_area_land_right_to': '',
                     'search_land_purpose': '',
                     'search_main_use': '',
-                    'search_main_use_none_add': '',     # ★ 추가
+                    'search_main_use_none_add': '',
                     'search_use_district': '',
                     'search_completion_year_from': '',
                     'search_completion_year_to': '',
-                    'x1': str(_swlat),   # swlat (남서 위도)
-                    'x2': str(_nelat),   # nelat (북동 위도)
-                    'y1': str(_swlng),   # swlng (남서 경도)
-                    'y2': str(_nelng),   # nelng (북동 경도)
-                    'zoom': '18',        # ★ 실제 요청과 동일하게 18
+                    'x1': str(_swlat),
+                    'x2': str(_nelat),
+                    'y1': str(_swlng),
+                    'y2': str(_nelng),
+                    'zoom': '18',
+                    'limit_cnt': str(request_limit),
+                    't_type': t_type_val,
+                    'search_erasure_status': 'N',
+                }
+                if bds_request_url and 'getRealpriceMapMarker.ytp' in str(bds_request_url):
+                    try:
+                        parsed_t = urllib.parse.urlparse(str(bds_request_url).strip())
+                        tmpl = dict(urllib.parse.parse_qsl(parsed_t.query, keep_blank_values=True))
+                        if tmpl:
+                            base_params.update(tmpl)
+                            print('  🔗 저장된 부동산플래닛 Request URL 템플릿 사용')
+                    except Exception as te:
+                        print(f'  ⚠️ 부동산플래닛 URL 템플릿 파싱 실패: {te}')
+                # 좌표/bounds와 핵심 조건은 항상 현재 상권King 기준으로 덮어쓴다.
+                base_params.update({
+                    'search_r_type': 'B,G,F',
+                    'search_t_type': t_type_val,
+                    'search_area_set_tab': 'supply',
+                    'x1': str(_swlat),
+                    'x2': str(_nelat),
+                    'y1': str(_swlng),
+                    'y2': str(_nelng),
+                    'zoom': base_params.get('zoom') or '18',
                     'limit_cnt': str(request_limit),
                     't_type': t_type_val,
                     'search_erasure_status': 'N',
                 })
-                url = _build_bds_url_from_template(request_url, t_type_val) or f'https://www.bdsplanet.com/map/getRealpriceMapMarker.ytp?{params}'
+                params = urllib.parse.urlencode(base_params)
+                url = f'https://www.bdsplanet.com/map/getRealpriceMapMarker.ytp?{params}'
                 print(f"  🌐 부동산플래닛 API 호출 (t_type={t_type_val})...")
-                if request_url and 'getRealpriceMapMarker.ytp' in str(request_url):
-                    print('     실제 Request URL 템플릿 사용')
                 print(f"     URL: {url[:120]}...")
                 try:
                     req = urllib.request.Request(url, headers=base_headers)
@@ -2571,71 +2561,43 @@ class ProxyHandler(BaseHTTPRequestHandler):
 
                 print(f"  🔍 응답 미리보기 (t_type={t_type_val}): {raw_text[:200]}")
                 if not raw_text:
-                    empty_response_seen = True
-                    print(f"  ⚠️ 빈 응답 (t_type={t_type_val}) — 쿠키/세션 부족 가능성이 큼")
+                    print(f"  ⚠️ 빈 응답 (t_type={t_type_val}) — 건너뜀")
                     continue
 
                 try:
                     raw = json.loads(raw_text)
                 except Exception as je:
-                    parse_error_seen = True
                     print(f"  ⚠️ JSON 파싱 실패 (t_type={t_type_val}): {je}")
                     print(f"     응답 원문: {raw_text[:500]}")
                     continue
 
-                def _find_bds_items(obj, depth=0):
-                    if depth > 5 or obj is None:
-                        return []
-                    if isinstance(obj, list):
-                        # 실거래 row는 dict 배열인 경우가 대부분이다.
-                        if not obj:
-                            return []
-                        if any(isinstance(x, dict) for x in obj):
-                            return obj
-                        return []
-                    if isinstance(obj, dict):
-                        # 부동산플래닛 응답 구조 변경 대비: 실거래 목록 후보 키 우선 탐색
-                        priority_keys = (
-                            'realpriceDealList', 'realPriceDealList', 'realpriceMapMarkerList',
-                            'markerList', 'dealList', 'list', 'items', 'contents', 'data', 'result',
-                            'body', 'payload', 'rows'
-                        )
-                        for key in priority_keys:
-                            if key in obj:
-                                found = _find_bds_items(obj.get(key), depth + 1)
-                                if found:
-                                    return found
-                        for val in obj.values():
-                            found = _find_bds_items(val, depth + 1)
-                            if found:
-                                return found
-                    return []
-
-                items_raw = _find_bds_items(raw)
-                if isinstance(raw, dict) and not items_raw:
-                    unknown_structure_seen = True
-                    print(f"  ⚠️ 알 수 없는 응답 구조 — 키 목록: {list(raw.keys())}")
+                items_raw = []
+                if isinstance(raw, list):
+                    items_raw = raw
+                elif isinstance(raw, dict):
+                    # 가능한 키 모두 시도
+                    for key in ('data', 'list', 'result', 'items', 'contents'):
+                        candidate = raw.get(key)
+                        if candidate:
+                            if isinstance(candidate, list):
+                                items_raw = candidate
+                                break
+                            elif isinstance(candidate, dict):
+                                for sub in ('list', 'data', 'items'):
+                                    if isinstance(candidate.get(sub), list):
+                                        items_raw = candidate[sub]
+                                        break
+                            if items_raw:
+                                break
+                    if not items_raw:
+                        print(f"  ⚠️ 알 수 없는 응답 구조 — 키 목록: {list(raw.keys())}")
 
                 print(f"  📋 t_type={t_type_val}: {len(items_raw)}개 수신")
                 all_raw_items.extend(items_raw)
 
             if not all_raw_items:
-                if empty_response_seen:
-                    msg = '부동산플래닛 API가 빈 응답을 반환했습니다. 저장된 쿠키가 없거나 권한이 부족합니다. getRealpriceMapMarker.ytp 요청의 Cookie 전체를 다시 입력하세요.'
-                    if cookie_source == 'user':
-                        msg = '입력한 부동산플래닛 Cookie로도 빈 응답이 왔습니다. Cookie가 만료됐거나, getRealpriceMapMarker.ytp가 아닌 다른 요청의 Cookie일 가능성이 큽니다.'
-                    if not request_url:
-                        msg += ' 가능하면 같은 요청의 Request URL도 함께 저장하세요.'
-                    self._ok(json.dumps({'status': 'cookie_required', 'message': msg, 'data': [], 'cookie_source': cookie_source}, ensure_ascii=False))
-                    return
-                if parse_error_seen or unknown_structure_seen:
-                    self._ok(json.dumps({'status': 'warn', 'message': '부동산플래닛 응답 구조를 읽지 못했습니다. proxy_server.py 파서 업데이트가 필요합니다.', 'data': []}, ensure_ascii=False))
-                    return
-                self._ok(json.dumps({'status': 'warn', 'message': '해당 지도 범위의 부동산플래닛 실거래 데이터가 없습니다.', 'data': []}, ensure_ascii=False))
+                self._ok(json.dumps({'status': 'warn', 'message': '해당 지역 부동산플래닛 실거래 데이터 없음 (쿠키가 만료됐을 수 있습니다)', 'data': []}, ensure_ascii=False))
                 return
-
-            if bds_cookie and all_raw_items and cookie_source in ('user', 'runtime_cache'):
-                BDS_COOKIE_CACHE = bds_cookie
 
             def clean(v):
                 if v is None or v == '' or v == '0': return None
@@ -2689,7 +2651,6 @@ class ProxyHandler(BaseHTTPRequestHandler):
 
             latest_by_addr = {}
             skipped_residential = 0
-            server_filter_kept = 0
             for d in all_raw_items:
                 # r_type_nm으로 주거용/오피스텔 필터링
                 r_nm = str(d.get('r_type_nm') or '').strip()
@@ -2715,7 +2676,6 @@ class ProxyHandler(BaseHTTPRequestHandler):
                         continue
                     # r_type_nm도 없고 코드도 없으면 일단 수집 (주소로 사후 판단)
 
-                server_filter_kept += 1
                 addr_key = bds_addr_key(d)
                 if addr_key:
                     prev = latest_by_addr.get(addr_key)
@@ -2773,9 +2733,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     '_bldg_area_m2':  float(d['bldg_area_m2']) if d.get('bldg_area_m2') else None,
                 })
 
-            max_n_applied = None
             if max_n and max_n > 0:
-                max_n_applied = int(max_n)
                 result_items = result_items[:max_n]
                 print(f"  🎯 상권킹 최대 개수 적용: {len(result_items)}개")
 
@@ -2811,16 +2769,8 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     print(f"  ✅ 부동산플래닛 주소 변환 완료: {converted}건")
 
             msg = f'{len(result_items)}개 수집 완료'
-            meta = {
-                'raw_count': len(all_raw_items),
-                'skipped_residential': skipped_residential,
-                'after_server_filter_count': server_filter_kept,
-                'after_dedupe_count': len(latest_by_addr),
-                'final_count': len(result_items),
-                'max_n_applied': max_n_applied,
-            }
-            print(f"  ✅ {msg} / 진단: {meta}")
-            self._ok(json.dumps({'status': 'success', 'message': msg, 'data': result_items, 'meta': meta}, ensure_ascii=False))
+            print(f"  ✅ {msg}")
+            self._ok(json.dumps({'status': 'success', 'message': msg, 'data': result_items}, ensure_ascii=False))
 
         except Exception as e:
             import traceback
