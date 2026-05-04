@@ -3477,7 +3477,7 @@ input, textarea, select {
 <script>if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
 
 <!-- 공통 로직 -->
-<script src="common.js?v=20260504_stable_sync_v1"></script>
+<script src="common.js?v=202604292130"></script>
 
 <!-- ════════════════════════════════════════════════════════
      mobile.js — 모바일 전용 초기화 및 UI 제어
@@ -3814,6 +3814,16 @@ input, textarea, select {
           mbRoomLoad('', { cloud: false });
         }
       }).catch(function(){});
+      setTimeout(function(){
+        try {
+          var rid = String(window._mbActiveRoomId || ((document.getElementById('mb-room-sel') || {}).value || '') || '');
+          if (rid && typeof window._wrPullImagesForRoom === 'function') {
+            window._wrPullImagesForRoom(rid, { render: false }).then(function(changed){
+              if (changed && typeof window.mbRoomLoad === 'function') window.mbRoomLoad(rid, { cloud: false });
+            }).catch(function(e){ console.warn('[MB IMG] room image pull', e); });
+          }
+        } catch(e) {}
+      }, 120);
     }
     // 파이프라인 탭
     if (name === 'pipe') {
@@ -3824,6 +3834,12 @@ input, textarea, select {
       var curSt = ((document.getElementById('mb-plist-status') || {}).value || '');
       if (typeof window.mbPlSetStatusFilter === 'function') window.mbPlSetStatusFilter(curSt);
       else if (typeof window.mbPlistRender === 'function') window.mbPlistRender();
+      var plPull = window._plPullRowsToLocal || window._plRefreshFromCloud;
+      if (typeof plPull === 'function') {
+        setTimeout(function(){
+          Promise.resolve(plPull({ render: true, force: true, lightweight: true, sync: false })).catch(function(e){ console.warn('[MB PL] background pull', e); });
+        }, 80);
+      }
     }
     if (name === 'site') {
       if (typeof window._siteHydrateKeysFromIdb === 'function') {
@@ -9242,7 +9258,8 @@ input, textarea, select {
         await window._sbInitLoad();
       } else {
         if (typeof window._wrRefreshFromCloud === 'function') await window._wrRefreshFromCloud({ render: false });
-        if (typeof window._plRefreshFromCloud === 'function') await window._plRefreshFromCloud({ render: false, force: false, sync: true });
+        var plPull = window._plPullRowsToLocal || window._plRefreshFromCloud;
+        if (typeof plPull === 'function') await plPull({ render: false, force: true, lightweight: true, sync: false });
       }
       window.mbRefreshAllViews();
       try {
