@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260504-sync-v4-tombstone-field-sync';
+    window.__SK_BUILD = '20260505-cloudflare-r2-json-a3-all-image-sync';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -288,7 +288,10 @@
       const url = window._cfDataUrl(key);
       const res = await window._cfFetchJson(url, {
         method: 'PUT',
-        headers: { 'content-type': 'application/json' },
+        headers: {
+          'content-type': 'application/json',
+          'x-sk-user-key': window.skGetCloudUserKey ? window.skGetCloudUserKey() : ''
+        },
         body: JSON.stringify({ version: 1, key, updatedAt: Date.now(), value })
       });
       if (!res.ok) throw new Error('Cloudflare 저장 실패 ' + key + ': ' + res.status);
@@ -297,7 +300,10 @@
     window._cfLoadJson = window._cfLoadJson || async function(key) {
       if (window.SK_USE_CLOUDFLARE_DATA === false) return null;
       const url = window._cfDataUrl(key);
-      const res = await window._cfFetchJson(url, { method: 'GET' });
+      const res = await window._cfFetchJson(url, {
+        method: 'GET',
+        headers: { 'x-sk-user-key': window.skGetCloudUserKey ? window.skGetCloudUserKey() : '' }
+      });
       if (res.status === 404) return null;
       if (!res.ok) throw new Error('Cloudflare 로드 실패 ' + key + ': ' + res.status);
       const json = await res.json();
@@ -309,6 +315,92 @@
       if (!res.ok && res.status !== 404) throw new Error('Cloudflare 삭제 실패 ' + key + ': ' + res.status);
       return true;
     };
+    // ── [A3] 모든 이미지/첨부 업로드 공통 동기화 가드 ─────────────
+    // 업로드 직후 오래된 Cloudflare JSON pull이 방금 추가한 이미지/첨부를 덮는 문제를 막고,
+    // 어느 화면에서 업로드했든 관련 저장소를 한 번 더 Cloudflare에 확정 저장한다.
+    window._skMarkMediaWrite = window._skMarkMediaWrite || function(reason, holdMs) {
+      const until = Date.now() + (typeof holdMs === 'number' ? holdMs : 22000);
+      window.__skCloudLocalWriteUntil = Math.max(Number(window.__skCloudLocalWriteUntil || 0), until);
+      window.__skMediaWriteUntil = Math.max(Number(window.__skMediaWriteUntil || 0), until);
+      window.__wr2ImageWriteUntil = Math.max(Number(window.__wr2ImageWriteUntil || 0), until);
+      window.__skLastMediaWriteReason = reason || 'media';
+      return until;
+    };
+    window._skFlushAllImageStores = window._skFlushAllImageStores || (function() {
+      let timer = null;
+      let running = false;
+      return function(reason, delay) {
+        window._skMarkMediaWrite(reason || 'flush', 24000);
+        clearTimeout(timer);
+        timer = setTimeout(async function() {
+          timer = null;
+          if (running) return;
+          running = true;
+          try {
+            const jobs = [];
+            const add = function(label, fn) {
+              try { jobs.push(Promise.resolve().then(fn).catch(function(e){ console.warn('[SK][media flush]', label, e); })); } catch(e) {}
+            };
+            // 작업룸 본문: 작업이미지, 작업룸 노트 첨부, 체크리스트 첨부 등
+            if (typeof window._sbSaveRooms === 'function') {
+              add('wr2_rooms', function() {
+                const rooms = (typeof window._wrGetRoomsCache === 'function')
+                  ? window._wrGetRoomsCache()
+                  : ((window._idbCache && window._idbCache['wr2_rooms']) || []);
+                return window._sbSaveRooms((rooms || []).filter(function(r){ return r && r.id; }));
+              });
+            }
+            // 작업룸 섹션: 사용자 섹션/섹션 체크리스트/자유표 등
+            if (typeof window._sbSaveSections === 'function') {
+              add('wr2_sections', function() {
+                const sections = (typeof window._wrGetSectionsCache === 'function')
+                  ? window._wrGetSectionsCache()
+                  : ((window._idbCache && window._idbCache['wr2_sections']) || []);
+                return window._sbSaveSections((sections || []).filter(function(s){ return s && s.id; }));
+              });
+            }
+            // 저장목록 첨부
+            if (typeof window._sbSaveSv === 'function') {
+              add('re_sv', function() {
+                const sv = (typeof window.getSv === 'function') ? window.getSv() : ((window._idbCache && window._idbCache['re_sv']) || []);
+                return window._sbSaveSv(Array.isArray(sv) ? sv : []);
+              });
+            }
+            // 인사이트/노트 첨부
+            if (typeof window._sbSaveNtNotes === 'function') {
+              add('nt_notes', function() {
+                const notes = (typeof window._ntGetNotes === 'function') ? window._ntGetNotes() : ((window._idbCache && window._idbCache['nt_notes']) || window.ntNotes || []);
+                return window._sbSaveNtNotes(Array.isArray(notes) ? notes : []);
+              });
+            }
+            // 알짜카드 이미지
+            if (typeof window._sbSaveKcards === 'function') {
+              add('ins_kcards', function() {
+                const cards = (window._idbCache && window._idbCache['ins_kcards']) || window.kcards || [];
+                return window._sbSaveKcards(Array.isArray(cards) ? cards : []);
+              });
+            }
+            // 지도메모 첨부
+            if (typeof window._sbSaveMapMemos === 'function') {
+              add('map_memos', function() {
+                const memos = (window._idbCache && window._idbCache['map_memos']) || [];
+                return window._sbSaveMapMemos(Array.isArray(memos) ? memos : []);
+              });
+            }
+            // 지도/스냅샷 이미지
+            if (typeof window._sbSaveWorkScenes === 'function') {
+              add('re_ws', function() {
+                const scenes = (window._idbCache && window._idbCache['re_ws']) || [];
+                return window._sbSaveWorkScenes(Array.isArray(scenes) ? scenes : []);
+              });
+            }
+            await Promise.all(jobs);
+          } finally {
+            running = false;
+          }
+        }, typeof delay === 'number' ? delay : 900);
+      };
+    })();
     console.log('[CF] backend ready', _cfBaseUrl(), 'userKey=', window.skGetCloudUserKey());
 
 /* ════════════════════════════════════════════════════════
@@ -2091,7 +2183,10 @@
       const options = opts || {};
       const localBusy =
         Number(window.__wr2UploadBusy || 0) > 0 ||
+        Number(window.__skImageUploadBusy || 0) > 0 ||
         !!window.__wr2SaveRoomsTimer ||
+        (Number(window.__skCloudLocalWriteUntil || 0) > Date.now()) ||
+        (Number(window.__skMediaWriteUntil || 0) > Date.now()) ||
         (Number(window.__wr2ImageWriteUntil || 0) > Date.now()) ||
         (Number(window.__mbRoomLocalWriteUntil || 0) > Date.now());
       if (localBusy) {
@@ -2112,6 +2207,8 @@
       if (_hasKvDirty('wr2_sections') && window._sbSaveSections) {
         try {
           await window._sbSaveSections(_sbGetCachedArray('wr2_sections').filter(s => s && s.id));
+          // 로컬 섹션 첨부/이미지 변경 직후에는 오래된 Cloudflare 섹션 JSON으로 덮지 않는다.
+          return { rooms: null, sections: null, skipped: 'section_dirty_flushed' };
         } catch (e) {
           console.warn('[SB] section flush before refresh', e);
         }
@@ -2147,7 +2244,7 @@
       const cloudSections = window._sbLoadSections ? await window._sbLoadSections() : null;
       if (cloudSections !== null) {
         const localSections = window._wrGetSectionsCache ? window._wrGetSectionsCache() : ((window._idbCache && window._idbCache['wr2_sections']) || []);
-        const mergedSections = _sbTakeCloudArray(cloudSections);
+        const mergedSections = (typeof _sbMergeById === 'function') ? _sbMergeById(cloudSections, localSections) : _sbTakeCloudArray(cloudSections);
         if (window._wrPersistSectionsCache) sectionPayload = window._wrPersistSectionsCache(mergedSections, { keepDeleted: true, sync: false, syncState: false });
         else {
           const activeSections = (window._wrFilterActiveSections ? window._wrFilterActiveSections(mergedSections) : mergedSections.filter(s => s && !s.deletedAt));
@@ -2939,6 +3036,8 @@
       // Cloudflare R2를 기본 업로드 경로로 사용한다.
       // Supabase Auth가 죽어도 이미지 업로드가 막히지 않도록 user key는 로컬/기존 세션 캐시에서 해결한다.
       const uid = (window.skGetCloudUserKey ? window.skGetCloudUserKey() : (window._skResolveStoredSupabaseUserId && window._skResolveStoredSupabaseUserId()) || ('local_' + Date.now().toString(36)));
+      if (typeof window._skMarkMediaWrite === 'function') window._skMarkMediaWrite('upload-start:' + (folder || 'uploads'), 24000);
+      window.__skImageUploadBusy = Number(window.__skImageUploadBusy || 0) + 1;
       if (typeof window._ensureInlineUploadHelpers === 'function') window._ensureInlineUploadHelpers();
       const target = window._sbResolveUploadTarget(uid, folder);
       const payload = await window._sbMakeUploadPayload(source, target.folder);
@@ -2959,11 +3058,20 @@
         let json = null;
         try { json = await res.json(); } catch(_e) { json = null; }
         const url = (json && json.url) || (workerUrl + '/' + path);
+        if (typeof window._skMarkMediaWrite === 'function') window._skMarkMediaWrite('upload-ok:' + (folder || 'uploads'), 26000);
+        // caller가 room/section/saved/note 데이터에 URL을 붙인 뒤 저장할 시간을 확보하고,
+        // 잠깐 뒤 모든 이미지 가능 저장소를 한 번 더 Cloudflare에 확정 저장한다.
+        if (typeof window._skFlushAllImageStores === 'function') {
+          window._skFlushAllImageStores('upload-ok:' + (folder || 'uploads'), 1200);
+          setTimeout(function(){ try { window._skFlushAllImageStores('upload-ok-late:' + (folder || 'uploads'), 0); } catch(e){} }, 4500);
+        }
         return { url, path, bucket: 'r2', provider: 'cloudflare' };
       } catch(e) {
         console.warn('[R2] 업로드 실패:', e.message || e);
         if (typeof showToast === 'function') showToast('Cloudflare 이미지 업로드 실패: Worker/R2 설정을 확인하세요.', 'warn');
         throw e;
+      } finally {
+        window.__skImageUploadBusy = Math.max(0, Number(window.__skImageUploadBusy || 1) - 1);
       }
     };
 
@@ -2976,8 +3084,10 @@
       if (!workerUrl) return;
       try {
         for (const p of realPaths) {
-          await fetch(workerUrl + '/' + p, { method: 'DELETE' }).catch(e => console.warn('[R2] delete error', e));
+          await fetch(workerUrl + '/' + p, { method: 'DELETE', headers: { 'x-sk-user-key': window.skGetCloudUserKey ? window.skGetCloudUserKey() : '' } }).catch(e => console.warn('[R2] delete error', e));
         }
+        if (typeof window._skMarkMediaWrite === 'function') window._skMarkMediaWrite('delete-images', 22000);
+        if (typeof window._skFlushAllImageStores === 'function') window._skFlushAllImageStores('delete-images', 900);
       } catch(e) { console.warn('[R2] deleteImages error', e); }
     };
 
@@ -6805,7 +6915,10 @@ var _safeLocalSet = function(key, value) {
                     wr2PushActivity(room, '"' + (item.txt || '체크 항목') + '"을 ' + (done ? '완료' : '미완료') + '로 변경했습니다', phase);
                   }
                   room.updatedAt = Date.now();
+                  if (typeof window._skMarkMediaWrite === 'function') window._skMarkMediaWrite('phase-checklist', 22000);
                   saveRooms();
+                  if (typeof window.__wr2FlushSaveRooms === 'function') window.__wr2FlushSaveRooms();
+                  if (typeof window._skFlushAllImageStores === 'function') window._skFlushAllImageStores('phase-checklist', 900);
                   renderSections(room);
                   renderTimeline(room);
                   if (window._mbRefreshRoomSections) window._mbRefreshRoomSections(room.id);
@@ -7471,11 +7584,14 @@ window.wr2SummaryCancelEdit = function() {
                 function _wrRefreshSectionChecklist(secId) {
                   const sec = _wrGetSectionChecklistSec(secId);
                   const room = getActiveRoom();
+                  if (typeof window._skMarkMediaWrite === 'function') window._skMarkMediaWrite('section-checklist', 24000);
                   if (room) {
                     room.updatedAt = Date.now();
                     saveRooms();
+                    if (typeof window.__wr2FlushSaveRooms === 'function') window.__wr2FlushSaveRooms();
                   }
                   saveSections();
+                  if (typeof window._skFlushAllImageStores === 'function') window._skFlushAllImageStores('section-checklist', 800);
                   if (room) renderSections(room);
                   if (room) renderTimeline(room);
                   if (room && window._mbRefreshRoomSections) window._mbRefreshRoomSections(room.id);
@@ -8003,7 +8119,11 @@ window.wr2SummaryCancelEdit = function() {
                   }
                   note.attachments.splice(idx, 1);
                   room.updatedAt = Date.now();
-                  saveRooms(); renderAttachments(room);
+                  if (typeof window._skMarkMediaWrite === 'function') window._skMarkMediaWrite('workroom-note-delete', 22000);
+                  saveRooms();
+                  if (typeof window.__wr2FlushSaveRooms === 'function') window.__wr2FlushSaveRooms();
+                  if (typeof window._skFlushAllImageStores === 'function') window._skFlushAllImageStores('workroom-note-delete', 600);
+                  renderAttachments(room);
                 };
 
                 // 수익률 계산기 위젯 (초기값 없이 그냥 유지 — 별도 상태관리)
@@ -8539,8 +8659,10 @@ window.wr2SummaryCancelEdit = function() {
                     const stamp = Date.now();
                     note.updatedAt = stamp;
                     room.updatedAt = stamp;
+                    if (typeof window._skMarkMediaWrite === 'function') window._skMarkMediaWrite('workroom-note', 26000);
                     saveRooms();
                     if (typeof window.__wr2FlushSaveRooms === 'function') window.__wr2FlushSaveRooms();
+                    if (typeof window._skFlushAllImageStores === 'function') window._skFlushAllImageStores('workroom-note', 700);
                     if (ok) wr2PushActivity(room, '노트 첨부 ' + ok + '개를 추가했습니다', room.phase || room.status);
                     renderAttachments(room);
                     if (ok) showToast(`📎 ${ok}개 첨부 완료`, fail ? 'warn' : 'ok');
@@ -18823,7 +18945,9 @@ window.wr2SummaryCancelEdit = function() {
         }
       }
       if (successCount > 0) {
+        if (typeof window._skMarkMediaWrite === 'function') window._skMarkMediaWrite('saved-popup-attach', 22000);
         setSv(sv);
+        if (typeof window._skFlushAllImageStores === 'function') window._skFlushAllImageStores('saved-popup-attach', 700);
         renderPopup(id);
         showToast(`✅ ${successCount}개 파일 첨부됨`, 'ok');
       }
@@ -19162,6 +19286,8 @@ window.wr2SummaryCancelEdit = function() {
           }
 
           results[idx].additionalDocs.push({ name: file.name, size: file.size, type: file.type, url, storagePath: path, text });
+          if (typeof window._skMarkMediaWrite === 'function') window._skMarkMediaWrite('result-additional-docs', 22000);
+          if (typeof window._skFlushAllImageStores === 'function') window._skFlushAllImageStores('result-additional-docs', 1200);
           renderTab(idx);
         } catch (e) {
           console.error('추가 문서 업로드 실패:', e);
@@ -30175,6 +30301,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
               if (window._wrPersistRooms) window._wrPersistRooms(_allRooms, { syncState: false });
               else if (typeof window._sbSaveRooms === 'function') window._sbSaveRooms(_allRooms).catch(()=>{});
             }
+            if (typeof window._skMarkMediaWrite === 'function') window._skMarkMediaWrite('map-capture-room', 26000);
+            if (typeof window._skFlushAllImageStores === 'function') window._skFlushAllImageStores('map-capture-room', 800);
             if (typeof window.wr2Render === 'function') window.wr2Render();
             setTimeout(function() {
               try {
@@ -30212,7 +30340,9 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
               storagePath: path
             });
             note.updatedAt = new Date().toISOString();
+            if (typeof window._skMarkMediaWrite === 'function') window._skMarkMediaWrite('map-capture-note', 22000);
             if (typeof ntSave === 'function') ntSave(noteId);
+            if (typeof window._skFlushAllImageStores === 'function') window._skFlushAllImageStores('map-capture-note', 700);
             if (typeof ntOpen === 'function') ntOpen(noteId);
             if (typeof ntRender === 'function') ntRender();
             try { showToast('📸 노트에 캡처 이미지 추가됨', 'ok'); } catch (e) { }
@@ -32479,7 +32609,9 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           }
         }
         note.updatedAt = new Date().toISOString();
+        if (typeof window._skMarkMediaWrite === 'function') window._skMarkMediaWrite('nt-attachment', 22000);
         ntSave(id);
+        if (typeof window._skFlushAllImageStores === 'function') window._skFlushAllImageStores('nt-attachment', 700);
         ntOpen(id);
         input.value = '';
         if (ok) showToast(`📎 파일 ${ok}개 첨부 완료`, fail ? 'warn' : 'ok');
@@ -35238,6 +35370,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           const publicUrl = url || '';
           if (!publicUrl) throw new Error('이미지 URL 생성 실패');
           window._kcardPendingImgs.push(publicUrl);
+          if (typeof window._skMarkMediaWrite === 'function') window._skMarkMediaWrite('kcard-image', 22000);
+          if (typeof window._skFlushAllImageStores === 'function') window._skFlushAllImageStores('kcard-image', 1500);
 
           // 로딩 완료 표시
           wrap.style.opacity = '1';
