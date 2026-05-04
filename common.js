@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260504-sync-image-pl-v2-fast-ui';
+    window.__SK_BUILD = '20260503-disco-bds-card-pos-jumpo-v27';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -82,8 +82,8 @@
                 const preset = (folder === 'captures' || folder === 'snapshots')
                   // ★ [FIX] 압축 강화: 1440px/380KB → 900px/80KB (Supabase 용량 절약)
                   // ★ JPEG 90% 품질, 최대 500KB (inline fallback용)
-                  ? { maxPx: 1440, qualities: [0.82, 0.76, 0.70, 0.64, 0.58], maxLen: 280000 }
-                  : { maxPx: 1440, qualities: [0.82, 0.76, 0.70, 0.64, 0.58], maxLen: 280000 };
+                  ? { maxPx: 2560, qualities: [0.90, 0.85, 0.80, 0.75], maxLen: 500000 }
+                  : { maxPx: 2560, qualities: [0.90, 0.85, 0.80, 0.75], maxLen: 500000 };
                 const scale = Math.min(1, preset.maxPx / Math.max(img.width || 1, img.height || 1));
                 const cw = Math.max(1, Math.round((img.width || 1) * scale));
                 const ch = Math.max(1, Math.round((img.height || 1) * scale));
@@ -115,7 +115,7 @@
           const optimizedUrl = /^image\//i.test(prepared.mimeType || '')
             ? await window._sbOptimizeInlineImage(prepared.dataUrl, folder)
             : prepared.dataUrl;
-          if (/^image\//i.test(prepared.mimeType || '') && optimizedUrl.length > 750000) {
+          if (/^image\//i.test(prepared.mimeType || '') && optimizedUrl.length > 120000) {
             throw new Error('이미지가 너무 큽니다. 해상도를 조금 더 낮춰서 다시 시도하세요.');
           }
           if (!/^image\//i.test(prepared.mimeType || '') && optimizedUrl.length > 650000) {
@@ -502,7 +502,6 @@
     let _sbAutoSyncBound = false;
     let _sbSyncBackoffUntil = 0;
     const _sbRefreshMarks = {};
-    if (window.__plAutoCloudPull === undefined) window.__plAutoCloudPull = true;
     function _sbSetBackoff(ms) {
       const waitMs = Math.max(5000, ms || 30000);
       _sbSyncBackoffUntil = Math.max(_sbSyncBackoffUntil, Date.now() + waitMs);
@@ -536,37 +535,12 @@
       }
     }
     window._sbRunEntryRefresh = _sbRunEntryRefresh;
-    async function _sbRunAutoSync(reason) {
-      // FAST-UI 원칙: 포커스/가시성 복귀 때 전체 클라우드 pull을 즉시 실행하지 않는다.
-      // 화면 진입은 로컬 IDB 캐시를 먼저 렌더하고, pull은 각 탭에서 백그라운드로 수행한다.
-      // 여기서는 미전송 dirty 변경분만 가볍게 flush하여 UI 초기 표시가 네트워크에 막히지 않게 한다.
-      if (_sbAutoSyncRunning) return;
-      if (!_sbCanNetworkSync()) return;
-      if (!_sbAllowRefresh('auto-flush:' + String(reason || 'tick'), 12000)) return;
-      _sbAutoSyncRunning = true;
-      try {
-        const sessionRes = await _sbGetSessionShared({ force: false });
-        const session = sessionRes && sessionRes.data && sessionRes.data.session;
-        if (!session || !session.user) return;
-        await _sbSyncDirtyQueues();
-      } catch (e) {
-        _sbSetBackoff(30000);
-        console.warn('[SB] auto dirty flush fail', reason, e);
-      } finally {
-        _sbAutoSyncRunning = false;
-      }
-    }
     function _sbEnsureAutoSync() {
-      if (_sbAutoSyncBound) return;
-      _sbAutoSyncBound = true;
-      const kick = function(reason, delay) {
-        setTimeout(function() { _sbRunAutoSync(reason); }, typeof delay === 'number' ? delay : 0);
-      };
-      window.addEventListener('focus', function() { kick('focus', 250); }, { passive: true });
-      document.addEventListener('visibilitychange', function() {
-        if (!document.hidden) kick('visible', 350);
-      });
-      window.addEventListener('online', function() { kick('online', 500); }, { passive: true });
+      if (!_sbAutoSyncBound) {
+        _sbAutoSyncBound = true;
+        // debug14: 백그라운드/포커스 자동 재동기화 없음
+        // 반영은 앱 재오픈 / 탭 재진입 / 수동 새로고침 기준으로만 수행
+      }
     }
     function _sbScheduleInitLoad() {
       _sbEnsureAutoSync();
@@ -626,12 +600,6 @@
           _sbInitLoadCalled = true;
           _sbScheduleInitLoad();
         }
-        if (typeof window._sbResumeRoomSync === 'function') {
-          window._sbResumeRoomSync('auth:' + String(event || 'SIGNED_IN'));
-        }
-        if (typeof window._sbResumeSnapshotSync === 'function') {
-          window._sbResumeSnapshotSync('auth:' + String(event || 'SIGNED_IN'));
-        }
       } else if (event === 'PASSWORD_RECOVERY') {
         window._sbShowRecovery && window._sbShowRecovery();
       } else if (event === 'SIGNED_OUT') {
@@ -644,10 +612,6 @@
         if (_sbAutoSyncTimer) {
           clearInterval(_sbAutoSyncTimer);
           _sbAutoSyncTimer = null;
-        }
-        if (window.__wr2SyncState) {
-          window.__wr2SyncState.status = 'signed_out';
-          window.__wr2SyncState.blockedBySession = true;
         }
         window._sbShowLogin && window._sbShowLogin();
       }
@@ -701,7 +665,6 @@
     async function _sbGetSessionShared(opts) {
       const options = opts || {};
       if (_sbSessionReq && !options.force) return _sbSessionReq;
-      const prevCachedUserId = _sbCachedUserId;
       const req = Promise.resolve()
         .then(() => _sbWithTimeout(window._sb.auth.getSession(), 'auth getSession', 15000))
         .then(res => {
@@ -712,15 +675,6 @@
         })
         .catch(e => {
           console.warn('[SB] getSession error', e);
-          const msg = String((e && (e.message || e.code || e.name)) || e || '').toLowerCase();
-          const transient =
-            msg.indexOf('timeout') >= 0 ||
-            msg.indexOf('network') >= 0 ||
-            msg.indexOf('failed to fetch') >= 0;
-          if (transient && prevCachedUserId) {
-            _sbCachedUserId = prevCachedUserId;
-            return { data: { session: { user: { id: prevCachedUserId } } }, error: e, stale: true };
-          }
           _sbCachedUserId = null;
           return { data: { session: null }, error: e };
         })
@@ -733,26 +687,10 @@
     async function _sbGetUserId() {
       if (_sbCachedUserId) return _sbCachedUserId;
       try {
-        const res = await _sbGetSessionShared();
-        const session = res && res.data && res.data.session;
-        if (session && session.user && session.user.id) {
-          _sbCachedUserId = session.user.id;
-          try { localStorage.setItem('sb_sangkwon_last_uid', _sbCachedUserId); } catch(e) {}
-          return _sbCachedUserId;
-        }
-      } catch(e) {}
-      try {
-        if (window._sb && window._sb.auth && typeof window._sb.auth.getUser === 'function') {
-          const gu = await _sbWithTimeout(window._sb.auth.getUser(), 'auth getUser', 10000);
-          const user = gu && gu.data && gu.data.user;
-          if (user && user.id) {
-            _sbCachedUserId = user.id;
-            try { localStorage.setItem('sb_sangkwon_last_uid', _sbCachedUserId); } catch(e) {}
-            return _sbCachedUserId;
-          }
-        }
-      } catch(e) { console.warn('[SB] getUser fallback failed', e); }
-      return null;
+        const { data: { session } } = await _sbGetSessionShared();
+        _sbCachedUserId = session?.user?.id || null;
+        return _sbCachedUserId;
+      } catch(e) { return null; }
     }
     window._sbGetUserId = _sbGetUserId; // ★ 전역 노출 (외부 함수에서 접근 가능하도록)
 
@@ -942,13 +880,12 @@
     async function tblSaveDirty(table, arr) {
       try {
         const uid = await _sbGetUserId();
-        if (!uid) return false;
-        if (!arr || !arr.length) return true;
+        if (!uid || !arr || !arr.length) return;
         const dirty = _dirtyItems[table];
         const toSave = (dirty && dirty.size > 0)
           ? arr.filter(item => dirty.has(item.id || item.item_id))
           : (table === 'workrooms' ? [] : arr); // workrooms는 dirty 없으면 skip (tombstone 덮어쓰기 방지)
-        if (!toSave.length) return true;
+        if (!toSave.length) return;
         const savedIds = toSave.map(item => item && (item.id || item.item_id)).filter(Boolean);
         const dirtyRevSnapshot = _snapshotDirtyRev(table, savedIds);
         const rows = toSave.map(item => ({
@@ -969,18 +906,7 @@
         if (dirty && dirty.size > 0) {
           _clearDirtyIdsWithRev(table, savedIds, dirtyRevSnapshot);
         }
-        window.__sbLastTableError = null;
-        return true;
-      } catch(e) {
-        window.__sbLastTableError = {
-          table: table,
-          phase: 'save',
-          message: _sbErrText(e, 'tblSaveDirty failed'),
-          at: Date.now()
-        };
-        console.warn('[SB] tblSaveDirty error', table, e);
-      }
-      return false;
+      } catch(e) { console.warn('[SB] tblSaveDirty error', table, e); }
     }
 
     // ── 테이블 로드: 페이지네이션 루프 (1000개 제한 해제) ────────
@@ -1029,8 +955,7 @@
     async function tblSoftDelete(table, itemIds) {
       try {
         const uid = await _sbGetUserId();
-        if (!uid) return false;
-        if (!itemIds || !itemIds.length) return true;
+        if (!uid || !itemIds.length) return;
         const now = new Date().toISOString();
         const rows = itemIds.map(iid => ({
           id: uid + '_' + iid,
@@ -1048,18 +973,7 @@
           if (error) throw error;
         }
         _clearDirtyIds(table, itemIds);
-        window.__sbLastTableError = null;
-        return true;
-      } catch(e) {
-        window.__sbLastTableError = {
-          table: table,
-          phase: 'soft_delete',
-          message: _sbErrText(e, 'tblSoftDelete failed'),
-          at: Date.now()
-        };
-        console.warn('[SB] tblSoftDelete error', table, e);
-      }
-      return false;
+      } catch(e) { console.warn('[SB] tblSoftDelete error', table, e); }
     }
 
     // ─── 동기화 상태 표시 ─────────────────────────────────────
@@ -1760,11 +1674,7 @@
       return cloned;
     };
     function _wrRoomImageStamp(room) {
-      const base = Number(room && (room._captureImagesUpdatedAt || room.captureImagesUpdatedAt || room.imagesUpdatedAt || 0)) || 0;
-      const removedAt = _wrNormalizeRemovedCaptureKeys(room).reduce(function(max, entry) {
-        return Math.max(max, Number(entry && entry.at || 0) || 0);
-      }, 0);
-      return Math.max(base, removedAt);
+      return Number(room && (room._captureImagesUpdatedAt || room.captureImagesUpdatedAt || room.imagesUpdatedAt || 0)) || 0;
     }
     function _wrRoomHasOwnImages(room) {
       return !!(room && Object.prototype.hasOwnProperty.call(room, 'captureImages'));
@@ -1773,41 +1683,8 @@
       const out = [];
       if (!room || typeof room !== 'object') return out;
       if (Array.isArray(room.captureImages)) out.push.apply(out, room.captureImages);
+      if (room.captureImage) out.push({ src: room.captureImage, savedAt: room.updatedAt || room.createdAt || Date.now(), snapName: null });
       return out;
-    }
-    function _wrNormalizeRemovedCaptureKeys(room) {
-      const out = [];
-      const src = room && Array.isArray(room._removedCaptureImageKeys) ? room._removedCaptureImageKeys : [];
-      src.forEach(function(entry) {
-        if (!entry) return;
-        const key = String(entry.key || '').trim();
-        if (!key) return;
-        out.push({ key: key, at: Number(entry.at || 0) || 0 });
-      });
-      return out;
-    }
-    function _wrMergeRemovedCaptureKeys(prevRoom, nextRoom) {
-      const map = new Map();
-      _wrNormalizeRemovedCaptureKeys(prevRoom).forEach(function(entry) {
-        const old = map.get(entry.key);
-        if (!old || (entry.at || 0) >= (old.at || 0)) map.set(entry.key, entry);
-      });
-      _wrNormalizeRemovedCaptureKeys(nextRoom).forEach(function(entry) {
-        const old = map.get(entry.key);
-        if (!old || (entry.at || 0) >= (old.at || 0)) map.set(entry.key, entry);
-      });
-      const TTL = 7 * 24 * 60 * 60 * 1000;
-      const cutoff = Date.now() - TTL;
-      return Array.from(map.values()).filter(function(entry) { return (entry.at || 0) >= cutoff; });
-    }
-    function _wrApplyRemovedCaptureKeys(images, removedEntries) {
-      const removed = new Set((Array.isArray(removedEntries) ? removedEntries : []).map(function(entry) {
-        return entry && entry.key ? String(entry.key) : '';
-      }).filter(Boolean));
-      return (Array.isArray(images) ? images : []).filter(function(img) {
-        const key = _wrCaptureImageKey(img);
-        return !key || !removed.has(key);
-      });
     }
     function _wrMergeRoomPreserveImages(prevRoom, nextRoom, opts) {
       const options = opts || {};
@@ -1815,11 +1692,10 @@
       if (!nextRoom) return prevRoom;
       const merged = Object.assign({}, prevRoom, nextRoom);
       const prevImgs = _wrNormalizeLegacyCaptureImages(prevRoom);
-      const nextHasImages = _wrRoomHasOwnImages(nextRoom);
+      const nextHasImages = _wrRoomHasOwnImages(nextRoom) || !!nextRoom.captureImage;
       const nextImgs = _wrNormalizeLegacyCaptureImages(nextRoom);
       const prevStamp = _wrRoomImageStamp(prevRoom);
       const nextStamp = _wrRoomImageStamp(nextRoom);
-      const removedKeys = _wrMergeRemovedCaptureKeys(prevRoom, nextRoom);
       // 삭제/전체교체처럼 이미지 필드를 명시적으로 비운 경우만 빈 배열을 존중한다.
       // 그 외에는 오래된 room 객체의 빈 captureImages가 기존 이미지를 덮지 못하게 한다.
       if (nextHasImages) {
@@ -1832,21 +1708,8 @@
             merged._captureImagesUpdatedAt = prevStamp;
           }
         } else if (nextImgs.length) {
-          // nextRoom이 이미지 수정 시각(stamp)을 갖고 있으면 "최신 이미지 집합"으로 간주해 교체한다.
-          // (부분 삭제 시 union 병합으로 삭제 대상이 되살아나는 문제 방지)
-          const hasExplicitImageUpdate = !!(nextStamp || options.explicitEmptyImages);
-          if (hasExplicitImageUpdate) {
-            if (!prevStamp || nextStamp >= prevStamp || options.explicitEmptyImages) {
-              merged.captureImages = _wrMergeCaptureImages(nextImgs);
-              merged._captureImagesUpdatedAt = nextStamp || Number(merged.updatedAt || 0) || Date.now();
-            } else {
-              merged.captureImages = _wrMergeCaptureImages(prevImgs);
-              merged._captureImagesUpdatedAt = prevStamp;
-            }
-          } else {
-            merged.captureImages = _wrMergeCaptureImages(prevImgs, nextImgs);
-            merged._captureImagesUpdatedAt = Math.max(prevStamp, Number(merged.updatedAt || 0), Date.now());
-          }
+          merged.captureImages = _wrMergeCaptureImages(prevImgs, nextImgs);
+          merged._captureImagesUpdatedAt = Math.max(prevStamp, nextStamp, Number(merged.updatedAt || 0), Date.now());
         } else if (prevImgs.length) {
           merged.captureImages = _wrMergeCaptureImages(prevImgs);
           merged._captureImagesUpdatedAt = prevStamp || Number(merged.updatedAt || 0) || Date.now();
@@ -1855,10 +1718,6 @@
         merged.captureImages = _wrMergeCaptureImages(prevImgs);
         merged._captureImagesUpdatedAt = prevStamp || Number(merged.updatedAt || 0) || Date.now();
       }
-      if (Array.isArray(merged.captureImages) && merged.captureImages.length) {
-        merged.captureImages = _wrApplyRemovedCaptureKeys(merged.captureImages, removedKeys);
-      }
-      merged._removedCaptureImageKeys = removedKeys;
       delete merged.captureImage;
       return merged;
     }
@@ -1936,7 +1795,6 @@
       return String(img.storagePath || img.path || img.src || img.url || '') ||
         [img.snapName || '', img.parentSnapName || '', img.savedAt || ''].join('|');
     }
-    window._wrCaptureImageKey = _wrCaptureImageKey;
     function _wrMergeCaptureImages() {
       const out = [];
       const seen = new Set();
@@ -1956,14 +1814,16 @@
       const options = opts || {};
       const now = Date.now();
       const newEntry = Object.assign({}, entry, { savedAt: entry.savedAt || now, src: entry.src || entry.url || '' });
-      const newEntryKey = _wrCaptureImageKey(newEntry);
       window.__wr2ImageWriteUntil = Date.now() + 15000;
       const cacheRooms = window._wrGetRoomsCache ? window._wrGetRoomsCache() : _sbGetCachedArray('wr2_rooms');
       const stateRooms = (window.wr2State && Array.isArray(window.wr2State.rooms)) ? window.wr2State.rooms : [];
       const cacheRoom = (cacheRooms || []).find(function(r) { return r && r.id === roomId; }) || null;
       const stateRoom = (stateRooms || []).find(function(r) { return r && r.id === roomId; }) || null;
       const baseRoom = Object.assign({}, cacheRoom || {}, stateRoom || {}, { id: roomId });
+      const legacy = [];
+      if (baseRoom.captureImage) legacy.push({ src: baseRoom.captureImage, savedAt: baseRoom.updatedAt || baseRoom.createdAt || now, snapName: null });
       baseRoom.captureImages = _wrMergeCaptureImages(
+        legacy,
         cacheRoom && cacheRoom.captureImages,
         stateRoom && stateRoom.captureImages,
         baseRoom.captureImages,
@@ -1971,11 +1831,6 @@
       );
       delete baseRoom.captureImage;
       baseRoom._captureImagesUpdatedAt = now;
-      if (newEntryKey) {
-        baseRoom._removedCaptureImageKeys = _wrNormalizeRemovedCaptureKeys(baseRoom).filter(function(entry) {
-          return entry.key !== newEntryKey;
-        });
-      }
       baseRoom.updatedAt = now;
       if (window._sbMarkRoomDirty) window._sbMarkRoomDirty(roomId);
       const fullMap = new Map();
@@ -1983,16 +1838,15 @@
       (stateRooms || []).forEach(function(r) { if (r && r.id) fullMap.set(r.id, r); });
       fullMap.set(roomId, baseRoom);
       const fullRooms = Array.from(fullMap.values()).filter(function(r) { return r && r.id; });
-      let queuedByPersist = false;
       if (window._wrPersistRooms) {
         window._wrPersistRooms(fullRooms, { keepDeletedInState: true, syncState: false, sync: options.sync !== false, immediate: true });
-        queuedByPersist = (options.sync !== false);
       } else if (window._wrPersistRoomCache) {
         window._wrPersistRoomCache(fullRooms, { keepDeletedInState: true, syncState: false });
+        if (options.sync !== false && window._sbSaveRooms) window._sbSaveRooms(fullRooms).catch(function(e){ console.warn('[SB] room image sync fail', e); });
       }
       try { if (window.idbSet) window.idbSet('wr2_rooms', fullRooms).catch(function(){}); } catch(e) {}
-      if (!queuedByPersist && options.sync !== false && window._sbScheduleSaveRooms) window._sbScheduleSaveRooms(fullRooms, 0);
-      else if (!queuedByPersist && options.sync !== false && window._sbSaveRooms) window._sbSaveRooms(fullRooms).catch(function(e){ console.warn('[SB] room image immediate sync fail', e); });
+      if (options.sync !== false && window._sbScheduleSaveRooms) window._sbScheduleSaveRooms(fullRooms, 0);
+      else if (options.sync !== false && window._sbSaveRooms) window._sbSaveRooms(fullRooms).catch(function(e){ console.warn('[SB] room image immediate sync fail', e); });
       if (stateRoom) {
         Object.assign(stateRoom, baseRoom);
       } else if (window.wr2State && Array.isArray(window.wr2State.rooms) && !baseRoom.deletedAt) {
@@ -2010,23 +1864,9 @@
       const cacheRoom = (cacheRooms || []).find(function(r) { return r && r.id === roomId; }) || null;
       const stateRoom = (stateRooms || []).find(function(r) { return r && r.id === roomId; }) || null;
       const baseRoom = Object.assign({}, cacheRoom || {}, stateRoom || {}, { id: roomId });
-      const prevImages = _wrNormalizeLegacyCaptureImages(baseRoom);
       baseRoom.captureImages = _wrMergeCaptureImages(images || []);
       delete baseRoom.captureImage;
       baseRoom._captureImagesUpdatedAt = now;
-      const nextKeySet = new Set((baseRoom.captureImages || []).map(_wrCaptureImageKey).filter(Boolean));
-      const removedMap = new Map();
-      _wrNormalizeRemovedCaptureKeys(baseRoom).forEach(function(entry) { removedMap.set(entry.key, entry); });
-      prevImages.forEach(function(img) {
-        const key = _wrCaptureImageKey(img);
-        if (!key || nextKeySet.has(key)) return;
-        removedMap.set(key, { key: key, at: now });
-      });
-      const TTL = 7 * 24 * 60 * 60 * 1000;
-      const cutoff = now - TTL;
-      baseRoom._removedCaptureImageKeys = Array.from(removedMap.values()).filter(function(entry) {
-        return (entry.at || 0) >= cutoff;
-      });
       baseRoom.updatedAt = now;
       if (window._sbMarkRoomDirty) window._sbMarkRoomDirty(roomId);
       const fullMap = new Map();
@@ -2034,29 +1874,13 @@
       (stateRooms || []).forEach(function(r) { if (r && r.id) fullMap.set(r.id, r); });
       fullMap.set(roomId, baseRoom);
       const fullRooms = Array.from(fullMap.values()).filter(function(r) { return r && r.id; });
-      let queuedByPersist = false;
-      if (window._wrPersistRooms) {
-        window._wrPersistRooms(fullRooms, { keepDeletedInState: true, syncState: false, sync: options.sync !== false, immediate: true, explicitEmptyImages: true });
-        queuedByPersist = (options.sync !== false);
-      } else if (window._wrPersistRoomCache) window._wrPersistRoomCache(fullRooms, { keepDeletedInState: true, syncState: false });
+      if (window._wrPersistRooms) window._wrPersistRooms(fullRooms, { keepDeletedInState: true, syncState: false, sync: options.sync !== false, immediate: true, explicitEmptyImages: true });
+      else if (window._wrPersistRoomCache) window._wrPersistRoomCache(fullRooms, { keepDeletedInState: true, syncState: false });
       try { if (window.idbSet) window.idbSet('wr2_rooms', fullRooms).catch(function(){}); } catch(e) {}
-      if (!queuedByPersist && options.sync !== false && window._sbScheduleSaveRooms) window._sbScheduleSaveRooms(fullRooms, 0);
-      else if (!queuedByPersist && options.sync !== false && window._sbSaveRooms) window._sbSaveRooms(fullRooms).catch(function(e){ console.warn('[SB] room image set immediate sync fail', e); });
+      if (options.sync !== false && window._sbScheduleSaveRooms) window._sbScheduleSaveRooms(fullRooms, 0);
+      else if (options.sync !== false && window._sbSaveRooms) window._sbSaveRooms(fullRooms).catch(function(e){ console.warn('[SB] room image set immediate sync fail', e); });
       if (stateRoom) Object.assign(stateRoom, baseRoom);
       return stateRoom || baseRoom;
-    };
-    window._wrRemoveCaptureImages = function(roomId, matcher, opts) {
-      if (!roomId || typeof matcher !== 'function') return null;
-      const cacheRooms = window._wrGetRoomsCache ? window._wrGetRoomsCache() : _sbGetCachedArray('wr2_rooms');
-      const stateRooms = (window.wr2State && Array.isArray(window.wr2State.rooms)) ? window.wr2State.rooms : [];
-      const room = (stateRooms || []).find(function(r) { return r && r.id === roomId; })
-        || (cacheRooms || []).find(function(r) { return r && r.id === roomId; });
-      if (!room) return null;
-      const current = _wrNormalizeLegacyCaptureImages(room);
-      const next = current.filter(function(img, idx) {
-        try { return !matcher(img, idx); } catch(e) { return true; }
-      });
-      return window._wrSetCaptureImages(roomId, next, Object.assign({ explicitEmptyImages: true }, opts || {}));
     };
 
     window._wrMarkRoomsDirty = function(arr) {
@@ -2097,11 +1921,11 @@
     };
     window._wrRefreshFromCloud = async function(opts) {
       const options = opts || {};
-      const roomSyncState = window.__wr2SyncState || {};
       const localBusy =
         Number(window.__wr2UploadBusy || 0) > 0 ||
         !!window.__wr2SaveRoomsTimer ||
-        roomSyncState.status === 'saving';
+        (Number(window.__wr2ImageWriteUntil || 0) > Date.now()) ||
+        (Number(window.__mbRoomLocalWriteUntil || 0) > Date.now());
       if (localBusy) {
         return { rooms: null, sections: null, skipped: 'local_edit_busy' };
       }
@@ -2173,186 +1997,36 @@
       return { rooms: roomPayload, sections: sectionPayload };
     };
 
-    // ─── 작업룸 동기화 (단일 직렬 워커 + 백오프 재시도) ───────────
-    const _wr2RoomSyncRuntime = {
-      running: false,
-      inFlight: null,
-      timer: null,
-      queuedRooms: null,
-      failStreak: 0,
-      blockedBySession: false,
-      lastErrorType: '',
-      lastErrorMessage: '',
-      lastWarnAt: 0,
-      lastAttemptAt: 0,
-      lastSuccessAt: 0
-    };
-    function _wr2GetDirtyCount() {
-      return _dirtyItems.workrooms ? _dirtyItems.workrooms.size : 0;
-    }
-    function _wr2NormalizeRoomsInput(arr) {
-      let rooms = Array.isArray(arr) ? arr : null;
-      if (!rooms || !rooms.length) {
-        rooms = (window._wrGetRoomsCache && window._wrGetRoomsCache())
-          || ((window._idbCache && window._idbCache['wr2_rooms'])
-            || _sbGetCachedArray('wr2_rooms'));
-      }
-      return (Array.isArray(rooms) ? rooms : []).filter(function(r) { return r && r.id; });
-    }
-    function _wr2SetSyncState(extra) {
-      const base = window.__wr2SyncState || {};
-      const next = Object.assign({}, base, extra || {}, {
-        failStreak: _wr2RoomSyncRuntime.failStreak,
-        blockedBySession: _wr2RoomSyncRuntime.blockedBySession,
-        lastErrorType: _wr2RoomSyncRuntime.lastErrorType || null,
-        lastErrorMessage: _wr2RoomSyncRuntime.lastErrorMessage || null,
-        lastAttemptAt: _wr2RoomSyncRuntime.lastAttemptAt || null,
-        lastSuccessAt: _wr2RoomSyncRuntime.lastSuccessAt || null,
-        pendingWrites: _wr2GetDirtyCount()
-      });
-      window.__wr2SyncState = next;
-      return next;
-    }
-    function _wr2ClassifySyncError(err) {
-      const msg = String((err && (err.message || err.code || err.name)) || err || '').toLowerCase();
-      if (!msg) return 'UNKNOWN';
-      if (msg.indexOf('timeout') >= 0 || msg.indexOf('network') >= 0 || msg.indexOf('failed to fetch') >= 0) return 'NETWORK';
-      if (
-        msg.indexOf('no_session') >= 0 ||
-        msg.indexOf('no session') >= 0 ||
-        msg.indexOf('jwt expired') >= 0 ||
-        msg.indexOf('invalid jwt') >= 0 ||
-        msg.indexOf('refresh token not found') >= 0 ||
-        msg.indexOf('auth session missing') >= 0
-      ) return 'NO_SESSION';
-      if (msg.indexOf('permission') >= 0 || msg.indexOf('rls') >= 0 || msg.indexOf('403') >= 0 || msg.indexOf('401') >= 0 || msg.indexOf('denied') >= 0) return 'PERMISSION';
-      if (msg.indexOf('workrooms_sync_failed') >= 0) return 'SAVE_FAILED';
-      return 'UNKNOWN';
-    }
-    function _wr2RetryDelayMs(errorType) {
-      const fail = Math.max(1, _wr2RoomSyncRuntime.failStreak);
-      if (errorType === 'NO_SESSION') return 0;
-      if (errorType === 'PERMISSION') return Math.min(120000, 15000 + (fail * 7000));
-      if (errorType === 'NETWORK') return Math.min(90000, 2500 * Math.pow(2, Math.min(fail, 5)));
-      return Math.min(60000, 3500 * Math.pow(2, Math.min(fail, 4)));
-    }
-    function _wr2ScheduleSyncRun(delayMs) {
-      const wait = Math.max(0, Number(delayMs || 0));
-      if (_wr2RoomSyncRuntime.timer) clearTimeout(_wr2RoomSyncRuntime.timer);
-      _wr2RoomSyncRuntime.timer = setTimeout(function() {
-        _wr2RoomSyncRuntime.timer = null;
-        _wr2RunRoomSyncLoop();
-      }, wait);
-    }
-    function _wr2EnqueueRooms(arr) {
-      _wr2RoomSyncRuntime.queuedRooms = _wr2NormalizeRoomsInput(arr);
-      _wr2SetSyncState({ status: 'queued', queuedAt: Date.now() });
-    }
-    async function _wr2SaveRoomsNow(arr) {
-      const uid = await _sbGetUserId();
-      if (!uid) throw new Error('no_session');
-      const prev = window._wrGetRoomsCache ? window._wrGetRoomsCache() : [];
-      const prevMap = new Map((prev || []).filter(function(r) { return r && r.id; }).map(function(r) { return [r.id, r]; }));
-      const cleanArr = _wrStripFreeTableLegacyRooms(arr).map(function(r) {
-        if (!r || !r.id) return r;
-        return _wrMergeRoomPreserveImages(prevMap.get(r.id), r);
-      });
-      const full = _sbPruneTombstones(_sbKeepTombstones(prev, cleanArr)).filter(function(r) { return r && r.id; });
-      const changedIds = _sbChangedIds(prev, full);
-      const hasDirty = _wr2GetDirtyCount() > 0;
-      if (!changedIds.length && !hasDirty) return { ok: true, didWrite: false };
-      const active = window._wrFilterActiveRooms ? window._wrFilterActiveRooms(full) : full.filter(function(r) { return !r.deletedAt; });
-      const deleted = full.filter(function(r) { return r.deletedAt; }).map(function(r) { return r.id; });
-      const saveOk = await tblSaveDirty('workrooms', active);
-      const delOk = deleted.length ? await tblSoftDelete('workrooms', deleted) : true;
-      if (!saveOk || !delOk) {
-        const detail = window.__sbLastTableError && window.__sbLastTableError.table === 'workrooms'
-          ? String(window.__sbLastTableError.message || 'unknown')
-          : 'unknown';
-        throw new Error('workrooms_sync_failed:' + detail);
-      }
-      if (window._wrPersistRoomCache) window._wrPersistRoomCache(full, { syncState: false });
-      return { ok: true, didWrite: true };
-    }
-    async function _wr2RunRoomSyncLoop() {
-      if (_wr2RoomSyncRuntime.running) return _wr2RoomSyncRuntime.inFlight || false;
-      _wr2RoomSyncRuntime.running = true;
-      const runner = (async function() {
-        let synced = false;
-        while (true) {
-          const payload = _wr2RoomSyncRuntime.queuedRooms || _wr2NormalizeRoomsInput(null);
-          _wr2RoomSyncRuntime.queuedRooms = null;
-          if (!payload.length) break;
-          _wr2RoomSyncRuntime.lastAttemptAt = Date.now();
-          _wr2SetSyncState({ status: 'saving' });
-          try {
-            const result = await _wr2SaveRoomsNow(payload);
-            synced = !!(result && result.ok !== false);
-            _wr2RoomSyncRuntime.failStreak = 0;
-            _wr2RoomSyncRuntime.blockedBySession = false;
-            _wr2RoomSyncRuntime.lastErrorType = '';
-            _wr2RoomSyncRuntime.lastErrorMessage = '';
-            _wr2RoomSyncRuntime.lastSuccessAt = Date.now();
-            window.__wr2ImageWriteUntil = 0;
-            _wr2SetSyncState({ status: 'synced', syncedAt: _wr2RoomSyncRuntime.lastSuccessAt });
-            if (synced && result && result.didWrite) window._sbSyncStatus('☁️ 작업룸 동기화 완료', true);
-          } catch (e) {
-            const prevType = _wr2RoomSyncRuntime.lastErrorType;
-            const type = _wr2ClassifySyncError(e);
-            _wr2RoomSyncRuntime.failStreak += 1;
-            _wr2RoomSyncRuntime.lastErrorType = type;
-            _wr2RoomSyncRuntime.lastErrorMessage = _sbErrText(e, 'workrooms sync failed');
-            _wr2RoomSyncRuntime.blockedBySession = (type === 'NO_SESSION');
-            _wr2SetSyncState({ status: type === 'NO_SESSION' ? 'blocked_auth' : 'error', errorAt: Date.now() });
-            const now = Date.now();
-            const warnMsg = (type === 'NO_SESSION')
-              ? '⚠️ 로그인 필요 · 작업룸 동기화 대기'
-              : '⚠️ 작업룸 동기화 재시도 중';
-            if ((now - _wr2RoomSyncRuntime.lastWarnAt) > 10000 || prevType !== type) {
-              window._sbSyncStatus(warnMsg, false);
-              _wr2RoomSyncRuntime.lastWarnAt = now;
-            }
-            if (type !== 'NO_SESSION') {
-              const backoff = _wr2RetryDelayMs(type);
-              _wr2ScheduleSyncRun(backoff);
-            }
-            console.warn('[SB] saveRooms error', type, e);
-            return false;
-          }
-          if (!_wr2RoomSyncRuntime.queuedRooms && _wr2GetDirtyCount() === 0) break;
-        }
-        return synced;
-      })().finally(function() {
-        _wr2RoomSyncRuntime.running = false;
-        _wr2RoomSyncRuntime.inFlight = null;
-      });
-      _wr2RoomSyncRuntime.inFlight = runner;
-      return runner;
-    }
-    window._sbResumeRoomSync = function(reason) {
-      _wr2RoomSyncRuntime.blockedBySession = false;
-      _wr2RoomSyncRuntime.lastErrorType = '';
-      _wr2RoomSyncRuntime.lastErrorMessage = '';
-      _wr2SetSyncState({ status: 'queued', resumeReason: reason || 'manual', resumedAt: Date.now() });
-      _wr2EnqueueRooms(null);
-      _wr2ScheduleSyncRun(0);
-    };
-    window._sbGetRoomSyncState = function() {
-      return Object.assign({}, window.__wr2SyncState || {}, { running: !!_wr2RoomSyncRuntime.running });
-    };
+    // ─── 작업룸 동기화 ────────────────────────────────────────
     window._sbScheduleSaveRooms = function(arr, delay) {
-      _wr2EnqueueRooms(arr);
-      _wr2ScheduleSyncRun(typeof delay === 'number' ? delay : 700);
+      _sbScheduleAsyncSave('wr2_rooms', arr, function(latest) {
+        return window._sbSaveRooms(latest);
+      }, typeof delay === 'number' ? delay : 1100);
     };
-    window._sbSaveRooms = async function(arr, opts) {
-      const options = opts || {};
-      _wr2EnqueueRooms(arr);
-      if (options.defer === true) {
-        _wr2ScheduleSyncRun(typeof options.delay === 'number' ? options.delay : 700);
-        return true;
+    window._sbSaveRooms = async function(arr) {
+      let synced = false;
+      try {
+        const prev = window._wrGetRoomsCache ? window._wrGetRoomsCache() : [];
+        const prevMap = new Map((prev || []).filter(r => r && r.id).map(r => [r.id, r]));
+        const cleanArr = _wrStripFreeTableLegacyRooms(arr).map(function(r) {
+          if (!r || !r.id) return r;
+          return _wrMergeRoomPreserveImages(prevMap.get(r.id), r);
+        });
+        const full = _sbPruneTombstones(_sbKeepTombstones(prev, cleanArr)).filter(r => r && r.id);
+        const changedIds = _sbChangedIds(prev, full);
+        const hasDirty = !!(_dirtyItems.workrooms && _dirtyItems.workrooms.size);
+        if (!changedIds.length && !hasDirty) return;
+        const active = window._wrFilterActiveRooms ? window._wrFilterActiveRooms(full) : full.filter(r => !r.deletedAt);
+        const deleted = full.filter(r => r.deletedAt).map(r => r.id);
+        await tblSaveDirty('workrooms', active);
+        if (deleted.length) await tblSoftDelete('workrooms', deleted);
+        if (window._wrPersistRoomCache) window._wrPersistRoomCache(full, { syncState: false });
+        synced = true;
+      } catch(e) {
+        console.warn('[SB] saveRooms error', e);
+        window._sbSyncStatus('⚠️ 작업룸 동기화 재시도 중', false);
       }
-      _wr2ScheduleSyncRun(typeof options.delay === 'number' ? options.delay : 0);
-      return await _wr2RunRoomSyncLoop();
+      if (synced) window._sbSyncStatus('☁️ 작업룸 동기화 완료', true);
     };
     window._sbMarkRoomDirty = function(roomId) { _markDirty('workrooms', roomId); };
     window._sbLoadRooms = async function() { return await tblLoadArr('workrooms'); };
@@ -2488,20 +2162,10 @@
           if (meta && parseInt(meta.count, 10) >= 0) {
             const count = parseInt(meta.count, 10) || 0;
             const merged = [];
-            const parts = new Array(count);
-            let cursor = 0;
-            const workerCount = Math.min(6, Math.max(1, count));
-            const workers = Array.from({ length: workerCount }, async function() {
-              while (cursor < count) {
-                const i = cursor++;
-                try { parts[i] = await kvGet(_PL_CHUNK_PREFIX + i); }
-                catch (e) { parts[i] = []; }
-              }
-            });
-            await Promise.all(workers);
-            parts.forEach(function(part) {
+            for (let i = 0; i < count; i += 1) {
+              const part = await kvGet(_PL_CHUNK_PREFIX + i);
               if (Array.isArray(part) && part.length) merged.push.apply(merged, part);
-            });
+            }
             out = merged;
           }
         } catch (e) {
@@ -2638,8 +2302,8 @@
             const preset = (folder === 'captures' || folder === 'snapshots')
               // ★ [FIX] 압축 강화: 1440px/380KB → 900px/80KB (Supabase 용량 절약)
               // ★ JPEG 90% 품질, 최대 500KB (inline fallback용)
-              ? { maxPx: 1440, qualities: [0.82, 0.76, 0.70, 0.64, 0.58], maxLen: 280000 }
-              : { maxPx: 1440, qualities: [0.82, 0.76, 0.70, 0.64, 0.58], maxLen: 280000 };
+              ? { maxPx: 2560, qualities: [0.90, 0.85, 0.80, 0.75], maxLen: 500000 }
+              : { maxPx: 2560, qualities: [0.90, 0.85, 0.80, 0.75], maxLen: 500000 };
             const scale = Math.min(1, preset.maxPx / Math.max(img.width || 1, img.height || 1));
             const cw = Math.max(1, Math.round((img.width || 1) * scale));
             const ch = Math.max(1, Math.round((img.height || 1) * scale));
@@ -2669,7 +2333,7 @@
       const optimizedUrl = /^image\//i.test(prepared.mimeType || '')
         ? await window._sbOptimizeInlineImage(prepared.dataUrl, folder)
         : prepared.dataUrl;
-      if (/^image\//i.test(prepared.mimeType || '') && optimizedUrl.length > 750000) {
+      if (/^image\//i.test(prepared.mimeType || '') && optimizedUrl.length > 120000) {
         throw new Error('이미지가 너무 큽니다. 해상도를 조금 더 낮춰서 다시 시도하세요.');
       }
       if (!/^image\//i.test(prepared.mimeType || '') && optimizedUrl.length > 650000) {
@@ -2685,36 +2349,15 @@
     // ★ [R2] Cloudflare R2 업로드 Worker URL
     window.R2_WORKER_URL = 'https://sangkwon-upload-worker.feye80.workers.dev';
 
-    window._skGetStableUploadOwnerId = window._skGetStableUploadOwnerId || function(authUid) {
-      if (authUid) return String(authUid);
-      try {
-        const last = localStorage.getItem('sb_sangkwon_last_uid');
-        if (last) return String(last);
-      } catch(e) {}
-      try {
-        let anon = localStorage.getItem('sk_upload_owner_id');
-        if (!anon) {
-          anon = 'anon_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2);
-          localStorage.setItem('sk_upload_owner_id', anon);
-        }
-        return anon;
-      } catch(e) {
-        return 'anon';
-      }
-    };
-
     window._sbUploadImage = async function(source, folder) {
       const uid = await _sbGetUserId();
-      const ownerId = window._skGetStableUploadOwnerId ? window._skGetStableUploadOwnerId(uid) : (uid || 'anon');
-      if (!uid) {
-        try { window._sbSyncStatus('⚠️ 로그인 확인 중 · 이미지는 임시 저장 후 동기화 대기', false); } catch(e) {}
-      }
+      if (!uid) throw new Error('로그인이 필요합니다');
       if (typeof window._ensureInlineUploadHelpers === 'function') window._ensureInlineUploadHelpers();
-      const target = window._sbResolveUploadTarget(ownerId, folder);
+      const target = window._sbResolveUploadTarget(uid, folder);
       const payload = await window._sbMakeUploadPayload(source, target.folder);
       const path = target.pathPrefix + payload.fileName;
 
-      // ★ [R2] Cloudflare R2 Worker로 업로드. 세션이 잠시 늦게 잡혀도 업로드 자체는 막지 않는다.
+      // ★ [R2] Cloudflare R2 Worker로 업로드
       try {
         const workerUrl = (window.R2_WORKER_URL || '').replace(/\/$/, '');
         if (!workerUrl) throw new Error('R2_WORKER_URL 미설정');
@@ -2724,11 +2367,9 @@
           body: payload.file,
         });
         if (!res.ok) throw new Error('R2 업로드 실패: ' + res.status);
-        const text = await res.text();
-        let json = {};
-        try { json = text ? JSON.parse(text) : {}; } catch(e) { json = {}; }
-        const url = json.url || (workerUrl + '/' + path);
-        return { url: url, path: path, bucket: 'r2', ownerId: ownerId, authLinked: !!uid };
+        const json = await res.json();
+        const url = json.url || '';
+        return { url, path, bucket: 'r2' };
       } catch(e) {
         console.warn('[R2] 업로드 실패 → inline 저장으로 fallback:', e.message || e);
         if (typeof window._sbMakeInlineUpload === 'function') return await window._sbMakeInlineUpload(source, folder);
@@ -2739,21 +2380,13 @@
     // ★ [R2] Storage에서 이미지/파일 삭제
     window._sbDeleteImages = async function(paths, bucket) {
       if (!paths || !paths.length) return;
-      const realPaths = paths.filter(function(p) { return p && !String(p).startsWith('inline:'); });
+      const realPaths = paths.filter(p => p && !String(p).startsWith('inline:'));
       if (!realPaths.length) return;
-      // 작업룸/노트 이미지는 다기기 병합 지연 중 메타데이터가 되살아날 수 있으므로
-      // 사용자 조작 시점에는 파일 원본을 즉시 물리삭제하지 않는다.
-      // 메타데이터 tombstone이 모든 기기에 전파된 뒤 별도 청소 작업으로 지우는 방식이 안전하다.
-      const allowImmediate = window.__SK_ALLOW_IMMEDIATE_STORAGE_DELETE === true || bucket === 'kcard-images';
-      if (!allowImmediate) {
-        console.info('[R2] physical delete skipped for sync safety', realPaths);
-        return;
-      }
       const workerUrl = (window.R2_WORKER_URL || '').replace(/\/$/, '');
       if (!workerUrl) return;
       try {
         for (const p of realPaths) {
-          await fetch(workerUrl + '/' + p, { method: 'DELETE' }).catch(function(e) { console.warn('[R2] delete error', e); });
+          await fetch(workerUrl + '/' + p, { method: 'DELETE' }).catch(e => console.warn('[R2] delete error', e));
         }
       } catch(e) { console.warn('[R2] deleteImages error', e); }
     };
@@ -3237,146 +2870,14 @@
       return Array.isArray(d) ? d : null;
     };
 
-    // ─── 작업씬(WorkScene) 동기화 (직렬 워커 + 백오프) ───────────
-    const _wsSyncRuntime = {
-      running: false,
-      inFlight: null,
-      timer: null,
-      queuedScenes: null,
-      failStreak: 0,
-      blockedBySession: false,
-      lastWarnAt: 0,
-      lastErrorType: '',
-      lastErrorMessage: ''
-    };
-    function _wsNormalizeInput(arr) {
-      let scenes = Array.isArray(arr) ? arr : null;
-      if (!scenes || !scenes.length) {
-        scenes = (window._wsGetScenesCache && window._wsGetScenesCache())
-          || ((window._idbCache && window._idbCache['re_ws']) || _sbGetCachedArray('re_ws'));
-      }
-      return _normalizeWorkScenes((Array.isArray(scenes) ? scenes : []).filter(scene => scene && scene.id));
-    }
-    function _wsClassifyError(err) {
-      const msg = String((err && (err.message || err.code || err.name)) || err || '').toLowerCase();
-      if (!msg) return 'UNKNOWN';
-      if (msg.indexOf('timeout') >= 0 || msg.indexOf('network') >= 0 || msg.indexOf('failed to fetch') >= 0) return 'NETWORK';
-      if (
-        msg.indexOf('no_session') >= 0 ||
-        msg.indexOf('no session') >= 0 ||
-        msg.indexOf('jwt expired') >= 0 ||
-        msg.indexOf('invalid jwt') >= 0 ||
-        msg.indexOf('refresh token not found') >= 0 ||
-        msg.indexOf('auth session missing') >= 0
-      ) return 'NO_SESSION';
-      if (msg.indexOf('permission') >= 0 || msg.indexOf('rls') >= 0 || msg.indexOf('403') >= 0 || msg.indexOf('401') >= 0 || msg.indexOf('denied') >= 0) return 'PERMISSION';
-      if (msg.indexOf('snapshots_sync_failed') >= 0) return 'SAVE_FAILED';
-      return 'UNKNOWN';
-    }
-    function _wsRetryDelayMs(errorType) {
-      const fail = Math.max(1, _wsSyncRuntime.failStreak);
-      if (errorType === 'NO_SESSION') return 0;
-      if (errorType === 'PERMISSION') return Math.min(120000, 12000 + (fail * 6000));
-      if (errorType === 'NETWORK') return Math.min(90000, 2000 * Math.pow(2, Math.min(fail, 5)));
-      return Math.min(60000, 3000 * Math.pow(2, Math.min(fail, 4)));
-    }
-    function _wsScheduleRun(delayMs) {
-      const wait = Math.max(0, Number(delayMs || 0));
-      if (_wsSyncRuntime.timer) clearTimeout(_wsSyncRuntime.timer);
-      _wsSyncRuntime.timer = setTimeout(function() {
-        _wsSyncRuntime.timer = null;
-        _wsRunSyncLoop();
-      }, wait);
-    }
-    function _wsEnqueue(arr) {
-      _wsSyncRuntime.queuedScenes = _wsNormalizeInput(arr);
-    }
-    async function _wsSaveNow(arr) {
-      const uid = await _sbGetUserId();
-      if (!uid) throw new Error('no_session');
-      const prev = window._wsGetScenesCache ? window._wsGetScenesCache() : [];
-      const full = _normalizeWorkScenes((Array.isArray(arr) ? arr : []).filter(scene => scene && scene.id));
-      const changedIds = _sbChangedIds(prev, full);
-      const hasDirty = !!(_dirtyItems.snapshots && _dirtyItems.snapshots.size);
-      if (!changedIds.length && !hasDirty) return { ok: true, didWrite: false };
+    // ─── 작업씬(WorkScene) 동기화 ────────────────────────────
+    window._sbSaveWorkScenes = async function(arr) {
+      const full = (Array.isArray(arr) ? arr : []).filter(scene => scene && scene.id);
       const active = _sbFilterActiveEntities(full);
       const deleted = full.filter(scene => scene.deletedAt).map(scene => scene.id);
-      const saveOk = await tblSaveDirty('snapshots', active);
-      const delOk = deleted.length ? await tblSoftDelete('snapshots', deleted) : true;
-      if (!saveOk || !delOk) {
-        const detail = window.__sbLastTableError && window.__sbLastTableError.table === 'snapshots'
-          ? String(window.__sbLastTableError.message || 'unknown')
-          : 'unknown';
-        throw new Error('snapshots_sync_failed:' + detail);
-      }
-      return { ok: true, didWrite: true };
-    }
-    async function _wsRunSyncLoop() {
-      if (_wsSyncRuntime.running) return _wsSyncRuntime.inFlight || false;
-      _wsSyncRuntime.running = true;
-      const runner = (async function() {
-        let synced = false;
-        while (true) {
-          const payload = _wsSyncRuntime.queuedScenes || _wsNormalizeInput(null);
-          _wsSyncRuntime.queuedScenes = null;
-          if (!payload.length) break;
-          try {
-            const result = await _wsSaveNow(payload);
-            synced = !!(result && result.ok !== false);
-            _wsSyncRuntime.failStreak = 0;
-            _wsSyncRuntime.blockedBySession = false;
-            _wsSyncRuntime.lastErrorType = '';
-            _wsSyncRuntime.lastErrorMessage = '';
-            if (synced && result && result.didWrite) window._sbSyncStatus('☁️ 작업씬 동기화 완료', true);
-          } catch (e) {
-            const prevType = _wsSyncRuntime.lastErrorType;
-            const type = _wsClassifyError(e);
-            _wsSyncRuntime.failStreak += 1;
-            _wsSyncRuntime.lastErrorType = type;
-            _wsSyncRuntime.lastErrorMessage = _sbErrText(e, 'snapshot sync failed');
-            _wsSyncRuntime.blockedBySession = (type === 'NO_SESSION');
-            const warnMsg = (type === 'NO_SESSION')
-              ? '⚠️ 로그인 필요 · 스냅샷 동기화 대기'
-              : '⚠️ 스냅샷 동기화 재시도 중';
-            const now = Date.now();
-            if ((now - _wsSyncRuntime.lastWarnAt) > 10000 || prevType !== type) {
-              window._sbSyncStatus(warnMsg, false);
-              _wsSyncRuntime.lastWarnAt = now;
-            }
-            if (type !== 'NO_SESSION') _wsScheduleRun(_wsRetryDelayMs(type));
-            console.warn('[SB] saveWorkScenes error', type, e);
-            return false;
-          }
-          if (!_wsSyncRuntime.queuedScenes && !(_dirtyItems.snapshots && _dirtyItems.snapshots.size)) break;
-        }
-        return synced;
-      })().finally(function() {
-        _wsSyncRuntime.running = false;
-        _wsSyncRuntime.inFlight = null;
-      });
-      _wsSyncRuntime.inFlight = runner;
-      return runner;
-    }
-    window._sbResumeSnapshotSync = function(reason) {
-      _wsSyncRuntime.blockedBySession = false;
-      _wsSyncRuntime.lastErrorType = '';
-      _wsSyncRuntime.lastErrorMessage = '';
-      _wsEnqueue(null);
-      _wsScheduleRun(0);
-    };
-    window._sbScheduleSaveWorkScenes = function(arr, delay) {
-      _wsEnqueue(arr);
-      _wsScheduleRun(typeof delay === 'number' ? delay : 700);
-    };
-    window._sbSaveWorkScenes = async function(arr, opts) {
-      const options = opts || {};
-      _wsEnqueue(arr);
-      if (options.defer === true) {
-        _wsScheduleRun(typeof options.delay === 'number' ? options.delay : 700);
-        return true;
-      }
-      _wsScheduleRun(typeof options.delay === 'number' ? options.delay : 0);
-      return await _wsRunSyncLoop();
+      await tblSaveDirty('snapshots', active);
+      if (deleted.length) await tblSoftDelete('snapshots', deleted);
+      window._sbSyncStatus('☁️ 작업씬 동기화 완료', true);
     };
     window._sbMarkWorkSceneDirty = function(sceneId) { _markDirty('snapshots', sceneId); };
     window._sbLoadWorkScenes = async function() { return await tblLoadArr('snapshots'); };
@@ -3390,7 +2891,7 @@
       const full = _sbPruneTombstones(_sbTouchNumericRecords(prev, _sbBuildFullEntitySet(prev, normalized, { keepDeleted: !!options.keepDeleted })));
       _sbMarkChangedIds('snapshots', prev, full);
       _sbPersistCachedArray('re_ws', full);
-      if (options.sync !== false && window._sbSaveWorkScenes) window._sbSaveWorkScenes(full, { defer: true, delay: options.immediate === true ? 0 : 700 }).catch(e => console.warn('[SB] snapshot sync fail', e));
+      if (options.sync !== false && window._sbSaveWorkScenes) window._sbSaveWorkScenes(full).catch(e => console.warn('[SB] snapshot sync fail', e));
       return { full, active: _sbFilterActiveEntities(full) };
     };
     window._wsRefreshFromCloud = async function(opts) {
@@ -3630,18 +3131,8 @@
     }
     window._sbInitLoad = async function() {
       try {
-        const sessionRes = await _sbGetSessionShared();
-        const session = sessionRes && sessionRes.data ? sessionRes.data.session : null;
-        if (!session) {
-          const emsg = String((sessionRes && sessionRes.error && (sessionRes.error.message || sessionRes.error.code || sessionRes.error.name)) || '').toLowerCase();
-          const transient = emsg.indexOf('timeout') >= 0 || emsg.indexOf('network') >= 0 || emsg.indexOf('failed to fetch') >= 0;
-          if (transient) {
-            window._sbSyncStatus('⚠️ 네트워크 지연 · 동기화 재시도 중', false);
-            return;
-          }
-          window._sbShowLogin();
-          return;
-        }
+        const { data: { session } } = await _sbGetSessionShared();
+        if (!session) { window._sbShowLogin(); return; }
         _sbCachedUserId = session.user.id;
         window._sbAddLogoutBtn();
         window._sbSyncStatus('☁️ 변경분 확인 중...', true);
@@ -3666,7 +3157,7 @@
           console.warn('[SB] API key init sync error', e);
         }
         try {
-          if (window.__plAutoCloudPull !== false) {
+          if (window.__plAutoCloudPull === true) {
             await _sbSafeLoad('workrooms_init', () => {
               return window._wrRefreshFromCloud ? window._wrRefreshFromCloud({ render: false, force: true }) : null;
             }, 0);
@@ -3677,15 +3168,12 @@
               return window._svRefreshFromCloud ? window._svRefreshFromCloud({ render: false }) : null;
             }, 0);
           }
-          await _sbSafeLoad('snapshots_init', () => {
-            return window._wsRefreshFromCloud ? window._wsRefreshFromCloud({ render: false }) : null;
-          }, 0);
         } catch (e) {
           console.warn('[SB] init entity sync error', e);
         }
         await _sbSyncDirtyQueues();
         try {
-          if (window.__plAutoCloudPull !== false) {
+          if (window.__plAutoCloudPull === true) {
             await _sbSafeLoad('workrooms_after_sync', () => {
               return window._wrRefreshFromCloud ? window._wrRefreshFromCloud({ render: false, force: true }) : null;
             }, 0);
@@ -3693,9 +3181,6 @@
               return window._plRefreshFromCloud ? window._plRefreshFromCloud({ render: false, force: true, sync: false }) : null;
             }, 0);
           }
-          await _sbSafeLoad('snapshots_after_sync', () => {
-            return window._wsRefreshFromCloud ? window._wsRefreshFromCloud({ render: false }) : null;
-          }, 0);
         } catch (e) {
           console.warn('[SB] post-sync entity refresh error', e);
         }
@@ -5957,6 +5442,7 @@ var _safeLocalSet = function(key, value) {
                 function migrateCaptures(room) {
                   if (!room.captureImages) room.captureImages = [];
                   if (room.captureImage && !room._migrated) {
+                    room.captureImages.unshift({ src: room.captureImage, savedAt: room.updatedAt || Date.now(), snapName: null });
                     delete room.captureImage;
                     room._migrated = true;
                     saveRooms();
@@ -6050,11 +5536,11 @@ var _safeLocalSet = function(key, value) {
                   migrateCaptures(room);
                   if (!confirm('이 캡처 이미지를 삭제할까요?')) return;
                   const img = room.captureImages[idx];
-                  const targetKey = (window._wrCaptureImageKey && img) ? window._wrCaptureImageKey(img) : '';
-                  const nextImages = (room.captureImages || []).filter(function(entry, i) {
-                    if (targetKey) return (window._wrCaptureImageKey ? window._wrCaptureImageKey(entry) : '') !== targetKey;
-                    return i !== idx;
-                  });
+                  // Storage에 업로드된 이미지면 실제 파일도 삭제
+                  if (img && img.storagePath) {
+                    window._sbDeleteImages([img.storagePath]).catch(()=>{});
+                  }
+                  const nextImages = (room.captureImages || []).filter(function(_, i) { return i !== idx; });
                   const savedRoom = window._wrSetCaptureImages ? window._wrSetCaptureImages(room.id, nextImages, { explicitEmptyImages: true }) : null;
                   if (savedRoom) room.captureImages = savedRoom.captureImages || [];
                   else { room.captureImages = nextImages; room.updatedAt = Date.now(); saveRooms(); }
@@ -6252,6 +5738,9 @@ var _safeLocalSet = function(key, value) {
                 window.wr2DeleteCapture = async function () {
                   const room = getActiveRoom(); if (!room) return;
                   if (!confirm('모든 캡처 이미지를 삭제할까요?')) return;
+                  // Storage에서 실제 파일 삭제
+                  const paths = (room.captureImages || []).filter(i => i.storagePath).map(i => i.storagePath);
+                  if (paths.length) window._sbDeleteImages(paths).catch(()=>{});
                   if (window._wrSetCaptureImages) {
                     const savedRoom = window._wrSetCaptureImages(room.id, [], { explicitEmptyImages: true });
                     room.captureImages = savedRoom && savedRoom.captureImages ? savedRoom.captureImages : [];
@@ -11681,17 +11170,11 @@ window.wr2SummaryCancelEdit = function() {
       }
     }
     function _persistSnapshotRoomChanges(changedRoomIds, deletePaths) {
-      const cacheRooms = (window._wrGetRoomsCache && window._wrGetRoomsCache()) || [];
-      const stateRooms = (window.wr2State && window.wr2State.rooms) || [];
-      const map = new Map();
-      cacheRooms.forEach(function(r) { if (r && r.id) map.set(r.id, r); });
-      stateRooms.forEach(function(r) { if (r && r.id) map.set(r.id, r); });
-      const rooms = Array.from(map.values());
-      (changedRoomIds || []).forEach(function(id) { if (id && window._sbMarkRoomDirty) window._sbMarkRoomDirty(id); });
-      if (window._wrPersistRooms) window._wrPersistRooms(rooms, { keepDeletedInState: true, syncState: false, immediate: true });
-      // R2 원본은 즉시 삭제하지 않는다. 삭제 메타데이터가 다른 기기까지 전파되기 전
-      // 파일을 지우면 stale room이 되살아날 때 엑박 이미지가 생긴다.
-      if (deletePaths && deletePaths.length) console.info('[snap] storage delete deferred', deletePaths);
+      const rooms = (window.wr2State && window.wr2State.rooms) || [];
+      if (window._wrPersistRooms) window._wrPersistRooms(rooms, { syncState: false });
+      if (deletePaths && deletePaths.length && window._sbDeleteImages) {
+        window._sbDeleteImages(deletePaths).catch(e => console.warn('[snap] delete linked images', e));
+      }
       if (typeof window.wr2Render === 'function') window.wr2Render();
       try {
         const active = typeof getActiveRoom === 'function' ? getActiveRoom() : null;
@@ -11737,19 +11220,8 @@ window.wr2SummaryCancelEdit = function() {
         if (Array.isArray(room.captureImages)) {
           const removed = room.captureImages.filter(img => targetSet.has(img && img.snapName));
           if (removed.length) {
-            const now = Date.now();
-            const removedMap = new Map();
-            (Array.isArray(room._removedCaptureImageKeys) ? room._removedCaptureImageKeys : []).forEach(function(entry) {
-              if (entry && entry.key) removedMap.set(String(entry.key), entry);
-            });
-            removed.forEach(function(img) {
-              if (img && img.storagePath) deletePaths.push(img.storagePath);
-              const key = window._wrCaptureImageKey ? window._wrCaptureImageKey(img) : String((img && (img.storagePath || img.src || img.url)) || '');
-              if (key) removedMap.set(key, { key: key, at: now });
-            });
+            removed.forEach(img => { if (img && img.storagePath) deletePaths.push(img.storagePath); });
             room.captureImages = room.captureImages.filter(img => !targetSet.has(img && img.snapName));
-            room._removedCaptureImageKeys = Array.from(removedMap.values());
-            room._captureImagesUpdatedAt = now;
             changed = true;
           }
         }
@@ -30097,8 +29569,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
           if (!room.captureImages) room.captureImages = [];
           if (room.captureImage && !room._migrated) {
+            room.captureImages.push({ src: room.captureImage, savedAt: room.updatedAt||Date.now(), snapName: null });
             delete room.captureImage; room._migrated = true;
-            if (window._sbMarkRoomDirty) window._sbMarkRoomDirty(room.id);
           }
           const _snapName = window._lastLoadedSnap || null;
           const _roomTitle = room.title || room.name || '작업룸';
@@ -31257,7 +30729,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           console.error('[wr2]', e);
         }
         if (window.wr2State) window.wr2State.activeView = 'overview';
-        if (window.__plAutoCloudPull !== false && window._sbRunEntryRefresh && typeof window._wrRefreshFromCloud === 'function') {
+        if (window.__plAutoCloudPull === true && window._sbRunEntryRefresh && typeof window._wrRefreshFromCloud === 'function') {
           window._sbRunEntryRefresh('workrooms', window._wrRefreshFromCloud, { render: true, label: 'workrooms', force: true })
             .then(function(payload) {
               if (!payload && typeof window.wr2Render === 'function') window.wr2Render();
@@ -45307,8 +44779,9 @@ window.addEventListener('DOMContentLoaded', () => {
       var hasMemCache = !!(window._idbCache && Array.isArray(window._idbCache[PL_KEY]));
       if (hasMemCache) {
         var mem = window._idbCache[PL_KEY] || [];
-        // 읽기 함수에서 다시 IDB/localStorage에 쓰면 큰 물건리스트가 매 렌더마다 직렬화되어 지연된다.
-        return (Array.isArray(mem) ? mem : []).map(plNormalizeItem);
+        var normalizedMem = (Array.isArray(mem) ? mem : []).map(plNormalizeItem);
+        try { localStorage.setItem(PL_KEY, JSON.stringify(normalizedMem)); } catch (e) {}
+        return normalizedMem;
       }
       // 메모리 캐시가 아직 준비되지 않은 초기 시점에만 legacy를 폴백으로 사용한다.
       var legacy = JSON.parse(localStorage.getItem(PL_KEY) || '[]');
@@ -46872,7 +46345,7 @@ window.addEventListener('DOMContentLoaded', () => {
     el.innerHTML = chips.join('');
   }
   function plEnsureListCloudRefresh() {
-    if (window.__plAutoCloudPull === false) return;
+    if (window.__plAutoCloudPull !== true) return;
     if (window.__plInlineEditKey) return;
     if (window.__plListRefreshRunning) return;
     if (typeof window._plRefreshFromCloud !== 'function') return;
@@ -47504,16 +46977,15 @@ window.addEventListener('DOMContentLoaded', () => {
     });
       if (tab === 'list') {
         pmRestoreInsightPanels();
-        // FAST-UI: 물건리스트는 로컬 IDB 캐시로 즉시 렌더한다.
-        // 클라우드 pull은 뒤에서 수행해 최신화하되, 첫 화면 표시를 막지 않는다.
-        if (typeof renderPropertyList === 'function') renderPropertyList();
-        if (window.__plAutoCloudPull !== false && window._sbRunEntryRefresh && typeof window._plRefreshFromCloud === 'function') {
-          setTimeout(function() {
-            window._sbRunEntryRefresh('properties', window._plRefreshFromCloud, { render: true, label: 'properties', force: true })
-              .catch(function(){});
-          }, 80);
-        }
+        if (window.__plAutoCloudPull === true && window._sbRunEntryRefresh && typeof window._plRefreshFromCloud === 'function') {
+        window._sbRunEntryRefresh('properties', window._plRefreshFromCloud, { render: true, label: 'properties', force: true })
+          .then(function(payload) {
+            if (!payload && typeof renderPropertyList === 'function') renderPropertyList();
+          });
+      } else {
+        renderPropertyList();
       }
+    }
     if (tab === 'work') {
       pmMountPanel('work');
       try { if (!window.__wr2Inited && typeof window.wr2Init === 'function') { window.__wr2Inited = true; window.wr2Init(); } } catch(e) {}
@@ -47522,16 +46994,16 @@ window.addEventListener('DOMContentLoaded', () => {
       if (pendingRoomId && window.wr2State) {
         window.wr2State.activeRoomId = pendingRoomId;
       }
-      // FAST-UI: 작업룸도 먼저 로컬 캐시를 렌더하고, 클라우드 갱신은 백그라운드로 돌린다.
-      if (typeof window.wr2Render === 'function') window.wr2Render();
-      if (window.__plAutoCloudPull !== false && window._sbRunEntryRefresh && typeof window._wrRefreshFromCloud === 'function') {
-        setTimeout(function() {
-          window._sbRunEntryRefresh('workrooms', window._wrRefreshFromCloud, { render: true, label: 'workrooms', force: true })
-            .then(function() {
-              if (window.wr2State && pendingRoomId) window.wr2State.activeRoomId = pendingRoomId;
-            })
-            .catch(function(){});
-        }, 80);
+      if (window.__plAutoCloudPull === true && window._sbRunEntryRefresh && typeof window._wrRefreshFromCloud === 'function') {
+        window._sbRunEntryRefresh('workrooms', window._wrRefreshFromCloud, { render: true, label: 'workrooms', force: true })
+          .then(function(payload) {
+            if (window.wr2State && pendingRoomId) {
+              window.wr2State.activeRoomId = pendingRoomId;
+            }
+            if (!payload && typeof window.wr2Render === 'function') window.wr2Render();
+          });
+      } else if (typeof window.wr2Render === 'function') {
+        window.wr2Render();
       }
       window.__pmPendingRoomId = '';
     }
@@ -48214,7 +47686,7 @@ window.addEventListener('DOMContentLoaded', () => {
     try {
       if (typeof currentPage === 'undefined' || currentPage !== 4) return;
       if (window.__pmActiveTab !== 'list' && window.__pmActiveTab !== 'work' && window.__pmActiveTab !== 'pipeline') return;
-      if (window.__plAutoCloudPull === false) return;
+      if (window.__plAutoCloudPull !== true) return;
       var ae = document.activeElement;
       var typing = !!(ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable));
       if (typing) return;
@@ -48244,11 +47716,11 @@ window.addEventListener('DOMContentLoaded', () => {
         }).catch(function(){});
       }
     } catch (e) {}
-  }, 60000);
+  }, 20000);
   function _plQuickCloudPull() {
     try {
       if (typeof currentPage === 'undefined' || currentPage !== 4) return;
-      if (window.__plAutoCloudPull === false) return;
+      if (window.__plAutoCloudPull !== true) return;
       var now = Date.now();
       var last = Number(window.__plQuickCloudPullAt || 0);
       if (last && (now - last) < 5000) return;
