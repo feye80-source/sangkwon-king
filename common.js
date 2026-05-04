@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260505-cloudflare-r2-json-a3-all-image-sync';
+    window.__SK_BUILD = '20260505-cloudflare-r2-json-a5-ui-floor-card-stable';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -279,7 +279,8 @@
     };
     window._cfFetchJson = window._cfFetchJson || async function(url, options) {
       const opts = Object.assign({}, options || {});
-      opts.headers = Object.assign({ 'accept': 'application/json' }, opts.headers || {});
+      opts.cache = opts.cache || 'no-store';
+      opts.headers = Object.assign({ 'accept': 'application/json', 'cache-control': 'no-cache' }, opts.headers || {});
       if (!opts.signal && window._skTimeoutSignal) opts.signal = window._skTimeoutSignal(12000);
       return await fetch(url, opts);
     };
@@ -306,8 +307,10 @@
       });
       if (res.status === 404) return null;
       if (!res.ok) throw new Error('Cloudflare 로드 실패 ' + key + ': ' + res.status);
-      const json = await res.json();
-      return json && Object.prototype.hasOwnProperty.call(json, 'value') ? json.value : json;
+      let json = null;
+      try { json = await res.json(); } catch(_e) { json = null; }
+      if (!json || json.missing === true) return null;
+      return Object.prototype.hasOwnProperty.call(json, 'value') ? json.value : json;
     };
     window._cfDeleteJson = window._cfDeleteJson || async function(key) {
       if (window.SK_USE_CLOUDFLARE_DATA === false) return false;
@@ -330,7 +333,7 @@
       let timer = null;
       let running = false;
       return function(reason, delay) {
-        window._skMarkMediaWrite(reason || 'flush', 24000);
+        window._skMarkMediaWrite(reason || 'flush', 45000);
         clearTimeout(timer);
         timer = setTimeout(async function() {
           timer = null;
@@ -401,6 +404,13 @@
         }, typeof delay === 'number' ? delay : 900);
       };
     })();
+    window._skAfterMediaMutation = window._skAfterMediaMutation || function(reason) {
+      try { if (typeof window._skMarkMediaWrite === 'function') window._skMarkMediaWrite(reason || 'media-mutation', 45000); } catch(e) {}
+      try { if (typeof window.__wr2FlushSaveRooms === 'function') window.__wr2FlushSaveRooms(); } catch(e) {}
+      try { if (typeof window._skFlushAllImageStores === 'function') window._skFlushAllImageStores(reason || 'media-mutation', 250); } catch(e) {}
+      setTimeout(function(){ try { if (typeof window._skFlushAllImageStores === 'function') window._skFlushAllImageStores((reason || 'media-mutation') + ':late', 0); } catch(e){} }, 2500);
+      setTimeout(function(){ try { if (typeof window._skFlushAllImageStores === 'function') window._skFlushAllImageStores((reason || 'media-mutation') + ':final', 0); } catch(e){} }, 8000);
+    };
     console.log('[CF] backend ready', _cfBaseUrl(), 'userKey=', window.skGetCloudUserKey());
 
 /* ════════════════════════════════════════════════════════
@@ -2234,22 +2244,30 @@
             return _wrMergeRoomPreserveImages(local || r, r);
           });
         }
-        if (window._wrPersistRoomCache) roomPayload = window._wrPersistRoomCache(mergedRooms, { syncState: false });
-        else {
-          const activeRooms = (window._wrFilterActiveRooms ? window._wrFilterActiveRooms(mergedRooms) : mergedRooms.filter(r => r && !r.deletedAt));
-          _sbPersistCachedArray('wr2_rooms', mergedRooms);
-          roomPayload = { full: mergedRooms, active: activeRooms };
+        let roomsChanged = true;
+        try { roomsChanged = JSON.stringify(localRooms || []) !== JSON.stringify(mergedRooms || []); } catch(e) { roomsChanged = true; }
+        if (roomsChanged) {
+          if (window._wrPersistRoomCache) roomPayload = window._wrPersistRoomCache(mergedRooms, { syncState: false });
+          else {
+            const activeRooms = (window._wrFilterActiveRooms ? window._wrFilterActiveRooms(mergedRooms) : mergedRooms.filter(r => r && !r.deletedAt));
+            _sbPersistCachedArray('wr2_rooms', mergedRooms);
+            roomPayload = { full: mergedRooms, active: activeRooms };
+          }
         }
       }
       const cloudSections = window._sbLoadSections ? await window._sbLoadSections() : null;
       if (cloudSections !== null) {
         const localSections = window._wrGetSectionsCache ? window._wrGetSectionsCache() : ((window._idbCache && window._idbCache['wr2_sections']) || []);
         const mergedSections = (typeof _sbMergeById === 'function') ? _sbMergeById(cloudSections, localSections) : _sbTakeCloudArray(cloudSections);
-        if (window._wrPersistSectionsCache) sectionPayload = window._wrPersistSectionsCache(mergedSections, { keepDeleted: true, sync: false, syncState: false });
-        else {
-          const activeSections = (window._wrFilterActiveSections ? window._wrFilterActiveSections(mergedSections) : mergedSections.filter(s => s && !s.deletedAt));
-          _sbPersistCachedArray('wr2_sections', mergedSections);
-          sectionPayload = { full: mergedSections, active: activeSections };
+        let sectionsChanged = true;
+        try { sectionsChanged = JSON.stringify(localSections || []) !== JSON.stringify(mergedSections || []); } catch(e) { sectionsChanged = true; }
+        if (sectionsChanged) {
+          if (window._wrPersistSectionsCache) sectionPayload = window._wrPersistSectionsCache(mergedSections, { keepDeleted: true, sync: false, syncState: false });
+          else {
+            const activeSections = (window._wrFilterActiveSections ? window._wrFilterActiveSections(mergedSections) : mergedSections.filter(s => s && !s.deletedAt));
+            _sbPersistCachedArray('wr2_sections', mergedSections);
+            sectionPayload = { full: mergedSections, active: activeSections };
+          }
         }
       }
       const activeRooms = roomPayload
@@ -2424,11 +2442,13 @@
     // ─── v3 root sync: 물건리스트 row 동기화 + 작업이미지 row 동기화 ─────────────
     // 목적: 큰 배열 전체 저장으로 기기끼리 덮어쓰는 구조를 끊고,
     //       변경된 물건 1개 / 이미지 1장 단위로 서버 기준점을 만든다.
-    window.__SK_SYNC_DEBUG = (window.__SK_SYNC_DEBUG !== false);
+    window.__SK_SYNC_DEBUG = (window.__SK_SYNC_DEBUG === true);
+    window.__SK_ROW_PULL_LOG = (window.__SK_ROW_PULL_LOG === true);
     function _skSyncLog() {
       try {
-        if (window.__SK_SYNC_DEBUG === false) return;
         const args = Array.prototype.slice.call(arguments);
+        if (String(args[0] || '').indexOf('row pull ok') >= 0 && window.__SK_ROW_PULL_LOG !== true) return;
+        if (window.__SK_SYNC_DEBUG === false && window.__SK_ROW_PULL_LOG !== true) return;
         args.unshift('[SK-SYNC]');
         console.log.apply(console, args);
       } catch(e) {}
@@ -2730,6 +2750,20 @@
       }
       return room;
     }
+    function _wrCaptureImagesSignature(list) {
+      try {
+        return JSON.stringify((Array.isArray(list) ? list : []).map(function(img) {
+          if (!img) return '';
+          return [
+            img.storagePath || img.path || '',
+            img.src || img.url || '',
+            img.snapName || '',
+            img.parentSnapName || '',
+            img.savedAt || img.createdAt || ''
+          ].join('|');
+        }));
+      } catch(e) { return ''; }
+    }
     window._wrSaveImageRows = _wrSaveImageRows;
     window._wrLoadImageRows = _wrLoadImageRows;
     window._wrPullImagesForRoom = async function(roomId, opts) {
@@ -2741,10 +2775,12 @@
       let changedRoom = null;
       const nextRooms = (cacheRooms || []).map(r => {
         if (!r || String(r.id) !== String(roomId)) return r;
-        const before = JSON.stringify(r.captureImages || []);
+        const before = _wrCaptureImagesSignature(r.captureImages || []);
         const nr = _wrApplyImageRowsToRoom(Object.assign({}, r), rows);
-        if (JSON.stringify(nr.captureImages || []) !== before) {
-          nr.updatedAt = Math.max(Number(nr.updatedAt || 0), Date.now());
+        const after = _wrCaptureImagesSignature(nr.captureImages || []);
+        if (after !== before) {
+          nr._captureImagesUpdatedAt = Date.now();
+          nr.updatedAt = Math.max(Number(nr.updatedAt || 0), Number(r.updatedAt || 0), nr._captureImagesUpdatedAt);
           changedRoom = nr;
         }
         return nr;
@@ -6956,6 +6992,8 @@ var _safeLocalSet = function(key, value) {
                   if (input) input.value = '';
                   room.updatedAt = Date.now();
                   saveRooms();
+                  if (typeof window.__wr2FlushSaveRooms === 'function') window.__wr2FlushSaveRooms();
+                  if (typeof window._skAfterMediaMutation === 'function') window._skAfterMediaMutation('phase-checklist');
                   renderSections(room);
                   renderTimeline(room);
                   if (window._mbRefreshRoomSections) window._mbRefreshRoomSections(room.id);
@@ -7591,7 +7629,7 @@ window.wr2SummaryCancelEdit = function() {
                     if (typeof window.__wr2FlushSaveRooms === 'function') window.__wr2FlushSaveRooms();
                   }
                   saveSections();
-                  if (typeof window._skFlushAllImageStores === 'function') window._skFlushAllImageStores('section-checklist', 800);
+                  if (typeof window._skAfterMediaMutation === 'function') window._skAfterMediaMutation('section-checklist'); else if (typeof window._skFlushAllImageStores === 'function') window._skFlushAllImageStores('section-checklist', 800);
                   if (room) renderSections(room);
                   if (room) renderTimeline(room);
                   if (room && window._mbRefreshRoomSections) window._mbRefreshRoomSections(room.id);
@@ -8122,7 +8160,7 @@ window.wr2SummaryCancelEdit = function() {
                   if (typeof window._skMarkMediaWrite === 'function') window._skMarkMediaWrite('workroom-note-delete', 22000);
                   saveRooms();
                   if (typeof window.__wr2FlushSaveRooms === 'function') window.__wr2FlushSaveRooms();
-                  if (typeof window._skFlushAllImageStores === 'function') window._skFlushAllImageStores('workroom-note-delete', 600);
+                  if (typeof window._skAfterMediaMutation === 'function') window._skAfterMediaMutation('workroom-note-delete'); else if (typeof window._skFlushAllImageStores === 'function') window._skFlushAllImageStores('workroom-note-delete', 600);
                   renderAttachments(room);
                 };
 
@@ -8662,7 +8700,7 @@ window.wr2SummaryCancelEdit = function() {
                     if (typeof window._skMarkMediaWrite === 'function') window._skMarkMediaWrite('workroom-note', 26000);
                     saveRooms();
                     if (typeof window.__wr2FlushSaveRooms === 'function') window.__wr2FlushSaveRooms();
-                    if (typeof window._skFlushAllImageStores === 'function') window._skFlushAllImageStores('workroom-note', 700);
+                    if (typeof window._skAfterMediaMutation === 'function') window._skAfterMediaMutation('workroom-note'); else if (typeof window._skFlushAllImageStores === 'function') window._skFlushAllImageStores('workroom-note', 700);
                     if (ok) wr2PushActivity(room, '노트 첨부 ' + ok + '개를 추가했습니다', room.phase || room.status);
                     renderAttachments(room);
                     if (ok) showToast(`📎 ${ok}개 첨부 완료`, fail ? 'warn' : 'ok');
@@ -17654,6 +17692,29 @@ window.wr2SummaryCancelEdit = function() {
         return n; // 이미 만원 단위
       };
 
+      function _bdsExtractFloorRaw(d) {
+        if (!d || typeof d !== 'object') return null;
+        const aliases = [
+          't_floor','t_flr','deal_floor','dealFloor','real_floor','realFloor','floor_level','floorLevel',
+          'flr','fl','floor','f_nm','floor_nm','floorName','bldg_flr','bldg_floor','buildingFloor',
+          'obj_floor','object_floor','floor_no','floorNo','floor_no_nm','floorNoNm','FLOOR_NO','FLOOR_NO_NM','FLOOR_NM',
+          '층','층수','해당층','거래층','전용층','대상층','건물층','층정보'
+        ];
+        for (const k of aliases) {
+          if (d[k] === null || d[k] === undefined) continue;
+          const v = String(d[k]).trim();
+          if (v && v !== '-' && v !== 'null' && v !== 'undefined') return v;
+        }
+        // API 필드명이 바뀐 경우까지 대비: key 이름에 floor/flr/층이 들어간 값을 자동 탐색
+        for (const k of Object.keys(d)) {
+          if (!/(floor|flr|층)/i.test(k)) continue;
+          const v = d[k];
+          if (v === null || v === undefined) continue;
+          const t = String(v).trim();
+          if (t && t !== '-' && t !== 'null' && t !== 'undefined') return t;
+        }
+        return null;
+      }
       // 부동산플래닛 실거래 필드: obj_amt=원단위, t_type=거래유형, bldg_area_m2=건물면적
       const items = rawItems.map(d => {
         const obj_amt = parseFloat(d.obj_amt || 0);
@@ -17679,7 +17740,7 @@ window.wr2SummaryCancelEdit = function() {
             return val > 0 ? val : null;
           })(),
           '건물면적_m2': parseFloat(d.bldg_area_m2 || d.bldg_area || 0) || null,
-          '해당층': d.t_floor || d.floor_level || d.flr || d.floor || d.f_nm || d.bldg_flr || null,
+          '해당층': _bdsExtractFloorRaw(d),
           '건축연도': d.build_year || null,
           '소재지': d.addr_nm || d.address || d.road_addr || d.addr || ((d.sigungu_nm || '') + ' ' + (d.dong_nm || d.dongnm || '')).trim() || '',
           '거래년월': 거래년월,
@@ -24051,16 +24112,12 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           _blk(e);
           const repEl = document.getElementById(grp[0]);
           if (repEl) {
-            const bl = String(parseFloat(repEl.style.left) || 0);
-            const bt = String(parseFloat(repEl.style.top) || 0);
-            grp.forEach(eid => {
-              const el2 = document.getElementById(eid);
-              if (el2) { el2.dataset.baseLeft = bl; el2.dataset.baseTop = bt; }
-            });
+            repEl.dataset.baseLeft = String(parseFloat(repEl.style.left) || 0);
+            repEl.dataset.baseTop = String(parseFloat(repEl.style.top) || 0);
           }
           cardExpandState.set(stackKey, 'grid');
-          updateStackedCards();
-          setTimeout(() => { mapOverlays.forEach(o => { if (o && o.isOpen) updateMapLine(o.id); }); }, 0);
+          updateStackedCards(stackKey);
+          setTimeout(() => { (window._stackGroups && window._stackGroups.get(stackKey) || []).forEach(eid => updateMapLine(eid)); }, 0);
         }, true);
         expandBtn.addEventListener('click', _blk, true);
 
@@ -24092,7 +24149,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             }
             const ov = mapOverlays.find(o => o.id === eid);
             if (ov) {
-              ov.savedPos = { left: curLeft, top: curTop };
+              if (idx === 0) ov.savedPos = { left: curLeft, top: curTop };
               if (ov.overlay && ov.overlay.setZIndex) ov.overlay.setZIndex(idx === 0 ? 200 : 10 - idx);
             }
           });
@@ -25032,7 +25089,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         // 원 API 필드(fl/flr/t_floor/floor_level 등) 중 한 곳에만 남는 경우가 있다.
         // 카드 렌더링에서는 한 필드만 보지 말고 모든 alias를 정규화해서 표시한다.
         function _txFloorCandidate() {
-          const aliases = ['floor','층','층수','해당층','거래층','전용층','건물층','대상층','층정보','fl','flr','t_floor','floor_level','floorNo','floor_no','obj_floor','bldg_flr','f_nm','FLOOR_NO_NM','FLOOR_NM'];
+          const aliases = ['floor','층','층수','해당층','거래층','전용층','건물층','대상층','층정보','fl','flr','t_floor','t_flr','deal_floor','dealFloor','real_floor','realFloor','floor_level','floorLevel','floorNo','floor_no','floor_no_nm','floorNoNm','floor_nm','floorName','obj_floor','object_floor','bldg_flr','bldg_floor','buildingFloor','f_nm','FLOOR_NO','FLOOR_NO_NM','FLOOR_NM'];
           function pick(obj) {
             if (!obj || typeof obj !== 'object') return '';
             for (const k of aliases) {
@@ -25412,6 +25469,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
     function updateStackedCards(onlyKey) {
       if (window.__skipTransactionAutoStack) return;
+      const __otherPosSnap = onlyKey ? _snapshotOtherCardPositions(onlyKey) : null;
       const openObjs = mapOverlays.filter(o => o && o.isOpen && (!onlyKey || o.stackKey === onlyKey));
 
       // ── 그룹 구성 ──────────────────────────────────────
@@ -25680,7 +25738,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             }
             const ov = mapOverlays.find(o => o.id === eid);
             if (ov) {
-              ov.savedPos = { left: curLeft2, top: curTop2 };
+              if (idx === 0) ov.savedPos = { left: curLeft2, top: curTop2 };
               if (ov.overlay && ov.overlay.setZIndex) {
                 ov.overlay.setZIndex(idx === 0 ? 200 : 10 - idx);
               }
@@ -25711,12 +25769,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           e.stopPropagation(); e.preventDefault(); e.stopImmediatePropagation();
           const repEl = document.getElementById(orderedIds[0]);
           if (repEl) {
-            const bl = String(parseFloat(repEl.style.left) || 0);
-            const bt = String(parseFloat(repEl.style.top) || 0);
-            orderedIds.forEach(id => {
-              const el = document.getElementById(id);
-              if (el) { el.dataset.baseLeft = bl; el.dataset.baseTop = bt; }
-            });
+            repEl.dataset.baseLeft = String(parseFloat(repEl.style.left) || 0);
+            repEl.dataset.baseTop = String(parseFloat(repEl.style.top) || 0);
           }
           cardExpandState.set(key, 'grid');
           updateStackedCards(key || null);
@@ -25976,6 +26030,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           const el = document.getElementById(o.id);
           if (el && el.style.display !== 'none') updateMapLine(o.id);
         });
+        if (__otherPosSnap) _restoreOtherCardPositions(__otherPosSnap);
       }, 0);
     }
 
@@ -30342,7 +30397,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             note.updatedAt = new Date().toISOString();
             if (typeof window._skMarkMediaWrite === 'function') window._skMarkMediaWrite('map-capture-note', 22000);
             if (typeof ntSave === 'function') ntSave(noteId);
-            if (typeof window._skFlushAllImageStores === 'function') window._skFlushAllImageStores('map-capture-note', 700);
+            if (typeof window._skAfterMediaMutation === 'function') window._skAfterMediaMutation('map-capture-note'); else if (typeof window._skFlushAllImageStores === 'function') window._skFlushAllImageStores('map-capture-note', 700);
             if (typeof ntOpen === 'function') ntOpen(noteId);
             if (typeof ntRender === 'function') ntRender();
             try { showToast('📸 노트에 캡처 이미지 추가됨', 'ok'); } catch (e) { }
@@ -32611,7 +32666,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         note.updatedAt = new Date().toISOString();
         if (typeof window._skMarkMediaWrite === 'function') window._skMarkMediaWrite('nt-attachment', 22000);
         ntSave(id);
-        if (typeof window._skFlushAllImageStores === 'function') window._skFlushAllImageStores('nt-attachment', 700);
+        if (typeof window._skAfterMediaMutation === 'function') window._skAfterMediaMutation('nt-attachment'); else if (typeof window._skFlushAllImageStores === 'function') window._skFlushAllImageStores('nt-attachment', 700);
         ntOpen(id);
         input.value = '';
         if (ok) showToast(`📎 파일 ${ok}개 첨부 완료`, fail ? 'warn' : 'ok');
@@ -39869,11 +39924,34 @@ ${newsContext}
       return d;
     }
 
+    function _extractAnyFloorValue(obj) {
+      if (!obj || typeof obj !== 'object') return null;
+      const aliases = [
+        'floor','floorLevel','floor_level','floorNo','floor_no','floor_no_nm','floorNoNm','floor_nm','floorName',
+        'fl','flr','t_floor','t_flr','deal_floor','dealFloor','real_floor','realFloor','obj_floor','object_floor',
+        'bldg_flr','bldg_floor','buildingFloor','floor_current','f_nm','FLOOR_NO','FLOOR_NO_NM','FLOOR_NM',
+        '층','층수','해당층','거래층','전용층','건물층','대상층','층정보'
+      ];
+      for (const k of aliases) {
+        if (obj[k] === null || obj[k] === undefined) continue;
+        const v = String(obj[k]).trim();
+        if (v && v !== '-' && v !== 'null' && v !== 'undefined') return v;
+      }
+      for (const k of Object.keys(obj)) {
+        if (!/(floor|flr|층)/i.test(k)) continue;
+        const v = obj[k];
+        if (v === null || v === undefined) continue;
+        const t = String(v).trim();
+        if (t && t !== '-' && t !== 'null' && t !== 'undefined') return t;
+      }
+      return null;
+    }
+
     // ── 디스코/플래닛 실거래 데이터 정규화 ──────────────────────────
     function normalizeTxData(it, source) {
       const d = { ...it, 출처: source };
       // 층수 통합 (다양한 raw 필드명 → 해당층)
-      if (!d.해당층) d.해당층 = d.fl || d.t_floor || d.floor || d.bldg_flr || d.flr || d.f_nm || d.floor_current || d.floor_level || d.obj_floor || d.floor_no || null;
+      if (!d.해당층) d.해당층 = _extractAnyFloorValue(d);
       if (d.해당층 != null) {
         // "2/8" 형식이면 분리
         const s = String(d.해당층);
@@ -48450,13 +48528,15 @@ window.addEventListener('DOMContentLoaded', () => {
       if (lastMutation && (Date.now() - lastMutation) < 1500) return;
       var plPull = window._plPullRowsToLocal || window._plRefreshFromCloud;
       if (typeof plPull === 'function') {
-        Promise.resolve(plPull({ render: false, force: true, sync: false, lightweight: true })).then(function() {
-          if (window.__pmActiveTab === 'list' && typeof window.renderPropertyList === 'function') window.renderPropertyList();
+        Promise.resolve(plPull({ render: false, force: true, sync: false, lightweight: true })).then(function(res) {
+          if (res && res.changed > 0 && window.__pmActiveTab === 'list' && typeof window.renderPropertyList === 'function') window.renderPropertyList();
         }).catch(function(){});
       }
       var workTabActive = (window.__pmActiveTab === 'work' || window.__pmActiveTab === 'pipeline');
       if (workTabActive && typeof window._wrRefreshFromCloud === 'function') {
-        window._wrRefreshFromCloud({ render: false, force: true }).then(function() {
+        window._wrRefreshFromCloud({ render: false, force: true }).then(function(payload) {
+          var changed = !!(payload && (payload.rooms || payload.sections));
+          if (!changed) return;
           if (window.__pmActiveTab === 'work' && typeof window.wr2Render === 'function') window.wr2Render();
           if (window.__pmActiveTab === 'pipeline' && typeof window.renderWatchBoard === 'function') window.renderWatchBoard();
         }).catch(function(){});
@@ -48486,12 +48566,14 @@ window.addEventListener('DOMContentLoaded', () => {
       if (lastMutation && (Date.now() - lastMutation) < 45000) return;
       var rowPullFn = window._plPullRowsToLocal || window._plRefreshFromCloud;
       if (typeof rowPullFn === 'function') {
-        rowPullFn({ render: false, force: true, sync: false, lightweight: true }).then(function() {
-          if (window.__pmActiveTab === 'list' && typeof window.renderPropertyList === 'function') window.renderPropertyList();
+        rowPullFn({ render: false, force: true, sync: false, lightweight: true }).then(function(res) {
+          if (res && res.changed > 0 && window.__pmActiveTab === 'list' && typeof window.renderPropertyList === 'function') window.renderPropertyList();
         }).catch(function(){});
       }
       if ((window.__pmActiveTab === 'work' || window.__pmActiveTab === 'pipeline') && typeof window._wrRefreshFromCloud === 'function') {
-        window._wrRefreshFromCloud({ render: false, force: true }).then(function() {
+        window._wrRefreshFromCloud({ render: false, force: true }).then(function(payload) {
+          var changed = !!(payload && (payload.rooms || payload.sections));
+          if (!changed) return;
           if (window.__pmActiveTab === 'work' && typeof window.wr2Render === 'function') window.wr2Render();
           if (window.__pmActiveTab === 'pipeline' && typeof window.renderWatchBoard === 'function') window.renderWatchBoard();
         }).catch(function(){});
@@ -48520,9 +48602,14 @@ window.addEventListener('DOMContentLoaded', () => {
         var ae = document.activeElement;
         if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT' || ae.isContentEditable)) return;
         var fn = window._plPullRowsToLocal || window._plRefreshFromCloud;
-        if (typeof fn === 'function') Promise.resolve(fn({ render: true, lightweight: true, sync: false })).catch(function(e){ console.warn('[PL] row poll', e); });
+        if (typeof fn === 'function') Promise.resolve(fn({ render: false, lightweight: true, sync: false })).then(function(res){
+          if (res && res.changed > 0) {
+            if (desktopList && typeof window.renderPropertyList === 'function') window.renderPropertyList();
+            if (mobileList && typeof window.mbPlistRender === 'function') window.mbPlistRender();
+          }
+        }).catch(function(e){ console.warn('[PL] row poll', e); });
       } catch(e) {}
-    }, 5000);
+    }, 15000);
   }
   if (!window.__wrImageRowPollBound) {
     window.__wrImageRowPollBound = true;
@@ -48539,7 +48626,7 @@ window.addEventListener('DOMContentLoaded', () => {
           try { if (typeof window.mbRoomLoad === 'function' && window._mbActiveRoomId) window.mbRoomLoad(window._mbActiveRoomId, { cloud: false }); } catch(e) {}
         }).catch(function(e){ console.warn('[IMG] row poll', e); });
       } catch(e) {}
-    }, 5000);
+    }, 15000);
   }
 
 })();
@@ -51226,7 +51313,7 @@ window.addEventListener('DOMContentLoaded', () => {
 // v10 diagnostic: 선택한 실거래 카드/주소의 층수 원본 필드를 콘솔에서 확인
 window.skDebugTxFloor = window.skDebugTxFloor || function(keyword) {
   const q = String(keyword || '').replace(/\s+/g, '').trim();
-  const aliases = ['floor','층','층수','해당층','거래층','전용층','건물층','대상층','층정보','fl','flr','t_floor','floor_level','floorNo','floor_no','obj_floor','bldg_flr','f_nm','FLOOR_NO_NM','FLOOR_NM'];
+  const aliases = ['floor','층','층수','해당층','거래층','전용층','건물층','대상층','층정보','fl','flr','t_floor','t_flr','deal_floor','dealFloor','real_floor','realFloor','floor_level','floorLevel','floorNo','floor_no','floor_no_nm','floorNoNm','floor_nm','floorName','obj_floor','object_floor','bldg_flr','bldg_floor','buildingFloor','f_nm','FLOOR_NO','FLOOR_NO_NM','FLOOR_NM'];
   function pick(obj) {
     const out = {};
     if (!obj || typeof obj !== 'object') return out;
