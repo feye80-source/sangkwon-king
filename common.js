@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260505-cloudflare-r2-json-a5-ui-floor-card-stable';
+    window.__SK_BUILD = '20260505-cloudflare-r2-json-a6-quiet-poll-render';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -280,7 +280,7 @@
     window._cfFetchJson = window._cfFetchJson || async function(url, options) {
       const opts = Object.assign({}, options || {});
       opts.cache = opts.cache || 'no-store';
-      opts.headers = Object.assign({ 'accept': 'application/json', 'cache-control': 'no-cache' }, opts.headers || {});
+      opts.headers = Object.assign({ 'accept': 'application/json' }, opts.headers || {});
       if (!opts.signal && window._skTimeoutSignal) opts.signal = window._skTimeoutSignal(12000);
       return await fetch(url, opts);
     };
@@ -2458,7 +2458,12 @@
     const _PL_ROW_MANIFEST_KEY = 'pl_items_row_manifest_v1';
     const _PL_ROW_PREFIX = 'pl_item_row_v1_';
     const _PL_DIRTY_KEY = 'pl_dirty_item_ids_v1';
-    const _PL_ROW_CONCURRENCY = 10;
+    const _PL_ROW_CONCURRENCY = 6;
+    window.__SK_PL_POLL_MS = Number(window.__SK_PL_POLL_MS || 60000);
+    window.__SK_WORK_REFRESH_MS = Number(window.__SK_WORK_REFRESH_MS || 60000);
+    window.__SK_IMAGE_ROW_POLL_MS = Number(window.__SK_IMAGE_ROW_POLL_MS || 60000);
+    window.__plCloudRowsCacheSig = window.__plCloudRowsCacheSig || '';
+    window.__plCloudRowsCache = Array.isArray(window.__plCloudRowsCache) ? window.__plCloudRowsCache : [];
     function _plEnc(v) { return encodeURIComponent(String(v || '')); }
     function _plRowKey(id) { return _PL_ROW_PREFIX + _plEnc(id); }
     function _plRowTime(item) {
@@ -2582,6 +2587,12 @@
         saved.push(String(id));
       }
       await _plSaveRowManifest(saved);
+      try {
+        window.__plCloudRowsCacheSig = '';
+        const cur = new Map((Array.isArray(window.__plCloudRowsCache) ? window.__plCloudRowsCache : []).filter(r => r && r.id).map(r => [String(r.id), r]));
+        saved.forEach(function(id) { const src = byId.get(String(id)); if (src) cur.set(String(id), Object.assign({}, src)); });
+        window.__plCloudRowsCache = Array.from(cur.values());
+      } catch(e) {}
       _plClearDirtyIds(saved);
       _skSyncLog('[PL] row push ok', { reason: reason || '', ids: saved });
       return saved;
@@ -2590,6 +2601,11 @@
       const man = await _plLoadRowManifest();
       const ids = man.ids;
       if (!ids.length) return [];
+      let sig = '';
+      try { sig = JSON.stringify({ ids: ids, count: man.meta && man.meta.count, updatedAt: man.meta && man.meta.updatedAt }); } catch(e) { sig = ids.join('|'); }
+      if (sig && window.__plCloudRowsCacheSig === sig && Array.isArray(window.__plCloudRowsCache) && window.__plCloudRowsCache.length) {
+        return window.__plCloudRowsCache.slice();
+      }
       const rows = new Array(ids.length);
       let cursor = 0;
       const workers = Array.from({ length: Math.min(_PL_ROW_CONCURRENCY, ids.length) }, async function() {
@@ -2600,6 +2616,8 @@
       });
       await Promise.all(workers);
       const out = _sbPruneTombstones(rows.filter(r => r && r.id));
+      window.__plCloudRowsCacheSig = sig;
+      window.__plCloudRowsCache = out.slice();
       _skSyncLog('[PL] row pull ok', { count: out.length });
       return out;
     }
@@ -48542,20 +48560,19 @@ window.addEventListener('DOMContentLoaded', () => {
         }).catch(function(){});
       }
       if (typeof window._svRefreshFromCloud === 'function') {
-        window._svRefreshFromCloud({ render: false }).then(function() {
-          if (window.__pmActiveTab === 'work' && typeof window.wr2Render === 'function') window.wr2Render();
-          if (window.__pmActiveTab === 'pipeline' && typeof window.renderWatchBoard === 'function') window.renderWatchBoard();
-        }).catch(function(){});
+        // 저장목록 refresh 결과만으로 작업룸 화면을 통째로 다시 그리면 이미지가 깜빡인다.
+        // 필요한 화면은 명시적 변경/진입 시 렌더하고, 백그라운드 refresh는 조용히 처리한다.
+        window._svRefreshFromCloud({ render: false }).catch(function(){});
       }
     } catch (e) {}
-  }, 20000);
+  }, window.__SK_WORK_REFRESH_MS || 60000);
   function _plQuickCloudPull() {
     try {
       if (typeof currentPage === 'undefined' || currentPage !== 4) return;
       if (window.__plAutoCloudPull !== true) return;
       var now = Date.now();
       var last = Number(window.__plQuickCloudPullAt || 0);
-      if (last && (now - last) < 5000) return;
+      if (last && (now - last) < 30000) return;
       window.__plQuickCloudPullAt = now;
       if (Number(window.__wr2UploadBusy || 0) > 0) return;
       if (window.__wr2SaveRoomsTimer) return;
@@ -48609,7 +48626,7 @@ window.addEventListener('DOMContentLoaded', () => {
           }
         }).catch(function(e){ console.warn('[PL] row poll', e); });
       } catch(e) {}
-    }, 15000);
+    }, window.__SK_PL_POLL_MS || 60000);
   }
   if (!window.__wrImageRowPollBound) {
     window.__wrImageRowPollBound = true;
@@ -48626,7 +48643,7 @@ window.addEventListener('DOMContentLoaded', () => {
           try { if (typeof window.mbRoomLoad === 'function' && window._mbActiveRoomId) window.mbRoomLoad(window._mbActiveRoomId, { cloud: false }); } catch(e) {}
         }).catch(function(e){ console.warn('[IMG] row poll', e); });
       } catch(e) {}
-    }, 15000);
+    }, window.__SK_IMAGE_ROW_POLL_MS || 60000);
   }
 
 })();
