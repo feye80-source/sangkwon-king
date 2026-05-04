@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260504-sync-v4-tombstone-field-sync';
+    window.__SK_BUILD = '20260504-sync-v5-image-row-poll-guard';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -1846,6 +1846,8 @@
       });
       return out.sort(function(a, b) { return Number(a.savedAt || 0) - Number(b.savedAt || 0); });
     }
+    window._wrCaptureImageKey = window._wrCaptureImageKey || _wrCaptureImageKey;
+    window._wrMergeCaptureImages = window._wrMergeCaptureImages || _wrMergeCaptureImages;
     window._wrAppendCaptureImage = function(roomId, entry, opts) {
       if (!roomId || !entry) return null;
       const options = opts || {};
@@ -2478,6 +2480,12 @@
     window._wrPullImagesForRoom = async function(roomId, opts) {
       const options = opts || {};
       if (!roomId) return null;
+      const imageLocalBusy =
+        Number(window.__wr2UploadBusy || 0) > 0 ||
+        !!window.__wr2SaveRoomsTimer ||
+        (Number(window.__wr2ImageWriteUntil || 0) > Date.now()) ||
+        (Number(window.__mbRoomLocalWriteUntil || 0) > Date.now());
+      if (imageLocalBusy && options.force !== true) return null;
       const rows = await _wrLoadImageRows(roomId);
       if (!rows.length) return null;
       const cacheRooms = window._wrGetRoomsCache ? window._wrGetRoomsCache() : _sbGetCachedArray('wr2_rooms');
@@ -5957,8 +5965,8 @@ var _safeLocalSet = function(key, value) {
                   migrateCaptures(room);
                   if (!confirm('이 캡처 이미지를 삭제할까요?')) return;
                   const img = room.captureImages[idx];
-                  // v3: 파일 원본은 즉시 삭제하지 않는다. 먼저 서버 metadata/tombstone이 전 기기에 퍼져야 엑박이 생기지 않는다.
-                  try { if (window._wrSaveImageRows && img) window._wrSaveImageRows(room.id, [img], { deletedAt: Date.now() }).catch(function(e){ console.warn('[IMG] tombstone fail', e); }); } catch(e) {}
+                  // 먼저 이미지 row tombstone을 가능한 한 확정한다. 실패해도 room._removedCaptureImageKeys가 2차 방어한다.
+                  try { if (window._wrSaveImageRows && img) await window._wrSaveImageRows(room.id, [img], { deletedAt: Date.now() }); } catch(e) { console.warn('[IMG] tombstone fail', e); }
                   const nextImages = (room.captureImages || []).filter(function(_, i) { return i !== idx; });
                   const savedRoom = window._wrSetCaptureImages ? window._wrSetCaptureImages(room.id, nextImages, { explicitEmptyImages: true }) : null;
                   if (savedRoom) room.captureImages = savedRoom.captureImages || [];
@@ -6131,8 +6139,13 @@ var _safeLocalSet = function(key, value) {
                         const { url, path } = await window._sbUploadImage(file, 'captures');
                         const _imgEntry = { src: url, storagePath: path, savedAt: Date.now(), snapName: _snapName };
                         const _savedRoom = window._wrAppendCaptureImage ? window._wrAppendCaptureImage(room.id, _imgEntry) : null;
-                        if (_savedRoom) room.captureImages = _savedRoom.captureImages;
-                        else room.captureImages.push(_imgEntry);
+                        if (_savedRoom) {
+                          room.captureImages = window._wrMergeCaptureImages
+                            ? window._wrMergeCaptureImages(room.captureImages, _savedRoom.captureImages, [_imgEntry])
+                            : (_savedRoom.captureImages || [_imgEntry]);
+                        } else {
+                          room.captureImages.push(_imgEntry);
+                        }
                         ok++;
                       } catch(e) {
                         console.error('[wr2 capture upload]', e);
@@ -6157,8 +6170,8 @@ var _safeLocalSet = function(key, value) {
                 window.wr2DeleteCapture = async function () {
                   const room = getActiveRoom(); if (!room) return;
                   if (!confirm('모든 캡처 이미지를 삭제할까요?')) return;
-                  // v3: 파일 원본은 즉시 삭제하지 않는다. 먼저 이미지 row tombstone을 저장한다.
-                  try { if (window._wrSaveImageRows && room.captureImages && room.captureImages.length) window._wrSaveImageRows(room.id, room.captureImages, { deletedAt: Date.now() }).catch(function(e){ console.warn('[IMG] tombstone all fail', e); }); } catch(e) {}
+                  // 먼저 이미지 row tombstone을 가능한 한 확정한다. 실패해도 room._removedCaptureImageKeys가 2차 방어한다.
+                  try { if (window._wrSaveImageRows && room.captureImages && room.captureImages.length) await window._wrSaveImageRows(room.id, room.captureImages, { deletedAt: Date.now() }); } catch(e) { console.warn('[IMG] tombstone all fail', e); }
                   if (window._wrSetCaptureImages) {
                     const savedRoom = window._wrSetCaptureImages(room.id, [], { explicitEmptyImages: true });
                     room.captureImages = savedRoom && savedRoom.captureImages ? savedRoom.captureImages : [];
@@ -48230,6 +48243,10 @@ window.addEventListener('DOMContentLoaded', () => {
         if (window.wr2State && window.wr2State.activeRoomId) rid = String(window.wr2State.activeRoomId || '');
         if (!rid && window._mbActiveRoomId) rid = String(window._mbActiveRoomId || '');
         if (!rid || typeof window._wrPullImagesForRoom !== 'function') return;
+        if (Number(window.__wr2UploadBusy || 0) > 0) return;
+        if (window.__wr2SaveRoomsTimer) return;
+        if (Number(window.__wr2ImageWriteUntil || 0) > Date.now()) return;
+        if (Number(window.__mbRoomLocalWriteUntil || 0) > Date.now()) return;
         window._wrPullImagesForRoom(rid, { render: false }).then(function(changed){
           if (!changed) return;
           try { if (typeof window.wr2Render === 'function' && window.__pmActiveTab === 'work') window.wr2Render(); } catch(e) {}
