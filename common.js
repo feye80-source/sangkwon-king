@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260428-calendar-today-week-context-v2';
+    window.__SK_BUILD = '20260504-rollback93-session-stability-v1';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -589,21 +589,35 @@
       }
     }
     window._sb.auth.onAuthStateChange((event, session) => {
-      if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session) {
+      if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED') && session) {
         _sbCachedUserId = session && session.user ? (session.user.id || null) : null;
+        // ★ [FIX] getSession timeout 대비: 마지막 정상 세션을 보관한다.
+        // Supabase auth.getSession()이 일시 timeout 되어도 이미 받은 access_token이 살아 있으면
+        // user_id를 null로 지우지 않고, 저장 대기분은 dirty 상태로 유지한다.
+        try {
+          _sbCachedSession = session;
+          _sbCachedSessionAt = Date.now();
+        } catch (e) {}
         _sbSessionReq = null;
-        window._sbHideLogin && window._sbHideLogin();
-        window._sbHideRecovery && window._sbHideRecovery();
-        window._sbAddLogoutBtn && window._sbAddLogoutBtn();
-        // ★ 로그인 시 클라우드 동기화 자동 실행 (IDB 프리로드 완료 후 실행)
-        if (!_sbInitLoadCalled) {
-          _sbInitLoadCalled = true;
-          _sbScheduleInitLoad();
+        _sbSyncBackoffUntil = 0;
+        if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
+          window._sbHideLogin && window._sbHideLogin();
+          window._sbHideRecovery && window._sbHideRecovery();
+          window._sbAddLogoutBtn && window._sbAddLogoutBtn();
+          // ★ 로그인 시 클라우드 동기화 자동 실행 (IDB 프리로드 완료 후 실행)
+          if (!_sbInitLoadCalled) {
+            _sbInitLoadCalled = true;
+            _sbScheduleInitLoad();
+          }
         }
       } else if (event === 'PASSWORD_RECOVERY') {
         window._sbShowRecovery && window._sbShowRecovery();
       } else if (event === 'SIGNED_OUT') {
         _sbCachedUserId = null;
+        try {
+          _sbCachedSession = null;
+          _sbCachedSessionAt = 0;
+        } catch (e) {}
         _sbSessionReq = null;
         _sbLoginReq = null;
         _sbInitLoadCalled = false;
@@ -653,6 +667,8 @@
     // ─── 범용 헬퍼 ───────────────────────────────────────────
     // user_id / session 요청 직렬화
     let _sbCachedUserId = null;
+    let _sbCachedSession = null;       // ★ [FIX] 마지막 정상 세션 캐시
+    let _sbCachedSessionAt = 0;         // ★ [FIX] 캐시 시각
     let _sbSessionReq = null;
     let _sbLoginReq = null;
     function _sbErrText(e, fallback) {
@@ -662,20 +678,44 @@
       if (raw && raw !== '[object Object]') return raw;
       return fallback || '알 수 없는 오류';
     }
+    function _sbCachedSessionAlive() {
+      const s = _sbCachedSession;
+      if (!s || !s.user || !s.access_token) return false;
+      const expAt = Number(s.expires_at || 0) * 1000;
+      if (!expAt) return !!(_sbCachedSessionAt && (Date.now() - _sbCachedSessionAt) < (50 * 60 * 1000));
+      return Date.now() < (expAt - 30000);
+    }
+    let _sbLastSessionWarnAt = 0;
+    function _sbWarnSessionOnce(prefix, e) {
+      const now = Date.now();
+      if (now - _sbLastSessionWarnAt < 30000) return;
+      _sbLastSessionWarnAt = now;
+      console.warn(prefix, e);
+    }
     async function _sbGetSessionShared(opts) {
       const options = opts || {};
       if (_sbSessionReq && !options.force) return _sbSessionReq;
       const req = Promise.resolve()
         .then(() => _sbWithTimeout(window._sb.auth.getSession(), 'auth getSession', 15000))
         .then(res => {
-          _sbCachedUserId = res && res.data && res.data.session && res.data.session.user
-            ? (res.data.session.user.id || null)
-            : null;
+          const session = res && res.data && res.data.session;
+          if (session && session.user) {
+            _sbCachedUserId = session.user.id || _sbCachedUserId;
+            _sbCachedSession = session;
+            _sbCachedSessionAt = Date.now();
+          } else if (!_sbCachedSessionAlive()) {
+            _sbCachedUserId = null;
+          }
           return res;
         })
         .catch(e => {
-          console.warn('[SB] getSession error', e);
-          _sbCachedUserId = null;
+          // ★ [FIX] getSession timeout / 504 / lock 충돌 때 이미 확보한 세션이 살아 있으면 그대로 사용한다.
+          // 이전 방식은 timeout 한 번에 _sbCachedUserId를 null로 지워서 savePlItems no session 루프를 만들었다.
+          if (_sbCachedSessionAlive()) {
+            _sbWarnSessionOnce('[SB] getSession 일시 실패 - 캐시 세션 사용', e);
+            return { data: { session: _sbCachedSession }, error: null, fromCache: true };
+          }
+          _sbWarnSessionOnce('[SB] getSession error', e);
           return { data: { session: null }, error: e };
         })
         .finally(() => {
@@ -685,12 +725,22 @@
       return req;
     }
     async function _sbGetUserId() {
-      if (_sbCachedUserId) return _sbCachedUserId;
+      if (_sbCachedUserId && (_sbCachedSessionAlive() || !_sbCachedSession)) return _sbCachedUserId;
       try {
         const { data: { session } } = await _sbGetSessionShared();
-        _sbCachedUserId = session?.user?.id || null;
-        return _sbCachedUserId;
-      } catch(e) { return null; }
+        if (session && session.user) {
+          _sbCachedUserId = session.user.id || _sbCachedUserId;
+          _sbCachedSession = session;
+          _sbCachedSessionAt = Date.now();
+          return _sbCachedUserId;
+        }
+        if (_sbCachedSessionAlive()) return _sbCachedUserId;
+        _sbCachedUserId = null;
+        return null;
+      } catch(e) {
+        if (_sbCachedSessionAlive()) return _sbCachedUserId;
+        return null;
+      }
     }
     window._sbGetUserId = _sbGetUserId; // ★ 전역 노출 (외부 함수에서 접근 가능하도록)
 
@@ -1912,13 +1962,20 @@
     };
     window._sbSavePlItems = async function(arr) {
       try {
-        const uid = await _sbGetUserId();
-        if (!uid) throw new Error('no session');
         const prev = _sbGetCachedArray('pl_items_v3');
         const nextInput = (Array.isArray(arr) ? arr : []).filter(it => it && it.id);
         const full = _sbPruneTombstones(_sbKeepTombstones(prev, nextInput));
+        // ★ [FIX] 세션이 불안정해도 로컬 변경은 먼저 보존한다.
         _sbPersistCachedArray('pl_items_v3', full);
         _markKvDirty('pl_items_v3');
+
+        const uid = await _sbGetUserId();
+        if (!uid) {
+          _sbSetBackoff(30000);
+          _sbWarnSessionOnce('[SB] savePlItems 보류 - 로그인 세션 확인 실패', { message: 'no session' });
+          return;
+        }
+
         const chunks = _plSplitChunks(full);
         const prevMeta = await kvGet(_PL_META_KEY);
         const prevCount = prevMeta && prevMeta.count ? parseInt(prevMeta.count, 10) || 0 : 0;
@@ -1943,11 +2000,13 @@
         console.warn('[SB] savePlItems error', e);
         _markKvDirty('pl_items_v3');
         if (e && e.message !== 'no session') window._sbSyncStatus('⚠️ 물건리스트 동기화 재시도 중', false);
-        // 일시 오류(네트워크/타임아웃) 대비 자동 재시도
-        try {
-          const retryPayload = _sbGetCachedArray('pl_items_v3');
-          window._sbScheduleSavePlItems(retryPayload, 2000);
-        } catch (e2) {}
+        // 일시 오류(네트워크/타임아웃) 대비 자동 재시도. 단, 세션 없음은 auth 복구 후 dirty queue가 처리한다.
+        if (!(e && e.message === 'no session')) {
+          try {
+            const retryPayload = _sbGetCachedArray('pl_items_v3');
+            window._sbScheduleSavePlItems(retryPayload, 5000);
+          } catch (e2) {}
+        }
       }
     };
     window._sbLoadPlItems = async function(opts) {
