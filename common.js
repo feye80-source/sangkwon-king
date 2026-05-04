@@ -880,13 +880,12 @@
     async function tblSaveDirty(table, arr) {
       try {
         const uid = await _sbGetUserId();
-        if (!uid) return false;
-        if (!arr || !arr.length) return true;
+        if (!uid || !arr || !arr.length) return;
         const dirty = _dirtyItems[table];
         const toSave = (dirty && dirty.size > 0)
           ? arr.filter(item => dirty.has(item.id || item.item_id))
           : (table === 'workrooms' ? [] : arr); // workrooms는 dirty 없으면 skip (tombstone 덮어쓰기 방지)
-        if (!toSave.length) return true;
+        if (!toSave.length) return;
         const savedIds = toSave.map(item => item && (item.id || item.item_id)).filter(Boolean);
         const dirtyRevSnapshot = _snapshotDirtyRev(table, savedIds);
         const rows = toSave.map(item => ({
@@ -907,9 +906,7 @@
         if (dirty && dirty.size > 0) {
           _clearDirtyIdsWithRev(table, savedIds, dirtyRevSnapshot);
         }
-        return true;
       } catch(e) { console.warn('[SB] tblSaveDirty error', table, e); }
-      return false;
     }
 
     // ── 테이블 로드: 페이지네이션 루프 (1000개 제한 해제) ────────
@@ -958,8 +955,7 @@
     async function tblSoftDelete(table, itemIds) {
       try {
         const uid = await _sbGetUserId();
-        if (!uid) return false;
-        if (!itemIds || !itemIds.length) return true;
+        if (!uid || !itemIds.length) return;
         const now = new Date().toISOString();
         const rows = itemIds.map(iid => ({
           id: uid + '_' + iid,
@@ -977,9 +973,7 @@
           if (error) throw error;
         }
         _clearDirtyIds(table, itemIds);
-        return true;
       } catch(e) { console.warn('[SB] tblSoftDelete error', table, e); }
-      return false;
     }
 
     // ─── 동기화 상태 표시 ─────────────────────────────────────
@@ -2012,8 +2006,6 @@
     window._sbSaveRooms = async function(arr) {
       let synced = false;
       try {
-        const uid = await _sbGetUserId();
-        if (!uid) throw new Error('no_session');
         const prev = window._wrGetRoomsCache ? window._wrGetRoomsCache() : [];
         const prevMap = new Map((prev || []).filter(r => r && r.id).map(r => [r.id, r]));
         const cleanArr = _wrStripFreeTableLegacyRooms(arr).map(function(r) {
@@ -2023,12 +2015,11 @@
         const full = _sbPruneTombstones(_sbKeepTombstones(prev, cleanArr)).filter(r => r && r.id);
         const changedIds = _sbChangedIds(prev, full);
         const hasDirty = !!(_dirtyItems.workrooms && _dirtyItems.workrooms.size);
-        if (!changedIds.length && !hasDirty) return true;
+        if (!changedIds.length && !hasDirty) return;
         const active = window._wrFilterActiveRooms ? window._wrFilterActiveRooms(full) : full.filter(r => !r.deletedAt);
         const deleted = full.filter(r => r.deletedAt).map(r => r.id);
-        const saveOk = await tblSaveDirty('workrooms', active);
-        const delOk = deleted.length ? await tblSoftDelete('workrooms', deleted) : true;
-        if (!saveOk || !delOk) throw new Error('workrooms_sync_failed');
+        await tblSaveDirty('workrooms', active);
+        if (deleted.length) await tblSoftDelete('workrooms', deleted);
         if (window._wrPersistRoomCache) window._wrPersistRoomCache(full, { syncState: false });
         synced = true;
       } catch(e) {
@@ -2036,7 +2027,6 @@
         window._sbSyncStatus('⚠️ 작업룸 동기화 재시도 중', false);
       }
       if (synced) window._sbSyncStatus('☁️ 작업룸 동기화 완료', true);
-      return synced;
     };
     window._sbMarkRoomDirty = function(roomId) { _markDirty('workrooms', roomId); };
     window._sbLoadRooms = async function() { return await tblLoadArr('workrooms'); };
