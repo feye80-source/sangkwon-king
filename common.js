@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260504-sync-image-pl-v1';
+    window.__SK_BUILD = '20260504-sync-image-pl-v2-fast-ui';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -537,33 +537,21 @@
     }
     window._sbRunEntryRefresh = _sbRunEntryRefresh;
     async function _sbRunAutoSync(reason) {
+      // FAST-UI 원칙: 포커스/가시성 복귀 때 전체 클라우드 pull을 즉시 실행하지 않는다.
+      // 화면 진입은 로컬 IDB 캐시를 먼저 렌더하고, pull은 각 탭에서 백그라운드로 수행한다.
+      // 여기서는 미전송 dirty 변경분만 가볍게 flush하여 UI 초기 표시가 네트워크에 막히지 않게 한다.
       if (_sbAutoSyncRunning) return;
       if (!_sbCanNetworkSync()) return;
-      if (typeof document !== 'undefined' && document.hidden && reason === 'interval') return;
-      if (!_sbAllowRefresh('auto:' + String(reason || 'tick'), reason === 'interval' ? 42000 : 8000)) return;
+      if (!_sbAllowRefresh('auto-flush:' + String(reason || 'tick'), 12000)) return;
       _sbAutoSyncRunning = true;
       try {
         const sessionRes = await _sbGetSessionShared({ force: false });
         const session = sessionRes && sessionRes.data && sessionRes.data.session;
         if (!session || !session.user) return;
         await _sbSyncDirtyQueues();
-        if (window.__plAutoCloudPull !== false) {
-          await _sbSafeLoad('workrooms_auto_' + reason, function() {
-            return window._wrRefreshFromCloud ? window._wrRefreshFromCloud({ render: true, force: true }) : null;
-          }, 0);
-          await _sbSafeLoad('pl_items_auto_' + reason, function() {
-            return window._plRefreshFromCloud ? window._plRefreshFromCloud({ render: true, force: true, sync: false }) : null;
-          }, 0);
-          await _sbSafeLoad('saved_auto_' + reason, function() {
-            return window._svRefreshFromCloud ? window._svRefreshFromCloud({ render: false }) : null;
-          }, 0);
-        }
-        await _sbSafeLoad('snapshots_auto_' + reason, function() {
-          return window._wsRefreshFromCloud ? window._wsRefreshFromCloud({ render: false }) : null;
-        }, 0);
       } catch (e) {
         _sbSetBackoff(30000);
-        console.warn('[SB] auto sync fail', reason, e);
+        console.warn('[SB] auto dirty flush fail', reason, e);
       } finally {
         _sbAutoSyncRunning = false;
       }
@@ -579,7 +567,6 @@
         if (!document.hidden) kick('visible', 350);
       });
       window.addEventListener('online', function() { kick('online', 500); }, { passive: true });
-      _sbAutoSyncTimer = setInterval(function() { kick('interval', 0); }, 45000);
     }
     function _sbScheduleInitLoad() {
       _sbEnsureAutoSync();
@@ -47517,15 +47504,16 @@ window.addEventListener('DOMContentLoaded', () => {
     });
       if (tab === 'list') {
         pmRestoreInsightPanels();
+        // FAST-UI: 물건리스트는 로컬 IDB 캐시로 즉시 렌더한다.
+        // 클라우드 pull은 뒤에서 수행해 최신화하되, 첫 화면 표시를 막지 않는다.
+        if (typeof renderPropertyList === 'function') renderPropertyList();
         if (window.__plAutoCloudPull !== false && window._sbRunEntryRefresh && typeof window._plRefreshFromCloud === 'function') {
-        window._sbRunEntryRefresh('properties', window._plRefreshFromCloud, { render: true, label: 'properties', force: true })
-          .then(function(payload) {
-            if (!payload && typeof renderPropertyList === 'function') renderPropertyList();
-          });
-      } else {
-        renderPropertyList();
+          setTimeout(function() {
+            window._sbRunEntryRefresh('properties', window._plRefreshFromCloud, { render: true, label: 'properties', force: true })
+              .catch(function(){});
+          }, 80);
+        }
       }
-    }
     if (tab === 'work') {
       pmMountPanel('work');
       try { if (!window.__wr2Inited && typeof window.wr2Init === 'function') { window.__wr2Inited = true; window.wr2Init(); } } catch(e) {}
@@ -47534,16 +47522,16 @@ window.addEventListener('DOMContentLoaded', () => {
       if (pendingRoomId && window.wr2State) {
         window.wr2State.activeRoomId = pendingRoomId;
       }
+      // FAST-UI: 작업룸도 먼저 로컬 캐시를 렌더하고, 클라우드 갱신은 백그라운드로 돌린다.
+      if (typeof window.wr2Render === 'function') window.wr2Render();
       if (window.__plAutoCloudPull !== false && window._sbRunEntryRefresh && typeof window._wrRefreshFromCloud === 'function') {
-        window._sbRunEntryRefresh('workrooms', window._wrRefreshFromCloud, { render: true, label: 'workrooms', force: true })
-          .then(function(payload) {
-            if (window.wr2State && pendingRoomId) {
-              window.wr2State.activeRoomId = pendingRoomId;
-            }
-            if (!payload && typeof window.wr2Render === 'function') window.wr2Render();
-          });
-      } else if (typeof window.wr2Render === 'function') {
-        window.wr2Render();
+        setTimeout(function() {
+          window._sbRunEntryRefresh('workrooms', window._wrRefreshFromCloud, { render: true, label: 'workrooms', force: true })
+            .then(function() {
+              if (window.wr2State && pendingRoomId) window.wr2State.activeRoomId = pendingRoomId;
+            })
+            .catch(function(){});
+        }, 80);
       }
       window.__pmPendingRoomId = '';
     }
@@ -48256,7 +48244,7 @@ window.addEventListener('DOMContentLoaded', () => {
         }).catch(function(){});
       }
     } catch (e) {}
-  }, 20000);
+  }, 60000);
   function _plQuickCloudPull() {
     try {
       if (typeof currentPage === 'undefined' || currentPage !== 4) return;
