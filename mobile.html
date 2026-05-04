@@ -4928,12 +4928,12 @@ input, textarea, select {
     if (!Array.isArray(rooms)) return;
     window.__mbRoomLocalWriteUntil = Math.max(Number(window.__mbRoomLocalWriteUntil || 0), Date.now() + 15000);
     if (activeRoomId && window._sbMarkRoomDirty) window._sbMarkRoomDirty(activeRoomId);
-    if (window._wrPersistRooms) window._wrPersistRooms(rooms, { syncState: false });
-    else if (window._wrPersistAndSyncRooms) window._wrPersistAndSyncRooms(rooms, { syncState: false });
+    if (window._wrPersistRooms) window._wrPersistRooms(rooms, { syncState: false, immediate: true });
+    else if (window._wrPersistAndSyncRooms) window._wrPersistAndSyncRooms(rooms, { syncState: false, immediate: true });
     else {
       var active = activeRoomId ? rooms.find(function(r) { return r && r.id === activeRoomId; }) : null;
       if (active && window._sbMarkRoomDirty) window._sbMarkRoomDirty(active.id);
-      if (window._wrPersistRoomCache) window._wrPersistRoomCache(rooms, { syncState: false });
+      if (window._wrPersistRoomCache) window._wrPersistRoomCache(rooms, { syncState: false, immediate: true });
       else {
         if (window._idbCache) window._idbCache['wr2_rooms'] = rooms;
         if (window.idbSet) window.idbSet('wr2_rooms', rooms).catch(function(){});
@@ -4969,19 +4969,34 @@ input, textarea, select {
 
   async function _mbForceSyncRoomsNow() {
     try {
-      var rooms = (window._wrGetRoomsCache && window._wrGetRoomsCache())
-        || ((window._idbCache && window._idbCache['wr2_rooms'])
-          || JSON.parse(localStorage.getItem('wr2_rooms') || '[]'));
+      // 업로드 직후에는 캐시 반영이 지연될 수 있어 wr2State 우선으로 최신 스냅샷 사용
+      var rooms = (window.wr2State && Array.isArray(window.wr2State.rooms) && window.wr2State.rooms.length)
+        ? window.wr2State.rooms
+        : ((window._wrGetRoomsCache && window._wrGetRoomsCache())
+          || ((window._idbCache && window._idbCache['wr2_rooms'])
+            || JSON.parse(localStorage.getItem('wr2_rooms') || '[]')));
       if (!Array.isArray(rooms) || !rooms.length) return false;
       if (typeof window._sbSaveRooms === 'function') {
-        await window._sbSaveRooms(rooms.filter(function(r){ return r && r.id; }));
-        return true;
+        var syncResult = await window._sbSaveRooms(rooms.filter(function(r){ return r && r.id && !r.deletedAt; }));
+        return syncResult !== false;
       }
       return false;
     } catch (e) {
       console.warn('[mb force room sync]', e);
       return false;
     }
+  }
+  var _MB_LOCAL_SYNC_GUARD_MS = 45000;
+  async function _mbForceSyncRoomsWithRetry(label) {
+    var ok = await _mbForceSyncRoomsNow();
+    if (ok) return true;
+    for (var i = 0; i < 2; i++) {
+      await new Promise(function(resolve) { setTimeout(resolve, 900 + (i * 1200)); });
+      ok = await _mbForceSyncRoomsNow();
+      if (ok) return true;
+    }
+    console.warn('[mb sync retry fail]', label || 'workrooms');
+    return false;
   }
   function _mbPersistSections(sections) {
     if (!Array.isArray(sections)) return;
@@ -5837,7 +5852,8 @@ input, textarea, select {
     if (!room) return;
     var roomId = room.id;
     (async function() {
-      window.__mbRoomLocalWriteUntil = Math.max(Number(window.__mbRoomLocalWriteUntil || 0), Date.now() + 180000);
+      window.__mbRoomLocalWriteUntil = Math.max(Number(window.__mbRoomLocalWriteUntil || 0), Date.now() + _MB_LOCAL_SYNC_GUARD_MS);
+      window.__wr2ImageWriteUntil = Math.max(Number(window.__wr2ImageWriteUntil || 0), Date.now() + _MB_LOCAL_SYNC_GUARD_MS);
       window.__wr2UploadBusy = Number(window.__wr2UploadBusy || 0) + 1;
       var ok = 0;
       var fail = 0;
@@ -5868,10 +5884,12 @@ input, textarea, select {
             targetRoom.captureImages = targetRoom.captureImages.concat(entries);
           }, { immediate: true });
         }
-        window.__mbRoomLocalWriteUntil = Date.now() + 180000;
-        await _mbForceSyncRoomsNow();
+        window.__mbRoomLocalWriteUntil = Date.now() + _MB_LOCAL_SYNC_GUARD_MS;
+        window.__wr2ImageWriteUntil = Math.max(Number(window.__wr2ImageWriteUntil || 0), Date.now() + _MB_LOCAL_SYNC_GUARD_MS);
+        var syncOk = await _mbForceSyncRoomsWithRetry('capture-upload');
         if (ok && latestRoom && window.wr2PushActivity) window.wr2PushActivity(latestRoom, '작업 이미지 ' + ok + '개를 추가했습니다', latestRoom.phase || latestRoom.status);
         if (latestRoom) _mbRenderOvCapture(latestRoom);
+        if (!syncOk && ok) mbToast('이미지 저장됨 · 클라우드 동기화 재시도 중', 'warn');
         if (ok) mbToast('작업 이미지 ' + ok + '개 업로드됨', fail ? 'warn' : 'ok');
         else if (fail) mbToast('작업 이미지 업로드 실패', 'err');
       } finally {
@@ -5967,7 +5985,8 @@ input, textarea, select {
     var roomId = room.id;
     var noteId = note.id;
     (async function() {
-      window.__mbRoomLocalWriteUntil = Math.max(Number(window.__mbRoomLocalWriteUntil || 0), Date.now() + 180000);
+      window.__mbRoomLocalWriteUntil = Math.max(Number(window.__mbRoomLocalWriteUntil || 0), Date.now() + _MB_LOCAL_SYNC_GUARD_MS);
+      window.__wr2ImageWriteUntil = Math.max(Number(window.__wr2ImageWriteUntil || 0), Date.now() + _MB_LOCAL_SYNC_GUARD_MS);
       window.__wr2UploadBusy = Number(window.__wr2UploadBusy || 0) + 1;
       var ok = 0;
       var fail = 0;
@@ -6009,8 +6028,9 @@ input, textarea, select {
             targetRoom.lastNoteId = noteId;
           }, { immediate: true });
         }
-        window.__mbRoomLocalWriteUntil = Date.now() + 180000;
-        await _mbForceSyncRoomsNow();
+        window.__mbRoomLocalWriteUntil = Date.now() + _MB_LOCAL_SYNC_GUARD_MS;
+        window.__wr2ImageWriteUntil = Math.max(Number(window.__wr2ImageWriteUntil || 0), Date.now() + _MB_LOCAL_SYNC_GUARD_MS);
+        var syncOk2 = await _mbForceSyncRoomsWithRetry('note-attach-upload');
         if (ok && latestRoom && window.wr2PushActivity) window.wr2PushActivity(latestRoom, '노트 첨부 ' + ok + '개를 추가했습니다', latestRoom.phase || latestRoom.status);
         if (latestRoom) {
           _mbRenderNoteAttachments(latestRoom);
@@ -6018,6 +6038,7 @@ input, textarea, select {
           _mbRenderNoteAllAttachments(latestRoom);
           _mbRenderOvNote(latestRoom);
         }
+        if (!syncOk2 && ok) mbToast('첨부 저장됨 · 클라우드 동기화 재시도 중', 'warn');
         if (ok) mbToast('첨부 ' + ok + '개 업로드됨', fail ? 'warn' : 'ok');
         else if (fail) mbToast('첨부 업로드 실패', 'err');
       } finally {
@@ -6874,6 +6895,10 @@ input, textarea, select {
       _doRender(_bestLocal);
 
       if (window._wrRefreshFromCloud && shouldCloudRefresh) {
+        // 업로드/로컬 편집 직후에는 강제 클라우드 pull이 최신 로컬 상태를 덮지 않도록 잠시 스킵
+        if (window.__mbRoomLocalWriteUntil && Date.now() < Number(window.__mbRoomLocalWriteUntil || 0)) {
+          return;
+        }
         var _runDetailRefresh = function() {
           if (window._sbRunEntryRefresh) {
             return window._sbRunEntryRefresh('workrooms', window._wrRefreshFromCloud, { render: false, label: 'workrooms', force: true });
