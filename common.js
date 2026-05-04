@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260504-stable-sync-v1-common3-base';
+    window.__SK_BUILD = '20260504-sync-v2-row-pl-image-tombstone';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -1726,8 +1726,7 @@
       if (removedKeys.length) {
         merged._removedCaptureImageKeys = removedKeys;
         merged.captureImages = _wrFilterRemovedCaptureImages(merged.captureImages || [], removedKeys);
-        const removedStamp = removedKeys.reduce(function(max, entry) { return Math.max(max, Number(entry && entry.at || 0) || 0); }, 0);
-        merged._captureImagesUpdatedAt = Math.max(_wrRoomImageStamp(merged), Number(merged._captureImagesUpdatedAt || 0), removedStamp);
+        merged._captureImagesUpdatedAt = Math.max(_wrRoomImageStamp(merged), Number(merged._captureImagesUpdatedAt || 0), Date.now());
       }
       delete merged.captureImage;
       return merged;
@@ -1843,6 +1842,10 @@
         return savedAt && savedAt > removedAt;
       });
     }
+    window._wrNormalizeRemovedCaptureKeys = _wrNormalizeRemovedCaptureKeys;
+    window._wrFilterRemovedCaptureImages = _wrFilterRemovedCaptureImages;
+    window._wrMergeCaptureImages = _wrMergeCaptureImages;
+
     function _wrMergeCaptureImages() {
       const out = [];
       const seen = new Set();
@@ -2166,78 +2169,118 @@
       if (cur.length) out.push(cur);
       return out;
     }
-    window._sbScheduleSavePlItems = function(arr, delay) {
-      _sbScheduleAsyncSave('pl_items_v3', arr, function(latest) {
-        return window._sbSavePlItems(latest);
-      }, typeof delay === 'number' ? delay : 900);
-    };
-    window._sbSavePlItems = async function(arr) {
+    // ─── 물건리스트 v4: item 단위 동기화 레이어 ─────────────────────
+    // 기존 pl_items_v3 chunk는 백업/호환 용도로만 유지하고,
+    // 실제 편집값(의향/상태/입찰가/메모 등)은 item 1개 = kv row 1개로 저장한다.
+    const _PL_ROW_MANIFEST_KEY = 'pl_items_v4_manifest';
+    const _PL_ROW_PREFIX = 'pl_item_v4_';
+    const _PL_ROW_CONCURRENCY = 8;
+    window.__SK_SYNC_DEBUG = (window.__SK_SYNC_DEBUG !== false);
+    function _skSyncLog() {
       try {
-        const uid = await _sbGetUserId();
-        if (!uid) throw new Error('no session');
-        const prev = _sbGetCachedArray('pl_items_v3');
-        const nextInput = (Array.isArray(arr) ? arr : []).filter(it => it && it.id);
-        const dirtyIds = (window._plGetDirtyIds ? window._plGetDirtyIds() : []).map(String).filter(Boolean);
-        let full;
-        if (dirtyIds.length) {
-          // 전체 목록 덮어쓰기 금지: 변경된 item id만 서버 현재값 위에 병합한다.
-          // 이렇게 해야 맥북의 1번 수정이 아이패드의 오래된 전체 목록 저장으로 사라지지 않는다.
-          let cloudBase = [];
-          try { cloudBase = window._sbLoadPlItems ? await window._sbLoadPlItems({ saveContext: true }) : []; }
-          catch(e) { console.warn('[SB] pl cloud base load before save failed', e); }
-          const map = new Map();
-          (Array.isArray(cloudBase) ? cloudBase : []).forEach(function(it) { if (it && it.id) map.set(String(it.id), it); });
-          (Array.isArray(prev) ? prev : []).forEach(function(it) { if (it && it.id && it.deletedAt) map.set(String(it.id), it); });
-          const localMap = new Map(nextInput.map(function(it) { return [String(it.id), it]; }));
-          const now = Date.now();
-          dirtyIds.forEach(function(id) {
-            if (localMap.has(String(id))) {
-              map.set(String(id), localMap.get(String(id)));
-            } else {
-              const old = map.get(String(id)) || { id: String(id) };
-              map.set(String(id), Object.assign({}, old, { id: String(id), deletedAt: old.deletedAt || now, updatedAt: now }));
-            }
-          });
-          full = _sbPruneTombstones(Array.from(map.values()).filter(function(it){ return it && it.id; }));
-        } else {
-          full = _sbPruneTombstones(_sbKeepTombstones(prev, nextInput));
-        }
-        _sbPersistCachedArray('pl_items_v3', full);
-        _markKvDirty('pl_items_v3');
-        const chunks = _plSplitChunks(full);
-        const prevMeta = await kvGet(_PL_META_KEY);
-        const prevCount = prevMeta && prevMeta.count ? parseInt(prevMeta.count, 10) || 0 : 0;
-        // 원자성 보강: chunk를 먼저 저장하고 meta를 마지막에 갱신한다.
-        // meta가 먼저 바뀌면 다른 기기가 새 count로 일부 예전 chunk를 읽는 문제가 생긴다.
-        for (let i = 0; i < chunks.length; i += 1) {
-          await kvSet(_PL_CHUNK_PREFIX + i, chunks[i]);
-        }
-        for (let j = chunks.length; j < prevCount; j += 1) {
-          await kvSet(_PL_CHUNK_PREFIX + j, []);
-        }
-        await kvSet(_PL_META_KEY, {
-          version: 3,
-          count: chunks.length,
-          updatedAt: Date.now()
-        });
-        if (full.length <= 120) await kvSet('pl_items_v3', full);
-        if (dirtyIds.length && window._plClearDirtyIds) window._plClearDirtyIds(dirtyIds);
-        if (!window._plGetDirtyIds || !window._plGetDirtyIds().length) _clearKvDirty('pl_items_v3');
-        window._sbSyncStatus('☁️ 물건리스트 동기화 완료', true);
-      } catch (e) {
-        console.warn('[SB] savePlItems error', e);
-        _markKvDirty('pl_items_v3');
-        if (e && e.message !== 'no session') window._sbSyncStatus('⚠️ 물건리스트 동기화 재시도 중', false);
-        try {
-          const retryPayload = _sbGetCachedArray('pl_items_v3');
-          window._sbScheduleSavePlItems(retryPayload, 2500);
-        } catch (e2) {}
+        if (window.__SK_SYNC_DEBUG === false) return;
+        const args = Array.prototype.slice.call(arguments);
+        args.unshift('[SK-SYNC]');
+        console.log.apply(console, args);
+      } catch(e) {}
+    }
+    window._skSyncLog = window._skSyncLog || _skSyncLog;
+    function _plRowKey(itemId) {
+      return _PL_ROW_PREFIX + encodeURIComponent(String(itemId || ''));
+    }
+    function _plItemTime(item) {
+      const v = item && (item.updatedAt || item.timestamp || item.createdAt || item.savedAt || 0);
+      const n = Number(v);
+      if (Number.isFinite(n) && n > 0) return n;
+      const d = new Date(v || 0).getTime();
+      return Number.isFinite(d) ? d : 0;
+    }
+    function _plMergeArraysByItemId(baseArr, overlayArr) {
+      const map = new Map();
+      (Array.isArray(baseArr) ? baseArr : []).forEach(function(item) {
+        if (item && item.id) map.set(String(item.id), item);
+      });
+      (Array.isArray(overlayArr) ? overlayArr : []).forEach(function(item) {
+        if (!item || !item.id) return;
+        const id = String(item.id);
+        const prev = map.get(id);
+        if (!prev) { map.set(id, item); return; }
+        const pDel = _sbDeletedAtMs(prev.deletedAt);
+        const nDel = _sbDeletedAtMs(item.deletedAt);
+        const pTime = Math.max(_plItemTime(prev), pDel);
+        const nTime = Math.max(_plItemTime(item), nDel);
+        // tombstone은 같은/더 최신이면 무조건 우선한다.
+        if (nDel && nTime >= pTime) { map.set(id, item); return; }
+        if (pDel && pTime > nTime) return;
+        if (nTime >= pTime) map.set(id, item);
+      });
+      return Array.from(map.values()).filter(function(item){ return item && item.id; });
+    }
+    async function _plLoadRowManifest() {
+      try {
+        const meta = await kvGet(_PL_ROW_MANIFEST_KEY);
+        const ids = meta && Array.isArray(meta.ids) ? meta.ids.map(String).filter(Boolean) : [];
+        return { meta: meta || null, ids: Array.from(new Set(ids)) };
+      } catch(e) {
+        console.warn('[PL] row manifest load fail', e);
+        return { meta: null, ids: [] };
       }
-    };
-    window._sbLoadPlItems = async function(opts) {
+    }
+    async function _plSaveRowManifest(ids) {
+      const prev = await _plLoadRowManifest();
+      const set = new Set(prev.ids);
+      (Array.isArray(ids) ? ids : []).forEach(function(id){ if (id) set.add(String(id)); });
+      const nextIds = Array.from(set);
+      await kvSet(_PL_ROW_MANIFEST_KEY, {
+        version: 4,
+        ids: nextIds,
+        count: nextIds.length,
+        updatedAt: Date.now()
+      });
+      return nextIds;
+    }
+    async function _plSaveItemRows(allItems, ids) {
+      const arr = (Array.isArray(allItems) ? allItems : []).filter(function(it){ return it && it.id; });
+      const map = new Map(arr.map(function(it){ return [String(it.id), it]; }));
+      const now = Date.now();
+      const targetIds = Array.from(new Set((Array.isArray(ids) ? ids : arr.map(function(it){ return it.id; })).map(String).filter(Boolean)));
+      if (!targetIds.length) return [];
+      _skSyncLog('[PL] row push start', targetIds);
+      const savedIds = [];
+      for (const id of targetIds) {
+        let item = map.get(String(id));
+        if (!item) item = { id: String(id), deletedAt: now, updatedAt: now };
+        const clean = Object.assign({}, item, { id: String(id), updatedAt: Number(item.updatedAt || 0) || now });
+        await kvSet(_plRowKey(id), clean);
+        savedIds.push(String(id));
+      }
+      await _plSaveRowManifest(savedIds);
+      _skSyncLog('[PL] row push ok', savedIds);
+      return savedIds;
+    }
+    async function _plLoadItemRows(opts) {
       const options = opts || {};
+      const manifest = await _plLoadRowManifest();
+      const ids = manifest.ids;
+      if (!ids.length) return null;
+      _skSyncLog('[PL] row pull start', { count: ids.length, lightweight: !!options.lightweight });
+      const rows = new Array(ids.length);
+      let cursor = 0;
+      const workers = Array.from({ length: Math.min(_PL_ROW_CONCURRENCY, Math.max(1, ids.length)) }, async function() {
+        while (cursor < ids.length) {
+          const i = cursor++;
+          try { rows[i] = await kvGet(_plRowKey(ids[i])); }
+          catch(e) { rows[i] = null; }
+        }
+      });
+      await Promise.all(workers);
+      const out = _sbPruneTombstones(rows.filter(function(it){ return it && it.id; }));
+      _skSyncLog('[PL] row pull ok', { count: out.length });
+      return out;
+    }
+    async function _plLoadLegacyChunkItems(forceLegacy) {
       let out = null;
-      if (!options.forceLegacy) {
+      if (!forceLegacy) {
         try {
           const meta = await kvGet(_PL_META_KEY);
           if (meta && parseInt(meta.count, 10) >= 0) {
@@ -2259,15 +2302,98 @@
             out = merged;
           }
         } catch (e) {
-          console.warn('[SB] loadPlItems chunk read fail', e);
+          console.warn('[SB] loadPlItems legacy chunk read fail', e);
         }
       }
       if (!Array.isArray(out)) {
         const legacy = await kvGet('pl_items_v3');
         out = Array.isArray(legacy) ? legacy : [];
       }
-      // 키가 아직 없는 초기 상태도 빈 목록으로 취급
       return _sbPruneTombstones(Array.isArray(out) ? out : []);
+    }
+    async function _plSaveLegacyChunks(full) {
+      const list = _sbPruneTombstones((Array.isArray(full) ? full : []).filter(function(it){ return it && it.id; }));
+      const chunks = _plSplitChunks(list);
+      const prevMeta = await kvGet(_PL_META_KEY);
+      const prevCount = prevMeta && prevMeta.count ? parseInt(prevMeta.count, 10) || 0 : 0;
+      for (let i = 0; i < chunks.length; i += 1) await kvSet(_PL_CHUNK_PREFIX + i, chunks[i]);
+      for (let j = chunks.length; j < prevCount; j += 1) await kvSet(_PL_CHUNK_PREFIX + j, []);
+      await kvSet(_PL_META_KEY, { version: 3, count: chunks.length, updatedAt: Date.now() });
+      if (list.length <= 120) await kvSet('pl_items_v3', list);
+      return list;
+    }
+    window._plLoadItemRows = _plLoadItemRows;
+    window._plSaveItemRows = _plSaveItemRows;
+    window._plMergeArraysByItemId = _plMergeArraysByItemId;
+
+    window._sbScheduleSavePlItems = function(arr, delay) {
+      _sbScheduleAsyncSave('pl_items_v3', arr, function(latest) {
+        return window._sbSavePlItems(latest);
+      }, typeof delay === 'number' ? delay : 900);
+    };
+    window._sbSavePlItems = async function(arr) {
+      try {
+        const uid = await _sbGetUserId();
+        if (!uid) throw new Error('no session');
+        const prev = _sbGetCachedArray('pl_items_v3');
+        const nextInput = (Array.isArray(arr) ? arr : []).filter(it => it && it.id);
+        const dirtyIds = (window._plGetDirtyIds ? window._plGetDirtyIds() : []).map(String).filter(Boolean);
+        const full = _sbPruneTombstones(_sbKeepTombstones(prev, nextInput)).filter(function(it){ return it && it.id; });
+        _sbPersistCachedArray('pl_items_v3', full, { delay: 120 });
+        _markKvDirty('pl_items_v3');
+        const rowManifest = await _plLoadRowManifest();
+
+        if (dirtyIds.length) {
+          // 편집 발생 시에는 전체 chunk를 다시 쓰지 않고, 변경된 item row만 즉시 저장한다.
+          // 단, v4 row manifest가 아직 없으면 첫 저장 때 전체를 1회 마이그레이션한다.
+          const idsToSave = rowManifest.ids.length ? dirtyIds : full.map(function(it){ return it.id; });
+          await _plSaveItemRows(full, idsToSave);
+          if (window._plClearDirtyIds) window._plClearDirtyIds(dirtyIds);
+          if (!window._plGetDirtyIds || !window._plGetDirtyIds().length) _clearKvDirty('pl_items_v3');
+          window._sbSyncStatus('☁️ 물건리스트 변경분 동기화 완료', true);
+          return;
+        }
+
+        // dirty가 없는 예약 저장은 전체 목록을 다시 올리지 않는다.
+        // 즉시 push가 끝난 뒤 남아 있는 예약 save가 오래된 전체 배열로 다른 기기 값을 덮는 경로를 차단한다.
+        const forceFull = window.__PL_FORCE_FULL_ROW_PUSH === true || !rowManifest.ids.length;
+        if (!forceFull) {
+          _clearKvDirty('pl_items_v3');
+          _skSyncLog('[PL] full save skipped: no dirty rows');
+          return;
+        }
+        window.__PL_FORCE_FULL_ROW_PUSH = false;
+        await _plSaveItemRows(full, full.map(function(it){ return it.id; }));
+        if (window.__PL_SKIP_LEGACY_BACKUP !== true) await _plSaveLegacyChunks(full);
+        _clearKvDirty('pl_items_v3');
+        window._sbSyncStatus('☁️ 물건리스트 전체 동기화 완료', true);
+      } catch (e) {
+        console.warn('[SB] savePlItems error', e);
+        _markKvDirty('pl_items_v3');
+        if (e && e.message !== 'no session') window._sbSyncStatus('⚠️ 물건리스트 동기화 재시도 중', false);
+        try {
+          const retryPayload = _sbGetCachedArray('pl_items_v3');
+          window._sbScheduleSavePlItems(retryPayload, 2500);
+        } catch (e2) {}
+      }
+    };
+    window._sbLoadPlItems = async function(opts) {
+      const options = opts || {};
+      let legacyItems = [];
+      let rowItems = null;
+      try { rowItems = await _plLoadItemRows({ lightweight: !!options.lightweight }); }
+      catch(e) { console.warn('[SB] loadPlItems row read fail', e); rowItems = null; }
+      if (options.rowsOnly === true) return _sbPruneTombstones(Array.isArray(rowItems) ? rowItems : []);
+      // lightweight pull은 item row만 받는다. 전체 목록은 로컬 캐시가 유지하고, 변경 row만 덮어쓴다.
+      if (options.lightweight === true && Array.isArray(rowItems) && rowItems.length) {
+        return _sbPruneTombstones(rowItems);
+      }
+      try { legacyItems = await _plLoadLegacyChunkItems(!!options.forceLegacy); }
+      catch(e) { console.warn('[SB] loadPlItems legacy read fail', e); legacyItems = []; }
+      if (Array.isArray(rowItems) && rowItems.length) {
+        return _sbPruneTombstones(_plMergeArraysByItemId(legacyItems, rowItems));
+      }
+      return _sbPruneTombstones(Array.isArray(legacyItems) ? legacyItems : []);
     };
     window._plRefreshFromCloud = async function(opts) {
       const options = opts || {};
@@ -2288,9 +2414,14 @@
       // 로컬 dirty가 남아있으면 강제 클라우드 우선은 금지한다.
       // (최근 로컬 변경이 네트워크 지연으로 덮어써지는 저장 손실 방지)
       if (_hasKvDirty('pl_items_v3')) forceCloud = false;
-      const cloudItems = window._sbLoadPlItems ? await window._sbLoadPlItems() : [];
+      const cloudItems = window._sbLoadPlItems ? await window._sbLoadPlItems({ lightweight: !!options.lightweight }) : [];
       const localItems = _sbGetCachedArray('pl_items_v3');
-      let merged = _sbMergeById(cloudItems, localItems).filter(it => it && it.id);
+      _skSyncLog('[PL] refresh merge', { cloud: (cloudItems || []).length, local: (localItems || []).length, force: !!forceCloud, dirty: _hasKvDirty('pl_items_v3') });
+      let merged = (window._plMergeArraysByItemId
+        ? (_hasKvDirty('pl_items_v3')
+          ? window._plMergeArraysByItemId(cloudItems, localItems)   // 저장 실패/대기 중이면 로컬 dirty 우선
+          : window._plMergeArraysByItemId(localItems, cloudItems))  // 평상시는 서버 row 우선
+        : _sbMergeById(cloudItems, localItems)).filter(it => it && it.id);
       // 최근 로컬 라이프사이클 변경 직후에만 로컬 상태를 우선한다.
       // 그렇지 않으면 클라우드 기준으로 수렴시켜 기기간 개수 흔들림을 막는다.
       if (preferLocalLifecycle) {
@@ -2325,7 +2456,9 @@
       if (options.sync !== false && window._sbSavePlItems) {
         try {
           const changedIds = _sbChangedIds(cloudItems, merged);
-          if (changedIds.length) await window._sbSavePlItems(merged);
+          // pull 직후 전체 목록을 다시 쓰면 다른 기기 변경을 덮을 수 있으므로,
+          // 여기서는 row manifest가 비어 있는 초기 마이그레이션 외에는 자동 backfill을 하지 않는다.
+          if (changedIds.length && window.__PL_ALLOW_PULL_BACKFILL === true) await window._sbSavePlItems(merged);
         } catch (e) {
           console.warn('[SB] pl backfill after refresh', e);
         }
@@ -2338,6 +2471,29 @@
         } catch (e) {}
       }
       return { full: merged, active: _sbFilterActiveEntities(merged) };
+    };
+
+    window._plLightweightPull = async function(opts) {
+      const options = Object.assign({}, opts || {}, { lightweight: true, force: true, sync: false });
+      return window._plRefreshFromCloud ? window._plRefreshFromCloud(options) : null;
+    };
+    window._plPushDirtyNow = async function(reason) {
+      if (window.__plPushDirtyRunning) {
+        window.__plPushDirtyQueued = true;
+        return null;
+      }
+      window.__plPushDirtyRunning = true;
+      try {
+        _skSyncLog('[PL] push dirty now', reason || 'manual');
+        const items = _sbGetCachedArray('pl_items_v3').filter(function(it){ return it && it.id; });
+        return window._sbSavePlItems ? await window._sbSavePlItems(items) : null;
+      } finally {
+        window.__plPushDirtyRunning = false;
+        if (window.__plPushDirtyQueued) {
+          window.__plPushDirtyQueued = false;
+          setTimeout(function(){ try { window._plPushDirtyNow('queued'); } catch(e) {} }, 300);
+        }
+      }
     };
 
     // ─── Storage 이미지 업로드 공통 헬퍼 ─────────────────────
@@ -2439,6 +2595,25 @@
     // ★ [R2] Cloudflare R2 업로드 Worker URL
     window.R2_WORKER_URL = 'https://sangkwon-upload-worker.feye80.workers.dev';
 
+    window._skResolveStoredSupabaseUserId = window._skResolveStoredSupabaseUserId || function() {
+      try {
+        const keys = ['sb_sangkwon_session'];
+        for (const key of keys) {
+          const raw = localStorage.getItem(key) || sessionStorage.getItem(key) || '';
+          if (!raw) continue;
+          const parsed = JSON.parse(raw);
+          const session = parsed && (parsed.currentSession || parsed.session || parsed);
+          const uid = session && session.user && session.user.id;
+          if (uid) return String(uid);
+        }
+      } catch(e) {}
+      try {
+        const last = localStorage.getItem('sb_sangkwon_last_uid');
+        if (last) return String(last);
+      } catch(e) {}
+      return '';
+    };
+
     window._skGetStableUploadOwnerId = window._skGetStableUploadOwnerId || function(authUid) {
       if (authUid) {
         try { localStorage.setItem('sb_sangkwon_last_uid', String(authUid)); } catch(e) {}
@@ -2460,17 +2635,20 @@
 
     window._sbUploadImage = async function(source, folder) {
       let uid = await _sbGetUserId();
+      if (!uid && window._skResolveStoredSupabaseUserId) uid = window._skResolveStoredSupabaseUserId();
       if (!uid) {
-        // iPad/Safari PWA에서 세션 복구가 늦는 경우가 있어 짧게 재확인한다.
-        for (let i = 0; i < 3 && !uid; i += 1) {
-          await new Promise(function(resolve) { setTimeout(resolve, 350); });
+        // iPad/Safari/PWA는 로그인 세션 복구가 늦다. 바로 실패시키지 말고 최대 약 5초 대기한다.
+        for (let i = 0; i < 10 && !uid; i += 1) {
+          await new Promise(function(resolve) { setTimeout(resolve, 500); });
           uid = await _sbGetUserId();
+          if (!uid && window._skResolveStoredSupabaseUserId) uid = window._skResolveStoredSupabaseUserId();
         }
       }
-      const ownerId = window._skGetStableUploadOwnerId ? window._skGetStableUploadOwnerId(uid) : (uid || 'anon');
       if (!uid) {
-        try { window._sbSyncStatus('⚠️ 로그인 세션 확인 지연 · 이미지 업로드는 계속 진행', false); } catch(e) {}
+        throw new Error('로그인 세션 확인 실패: 새로고침 후 다시 업로드하세요.');
       }
+      const ownerId = window._skGetStableUploadOwnerId ? window._skGetStableUploadOwnerId(uid) : uid;
+      _skSyncLog('[IMG] upload owner resolved', { folder: folder || 'captures', uid: !!uid, ownerId: ownerId });
       if (typeof window._ensureInlineUploadHelpers === 'function') window._ensureInlineUploadHelpers();
       const target = window._sbResolveUploadTarget(ownerId, folder);
       const payload = await window._sbMakeUploadPayload(source, target.folder);
@@ -3296,7 +3474,7 @@
                 return window._wrRefreshFromCloud ? window._wrRefreshFromCloud({ render: false, force: true }) : null;
               }, 0); })
               .then(function() { return _sbSafeLoad('pl_items_bg_init', function() {
-                return window._plRefreshFromCloud ? window._plRefreshFromCloud({ render: false, force: true, sync: false }) : null;
+                return (window._plLightweightPull || window._plRefreshFromCloud) ? (window._plLightweightPull || window._plRefreshFromCloud)({ render: false, force: true, sync: false, lightweight: true }) : null;
               }, 0); })
               .then(function() { return _sbSafeLoad('saved_bg_init', function() {
                 return window._svRefreshFromCloud ? window._svRefreshFromCloud({ render: false }) : null;
@@ -5571,8 +5749,12 @@ var _safeLocalSet = function(key, value) {
                   migrateCaptures(room);
                   var body = document.getElementById('wr2CaptureBody');
                   if (!body) return;
-                  var imgs = room.captureImages || [];
-                  var galleryItems = wr2CollectRoomGalleryItems(room);
+                  var _removedCaptureKeys = window._wrNormalizeRemovedCaptureKeys ? window._wrNormalizeRemovedCaptureKeys(room) : [];
+                  var imgs = window._wrFilterRemovedCaptureImages
+                    ? window._wrFilterRemovedCaptureImages(room.captureImages || [], _removedCaptureKeys)
+                    : (room.captureImages || []);
+                  try { room.captureImages = imgs; } catch(e) {}
+                  var galleryItems = wr2CollectRoomGalleryItems(Object.assign({}, room, { captureImages: imgs }));
                   if (imgs.length) {
                     var headerHtml = '';
                     var gridHtml = '<div class="wr2-img-grid">';
@@ -5584,7 +5766,7 @@ var _safeLocalSet = function(key, value) {
                     }
                     imgs.forEach(function(img, i) {
                       gridHtml += '<div class="wr2-img-thumb" onclick="wr2Lightbox(' + i + ')">'
-                        + '<img src="' + (window._sbImgUrl ? window._sbImgUrl(img.src, 400) : img.src) + '" alt="캡처 ' + (i+1) + '">'
+                        + '<img src="' + (window._sbImgUrl ? window._sbImgUrl(img.src, 400) : img.src) + '" alt="캡처 ' + (i+1) + '" onerror="this.style.opacity=.25;this.title=&quot;원본 파일을 찾을 수 없습니다. 삭제 버튼으로 정리하세요.&quot;;">'
                         + '<div class="wr2-img-overlay"><span class="wr2-img-zoom">🔍</span></div>'
                         + '<button class="wr2-img-del" onclick="event.stopPropagation();wr2DeleteCaptureAt(' + i + ')">✕</button>'
                         + '</div>';
@@ -5613,7 +5795,11 @@ var _safeLocalSet = function(key, value) {
                   if (!room) return list;
                   migrateCaptures(room);
                   migrateRoomNote(room);
-                  (room.captureImages || []).forEach(function(img, idx) {
+                  var _galleryRemovedKeys = window._wrNormalizeRemovedCaptureKeys ? window._wrNormalizeRemovedCaptureKeys(room) : [];
+                  var _galleryCaptures = window._wrFilterRemovedCaptureImages
+                    ? window._wrFilterRemovedCaptureImages(room.captureImages || [], _galleryRemovedKeys)
+                    : (room.captureImages || []);
+                  (_galleryCaptures || []).forEach(function(img, idx) {
                     if (!img || !(img.src || img.url)) return;
                     list.push({
                       src: img.src || img.url || '',
@@ -5654,10 +5840,8 @@ var _safeLocalSet = function(key, value) {
                   migrateCaptures(room);
                   if (!confirm('이 캡처 이미지를 삭제할까요?')) return;
                   const img = room.captureImages[idx];
-                  // Storage에 업로드된 이미지면 실제 파일도 삭제
-                  if (img && img.storagePath) {
-                    window._sbDeleteImages([img.storagePath]).catch(()=>{});
-                  }
+                  // 파일 원본은 즉시 삭제하지 않는다. 먼저 metadata tombstone을 동기화해야 엑박/부활이 생기지 않는다.
+                  try { if (window._skSyncLog) window._skSyncLog('[IMG] capture tombstone', { roomId: room.id, key: window._wrCaptureImageKey ? window._wrCaptureImageKey(img) : '' }); } catch(e) {}
                   const nextImages = (room.captureImages || []).filter(function(_, i) { return i !== idx; });
                   const savedRoom = window._wrSetCaptureImages ? window._wrSetCaptureImages(room.id, nextImages, { explicitEmptyImages: true }) : null;
                   if (savedRoom) room.captureImages = savedRoom.captureImages || [];
@@ -5856,9 +6040,8 @@ var _safeLocalSet = function(key, value) {
                 window.wr2DeleteCapture = async function () {
                   const room = getActiveRoom(); if (!room) return;
                   if (!confirm('모든 캡처 이미지를 삭제할까요?')) return;
-                  // Storage에서 실제 파일 삭제
-                  const paths = (room.captureImages || []).filter(i => i.storagePath).map(i => i.storagePath);
-                  if (paths.length) window._sbDeleteImages(paths).catch(()=>{});
+                  // 파일 원본은 즉시 삭제하지 않는다. 먼저 metadata tombstone을 동기화한다.
+                  try { if (window._skSyncLog) window._skSyncLog('[IMG] capture tombstone all', { roomId: room.id, count: (room.captureImages || []).length }); } catch(e) {}
                   if (window._wrSetCaptureImages) {
                     const savedRoom = window._wrSetCaptureImages(room.id, [], { explicitEmptyImages: true });
                     room.captureImages = savedRoom && savedRoom.captureImages ? savedRoom.captureImages : [];
@@ -44860,7 +45043,7 @@ window.addEventListener('DOMContentLoaded', () => {
   var plImportSelectedMap = {};
   var _plEditAutoFocus = null;
   var _plSavedSyncMute = 0;
-  if (window.__plAutoCloudPull === undefined) window.__plAutoCloudPull = true;
+  if (window.__plAutoCloudPull === undefined) window.__plAutoCloudPull = true; // v2: true여도 화면 차단 없이 lightweight pull만 수행
 
   function plEscHtml(s) {
     return String(s || '')
@@ -44965,6 +45148,7 @@ window.addEventListener('DOMContentLoaded', () => {
   window.plForcePush = async function() {
     try {
       var items = plLoad();
+      window.__PL_FORCE_FULL_ROW_PUSH = true;
       if (typeof window._sbSavePlItems === 'function') await window._sbSavePlItems(items);
       if (typeof showToast === 'function') showToast('☁ 물건리스트 강제 업로드 완료', 'ok');
     } catch (e) {
@@ -46507,13 +46691,13 @@ window.addEventListener('DOMContentLoaded', () => {
       Number(window.__plLastLocalStatusMutationAt || 0),
       Number(window.__plLastLocalMutationAt || 0)
     );
-    if (lastMutation && (Date.now() - lastMutation) < 45000) return;
+    if (lastMutation && (Date.now() - lastMutation) < 2500) return;
     var now = Date.now();
     var last = Number(window.__plListRefreshAt || 0);
     if (last && (now - last) < 12000) return;
     window.__plListRefreshAt = now;
     window.__plListRefreshRunning = true;
-    Promise.resolve(window._plRefreshFromCloud({ render: false, force: true, sync: false }))
+    Promise.resolve((window._plLightweightPull || window._plRefreshFromCloud)({ render: false, force: true, sync: false, lightweight: true }))
       .then(function() {
         if (typeof currentPage !== 'undefined' && currentPage === 4 && window.__pmActiveTab === 'list' && typeof renderPropertyList === 'function') {
           renderPropertyList();
@@ -46766,6 +46950,9 @@ window.addEventListener('DOMContentLoaded', () => {
     // 중요: plCancelInlineEdit에서 즉시 렌더링하는 것을 차단
     window.__plListRenderPending = false;
     
+    if (['intent','status','bidFocus','estimate','memo','biddate'].indexOf(field) >= 0) {
+      setTimeout(function(){ try { if (typeof window._plPushDirtyNow === 'function') window._plPushDirtyNow('inline ' + field); } catch(e) {} }, 0);
+    }
     // 저장 직후 렌더링 예약 (50ms 지연으로 깜빡임 최소화)
     if (typeof window._plScheduleRender === 'function') {
       window._plScheduleRender(50);
@@ -46776,6 +46963,9 @@ window.addEventListener('DOMContentLoaded', () => {
     if (cur && String(cur[field] || '') === String(value || '')) return;
     var patch = {}; patch[field] = value;
     plUpdateItem(id, patch);
+    if (field === 'intent' || field === 'status' || field === 'bidFocus') {
+      setTimeout(function(){ try { if (typeof window._plPushDirtyNow === 'function') window._plPushDirtyNow('inline ' + field); } catch(e) {} }, 0);
+    }
     if (typeof window._plScheduleRender === 'function') window._plScheduleRender(80);
   };
   function plIsBidFocusOn(v) {
@@ -47134,7 +47324,7 @@ window.addEventListener('DOMContentLoaded', () => {
         if (typeof renderPropertyList === 'function') renderPropertyList();
         if (window.__plAutoCloudPull === true && window._sbRunEntryRefresh && typeof window._plRefreshFromCloud === 'function') {
           setTimeout(function() {
-            window._sbRunEntryRefresh('properties', window._plRefreshFromCloud, { render: true, label: 'properties', force: true })
+            window._sbRunEntryRefresh('properties', (window._plLightweightPull || window._plRefreshFromCloud), { render: true, label: 'properties', force: true })
               .catch(function(){});
           }, 120);
         }
@@ -47846,9 +48036,9 @@ window.addEventListener('DOMContentLoaded', () => {
         Number(window.__plLastLocalStatusMutationAt || 0),
         Number(window.__plLastLocalMutationAt || 0)
       );
-      if (lastMutation && (Date.now() - lastMutation) < 45000) return;
+      if (lastMutation && (Date.now() - lastMutation) < 2500) return;
       if (typeof window._plRefreshFromCloud === 'function') {
-        window._plRefreshFromCloud({ render: false, force: true, sync: true }).then(function() {
+        (window._plLightweightPull || window._plRefreshFromCloud)({ render: false, force: true, sync: false, lightweight: true }).then(function() {
           if (window.__pmActiveTab === 'list' && typeof window.renderPropertyList === 'function') window.renderPropertyList();
         }).catch(function(){});
       }
@@ -47881,9 +48071,9 @@ window.addEventListener('DOMContentLoaded', () => {
         Number(window.__plLastLocalStatusMutationAt || 0),
         Number(window.__plLastLocalMutationAt || 0)
       );
-      if (lastMutation && (Date.now() - lastMutation) < 45000) return;
+      if (lastMutation && (Date.now() - lastMutation) < 2500) return;
       if (typeof window._plRefreshFromCloud === 'function') {
-        window._plRefreshFromCloud({ render: false, force: true, sync: true }).then(function() {
+        (window._plLightweightPull || window._plRefreshFromCloud)({ render: false, force: true, sync: false, lightweight: true }).then(function() {
           if (window.__pmActiveTab === 'list' && typeof window.renderPropertyList === 'function') window.renderPropertyList();
         }).catch(function(){});
       }
@@ -47904,6 +48094,23 @@ window.addEventListener('DOMContentLoaded', () => {
       if (!document.hidden) _plQuickCloudPull();
     });
     window.addEventListener('focus', _plQuickCloudPull);
+  }
+  if (!window.__plLightweightPollBound) {
+    window.__plLightweightPollBound = true;
+    setInterval(function() {
+      try {
+        if (typeof currentPage === 'undefined' || currentPage !== 4) return;
+        if (window.__pmActiveTab !== 'list') return;
+        if (document.hidden) return;
+        var ae = document.activeElement;
+        if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return;
+        if (typeof window._plLightweightPull === 'function') {
+          window._plLightweightPull({ render: false }).then(function() {
+            if (window.__pmActiveTab === 'list' && typeof window.renderPropertyList === 'function') window.renderPropertyList();
+          }).catch(function(e){ console.warn('[PL] lightweight poll', e); });
+        }
+      } catch(e) {}
+    }, 20000);
   }
 
 })();
