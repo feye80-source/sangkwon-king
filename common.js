@@ -494,6 +494,31 @@
       }
     });
 
+    // ★ [FIX] CORS 에러 자동 감지 + 1회성 안내
+    // refresh_token CORS 차단은 Supabase 대시보드 설정 문제 → 사용자에게 명확히 알린다
+    let _sbCorsErrorWarned = false;
+    window.addEventListener('unhandledrejection', function(ev) {
+      const reason = ev && ev.reason;
+      const msg = String(reason && (reason.message || reason) || '');
+      if (!_sbCorsErrorWarned && msg.indexOf('Failed to fetch') >= 0) {
+        // CORS는 보통 supabase.js stack에서 throw 됨
+        const stack = String(reason && reason.stack || '');
+        if (stack.indexOf('supabase') >= 0 || stack.indexOf('refreshAccessToken') >= 0) {
+          _sbCorsErrorWarned = true;
+          console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          console.error('[SB] Supabase CORS 차단 감지');
+          console.error('대시보드에서 다음 설정을 확인하세요:');
+          console.error('1. Authentication > URL Configuration > Site URL: https://feye80-source.github.io');
+          console.error('2. Additional Redirect URLs에 같은 도메인 추가');
+          console.error('3. (참고) Project Settings > API > Allowed origins 도 확인');
+          console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          if (typeof showToast === 'function') {
+            showToast('Supabase CORS 설정 필요 — 콘솔 메시지 참조', 'warn');
+          }
+        }
+      }
+    });
+
     // 인증 상태 변화 감지 (자동 로그인 유지 + 비밀번호 재설정)
     let _sbInitLoadCalled = false;
     let _sbInitLoadScheduled = false;
@@ -579,7 +604,10 @@
           Promise.resolve(promise),
           new Promise((_, reject) => {
             timer = setTimeout(() => {
-              _sbSetBackoff(30000);
+              // ★ [FIX] auth getSession은 캐시 폴백이 가능하므로 짧은 백오프(5초)만,
+              // 실제 데이터 fetch가 timeout 났을 때만 30초 백오프.
+              const isAuthCall = String(label || '').indexOf('auth ') === 0;
+              _sbSetBackoff(isAuthCall ? 5000 : 30000);
               reject({ message: label + ' timeout' });
             }, timeoutMs);
           })
@@ -632,10 +660,18 @@
       }
     }
     
-    function _wrInitRealtime() {
+    async function _wrInitRealtime() {
       if (_wrRealtimeChannel) return;
-      const userId = window._sb && window._sb.auth && window._sb.auth.user ? window._sb.auth.user().id : null;
-      if (!userId) return;
+      // ★ [FIX] Supabase v2 API 사용: _sb.auth.user()는 v1 API라 항상 undefined를 반환했음
+      // → Realtime 구독이 처음부터 작동하지 않아 의향 변경/이미지 변경이 다른 기기로 푸시되지 않았음
+      let userId = _sbCachedUserId;
+      if (!userId) {
+        try { userId = await _sbGetUserId(); } catch (e) {}
+      }
+      if (!userId) {
+        console.warn('[Realtime] userId 없음 - 구독 보류 (로그인 후 재시도됨)');
+        return;
+      }
       _wrRealtimeChannel = window._sb
         .channel('workrooms_sync')
         .on(
@@ -682,23 +718,34 @@
     }
     
     window._sb.auth.onAuthStateChange((event, session) => {
-      if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session) {
+      if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED') && session) {
         _sbCachedUserId = session && session.user ? (session.user.id || null) : null;
+        // ★ [FIX] 세션 객체도 캐시 — getSession 타임아웃 시 폴백으로 사용
+        _sbCachedSession = session;
+        _sbCachedSessionAt = Date.now();
         _sbSessionReq = null;
-        window._sbHideLogin && window._sbHideLogin();
-        window._sbHideRecovery && window._sbHideRecovery();
-        window._sbAddLogoutBtn && window._sbAddLogoutBtn();
-        // ★ Realtime 구독 시작
-        _wrInitRealtime();
-        // ★ 로그인 시 클라우드 동기화 자동 실행 (IDB 프리로드 완료 후 실행)
-        if (!_sbInitLoadCalled) {
-          _sbInitLoadCalled = true;
-          _sbScheduleInitLoad();
+        if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
+          window._sbHideLogin && window._sbHideLogin();
+          window._sbHideRecovery && window._sbHideRecovery();
+          window._sbAddLogoutBtn && window._sbAddLogoutBtn();
+          // ★ Realtime 구독 시작
+          _wrInitRealtime();
+          // ★ 로그인 시 클라우드 동기화 자동 실행 (IDB 프리로드 완료 후 실행)
+          if (!_sbInitLoadCalled) {
+            _sbInitLoadCalled = true;
+            _sbScheduleInitLoad();
+          }
+        } else if (event === 'TOKEN_REFRESHED') {
+          // 토큰 리프레시 성공 — 백오프 해제하여 즉시 동기화 재개
+          _sbSyncBackoffUntil = 0;
+          console.log('[SB] 토큰 리프레시 성공');
         }
       } else if (event === 'PASSWORD_RECOVERY') {
         window._sbShowRecovery && window._sbShowRecovery();
       } else if (event === 'SIGNED_OUT') {
         _sbCachedUserId = null;
+        _sbCachedSession = null;
+        _sbCachedSessionAt = 0;
         _sbSessionReq = null;
         _sbLoginReq = null;
         _sbInitLoadCalled = false;
@@ -750,6 +797,8 @@
     // ─── 범용 헬퍼 ───────────────────────────────────────────
     // user_id / session 요청 직렬화
     let _sbCachedUserId = null;
+    let _sbCachedSession = null;       // ★ [FIX] 마지막으로 성공한 세션을 캐시
+    let _sbCachedSessionAt = 0;         // 캐시 시각 (락 충돌 / 타임아웃 시 폴백 판정용)
     let _sbSessionReq = null;
     let _sbLoginReq = null;
     function _sbErrText(e, fallback) {
@@ -759,20 +808,41 @@
       if (raw && raw !== '[object Object]') return raw;
       return fallback || '알 수 없는 오류';
     }
+    // ★ [FIX] 캐시된 세션이 아직 만료 전이라면 그대로 신뢰한다.
+    // Supabase의 getSession()이 락 충돌(orphaned lock) / CORS 실패로 timeout 나도
+    // 이미 받아둔 access_token이 살아있으면 모든 sync는 정상 동작해야 한다.
+    function _sbCachedSessionAlive() {
+      const s = _sbCachedSession;
+      if (!s || !s.user || !s.access_token) return false;
+      const expAt = Number(s.expires_at || 0) * 1000;
+      // expires_at 없으면 캐시 후 50분(기본 토큰 60분 - 10분 마진) 동안 유효 처리
+      if (!expAt) return _sbCachedSessionAt && (Date.now() - _sbCachedSessionAt) < (50 * 60 * 1000);
+      // 30초 마진을 둬서 만료 직전 호출이 실패하지 않게
+      return Date.now() < (expAt - 30000);
+    }
     async function _sbGetSessionShared(opts) {
       const options = opts || {};
       if (_sbSessionReq && !options.force) return _sbSessionReq;
       const req = Promise.resolve()
         .then(() => _sbWithTimeout(window._sb.auth.getSession(), 'auth getSession', 15000))
         .then(res => {
-          _sbCachedUserId = res && res.data && res.data.session && res.data.session.user
-            ? (res.data.session.user.id || null)
-            : null;
+          const session = res && res.data && res.data.session;
+          if (session && session.user) {
+            _sbCachedUserId = session.user.id || _sbCachedUserId;
+            _sbCachedSession = session;
+            _sbCachedSessionAt = Date.now();
+          }
           return res;
         })
         .catch(e => {
+          // ★ [FIX] 타임아웃/락 충돌 시: 캐시 세션이 살아있으면 그것을 반환 — 절대 null로 리셋하지 않는다.
+          // 이전 코드는 _sbCachedUserId = null로 만들어서 모든 후속 sync를 "no session"으로 실패시켰음.
+          if (_sbCachedSessionAlive()) {
+            console.warn('[SB] getSession 일시 실패 - 캐시 세션 사용:', _sbErrText(e));
+            return { data: { session: _sbCachedSession }, error: null, fromCache: true };
+          }
           console.warn('[SB] getSession error', e);
-          _sbCachedUserId = null;
+          // 캐시도 죽었으면 그제서야 null
           return { data: { session: null }, error: e };
         })
         .finally(() => {
@@ -782,12 +852,21 @@
       return req;
     }
     async function _sbGetUserId() {
-      if (_sbCachedUserId) return _sbCachedUserId;
+      if (_sbCachedUserId && _sbCachedSessionAlive()) return _sbCachedUserId;
       try {
         const { data: { session } } = await _sbGetSessionShared();
-        _sbCachedUserId = session?.user?.id || null;
-        return _sbCachedUserId;
-      } catch(e) { return null; }
+        if (session && session.user) {
+          _sbCachedUserId = session.user.id;
+          return _sbCachedUserId;
+        }
+        // 세션 fetch 실패했지만 캐시가 살아있으면 캐시 사용
+        if (_sbCachedSessionAlive()) return _sbCachedUserId;
+        _sbCachedUserId = null;
+        return null;
+      } catch(e) {
+        if (_sbCachedSessionAlive()) return _sbCachedUserId;
+        return null;
+      }
     }
     window._sbGetUserId = _sbGetUserId; // ★ 전역 노출 (외부 함수에서 접근 가능하도록)
 
@@ -1887,25 +1966,64 @@
     // ─── 작업룸 이미지 append-merge 저장 ─────────────────────────────
     // 이미지/캡처는 room 전체 덮어쓰기 저장이 아니라 captureImages 필드만 union-append로 확정한다.
     // 오래된 room 객체가 최신 captureImages 배열을 덮어써서 이미지가 몇 초 뒤 사라지는 문제를 막는다.
+    //
+    // ★ [FIX] 이미지에도 tombstone 도입
+    // 이전엔 단순 union이라 한 기기에서 삭제한 이미지가 다른 기기 캐시에서 부활했음.
+    // 이제 deletedAt이 있는 entry를 30일간 보존(머지 시 우선) → 다른 기기들이 이를 받아 같이 숨김.
+    // R2 파일은 7일 뒤 prune 시점에 실제 삭제 (다른 기기 동기화 시간 확보).
+    const _WR_IMAGE_TOMBSTONE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
     function _wrCaptureImageKey(img) {
       if (!img || typeof img !== 'object') return '';
       return String(img.storagePath || img.path || img.src || img.url || '') ||
         [img.snapName || '', img.parentSnapName || '', img.savedAt || ''].join('|');
     }
     function _wrMergeCaptureImages() {
-      const out = [];
-      const seen = new Set();
+      const map = new Map();
       Array.prototype.slice.call(arguments).forEach(function(list) {
         (Array.isArray(list) ? list : []).forEach(function(img) {
           if (!img || typeof img !== 'object') return;
           const key = _wrCaptureImageKey(img);
-          if (!key || seen.has(key)) return;
-          seen.add(key);
-          out.push(Object.assign({}, img, { src: img.src || img.url || '' }));
+          if (!key) return;
+          const existing = map.get(key);
+          if (!existing) {
+            map.set(key, Object.assign({}, img, { src: img.src || img.url || '' }));
+            return;
+          }
+          // tombstone 우선: 한 쪽이라도 deletedAt이면 deletedAt 버전을 유지
+          // (가장 늦은 deletedAt을 채택해서 prune 타이밍 일관성 확보)
+          const exDel = Number(existing.deletedAt || 0);
+          const inDel = Number(img.deletedAt || 0);
+          if (exDel || inDel) {
+            const winner = (inDel >= exDel) ? img : existing;
+            const merged = Object.assign({}, existing, winner, { src: winner.src || winner.url || existing.src || '' });
+            map.set(key, merged);
+            return;
+          }
+          // 양쪽 다 active면 더 최근 savedAt 채택 (예: src URL이 갱신되었을 수 있음)
+          const exSaved = Number(existing.savedAt || 0);
+          const inSaved = Number(img.savedAt || 0);
+          if (inSaved >= exSaved) {
+            map.set(key, Object.assign({}, existing, img, { src: img.src || img.url || existing.src || '' }));
+          }
         });
+      });
+      // 30일 지난 tombstone은 폐기 (실 삭제 + 누적 방지)
+      const cutoff = Date.now() - _WR_IMAGE_TOMBSTONE_TTL_MS;
+      const out = [];
+      map.forEach(function(img) {
+        const del = Number(img.deletedAt || 0);
+        if (del && del < cutoff) return; // prune
+        out.push(img);
       });
       return out.sort(function(a, b) { return Number(a.savedAt || 0) - Number(b.savedAt || 0); });
     }
+    // 표시용: deletedAt 없는 것만
+    function _wrFilterActiveCaptureImages(arr) {
+      return (Array.isArray(arr) ? arr : []).filter(function(img) {
+        return img && !img.deletedAt;
+      });
+    }
+    window._wrFilterActiveCaptureImages = _wrFilterActiveCaptureImages;
     window._wrAppendCaptureImage = function(roomId, entry, opts) {
       if (!roomId || !entry) return null;
       const options = opts || {};
@@ -1963,7 +2081,27 @@
       const cacheRoom = (cacheRooms || []).find(function(r) { return r && r.id === roomId; }) || null;
       const stateRoom = (stateRooms || []).find(function(r) { return r && r.id === roomId; }) || null;
       const baseRoom = Object.assign({}, cacheRoom || {}, stateRoom || {}, { id: roomId });
-      baseRoom.captureImages = _wrMergeCaptureImages(images || []);
+      // ★ [FIX] tombstone 생성: 기존 captureImages 중 새 list에 없는 것은 deletedAt으로 마크
+      const newImages = Array.isArray(images) ? images : [];
+      const newKeySet = new Set();
+      newImages.forEach(function(img) {
+        const k = _wrCaptureImageKey(img);
+        if (k) newKeySet.add(k);
+      });
+      const prevImages = (baseRoom.captureImages || []).concat(
+        (cacheRoom && cacheRoom.captureImages) || [],
+        (stateRoom && stateRoom.captureImages) || []
+      );
+      const tombstones = [];
+      const seenTombstone = new Set();
+      prevImages.forEach(function(img) {
+        if (!img) return;
+        const k = _wrCaptureImageKey(img);
+        if (!k || newKeySet.has(k) || seenTombstone.has(k)) return;
+        seenTombstone.add(k);
+        tombstones.push(Object.assign({}, img, { deletedAt: img.deletedAt || now }));
+      });
+      baseRoom.captureImages = _wrMergeCaptureImages(newImages, tombstones);
       delete baseRoom.captureImage;
       baseRoom._captureImagesUpdatedAt = now;
       baseRoom.updatedAt = now;
@@ -2242,14 +2380,24 @@
         _clearKvDirty('pl_items_v3');
         window._sbSyncStatus('☁️ 물건리스트 동기화 완료', true);
       } catch (e) {
-        console.warn('[SB] savePlItems error', e);
+        // ★ [FIX] 'no session'은 일시적 네트워크 문제가 아니라 세션 자체가 죽은 상태이므로
+        // 재시도 루프를 돌지 않는다. dirty 플래그만 유지 → 다음 정상 sync 사이클에 자동 반영.
+        // 이전 코드는 setTimeout 2000ms로 무한 재시도하며 콘솔을 도배함.
+        const errMsg = String(e && e.message || e || '');
+        const isNoSession = errMsg === 'no session' || errMsg.indexOf('no session') >= 0;
+        if (!isNoSession) {
+          console.warn('[SB] savePlItems error', e);
+        }
         _markKvDirty('pl_items_v3');
-        if (e && e.message !== 'no session') window._sbSyncStatus('⚠️ 물건리스트 동기화 재시도 중', false);
-        // 일시 오류(네트워크/타임아웃) 대비 자동 재시도
-        try {
-          const retryPayload = _sbGetCachedArray('pl_items_v3');
-          window._sbScheduleSavePlItems(retryPayload, 2000);
-        } catch (e2) {}
+        if (!isNoSession) {
+          window._sbSyncStatus('⚠️ 물건리스트 동기화 재시도 중', false);
+          // 진짜 네트워크/타임아웃 오류일 때만 1회 재시도 (이전: 무한 루프)
+          try {
+            const retryPayload = _sbGetCachedArray('pl_items_v3');
+            // 같은 호출이 이미 큐에 잡혀있으면 _sbScheduleAsyncSave가 갈아끼움 → 무한루프 안 남
+            window._sbScheduleSavePlItems(retryPayload, 5000);
+          } catch (e2) {}
+        }
       }
     };
     window._sbLoadPlItems = async function(opts) {
@@ -2280,6 +2428,11 @@
     };
     window._plRefreshFromCloud = async function(opts) {
       const options = opts || {};
+      // ★ [FIX] 세션이 죽었으면 refresh 자체를 스킵 — 콘솔 도배 / 무의미한 백오프 방지
+      const uid = await _sbGetUserId();
+      if (!uid) {
+        return { full: _sbGetCachedArray('pl_items_v3'), active: _sbFilterActiveEntities(_sbGetCachedArray('pl_items_v3')), skipped: 'no_session' };
+      }
       let forceCloud = (options.force === true);
       const nowTs = Date.now();
       const localLifecycleMutationAt = Number(window.__plLastLocalStatusMutationAt || 0);
@@ -2489,6 +2642,47 @@
         }
       } catch(e) { console.warn('[R2] deleteImages error', e); }
     };
+
+    // ★ [FIX] 캡처 이미지 tombstone GC: 7일 지난 tombstone의 R2 파일을 실제 삭제
+    // 다른 기기들이 이 tombstone을 받아 동기화할 시간을 7일 보장한 뒤에 정리.
+    // 30일 prune은 _wrMergeCaptureImages가 자동 처리하므로 여기선 R2 삭제만 담당.
+    const _WR_IMG_HARD_DELETE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
+    let _wrImgGcRunning = false;
+    window._wrPruneOrphanCaptureImages = async function() {
+      if (_wrImgGcRunning) return;
+      _wrImgGcRunning = true;
+      try {
+        const uid = await _sbGetUserId();
+        if (!uid) return;
+        const cutoff = Date.now() - _WR_IMG_HARD_DELETE_AFTER_MS;
+        const rooms = (window._wrGetRoomsCache && window._wrGetRoomsCache()) || _sbGetCachedArray('wr2_rooms') || [];
+        const pathsToDelete = [];
+        rooms.forEach(function(room) {
+          if (!room || !Array.isArray(room.captureImages)) return;
+          room.captureImages.forEach(function(img) {
+            if (!img || !img.deletedAt || !img.storagePath) return;
+            const del = Number(img.deletedAt);
+            if (del && del < cutoff) {
+              pathsToDelete.push(img.storagePath);
+            }
+          });
+        });
+        if (pathsToDelete.length && window._sbDeleteImages) {
+          await window._sbDeleteImages(pathsToDelete);
+          console.log('[wr2 img gc]', pathsToDelete.length, '개 R2 파일 정리');
+        }
+      } catch (e) {
+        console.warn('[wr2 img gc] error', e);
+      } finally {
+        _wrImgGcRunning = false;
+      }
+    };
+    // 로그인 후 30초 뒤 1회 실행 (init load 끝난 후)
+    setTimeout(function() {
+      if (window._sbCloudLoaded && window._wrPruneOrphanCaptureImages) {
+        window._wrPruneOrphanCaptureImages();
+      }
+    }, 30000);
 
     // ─── Storage 이미지 URL → CDN 캐시 URL 변환 ──────────────
     // Supabase Storage public URL에 transform 파라미터 추가 → CDN 캐싱 활성화
@@ -3233,11 +3427,15 @@
         const { data: { session } } = await _sbGetSessionShared();
         if (!session) { window._sbShowLogin(); return; }
         _sbCachedUserId = session.user.id;
+        _sbCachedSession = session;
+        _sbCachedSessionAt = Date.now();
         window._sbAddLogoutBtn();
         window._sbSyncStatus('☁️ 변경분 확인 중...', true);
-        try {
-          const apiKeysCloud = await _sbSafeLoad('api_keys', () => kvGet('api_keys'), 0);
-          if (apiKeysCloud) {
+        // ★ [FIX] 병렬화 — 이전 코드는 6개 작업을 순차 await해서 init이 30초+ 걸렸음
+        // API 키 로딩 + 3개 entity refresh를 한 번에 시작
+        const apiKeysPromise = _sbSafeLoad('api_keys', () => kvGet('api_keys'), 0)
+          .then(apiKeysCloud => {
+            if (!apiKeysCloud) return;
             const apiKeys = ['g_api', 'kakao_api', 'kakao_rest_key', 'sbiz_api', 'rtms_api', 'naver_id', 'naver_sec', 'onbid_key'];
             apiKeys.forEach(k => { if (apiKeysCloud[k]) _setStoredApiValue(k, apiKeysCloud[k]); });
             if (apiKeysCloud.onbid_api && !apiKeysCloud.onbid_key) _setStoredApiValue('onbid_key', apiKeysCloud.onbid_api);
@@ -3251,38 +3449,26 @@
               }
             });
             if (typeof window._syncApiSettingsUi === 'function') window._syncApiSettingsUi();
-          }
-        } catch (e) {
-          console.warn('[SB] API key init sync error', e);
+          })
+          .catch(e => console.warn('[SB] API key init sync error', e));
+
+        const entityPromises = [];
+        if (window.__plAutoCloudPull === true) {
+          entityPromises.push(_sbSafeLoad('workrooms_init', () => {
+            return window._wrRefreshFromCloud ? window._wrRefreshFromCloud({ render: false, force: true }) : null;
+          }, 0));
+          entityPromises.push(_sbSafeLoad('pl_items_init', () => {
+            return window._plRefreshFromCloud ? window._plRefreshFromCloud({ render: false, force: true, sync: false }) : null;
+          }, 0));
+          entityPromises.push(_sbSafeLoad('saved_init', () => {
+            return window._svRefreshFromCloud ? window._svRefreshFromCloud({ render: false }) : null;
+          }, 0));
         }
-        try {
-          if (window.__plAutoCloudPull === true) {
-            await _sbSafeLoad('workrooms_init', () => {
-              return window._wrRefreshFromCloud ? window._wrRefreshFromCloud({ render: false, force: true }) : null;
-            }, 0);
-            await _sbSafeLoad('pl_items_init', () => {
-              return window._plRefreshFromCloud ? window._plRefreshFromCloud({ render: false, force: true, sync: false }) : null;
-            }, 0);
-            await _sbSafeLoad('saved_init', () => {
-              return window._svRefreshFromCloud ? window._svRefreshFromCloud({ render: false }) : null;
-            }, 0);
-          }
-        } catch (e) {
-          console.warn('[SB] init entity sync error', e);
-        }
+        await Promise.all([apiKeysPromise].concat(entityPromises));
+        // ★ dirty queue flush는 entity refresh가 머지를 끝낸 후에만 의미가 있으므로 여전히 직렬
         await _sbSyncDirtyQueues();
-        try {
-          if (window.__plAutoCloudPull === true) {
-            await _sbSafeLoad('workrooms_after_sync', () => {
-              return window._wrRefreshFromCloud ? window._wrRefreshFromCloud({ render: false, force: true }) : null;
-            }, 0);
-            await _sbSafeLoad('pl_items_after_sync', () => {
-              return window._plRefreshFromCloud ? window._plRefreshFromCloud({ render: false, force: true, sync: false }) : null;
-            }, 0);
-          }
-        } catch (e) {
-          console.warn('[SB] post-sync entity refresh error', e);
-        }
+        // ★ [FIX] 'after_sync' refresh 라운드를 제거 — 위 entity refresh가 이미 클라우드를 받아 머지했으므로 중복.
+        // 추가 변경이 있다면 Realtime + 60초 폴링이 자동 처리한다.
         window._sbCloudLoaded = true;
         window._sbSyncStatus('✅ 변경분 확인 완료', true);
       } catch(e) {
@@ -5552,7 +5738,10 @@ var _safeLocalSet = function(key, value) {
                   migrateCaptures(room);
                   var body = document.getElementById('wr2CaptureBody');
                   if (!body) return;
-                  var imgs = room.captureImages || [];
+                  // ★ [FIX] tombstone(deletedAt) 필터: 머지 후 보존된 삭제 표식은 화면에 보이지 않도록
+                  var imgs = (window._wrFilterActiveCaptureImages
+                    ? window._wrFilterActiveCaptureImages(room.captureImages)
+                    : (room.captureImages || []).filter(function(im){ return im && !im.deletedAt; }));
                   var galleryItems = wr2CollectRoomGalleryItems(room);
                   if (imgs.length) {
                     var headerHtml = '';
@@ -5594,7 +5783,11 @@ var _safeLocalSet = function(key, value) {
                   if (!room) return list;
                   migrateCaptures(room);
                   migrateRoomNote(room);
-                  (room.captureImages || []).forEach(function(img, idx) {
+                  // ★ [FIX] tombstone 필터
+                  var activeImgs = (window._wrFilterActiveCaptureImages
+                    ? window._wrFilterActiveCaptureImages(room.captureImages)
+                    : (room.captureImages || []).filter(function(im){ return im && !im.deletedAt; }));
+                  activeImgs.forEach(function(img, idx) {
                     if (!img || !(img.src || img.url)) return;
                     list.push({
                       src: img.src || img.url || '',
@@ -5634,15 +5827,14 @@ var _safeLocalSet = function(key, value) {
                   var room = getActiveRoom(); if (!room) return;
                   migrateCaptures(room);
                   if (!confirm('이 캡처 이미지를 삭제할까요?')) return;
-                  const img = room.captureImages[idx];
-                  // Storage에 업로드된 이미지면 실제 파일도 삭제
-                  if (img && img.storagePath) {
-                    window._sbDeleteImages([img.storagePath]).catch(()=>{});
-                  }
-                  const nextImages = (room.captureImages || []).filter(function(_, i) { return i !== idx; });
-                  const savedRoom = window._wrSetCaptureImages ? window._wrSetCaptureImages(room.id, nextImages, { explicitEmptyImages: true }) : null;
+                  // ★ [FIX] R2 즉시 삭제 X — 다른 기기들이 tombstone을 받아 같이 숨길 시간 필요.
+                  // 30일 prune 시점에 _wrPruneOrphanCaptureImages가 R2도 함께 정리.
+                  // 표시는 _wrSetCaptureImages가 만든 tombstone을 _wrFilterActiveCaptureImages로 걸러서 숨김.
+                  const visible = (room.captureImages || []).filter(function(it) { return it && !it.deletedAt; });
+                  const nextVisible = visible.filter(function(_, i) { return i !== idx; });
+                  const savedRoom = window._wrSetCaptureImages ? window._wrSetCaptureImages(room.id, nextVisible, { explicitEmptyImages: true }) : null;
                   if (savedRoom) room.captureImages = savedRoom.captureImages || [];
-                  else { room.captureImages = nextImages; room.updatedAt = Date.now(); saveRooms(); }
+                  else { room.captureImages = nextVisible; room.updatedAt = Date.now(); saveRooms(); }
                   renderCaptureWidget(room);
                 };
 
@@ -5837,9 +6029,8 @@ var _safeLocalSet = function(key, value) {
                 window.wr2DeleteCapture = async function () {
                   const room = getActiveRoom(); if (!room) return;
                   if (!confirm('모든 캡처 이미지를 삭제할까요?')) return;
-                  // Storage에서 실제 파일 삭제
-                  const paths = (room.captureImages || []).filter(i => i.storagePath).map(i => i.storagePath);
-                  if (paths.length) window._sbDeleteImages(paths).catch(()=>{});
+                  // ★ [FIX] R2 즉시 삭제 X — tombstone만 남기고 prune 시점에 정리
+                  // (다른 기기들이 동기화 받기 전에 R2가 삭제되면 엑박이 됨)
                   if (window._wrSetCaptureImages) {
                     const savedRoom = window._wrSetCaptureImages(room.id, [], { explicitEmptyImages: true });
                     room.captureImages = savedRoom && savedRoom.captureImages ? savedRoom.captureImages : [];
