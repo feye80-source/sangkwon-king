@@ -3477,7 +3477,7 @@ input, textarea, select {
 <script>if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
 
 <!-- 공통 로직 -->
-<script src="common.js?v=202604292130"></script>
+<script src="common.js?v=20260505cf2"></script>
 
 <!-- ════════════════════════════════════════════════════════
      mobile.js — 모바일 전용 초기화 및 UI 제어
@@ -3814,6 +3814,16 @@ input, textarea, select {
           mbRoomLoad('', { cloud: false });
         }
       }).catch(function(){});
+      setTimeout(function(){
+        try {
+          var rid = String(window._mbActiveRoomId || ((document.getElementById('mb-room-sel') || {}).value || '') || '');
+          if (rid && typeof window._wrPullImagesForRoom === 'function') {
+            window._wrPullImagesForRoom(rid, { render: false }).then(function(changed){
+              if (changed && typeof window.mbRoomLoad === 'function') window.mbRoomLoad(rid, { cloud: false });
+            }).catch(function(e){ console.warn('[MB IMG] room image pull', e); });
+          }
+        } catch(e) {}
+      }, 120);
     }
     // 파이프라인 탭
     if (name === 'pipe') {
@@ -3824,6 +3834,12 @@ input, textarea, select {
       var curSt = ((document.getElementById('mb-plist-status') || {}).value || '');
       if (typeof window.mbPlSetStatusFilter === 'function') window.mbPlSetStatusFilter(curSt);
       else if (typeof window.mbPlistRender === 'function') window.mbPlistRender();
+      var plPull = window._plPullRowsToLocal || window._plRefreshFromCloud;
+      if (typeof plPull === 'function') {
+        setTimeout(function(){
+          Promise.resolve(plPull({ render: true, force: true, lightweight: true, sync: false })).catch(function(e){ console.warn('[MB PL] background pull', e); });
+        }, 80);
+      }
     }
     if (name === 'site') {
       if (typeof window._siteHydrateKeysFromIdb === 'function') {
@@ -4928,12 +4944,12 @@ input, textarea, select {
     if (!Array.isArray(rooms)) return;
     window.__mbRoomLocalWriteUntil = Math.max(Number(window.__mbRoomLocalWriteUntil || 0), Date.now() + 15000);
     if (activeRoomId && window._sbMarkRoomDirty) window._sbMarkRoomDirty(activeRoomId);
-    if (window._wrPersistRooms) window._wrPersistRooms(rooms, { syncState: false });
-    else if (window._wrPersistAndSyncRooms) window._wrPersistAndSyncRooms(rooms, { syncState: false });
+    if (window._wrPersistRooms) window._wrPersistRooms(rooms, { syncState: false, immediate: true });
+    else if (window._wrPersistAndSyncRooms) window._wrPersistAndSyncRooms(rooms, { syncState: false, immediate: true });
     else {
       var active = activeRoomId ? rooms.find(function(r) { return r && r.id === activeRoomId; }) : null;
       if (active && window._sbMarkRoomDirty) window._sbMarkRoomDirty(active.id);
-      if (window._wrPersistRoomCache) window._wrPersistRoomCache(rooms, { syncState: false });
+      if (window._wrPersistRoomCache) window._wrPersistRoomCache(rooms, { syncState: false, immediate: true });
       else {
         if (window._idbCache) window._idbCache['wr2_rooms'] = rooms;
         if (window.idbSet) window.idbSet('wr2_rooms', rooms).catch(function(){});
@@ -4969,19 +4985,34 @@ input, textarea, select {
 
   async function _mbForceSyncRoomsNow() {
     try {
-      var rooms = (window._wrGetRoomsCache && window._wrGetRoomsCache())
-        || ((window._idbCache && window._idbCache['wr2_rooms'])
-          || JSON.parse(localStorage.getItem('wr2_rooms') || '[]'));
+      // 업로드 직후에는 캐시 반영이 지연될 수 있어 wr2State 우선으로 최신 스냅샷 사용
+      var rooms = (window.wr2State && Array.isArray(window.wr2State.rooms) && window.wr2State.rooms.length)
+        ? window.wr2State.rooms
+        : ((window._wrGetRoomsCache && window._wrGetRoomsCache())
+          || ((window._idbCache && window._idbCache['wr2_rooms'])
+            || JSON.parse(localStorage.getItem('wr2_rooms') || '[]')));
       if (!Array.isArray(rooms) || !rooms.length) return false;
       if (typeof window._sbSaveRooms === 'function') {
-        await window._sbSaveRooms(rooms.filter(function(r){ return r && r.id; }));
-        return true;
+        var syncResult = await window._sbSaveRooms(rooms.filter(function(r){ return r && r.id && !r.deletedAt; }));
+        return syncResult !== false;
       }
       return false;
     } catch (e) {
       console.warn('[mb force room sync]', e);
       return false;
     }
+  }
+  var _MB_LOCAL_SYNC_GUARD_MS = 45000;
+  async function _mbForceSyncRoomsWithRetry(label) {
+    var ok = await _mbForceSyncRoomsNow();
+    if (ok) return true;
+    for (var i = 0; i < 2; i++) {
+      await new Promise(function(resolve) { setTimeout(resolve, 900 + (i * 1200)); });
+      ok = await _mbForceSyncRoomsNow();
+      if (ok) return true;
+    }
+    console.warn('[mb sync retry fail]', label || 'workrooms');
+    return false;
   }
   function _mbPersistSections(sections) {
     if (!Array.isArray(sections)) return;
@@ -5025,35 +5056,13 @@ input, textarea, select {
       changed = true;
     }
     if (room.captureImage) {
-      addCapture({
-        src: room.captureImage,
-        savedAt: room.updatedAt || Date.now(),
-        snapName: null
-      });
+      // 구형 단일 필드(captureImage)는 재부활 원인이 되므로 더 이상 배열로 승격하지 않는다.
       delete room.captureImage;
       changed = true;
     }
-    var scenes = room.mapScenes || (room.mapScene ? [room.mapScene] : []);
-    scenes.forEach(function(scene) {
-      if (!scene) return;
-      if (scene.thumbnailSrc) {
-        addCapture({
-          src: scene.thumbnailSrc,
-          savedAt: scene.savedAt || room.updatedAt || Date.now(),
-          snapName: scene.sceneName || scene.name || null,
-          parentSnapName: scene.parentName || null
-        });
-      }
-      (scene.children || []).forEach(function(child) {
-        if (!child || !child.thumbnailSrc) return;
-        addCapture({
-          src: child.thumbnailSrc,
-          savedAt: child.savedAt || scene.savedAt || room.updatedAt || Date.now(),
-          snapName: child.name || null,
-          parentSnapName: scene.sceneName || scene.name || null
-        });
-      });
-    });
+    // mapScenes.thumbnailSrc를 captureImages로 자동 주입하면
+    // 사용자가 삭제한 이미지가 다시 살아나는 문제가 생긴다.
+    // 캡처 목록은 captureImages 원본만 사용한다.
     return changed;
   }
 
@@ -5837,7 +5846,8 @@ input, textarea, select {
     if (!room) return;
     var roomId = room.id;
     (async function() {
-      window.__mbRoomLocalWriteUntil = Math.max(Number(window.__mbRoomLocalWriteUntil || 0), Date.now() + 180000);
+      window.__mbRoomLocalWriteUntil = Math.max(Number(window.__mbRoomLocalWriteUntil || 0), Date.now() + _MB_LOCAL_SYNC_GUARD_MS);
+      window.__wr2ImageWriteUntil = Math.max(Number(window.__wr2ImageWriteUntil || 0), Date.now() + _MB_LOCAL_SYNC_GUARD_MS);
       window.__wr2UploadBusy = Number(window.__wr2UploadBusy || 0) + 1;
       var ok = 0;
       var fail = 0;
@@ -5868,10 +5878,12 @@ input, textarea, select {
             targetRoom.captureImages = targetRoom.captureImages.concat(entries);
           }, { immediate: true });
         }
-        window.__mbRoomLocalWriteUntil = Date.now() + 180000;
-        await _mbForceSyncRoomsNow();
+        window.__mbRoomLocalWriteUntil = Date.now() + _MB_LOCAL_SYNC_GUARD_MS;
+        window.__wr2ImageWriteUntil = Math.max(Number(window.__wr2ImageWriteUntil || 0), Date.now() + _MB_LOCAL_SYNC_GUARD_MS);
+        var syncOk = await _mbForceSyncRoomsWithRetry('capture-upload');
         if (ok && latestRoom && window.wr2PushActivity) window.wr2PushActivity(latestRoom, '작업 이미지 ' + ok + '개를 추가했습니다', latestRoom.phase || latestRoom.status);
         if (latestRoom) _mbRenderOvCapture(latestRoom);
+        if (!syncOk && ok) mbToast('이미지 저장됨 · 클라우드 동기화 재시도 중', 'warn');
         if (ok) mbToast('작업 이미지 ' + ok + '개 업로드됨', fail ? 'warn' : 'ok');
         else if (fail) mbToast('작업 이미지 업로드 실패', 'err');
       } finally {
@@ -5887,12 +5899,23 @@ input, textarea, select {
     if (!room || !room.captureImages || !room.captureImages[idx]) return;
     if (!confirm('이 작업 이미지를 삭제할까요?')) return;
     var target = room.captureImages[idx];
-    if (target.storagePath && window._sbDeleteImages) {
-      try { await window._sbDeleteImages([target.storagePath]); } catch (e) { console.warn('[mbRoomDeleteCaptureAt]', e); }
+    var targetKey = (window._wrCaptureImageKey && target) ? window._wrCaptureImageKey(target) : '';
+    var nextImages = (room.captureImages || []).filter(function(entry, i) {
+      if (targetKey) return (window._wrCaptureImageKey ? window._wrCaptureImageKey(entry) : '') !== targetKey;
+      return i !== idx;
+    });
+    var savedRoom = window._wrSetCaptureImages ? window._wrSetCaptureImages(room.id, nextImages, { explicitEmptyImages: true }) : null;
+    if (savedRoom) {
+      room.captureImages = savedRoom.captureImages || [];
+      room.updatedAt = savedRoom.updatedAt || Date.now();
+    } else {
+      room.captureImages = nextImages;
+      room.updatedAt = Date.now();
+      _mbPersistRooms(rooms, room.id, { immediate: true, explicitEmptyImages: true });
     }
-    room.captureImages.splice(idx, 1);
-    room.updatedAt = Date.now();
-    _mbPersistRooms(rooms, room.id);
+    window.__mbRoomLocalWriteUntil = Math.max(Number(window.__mbRoomLocalWriteUntil || 0), Date.now() + _MB_LOCAL_SYNC_GUARD_MS);
+    window.__wr2ImageWriteUntil = Math.max(Number(window.__wr2ImageWriteUntil || 0), Date.now() + _MB_LOCAL_SYNC_GUARD_MS);
+    await _mbForceSyncRoomsWithRetry('capture-delete');
     if (window.wr2PushActivity) window.wr2PushActivity(room, '작업 이미지 1개를 삭제했습니다', room.phase || room.status);
     _mbRenderOvCapture(room);
   };
@@ -5967,7 +5990,8 @@ input, textarea, select {
     var roomId = room.id;
     var noteId = note.id;
     (async function() {
-      window.__mbRoomLocalWriteUntil = Math.max(Number(window.__mbRoomLocalWriteUntil || 0), Date.now() + 180000);
+      window.__mbRoomLocalWriteUntil = Math.max(Number(window.__mbRoomLocalWriteUntil || 0), Date.now() + _MB_LOCAL_SYNC_GUARD_MS);
+      window.__wr2ImageWriteUntil = Math.max(Number(window.__wr2ImageWriteUntil || 0), Date.now() + _MB_LOCAL_SYNC_GUARD_MS);
       window.__wr2UploadBusy = Number(window.__wr2UploadBusy || 0) + 1;
       var ok = 0;
       var fail = 0;
@@ -6009,8 +6033,9 @@ input, textarea, select {
             targetRoom.lastNoteId = noteId;
           }, { immediate: true });
         }
-        window.__mbRoomLocalWriteUntil = Date.now() + 180000;
-        await _mbForceSyncRoomsNow();
+        window.__mbRoomLocalWriteUntil = Date.now() + _MB_LOCAL_SYNC_GUARD_MS;
+        window.__wr2ImageWriteUntil = Math.max(Number(window.__wr2ImageWriteUntil || 0), Date.now() + _MB_LOCAL_SYNC_GUARD_MS);
+        var syncOk2 = await _mbForceSyncRoomsWithRetry('note-attach-upload');
         if (ok && latestRoom && window.wr2PushActivity) window.wr2PushActivity(latestRoom, '노트 첨부 ' + ok + '개를 추가했습니다', latestRoom.phase || latestRoom.status);
         if (latestRoom) {
           _mbRenderNoteAttachments(latestRoom);
@@ -6018,6 +6043,7 @@ input, textarea, select {
           _mbRenderNoteAllAttachments(latestRoom);
           _mbRenderOvNote(latestRoom);
         }
+        if (!syncOk2 && ok) mbToast('첨부 저장됨 · 클라우드 동기화 재시도 중', 'warn');
         if (ok) mbToast('첨부 ' + ok + '개 업로드됨', fail ? 'warn' : 'ok');
         else if (fail) mbToast('첨부 업로드 실패', 'err');
       } finally {
@@ -6874,6 +6900,10 @@ input, textarea, select {
       _doRender(_bestLocal);
 
       if (window._wrRefreshFromCloud && shouldCloudRefresh) {
+        // 업로드/로컬 편집 직후에는 강제 클라우드 pull이 최신 로컬 상태를 덮지 않도록 잠시 스킵
+        if (window.__mbRoomLocalWriteUntil && Date.now() < Number(window.__mbRoomLocalWriteUntil || 0)) {
+          return;
+        }
         var _runDetailRefresh = function() {
           if (window._sbRunEntryRefresh) {
             return window._sbRunEntryRefresh('workrooms', window._wrRefreshFromCloud, { render: false, label: 'workrooms', force: true });
@@ -9228,7 +9258,8 @@ input, textarea, select {
         await window._sbInitLoad();
       } else {
         if (typeof window._wrRefreshFromCloud === 'function') await window._wrRefreshFromCloud({ render: false });
-        if (typeof window._plRefreshFromCloud === 'function') await window._plRefreshFromCloud({ render: false, force: false, sync: true });
+        var plPull = window._plPullRowsToLocal || window._plRefreshFromCloud;
+        if (typeof plPull === 'function') await plPull({ render: false, force: true, lightweight: true, sync: false });
       }
       window.mbRefreshAllViews();
       try {
