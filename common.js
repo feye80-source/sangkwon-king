@@ -600,6 +600,9 @@
           _sbInitLoadCalled = true;
           _sbScheduleInitLoad();
         }
+        if (typeof window._sbResumeRoomSync === 'function') {
+          window._sbResumeRoomSync('auth:' + String(event || 'SIGNED_IN'));
+        }
       } else if (event === 'PASSWORD_RECOVERY') {
         window._sbShowRecovery && window._sbShowRecovery();
       } else if (event === 'SIGNED_OUT') {
@@ -612,6 +615,10 @@
         if (_sbAutoSyncTimer) {
           clearInterval(_sbAutoSyncTimer);
           _sbAutoSyncTimer = null;
+        }
+        if (window.__wr2SyncState) {
+          window.__wr2SyncState.status = 'signed_out';
+          window.__wr2SyncState.blockedBySession = true;
         }
         window._sbShowLogin && window._sbShowLogin();
       }
@@ -880,12 +887,13 @@
     async function tblSaveDirty(table, arr) {
       try {
         const uid = await _sbGetUserId();
-        if (!uid || !arr || !arr.length) return;
+        if (!uid) return false;
+        if (!arr || !arr.length) return true;
         const dirty = _dirtyItems[table];
         const toSave = (dirty && dirty.size > 0)
           ? arr.filter(item => dirty.has(item.id || item.item_id))
           : (table === 'workrooms' ? [] : arr); // workrooms는 dirty 없으면 skip (tombstone 덮어쓰기 방지)
-        if (!toSave.length) return;
+        if (!toSave.length) return true;
         const savedIds = toSave.map(item => item && (item.id || item.item_id)).filter(Boolean);
         const dirtyRevSnapshot = _snapshotDirtyRev(table, savedIds);
         const rows = toSave.map(item => ({
@@ -906,7 +914,18 @@
         if (dirty && dirty.size > 0) {
           _clearDirtyIdsWithRev(table, savedIds, dirtyRevSnapshot);
         }
-      } catch(e) { console.warn('[SB] tblSaveDirty error', table, e); }
+        window.__sbLastTableError = null;
+        return true;
+      } catch(e) {
+        window.__sbLastTableError = {
+          table: table,
+          phase: 'save',
+          message: _sbErrText(e, 'tblSaveDirty failed'),
+          at: Date.now()
+        };
+        console.warn('[SB] tblSaveDirty error', table, e);
+      }
+      return false;
     }
 
     // ── 테이블 로드: 페이지네이션 루프 (1000개 제한 해제) ────────
@@ -955,7 +974,8 @@
     async function tblSoftDelete(table, itemIds) {
       try {
         const uid = await _sbGetUserId();
-        if (!uid || !itemIds.length) return;
+        if (!uid) return false;
+        if (!itemIds || !itemIds.length) return true;
         const now = new Date().toISOString();
         const rows = itemIds.map(iid => ({
           id: uid + '_' + iid,
@@ -973,7 +993,18 @@
           if (error) throw error;
         }
         _clearDirtyIds(table, itemIds);
-      } catch(e) { console.warn('[SB] tblSoftDelete error', table, e); }
+        window.__sbLastTableError = null;
+        return true;
+      } catch(e) {
+        window.__sbLastTableError = {
+          table: table,
+          phase: 'soft_delete',
+          message: _sbErrText(e, 'tblSoftDelete failed'),
+          at: Date.now()
+        };
+        console.warn('[SB] tblSoftDelete error', table, e);
+      }
+      return false;
     }
 
     // ─── 동기화 상태 표시 ─────────────────────────────────────
@@ -1838,15 +1869,16 @@
       (stateRooms || []).forEach(function(r) { if (r && r.id) fullMap.set(r.id, r); });
       fullMap.set(roomId, baseRoom);
       const fullRooms = Array.from(fullMap.values()).filter(function(r) { return r && r.id; });
+      let queuedByPersist = false;
       if (window._wrPersistRooms) {
         window._wrPersistRooms(fullRooms, { keepDeletedInState: true, syncState: false, sync: options.sync !== false, immediate: true });
+        queuedByPersist = (options.sync !== false);
       } else if (window._wrPersistRoomCache) {
         window._wrPersistRoomCache(fullRooms, { keepDeletedInState: true, syncState: false });
-        if (options.sync !== false && window._sbSaveRooms) window._sbSaveRooms(fullRooms).catch(function(e){ console.warn('[SB] room image sync fail', e); });
       }
       try { if (window.idbSet) window.idbSet('wr2_rooms', fullRooms).catch(function(){}); } catch(e) {}
-      if (options.sync !== false && window._sbScheduleSaveRooms) window._sbScheduleSaveRooms(fullRooms, 0);
-      else if (options.sync !== false && window._sbSaveRooms) window._sbSaveRooms(fullRooms).catch(function(e){ console.warn('[SB] room image immediate sync fail', e); });
+      if (!queuedByPersist && options.sync !== false && window._sbScheduleSaveRooms) window._sbScheduleSaveRooms(fullRooms, 0);
+      else if (!queuedByPersist && options.sync !== false && window._sbSaveRooms) window._sbSaveRooms(fullRooms).catch(function(e){ console.warn('[SB] room image immediate sync fail', e); });
       if (stateRoom) {
         Object.assign(stateRoom, baseRoom);
       } else if (window.wr2State && Array.isArray(window.wr2State.rooms) && !baseRoom.deletedAt) {
@@ -1874,11 +1906,14 @@
       (stateRooms || []).forEach(function(r) { if (r && r.id) fullMap.set(r.id, r); });
       fullMap.set(roomId, baseRoom);
       const fullRooms = Array.from(fullMap.values()).filter(function(r) { return r && r.id; });
-      if (window._wrPersistRooms) window._wrPersistRooms(fullRooms, { keepDeletedInState: true, syncState: false, sync: options.sync !== false, immediate: true, explicitEmptyImages: true });
-      else if (window._wrPersistRoomCache) window._wrPersistRoomCache(fullRooms, { keepDeletedInState: true, syncState: false });
+      let queuedByPersist = false;
+      if (window._wrPersistRooms) {
+        window._wrPersistRooms(fullRooms, { keepDeletedInState: true, syncState: false, sync: options.sync !== false, immediate: true, explicitEmptyImages: true });
+        queuedByPersist = (options.sync !== false);
+      } else if (window._wrPersistRoomCache) window._wrPersistRoomCache(fullRooms, { keepDeletedInState: true, syncState: false });
       try { if (window.idbSet) window.idbSet('wr2_rooms', fullRooms).catch(function(){}); } catch(e) {}
-      if (options.sync !== false && window._sbScheduleSaveRooms) window._sbScheduleSaveRooms(fullRooms, 0);
-      else if (options.sync !== false && window._sbSaveRooms) window._sbSaveRooms(fullRooms).catch(function(e){ console.warn('[SB] room image set immediate sync fail', e); });
+      if (!queuedByPersist && options.sync !== false && window._sbScheduleSaveRooms) window._sbScheduleSaveRooms(fullRooms, 0);
+      else if (!queuedByPersist && options.sync !== false && window._sbSaveRooms) window._sbSaveRooms(fullRooms).catch(function(e){ console.warn('[SB] room image set immediate sync fail', e); });
       if (stateRoom) Object.assign(stateRoom, baseRoom);
       return stateRoom || baseRoom;
     };
@@ -1921,11 +1956,11 @@
     };
     window._wrRefreshFromCloud = async function(opts) {
       const options = opts || {};
+      const roomSyncState = window.__wr2SyncState || {};
       const localBusy =
         Number(window.__wr2UploadBusy || 0) > 0 ||
         !!window.__wr2SaveRoomsTimer ||
-        (Number(window.__wr2ImageWriteUntil || 0) > Date.now()) ||
-        (Number(window.__mbRoomLocalWriteUntil || 0) > Date.now());
+        roomSyncState.status === 'saving';
       if (localBusy) {
         return { rooms: null, sections: null, skipped: 'local_edit_busy' };
       }
@@ -1997,36 +2032,179 @@
       return { rooms: roomPayload, sections: sectionPayload };
     };
 
-    // ─── 작업룸 동기화 ────────────────────────────────────────
-    window._sbScheduleSaveRooms = function(arr, delay) {
-      _sbScheduleAsyncSave('wr2_rooms', arr, function(latest) {
-        return window._sbSaveRooms(latest);
-      }, typeof delay === 'number' ? delay : 1100);
+    // ─── 작업룸 동기화 (단일 직렬 워커 + 백오프 재시도) ───────────
+    const _wr2RoomSyncRuntime = {
+      running: false,
+      inFlight: null,
+      timer: null,
+      queuedRooms: null,
+      failStreak: 0,
+      blockedBySession: false,
+      lastErrorType: '',
+      lastErrorMessage: '',
+      lastWarnAt: 0,
+      lastAttemptAt: 0,
+      lastSuccessAt: 0
     };
-    window._sbSaveRooms = async function(arr) {
-      let synced = false;
-      try {
-        const prev = window._wrGetRoomsCache ? window._wrGetRoomsCache() : [];
-        const prevMap = new Map((prev || []).filter(r => r && r.id).map(r => [r.id, r]));
-        const cleanArr = _wrStripFreeTableLegacyRooms(arr).map(function(r) {
-          if (!r || !r.id) return r;
-          return _wrMergeRoomPreserveImages(prevMap.get(r.id), r);
-        });
-        const full = _sbPruneTombstones(_sbKeepTombstones(prev, cleanArr)).filter(r => r && r.id);
-        const changedIds = _sbChangedIds(prev, full);
-        const hasDirty = !!(_dirtyItems.workrooms && _dirtyItems.workrooms.size);
-        if (!changedIds.length && !hasDirty) return;
-        const active = window._wrFilterActiveRooms ? window._wrFilterActiveRooms(full) : full.filter(r => !r.deletedAt);
-        const deleted = full.filter(r => r.deletedAt).map(r => r.id);
-        await tblSaveDirty('workrooms', active);
-        if (deleted.length) await tblSoftDelete('workrooms', deleted);
-        if (window._wrPersistRoomCache) window._wrPersistRoomCache(full, { syncState: false });
-        synced = true;
-      } catch(e) {
-        console.warn('[SB] saveRooms error', e);
-        window._sbSyncStatus('⚠️ 작업룸 동기화 재시도 중', false);
+    function _wr2GetDirtyCount() {
+      return _dirtyItems.workrooms ? _dirtyItems.workrooms.size : 0;
+    }
+    function _wr2NormalizeRoomsInput(arr) {
+      let rooms = Array.isArray(arr) ? arr : null;
+      if (!rooms || !rooms.length) {
+        rooms = (window._wrGetRoomsCache && window._wrGetRoomsCache())
+          || ((window._idbCache && window._idbCache['wr2_rooms'])
+            || _sbGetCachedArray('wr2_rooms'));
       }
-      if (synced) window._sbSyncStatus('☁️ 작업룸 동기화 완료', true);
+      return (Array.isArray(rooms) ? rooms : []).filter(function(r) { return r && r.id; });
+    }
+    function _wr2SetSyncState(extra) {
+      const base = window.__wr2SyncState || {};
+      const next = Object.assign({}, base, extra || {}, {
+        failStreak: _wr2RoomSyncRuntime.failStreak,
+        blockedBySession: _wr2RoomSyncRuntime.blockedBySession,
+        lastErrorType: _wr2RoomSyncRuntime.lastErrorType || null,
+        lastErrorMessage: _wr2RoomSyncRuntime.lastErrorMessage || null,
+        lastAttemptAt: _wr2RoomSyncRuntime.lastAttemptAt || null,
+        lastSuccessAt: _wr2RoomSyncRuntime.lastSuccessAt || null,
+        pendingWrites: _wr2GetDirtyCount()
+      });
+      window.__wr2SyncState = next;
+      return next;
+    }
+    function _wr2ClassifySyncError(err) {
+      const msg = String((err && (err.message || err.code || err.name)) || err || '').toLowerCase();
+      if (!msg) return 'UNKNOWN';
+      if (msg.indexOf('no_session') >= 0 || msg.indexOf('no session') >= 0 || msg.indexOf('jwt') >= 0 || msg.indexOf('auth') >= 0) return 'NO_SESSION';
+      if (msg.indexOf('timeout') >= 0 || msg.indexOf('network') >= 0 || msg.indexOf('failed to fetch') >= 0) return 'NETWORK';
+      if (msg.indexOf('permission') >= 0 || msg.indexOf('rls') >= 0 || msg.indexOf('403') >= 0 || msg.indexOf('401') >= 0 || msg.indexOf('denied') >= 0) return 'PERMISSION';
+      if (msg.indexOf('workrooms_sync_failed') >= 0) return 'SAVE_FAILED';
+      return 'UNKNOWN';
+    }
+    function _wr2RetryDelayMs(errorType) {
+      const fail = Math.max(1, _wr2RoomSyncRuntime.failStreak);
+      if (errorType === 'NO_SESSION') return 0;
+      if (errorType === 'PERMISSION') return Math.min(120000, 15000 + (fail * 7000));
+      if (errorType === 'NETWORK') return Math.min(90000, 2500 * Math.pow(2, Math.min(fail, 5)));
+      return Math.min(60000, 3500 * Math.pow(2, Math.min(fail, 4)));
+    }
+    function _wr2ScheduleSyncRun(delayMs) {
+      const wait = Math.max(0, Number(delayMs || 0));
+      if (_wr2RoomSyncRuntime.timer) clearTimeout(_wr2RoomSyncRuntime.timer);
+      _wr2RoomSyncRuntime.timer = setTimeout(function() {
+        _wr2RoomSyncRuntime.timer = null;
+        _wr2RunRoomSyncLoop();
+      }, wait);
+    }
+    function _wr2EnqueueRooms(arr) {
+      _wr2RoomSyncRuntime.queuedRooms = _wr2NormalizeRoomsInput(arr);
+      _wr2SetSyncState({ status: 'queued', queuedAt: Date.now() });
+    }
+    async function _wr2SaveRoomsNow(arr) {
+      const uid = await _sbGetUserId();
+      if (!uid) throw new Error('no_session');
+      const prev = window._wrGetRoomsCache ? window._wrGetRoomsCache() : [];
+      const prevMap = new Map((prev || []).filter(function(r) { return r && r.id; }).map(function(r) { return [r.id, r]; }));
+      const cleanArr = _wrStripFreeTableLegacyRooms(arr).map(function(r) {
+        if (!r || !r.id) return r;
+        return _wrMergeRoomPreserveImages(prevMap.get(r.id), r);
+      });
+      const full = _sbPruneTombstones(_sbKeepTombstones(prev, cleanArr)).filter(function(r) { return r && r.id; });
+      const changedIds = _sbChangedIds(prev, full);
+      const hasDirty = _wr2GetDirtyCount() > 0;
+      if (!changedIds.length && !hasDirty) return { ok: true, didWrite: false };
+      const active = window._wrFilterActiveRooms ? window._wrFilterActiveRooms(full) : full.filter(function(r) { return !r.deletedAt; });
+      const deleted = full.filter(function(r) { return r.deletedAt; }).map(function(r) { return r.id; });
+      const saveOk = await tblSaveDirty('workrooms', active);
+      const delOk = deleted.length ? await tblSoftDelete('workrooms', deleted) : true;
+      if (!saveOk || !delOk) {
+        const detail = window.__sbLastTableError && window.__sbLastTableError.table === 'workrooms'
+          ? String(window.__sbLastTableError.message || 'unknown')
+          : 'unknown';
+        throw new Error('workrooms_sync_failed:' + detail);
+      }
+      if (window._wrPersistRoomCache) window._wrPersistRoomCache(full, { syncState: false });
+      return { ok: true, didWrite: true };
+    }
+    async function _wr2RunRoomSyncLoop() {
+      if (_wr2RoomSyncRuntime.running) return _wr2RoomSyncRuntime.inFlight || false;
+      _wr2RoomSyncRuntime.running = true;
+      const runner = (async function() {
+        let synced = false;
+        while (true) {
+          const payload = _wr2RoomSyncRuntime.queuedRooms || _wr2NormalizeRoomsInput(null);
+          _wr2RoomSyncRuntime.queuedRooms = null;
+          if (!payload.length) break;
+          _wr2RoomSyncRuntime.lastAttemptAt = Date.now();
+          _wr2SetSyncState({ status: 'saving' });
+          try {
+            const result = await _wr2SaveRoomsNow(payload);
+            synced = !!(result && result.ok !== false);
+            _wr2RoomSyncRuntime.failStreak = 0;
+            _wr2RoomSyncRuntime.blockedBySession = false;
+            _wr2RoomSyncRuntime.lastErrorType = '';
+            _wr2RoomSyncRuntime.lastErrorMessage = '';
+            _wr2RoomSyncRuntime.lastSuccessAt = Date.now();
+            window.__wr2ImageWriteUntil = 0;
+            _wr2SetSyncState({ status: 'synced', syncedAt: _wr2RoomSyncRuntime.lastSuccessAt });
+            if (synced && result && result.didWrite) window._sbSyncStatus('☁️ 작업룸 동기화 완료', true);
+          } catch (e) {
+            const prevType = _wr2RoomSyncRuntime.lastErrorType;
+            const type = _wr2ClassifySyncError(e);
+            _wr2RoomSyncRuntime.failStreak += 1;
+            _wr2RoomSyncRuntime.lastErrorType = type;
+            _wr2RoomSyncRuntime.lastErrorMessage = _sbErrText(e, 'workrooms sync failed');
+            _wr2RoomSyncRuntime.blockedBySession = (type === 'NO_SESSION');
+            _wr2SetSyncState({ status: type === 'NO_SESSION' ? 'blocked_auth' : 'error', errorAt: Date.now() });
+            const now = Date.now();
+            const warnMsg = (type === 'NO_SESSION')
+              ? '⚠️ 로그인 필요 · 작업룸 동기화 대기'
+              : '⚠️ 작업룸 동기화 재시도 중';
+            if ((now - _wr2RoomSyncRuntime.lastWarnAt) > 10000 || prevType !== type) {
+              window._sbSyncStatus(warnMsg, false);
+              _wr2RoomSyncRuntime.lastWarnAt = now;
+            }
+            if (type !== 'NO_SESSION') {
+              const backoff = _wr2RetryDelayMs(type);
+              _wr2ScheduleSyncRun(backoff);
+            }
+            console.warn('[SB] saveRooms error', type, e);
+            return false;
+          }
+          if (!_wr2RoomSyncRuntime.queuedRooms && _wr2GetDirtyCount() === 0) break;
+        }
+        return synced;
+      })().finally(function() {
+        _wr2RoomSyncRuntime.running = false;
+        _wr2RoomSyncRuntime.inFlight = null;
+      });
+      _wr2RoomSyncRuntime.inFlight = runner;
+      return runner;
+    }
+    window._sbResumeRoomSync = function(reason) {
+      _wr2RoomSyncRuntime.blockedBySession = false;
+      _wr2RoomSyncRuntime.lastErrorType = '';
+      _wr2RoomSyncRuntime.lastErrorMessage = '';
+      _wr2SetSyncState({ status: 'queued', resumeReason: reason || 'manual', resumedAt: Date.now() });
+      _wr2EnqueueRooms(null);
+      _wr2ScheduleSyncRun(0);
+    };
+    window._sbGetRoomSyncState = function() {
+      return Object.assign({}, window.__wr2SyncState || {}, { running: !!_wr2RoomSyncRuntime.running });
+    };
+    window._sbScheduleSaveRooms = function(arr, delay) {
+      _wr2EnqueueRooms(arr);
+      _wr2ScheduleSyncRun(typeof delay === 'number' ? delay : 700);
+    };
+    window._sbSaveRooms = async function(arr, opts) {
+      const options = opts || {};
+      _wr2EnqueueRooms(arr);
+      if (options.defer === true) {
+        _wr2ScheduleSyncRun(typeof options.delay === 'number' ? options.delay : 700);
+        return true;
+      }
+      _wr2ScheduleSyncRun(typeof options.delay === 'number' ? options.delay : 0);
+      return await _wr2RunRoomSyncLoop();
     };
     window._sbMarkRoomDirty = function(roomId) { _markDirty('workrooms', roomId); };
     window._sbLoadRooms = async function() { return await tblLoadArr('workrooms'); };
