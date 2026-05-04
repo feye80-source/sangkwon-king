@@ -502,6 +502,7 @@
     let _sbAutoSyncBound = false;
     let _sbSyncBackoffUntil = 0;
     const _sbRefreshMarks = {};
+    if (window.__plAutoCloudPull === undefined) window.__plAutoCloudPull = true;
     function _sbSetBackoff(ms) {
       const waitMs = Math.max(5000, ms || 30000);
       _sbSyncBackoffUntil = Math.max(_sbSyncBackoffUntil, Date.now() + waitMs);
@@ -603,6 +604,9 @@
         if (typeof window._sbResumeRoomSync === 'function') {
           window._sbResumeRoomSync('auth:' + String(event || 'SIGNED_IN'));
         }
+        if (typeof window._sbResumeSnapshotSync === 'function') {
+          window._sbResumeSnapshotSync('auth:' + String(event || 'SIGNED_IN'));
+        }
       } else if (event === 'PASSWORD_RECOVERY') {
         window._sbShowRecovery && window._sbShowRecovery();
       } else if (event === 'SIGNED_OUT') {
@@ -672,6 +676,7 @@
     async function _sbGetSessionShared(opts) {
       const options = opts || {};
       if (_sbSessionReq && !options.force) return _sbSessionReq;
+      const prevCachedUserId = _sbCachedUserId;
       const req = Promise.resolve()
         .then(() => _sbWithTimeout(window._sb.auth.getSession(), 'auth getSession', 15000))
         .then(res => {
@@ -682,6 +687,15 @@
         })
         .catch(e => {
           console.warn('[SB] getSession error', e);
+          const msg = String((e && (e.message || e.code || e.name)) || e || '').toLowerCase();
+          const transient =
+            msg.indexOf('timeout') >= 0 ||
+            msg.indexOf('network') >= 0 ||
+            msg.indexOf('failed to fetch') >= 0;
+          if (transient && prevCachedUserId) {
+            _sbCachedUserId = prevCachedUserId;
+            return { data: { session: { user: { id: prevCachedUserId } } }, error: e, stale: true };
+          }
           _sbCachedUserId = null;
           return { data: { session: null }, error: e };
         })
@@ -1714,8 +1728,41 @@
       const out = [];
       if (!room || typeof room !== 'object') return out;
       if (Array.isArray(room.captureImages)) out.push.apply(out, room.captureImages);
-      if (room.captureImage) out.push({ src: room.captureImage, savedAt: room.updatedAt || room.createdAt || Date.now(), snapName: null });
       return out;
+    }
+    function _wrNormalizeRemovedCaptureKeys(room) {
+      const out = [];
+      const src = room && Array.isArray(room._removedCaptureImageKeys) ? room._removedCaptureImageKeys : [];
+      src.forEach(function(entry) {
+        if (!entry) return;
+        const key = String(entry.key || '').trim();
+        if (!key) return;
+        out.push({ key: key, at: Number(entry.at || 0) || 0 });
+      });
+      return out;
+    }
+    function _wrMergeRemovedCaptureKeys(prevRoom, nextRoom) {
+      const map = new Map();
+      _wrNormalizeRemovedCaptureKeys(prevRoom).forEach(function(entry) {
+        const old = map.get(entry.key);
+        if (!old || (entry.at || 0) >= (old.at || 0)) map.set(entry.key, entry);
+      });
+      _wrNormalizeRemovedCaptureKeys(nextRoom).forEach(function(entry) {
+        const old = map.get(entry.key);
+        if (!old || (entry.at || 0) >= (old.at || 0)) map.set(entry.key, entry);
+      });
+      const TTL = 7 * 24 * 60 * 60 * 1000;
+      const cutoff = Date.now() - TTL;
+      return Array.from(map.values()).filter(function(entry) { return (entry.at || 0) >= cutoff; });
+    }
+    function _wrApplyRemovedCaptureKeys(images, removedEntries) {
+      const removed = new Set((Array.isArray(removedEntries) ? removedEntries : []).map(function(entry) {
+        return entry && entry.key ? String(entry.key) : '';
+      }).filter(Boolean));
+      return (Array.isArray(images) ? images : []).filter(function(img) {
+        const key = _wrCaptureImageKey(img);
+        return !key || !removed.has(key);
+      });
     }
     function _wrMergeRoomPreserveImages(prevRoom, nextRoom, opts) {
       const options = opts || {};
@@ -1723,10 +1770,11 @@
       if (!nextRoom) return prevRoom;
       const merged = Object.assign({}, prevRoom, nextRoom);
       const prevImgs = _wrNormalizeLegacyCaptureImages(prevRoom);
-      const nextHasImages = _wrRoomHasOwnImages(nextRoom) || !!nextRoom.captureImage;
+      const nextHasImages = _wrRoomHasOwnImages(nextRoom);
       const nextImgs = _wrNormalizeLegacyCaptureImages(nextRoom);
       const prevStamp = _wrRoomImageStamp(prevRoom);
       const nextStamp = _wrRoomImageStamp(nextRoom);
+      const removedKeys = _wrMergeRemovedCaptureKeys(prevRoom, nextRoom);
       // 삭제/전체교체처럼 이미지 필드를 명시적으로 비운 경우만 빈 배열을 존중한다.
       // 그 외에는 오래된 room 객체의 빈 captureImages가 기존 이미지를 덮지 못하게 한다.
       if (nextHasImages) {
@@ -1739,8 +1787,21 @@
             merged._captureImagesUpdatedAt = prevStamp;
           }
         } else if (nextImgs.length) {
-          merged.captureImages = _wrMergeCaptureImages(prevImgs, nextImgs);
-          merged._captureImagesUpdatedAt = Math.max(prevStamp, nextStamp, Number(merged.updatedAt || 0), Date.now());
+          // nextRoom이 이미지 수정 시각(stamp)을 갖고 있으면 "최신 이미지 집합"으로 간주해 교체한다.
+          // (부분 삭제 시 union 병합으로 삭제 대상이 되살아나는 문제 방지)
+          const hasExplicitImageUpdate = !!(nextStamp || options.explicitEmptyImages);
+          if (hasExplicitImageUpdate) {
+            if (!prevStamp || nextStamp >= prevStamp || options.explicitEmptyImages) {
+              merged.captureImages = _wrMergeCaptureImages(nextImgs);
+              merged._captureImagesUpdatedAt = nextStamp || Number(merged.updatedAt || 0) || Date.now();
+            } else {
+              merged.captureImages = _wrMergeCaptureImages(prevImgs);
+              merged._captureImagesUpdatedAt = prevStamp;
+            }
+          } else {
+            merged.captureImages = _wrMergeCaptureImages(prevImgs, nextImgs);
+            merged._captureImagesUpdatedAt = Math.max(prevStamp, Number(merged.updatedAt || 0), Date.now());
+          }
         } else if (prevImgs.length) {
           merged.captureImages = _wrMergeCaptureImages(prevImgs);
           merged._captureImagesUpdatedAt = prevStamp || Number(merged.updatedAt || 0) || Date.now();
@@ -1749,6 +1810,10 @@
         merged.captureImages = _wrMergeCaptureImages(prevImgs);
         merged._captureImagesUpdatedAt = prevStamp || Number(merged.updatedAt || 0) || Date.now();
       }
+      if (Array.isArray(merged.captureImages) && merged.captureImages.length) {
+        merged.captureImages = _wrApplyRemovedCaptureKeys(merged.captureImages, removedKeys);
+      }
+      merged._removedCaptureImageKeys = removedKeys;
       delete merged.captureImage;
       return merged;
     }
@@ -1826,6 +1891,7 @@
       return String(img.storagePath || img.path || img.src || img.url || '') ||
         [img.snapName || '', img.parentSnapName || '', img.savedAt || ''].join('|');
     }
+    window._wrCaptureImageKey = _wrCaptureImageKey;
     function _wrMergeCaptureImages() {
       const out = [];
       const seen = new Set();
@@ -1845,16 +1911,14 @@
       const options = opts || {};
       const now = Date.now();
       const newEntry = Object.assign({}, entry, { savedAt: entry.savedAt || now, src: entry.src || entry.url || '' });
+      const newEntryKey = _wrCaptureImageKey(newEntry);
       window.__wr2ImageWriteUntil = Date.now() + 15000;
       const cacheRooms = window._wrGetRoomsCache ? window._wrGetRoomsCache() : _sbGetCachedArray('wr2_rooms');
       const stateRooms = (window.wr2State && Array.isArray(window.wr2State.rooms)) ? window.wr2State.rooms : [];
       const cacheRoom = (cacheRooms || []).find(function(r) { return r && r.id === roomId; }) || null;
       const stateRoom = (stateRooms || []).find(function(r) { return r && r.id === roomId; }) || null;
       const baseRoom = Object.assign({}, cacheRoom || {}, stateRoom || {}, { id: roomId });
-      const legacy = [];
-      if (baseRoom.captureImage) legacy.push({ src: baseRoom.captureImage, savedAt: baseRoom.updatedAt || baseRoom.createdAt || now, snapName: null });
       baseRoom.captureImages = _wrMergeCaptureImages(
-        legacy,
         cacheRoom && cacheRoom.captureImages,
         stateRoom && stateRoom.captureImages,
         baseRoom.captureImages,
@@ -1862,6 +1926,11 @@
       );
       delete baseRoom.captureImage;
       baseRoom._captureImagesUpdatedAt = now;
+      if (newEntryKey) {
+        baseRoom._removedCaptureImageKeys = _wrNormalizeRemovedCaptureKeys(baseRoom).filter(function(entry) {
+          return entry.key !== newEntryKey;
+        });
+      }
       baseRoom.updatedAt = now;
       if (window._sbMarkRoomDirty) window._sbMarkRoomDirty(roomId);
       const fullMap = new Map();
@@ -1896,9 +1965,23 @@
       const cacheRoom = (cacheRooms || []).find(function(r) { return r && r.id === roomId; }) || null;
       const stateRoom = (stateRooms || []).find(function(r) { return r && r.id === roomId; }) || null;
       const baseRoom = Object.assign({}, cacheRoom || {}, stateRoom || {}, { id: roomId });
+      const prevImages = _wrNormalizeLegacyCaptureImages(baseRoom);
       baseRoom.captureImages = _wrMergeCaptureImages(images || []);
       delete baseRoom.captureImage;
       baseRoom._captureImagesUpdatedAt = now;
+      const nextKeySet = new Set((baseRoom.captureImages || []).map(_wrCaptureImageKey).filter(Boolean));
+      const removedMap = new Map();
+      _wrNormalizeRemovedCaptureKeys(baseRoom).forEach(function(entry) { removedMap.set(entry.key, entry); });
+      prevImages.forEach(function(img) {
+        const key = _wrCaptureImageKey(img);
+        if (!key || nextKeySet.has(key)) return;
+        removedMap.set(key, { key: key, at: now });
+      });
+      const TTL = 7 * 24 * 60 * 60 * 1000;
+      const cutoff = now - TTL;
+      baseRoom._removedCaptureImageKeys = Array.from(removedMap.values()).filter(function(entry) {
+        return (entry.at || 0) >= cutoff;
+      });
       baseRoom.updatedAt = now;
       if (window._sbMarkRoomDirty) window._sbMarkRoomDirty(roomId);
       const fullMap = new Map();
@@ -2075,8 +2158,15 @@
     function _wr2ClassifySyncError(err) {
       const msg = String((err && (err.message || err.code || err.name)) || err || '').toLowerCase();
       if (!msg) return 'UNKNOWN';
-      if (msg.indexOf('no_session') >= 0 || msg.indexOf('no session') >= 0 || msg.indexOf('jwt') >= 0 || msg.indexOf('auth') >= 0) return 'NO_SESSION';
       if (msg.indexOf('timeout') >= 0 || msg.indexOf('network') >= 0 || msg.indexOf('failed to fetch') >= 0) return 'NETWORK';
+      if (
+        msg.indexOf('no_session') >= 0 ||
+        msg.indexOf('no session') >= 0 ||
+        msg.indexOf('jwt expired') >= 0 ||
+        msg.indexOf('invalid jwt') >= 0 ||
+        msg.indexOf('refresh token not found') >= 0 ||
+        msg.indexOf('auth session missing') >= 0
+      ) return 'NO_SESSION';
       if (msg.indexOf('permission') >= 0 || msg.indexOf('rls') >= 0 || msg.indexOf('403') >= 0 || msg.indexOf('401') >= 0 || msg.indexOf('denied') >= 0) return 'PERMISSION';
       if (msg.indexOf('workrooms_sync_failed') >= 0) return 'SAVE_FAILED';
       return 'UNKNOWN';
@@ -3048,14 +3138,146 @@
       return Array.isArray(d) ? d : null;
     };
 
-    // ─── 작업씬(WorkScene) 동기화 ────────────────────────────
-    window._sbSaveWorkScenes = async function(arr) {
-      const full = (Array.isArray(arr) ? arr : []).filter(scene => scene && scene.id);
+    // ─── 작업씬(WorkScene) 동기화 (직렬 워커 + 백오프) ───────────
+    const _wsSyncRuntime = {
+      running: false,
+      inFlight: null,
+      timer: null,
+      queuedScenes: null,
+      failStreak: 0,
+      blockedBySession: false,
+      lastWarnAt: 0,
+      lastErrorType: '',
+      lastErrorMessage: ''
+    };
+    function _wsNormalizeInput(arr) {
+      let scenes = Array.isArray(arr) ? arr : null;
+      if (!scenes || !scenes.length) {
+        scenes = (window._wsGetScenesCache && window._wsGetScenesCache())
+          || ((window._idbCache && window._idbCache['re_ws']) || _sbGetCachedArray('re_ws'));
+      }
+      return _normalizeWorkScenes((Array.isArray(scenes) ? scenes : []).filter(scene => scene && scene.id));
+    }
+    function _wsClassifyError(err) {
+      const msg = String((err && (err.message || err.code || err.name)) || err || '').toLowerCase();
+      if (!msg) return 'UNKNOWN';
+      if (msg.indexOf('timeout') >= 0 || msg.indexOf('network') >= 0 || msg.indexOf('failed to fetch') >= 0) return 'NETWORK';
+      if (
+        msg.indexOf('no_session') >= 0 ||
+        msg.indexOf('no session') >= 0 ||
+        msg.indexOf('jwt expired') >= 0 ||
+        msg.indexOf('invalid jwt') >= 0 ||
+        msg.indexOf('refresh token not found') >= 0 ||
+        msg.indexOf('auth session missing') >= 0
+      ) return 'NO_SESSION';
+      if (msg.indexOf('permission') >= 0 || msg.indexOf('rls') >= 0 || msg.indexOf('403') >= 0 || msg.indexOf('401') >= 0 || msg.indexOf('denied') >= 0) return 'PERMISSION';
+      if (msg.indexOf('snapshots_sync_failed') >= 0) return 'SAVE_FAILED';
+      return 'UNKNOWN';
+    }
+    function _wsRetryDelayMs(errorType) {
+      const fail = Math.max(1, _wsSyncRuntime.failStreak);
+      if (errorType === 'NO_SESSION') return 0;
+      if (errorType === 'PERMISSION') return Math.min(120000, 12000 + (fail * 6000));
+      if (errorType === 'NETWORK') return Math.min(90000, 2000 * Math.pow(2, Math.min(fail, 5)));
+      return Math.min(60000, 3000 * Math.pow(2, Math.min(fail, 4)));
+    }
+    function _wsScheduleRun(delayMs) {
+      const wait = Math.max(0, Number(delayMs || 0));
+      if (_wsSyncRuntime.timer) clearTimeout(_wsSyncRuntime.timer);
+      _wsSyncRuntime.timer = setTimeout(function() {
+        _wsSyncRuntime.timer = null;
+        _wsRunSyncLoop();
+      }, wait);
+    }
+    function _wsEnqueue(arr) {
+      _wsSyncRuntime.queuedScenes = _wsNormalizeInput(arr);
+    }
+    async function _wsSaveNow(arr) {
+      const uid = await _sbGetUserId();
+      if (!uid) throw new Error('no_session');
+      const prev = window._wsGetScenesCache ? window._wsGetScenesCache() : [];
+      const full = _normalizeWorkScenes((Array.isArray(arr) ? arr : []).filter(scene => scene && scene.id));
+      const changedIds = _sbChangedIds(prev, full);
+      const hasDirty = !!(_dirtyItems.snapshots && _dirtyItems.snapshots.size);
+      if (!changedIds.length && !hasDirty) return { ok: true, didWrite: false };
       const active = _sbFilterActiveEntities(full);
       const deleted = full.filter(scene => scene.deletedAt).map(scene => scene.id);
-      await tblSaveDirty('snapshots', active);
-      if (deleted.length) await tblSoftDelete('snapshots', deleted);
-      window._sbSyncStatus('☁️ 작업씬 동기화 완료', true);
+      const saveOk = await tblSaveDirty('snapshots', active);
+      const delOk = deleted.length ? await tblSoftDelete('snapshots', deleted) : true;
+      if (!saveOk || !delOk) {
+        const detail = window.__sbLastTableError && window.__sbLastTableError.table === 'snapshots'
+          ? String(window.__sbLastTableError.message || 'unknown')
+          : 'unknown';
+        throw new Error('snapshots_sync_failed:' + detail);
+      }
+      return { ok: true, didWrite: true };
+    }
+    async function _wsRunSyncLoop() {
+      if (_wsSyncRuntime.running) return _wsSyncRuntime.inFlight || false;
+      _wsSyncRuntime.running = true;
+      const runner = (async function() {
+        let synced = false;
+        while (true) {
+          const payload = _wsSyncRuntime.queuedScenes || _wsNormalizeInput(null);
+          _wsSyncRuntime.queuedScenes = null;
+          if (!payload.length) break;
+          try {
+            const result = await _wsSaveNow(payload);
+            synced = !!(result && result.ok !== false);
+            _wsSyncRuntime.failStreak = 0;
+            _wsSyncRuntime.blockedBySession = false;
+            _wsSyncRuntime.lastErrorType = '';
+            _wsSyncRuntime.lastErrorMessage = '';
+            if (synced && result && result.didWrite) window._sbSyncStatus('☁️ 작업씬 동기화 완료', true);
+          } catch (e) {
+            const prevType = _wsSyncRuntime.lastErrorType;
+            const type = _wsClassifyError(e);
+            _wsSyncRuntime.failStreak += 1;
+            _wsSyncRuntime.lastErrorType = type;
+            _wsSyncRuntime.lastErrorMessage = _sbErrText(e, 'snapshot sync failed');
+            _wsSyncRuntime.blockedBySession = (type === 'NO_SESSION');
+            const warnMsg = (type === 'NO_SESSION')
+              ? '⚠️ 로그인 필요 · 스냅샷 동기화 대기'
+              : '⚠️ 스냅샷 동기화 재시도 중';
+            const now = Date.now();
+            if ((now - _wsSyncRuntime.lastWarnAt) > 10000 || prevType !== type) {
+              window._sbSyncStatus(warnMsg, false);
+              _wsSyncRuntime.lastWarnAt = now;
+            }
+            if (type !== 'NO_SESSION') _wsScheduleRun(_wsRetryDelayMs(type));
+            console.warn('[SB] saveWorkScenes error', type, e);
+            return false;
+          }
+          if (!_wsSyncRuntime.queuedScenes && !(_dirtyItems.snapshots && _dirtyItems.snapshots.size)) break;
+        }
+        return synced;
+      })().finally(function() {
+        _wsSyncRuntime.running = false;
+        _wsSyncRuntime.inFlight = null;
+      });
+      _wsSyncRuntime.inFlight = runner;
+      return runner;
+    }
+    window._sbResumeSnapshotSync = function(reason) {
+      _wsSyncRuntime.blockedBySession = false;
+      _wsSyncRuntime.lastErrorType = '';
+      _wsSyncRuntime.lastErrorMessage = '';
+      _wsEnqueue(null);
+      _wsScheduleRun(0);
+    };
+    window._sbScheduleSaveWorkScenes = function(arr, delay) {
+      _wsEnqueue(arr);
+      _wsScheduleRun(typeof delay === 'number' ? delay : 700);
+    };
+    window._sbSaveWorkScenes = async function(arr, opts) {
+      const options = opts || {};
+      _wsEnqueue(arr);
+      if (options.defer === true) {
+        _wsScheduleRun(typeof options.delay === 'number' ? options.delay : 700);
+        return true;
+      }
+      _wsScheduleRun(typeof options.delay === 'number' ? options.delay : 0);
+      return await _wsRunSyncLoop();
     };
     window._sbMarkWorkSceneDirty = function(sceneId) { _markDirty('snapshots', sceneId); };
     window._sbLoadWorkScenes = async function() { return await tblLoadArr('snapshots'); };
@@ -3069,7 +3291,7 @@
       const full = _sbPruneTombstones(_sbTouchNumericRecords(prev, _sbBuildFullEntitySet(prev, normalized, { keepDeleted: !!options.keepDeleted })));
       _sbMarkChangedIds('snapshots', prev, full);
       _sbPersistCachedArray('re_ws', full);
-      if (options.sync !== false && window._sbSaveWorkScenes) window._sbSaveWorkScenes(full).catch(e => console.warn('[SB] snapshot sync fail', e));
+      if (options.sync !== false && window._sbSaveWorkScenes) window._sbSaveWorkScenes(full, { defer: true, delay: options.immediate === true ? 0 : 700 }).catch(e => console.warn('[SB] snapshot sync fail', e));
       return { full, active: _sbFilterActiveEntities(full) };
     };
     window._wsRefreshFromCloud = async function(opts) {
@@ -3309,8 +3531,18 @@
     }
     window._sbInitLoad = async function() {
       try {
-        const { data: { session } } = await _sbGetSessionShared();
-        if (!session) { window._sbShowLogin(); return; }
+        const sessionRes = await _sbGetSessionShared();
+        const session = sessionRes && sessionRes.data ? sessionRes.data.session : null;
+        if (!session) {
+          const emsg = String((sessionRes && sessionRes.error && (sessionRes.error.message || sessionRes.error.code || sessionRes.error.name)) || '').toLowerCase();
+          const transient = emsg.indexOf('timeout') >= 0 || emsg.indexOf('network') >= 0 || emsg.indexOf('failed to fetch') >= 0;
+          if (transient) {
+            window._sbSyncStatus('⚠️ 네트워크 지연 · 동기화 재시도 중', false);
+            return;
+          }
+          window._sbShowLogin();
+          return;
+        }
         _sbCachedUserId = session.user.id;
         window._sbAddLogoutBtn();
         window._sbSyncStatus('☁️ 변경분 확인 중...', true);
@@ -3335,7 +3567,7 @@
           console.warn('[SB] API key init sync error', e);
         }
         try {
-          if (window.__plAutoCloudPull === true) {
+          if (window.__plAutoCloudPull !== false) {
             await _sbSafeLoad('workrooms_init', () => {
               return window._wrRefreshFromCloud ? window._wrRefreshFromCloud({ render: false, force: true }) : null;
             }, 0);
@@ -3346,12 +3578,15 @@
               return window._svRefreshFromCloud ? window._svRefreshFromCloud({ render: false }) : null;
             }, 0);
           }
+          await _sbSafeLoad('snapshots_init', () => {
+            return window._wsRefreshFromCloud ? window._wsRefreshFromCloud({ render: false }) : null;
+          }, 0);
         } catch (e) {
           console.warn('[SB] init entity sync error', e);
         }
         await _sbSyncDirtyQueues();
         try {
-          if (window.__plAutoCloudPull === true) {
+          if (window.__plAutoCloudPull !== false) {
             await _sbSafeLoad('workrooms_after_sync', () => {
               return window._wrRefreshFromCloud ? window._wrRefreshFromCloud({ render: false, force: true }) : null;
             }, 0);
@@ -3359,6 +3594,9 @@
               return window._plRefreshFromCloud ? window._plRefreshFromCloud({ render: false, force: true, sync: false }) : null;
             }, 0);
           }
+          await _sbSafeLoad('snapshots_after_sync', () => {
+            return window._wsRefreshFromCloud ? window._wsRefreshFromCloud({ render: false }) : null;
+          }, 0);
         } catch (e) {
           console.warn('[SB] post-sync entity refresh error', e);
         }
@@ -5620,7 +5858,6 @@ var _safeLocalSet = function(key, value) {
                 function migrateCaptures(room) {
                   if (!room.captureImages) room.captureImages = [];
                   if (room.captureImage && !room._migrated) {
-                    room.captureImages.unshift({ src: room.captureImage, savedAt: room.updatedAt || Date.now(), snapName: null });
                     delete room.captureImage;
                     room._migrated = true;
                     saveRooms();
@@ -5714,11 +5951,11 @@ var _safeLocalSet = function(key, value) {
                   migrateCaptures(room);
                   if (!confirm('이 캡처 이미지를 삭제할까요?')) return;
                   const img = room.captureImages[idx];
-                  // Storage에 업로드된 이미지면 실제 파일도 삭제
-                  if (img && img.storagePath) {
-                    window._sbDeleteImages([img.storagePath]).catch(()=>{});
-                  }
-                  const nextImages = (room.captureImages || []).filter(function(_, i) { return i !== idx; });
+                  const targetKey = (window._wrCaptureImageKey && img) ? window._wrCaptureImageKey(img) : '';
+                  const nextImages = (room.captureImages || []).filter(function(entry, i) {
+                    if (targetKey) return (window._wrCaptureImageKey ? window._wrCaptureImageKey(entry) : '') !== targetKey;
+                    return i !== idx;
+                  });
                   const savedRoom = window._wrSetCaptureImages ? window._wrSetCaptureImages(room.id, nextImages, { explicitEmptyImages: true }) : null;
                   if (savedRoom) room.captureImages = savedRoom.captureImages || [];
                   else { room.captureImages = nextImages; room.updatedAt = Date.now(); saveRooms(); }
@@ -5916,9 +6153,6 @@ var _safeLocalSet = function(key, value) {
                 window.wr2DeleteCapture = async function () {
                   const room = getActiveRoom(); if (!room) return;
                   if (!confirm('모든 캡처 이미지를 삭제할까요?')) return;
-                  // Storage에서 실제 파일 삭제
-                  const paths = (room.captureImages || []).filter(i => i.storagePath).map(i => i.storagePath);
-                  if (paths.length) window._sbDeleteImages(paths).catch(()=>{});
                   if (window._wrSetCaptureImages) {
                     const savedRoom = window._wrSetCaptureImages(room.id, [], { explicitEmptyImages: true });
                     room.captureImages = savedRoom && savedRoom.captureImages ? savedRoom.captureImages : [];
@@ -29747,8 +29981,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
           if (!room.captureImages) room.captureImages = [];
           if (room.captureImage && !room._migrated) {
-            room.captureImages.push({ src: room.captureImage, savedAt: room.updatedAt||Date.now(), snapName: null });
             delete room.captureImage; room._migrated = true;
+            if (window._sbMarkRoomDirty) window._sbMarkRoomDirty(room.id);
           }
           const _snapName = window._lastLoadedSnap || null;
           const _roomTitle = room.title || room.name || '작업룸';
@@ -30907,7 +31141,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           console.error('[wr2]', e);
         }
         if (window.wr2State) window.wr2State.activeView = 'overview';
-        if (window.__plAutoCloudPull === true && window._sbRunEntryRefresh && typeof window._wrRefreshFromCloud === 'function') {
+        if (window.__plAutoCloudPull !== false && window._sbRunEntryRefresh && typeof window._wrRefreshFromCloud === 'function') {
           window._sbRunEntryRefresh('workrooms', window._wrRefreshFromCloud, { render: true, label: 'workrooms', force: true })
             .then(function(payload) {
               if (!payload && typeof window.wr2Render === 'function') window.wr2Render();
@@ -46523,7 +46757,7 @@ window.addEventListener('DOMContentLoaded', () => {
     el.innerHTML = chips.join('');
   }
   function plEnsureListCloudRefresh() {
-    if (window.__plAutoCloudPull !== true) return;
+    if (window.__plAutoCloudPull === false) return;
     if (window.__plInlineEditKey) return;
     if (window.__plListRefreshRunning) return;
     if (typeof window._plRefreshFromCloud !== 'function') return;
@@ -47155,7 +47389,7 @@ window.addEventListener('DOMContentLoaded', () => {
     });
       if (tab === 'list') {
         pmRestoreInsightPanels();
-        if (window.__plAutoCloudPull === true && window._sbRunEntryRefresh && typeof window._plRefreshFromCloud === 'function') {
+        if (window.__plAutoCloudPull !== false && window._sbRunEntryRefresh && typeof window._plRefreshFromCloud === 'function') {
         window._sbRunEntryRefresh('properties', window._plRefreshFromCloud, { render: true, label: 'properties', force: true })
           .then(function(payload) {
             if (!payload && typeof renderPropertyList === 'function') renderPropertyList();
@@ -47172,7 +47406,7 @@ window.addEventListener('DOMContentLoaded', () => {
       if (pendingRoomId && window.wr2State) {
         window.wr2State.activeRoomId = pendingRoomId;
       }
-      if (window.__plAutoCloudPull === true && window._sbRunEntryRefresh && typeof window._wrRefreshFromCloud === 'function') {
+      if (window.__plAutoCloudPull !== false && window._sbRunEntryRefresh && typeof window._wrRefreshFromCloud === 'function') {
         window._sbRunEntryRefresh('workrooms', window._wrRefreshFromCloud, { render: true, label: 'workrooms', force: true })
           .then(function(payload) {
             if (window.wr2State && pendingRoomId) {
@@ -47864,7 +48098,7 @@ window.addEventListener('DOMContentLoaded', () => {
     try {
       if (typeof currentPage === 'undefined' || currentPage !== 4) return;
       if (window.__pmActiveTab !== 'list' && window.__pmActiveTab !== 'work' && window.__pmActiveTab !== 'pipeline') return;
-      if (window.__plAutoCloudPull !== true) return;
+      if (window.__plAutoCloudPull === false) return;
       var ae = document.activeElement;
       var typing = !!(ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable));
       if (typing) return;
@@ -47898,7 +48132,7 @@ window.addEventListener('DOMContentLoaded', () => {
   function _plQuickCloudPull() {
     try {
       if (typeof currentPage === 'undefined' || currentPage !== 4) return;
-      if (window.__plAutoCloudPull !== true) return;
+      if (window.__plAutoCloudPull === false) return;
       var now = Date.now();
       var last = Number(window.__plQuickCloudPullAt || 0);
       if (last && (now - last) < 5000) return;
