@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260504-rollback93-session-stability-v1';
+    window.__SK_BUILD = '20260504-rollback93-sync-structure-v2';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -535,11 +535,55 @@
       }
     }
     window._sbRunEntryRefresh = _sbRunEntryRefresh;
+    let _sbLastAutoSyncAt = 0;
+    function _sbTriggerAutoRefresh(reason) {
+      const now = Date.now();
+      if ((now - _sbLastAutoSyncAt) < 4000) return;
+      _sbLastAutoSyncAt = now;
+      Promise.resolve().then(async function() {
+        const uid = await _sbGetUserId();
+        if (!uid) return;
+        try { await _sbSyncDirtyQueues(); } catch (e) {}
+        const page4 = (typeof currentPage !== 'undefined' && currentPage === 4);
+        if (!page4) return;
+        try {
+          if (window.__plAutoCloudPull === true && typeof window._plRefreshFromCloud === 'function') {
+            await window._plRefreshFromCloud({ render: false, force: true, sync: false, auto: true, reason: reason || 'auto' });
+          }
+        } catch (e) { console.warn('[SB] auto refresh properties', e); }
+        try {
+          if (window.__plAutoCloudPull === true && typeof window._wrRefreshFromCloud === 'function') {
+            await window._wrRefreshFromCloud({ render: false, force: true, auto: true, reason: reason || 'auto' });
+          }
+        } catch (e) { console.warn('[SB] auto refresh workrooms', e); }
+        try {
+          if (typeof window._svRefreshFromCloud === 'function') {
+            await window._svRefreshFromCloud({ render: false });
+          }
+        } catch (e) { console.warn('[SB] auto refresh saved', e); }
+        try {
+          if (window.__pmActiveTab === 'list' && typeof renderPropertyList === 'function') renderPropertyList();
+          if (window.__pmActiveTab === 'work' && typeof wr2Render === 'function') wr2Render();
+          if (window.__pmActiveTab === 'pipeline' && typeof renderWatchBoard === 'function') renderWatchBoard();
+        } catch (e) {}
+      }).catch(function(e) {
+        console.warn('[SB] auto sync trigger', e);
+      });
+    }
+    window._sbTriggerAutoRefresh = _sbTriggerAutoRefresh;
     function _sbEnsureAutoSync() {
-      if (!_sbAutoSyncBound) {
-        _sbAutoSyncBound = true;
-        // debug14: 백그라운드/포커스 자동 재동기화 없음
-        // 반영은 앱 재오픈 / 탭 재진입 / 수동 새로고침 기준으로만 수행
+      if (_sbAutoSyncBound) return;
+      _sbAutoSyncBound = true;
+      window.addEventListener('focus', function() { _sbTriggerAutoRefresh('focus'); }, { passive: true });
+      window.addEventListener('online', function() { _sbTriggerAutoRefresh('online'); }, { passive: true });
+      document.addEventListener('visibilitychange', function() {
+        if (document.visibilityState === 'visible') _sbTriggerAutoRefresh('visible');
+      }, { passive: true });
+      if (!_sbAutoSyncTimer) {
+        _sbAutoSyncTimer = setInterval(function() {
+          if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+          _sbTriggerAutoRefresh('interval');
+        }, 12000);
       }
     }
     function _sbScheduleInitLoad() {
@@ -589,35 +633,26 @@
       }
     }
     window._sb.auth.onAuthStateChange((event, session) => {
-      if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED') && session) {
-        _sbCachedUserId = session && session.user ? (session.user.id || null) : null;
-        // ★ [FIX] getSession timeout 대비: 마지막 정상 세션을 보관한다.
-        // Supabase auth.getSession()이 일시 timeout 되어도 이미 받은 access_token이 살아 있으면
-        // user_id를 null로 지우지 않고, 저장 대기분은 dirty 상태로 유지한다.
-        try {
-          _sbCachedSession = session;
-          _sbCachedSessionAt = Date.now();
-        } catch (e) {}
+      if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session) {
+        _sbRememberSession(session);
         _sbSessionReq = null;
-        _sbSyncBackoffUntil = 0;
-        if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
-          window._sbHideLogin && window._sbHideLogin();
-          window._sbHideRecovery && window._sbHideRecovery();
-          window._sbAddLogoutBtn && window._sbAddLogoutBtn();
-          // ★ 로그인 시 클라우드 동기화 자동 실행 (IDB 프리로드 완료 후 실행)
-          if (!_sbInitLoadCalled) {
-            _sbInitLoadCalled = true;
-            _sbScheduleInitLoad();
-          }
+        window._sbHideLogin && window._sbHideLogin();
+        window._sbHideRecovery && window._sbHideRecovery();
+        window._sbAddLogoutBtn && window._sbAddLogoutBtn();
+        _sbEnsureAutoSync();
+        // ★ 로그인 시 클라우드 동기화 자동 실행 (IDB 프리로드 완료 후 실행)
+        if (!_sbInitLoadCalled) {
+          _sbInitLoadCalled = true;
+          _sbScheduleInitLoad();
+        } else {
+          _sbTriggerAutoRefresh('auth');
         }
       } else if (event === 'PASSWORD_RECOVERY') {
         window._sbShowRecovery && window._sbShowRecovery();
       } else if (event === 'SIGNED_OUT') {
         _sbCachedUserId = null;
-        try {
-          _sbCachedSession = null;
-          _sbCachedSessionAt = 0;
-        } catch (e) {}
+        _sbCachedSession = null;
+        _sbStoreLastUid('');
         _sbSessionReq = null;
         _sbLoginReq = null;
         _sbInitLoadCalled = false;
@@ -627,6 +662,7 @@
           clearInterval(_sbAutoSyncTimer);
           _sbAutoSyncTimer = null;
         }
+        _sbAutoSyncBound = false;
         window._sbShowLogin && window._sbShowLogin();
       }
     });
@@ -667,10 +703,29 @@
     // ─── 범용 헬퍼 ───────────────────────────────────────────
     // user_id / session 요청 직렬화
     let _sbCachedUserId = null;
-    let _sbCachedSession = null;       // ★ [FIX] 마지막 정상 세션 캐시
-    let _sbCachedSessionAt = 0;         // ★ [FIX] 캐시 시각
+    let _sbCachedSession = null;
     let _sbSessionReq = null;
     let _sbLoginReq = null;
+    let _sbSessionErrorAt = 0;
+    const _SB_LAST_UID_KEY = 'sb_last_uid_sangkwon';
+    function _sbStoreLastUid(uid) {
+      try {
+        if (uid) localStorage.setItem(_SB_LAST_UID_KEY, String(uid));
+        else localStorage.removeItem(_SB_LAST_UID_KEY);
+      } catch (e) {}
+    }
+    function _sbReadLastUid() {
+      try { return String(localStorage.getItem(_SB_LAST_UID_KEY) || '').trim(); } catch (e) { return ''; }
+    }
+    function _sbRememberSession(session) {
+      const uid = session && session.user ? String(session.user.id || '').trim() : '';
+      if (!uid) return '';
+      _sbCachedUserId = uid;
+      _sbCachedSession = session || { user: { id: uid } };
+      _sbSessionErrorAt = 0;
+      _sbStoreLastUid(uid);
+      return uid;
+    }
     function _sbErrText(e, fallback) {
       const msg = e && (e.message || e.error_description || e.code || e.name);
       if (msg) return String(msg);
@@ -678,44 +733,33 @@
       if (raw && raw !== '[object Object]') return raw;
       return fallback || '알 수 없는 오류';
     }
-    function _sbCachedSessionAlive() {
-      const s = _sbCachedSession;
-      if (!s || !s.user || !s.access_token) return false;
-      const expAt = Number(s.expires_at || 0) * 1000;
-      if (!expAt) return !!(_sbCachedSessionAt && (Date.now() - _sbCachedSessionAt) < (50 * 60 * 1000));
-      return Date.now() < (expAt - 30000);
-    }
-    let _sbLastSessionWarnAt = 0;
-    function _sbWarnSessionOnce(prefix, e) {
-      const now = Date.now();
-      if (now - _sbLastSessionWarnAt < 30000) return;
-      _sbLastSessionWarnAt = now;
-      console.warn(prefix, e);
-    }
     async function _sbGetSessionShared(opts) {
       const options = opts || {};
       if (_sbSessionReq && !options.force) return _sbSessionReq;
       const req = Promise.resolve()
         .then(() => _sbWithTimeout(window._sb.auth.getSession(), 'auth getSession', 15000))
         .then(res => {
-          const session = res && res.data && res.data.session;
-          if (session && session.user) {
-            _sbCachedUserId = session.user.id || _sbCachedUserId;
-            _sbCachedSession = session;
-            _sbCachedSessionAt = Date.now();
-          } else if (!_sbCachedSessionAlive()) {
+          const session = res && res.data ? res.data.session : null;
+          if (session && session.user && session.user.id) _sbRememberSession(session);
+          else if (options.force === true) {
             _sbCachedUserId = null;
+            _sbCachedSession = null;
+            _sbStoreLastUid('');
           }
           return res;
         })
         .catch(e => {
-          // ★ [FIX] getSession timeout / 504 / lock 충돌 때 이미 확보한 세션이 살아 있으면 그대로 사용한다.
-          // 이전 방식은 timeout 한 번에 _sbCachedUserId를 null로 지워서 savePlItems no session 루프를 만들었다.
-          if (_sbCachedSessionAlive()) {
-            _sbWarnSessionOnce('[SB] getSession 일시 실패 - 캐시 세션 사용', e);
-            return { data: { session: _sbCachedSession }, error: null, fromCache: true };
+          _sbSessionErrorAt = Date.now();
+          console.warn('[SB] getSession error', e);
+          if (_sbCachedUserId || (_sbCachedSession && _sbCachedSession.user && _sbCachedSession.user.id)) {
+            return { data: { session: _sbCachedSession || { user: { id: _sbCachedUserId } } }, error: e, cached: true };
           }
-          _sbWarnSessionOnce('[SB] getSession error', e);
+          const lastUid = _sbReadLastUid();
+          if (lastUid) {
+            _sbCachedUserId = lastUid;
+            _sbCachedSession = { user: { id: lastUid } };
+            return { data: { session: _sbCachedSession }, error: e, cached: true };
+          }
           return { data: { session: null }, error: e };
         })
         .finally(() => {
@@ -725,22 +769,18 @@
       return req;
     }
     async function _sbGetUserId() {
-      if (_sbCachedUserId && (_sbCachedSessionAlive() || !_sbCachedSession)) return _sbCachedUserId;
+      if (_sbCachedUserId) return _sbCachedUserId;
+      const lastUid = _sbReadLastUid();
+      if (lastUid) {
+        _sbCachedUserId = lastUid;
+        if (!_sbCachedSession) _sbCachedSession = { user: { id: lastUid } };
+        return _sbCachedUserId;
+      }
       try {
         const { data: { session } } = await _sbGetSessionShared();
-        if (session && session.user) {
-          _sbCachedUserId = session.user.id || _sbCachedUserId;
-          _sbCachedSession = session;
-          _sbCachedSessionAt = Date.now();
-          return _sbCachedUserId;
-        }
-        if (_sbCachedSessionAlive()) return _sbCachedUserId;
-        _sbCachedUserId = null;
+        if (session && session.user && session.user.id) return _sbRememberSession(session);
         return null;
-      } catch(e) {
-        if (_sbCachedSessionAlive()) return _sbCachedUserId;
-        return null;
-      }
+      } catch(e) { return null; }
     }
     window._sbGetUserId = _sbGetUserId; // ★ 전역 노출 (외부 함수에서 접근 가능하도록)
 
@@ -1862,18 +1902,22 @@
         const full = _sbPruneTombstones(_sbKeepTombstones(prev, cleanArr)).filter(r => r && r.id);
         const changedIds = _sbChangedIds(prev, full);
         const hasDirty = !!(_dirtyItems.workrooms && _dirtyItems.workrooms.size);
-        if (!changedIds.length && !hasDirty) return;
+        if (window._wrPersistRoomCache) window._wrPersistRoomCache(full, { syncState: false });
+        if (!changedIds.length && !hasDirty) return true;
+        changedIds.forEach(id => { if (id && window._sbMarkRoomDirty) window._sbMarkRoomDirty(id); });
+        const uid = await _sbGetUserId();
+        if (!uid) return false;
         const active = window._wrFilterActiveRooms ? window._wrFilterActiveRooms(full) : full.filter(r => !r.deletedAt);
         const deleted = full.filter(r => r.deletedAt).map(r => r.id);
         await tblSaveDirty('workrooms', active);
         if (deleted.length) await tblSoftDelete('workrooms', deleted);
-        if (window._wrPersistRoomCache) window._wrPersistRoomCache(full, { syncState: false });
         synced = true;
       } catch(e) {
         console.warn('[SB] saveRooms error', e);
         window._sbSyncStatus('⚠️ 작업룸 동기화 재시도 중', false);
       }
       if (synced) window._sbSyncStatus('☁️ 작업룸 동기화 완료', true);
+      return synced;
     };
     window._sbMarkRoomDirty = function(roomId) { _markDirty('workrooms', roomId); };
     window._sbLoadRooms = async function() { return await tblLoadArr('workrooms'); };
@@ -1918,10 +1962,14 @@
     // 섹션은 kv_store에 통째로 저장 (섹션은 roomId 참조 구조라 개별 행 관리 복잡)
     window._sbSaveSections = async function(arr) {
       const full = _sbPruneTombstones((Array.isArray(arr) ? arr : []).filter(s => s && s.id));
+      _sbPersistCachedArray('wr2_sections', full);
       _markKvDirty('wr2_sections');
+      const uid = await _sbGetUserId();
+      if (!uid) return false;
       await kvSet('wr2_sections', full);
       _clearKvDirty('wr2_sections');
       window._sbSyncStatus('☁️ 작업룸 섹션 동기화 완료', true);
+      return true;
     };
     window._sbLoadSections = async function() {
       const d = await kvGet('wr2_sections');
@@ -1961,21 +2009,14 @@
       }, typeof delay === 'number' ? delay : 900);
     };
     window._sbSavePlItems = async function(arr) {
+      const prev = _sbGetCachedArray('pl_items_v3');
+      const nextInput = (Array.isArray(arr) ? arr : []).filter(it => it && it.id);
+      const full = _sbPruneTombstones(_sbKeepTombstones(prev, nextInput));
+      _sbPersistCachedArray('pl_items_v3', full);
+      _markKvDirty('pl_items_v3');
       try {
-        const prev = _sbGetCachedArray('pl_items_v3');
-        const nextInput = (Array.isArray(arr) ? arr : []).filter(it => it && it.id);
-        const full = _sbPruneTombstones(_sbKeepTombstones(prev, nextInput));
-        // ★ [FIX] 세션이 불안정해도 로컬 변경은 먼저 보존한다.
-        _sbPersistCachedArray('pl_items_v3', full);
-        _markKvDirty('pl_items_v3');
-
         const uid = await _sbGetUserId();
-        if (!uid) {
-          _sbSetBackoff(30000);
-          _sbWarnSessionOnce('[SB] savePlItems 보류 - 로그인 세션 확인 실패', { message: 'no session' });
-          return;
-        }
-
+        if (!uid) return false;
         const chunks = _plSplitChunks(full);
         const prevMeta = await kvGet(_PL_META_KEY);
         const prevCount = prevMeta && prevMeta.count ? parseInt(prevMeta.count, 10) || 0 : 0;
@@ -1987,26 +2028,25 @@
         for (let i = 0; i < chunks.length; i += 1) {
           await kvSet(_PL_CHUNK_PREFIX + i, chunks[i]);
         }
-        // 줄어든 chunk 꼬리 정리(빈 배열로 덮기)
         for (let j = chunks.length; j < prevCount; j += 1) {
           await kvSet(_PL_CHUNK_PREFIX + j, []);
         }
-        // 하위 호환용(작은 목록만 legacy 키 유지)
         if (full.length <= 120) await kvSet('pl_items_v3', full);
-        // 저장 완료
         _clearKvDirty('pl_items_v3');
         window._sbSyncStatus('☁️ 물건리스트 동기화 완료', true);
+        return true;
       } catch (e) {
         console.warn('[SB] savePlItems error', e);
         _markKvDirty('pl_items_v3');
-        if (e && e.message !== 'no session') window._sbSyncStatus('⚠️ 물건리스트 동기화 재시도 중', false);
-        // 일시 오류(네트워크/타임아웃) 대비 자동 재시도. 단, 세션 없음은 auth 복구 후 dirty queue가 처리한다.
-        if (!(e && e.message === 'no session')) {
-          try {
+        const msg = String((e && e.message) || '');
+        if (msg && msg !== 'no session' && !/auth getSession timeout/i.test(msg)) window._sbSyncStatus('⚠️ 물건리스트 동기화 재시도 중', false);
+        try {
+          if (msg !== 'no session') {
             const retryPayload = _sbGetCachedArray('pl_items_v3');
-            window._sbScheduleSavePlItems(retryPayload, 5000);
-          } catch (e2) {}
-        }
+            window._sbScheduleSavePlItems(retryPayload, 4000);
+          }
+        } catch (e2) {}
+        return false;
       }
     };
     window._sbLoadPlItems = async function(opts) {
@@ -46572,7 +46612,7 @@ window.addEventListener('DOMContentLoaded', () => {
         }).catch(function(){});
       }
     } catch (e) {}
-  }, 20000);
+  }, 10000);
   function _plQuickCloudPull() {
     try {
       if (typeof currentPage === 'undefined' || currentPage !== 4) return;
