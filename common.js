@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260504-sync-v3-root-row-sync';
+    window.__SK_BUILD = '20260504-sync-v4-tombstone-field-sync';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -1686,37 +1686,73 @@
       if (room.captureImage) out.push({ src: room.captureImage, savedAt: room.updatedAt || room.createdAt || Date.now(), snapName: null });
       return out;
     }
+    function _wrRemovedCaptureKeySet() {
+      const set = new Set();
+      Array.prototype.slice.call(arguments).forEach(function(room) {
+        const arr = room && Array.isArray(room._removedCaptureImageKeys) ? room._removedCaptureImageKeys : [];
+        arr.forEach(function(k) { if (k) set.add(String(k)); });
+      });
+      return set;
+    }
+    function _wrFilterRemovedCaptureImages(list, removedSet) {
+      const del = removedSet || new Set();
+      return (Array.isArray(list) ? list : []).filter(function(img) {
+        const key = (typeof _wrCaptureImageKey === 'function') ? _wrCaptureImageKey(img) : (img && (img.storagePath || img.path || img.src || img.url));
+        return !key || !del.has(String(key));
+      });
+    }
     function _wrMergeRoomPreserveImages(prevRoom, nextRoom, opts) {
       const options = opts || {};
-      if (!prevRoom) return nextRoom;
+      if (!prevRoom) {
+        if (nextRoom && nextRoom._removedCaptureImageKeys) {
+          const delOnly = _wrRemovedCaptureKeySet(nextRoom);
+          if (delOnly.size && Array.isArray(nextRoom.captureImages)) {
+            nextRoom = Object.assign({}, nextRoom, { captureImages: _wrFilterRemovedCaptureImages(nextRoom.captureImages, delOnly) });
+          }
+        }
+        return nextRoom;
+      }
       if (!nextRoom) return prevRoom;
       const merged = Object.assign({}, prevRoom, nextRoom);
-      const prevImgs = _wrNormalizeLegacyCaptureImages(prevRoom);
+      const removedSet = _wrRemovedCaptureKeySet(prevRoom, nextRoom);
+      const prevImgs = _wrFilterRemovedCaptureImages(_wrNormalizeLegacyCaptureImages(prevRoom), removedSet);
       const nextHasImages = _wrRoomHasOwnImages(nextRoom) || !!nextRoom.captureImage;
-      const nextImgs = _wrNormalizeLegacyCaptureImages(nextRoom);
+      const nextImgs = _wrFilterRemovedCaptureImages(_wrNormalizeLegacyCaptureImages(nextRoom), removedSet);
       const prevStamp = _wrRoomImageStamp(prevRoom);
       const nextStamp = _wrRoomImageStamp(nextRoom);
-      // 삭제/전체교체처럼 이미지 필드를 명시적으로 비운 경우만 빈 배열을 존중한다.
-      // 그 외에는 오래된 room 객체의 빈 captureImages가 기존 이미지를 덮지 못하게 한다.
+      if (removedSet.size) merged._removedCaptureImageKeys = Array.from(removedSet);
+      // 삭제/tombstone이 있는 경우에는 절대 prev+next 무조건 합치기를 하지 않는다.
+      // next가 더 최신 이미지 상태를 명시하면 next가 기준이고, prev에 남은 오래된 이미지는 부활시키지 않는다.
       if (nextHasImages) {
-        if (!nextImgs.length && (nextStamp || options.explicitEmptyImages)) {
-          if (!prevStamp || nextStamp >= prevStamp || options.explicitEmptyImages) {
+        if (!nextImgs.length && (nextStamp || options.explicitEmptyImages || removedSet.size)) {
+          if (!prevStamp || nextStamp >= prevStamp || options.explicitEmptyImages || removedSet.size) {
             merged.captureImages = [];
-            merged._captureImagesUpdatedAt = nextStamp || Date.now();
+            merged._captureImagesUpdatedAt = nextStamp || Number(nextRoom.updatedAt || 0) || Date.now();
           } else {
-            merged.captureImages = _wrMergeCaptureImages(prevImgs);
+            merged.captureImages = prevImgs;
             merged._captureImagesUpdatedAt = prevStamp;
           }
         } else if (nextImgs.length) {
-          merged.captureImages = _wrMergeCaptureImages(prevImgs, nextImgs);
-          merged._captureImagesUpdatedAt = Math.max(prevStamp, nextStamp, Number(merged.updatedAt || 0), Date.now());
+          if (nextStamp && (!prevStamp || nextStamp >= prevStamp || removedSet.size || options.explicitEmptyImages)) {
+            merged.captureImages = _wrMergeCaptureImages(nextImgs);
+            merged._captureImagesUpdatedAt = Math.max(prevStamp, nextStamp, Number(merged.updatedAt || 0));
+          } else if (prevStamp && nextStamp && prevStamp > nextStamp) {
+            merged.captureImages = _wrMergeCaptureImages(prevImgs, nextImgs);
+            merged._captureImagesUpdatedAt = prevStamp;
+          } else {
+            merged.captureImages = _wrMergeCaptureImages(prevImgs, nextImgs);
+            merged._captureImagesUpdatedAt = Math.max(prevStamp, nextStamp, Number(merged.updatedAt || 0), Date.now());
+          }
         } else if (prevImgs.length) {
-          merged.captureImages = _wrMergeCaptureImages(prevImgs);
+          merged.captureImages = prevImgs;
           merged._captureImagesUpdatedAt = prevStamp || Number(merged.updatedAt || 0) || Date.now();
         }
       } else if (prevImgs.length) {
-        merged.captureImages = _wrMergeCaptureImages(prevImgs);
+        merged.captureImages = prevImgs;
         merged._captureImagesUpdatedAt = prevStamp || Number(merged.updatedAt || 0) || Date.now();
+      } else if (removedSet.size) {
+        merged.captureImages = [];
+        merged._captureImagesUpdatedAt = Math.max(prevStamp, nextStamp, Number(merged.updatedAt || 0), Date.now());
       }
       delete merged.captureImage;
       return merged;
@@ -1803,6 +1839,7 @@
           if (!img || typeof img !== 'object') return;
           const key = _wrCaptureImageKey(img);
           if (!key || seen.has(key)) return;
+          if (img.deletedAt) return;
           seen.add(key);
           out.push(Object.assign({}, img, { src: img.src || img.url || '' }));
         });
@@ -1823,13 +1860,17 @@
       const baseRoom = Object.assign({}, cacheRoom || {}, stateRoom || {}, { id: roomId });
       const legacy = [];
       if (baseRoom.captureImage) legacy.push({ src: baseRoom.captureImage, savedAt: baseRoom.updatedAt || baseRoom.createdAt || now, snapName: null });
-      baseRoom.captureImages = _wrMergeCaptureImages(
+      const newKey = _wrCaptureImageKey(newEntry);
+      const removedBeforeAppend = _wrRemovedCaptureKeySet(baseRoom);
+      if (newKey) removedBeforeAppend.delete(String(newKey));
+      baseRoom.captureImages = _wrFilterRemovedCaptureImages(_wrMergeCaptureImages(
         legacy,
         cacheRoom && cacheRoom.captureImages,
         stateRoom && stateRoom.captureImages,
         baseRoom.captureImages,
         [newEntry]
-      );
+      ), removedBeforeAppend);
+      baseRoom._removedCaptureImageKeys = Array.from(removedBeforeAppend);
       delete baseRoom.captureImage;
       baseRoom._captureImagesUpdatedAt = now;
       baseRoom.updatedAt = now;
@@ -1867,15 +1908,19 @@
       const baseRoom = Object.assign({}, cacheRoom || {}, stateRoom || {}, { id: roomId });
       const prevImagesForRows = _wrMergeCaptureImages(baseRoom.captureImages || []);
       const nextImagesForRows = _wrMergeCaptureImages(images || []);
+      const nextKeys = new Set(nextImagesForRows.map(function(img){ return _wrCaptureImageKey(img); }).filter(Boolean));
+      const prevRemovedSet = _wrRemovedCaptureKeySet(baseRoom);
+      const removed = prevImagesForRows.filter(function(img){ var k = _wrCaptureImageKey(img); return k && !nextKeys.has(k); });
+      removed.forEach(function(img){ var k = _wrCaptureImageKey(img); if (k) prevRemovedSet.add(String(k)); });
+      nextKeys.forEach(function(k){ if (k) prevRemovedSet.delete(String(k)); });
       try {
         if (window._wrSaveImageRows) {
-          const nextKeys = new Set(nextImagesForRows.map(function(img){ return _wrCaptureImageKey(img); }).filter(Boolean));
-          const removed = prevImagesForRows.filter(function(img){ var k = _wrCaptureImageKey(img); return k && !nextKeys.has(k); });
           if (removed.length) window._wrSaveImageRows(roomId, removed, { deletedAt: now }).catch(function(e){ console.warn('[IMG] row tombstone sync fail', e); });
           if (nextImagesForRows.length) window._wrSaveImageRows(roomId, nextImagesForRows).catch(function(e){ console.warn('[IMG] row set sync fail', e); });
         }
       } catch(e) {}
-      baseRoom.captureImages = nextImagesForRows;
+      baseRoom.captureImages = _wrFilterRemovedCaptureImages(nextImagesForRows, prevRemovedSet);
+      baseRoom._removedCaptureImageKeys = Array.from(prevRemovedSet);
       delete baseRoom.captureImage;
       baseRoom._captureImagesUpdatedAt = now;
       baseRoom.updatedAt = now;
@@ -2173,6 +2218,43 @@
     window._plMarkDirtyIds = window._plMarkDirtyIds || _plMarkDirtyIds;
     window._plClearDirtyIds = window._plClearDirtyIds || _plClearDirtyIds;
 
+    function _plFieldTime(item, field) {
+      if (!item) return 0;
+      const fu = item._fieldUpdatedAt || {};
+      const candidates = [
+        fu && fu[field],
+        item[field + 'UpdatedAt'],
+        item[field + '_updatedAt']
+      ];
+      for (const v of candidates) {
+        const n = Number(v || 0);
+        if (Number.isFinite(n) && n > 0) return n;
+        const d = new Date(v || 0).getTime();
+        if (Number.isFinite(d) && d > 0) return d;
+      }
+      return _plRowTime(item);
+    }
+    function _plMergeFieldAware(prev, row, pTime, rTime) {
+      const merged = rTime >= pTime ? Object.assign({}, prev, row) : Object.assign({}, row, prev);
+      const fields = ['intent', 'status', 'biddate', 'estimate', 'bidFocus', 'site'];
+      fields.forEach(function(field) {
+        const pf = _plFieldTime(prev, field);
+        const rf = _plFieldTime(row, field);
+        if (rf > pf && Object.prototype.hasOwnProperty.call(row, field)) merged[field] = row[field];
+        if (pf > rf && Object.prototype.hasOwnProperty.call(prev, field)) merged[field] = prev[field];
+      });
+      const mergedFu = Object.assign({}, prev && prev._fieldUpdatedAt || {}, row && row._fieldUpdatedAt || {});
+      fields.forEach(function(field) {
+        const pf = _plFieldTime(prev, field);
+        const rf = _plFieldTime(row, field);
+        const mx = Math.max(pf, rf);
+        if (mx) mergedFu[field] = mx;
+      });
+      merged._fieldUpdatedAt = mergedFu;
+      if (mergedFu.intent) merged.intentUpdatedAt = mergedFu.intent;
+      merged.updatedAt = Math.max(pTime || 0, rTime || 0, Number(merged.updatedAt || 0));
+      return merged;
+    }
     function _plMergeRows(localArr, rowArr) {
       const map = new Map();
       (Array.isArray(localArr) ? localArr : []).forEach(item => { if (item && item.id) map.set(String(item.id), item); });
@@ -2187,7 +2269,7 @@
         const rTime = Math.max(_plRowTime(row), rDel);
         if (rDel && rTime >= pTime) { map.set(id, row); return; }
         if (pDel && pTime > rTime) return;
-        if (rTime >= pTime) map.set(id, Object.assign({}, prev, row));
+        map.set(id, _plMergeFieldAware(prev, row, pTime, rTime));
       });
       return Array.from(map.values()).filter(item => item && item.id);
     }
@@ -2368,9 +2450,11 @@
       });
       const merged = [];
       const seen = new Set();
+      const existingRemoved = Array.isArray(room._removedCaptureImageKeys) ? room._removedCaptureImageKeys.map(String) : [];
+      existingRemoved.forEach(k => { if (k) del.add(String(k)); });
       (Array.isArray(room.captureImages) ? room.captureImages : []).forEach(img => {
         const key = _wrImgKeyFrom(img);
-        if (!key || del.has(String(key)) || seen.has(String(key))) return;
+        if (!key || del.has(String(key)) || seen.has(String(key)) || img.deletedAt) return;
         seen.add(String(key));
         merged.push(img);
       });
@@ -2384,6 +2468,8 @@
       if (del.size) {
         const prev = Array.isArray(room._removedCaptureImageKeys) ? room._removedCaptureImageKeys : [];
         room._removedCaptureImageKeys = Array.from(new Set(prev.concat(Array.from(del))));
+      } else if (Array.isArray(room._removedCaptureImageKeys)) {
+        room._removedCaptureImageKeys = Array.from(new Set(room._removedCaptureImageKeys.map(String).filter(Boolean)));
       }
       return room;
     }
@@ -45078,6 +45164,8 @@ window.addEventListener('DOMContentLoaded', () => {
       type: it.type || '경매',
       status: archived ? 'archived' : (it.status || 'review'),
       intent: it.intent || '',
+      intentUpdatedAt: Number(it.intentUpdatedAt || (it._fieldUpdatedAt && it._fieldUpdatedAt.intent) || 0) || 0,
+      _fieldUpdatedAt: Object.assign({}, it._fieldUpdatedAt || {}),
       addr: it.addr || '',
       casenum: it.casenum || '',
       region: it.region || '',
@@ -46894,9 +46982,17 @@ window.addEventListener('DOMContentLoaded', () => {
     var items = plLoad();
     var nowTs = Date.now();
     var changedItem = null;
+    var patchObj = patch || {};
     items = items.map(function(it){
       if (it.id !== id) return it;
-      changedItem = plNormalizeItem(Object.assign({}, it, patch || {}, { updatedAt: nowTs }));
+      var fieldUpdatedAt = Object.assign({}, it._fieldUpdatedAt || {});
+      Object.keys(patchObj).forEach(function(k) {
+        if (k === 'updatedAt' || k === 'createdAt' || k === '_fieldUpdatedAt') return;
+        fieldUpdatedAt[k] = nowTs;
+      });
+      var nextObj = Object.assign({}, it, patchObj, { updatedAt: nowTs, _fieldUpdatedAt: fieldUpdatedAt });
+      if (Object.prototype.hasOwnProperty.call(patchObj, 'intent')) nextObj.intentUpdatedAt = nowTs;
+      changedItem = plNormalizeItem(nextObj);
       return changedItem;
     });
     if (!changedItem) return null;
@@ -48085,8 +48181,9 @@ window.addEventListener('DOMContentLoaded', () => {
         Number(window.__plLastLocalMutationAt || 0)
       );
       if (lastMutation && (Date.now() - lastMutation) < 45000) return;
-      if (typeof window._plRefreshFromCloud === 'function') {
-        window._plRefreshFromCloud({ render: false, force: true, sync: true }).then(function() {
+      var rowPullFn = window._plPullRowsToLocal || window._plRefreshFromCloud;
+      if (typeof rowPullFn === 'function') {
+        rowPullFn({ render: false, force: true, sync: false, lightweight: true }).then(function() {
           if (window.__pmActiveTab === 'list' && typeof window.renderPropertyList === 'function') window.renderPropertyList();
         }).catch(function(){});
       }
@@ -48122,7 +48219,7 @@ window.addEventListener('DOMContentLoaded', () => {
         var fn = window._plPullRowsToLocal || window._plRefreshFromCloud;
         if (typeof fn === 'function') Promise.resolve(fn({ render: true, lightweight: true, sync: false })).catch(function(e){ console.warn('[PL] row poll', e); });
       } catch(e) {}
-    }, 8000);
+    }, 5000);
   }
   if (!window.__wrImageRowPollBound) {
     window.__wrImageRowPollBound = true;
@@ -48139,7 +48236,7 @@ window.addEventListener('DOMContentLoaded', () => {
           try { if (typeof window.mbRoomLoad === 'function' && window._mbActiveRoomId) window.mbRoomLoad(window._mbActiveRoomId, { cloud: false }); } catch(e) {}
         }).catch(function(e){ console.warn('[IMG] row poll', e); });
       } catch(e) {}
-    }, 8000);
+    }, 5000);
   }
 
 })();
