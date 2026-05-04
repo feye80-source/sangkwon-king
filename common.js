@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260505-cloudflare-r2-json-a4-quiet-media-stable';
+    window.__SK_BUILD = '20260505-cloudflare-r2-json-a3-all-image-sync';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -279,8 +279,7 @@
     };
     window._cfFetchJson = window._cfFetchJson || async function(url, options) {
       const opts = Object.assign({}, options || {});
-      opts.cache = opts.cache || 'no-store';
-      opts.headers = Object.assign({ 'accept': 'application/json', 'cache-control': 'no-cache' }, opts.headers || {});
+      opts.headers = Object.assign({ 'accept': 'application/json' }, opts.headers || {});
       if (!opts.signal && window._skTimeoutSignal) opts.signal = window._skTimeoutSignal(12000);
       return await fetch(url, opts);
     };
@@ -307,10 +306,8 @@
       });
       if (res.status === 404) return null;
       if (!res.ok) throw new Error('Cloudflare 로드 실패 ' + key + ': ' + res.status);
-      let json = null;
-      try { json = await res.json(); } catch(_e) { json = null; }
-      if (!json || json.missing === true) return null;
-      return Object.prototype.hasOwnProperty.call(json, 'value') ? json.value : json;
+      const json = await res.json();
+      return json && Object.prototype.hasOwnProperty.call(json, 'value') ? json.value : json;
     };
     window._cfDeleteJson = window._cfDeleteJson || async function(key) {
       if (window.SK_USE_CLOUDFLARE_DATA === false) return false;
@@ -333,7 +330,7 @@
       let timer = null;
       let running = false;
       return function(reason, delay) {
-        window._skMarkMediaWrite(reason || 'flush', 45000);
+        window._skMarkMediaWrite(reason || 'flush', 24000);
         clearTimeout(timer);
         timer = setTimeout(async function() {
           timer = null;
@@ -404,13 +401,6 @@
         }, typeof delay === 'number' ? delay : 900);
       };
     })();
-    window._skAfterMediaMutation = window._skAfterMediaMutation || function(reason) {
-      try { if (typeof window._skMarkMediaWrite === 'function') window._skMarkMediaWrite(reason || 'media-mutation', 45000); } catch(e) {}
-      try { if (typeof window.__wr2FlushSaveRooms === 'function') window.__wr2FlushSaveRooms(); } catch(e) {}
-      try { if (typeof window._skFlushAllImageStores === 'function') window._skFlushAllImageStores(reason || 'media-mutation', 250); } catch(e) {}
-      setTimeout(function(){ try { if (typeof window._skFlushAllImageStores === 'function') window._skFlushAllImageStores((reason || 'media-mutation') + ':late', 0); } catch(e){} }, 2500);
-      setTimeout(function(){ try { if (typeof window._skFlushAllImageStores === 'function') window._skFlushAllImageStores((reason || 'media-mutation') + ':final', 0); } catch(e){} }, 8000);
-    };
     console.log('[CF] backend ready', _cfBaseUrl(), 'userKey=', window.skGetCloudUserKey());
 
 /* ════════════════════════════════════════════════════════
@@ -2434,7 +2424,7 @@
     // ─── v3 root sync: 물건리스트 row 동기화 + 작업이미지 row 동기화 ─────────────
     // 목적: 큰 배열 전체 저장으로 기기끼리 덮어쓰는 구조를 끊고,
     //       변경된 물건 1개 / 이미지 1장 단위로 서버 기준점을 만든다.
-    window.__SK_SYNC_DEBUG = (window.__SK_SYNC_DEBUG === true);
+    window.__SK_SYNC_DEBUG = (window.__SK_SYNC_DEBUG !== false);
     function _skSyncLog() {
       try {
         if (window.__SK_SYNC_DEBUG === false) return;
@@ -6966,8 +6956,6 @@ var _safeLocalSet = function(key, value) {
                   if (input) input.value = '';
                   room.updatedAt = Date.now();
                   saveRooms();
-                  if (typeof window.__wr2FlushSaveRooms === 'function') window.__wr2FlushSaveRooms();
-                  if (typeof window._skAfterMediaMutation === 'function') window._skAfterMediaMutation('phase-checklist');
                   renderSections(room);
                   renderTimeline(room);
                   if (window._mbRefreshRoomSections) window._mbRefreshRoomSections(room.id);
@@ -7603,7 +7591,7 @@ window.wr2SummaryCancelEdit = function() {
                     if (typeof window.__wr2FlushSaveRooms === 'function') window.__wr2FlushSaveRooms();
                   }
                   saveSections();
-                  if (typeof window._skAfterMediaMutation === 'function') window._skAfterMediaMutation('section-checklist'); else if (typeof window._skFlushAllImageStores === 'function') window._skFlushAllImageStores('section-checklist', 800);
+                  if (typeof window._skFlushAllImageStores === 'function') window._skFlushAllImageStores('section-checklist', 800);
                   if (room) renderSections(room);
                   if (room) renderTimeline(room);
                   if (room && window._mbRefreshRoomSections) window._mbRefreshRoomSections(room.id);
@@ -8134,7 +8122,7 @@ window.wr2SummaryCancelEdit = function() {
                   if (typeof window._skMarkMediaWrite === 'function') window._skMarkMediaWrite('workroom-note-delete', 22000);
                   saveRooms();
                   if (typeof window.__wr2FlushSaveRooms === 'function') window.__wr2FlushSaveRooms();
-                  if (typeof window._skAfterMediaMutation === 'function') window._skAfterMediaMutation('workroom-note-delete'); else if (typeof window._skFlushAllImageStores === 'function') window._skFlushAllImageStores('workroom-note-delete', 600);
+                  if (typeof window._skFlushAllImageStores === 'function') window._skFlushAllImageStores('workroom-note-delete', 600);
                   renderAttachments(room);
                 };
 
@@ -8674,7 +8662,7 @@ window.wr2SummaryCancelEdit = function() {
                     if (typeof window._skMarkMediaWrite === 'function') window._skMarkMediaWrite('workroom-note', 26000);
                     saveRooms();
                     if (typeof window.__wr2FlushSaveRooms === 'function') window.__wr2FlushSaveRooms();
-                    if (typeof window._skAfterMediaMutation === 'function') window._skAfterMediaMutation('workroom-note'); else if (typeof window._skFlushAllImageStores === 'function') window._skFlushAllImageStores('workroom-note', 700);
+                    if (typeof window._skFlushAllImageStores === 'function') window._skFlushAllImageStores('workroom-note', 700);
                     if (ok) wr2PushActivity(room, '노트 첨부 ' + ok + '개를 추가했습니다', room.phase || room.status);
                     renderAttachments(room);
                     if (ok) showToast(`📎 ${ok}개 첨부 완료`, fail ? 'warn' : 'ok');
@@ -30354,7 +30342,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             note.updatedAt = new Date().toISOString();
             if (typeof window._skMarkMediaWrite === 'function') window._skMarkMediaWrite('map-capture-note', 22000);
             if (typeof ntSave === 'function') ntSave(noteId);
-            if (typeof window._skAfterMediaMutation === 'function') window._skAfterMediaMutation('map-capture-note'); else if (typeof window._skFlushAllImageStores === 'function') window._skFlushAllImageStores('map-capture-note', 700);
+            if (typeof window._skFlushAllImageStores === 'function') window._skFlushAllImageStores('map-capture-note', 700);
             if (typeof ntOpen === 'function') ntOpen(noteId);
             if (typeof ntRender === 'function') ntRender();
             try { showToast('📸 노트에 캡처 이미지 추가됨', 'ok'); } catch (e) { }
@@ -32623,7 +32611,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         note.updatedAt = new Date().toISOString();
         if (typeof window._skMarkMediaWrite === 'function') window._skMarkMediaWrite('nt-attachment', 22000);
         ntSave(id);
-        if (typeof window._skAfterMediaMutation === 'function') window._skAfterMediaMutation('nt-attachment'); else if (typeof window._skFlushAllImageStores === 'function') window._skFlushAllImageStores('nt-attachment', 700);
+        if (typeof window._skFlushAllImageStores === 'function') window._skFlushAllImageStores('nt-attachment', 700);
         ntOpen(id);
         input.value = '';
         if (ok) showToast(`📎 파일 ${ok}개 첨부 완료`, fail ? 'warn' : 'ok');
