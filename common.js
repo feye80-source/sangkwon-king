@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260505-workroom-calc-v11-all-floor';
+    window.__SK_BUILD = '20260505-workroom-multi-auction-v12';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -5584,16 +5584,83 @@ var _safeLocalSet = function(key, value) {
                 };
 
                 // ── 물건 요약 (저장목록 연결) ──────────────────────
+
+                // ── 다중 연결 물건 헬퍼 ──────────────────────────────
+                function wr2SummaryEsc(v){ return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+                function wr2SummaryJs(v){ return String(v==null?'':v).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/\n/g,' '); }
+                function wr2SummaryNum(v){ const n=parseFloat(String(v==null?'':v).replace(/[^0-9.\-]/g,'')); return isFinite(n)?n:0; }
+                function wr2SummaryMoneyWon(value, manHint, refWon){
+                  if (value == null || value === '') return 0;
+                  const raw = String(value).trim(); let won = 0;
+                  const eok = raw.match(/([0-9,.]+)\s*억/); const man = raw.match(/([0-9,.]+)\s*만/);
+                  if (eok) won += Math.round(parseFloat(eok[1].replace(/,/g,''))*100000000);
+                  if (man) won += Math.round(parseFloat(man[1].replace(/,/g,''))*10000);
+                  if (won) return won;
+                  const n = wr2SummaryNum(raw); if (!n) return 0;
+                  if (manHint || (refWon && refWon > 10000000 && n > 0 && n < 1000000)) return Math.round(n*10000);
+                  return Math.round(n);
+                }
+                function wr2SummaryFormatWon(n){ n=Math.round(Number(n)||0); if(!n)return '-'; if(n>=100000000){const e=Math.floor(n/100000000),m=Math.round((n%100000000)/10000);return m?e+'억 '+m.toLocaleString('ko-KR')+'만원':e+'억원';} if(n>=10000)return Math.round(n/10000).toLocaleString('ko-KR')+'만원'; return n.toLocaleString('ko-KR')+'원'; }
+                function wr2SummaryPick(obj, keys){ obj=obj||{}; for(let i=0;i<keys.length;i++){const v=obj[keys[i]]; if(v!==undefined&&v!==null&&String(v).trim()!=='')return v;} return ''; }
+                function wr2SummaryAreaM2(item){ const d=(item&&item.data)||{}, n=(item&&item._norm)||{}; let v=wr2SummaryPick(d,['전용면적_m2','건물면적_m2','계약면적_m2','공급면적_m2','면적_m2','면적'])||n.면적_m2||''; const raw=String(v||'').trim(); const num=wr2SummaryNum(raw); if(!num)return 0; if(/평/.test(raw)&&!/㎡|m2|m²/i.test(raw))return num*3.305785; return num; }
+                function wr2SummarySeed(item){
+                  item=item||{}; try{ if(typeof _ensureNormalizedItem==='function') _ensureNormalizedItem(item); }catch(e){}
+                  const d=item.data||{}, n=item._norm||{};
+                  const title=item.title||d['물건명']||d['매물명']||d['소재지']||d['주소']||'경매 물건';
+                  const address=d['소재지']||d['주소']||d['도로명주소']||d['지번주소']||n.소재지||item.address||'';
+                  const app=wr2SummaryMoneyWon(d['감정가']||item.appraisal||item.appraise||0,false,0)||wr2SummaryMoneyWon(d['감정가_만원']||n.감정가_만원||0,true,0);
+                  const min=wr2SummaryMoneyWon(item.minprice||d['최저가']||d['최저매각가격']||d['최저매각가']||0,false,app)||wr2SummaryMoneyWon(d['최저가_만원']||n.최저가_만원||0,true,app);
+                  const areaM2=wr2SummaryAreaM2(item), areaPy=areaM2?areaM2/3.305785:0;
+                  let occ=null; try{ occ=window._getSavedOccupancySnapshot?window._getSavedOccupancySnapshot(item,d):null; }catch(e){}
+                  return {id:String(item.id||''), item, title, address, caseNo:d['사건번호']||d['경매번호']||item.caseNo||'', objectNo:d['물건번호']||item.objectNo||'', biddate:d['매각기일']||item.biddate||item.bidDate||'', appraisalWon:app, minWon:min, areaM2, areaPy, depositWon:occ&&occ.leaseDepositWon?occ.leaseDepositWon:wr2SummaryMoneyWon(d['보증금']||d['임대보증금']||d['기보증금_만원']||0,true,0), rentWon:occ&&occ.monthlyRentWon?occ.monthlyRentWon:wr2SummaryMoneyWon(d['월세']||d['월세_만원']||0,true,0), url:d['상세URL']||d['url']||item.url||''};
+                }
+                function wr2NormalizeRoomLinkedItems(room){
+                  if(!room)return []; const arr=[], seen=new Set();
+                  function add(id,meta){ id=String(id||'').trim(); if(!id||seen.has(id))return; seen.add(id); arr.push(Object.assign({savedId:id,linkedAt:Date.now()},meta||{})); }
+                  if(room.linkedSavedId)add(room.linkedSavedId,{primary:true}); if(room.auctionId)add(room.auctionId,{}); if(room.listingId)add(room.listingId,{}); (room.linkedSavedIds||[]).forEach(id=>add(id,{}));
+                  (room.linkedItems||[]).forEach(function(x){ if(typeof x==='string')add(x,{}); else if(x&&typeof x==='object')add(x.savedId||x.linkedSavedId||x.itemId||x.id,x); });
+                  room.linkedItems=arr; if(!room.linkedSavedId&&arr[0])room.linkedSavedId=arr[0].savedId; return arr;
+                }
+                function wr2ResolveLinkedSavedItems(room, sv, plLinkedMap){
+                  sv=Array.isArray(sv)?sv:[]; const byId=new Map(); sv.forEach(it=>{if(it&&it.id)byId.set(String(it.id),it);}); const out=[], seen=new Set();
+                  wr2NormalizeRoomLinkedItems(room).forEach(function(link){ let id=String((link&&(link.savedId||link.linkedSavedId||link.itemId||link.id))||'').trim(); if(!id)return; let resolved=byId.get(id); if(!resolved&&plLinkedMap&&plLinkedMap[id])resolved=byId.get(String(plLinkedMap[id])); if(resolved&&resolved.id&&!seen.has(String(resolved.id))){seen.add(String(resolved.id)); out.push(resolved);} });
+                  return out;
+                }
+                function wr2BuildLinkedItemCard(seed, idx, roomId){
+                  const sid=String(seed.id||''), safeId=sid.replace(/[^a-zA-Z0-9_-]/g,'_');
+                  const dday=seed.biddate&&typeof getDDayLabel==='function'?getDDayLabel(seed.biddate):'';
+                  const perPy=seed.minWon&&seed.areaPy?' · @'+Math.round(seed.minWon/seed.areaPy/10000).toLocaleString('ko-KR')+'만/평':'';
+                  return `<div class="wr2-linked-item" style="border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.035);border-radius:12px;padding:10px;margin-top:8px;">
+                    <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;"><div style="min-width:0;"><div style="font-weight:900;color:var(--tx);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${idx+1}. ${wr2SummaryEsc(seed.title)}</div><div style="font-size:11px;color:var(--mu);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${wr2SummaryEsc(seed.address||'-')}</div></div><button class="wr2-small-btn" onclick="wr2UnlinkSaved('${wr2SummaryJs(roomId)}','${wr2SummaryJs(sid)}')">해제</button></div>
+                    <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:8px;font-size:11px;"><div><span style="color:var(--mu);">감정가</span><br><b>${wr2SummaryFormatWon(seed.appraisalWon)}</b></div><div><span style="color:var(--mu);">최저가</span><br><b style="color:var(--ac);">${wr2SummaryFormatWon(seed.minWon)}</b></div><div><span style="color:var(--mu);">면적</span><br><b>${seed.areaM2?seed.areaM2.toFixed(2)+'㎡ / '+seed.areaPy.toFixed(1)+'평':'-'}</b></div><div><span style="color:var(--mu);">기일</span><br><b>${wr2SummaryEsc(seed.biddate||'-')} ${dday?'<span style="color:var(--ac);">'+wr2SummaryEsc(dday)+'</span>':''}</b></div></div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:6px;margin-top:8px;align-items:center;"><input id="wr2LinkedBid_${safeId}" class="wr2-input" value="${wr2SummaryEsc(seed.biddate||'')}" placeholder="매각기일"><input id="wr2LinkedMin_${safeId}" class="wr2-input" value="${wr2SummaryEsc(seed.minWon?Math.round(seed.minWon).toLocaleString('ko-KR'):'')}" placeholder="최저가"><button class="wr2-small-btn" onclick="wr2LinkedItemSave('${wr2SummaryJs(roomId)}','${wr2SummaryJs(sid)}')">저장</button></div>
+                    <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;"><button class="wr2-small-btn" onclick="wr2CalcLoadLinkedItem('${wr2SummaryJs(roomId)}','${wr2SummaryJs(sid)}')">이 물건 계산</button><button class="wr2-small-btn" onclick="openPopup('${wr2SummaryJs(sid)}')">원본 열기</button>${seed.url?`<button class="wr2-small-btn" onclick="window.open('${wr2SummaryJs(seed.url)}','_blank')">상세URL</button>`:''}<span style="margin-left:auto;color:var(--mu);font-size:10px;">${perPy}</span></div>
+                  </div>`;
+                }
+                function wr2BuildMultiLinkedSummaryHtml(room, items){
+                  const seeds=(items||[]).map(wr2SummarySeed), totalMin=seeds.reduce((a,s)=>a+(s.minWon||0),0), totalApp=seeds.reduce((a,s)=>a+(s.appraisalWon||0),0), totalArea=seeds.reduce((a,s)=>a+(s.areaM2||0),0), totalPy=totalArea?totalArea/3.305785:0;
+                  return `<div class="wr2-linked-total" style="border:1px solid rgba(249,115,22,.28);background:rgba(249,115,22,.07);border-radius:13px;padding:11px;margin-bottom:10px;"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center;"><b style="font-size:14px;color:var(--tx);">연결 경매 물건 ${seeds.length}개</b><button class="wr2-small-btn" onclick="wr2CalcLoadLinkedTotal('${wr2SummaryJs(room.id)}')">합산 계산 불러오기</button></div><div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:9px;font-size:11px;"><div><span style="color:var(--mu);">합산 최저가</span><br><b style="color:var(--ac);font-size:13px;">${wr2SummaryFormatWon(totalMin)}</b></div><div><span style="color:var(--mu);">합산 감정가</span><br><b>${wr2SummaryFormatWon(totalApp)}</b></div><div><span style="color:var(--mu);">합산 면적</span><br><b>${totalArea?totalArea.toFixed(2)+'㎡ / '+totalPy.toFixed(1)+'평':'-'}</b></div></div></div>` + seeds.map((seed,idx)=>wr2BuildLinkedItemCard(seed,idx,room.id)).join('');
+                }
+                window.wr2UnlinkSaved=function(roomId,savedId){ const room=(wr2State.rooms||[]).find(r=>String(r.id)===String(roomId)); if(!room)return; const sid=String(savedId||''); wr2NormalizeRoomLinkedItems(room); room.linkedItems=(room.linkedItems||[]).filter(x=>String((x&&(x.savedId||x.linkedSavedId||x.itemId||x.id))||'')!==sid); if(String(room.linkedSavedId||'')===sid)room.linkedSavedId=room.linkedItems[0]?room.linkedItems[0].savedId:''; room.updatedAt=Date.now(); saveRooms(); renderItemSummary(room); try{ if(typeof wr2Render==='function')wr2Render(); }catch(e){} try{ if(typeof showToast==='function')showToast('연결 물건을 해제했습니다','ok'); }catch(e){} };
+                window.wr2LinkedItemSave=function(roomId,savedId){ const safe=String(savedId||''), domId=safe.replace(/[^a-zA-Z0-9_-]/g,'_'); const bidEl=document.getElementById('wr2LinkedBid_'+domId), minEl=document.getElementById('wr2LinkedMin_'+domId); const sv=(typeof getSv==='function')?getSv():[]; const item=(sv||[]).find(s=>String(s&&s.id)===safe); if(!item)return; item.data=item.data||{}; if(bidEl){item.data['매각기일']=bidEl.value.trim(); item.biddate=bidEl.value.trim();} if(minEl){const won=wr2SummaryMoneyWon(minEl.value,false,item.data['감정가']||item.appraisal||0); if(won){item.data['최저가']=won; item.minprice=won;}} item.updatedAt=Date.now(); if(typeof setSv==='function')setSv(sv); const room=(wr2State.rooms||[]).find(r=>String(r.id)===String(roomId)); if(room){room.updatedAt=Date.now(); saveRooms(); renderItemSummary(room);} try{ if(typeof showToast==='function')showToast('연결 물건 정보를 저장했습니다','ok'); }catch(e){} };
+
                 function renderItemSummary(room) {
                   const el = document.getElementById('wr2ItemSummary');
                   const openBtn = document.getElementById('wr2OpenSavedBtn');
                   if (!el) return;
                   const sv = (typeof getSv === 'function') ? getSv() : (() => { try { return (window._idbCache && window._idbCache['re_sv'] || []); } catch (e) { return []; } })();
                   const plLinkedMap = wr2BuildPlLinkedMap();
-                  const item = wr2ResolveLinkedSavedItem(room, sv, plLinkedMap);
+                  const linkedItemsAll = (typeof wr2ResolveLinkedSavedItems === 'function') ? wr2ResolveLinkedSavedItems(room, sv, plLinkedMap) : [];
+                  const item = linkedItemsAll[0] || wr2ResolveLinkedSavedItem(room, sv, plLinkedMap);
 
                   if (openBtn) openBtn.style.display = item ? '' : 'none';
                   if (openBtn && item) { openBtn.onclick = () => { if (typeof openPopup === 'function') openPopup(item.id); }; }
+
+                  if (linkedItemsAll.length > 1) {
+                    try { var _stMulti = window.wr2SummaryGetEditState ? window.wr2SummaryGetEditState() : null; if (_stMulti && String(_stMulti.roomId || '') === String(room.id || '')) _stMulti.activeKey = ''; } catch (e) {}
+                    el.innerHTML = wr2BuildMultiLinkedSummaryHtml(room, linkedItemsAll);
+                    return;
+                  }
 
                   if (!item) {
                     // 연결 물건이 없어도 현재 작업룸에 기록된 기일은 표시한다.
@@ -6377,24 +6444,21 @@ window.wr2SummaryCancelEdit = function() {
                   const sv = (typeof getSv === 'function') ? getSv() : [];
                   const item = sv.find(s => String(s.id) === String(savedId));
                   if (!item) return;
-                  room.linkedSavedId = String(savedId);
-                  // 주소/제목 자동 채움
+                  const sid = String(savedId);
+                  if (typeof wr2NormalizeRoomLinkedItems === 'function') wr2NormalizeRoomLinkedItems(room);
+                  const exists = (room.linkedItems || []).some(function(x){ return String(x && (x.savedId || x.linkedSavedId || x.itemId || x.id) || '') === sid; });
+                  if (!exists) room.linkedItems.push({ savedId:sid, type:'auction', linkedAt:Date.now() });
+                  if (!room.linkedSavedId) room.linkedSavedId = sid;
                   const d = item.data || {};
-                  if (!room.address || room.address === '') {
-                    room.address = d['소재지'] || d['주소'] || d['도로명주소'] || '';
-                    const addrEl = document.getElementById('wr2Address');
-                    if (addrEl) addrEl.value = room.address;
-                  }
-                  if (!room.title || room.title === '새 작업룸') {
-                    room.title = item.title || d['소재지'] || '';
-                    const titleEl = document.getElementById('wr2Title');
-                    if (titleEl) titleEl.value = room.title;
-                  }
+                  if (!room.address || room.address === '') { room.address = d['소재지'] || d['주소'] || d['도로명주소'] || ''; const addrEl = document.getElementById('wr2Address'); if (addrEl) addrEl.value = room.address; }
+                  if (!room.title || room.title === '새 작업룸') { room.title = item.title || d['소재지'] || ''; const titleEl = document.getElementById('wr2Title'); if (titleEl) titleEl.value = room.title; }
                   room.updatedAt = Date.now();
                   saveRooms();
-                  document.getElementById('wr2LinkModal')?.remove();
                   renderItemSummary(room);
-                  showToast('✅ 물건 연결 완료', 'ok');
+                  const searchInput = document.getElementById('wr2LinkSearch');
+                  if (searchInput && typeof renderLinkResults === 'function') renderLinkResults(searchInput.value || '');
+                  const cnt = (room.linkedItems || []).length;
+                  try { showToast((exists ? '이미 연결된 물건입니다' : '✅ 물건 추가 연결 완료') + ' · 현재 ' + cnt + '개', exists ? 'warn' : 'ok'); } catch(e) {}
                 };
 
                 // ── 체크리스트 위젯 ──────────────────────────────────
@@ -7248,40 +7312,64 @@ window.wr2SummaryCancelEdit = function() {
                   `;
                   document.head.appendChild(st);
                   st.textContent += `
-                    /* v7 UI polish: compact, no overlap, highlighted @price notes */
-                    .wr2-calc-pro-shell{max-width:1180px!important;font-size:12px!important;}
-                    .wcp-top{padding:6px 0 8px!important;margin-bottom:8px!important;}
-                    .wcp-title{font-size:17px!important;}
-                    .wcp-card{padding:10px!important;margin-bottom:8px!important;border-radius:12px!important;}
-                    .wcp-card h3{font-size:16px!important;}.wcp-card h4{font-size:12px!important;margin-bottom:6px!important;}
-                    .wcp-section{padding:9px!important;border-radius:10px!important;}
-                    .wcp-grid4{gap:8px!important;}.wcp-grid3{gap:8px!important;}.wcp-grid2{gap:8px!important;}
-                    .wcp-form{gap:6px!important;}
-                    .wcp-line{grid-template-columns:96px minmax(0,1fr) 30px!important;gap:5px!important;}
-                    .wcp-line.rate{grid-template-columns:96px 64px 20px minmax(0,1fr) 30px!important;}
-                    .wcp-line label{font-size:10.5px!important;}
-                    .wcp-inp{min-height:29px!important;padding:5px 7px!important;font-size:11.5px!important;}
-                    .wcp-out{min-height:29px!important;padding:5px 7px!important;font-size:11.5px!important;}
-                    .wcp-unit{font-size:10px!important;overflow:visible!important;text-overflow:clip!important;}
+                    /* v13 calculator UI: amount-safe widths + modest KPI emphasis */
+                    .wr2-calc-pro-shell{max-width:1380px!important;font-size:13px!important;}
+                    .wcp-top{padding:8px 0 10px!important;margin-bottom:10px!important;}
+                    .wcp-title{font-size:18px!important;}
+                    .wcp-card{padding:12px!important;margin-bottom:10px!important;border-radius:13px!important;overflow:visible!important;}
+                    .wcp-card h3{font-size:16px!important;}.wcp-card h4{font-size:12.5px!important;margin-bottom:7px!important;}
+                    .wcp-section{padding:10px!important;border-radius:11px!important;overflow:visible!important;}
+                    .wcp-grid4{gap:9px!important;}.wcp-grid3{gap:9px!important;}.wcp-grid2{gap:10px!important;}
+                    .wcp-main-grid{display:grid!important;grid-template-columns:minmax(690px,1.15fr) minmax(500px,.85fr)!important;gap:12px!important;align-items:start!important;}
+                    .wcp-input-sections{display:grid!important;grid-template-columns:repeat(2,minmax(330px,1fr))!important;gap:10px!important;}
+                    .wcp-side-col{min-width:0!important;}
+                    .wcp-form{gap:7px!important;}
+                    .wcp-line{grid-template-columns:minmax(104px,132px) minmax(178px,1fr) 26px!important;gap:7px!important;}
+                    .wcp-line.rate{grid-template-columns:minmax(104px,132px) 72px 20px minmax(166px,1fr) 26px!important;gap:7px!important;}
+                    .wcp-line.double{grid-template-columns:minmax(104px,132px) minmax(178px,1fr) 26px minmax(104px,132px) minmax(178px,1fr) 26px!important;}
+                    .wcp-line label{font-size:11px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;}
+                    .wcp-inp{min-height:34px!important;padding:7px 10px!important;font-size:13px!important;font-weight:750!important;letter-spacing:-.01em!important;}
+                    .wcp-out{min-height:34px!important;padding:7px 10px!important;font-size:13px!important;overflow:visible!important;text-overflow:clip!important;}
+                    .wcp-unit{font-size:10.5px!important;overflow:visible!important;text-overflow:clip!important;}
                     .wcp-note{font-size:10.5px!important;min-height:15px!important;}
-                    .wcp-note[id*="bench"],#wcp_my_bid_note,#wcp_price_note,#wcp_rent_note{color:#fb923c!important;font-weight:950!important;background:rgba(249,115,22,.08)!important;border:1px solid rgba(249,115,22,.22)!important;border-radius:7px!important;padding:3px 6px!important;margin-top:3px!important;}
-                    .wcp-kpi-strip{gap:7px!important;margin-top:7px!important;}
-                    .wcp-kpi{padding:7px 8px!important;min-height:49px!important;}
-                    .wcp-kpi .l{font-size:9.8px!important;white-space:normal!important;line-height:1.15!important;overflow:visible!important;text-overflow:clip!important;}
-                    .wcp-kpi .v{font-size:13px!important;}
-                    .wcp-resultbar{padding:8px 10px!important;margin-top:6px!important;}
-                    .wcp-resultbar .value{font-size:16px!important;}
-                    .wcp-tabs{margin:8px 0!important;padding-bottom:6px!important;}
-                    .wcp-tab{padding:5px 10px!important;font-size:10.5px!important;}
-                    .wcp-flow th,.wcp-table th,.wcp-tiny-table th{padding:6px 5px!important;font-size:10.5px!important;}
-                    .wcp-flow td,.wcp-table td,.wcp-tiny-table td{padding:6px 5px!important;font-size:10.5px!important;}
-                    .wcp-invest-table{width:100%;border-collapse:collapse;font-size:11px;}
-                    .wcp-invest-table td{border-bottom:1px solid rgba(255,255,255,.065);padding:6px 4px;color:#cbd5e1;}
-                    .wcp-invest-table td:nth-child(2){text-align:right;color:#f8fafc;font-weight:950;white-space:nowrap;}
-                    .wcp-invest-table td:nth-child(3){text-align:left;color:#94a3b8;white-space:nowrap;padding-left:8px;}
+                    .wcp-note[id*="bench"],#wcp_my_bid_note,#wcp_price_note,#wcp_rent_note{color:#fb923c!important;font-weight:900!important;background:rgba(249,115,22,.08)!important;border:1px solid rgba(249,115,22,.20)!important;border-radius:7px!important;padding:3px 6px!important;margin-top:3px!important;}
+                    .wcp-kpi-strip{grid-template-columns:minmax(150px,1fr) minmax(150px,1fr) minmax(158px,1fr) minmax(166px,1.05fr) minmax(160px,1.08fr) minmax(176px,1.10fr) minmax(118px,.75fr)!important;gap:9px!important;margin-top:8px!important;}
+                    .wcp-kpi{padding:9px 10px!important;min-height:62px!important;position:relative!important;overflow:hidden!important;}
+                    .wcp-kpi .l{font-size:10.5px!important;white-space:normal!important;line-height:1.15!important;overflow:visible!important;text-overflow:clip!important;}
+                    .wcp-kpi .v{font-size:16px!important;line-height:1.15!important;white-space:nowrap!important;overflow:visible!important;text-overflow:clip!important;letter-spacing:-.035em!important;}
+                    .wcp-kpi.minfund{border-color:rgba(34,197,94,.42)!important;background:linear-gradient(180deg,rgba(34,197,94,.13),rgba(255,255,255,.035))!important;}
+                    .wcp-kpi.yield-main{border-color:rgba(96,165,250,.46)!important;background:linear-gradient(180deg,rgba(37,99,235,.16),rgba(255,255,255,.04))!important;}
+                    .wcp-kpi.yield-main .v{font-size:20px!important;color:#93c5fd!important;}
+                    .wcp-kpi.yield-main.lev{border-color:rgba(168,85,247,.42)!important;background:linear-gradient(180deg,rgba(126,34,206,.15),rgba(255,255,255,.04))!important;}
+                    .wcp-kpi.yield-main.lev .v{color:#c4b5fd!important;}
+                    .wcp-kpi.roi .v{font-size:18px!important;}
+                    .wcp-resultbar{padding:9px 11px!important;margin-top:7px!important;}
+                    .wcp-resultbar .value{font-size:17px!important;white-space:nowrap!important;}
+                    .wcp-tabs{margin:9px 0!important;padding-bottom:7px!important;}
+                    .wcp-tab{padding:5px 11px!important;font-size:10.8px!important;}
+                    .wcp-loan-rule{border:1px solid rgba(59,130,246,.32);background:linear-gradient(180deg,rgba(37,99,235,.12),rgba(5,9,15,.24));border-radius:10px;padding:8px;margin:2px 0 4px;}
+                    .wcp-loan-rule .title{display:flex;justify-content:space-between;gap:8px;color:#93c5fd;font-weight:900;font-size:11px;margin-bottom:6px;}
+                    .wcp-loan-rule .formula{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;}
+                    .wcp-loan-rule .chip{border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.04);border-radius:8px;padding:6px;min-width:0;}
+                    .wcp-loan-rule .chip span{display:block;color:#94a3b8;font-size:10px;margin-bottom:2px;}
+                    .wcp-loan-rule .chip b{display:block;color:#e8ecf4;font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+                    .wcp-loan-rule .chip.on{border-color:rgba(96,165,250,.45);background:rgba(37,99,235,.16);}.wcp-loan-rule .chip.on b{color:#60a5fa;}
+                    .wcp-loan-rule .help{font-size:10px;color:#8b97ad;margin-top:6px;line-height:1.35;}
+                    .wcp-flow th,.wcp-table th,.wcp-tiny-table th{padding:7px 6px!important;font-size:10.5px!important;}
+                    .wcp-flow td,.wcp-table td,.wcp-tiny-table td{padding:7px 6px!important;font-size:10.5px!important;}
+                    .wcp-invest-table{width:100%;border-collapse:collapse;font-size:12px;table-layout:auto;}
+                    .wcp-invest-table td{border-bottom:1px solid rgba(255,255,255,.065);padding:8px 5px;color:#cbd5e1;vertical-align:middle;}
+                    .wcp-invest-table td:nth-child(1){min-width:108px;white-space:nowrap;}
+                    .wcp-invest-table td:nth-child(2){text-align:right;color:#f8fafc;font-weight:950;white-space:nowrap;min-width:142px;letter-spacing:-.025em;}
+                    .wcp-invest-table td:nth-child(3){text-align:left;color:#94a3b8;white-space:nowrap;padding-left:10px;}
+                    .wcp-invest-table tr.yield-row td:nth-child(2){font-size:15px;color:#93c5fd!important;}
+                    .wcp-invest-table tr.lev-row td:nth-child(2){font-size:15px;color:#c4b5fd!important;}
                     .wcp-invest-table .hot{color:#fb923c!important}.wcp-invest-table .red{color:#fb7185!important}.wcp-invest-table .green{color:#4ade80!important;}
+                    #wcp_p_total_with_deposit{color:#4ade80!important;}
                     #wr2TableWrap,.wr2-ft-block,.wr2-free-table{display:none!important;}
-                    @media(max-width:980px){.wcp-kpi-strip{grid-template-columns:repeat(2,1fr)!important}.wcp-grid4,.wcp-grid3,.wcp-grid2{grid-template-columns:1fr!important}.wcp-line.rate{grid-template-columns:92px 60px 20px minmax(0,1fr) 28px!important}}
+                    @media(max-width:1260px){.wcp-main-grid{grid-template-columns:1fr!important}.wcp-kpi-strip{grid-template-columns:repeat(4,minmax(0,1fr))!important}.wcp-input-sections{grid-template-columns:repeat(2,minmax(310px,1fr))!important}}
+                    @media(max-width:980px){.wcp-kpi-strip{grid-template-columns:repeat(2,1fr)!important}.wcp-grid4,.wcp-grid3,.wcp-grid2,.wcp-input-sections{grid-template-columns:1fr!important}.wcp-line.rate{grid-template-columns:98px 66px 20px minmax(150px,1fr) 26px!important}.wcp-loan-rule .formula{grid-template-columns:1fr!important}}
+                    @media(max-width:620px){.wcp-line,.wcp-line.rate,.wcp-line.double{grid-template-columns:1fr!important}.wcp-inp{text-align:right!important}.wcp-unit{display:block!important}.wcp-kpi .v{font-size:15px!important}.wcp-kpi.yield-main .v{font-size:18px!important}}
                   `;
 
                 }
@@ -7296,33 +7384,30 @@ window.wr2SummaryCancelEdit = function() {
                 function wcpSetWon(id,n){ const el=document.getElementById(id); if(el) el.value=n?Math.round(n).toLocaleString('ko-KR'):''; }
                 function wcpSetPct(id,n,d){ const el=document.getElementById(id); if(el && isFinite(n)) el.value=(+n).toFixed(d==null?2:d).replace(/\.00$/,''); }
                 function wcpFormatWon(n){ n=Math.round(Number(n)||0); return n? n.toLocaleString('ko-KR')+'원' : '-'; }
+                function wcpCommaValue(v){ const raw=String(v==null?'':v).trim(); if(!raw) return ''; const n=wcpNum(raw); if(!n) return raw==='0'?'0':''; return Math.round(n).toLocaleString('ko-KR'); }
+                function wcpFormatMoneyInput(el){ if(!el) return; const raw=String(el.value||''); if(!raw || !/[0-9]/.test(raw)) return; const pos=el.selectionStart||raw.length; const digitBefore=raw.slice(0,pos).replace(/[^0-9]/g,'').length; const only=raw.replace(/[^0-9]/g,''); if(!only){ el.value=''; return; } const next=Number(only).toLocaleString('ko-KR'); el.value=next; try{ let seen=0, newPos=next.length; for(let i=0;i<next.length;i++){ if(/[0-9]/.test(next[i])) seen++; if(seen>=digitBefore){ newPos=i+1; break; } } el.setSelectionRange(newPos,newPos); }catch(e){} }
+                function wcpFormatMoneyInputs(){ document.querySelectorAll('.wr2-calc-pro-shell [data-wcp-money="1"]').forEach(function(el){ if(el.value) wcpSetWon(el.id,wcpReadWon(el.id)); }); }
                 function wcpFormatShort(n){ n=Math.round(Number(n)||0); if(!n) return '-'; if(n>=100000000) return (n/100000000).toFixed(n%100000000?1:0).replace('.0','')+'억'; return Math.round(n/10000).toLocaleString('ko-KR')+'만'; }
                 function wcpNowText(ts){ const d=new Date(ts||Date.now()); const z=function(n){return String(n).padStart(2,'0')}; return d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate())+' '+z(d.getHours())+':'+z(d.getMinutes()); }
                 function wcpLocalKey(room){ return 'wr2_calc_pro_v6_'+(room&&room.id||'default'); }
                 function wcpLocalLoad(room){ try{return JSON.parse(localStorage.getItem(wcpLocalKey(room))||'null')}catch(e){return null} }
                 function wcpLocalSave(room,store){ try{localStorage.setItem(wcpLocalKey(room),JSON.stringify(store));}catch(e){console.warn('[WCP] local save fail',e);} }
                 function wcpGetStore(room){ if(!room) return {version:7,current:{},scenarios:[],snapshots:[],rev:0}; let store=room.calcProV7 || room.calcProV5 || room.calcProV3 || null; if(!store){ store={version:7,current:Object.assign({},room.calcProState||{}),scenarios:(room.calcScenarios||[]).slice(),snapshots:(room.calcSnapshots||[]).slice(),rev:Number(room.calcProRev||0),updatedAt:room.updatedAt||Date.now()}; } const local=wcpLocalLoad(room); if(local && Number(local.rev||0)>Number(store.rev||0)) store=Object.assign({version:7,current:{},scenarios:[],snapshots:[]},local); store.version=6; store.current=store.current||{}; store.scenarios=Array.isArray(store.scenarios)?store.scenarios:[]; store.snapshots=Array.isArray(store.snapshots)?store.snapshots:[]; room.calcProV7=store; room.calcProV5=store; room.calcProV3=store; room.calcProState=store.current; room.calcScenarios=store.scenarios; room.calcSnapshots=store.snapshots; return store; }
-                function wcpDefaultState(room){ const store=wcpGetStore(room), s=Object.assign({},store.current||{}), legacy=(room&&room.calcState)||{}; function pick(k,v){ if((s[k]==null||s[k]==='') && v!=null && v!=='') s[k]=v; } pick('price',legacy.price||''); pick('myBid',s.price||legacy.price||''); pick('deposit',legacy.deposit||''); pick('rent',legacy.rent||''); pick('yield',legacy.yield||''); pick('area',legacy.area||''); pick('areaPy',legacy.area_py||legacy.areaPy||''); pick('bunyangPy',legacy.bunyangPy||''); pick('appraisal',legacy.appraisal||''); pick('loanRate',legacy.cf_loan_rate||'85'); pick('loan',legacy.cf_loan||''); pick('interestRate',legacy.cf_rate||'5'); pick('facility',legacy.cf_extra||''); pick('managementMonthly',legacy.managementMonthly||'5000'); if(!s.acqTaxRate) s.acqTaxRate='4.60'; if(!s.legalRate) s.legalRate='1.00'; if(!s.rentBrokerRate) s.rentBrokerRate='0.90'; if(!s.saleBrokerRate) s.saleBrokerRate='0.90'; if(!s.corpRateUnder) s.corpRateUnder='19'; if(!s.corpRateOver) s.corpRateOver='21'; if(!s.targetYield1) s.targetYield1='8.0'; if(!s.targetYield2) s.targetYield2='6.0'; if(!s.targetYield3) s.targetYield3='7.0'; if(!s.benchYieldRate) s.benchYieldRate='8.0'; return s; }
-                function wcpCollectState(){ return { area:wcpRead('wc_area'), areaPy:wcpRead('wc_area_py'), bunyangPy:wcpRead('wc_bunyang_py'), appraisal:wcpRead('wc_appraisal'), price:wcpRead('wc_price'), myBid:wcpRead('wc_my_bid'), contractDeposit:wcpRead('wc_contract_deposit'), extraReserve:wcpRead('wc_extra_reserve'), benchMax:wcpRead('wc_bench_max'), benchMid:wcpRead('wc_bench_mid'), benchMin:wcpRead('wc_bench_min'), benchRentPy:wcpRead('wc_bench_rent_py'), benchYieldRate:wcpRead('wc_bench_yield_rate'), acqTaxRate:wcpRead('wc_acq_tax_rate'), acqTax:wcpRead('wc_acq_tax'), legalRate:wcpRead('wc_legal_rate'), legalFee:wcpRead('wc_legal_fee'), unpaidMgmt:wcpRead('wc_unpaid_mgmt'), unpaidTax:wcpRead('wc_unpaid_tax'), eviction:wcpRead('wc_eviction'), facility:wcpRead('wc_facility'), vat:wcpRead('wc_vat'), operatingAnnual:wcpRead('wc_operating_annual'), rentBrokerRate:wcpRead('wc_rent_broker_rate'), rentBrokerFee:wcpRead('wc_rent_broker_fee'), saleBrokerRate:wcpRead('wc_sale_broker_rate'), saleBrokerFee:wcpRead('wc_sale_broker_fee'), sellPrice:wcpRead('wc_sell_price'), loanRate:wcpRead('wc_cf_loan_rate'), loan:wcpRead('wc_cf_loan'), interestRate:wcpRead('wc_cf_rate'), interestAnnual:wcpRead('wc_cf_interest_amt'), interestMonthly:wcpRead('wc_cf_interest_monthly'), deposit:wcpRead('wc_deposit'), rent:wcpRead('wc_rent'), yield:wcpRead('wc_yield'), managementMonthly:wcpRead('wc_management_monthly'), corpRateUnder:wcpRead('wc_corp_rate_under'), corpRateOver:wcpRead('wc_corp_rate_over'), targetYield1:wcpRead('wc_target_yield_1'), targetYield2:wcpRead('wc_target_yield_2'), targetYield3:wcpRead('wc_target_yield_3'), memo:wcpRead('wc_calc_memo')}; }
-                function wcpApplyState(s){ s=s||{}; const map={wc_area:'area',wc_area_py:'areaPy',wc_bunyang_py:'bunyangPy',wc_appraisal:'appraisal',wc_price:'price',wc_my_bid:'myBid',wc_contract_deposit:'contractDeposit',wc_extra_reserve:'extraReserve',wc_bench_max:'benchMax',wc_bench_mid:'benchMid',wc_bench_min:'benchMin',wc_bench_rent_py:'benchRentPy',wc_bench_yield_rate:'benchYieldRate',wc_acq_tax_rate:'acqTaxRate',wc_acq_tax:'acqTax',wc_legal_rate:'legalRate',wc_legal_fee:'legalFee',wc_unpaid_mgmt:'unpaidMgmt',wc_unpaid_tax:'unpaidTax',wc_eviction:'eviction',wc_facility:'facility',wc_vat:'vat',wc_operating_annual:'operatingAnnual',wc_rent_broker_rate:'rentBrokerRate',wc_rent_broker_fee:'rentBrokerFee',wc_sale_broker_rate:'saleBrokerRate',wc_sale_broker_fee:'saleBrokerFee',wc_sell_price:'sellPrice',wc_cf_loan_rate:'loanRate',wc_cf_loan:'loan',wc_cf_rate:'interestRate',wc_cf_interest_amt:'interestAnnual',wc_cf_interest_monthly:'interestMonthly',wc_deposit:'deposit',wc_rent:'rent',wc_yield:'yield',wc_management_monthly:'managementMonthly',wc_corp_rate_under:'corpRateUnder',wc_corp_rate_over:'corpRateOver',wc_target_yield_1:'targetYield1',wc_target_yield_2:'targetYield2',wc_target_yield_3:'targetYield3',wc_calc_memo:'memo'}; Object.keys(map).forEach(function(id){wcpSet(id,s[map[id]]||'');}); }
-                function wcpParsePyVals(raw){
-                  const src=String(raw||'').replace(/＠/g,'@').trim();
-                  const isRange=/\d\s*[~～\-]\s*\d/.test(src) && !/[;,\n]/.test(src);
-                  const cleaned=src.replace(/만원|만\/평|평당|원\/평|원|평|@/g,' ');
-                  const nums=(cleaned.match(/\d[\d,]*(?:\.\d+)?/g)||[]).map(function(x){return parseFloat(x.replace(/,/g,''));}).filter(function(n){return isFinite(n)&&n>0;});
-                  if(!nums.length) return {values:[],avg:0,min:0,max:0,label:'-'};
-                  const min=Math.min.apply(null,nums), max=Math.max.apply(null,nums), avg=nums.reduce(function(a,b){return a+b;},0)/nums.length;
-                  let label='';
-                  if(nums.length===1) label=avg.toLocaleString('ko-KR')+'만/평';
-                  else if(isRange && nums.length>=2) label='범위 '+min.toLocaleString('ko-KR')+'~'+max.toLocaleString('ko-KR')+' · 평균 '+avg.toFixed(1)+'만/평';
-                  else label='개별 '+nums.length+'건 · '+min.toLocaleString('ko-KR')+'~'+max.toLocaleString('ko-KR')+' · 평균 '+avg.toFixed(1)+'만/평';
-                  return {values:nums,avg:avg,min:min,max:max,label:label};
+                function wcpDefaultState(room){ const store=wcpGetStore(room), s=Object.assign({},store.current||{}), legacy=(room&&room.calcState)||{}; function pick(k,v){ if((s[k]==null||s[k]==='') && v!=null && v!=='') s[k]=v; } pick('price',legacy.price||''); pick('myBid',s.price||legacy.price||''); pick('deposit',legacy.deposit||''); pick('rent',legacy.rent||''); pick('yield',legacy.yield||''); pick('area',legacy.area||''); pick('areaPy',legacy.area_py||legacy.areaPy||''); pick('bunyangPy',legacy.bunyangPy||''); pick('appraisal',legacy.appraisal||''); try{ const sv=(typeof getSv==='function')?getSv():[]; const items=(typeof wr2ResolveLinkedSavedItems==='function')?wr2ResolveLinkedSavedItems(room,sv,typeof wr2BuildPlLinkedMap==='function'?wr2BuildPlLinkedMap():{}):[]; if(items.length){ const seeds=items.map(wr2SummarySeed); const area=seeds.reduce((a,x)=>a+(x.areaM2||0),0), py=area?area/3.305785:0, min=seeds.reduce((a,x)=>a+(x.minWon||0),0), app=seeds.reduce((a,x)=>a+(x.appraisalWon||0),0), dep=seeds.reduce((a,x)=>a+(x.depositWon||0),0), rent=seeds.reduce((a,x)=>a+(x.rentWon||0),0); pick('area',area?area.toFixed(2):''); pick('areaPy',py?py.toFixed(2):''); pick('bunyangPy',py?py.toFixed(2):''); pick('price',min?Math.round(min).toLocaleString('ko-KR'):''); pick('myBid',min?Math.round(min).toLocaleString('ko-KR'):''); pick('appraisal',app?Math.round(app).toLocaleString('ko-KR'):''); pick('deposit',dep?Math.round(dep).toLocaleString('ko-KR'):''); pick('rent',rent?Math.round(rent).toLocaleString('ko-KR'):''); pick('calcLinkMode',items.length>1?'total':'single'); }}catch(e){} pick('loanRate',legacy.cf_loan_rate||'80'); pick('loan',legacy.cf_loan||''); pick('interestRate',legacy.cf_rate||'5'); pick('facility',legacy.cf_extra||''); pick('managementMonthly',legacy.managementMonthly||'5000'); if(!s.acqTaxRate) s.acqTaxRate='4.60'; if(!s.legalRate) s.legalRate='1.00'; if(!s.rentBrokerRate) s.rentBrokerRate='0.90'; if(!s.saleBrokerRate) s.saleBrokerRate='0.90'; if(!s.corpRateUnder) s.corpRateUnder='19'; if(!s.corpRateOver) s.corpRateOver='21'; if(!s.targetYield1) s.targetYield1='8.0'; if(!s.targetYield2) s.targetYield2='6.0'; if(!s.targetYield3) s.targetYield3='7.0'; if(!s.benchYieldRate) s.benchYieldRate='8.0'; return s; }
+                function wcpCollectState(){ return { area:wcpRead('wc_area'), areaPy:wcpRead('wc_area_py'), bunyangPy:wcpRead('wc_bunyang_py'), appraisal:wcpRead('wc_appraisal'), price:wcpRead('wc_price'), myBid:wcpRead('wc_my_bid'), contractDeposit:wcpRead('wc_contract_deposit'), extraReserve:wcpRead('wc_extra_reserve'), targetProfit:wcpRead('wc_target_profit'), calcLinkMode:wcpRead('wc_calc_link_mode'), benchMax:wcpRead('wc_bench_max'), benchMid:wcpRead('wc_bench_mid'), benchMin:wcpRead('wc_bench_min'), benchRentPy:wcpRead('wc_bench_rent_py'), benchYieldRate:wcpRead('wc_bench_yield_rate'), acqTaxRate:wcpRead('wc_acq_tax_rate'), acqTax:wcpRead('wc_acq_tax'), legalRate:wcpRead('wc_legal_rate'), legalFee:wcpRead('wc_legal_fee'), unpaidMgmt:wcpRead('wc_unpaid_mgmt'), unpaidTax:wcpRead('wc_unpaid_tax'), eviction:wcpRead('wc_eviction'), facility:wcpRead('wc_facility'), vat:wcpRead('wc_vat'), operatingAnnual:wcpRead('wc_operating_annual'), rentBrokerRate:wcpRead('wc_rent_broker_rate'), rentBrokerFee:wcpRead('wc_rent_broker_fee'), saleBrokerRate:wcpRead('wc_sale_broker_rate'), saleBrokerFee:wcpRead('wc_sale_broker_fee'), sellPrice:wcpRead('wc_sell_price'), loanRate:wcpRead('wc_cf_loan_rate'), loan:wcpRead('wc_cf_loan'), interestRate:wcpRead('wc_cf_rate'), interestAnnual:wcpRead('wc_cf_interest_amt'), interestMonthly:wcpRead('wc_cf_interest_monthly'), deposit:wcpRead('wc_deposit'), rent:wcpRead('wc_rent'), yield:wcpRead('wc_yield'), managementMonthly:wcpRead('wc_management_monthly'), corpRateUnder:wcpRead('wc_corp_rate_under'), corpRateOver:wcpRead('wc_corp_rate_over'), targetYield1:wcpRead('wc_target_yield_1'), targetYield2:wcpRead('wc_target_yield_2'), targetYield3:wcpRead('wc_target_yield_3'), memo:wcpRead('wc_calc_memo')}; }
+                function wcpApplyState(s){
+                  s=s||{};
+                  const map={wc_area:'area',wc_area_py:'areaPy',wc_bunyang_py:'bunyangPy',wc_appraisal:'appraisal',wc_price:'price',wc_my_bid:'myBid',wc_contract_deposit:'contractDeposit',wc_extra_reserve:'extraReserve',wc_target_profit:'targetProfit',wc_calc_link_mode:'calcLinkMode',wc_bench_max:'benchMax',wc_bench_mid:'benchMid',wc_bench_min:'benchMin',wc_bench_rent_py:'benchRentPy',wc_bench_yield_rate:'benchYieldRate',wc_acq_tax_rate:'acqTaxRate',wc_acq_tax:'acqTax',wc_legal_rate:'legalRate',wc_legal_fee:'legalFee',wc_unpaid_mgmt:'unpaidMgmt',wc_unpaid_tax:'unpaidTax',wc_eviction:'eviction',wc_facility:'facility',wc_vat:'vat',wc_operating_annual:'operatingAnnual',wc_rent_broker_rate:'rentBrokerRate',wc_rent_broker_fee:'rentBrokerFee',wc_sale_broker_rate:'saleBrokerRate',wc_sale_broker_fee:'saleBrokerFee',wc_sell_price:'sellPrice',wc_cf_loan_rate:'loanRate',wc_cf_loan:'loan',wc_cf_rate:'interestRate',wc_cf_interest_amt:'interestAnnual',wc_cf_interest_monthly:'interestMonthly',wc_deposit:'deposit',wc_rent:'rent',wc_yield:'yield',wc_management_monthly:'managementMonthly',wc_corp_rate_under:'corpRateUnder',wc_corp_rate_over:'corpRateOver',wc_target_yield_1:'targetYield1',wc_target_yield_2:'targetYield2',wc_target_yield_3:'targetYield3',wc_calc_memo:'memo'};
+                  Object.keys(map).forEach(function(id){wcpSet(id,s[map[id]]||'');});
+                  wcpFormatMoneyInputs();
                 }
-                function wcpBenchAmount(stat,areaPy){ return stat&&stat.avg&&areaPy ? stat.avg*areaPy*10000 : 0; }
-                function wcpField(id,label,unit,val,noteId,ph){ return '<div class="wcp-line"><label>'+wcpEsc(label)+'</label><input id="'+id+'" class="wcp-inp" value="'+wcpEsc(val||'')+'" placeholder="'+wcpEsc(ph||'')+'"><span class="wcp-unit">'+wcpEsc(unit||'')+'</span></div>'+(noteId?'<div class="wcp-note" id="'+noteId+'">-</div>':''); }
-                function wcpRateField(rateId,amountId,label,rate,amount,noteId){ return '<div class="wcp-line rate"><label>'+wcpEsc(label)+'</label><input id="'+rateId+'" class="wcp-inp wcp-rate" value="'+wcpEsc(rate||'')+'"><span class="wcp-unit">%</span><input id="'+amountId+'" class="wcp-inp" value="'+wcpEsc(amount||'')+'"><span class="wcp-unit">원</span></div>'+(noteId?'<div class="wcp-note" id="'+noteId+'">-</div>':''); }
+                function wcpField(id,label,unit,val,noteId,ph){ const isMoney=String(unit||'').indexOf('원')>=0; const attrs=isMoney?' data-wcp-money="1" inputmode="numeric" autocomplete="off"':''; const shown=isMoney?wcpEsc(wcpCommaValue(val)):wcpEsc(val||''); return '<div class="wcp-line"><label>'+wcpEsc(label)+'</label><input id="'+id+'" class="wcp-inp"'+attrs+' value="'+shown+'" placeholder="'+wcpEsc(ph||'')+'"><span class="wcp-unit">'+wcpEsc(unit||'')+'</span></div>'+(noteId?'<div class="wcp-note" id="'+noteId+'">-</div>':''); }
+                function wcpRateField(rateId,amountId,label,rate,amount,noteId){ const amountIsPct=/corp_rate_over/i.test(amountId); const unit2=amountIsPct?'%':'원'; const attrs=amountIsPct?'':' data-wcp-money="1" inputmode="numeric" autocomplete="off"'; const amountShown=amountIsPct?wcpEsc(amount||''):wcpEsc(wcpCommaValue(amount)); return '<div class="wcp-line rate"><label>'+wcpEsc(label)+'</label><input id="'+rateId+'" class="wcp-inp wcp-rate" value="'+wcpEsc(rate||'')+'"><span class="wcp-unit">%</span><input id="'+amountId+'" class="wcp-inp"'+attrs+' value="'+amountShown+'"><span class="wcp-unit">'+unit2+'</span></div>'+(noteId?'<div class="wcp-note" id="'+noteId+'">-</div>':''); }
                 function wcpOutputRow(label,id,unit,cls){ return '<div class="wcp-line"><label>'+wcpEsc(label)+'</label><div id="'+id+'" class="wcp-out '+(cls||'')+'">-</div><span class="wcp-unit">'+wcpEsc(unit||'')+'</span></div>'; }
+                function wcpLoanRuleBox(){ return '<div class="wcp-loan-rule"><div class="title"><span>대출 가능금액 자동 계산</span><span>작은 금액 적용</span></div><div class="formula"><div class="chip"><span>감정가 × 60%</span><b id="wcp_loan_app_cap">-</b></div><div class="chip"><span>낙찰가 × LTV</span><b id="wcp_loan_bid_cap">-</b></div><div class="chip on"><span>적용 대출금</span><b id="wcp_loan_rule_applied">-</b></div></div><div class="help" id="wcp_loan_rule_text">기준값(%) 또는 대출금액을 바꾸면 서로 연동됩니다.</div></div>'; }
                 function wcpBenchCard(num,title,desc,id,val,badge,noteId){ return '<div class="wcp-bench-card"><div class="top"><span class="num">'+num+'</span><span class="name">'+wcpEsc(title)+'</span></div><div class="desc">'+wcpEsc(desc)+'</div><input id="'+id+'" class="wcp-inp" value="'+wcpEsc(val||'')+'" placeholder="예: @2926 / 2500~3100 / 2900,3244"><div class="wcp-note orange" id="'+noteId+'">-</div><span class="wcp-badge">'+wcpEsc(badge)+'</span></div>'; }
+
+                function wcpBuildLinkedCalcPicker(room){ try{ const sv=(typeof getSv==='function')?getSv():[]; const items=(typeof wr2ResolveLinkedSavedItems==='function')?wr2ResolveLinkedSavedItems(room,sv,typeof wr2BuildPlLinkedMap==='function'?wr2BuildPlLinkedMap():{}):[]; if(!items.length)return ''; const buttons=items.map(function(it,idx){ const seed=wr2SummarySeed(it); return '<button class="wcp-btn small" onclick="wr2CalcLoadLinkedItem(\''+wcpEsc(room.id)+'\',\''+wcpEsc(seed.id)+'\')">'+(idx+1)+'. '+wcpEsc(seed.title).slice(0,16)+'</button>'; }).join(''); return '<div class="wcp-card" style="border-color:rgba(249,115,22,.28);"><h4>연결 물건 계산 기준</h4><div class="wcp-sub">각 물건 단독 또는 전체 합산 기준으로 계산값을 불러옵니다.</div><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;"><button class="wcp-btn primary small" onclick="wr2CalcLoadLinkedTotal(\''+wcpEsc(room.id)+'\')">전체 합산</button>'+buttons+'</div><input id="wc_calc_link_mode" type="hidden" value=""></div>'; }catch(e){ return ''; } }
                 function wcpBuildHtml(room){
                   const s=wcpDefaultState(room);
                   return `<div class="wr2-calc-pro-shell">
@@ -7335,18 +7420,19 @@ window.wr2SummaryCancelEdit = function() {
                         <div class="wcp-kpi"><div class="l">추천 입찰가</div><div class="v orange" id="wcp_k_suggested">-</div></div>
                         <div class="wcp-kpi"><div class="l">나의 입찰가</div><div class="v" id="wcp_k_price">-</div></div>
                         <div class="wcp-kpi"><div class="l">최대 필요자금</div><div class="v orange" id="wcp_k_need">-</div></div>
-                        <div class="wcp-kpi"><div class="l">최소 필요자금</div><div class="v green" id="wcp_k_minneed">-</div></div>
-                        <div class="wcp-kpi"><div class="l">절대 수익률</div><div class="v blue" id="wcp_k_abs">-</div></div>
-                        <div class="wcp-kpi"><div class="l">레버리지 수익률</div><div class="v green" id="wcp_k_lev">-</div></div>
-                        <div class="wcp-kpi"><div class="l">ROI</div><div class="v orange" id="wcp_k_roi">-</div></div>
+                        <div class="wcp-kpi minfund"><div class="l">최소 필요자금</div><div class="v green" id="wcp_k_minneed">-</div></div>
+                        <div class="wcp-kpi yield-main"><div class="l">절대 수익률</div><div class="v blue" id="wcp_k_abs">-</div></div>
+                        <div class="wcp-kpi yield-main lev"><div class="l">레버리지 수익률</div><div class="v green" id="wcp_k_lev">-</div></div>
+                        <div class="wcp-kpi roi"><div class="l">ROI</div><div class="v orange" id="wcp_k_roi">-</div></div>
                       </div>
                     </div>
+                    ${wcpBuildLinkedCalcPicker(room)}
                     <div class="wcp-card orange">
                       <h3>1. 4가지 손품 기반 입찰가 추정</h3>
                       <div class="wcp-sub">MAX·MID·MIN은 @만원/평으로 입력합니다. 개별값은 쉼표/공백/줄바꿈으로, 범위는 1000~1200처럼 입력하세요.</div>
                       <div class="wcp-grid3" style="margin-top:8px;">
                         <div class="wcp-section"><h4>기준면적</h4><div class="wcp-form">${wcpField('wc_area','전용면적','㎡',s.area,'','')}${wcpField('wc_area_py','전용평수','평',s.areaPy,'','')}</div></div>
-                        <div class="wcp-section"><h4>나의 입찰가</h4><div class="wcp-form">${wcpField('wc_my_bid','입찰가','원',s.myBid,'wcp_my_bid_note','')}${wcpField('wc_extra_reserve','예비비','원',s.extraReserve,'','')}<button class="wcp-btn primary" onclick="wr2CalcUseSuggestedBid()" style="justify-self:start;">추천가 적용</button></div></div>
+                        <div class="wcp-section"><h4>나의 입찰가</h4><div class="wcp-form">${wcpField('wc_my_bid','입찰가','원',s.myBid,'wcp_my_bid_note','')}${wcpField('wc_extra_reserve','예비비','원',s.extraReserve,'','')}${wcpField('wc_target_profit','목표 순이익','원',s.targetProfit,'','예: 30,000,000')}<button class="wcp-btn primary" onclick="wr2CalcUseSuggestedBid()" style="justify-self:start;">추천가 적용</button></div></div>
                         <div class="wcp-section"><h4>입찰가 추정 결과</h4><div class="wcp-resultbar"><span class="label">추천 입찰가</span><span class="value" id="wcp_suggested_bid">-</span></div><div class="wcp-note orange" id="wcp_bench_summary" style="text-align:left;margin-top:6px;">-</div></div>
                       </div>
                       <div class="wcp-grid4" style="margin-top:8px;">
@@ -7358,16 +7444,16 @@ window.wr2SummaryCancelEdit = function() {
                     </div>
                     <div class="wcp-tabs"><button class="wcp-tab active" data-pane="input">입력</button><button class="wcp-tab" data-pane="taxflow">세금·자금흐름</button><button class="wcp-tab" data-pane="save">저장·비교</button></div>
                     <div id="wcp_pane_input" class="wcp-pane active">
-                      <div class="wcp-grid2">
-                        <div class="wcp-card"><h3>2. 수익률 분석기 입력</h3><div class="wcp-grid2" style="margin-top:8px;">
+                      <div class="wcp-main-grid">
+                        <div class="wcp-card wcp-input-card"><h3>2. 수익률 분석기 입력</h3><div class="wcp-input-sections" style="margin-top:8px;">
                           <div class="wcp-section"><h4>① 취득비용</h4><div class="wcp-form">${wcpField('wc_appraisal','감정가','원',s.appraisal,'','')}${wcpField('wc_price','입찰가/매수가','원',s.price,'wcp_price_note','')}${wcpRateField('wc_acq_tax_rate','wc_acq_tax','취등록세',s.acqTaxRate,s.acqTax,'')}${wcpRateField('wc_legal_rate','wc_legal_fee','법무비 등',s.legalRate,s.legalFee,'')}</div></div>
                           <div class="wcp-section"><h4>② 취득시 필요경비</h4><div class="wcp-form">${wcpField('wc_unpaid_mgmt','미납 관리비','원',s.unpaidMgmt,'','')}${wcpField('wc_unpaid_tax','미납 세금','원',s.unpaidTax,'','')}${wcpField('wc_eviction','명도비','원',s.eviction,'','')}${wcpField('wc_facility','시설비','원',s.facility,'','')}${wcpField('wc_vat','부가세 환급예상','원',s.vat,'','')}</div></div>
                           <div class="wcp-section"><h4>③ 운영시 필요경비</h4><div class="wcp-form">${wcpField('wc_operating_annual','운영비(연)','원',s.operatingAnnual,'','')}${wcpRateField('wc_rent_broker_rate','wc_rent_broker_fee','임대중개수수료',s.rentBrokerRate,s.rentBrokerFee,'')}${wcpRateField('wc_sale_broker_rate','wc_sale_broker_fee','매도중개수수료',s.saleBrokerRate,s.saleBrokerFee,'')}${wcpField('wc_sell_price','예상 매도가','원',s.sellPrice,'','')}</div></div>
-                          <div class="wcp-section"><h4>④ 이자·수익</h4><div class="wcp-form">${wcpRateField('wc_cf_loan_rate','wc_cf_loan','LTV/대출금',s.loanRate,s.loan,'')}${wcpRateField('wc_cf_rate','wc_cf_interest_amt','대출이자율/년이자',s.interestRate,s.interestAmt,'')}${wcpField('wc_cf_interest_monthly','대출 이자(월)','원',s.interestMonthly,'','')}${wcpField('wc_deposit','임대 보증금','원',s.deposit,'','')}${wcpField('wc_rent','월 임대료','원',s.rent,'wcp_rent_note','')}${wcpRateField('wc_rental_yield','wc_management_monthly','임대수익률/관리비',s.rentalYield,s.managementMonthly,'')}${wcpField('wc_contract_deposit','계약금/입찰보증금','원',s.contractDeposit,'','')}</div></div>
+                          <div class="wcp-section"><h4>④ 이자·수익</h4><div class="wcp-form">${wcpRateField('wc_cf_loan_rate','wc_cf_loan','LTV/대출금',s.loanRate,s.loan,'')}${wcpLoanRuleBox()}${wcpRateField('wc_cf_rate','wc_cf_interest_amt','대출이자율/년이자',s.interestRate,s.interestAmt,'')}${wcpField('wc_cf_interest_monthly','대출 이자(월)','원',s.interestMonthly,'','')}${wcpField('wc_deposit','임대 보증금','원',s.deposit,'','')}${wcpField('wc_rent','월 임대료','원',s.rent,'wcp_rent_note','')}${wcpRateField('wc_rental_yield','wc_management_monthly','임대수익률/관리비',s.rentalYield,s.managementMonthly,'')}${wcpField('wc_contract_deposit','계약금/입찰보증금','원',s.contractDeposit,'','')}</div></div>
                         </div></div>
-                        <div>
-                          <div class="wcp-card"><h3>3. KPI 요약</h3><div class="wcp-grid2" style="margin-top:8px;"><div class="wcp-section"><h4>현금흐름</h4>${wcpOutputRow('월 순수익','wcp_o_month_net','원','blue')}${wcpOutputRow('년 순수익','wcp_o_year_net','원','')}${wcpOutputRow('초기 필요자금','wcp_o_initial_need','원','orange')}${wcpOutputRow('전용 평단가','wcp_o_per_py','원/평','')}</div><div class="wcp-section"><h4>자동 산출</h4>${wcpOutputRow('부가세 환급예상','wcp_o_vat','원','green')}${wcpOutputRow('1년치 이자','wcp_o_interest_year','원','')}${wcpOutputRow('1년치 관리비','wcp_o_management_year','원','')}${wcpOutputRow('절대 수익률','wcp_o_abs_yield','%','green')}</div></div></div>
-                          <div class="wcp-card"><h3>투자금 and 투자수익</h3><table class="wcp-invest-table"><tbody><tr><td>총 투자금</td><td id="wcp_p_total_no_deposit">-</td><td>보증금 미포함</td></tr><tr><td>총 투자금</td><td id="wcp_p_total_with_deposit" class="red">-</td><td>보증금 포함</td></tr><tr><td>절대 수익률</td><td id="wcp_p_abs_yield">-</td><td>%</td></tr><tr><td>레버리지 수익률</td><td id="wcp_p_lev_yield">-</td><td>%</td></tr><tr><td>예상 매도가</td><td id="wcp_p_sell_price" class="hot">-</td><td>원</td></tr><tr><td>ROI</td><td id="wcp_p_roi" class="red">-</td><td>%</td></tr><tr><td>세후수익</td><td id="wcp_p_after_tax" class="hot">-</td><td>원</td></tr></tbody></table></div>
+                        <div class="wcp-side-col">
+                          <div class="wcp-card wcp-kpi-card"><h3>3. KPI 요약</h3><div class="wcp-grid2" style="margin-top:8px;"><div class="wcp-section"><h4>현금흐름</h4>${wcpOutputRow('월 순수익','wcp_o_month_net','원','blue')}${wcpOutputRow('년 순수익','wcp_o_year_net','원','')}${wcpOutputRow('초기 필요자금','wcp_o_initial_need','원','orange')}${wcpOutputRow('전용 평단가','wcp_o_per_py','원/평','')}</div><div class="wcp-section"><h4>자동 산출</h4>${wcpOutputRow('부가세 환급예상','wcp_o_vat','원','green')}${wcpOutputRow('1년치 이자','wcp_o_interest_year','원','')}${wcpOutputRow('1년치 관리비','wcp_o_management_year','원','')}${wcpOutputRow('절대 수익률','wcp_o_abs_yield','%','green')}</div></div></div>
+                          <div class="wcp-card"><h3>투자금 and 투자수익</h3><table class="wcp-invest-table"><tbody><tr><td>총 투자금</td><td id="wcp_p_total_no_deposit">-</td><td>보증금 미포함</td></tr><tr><td>총 투자금</td><td id="wcp_p_total_with_deposit" class="red">-</td><td>보증금 포함</td></tr><tr class="yield-row"><td>절대 수익률</td><td id="wcp_p_abs_yield">-</td><td>%</td></tr><tr class="lev-row"><td>레버리지 수익률</td><td id="wcp_p_lev_yield">-</td><td>%</td></tr><tr><td>예상 매도가</td><td id="wcp_p_sell_price" class="hot">-</td><td>원</td></tr><tr><td>ROI</td><td id="wcp_p_roi" class="red">-</td><td>%</td></tr><tr><td>세후수익</td><td id="wcp_p_after_tax" class="hot">-</td><td>원</td></tr></tbody></table></div>
                         </div>
                       </div>
                     </div>
@@ -7380,16 +7466,21 @@ window.wr2SummaryCancelEdit = function() {
                     <div id="wcp_pane_save" class="wcp-pane"><div class="wcp-card"><h3>입찰가 시나리오 비교</h3><div class="wcp-sub">각 입찰가의 계산 결과를 저장·불러오기·비교합니다.</div><div class="wcp-table-wrap" style="margin-top:8px;"><table class="wcp-table"><thead><tr><th>시나리오명</th><th>입찰가</th><th>최대 필요자금</th><th>최소 필요자금</th><th>레버리지 수익률</th><th>절대 수익률</th><th>ROI</th><th>세후수익</th><th>전용 평단가</th><th>저장일</th><th>작업</th></tr></thead><tbody id="wcp_scenario_body"></tbody></table></div><button class="wcp-btn primary" onclick="wr2CalcScenarioSave()" style="margin-top:8px;">+ 비교 추가</button></div><div class="wcp-grid2"><div class="wcp-card"><h3>저장된 입찰가 시나리오 <span id="wcp_saved_count" class="wcp-sub">0개 저장됨</span></h3><div id="wcp_saved_list" class="wcp-saved-list"></div></div><div class="wcp-card"><h3>계산 스냅샷</h3><div id="wcp_snapshot_grid" class="wcp-shot-grid"></div><button class="wcp-btn" onclick="wr2CalcSnapshotSave()" style="margin-top:8px;">현재 화면 캡처 저장</button></div></div></div>
                   </div>`;
                 }
-                function wcpSyncPairs(trigger){ const area=wcpNum(wcpRead('wc_area')), areaPy=wcpNum(wcpRead('wc_area_py')); if(trigger==='wc_area' && area>0) wcpSet('wc_area_py',(area/3.305785).toFixed(2)); if(trigger==='wc_area_py' && areaPy>0) wcpSet('wc_area',(areaPy*3.305785).toFixed(2)); const rentDup=document.getElementById('wc_bench_rent_py_dup'); const rentMain=document.getElementById('wc_bench_rent_py'); if(trigger==='wc_bench_rent_py' && rentDup) rentDup.value=wcpRead('wc_bench_rent_py'); if(trigger==='wc_bench_rent_py_dup' && rentMain) rentMain.value=wcpRead('wc_bench_rent_py_dup'); const priceBase=wcpReadWon('wc_my_bid')||wcpReadWon('wc_price'); if(trigger==='wc_my_bid' && priceBase) wcpSetWon('wc_price',priceBase); if(trigger==='wc_price' && priceBase) wcpSetWon('wc_my_bid',priceBase); const price=wcpReadWon('wc_price')||wcpReadWon('wc_my_bid'), appraisal=wcpReadWon('wc_appraisal'); [['wc_acq_tax_rate','wc_acq_tax',price],['wc_legal_rate','wc_legal_fee',price]].forEach(function(p){ const rateId=p[0], amtId=p[1], base=p[2]; if(!base) return; if(trigger===amtId){ const amt=wcpReadWon(amtId); if(amt) wcpSetPct(rateId,amt/base*100,2); } else { const rate=wcpReadPct(rateId); if(rate) wcpSetWon(amtId,base*rate/100); } }); if(price){ if(trigger==='wc_cf_loan'){ const loan=wcpReadWon('wc_cf_loan'); if(loan) wcpSetPct('wc_cf_loan_rate',loan/price*100,2); } else { const ltv=wcpReadPct('wc_cf_loan_rate'); if(ltv){ let loan=price*ltv/100; if(appraisal) loan=Math.min(appraisal*0.60, loan); loan=Math.floor(loan/100000)*100000; wcpSetWon('wc_cf_loan',loan); } } } const loan=wcpReadWon('wc_cf_loan'); if(loan){ if(trigger==='wc_cf_interest_amt'){ const a=wcpReadWon('wc_cf_interest_amt'); if(a){ wcpSetPct('wc_cf_rate',a/loan*100,2); wcpSetWon('wc_cf_interest_monthly',a/12); } } else if(trigger==='wc_cf_interest_monthly'){ const m=wcpReadWon('wc_cf_interest_monthly'); if(m){ wcpSetWon('wc_cf_interest_amt',m*12); wcpSetPct('wc_cf_rate',m*12/loan*100,2); } } else { const r=wcpReadPct('wc_cf_rate'); if(r){ wcpSetWon('wc_cf_interest_amt',loan*r/100); wcpSetWon('wc_cf_interest_monthly',loan*r/100/12); } } } const rent=wcpReadWon('wc_rent'), dep=wcpReadWon('wc_deposit'); const rentBase=dep+rent*100; if(rentBase){ if(trigger==='wc_rent_broker_fee'){ const a=wcpReadWon('wc_rent_broker_fee'); if(a) wcpSetPct('wc_rent_broker_rate',a/rentBase*100,2); } else { const r=wcpReadPct('wc_rent_broker_rate'); if(r) wcpSetWon('wc_rent_broker_fee',rentBase*r/100); } } const sell=wcpReadWon('wc_sell_price'); if(sell){ if(trigger==='wc_sale_broker_fee'){ const a=wcpReadWon('wc_sale_broker_fee'); if(a) wcpSetPct('wc_sale_broker_rate',a/sell*100,2); } else { const r=wcpReadPct('wc_sale_broker_rate'); if(r) wcpSetWon('wc_sale_broker_fee',sell*r/100); } } if(trigger==='wc_yield' && price && wcpReadPct('wc_yield')) wcpSetWon('wc_rent',price*wcpReadPct('wc_yield')/100/12); }
-                function wcpCalc(trigger){ wcpSyncPairs(trigger||''); const areaPy=wcpNum(wcpRead('wc_area_py')), bunyangPy=wcpNum(wcpRead('wc_bunyang_py'))||areaPy; const price=wcpReadWon('wc_price')||wcpReadWon('wc_my_bid'); const maxS=wcpParsePyVals(wcpRead('wc_bench_max')), midS=wcpParsePyVals(wcpRead('wc_bench_mid')), minS=wcpParsePyVals(wcpRead('wc_bench_min')), rentPyS=wcpParsePyVals(wcpRead('wc_bench_rent_py')); const yRate=wcpReadPct('wc_bench_yield_rate')||8; const benchAmts=[wcpBenchAmount(maxS,areaPy),wcpBenchAmount(midS,areaPy),wcpBenchAmount(minS,areaPy)].filter(Boolean); let rentMonthly=rentPyS.avg&&areaPy?rentPyS.avg*areaPy*10000:0; let yieldAmt=rentMonthly&&yRate?((wcpReadWon('wc_deposit')||0)+(rentMonthly*12)/(yRate/100)):0; let pyCandidates=[maxS.avg,midS.avg,minS.avg]; if(yieldAmt&&areaPy) pyCandidates.push(yieldAmt/areaPy/10000); pyCandidates=pyCandidates.filter(Boolean); const suggestedPy=pyCandidates.length?pyCandidates.reduce((a,b)=>a+b,0)/pyCandidates.length:0; const suggested=suggestedPy&&areaPy?suggestedPy*areaPy*10000:0; const acq=wcpReadWon('wc_acq_tax'), legal=wcpReadWon('wc_legal_fee'), unpaid=wcpReadWon('wc_unpaid_mgmt'), unpaidTax=wcpReadWon('wc_unpaid_tax'), eviction=wcpReadWon('wc_eviction'), facility=wcpReadWon('wc_facility'), vat=wcpReadWon('wc_vat'), operating=wcpReadWon('wc_operating_annual'), rentBroker=wcpReadWon('wc_rent_broker_fee'), saleBroker=wcpReadWon('wc_sale_broker_fee'), loan=wcpReadWon('wc_cf_loan'), intY=wcpReadWon('wc_cf_interest_amt'), intM=wcpReadWon('wc_cf_interest_monthly'), dep=wcpReadWon('wc_deposit'), rent=wcpReadWon('wc_rent'), contract=wcpReadWon('wc_contract_deposit')||(price?price*0.1:0), reserve=wcpReadWon('wc_extra_reserve'); const mgmtMonthlyPy=wcpReadWon('wc_management_monthly'); const mgmtYear=mgmtMonthlyPy*bunyangPy*12; const monthNet=rent-intM; const yearNet=monthNet*12; const maxRequired=Math.max(0, price+acq+legal+unpaid+unpaidTax+eviction+facility+operating+rentBroker+saleBroker+intY+mgmtYear+reserve-loan); const minRequired=Math.max(0,maxRequired-dep-vat); const initialNeed=maxRequired; const absYield=price?rent*12/price*100:0; const levYield=minRequired?yearNet/minRequired*100:0; const sell=wcpReadWon('wc_sell_price')||0; const saleGain=sell?Math.max(0,sell-price-acq-legal):0; const taxBase=Math.max(0,saleGain); const under=Math.min(taxBase,200000000)*(wcpReadPct('wc_corp_rate_under')/100); const over=Math.max(0,taxBase-200000000)*(wcpReadPct('wc_corp_rate_over')/100); const tax=under+over; const afterTax=saleGain-tax; const roi=minRequired&&afterTax?afterTax/minRequired*100:0; return {areaPy,bunyangPy,price,maxS,midS,minS,rentPyS,rentMonthly,yieldAmt,suggestedPy,suggested,acq,legal,unpaid,unpaidTax,eviction,facility,vat,operating,rentBroker,saleBroker,loan,intY,intM,dep,rent,contract,reserve,mgmtYear,monthNet,yearNet,maxRequired,minRequired,initialNeed,absYield,levYield,sell,saleGain,taxBase,under,over,tax,afterTax,roi,perPy:areaPy&&price?price/areaPy:0,rentPerPy:areaPy&&rent?rent/areaPy/10000:0}; }
-                function wcpRenderOutputs(trigger){ const r=wcpCalc(trigger||''); function put(id,val,cls){ wcpSetText(id,val); } wcpSetText('wcp_k_suggested',wcpFormatWon(r.suggested)); wcpSetText('wcp_k_price',wcpFormatWon(r.price)); wcpSetText('wcp_k_need',wcpFormatWon(r.maxRequired)); wcpSetText('wcp_k_minneed',wcpFormatWon(r.minRequired)); wcpSetText('wcp_k_abs',(r.absYield||0).toFixed(2)+'%'); wcpSetText('wcp_k_lev',(r.levYield||0).toFixed(2)+'%'); wcpSetText('wcp_k_roi',(r.roi||0).toFixed(0)+'%'); wcpSetText('wcp_suggested_bid',wcpFormatWon(r.suggested)); wcpSetText('wcp_bench_summary',r.suggestedPy?'추천 기준 @ '+r.suggestedPy.toFixed(1)+'만원/평 · '+wcpFormatWon(r.suggested):'@만원/평 값을 입력하면 추천 입찰가가 계산됩니다.'); wcpSetText('wcp_bench_max_note',r.maxS.avg?r.maxS.label+' · '+wcpFormatWon(wcpBenchAmount(r.maxS,r.areaPy)):'-'); wcpSetText('wcp_bench_mid_note',r.midS.avg?r.midS.label+' · '+wcpFormatWon(wcpBenchAmount(r.midS,r.areaPy)):'-'); wcpSetText('wcp_bench_min_note',r.minS.avg?r.minS.label+' · '+wcpFormatWon(wcpBenchAmount(r.minS,r.areaPy)):'-'); wcpSetText('wcp_bench_rent_note',r.rentPyS.avg?r.rentPyS.label+' · 월세 '+wcpFormatWon(r.rentMonthly):'-'); wcpSetText('wcp_bench_yield_note',r.yieldAmt?'수익환산 '+wcpFormatWon(r.yieldAmt)+' / @ '+(r.areaPy?r.yieldAmt/r.areaPy/10000:0).toFixed(1)+'만/평':'-'); wcpSetText('wcp_bench_yield_dup_note',r.rentPyS.avg?r.rentPyS.label+' · '+wcpFormatWon(r.rentMonthly):'-'); wcpSetText('wcp_my_bid_note',r.areaPy&&r.price?'@ '+(r.price/r.areaPy/10000).toFixed(1)+'만원/평':'-'); wcpSetText('wcp_price_note',r.areaPy&&r.price?'@ '+(r.price/r.areaPy/10000).toFixed(1)+'만원/평':'-'); wcpSetText('wcp_rent_note',r.areaPy&&r.rent?'@ '+(r.rent/r.areaPy/10000).toFixed(1)+'만/평·월':'-'); wcpSetText('wcp_o_month_net',wcpFormatWon(r.monthNet)); wcpSetText('wcp_o_year_net',wcpFormatWon(r.yearNet)); wcpSetText('wcp_o_initial_need',wcpFormatWon(r.initialNeed)); wcpSetText('wcp_o_per_py',r.perPy?Math.round(r.perPy).toLocaleString('ko-KR'):'-'); wcpSetText('wcp_o_vat',wcpFormatWon(r.vat)); wcpSetText('wcp_o_interest_year',wcpFormatWon(r.intY)); wcpSetText('wcp_o_management_year',wcpFormatWon(r.mgmtYear)); wcpSetText('wcp_o_abs_yield',(r.absYield||0).toFixed(2)); wcpSetText('wcp_p_total_no_deposit',wcpFormatWon(r.maxRequired)); wcpSetText('wcp_p_total_with_deposit',wcpFormatWon(r.minRequired)); wcpSetText('wcp_p_abs_yield',(r.absYield||0).toFixed(2)); wcpSetText('wcp_p_lev_yield',(r.levYield||0).toFixed(2)); wcpSetText('wcp_p_sell_price',wcpFormatWon(r.sell)); wcpSetText('wcp_p_roi',(r.roi||0).toFixed(0)); wcpSetText('wcp_p_after_tax',wcpFormatWon(r.afterTax)); wcpSetText('wcp_tax_gain',wcpFormatWon(r.saleGain)); wcpSetText('wcp_tax_base',wcpFormatWon(r.taxBase)); wcpSetText('wcp_tax_under',wcpFormatWon(r.under)); wcpSetText('wcp_tax_over',wcpFormatWon(r.over)); wcpSetText('wcp_tax_total',wcpFormatWon(r.tax)); wcpSetText('wcp_tax_buy_py',r.bunyangPy&&r.price?Math.round(r.price/r.bunyangPy).toLocaleString('ko-KR'):'-'); wcpSetText('wcp_tax_ex_py',r.perPy?Math.round(r.perPy).toLocaleString('ko-KR'):'-'); [1,2,3].forEach(function(i){ const rate=wcpReadPct('wc_target_yield_'+i); const sale=(rate&&r.rent)?r.dep+(r.rent*12)/(rate/100):0; wcpSetText('wcp_sale_yield_'+i,wcpFormatWon(sale)); }); wcpRenderFlow(r); return r; }
+                function wcpSyncPairs(trigger){ const area=wcpNum(wcpRead('wc_area')), areaPy=wcpNum(wcpRead('wc_area_py')); if(trigger==='wc_area' && area>0) wcpSet('wc_area_py',(area/3.305785).toFixed(2)); if(trigger==='wc_area_py' && areaPy>0) wcpSet('wc_area',(areaPy*3.305785).toFixed(2)); const rentDup=document.getElementById('wc_bench_rent_py_dup'); const rentMain=document.getElementById('wc_bench_rent_py'); if(trigger==='wc_bench_rent_py' && rentDup) rentDup.value=wcpRead('wc_bench_rent_py'); if(trigger==='wc_bench_rent_py_dup' && rentMain) rentMain.value=wcpRead('wc_bench_rent_py_dup'); const priceBase=wcpReadWon('wc_my_bid')||wcpReadWon('wc_price'); if(trigger==='wc_my_bid' && priceBase) wcpSetWon('wc_price',priceBase); if(trigger==='wc_price' && priceBase) wcpSetWon('wc_my_bid',priceBase); const price=wcpReadWon('wc_price')||wcpReadWon('wc_my_bid'), appraisal=wcpReadWon('wc_appraisal'); [['wc_acq_tax_rate','wc_acq_tax',price],['wc_legal_rate','wc_legal_fee',price]].forEach(function(p){ const rateId=p[0], amtId=p[1], base=p[2]; if(!base) return; if(trigger===amtId){ const amt=wcpReadWon(amtId); if(amt) wcpSetPct(rateId,amt/base*100,2); } else { const rate=wcpReadPct(rateId); if(rate) wcpSetWon(amtId,base*rate/100); } }); if(price){ if(trigger==='wc_cf_loan'){ const loan=wcpReadWon('wc_cf_loan'); if(loan) wcpSetPct('wc_cf_loan_rate',loan/price*100,2); } else { const ltv=wcpReadPct('wc_cf_loan_rate')||80; const byBid=price*ltv/100; const byApp=appraisal?appraisal*0.60:0; const loan=byApp?Math.min(byApp,byBid):byBid; if(loan) wcpSetWon('wc_cf_loan',Math.round(loan)); } } const loan=wcpReadWon('wc_cf_loan'); if(loan){ if(trigger==='wc_cf_interest_amt'){ const a=wcpReadWon('wc_cf_interest_amt'); if(a){ wcpSetPct('wc_cf_rate',a/loan*100,2); wcpSetWon('wc_cf_interest_monthly',a/12); } } else if(trigger==='wc_cf_interest_monthly'){ const m=wcpReadWon('wc_cf_interest_monthly'); if(m){ wcpSetWon('wc_cf_interest_amt',m*12); wcpSetPct('wc_cf_rate',m*12/loan*100,2); } } else { const r=wcpReadPct('wc_cf_rate'); if(r){ wcpSetWon('wc_cf_interest_amt',loan*r/100); wcpSetWon('wc_cf_interest_monthly',loan*r/100/12); } } } const rent=wcpReadWon('wc_rent'), dep=wcpReadWon('wc_deposit'); const rentBase=dep+rent*100; if(rentBase){ if(trigger==='wc_rent_broker_fee'){ const a=wcpReadWon('wc_rent_broker_fee'); if(a) wcpSetPct('wc_rent_broker_rate',a/rentBase*100,2); } else { const r=wcpReadPct('wc_rent_broker_rate'); if(r) wcpSetWon('wc_rent_broker_fee',rentBase*r/100); } } const sell=wcpReadWon('wc_sell_price'); if(sell){ if(trigger==='wc_sale_broker_fee'){ const a=wcpReadWon('wc_sale_broker_fee'); if(a) wcpSetPct('wc_sale_broker_rate',a/sell*100,2); } else { const r=wcpReadPct('wc_sale_broker_rate'); if(r) wcpSetWon('wc_sale_broker_fee',sell*r/100); } } if(trigger==='wc_yield' && price && wcpReadPct('wc_yield')) wcpSetWon('wc_rent',price*wcpReadPct('wc_yield')/100/12); }
+                function wcpCalc(trigger){ wcpSyncPairs(trigger||''); const areaPy=wcpNum(wcpRead('wc_area_py')), bunyangPy=wcpNum(wcpRead('wc_bunyang_py'))||areaPy; const price=wcpReadWon('wc_price')||wcpReadWon('wc_my_bid'); const maxS=wcpParsePyVals(wcpRead('wc_bench_max')), midS=wcpParsePyVals(wcpRead('wc_bench_mid')), minS=wcpParsePyVals(wcpRead('wc_bench_min')), rentPyS=wcpParsePyVals(wcpRead('wc_bench_rent_py')); const yRate=wcpReadPct('wc_bench_yield_rate')||8; const benchAmts=[wcpBenchAmount(maxS,areaPy),wcpBenchAmount(midS,areaPy),wcpBenchAmount(minS,areaPy)].filter(Boolean); let rentMonthly=rentPyS.avg&&areaPy?rentPyS.avg*areaPy*10000:0; let yieldAmt=rentMonthly&&yRate?((wcpReadWon('wc_deposit')||0)+(rentMonthly*12)/(yRate/100)):0; let pyCandidates=[maxS.avg,midS.avg,minS.avg]; if(yieldAmt&&areaPy) pyCandidates.push(yieldAmt/areaPy/10000); pyCandidates=pyCandidates.filter(Boolean); const suggestedPy=pyCandidates.length?pyCandidates.reduce((a,b)=>a+b,0)/pyCandidates.length:0; const marketSuggested=suggestedPy&&areaPy?suggestedPy*areaPy*10000:0; const acq=wcpReadWon('wc_acq_tax'), legal=wcpReadWon('wc_legal_fee'), unpaid=wcpReadWon('wc_unpaid_mgmt'), unpaidTax=wcpReadWon('wc_unpaid_tax'), eviction=wcpReadWon('wc_eviction'), facility=wcpReadWon('wc_facility'), vat=wcpReadWon('wc_vat'), operating=wcpReadWon('wc_operating_annual'), rentBroker=wcpReadWon('wc_rent_broker_fee'), saleBroker=wcpReadWon('wc_sale_broker_fee'), loan=wcpReadWon('wc_cf_loan'), intY=wcpReadWon('wc_cf_interest_amt'), intM=wcpReadWon('wc_cf_interest_monthly'), dep=wcpReadWon('wc_deposit'), rent=wcpReadWon('wc_rent'), contract=wcpReadWon('wc_contract_deposit')||(price?price*0.1:0), reserve=wcpReadWon('wc_extra_reserve'); const mgmtMonthlyPy=wcpReadWon('wc_management_monthly'); const mgmtYear=mgmtMonthlyPy*bunyangPy*12; const monthNet=rent-intM; const yearNet=monthNet*12; const maxRequired=Math.max(0, price+acq+legal+unpaid+unpaidTax+eviction+facility+operating+rentBroker+saleBroker+intY+mgmtYear+reserve-loan); const minRequired=Math.max(0,maxRequired-dep-vat); const initialNeed=maxRequired; const absYield=price?rent*12/price*100:0; const levYield=minRequired?yearNet/minRequired*100:0; const sell=wcpReadWon('wc_sell_price')||0; const targetProfit=wcpReadWon('wc_target_profit')||0; const acqRate=wcpReadPct('wc_acq_tax_rate')||0, legalRate=wcpReadPct('wc_legal_rate')||0; const variableRate=(acqRate+legalRate)/100; const fixedForProfit=unpaid+unpaidTax+eviction+facility+operating+rentBroker+saleBroker+intY+mgmtYear+reserve-dep-vat; const profitCap=(sell&&targetProfit)?Math.max(0,(sell-targetProfit-fixedForProfit)/(1+variableRate)):0; const suggested=profitCap?(marketSuggested?Math.min(marketSuggested,profitCap):profitCap):marketSuggested; const suggestedSource=profitCap?(marketSuggested&&profitCap<marketSuggested?'profit_cap':'market_below_cap'):'market'; const saleGain=sell?Math.max(0,sell-price-acq-legal):0; const taxBase=Math.max(0,saleGain); const under=Math.min(taxBase,200000000)*(wcpReadPct('wc_corp_rate_under')/100); const over=Math.max(0,taxBase-200000000)*(wcpReadPct('wc_corp_rate_over')/100); const tax=under+over; const afterTax=saleGain-tax; const roi=minRequired&&afterTax?afterTax/minRequired*100:0; return {areaPy,bunyangPy,price,maxS,midS,minS,rentPyS,rentMonthly,yieldAmt,suggestedPy,marketSuggested,profitCap,targetProfit,suggested,suggestedSource,acq,legal,unpaid,unpaidTax,eviction,facility,vat,operating,rentBroker,saleBroker,loan,intY,intM,dep,rent,contract,reserve,mgmtYear,monthNet,yearNet,maxRequired,minRequired,initialNeed,absYield,levYield,sell,saleGain,taxBase,under,over,tax,afterTax,roi,perPy:areaPy&&price?price/areaPy:0,rentPerPy:areaPy&&rent?rent/areaPy/10000:0}; }
+                function wcpRenderOutputs(trigger){ const r=wcpCalc(trigger||''); function put(id,val,cls){ wcpSetText(id,val); } wcpSetText('wcp_k_suggested',wcpFormatWon(r.suggested)); wcpSetText('wcp_k_price',wcpFormatWon(r.price)); wcpSetText('wcp_k_need',wcpFormatWon(r.maxRequired)); wcpSetText('wcp_k_minneed',wcpFormatWon(r.minRequired)); wcpSetText('wcp_k_abs',(r.absYield||0).toFixed(2)+'%'); wcpSetText('wcp_k_lev',(r.levYield||0).toFixed(2)+'%'); wcpSetText('wcp_k_roi',(r.roi||0).toFixed(0)+'%'); wcpSetText('wcp_suggested_bid',wcpFormatWon(r.suggested)); let summary=''; if(r.profitCap){ summary='시장/수익 기준 '+wcpFormatWon(r.marketSuggested)+' · 목표순이익 상한 '+wcpFormatWon(r.profitCap)+' → 추천 입찰가 '+wcpFormatWon(r.suggested); } else if(r.suggestedPy){ summary='시장/수익 기준 @ '+r.suggestedPy.toFixed(1)+'만원/평 · '+wcpFormatWon(r.suggested)+' · 예상 매도가와 목표 순이익을 입력하면 입찰상한을 자동으로 걸어줍니다.'; } else { summary='@만원/평 값을 입력하면 시장 기준 추천가가 계산되고, 예상 매도가+목표 순이익 입력 시 남는 금액 기준 입찰가로 보정됩니다.'; } wcpSetText('wcp_bench_summary',summary); wcpSetText('wcp_bench_max_note',r.maxS.avg?r.maxS.label+' · '+wcpFormatWon(wcpBenchAmount(r.maxS,r.areaPy)):'-'); wcpSetText('wcp_bench_mid_note',r.midS.avg?r.midS.label+' · '+wcpFormatWon(wcpBenchAmount(r.midS,r.areaPy)):'-'); wcpSetText('wcp_bench_min_note',r.minS.avg?r.minS.label+' · '+wcpFormatWon(wcpBenchAmount(r.minS,r.areaPy)):'-'); wcpSetText('wcp_bench_rent_note',r.rentPyS.avg?r.rentPyS.label+' · 월세 '+wcpFormatWon(r.rentMonthly):'-'); wcpSetText('wcp_bench_yield_note',r.yieldAmt?'수익환산 '+wcpFormatWon(r.yieldAmt)+' / @ '+(r.areaPy?r.yieldAmt/r.areaPy/10000:0).toFixed(1)+'만/평':'-'); wcpSetText('wcp_my_bid_note',r.profitCap?'목표순이익 기준 상한: '+wcpFormatWon(r.profitCap):(r.suggested?'시장 기준 추천가: '+wcpFormatWon(r.marketSuggested||r.suggested):'-')); wcpSetText('wcp_price_note',r.price&&r.areaPy?'@ '+Math.round(r.price/r.areaPy/10000).toLocaleString('ko-KR')+'만/평':'-'); wcpSetText('wcp_rent_note',r.rentPerPy?'월세 @ '+r.rentPerPy.toFixed(1)+'만/평':'-'); const _loanRate=wcpReadPct('wc_cf_loan_rate')||80, _app=wcpReadWon('wc_appraisal'), _bid=r.price||0, _appCap=_app?_app*0.60:0, _bidCap=_bid?_bid*_loanRate/100:0, _autoLoan=(_appCap&&_bidCap)?Math.min(_appCap,_bidCap):(_bidCap||_appCap||0); wcpSetText('wcp_loan_app_cap',_appCap?wcpFormatWon(_appCap):'-'); wcpSetText('wcp_loan_bid_cap',_bidCap?wcpFormatWon(_bidCap):'-'); wcpSetText('wcp_loan_rule_applied',r.loan?wcpFormatWon(r.loan):(_autoLoan?wcpFormatWon(_autoLoan):'-')); wcpSetText('wcp_loan_rule_text',_appCap&&_bidCap?('감정가 60%와 낙찰가 '+_loanRate.toFixed(2).replace(/\.00$/,'')+'% 중 작은 금액을 기준으로 적용합니다.'):'감정가와 입찰가를 입력하면 대출 가능금액이 자동 계산됩니다.'); wcpSetText('wcp_o_month_net',wcpFormatWon(r.monthNet)); wcpSetText('wcp_o_year_net',wcpFormatWon(r.yearNet)); wcpSetText('wcp_o_initial_need',wcpFormatWon(r.initialNeed)); wcpSetText('wcp_o_per_py',r.perPy?Math.round(r.perPy).toLocaleString('ko-KR'):'-'); wcpSetText('wcp_o_vat',wcpFormatWon(r.vat)); wcpSetText('wcp_o_interest_year',wcpFormatWon(r.intY)); wcpSetText('wcp_o_management_year',wcpFormatWon(r.mgmtYear)); wcpSetText('wcp_o_abs_yield',(r.absYield||0).toFixed(2)); wcpSetText('wcp_p_total_no_deposit',wcpFormatWon(r.maxRequired)); wcpSetText('wcp_p_total_with_deposit',wcpFormatWon(r.minRequired)); wcpSetText('wcp_p_abs_yield',(r.absYield||0).toFixed(2)); wcpSetText('wcp_p_lev_yield',(r.levYield||0).toFixed(2)); wcpSetText('wcp_p_sell_price',wcpFormatWon(r.sell)); wcpSetText('wcp_p_roi',(r.roi||0).toFixed(0)); wcpSetText('wcp_p_after_tax',wcpFormatWon(r.afterTax)); wcpSetText('wcp_tax_gain',wcpFormatWon(r.saleGain)); wcpSetText('wcp_tax_base',wcpFormatWon(r.taxBase)); wcpSetText('wcp_tax_under',wcpFormatWon(r.under)); wcpSetText('wcp_tax_over',wcpFormatWon(r.over)); wcpSetText('wcp_tax_total',wcpFormatWon(r.tax)); wcpSetText('wcp_tax_after',wcpFormatWon(r.afterTax)); wcpSetText('wcp_tax_per_py',r.areaPy&&r.price?Math.round(r.price/r.areaPy).toLocaleString('ko-KR'):'-'); wcpSetText('wcp_tax_ex_per_py',r.areaPy&&r.price?Math.round(r.price/r.areaPy).toLocaleString('ko-KR'):'-'); [1,2,3].forEach(function(i){ const rate=wcpReadPct('wc_target_yield_'+i); const target=(r.dep||0)+(r.rent||0)*12/(rate/100); wcpSetWon('wcp_target_price_'+i,rate?target:0); }); wcpRenderFlow(r); return r; }
                 function wcpRenderFlow(r){ const rows=[]; let bal=0; function add(t,g,item,out,income,note){ out=out||0; income=income||0; bal+=out-income; rows.push({t,g,item,out,income,bal,note}); } add('-30일','매매계약','계약금',r.contract,0,'자기자본'); add('잔금 전','미납관리','미납 관리비',r.unpaid,0,''); add('잔금 전','미납세금','미납 세금',r.unpaidTax,0,''); add('D-day','매매잔금','잔금',Math.max(0,r.price-r.contract-r.loan),0,'자기자본'); add('D-day','부동산등기','취등록세',r.acq,0,''); add('D-day','부동산등기','법무비',r.legal,0,''); add('D+1','임대계약전','명도비',r.eviction,0,''); add('D+1','임대계약전','시설비',r.facility,0,''); add('D+7','예비비','1년치 이자',r.intY,0,'예비비'); add('D+7','예비비','1년치 관리비',r.mgmtYear,0,'예비비'); add('D+10','임대계약','임대보증금',0,r.dep,''); add('D+10','임대계약','임대중개수수료',r.rentBroker,0,''); add('+60일','부가세환급','부가세 환급',0,r.vat,'잔금 1개월 이내 임대 계약 시'); const body=document.getElementById('wcp_flow_body'); if(body) body.innerHTML=rows.map(function(x){return '<tr><td>'+wcpEsc(x.t)+'</td><td>'+wcpEsc(x.g)+'</td><td>'+wcpEsc(x.item)+'</td><td class="red">'+(x.out?wcpFormatWon(x.out):'-')+'</td><td class="blue">'+(x.income?wcpFormatWon(x.income):'-')+'</td><td>'+wcpFormatWon(x.bal)+'</td><td>'+wcpEsc(x.note||'')+'</td></tr>';}).join(''); wcpSetText('wcp_flow_max',wcpFormatWon(r.maxRequired)); wcpSetText('wcp_flow_min',wcpFormatWon(r.minRequired)); }
                 function wcpPersistCurrent(options){ const room=wcpActiveRoom(); if(!room) return; const opts=options||{}, store=wcpGetStore(room); store.current=wcpCollectState(); store.updatedAt=Date.now(); store.rev=Number(store.rev||0)+1; room.calcProV7=store; room.calcProV5=store; room.calcProV3=store; room.calcProState=store.current; room.calcScenarios=store.scenarios; room.calcSnapshots=store.snapshots; room.calcProRev=store.rev; room.updatedAt=Date.now(); wcpLocalSave(room,store); clearTimeout(window.__wcpSaveTimerV6); const run=function(){ try{ saveRooms(); }catch(e){ console.warn('[WCP] saveRooms fail',e); } if(opts.immediate){ try{ if(typeof window.__wr2FlushSaveRooms==='function') window.__wr2FlushSaveRooms(); }catch(e){} } wcpSetText('wcp_auto_save_status','자동저장됨 '+wcpNowText(Date.now()).slice(11)); }; if(opts.immediate) run(); else window.__wcpSaveTimerV6=setTimeout(run,700); }
-                function wcpBind(){ document.querySelectorAll('.wr2-calc-pro-shell .wcp-inp').forEach(function(el){ el.addEventListener('input',function(){ wcpRenderOutputs(el.id); wcpPersistCurrent({immediate:false}); }); el.addEventListener('blur',function(){ if(!/(bench|memo|rate|yield)/i.test(el.id) && el.value && /[0-9]/.test(el.value)){ if(!el.id.includes('wc_area') && !el.id.includes('wc_bunyang') && !el.id.includes('wc_cf_rate') && !el.id.includes('wc_yield') && !el.id.includes('corp_rate') && !el.id.includes('target_yield')) wcpSetWon(el.id,wcpReadWon(el.id)); } }); }); document.querySelectorAll('.wcp-tab').forEach(function(btn){ btn.addEventListener('click',function(){ document.querySelectorAll('.wcp-tab').forEach(function(b){b.classList.remove('active')}); document.querySelectorAll('.wcp-pane').forEach(function(p){p.classList.remove('active')}); btn.classList.add('active'); const pane=document.getElementById('wcp_pane_'+btn.getAttribute('data-pane')); if(pane) pane.classList.add('active'); }); }); }
+                function wcpBind(){ document.querySelectorAll('.wr2-calc-pro-shell .wcp-inp').forEach(function(el){ el.addEventListener('input',function(){ if(el.getAttribute('data-wcp-money')==='1') wcpFormatMoneyInput(el); wcpRenderOutputs(el.id); wcpPersistCurrent({immediate:false}); }); el.addEventListener('blur',function(){ if(el.getAttribute('data-wcp-money')==='1') wcpSetWon(el.id,wcpReadWon(el.id)); }); }); document.querySelectorAll('.wcp-tab').forEach(function(btn){ btn.addEventListener('click',function(){ document.querySelectorAll('.wcp-tab').forEach(function(b){b.classList.remove('active')}); document.querySelectorAll('.wcp-pane').forEach(function(p){p.classList.remove('active')}); btn.classList.add('active'); const pane=document.getElementById('wcp_pane_'+btn.getAttribute('data-pane')); if(pane) pane.classList.add('active'); }); }); }
                 function wcpResolveMount(){ const p=document.getElementById('wc_price')||document.getElementById('wr2CalcTabBar')||document.getElementById('wc_result'); if(!p) return null; return p.closest('.wr2-section-card,.wr2-card,.wr2-widget,.wr2-dash-card,.card')||p.parentElement; }
-                window.wr2RenderProCalc=function(room){ const mount=wcpResolveMount(); if(!mount||!room) return false; wcpGetStore(room); mount.classList.add('wr2-calc-pro-mount'); mount.innerHTML=wcpBuildHtml(room); wcpApplyState(wcpDefaultState(room)); wcpBind(); wcpRenderOutputs(''); wcpRenderScenarioTable(); wcpRenderSnapshots(); return true; };
+
+                function wcpLoadSeedIntoForm(seed, mode){ if(!seed)return; wcpSet('wc_calc_link_mode',mode||''); wcpSet('wc_area',seed.areaM2?seed.areaM2.toFixed(2):''); wcpSet('wc_area_py',seed.areaPy?seed.areaPy.toFixed(2):''); wcpSet('wc_bunyang_py',seed.areaPy?seed.areaPy.toFixed(2):''); wcpSetWon('wc_appraisal',seed.appraisalWon||0); wcpSetWon('wc_price',seed.minWon||0); wcpSetWon('wc_my_bid',seed.minWon||0); wcpSetWon('wc_deposit',seed.depositWon||0); wcpSetWon('wc_rent',seed.rentWon||0); wcpRenderOutputs('wc_my_bid'); wcpPersistCurrent({immediate:true}); }
+                function wcpAggregateSeeds(seeds){ seeds=seeds||[]; const totalArea=seeds.reduce((a,s)=>a+(s.areaM2||0),0); return {areaM2:totalArea, areaPy:totalArea?totalArea/3.305785:0, appraisalWon:seeds.reduce((a,s)=>a+(s.appraisalWon||0),0), minWon:seeds.reduce((a,s)=>a+(s.minWon||0),0), depositWon:seeds.reduce((a,s)=>a+(s.depositWon||0),0), rentWon:seeds.reduce((a,s)=>a+(s.rentWon||0),0)}; }
+                window.wr2CalcLoadLinkedItem=function(roomId,itemId){ const room=(wr2State.rooms||[]).find(r=>String(r.id)===String(roomId))||wcpActiveRoom(); const sv=(typeof getSv==='function')?getSv():[]; const item=(sv||[]).find(x=>String(x&&x.id)===String(itemId)); if(!room||!item)return; wcpLoadSeedIntoForm(wr2SummarySeed(item),'single:'+itemId); try{ if(typeof showToast==='function')showToast('단일 물건 기준 계산값을 불러왔습니다','ok'); }catch(e){} };
+                window.wr2CalcLoadLinkedTotal=function(roomId){ const room=(wr2State.rooms||[]).find(r=>String(r.id)===String(roomId))||wcpActiveRoom(); if(!room)return; const sv=(typeof getSv==='function')?getSv():[]; const items=(typeof wr2ResolveLinkedSavedItems==='function')?wr2ResolveLinkedSavedItems(room,sv,typeof wr2BuildPlLinkedMap==='function'?wr2BuildPlLinkedMap():{}):[]; if(!items.length)return; wcpLoadSeedIntoForm(wcpAggregateSeeds(items.map(wr2SummarySeed)),'total'); try{ if(typeof showToast==='function')showToast('연결 물건 합산 계산값을 불러왔습니다','ok'); }catch(e){} };
+                window.wr2RenderProCalc=function(room){ const mount=wcpResolveMount(); if(!mount||!room) return false; wcpGetStore(room); mount.classList.add('wr2-calc-pro-mount'); mount.innerHTML=wcpBuildHtml(room); wcpApplyState(wcpDefaultState(room)); wcpFormatMoneyInputs(); wcpBind(); wcpRenderOutputs(''); wcpRenderScenarioTable(); wcpRenderSnapshots(); return true; };
                 window.wr2CalcProRun=function(){ wcpRenderOutputs(''); wcpPersistCurrent({immediate:true}); try{ if(typeof showToast==='function') showToast('계산 완료·자동저장됨','ok'); }catch(e){} };
-                window.wr2CalcProClear=function(){ if(!confirm('현재 계산 입력값을 초기화할까요? 저장된 시나리오는 유지됩니다.')) return; document.querySelectorAll('.wr2-calc-pro-shell .wcp-inp').forEach(function(el){el.value='';}); [['wc_acq_tax_rate','4.60'],['wc_legal_rate','1.00'],['wc_rent_broker_rate','0.90'],['wc_sale_broker_rate','0.90'],['wc_cf_rate','5.00'],['wc_cf_loan_rate','85.00'],['wc_corp_rate_under','19'],['wc_corp_rate_over','21'],['wc_target_yield_1','8.0'],['wc_target_yield_2','6.0'],['wc_target_yield_3','7.0'],['wc_bench_yield_rate','8.0'],['wc_management_monthly','5000']].forEach(function(p){wcpSet(p[0],p[1]);}); wcpRenderOutputs(''); wcpPersistCurrent({immediate:true}); };
+                window.wr2CalcProClear=function(){ if(!confirm('현재 계산 입력값을 초기화할까요? 저장된 시나리오는 유지됩니다.')) return; document.querySelectorAll('.wr2-calc-pro-shell .wcp-inp').forEach(function(el){el.value='';}); [['wc_acq_tax_rate','4.60'],['wc_legal_rate','1.00'],['wc_rent_broker_rate','0.90'],['wc_sale_broker_rate','0.90'],['wc_cf_rate','5.00'],['wc_cf_loan_rate','80.00'],['wc_corp_rate_under','19'],['wc_corp_rate_over','21'],['wc_target_yield_1','8.0'],['wc_target_yield_2','6.0'],['wc_target_yield_3','7.0'],['wc_bench_yield_rate','8.0'],['wc_management_monthly','5000']].forEach(function(p){wcpSet(p[0],p[1]);}); wcpRenderOutputs(''); wcpPersistCurrent({immediate:true}); };
                 window.wr2CalcUseSuggestedBid=function(){ const r=wcpCalc(''); if(r.suggested){ wcpSetWon('wc_my_bid',r.suggested); wcpSetWon('wc_price',r.suggested); wcpRenderOutputs('wc_my_bid'); wcpPersistCurrent({immediate:true}); } };
                 window.wr2CalcScenarioSave=function(name){ const room=wcpActiveRoom(); if(!room) return; const store=wcpGetStore(room); const r=wcpRenderOutputs(''); const defaultName=(r.price?wcpFormatShort(r.price):'입찰가')+' 시나리오'; const label=name||prompt('시나리오 이름',defaultName); if(label===null) return; const clean=String(label||'').trim()||defaultName; const item={id:'sc_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,7),version:7,name:clean,state:wcpCollectState(),result:r,savedAt:Date.now(),updatedAt:Date.now()}; store.scenarios=Array.isArray(store.scenarios)?store.scenarios:[]; store.scenarios.unshift(item); store.scenarios=store.scenarios.slice(0,40); store.current=item.state; store.updatedAt=Date.now(); store.rev=Number(store.rev||0)+1; room.calcProV7=store; room.calcProV5=store; room.calcProV3=store; room.calcProState=store.current; room.calcScenarios=store.scenarios; room.calcSnapshots=store.snapshots||[]; room.calcProRev=store.rev; room.updatedAt=Date.now(); wcpLocalSave(room,store); try{ saveRooms(); if(typeof window.__wr2FlushSaveRooms==='function') window.__wr2FlushSaveRooms(); }catch(e){} wcpRenderScenarioTable(); try{ if(typeof showToast==='function') showToast('입찰가 시나리오 저장됨','ok'); }catch(e){} };
                 window.wr2CalcScenarioLoad=function(id){ const room=wcpActiveRoom(); if(!room) return; const store=wcpGetStore(room); const sc=(store.scenarios||[]).find(function(x){return x.id===id;}); if(!sc) return; wcpApplyState(sc.state||{}); store.current=Object.assign({},sc.state||{}); store.updatedAt=Date.now(); store.rev=Number(store.rev||0)+1; wcpLocalSave(room,store); wcpRenderOutputs(''); wcpPersistCurrent({immediate:true}); try{ if(typeof showToast==='function') showToast('시나리오 불러오기 완료','ok'); }catch(e){} };
@@ -11414,10 +11505,20 @@ window.wr2SummaryCancelEdit = function() {
       mapOverlays.forEach(ov => {
         const el = document.getElementById(ov.id); if (!el) return;
         const mObj = mapMarkers.find(m => m.id === ov.id);
-        const markerPos = mObj && mObj.marker ? mObj.marker.getPosition() : null;
+        const markerPos = _getMarkerAnchorPos(ov) || (mObj && mObj.marker ? mObj.marker.getPosition() : null);
         cards.push({
           id: ov.id, left: parseFloat(el.style.left) || 0, top: parseFloat(el.style.top) || 0,
+          baseLeft: parseFloat(el.dataset.baseLeft || el.style.left) || 0,
+          baseTop: parseFloat(el.dataset.baseTop || el.style.top) || 0,
+          display: el.style.display || '',
           isOpen: ov.isOpen, item: ov.item, propertyType: ov.propertyType,
+          stackKey: ov.stackKey || null,
+          stackExpandMode: (ov.stackKey && cardExpandState && cardExpandState.get) ? (cardExpandState.get(ov.stackKey) || null) : null,
+          transactionDupKey: ov.transactionDupKey || null,
+          savedPos: ov.savedPos || null,
+          markerAnchor: ov.markerAnchor || null,
+          markerAnchorKey: ov.markerAnchorKey || null,
+          cardLayout: ov.cardLayout || (typeof _setCardLayoutState === 'function' ? _setCardLayoutState(ov, el, 'snapshot') : null),
           lat: markerPos ? markerPos.getLat() : (ov.item && ov.item.lat),
           lng: markerPos ? markerPos.getLng() : (ov.item && ov.item.lng)
         });
@@ -11462,11 +11563,25 @@ window.wr2SummaryCancelEdit = function() {
             if (!loadItem.data) loadItem.data = {};
             loadItem.data.lat = loadItem.lat;
             loadItem.data.lng = loadItem.lng;
-            addMapMarker(loadItem, coords);
+            // [FIX v12] 국토부 실거래 API 카드는 일반 addMapMarker로 복원하지 않는다.
+            // addMapMarker는 id가 marker_...로 바뀌어 스냅샷의 카드 위치/열림 상태를 잃을 수 있다.
+            // 실거래는 원래 생성 루트(showTransactionMarker)를 사용해야 id/중복키/층수/스택이 맞게 복원된다.
+            const isTxSnap = c.propertyType === 'transaction' || loadItem.mode === 'transaction' || loadItem.data?.매물유형 === '실거래';
+            if (isTxSnap && typeof showTransactionMarker === 'function') {
+              showTransactionMarker(loadItem);
+            } else {
+              addMapMarker(loadItem, coords);
+            }
             // ★ [FIX] 스냅샷으로 추가된 마커에 _isSnap + _userLoaded 플래그 부여
             setTimeout(() => {
               const ov = mapOverlays.find(o => o.id === c.id);
-              if (ov) { ov._isSnap = true; ov._userLoaded = true; if (ov.item) ov.item._isSnap = true; }
+              if (ov) {
+                ov._isSnap = true; ov._userLoaded = true; if (ov.item) ov.item._isSnap = true;
+                if (c.markerAnchor && isFinite(c.markerAnchor.lat) && isFinite(c.markerAnchor.lng)) {
+                  _setMarkerAnchorState(ov, new kakao.maps.LatLng(c.markerAnchor.lat, c.markerAnchor.lng));
+                }
+                if (c.cardLayout) ov.cardLayout = c.cardLayout;
+              }
               const mk = mapMarkers.find(m => m.id === c.id);
               if (mk) { mk._isSnap = true; mk._userLoaded = true; if (mk.item) mk.item._isSnap = true; }
             }, 0);
@@ -11477,10 +11592,28 @@ window.wr2SummaryCancelEdit = function() {
       setTimeout(() => {
         scene.cards.forEach(c => {
           const el = document.getElementById(c.id); if (!el) return;
-          el.style.left = c.left + 'px'; el.style.top = c.top + 'px';
-          el.dataset.baseLeft = String(c.left); el.dataset.baseTop = String(c.top);
+          const cl = c.cardLayout || {};
+          const left = (c.left != null ? c.left : cl.left);
+          const top = (c.top != null ? c.top : cl.top);
+          el.style.left = (left || 0) + 'px'; el.style.top = (top || 0) + 'px';
+          el.dataset.baseLeft = String(c.baseLeft != null ? c.baseLeft : (cl.baseLeft != null ? cl.baseLeft : (left || 0)));
+          el.dataset.baseTop = String(c.baseTop != null ? c.baseTop : (cl.baseTop != null ? cl.baseTop : (top || 0)));
+          if (c.display != null || cl.display != null) el.style.display = c.display != null ? c.display : (cl.display || '');
           const ov = mapOverlays.find(o => o.id === c.id);
-          if (ov) { ov.isOpen = c.isOpen; try { ov.overlay.setMap(c.isOpen ? map : null); } catch (e) { } }
+          if (ov) {
+            ov.isOpen = c.isOpen;
+            if (c.markerAnchor && isFinite(c.markerAnchor.lat) && isFinite(c.markerAnchor.lng)) {
+              _setMarkerAnchorState(ov, new kakao.maps.LatLng(c.markerAnchor.lat, c.markerAnchor.lng));
+            }
+            if (c.stackKey) ov.stackKey = c.stackKey;
+            if (c.savedPos) ov.savedPos = c.savedPos;
+            if (c.cardLayout) ov.cardLayout = c.cardLayout;
+            if (c.transactionDupKey) ov.transactionDupKey = c.transactionDupKey;
+            try { ov.overlay.setMap(c.isOpen ? map : null); } catch (e) { }
+          }
+          if (c.stackKey && c.stackExpandMode && cardExpandState && cardExpandState.set) {
+            cardExpandState.set(c.stackKey, c.stackExpandMode);
+          }
           updateMapLine && updateMapLine(c.id);
           // ★ 최신 저장 데이터 기반 메모 사용 (스냅샷은 레이아웃만 복원)
           const liveOv = mapOverlays.find(o => o.id === c.id);
@@ -17105,7 +17238,8 @@ ${inputDesc.substring(0, 3000)}
                 const newPos = new kakao.maps.LatLng(res[0].y, res[0].x);
                 mObj.marker.setPosition(newPos);
                 const oObj = mapOverlays.find(o => o.id === 'marker_' + id);
-                if (oObj && oObj.overlay) { oObj.overlay.setPosition(newPos); }
+                // [v14] 주소 수정은 명시적 마커 이동이므로 anchor만 갱신한다. 카드 위치는 그대로 둔다.
+                if (oObj) _setMarkerAnchorState(oObj, newPos);
                 updateMapLine('marker_' + id);
                 showToast('📍 주소 변경 → 마커 이동', 'ok');
               }
@@ -21466,7 +21600,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         overlay.setPosition(overlayInitialPos);
         // v52: LOCK 모드면 그룹 마커 동기 이동
         const myKey = markerDragStartPos ? `${markerDragStartPos.getLat().toFixed(6)}_${markerDragStartPos.getLng().toFixed(6)}` : null;
-        if (myKey && window._groupLock && window._groupLock.get(myKey) === true) {
+        if (false && myKey && window._groupLock && window._groupLock.get(myKey) === true) {
           const dLat = marker.getPosition().getLat() - markerDragStartPos.getLat();
           const dLng = marker.getPosition().getLng() - markerDragStartPos.getLng();
           const grpIds = (window._stackGroups && window._stackGroups.get(myKey)) || [];
@@ -21499,7 +21633,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
         // v52: LOCK 모드 dragend - 그룹 마커 최종 위치 확정
         const myStartKey = markerDragStartPos ? `${markerDragStartPos.getLat().toFixed(6)}_${markerDragStartPos.getLng().toFixed(6)}` : null;
-        if (myStartKey && window._groupLock && window._groupLock.get(myStartKey) === true) {
+        if (false && myStartKey && window._groupLock && window._groupLock.get(myStartKey) === true) {
           const grpIds = (window._stackGroups && window._stackGroups.get(myStartKey)) || [];
           const finalPos = newPos;
           const newKey = `${finalPos.getLat().toFixed(6)}_${finalPos.getLng().toFixed(6)}`;
@@ -21527,6 +21661,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
         // ── stackKey 재편성 ────────────────────────────────
         const thisObj = mapOverlays.find(o => o.id === id);
+        // [v14] 사용자 드래그는 명시적 마커 이동이므로 anchor를 새 위치로 갱신한다.
+        if (thisObj) _setMarkerAnchorState(thisObj, newPos);
         const oldStackKey = thisObj && thisObj.stackKey;
         const newLat = newPos.getLat().toFixed(6);
         const newLng = newPos.getLng().toFixed(6);
@@ -21652,6 +21788,10 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         id,
         overlay,
         marker,
+        // [v14] 실제 마커 좌표(anchor)와 카드 레이아웃 좌표를 분리해 저장
+        markerAnchor: { lat: position.getLat(), lng: position.getLng() },
+        markerAnchorKey: _mkLatLngKey(position),
+        cardLayout: { mode: 'stack', left: null, top: null },
         isOpen: initialCardOpen,  // 📱 모바일: 항상 false (바텀시트 전용)
         item,
         propertyType: propertyType,
@@ -21696,11 +21836,11 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       if (last.type === 'drag') {
         try {
           last.marker.setPosition(last.prevPos);
-          if (last.overlay) last.overlay.setPosition(last.prevPos);
-          // stackKey 갱신
+          // [v14] undo도 마커 anchor만 되돌린다. 카드/overlay 위치는 사용자 배치 상태를 유지한다.
           const ov = (mapOverlays || []).find(o => o.id === last.id);
           if (ov) {
-            ov.stackKey = `${last.prevPos.getLat().toFixed(6)}_${last.prevPos.getLng().toFixed(6)}`;
+            _setMarkerAnchorState(ov, last.prevPos);
+            ov.stackKey = _getOverlayStackKey(ov);
           }
           updateMapLine(last.id);
           updateStackedCards();
@@ -22749,50 +22889,18 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const obj = mapOverlays.find(o => o.id === id);
       if (!obj) return;
 
-      let lat = null, lng = null;
-      try {
-        const pos = obj.marker && obj.marker.getPosition
-          ? obj.marker.getPosition()
-          : (obj.overlay && obj.overlay.getPosition ? obj.overlay.getPosition() : null);
-        if (pos) { lat = pos.getLat().toFixed(6); lng = pos.getLng().toFixed(6); }
-      } catch (e) { }
-
-      if (!lat || !lng) return;
-
-      // 같은 좌표의 overlay 전부 수집 (경매는 항상 단독, 같은 유형끼리만 그룹)
+      // [v14] 같은 좌표 그룹은 markerAnchor 기준으로만 판단한다.
+      // 카드 DOM 위치/펼침 위치는 그룹 판정에 절대 사용하지 않는다.
+      const stackKey = _getOverlayStackKey(obj);
+      if (!stackKey) return;
       const isAuction = obj.propertyType === 'auction' || obj.item?.mode === 'auction';
-      function _getTypeLabel(o) {
-        const pt = o.propertyType || o.item?.mode || 'general';
-        const s = o.item?.source || o.item?.data?.출처 || '';
-        // ★ [v142 FIX] source 체크를 먼저 — 디스코/플래닛은 mode='transaction'이지만 독립 타입
-        if (s === '디스코') return 'disco';
-        if (s === '부동산플래닛') return 'bds';
-        if (pt === 'transaction') return 'transaction';
-        if (s === '점포라인') return 'jumpo';
-        if (_isAssaSource(s)) return 'assa';
-        if (s === '네이버부동산' || s === '네이버' || pt === 'listing') return 'naver';
-        return 'general';
-      }
-      const myTypeLabel = _getTypeLabel(obj);
-
       const sameObjs = isAuction ? [obj] : mapOverlays.filter(o => {
         if (!o) return false;
         if (o.propertyType === 'auction' || o.item?.mode === 'auction') return false;
-        // ★ 같은 유형끼리만 그룹
-        if (_getTypeLabel(o) !== myTypeLabel) return false;
-        try {
-          const pos = o.marker && o.marker.getPosition
-            ? o.marker.getPosition()
-            : (o.overlay && o.overlay.getPosition ? o.overlay.getPosition() : null);
-          if (!pos) return false;
-          return pos.getLat().toFixed(6) === lat && pos.getLng().toFixed(6) === lng;
-        } catch (e) { return false; }
+        return _getOverlayStackKey(o) === stackKey;
       });
 
       if (sameObjs.length === 0) return;
-
-      // ★ stackKey: 유형 포함 키 (경매는 solo 키)
-      const stackKey = isAuction ? `solo_${id}` : `${myTypeLabel}_${lat}_${lng}`;
       sameObjs.forEach(o => { o.stackKey = stackKey; });
 
       // ── 단일 카드면 그냥 열기 ──────────────────────────
@@ -22873,60 +22981,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         const wrap = document.createElement('div');
         wrap.className = 'card-stack-buttons';
 
-        // 📍 일괄 이동 버튼
-        const moveAllBtn = document.createElement('div');
-        moveAllBtn.className = 'card-expand-button';
-        moveAllBtn.textContent = '📍';
-        moveAllBtn.title = '그룹 마커를 한 곳으로 이동';
-        moveAllBtn.style.cssText = 'background:rgba(255,180,0,.25);color:#ffd166;';
-        moveAllBtn.addEventListener('mousedown', function (e) {
-          _blk(e);
-          const grpNow = window._stackGroups && window._stackGroups.get(stackKey);
-          if (!grpNow || grpNow.length < 2) return;
-          const repObj = mapOverlays.find(o => o.id === grpNow[0]);
-          if (!repObj || !repObj.marker) return;
-          const targetPos = repObj.marker.getPosition();
-          grpNow.slice(1).forEach(eid => {
-            const ov = mapOverlays.find(o => o.id === eid);
-            if (!ov || !ov.marker) return;
-            ov.marker.setPosition(targetPos);
-            if (ov.overlay) ov.overlay.setPosition(targetPos);
-            ov.stackKey = stackKey;
-            updateMapLine(eid);
-          });
-          if (window.geocoder && typeof geocoder.coord2Address === 'function') {
-            geocoder.coord2Address(targetPos.getLng(), targetPos.getLat(), (res, status) => {
-              if (status === kakao.maps.services.Status.OK && res && res.length) {
-                const roadAddr = (res[0].road_address && res[0].road_address.address_name)
-                  ? res[0].road_address.address_name : '';
-                const jibunAddr = (res[0].address && res[0].address.address_name)
-                  ? res[0].address.address_name : '';
-                const addrName = roadAddr || jibunAddr;
-                if (addrName) {
-                  const sv = getSv();
-                  grpNow.forEach(eid => {
-                    const ov = mapOverlays.find(o => o.id === eid);
-                    if (ov && ov.item) {
-                      ov.item.data = ov.item.data || {};
-                      _setDualAddressFields(ov.item.data, roadAddr, jibunAddr);
-                    }
-                    const it = sv.find(s => ov && ov.item && s.id === ov.item.id);
-                    if (it) {
-                      it.data = it.data || {};
-                      _setDualAddressFields(it.data, roadAddr, jibunAddr);
-                    }
-                  });
-                  setSv(sv); renderSaved();
-                  showToast(`📍 ${grpNow.length}개 마커 이동+주소: ${addrName}`, 'ok');
-                }
-              }
-            });
-          } else {
-            showToast(`📍 ${grpNow.length}개 마커를 한 곳으로 이동했습니다`, 'ok');
-          }
-          updateStackedCards();
-        }, true);
-        moveAllBtn.addEventListener('click', _blk, true);
+        // [v14] 마커 일괄 이동 버튼 제거: 카드 보기 기능은 marker.setPosition()을 호출하지 않는다.
 
         // 📋 펼치기 버튼
         const expandBtn = document.createElement('div');
@@ -22995,7 +23050,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         }, true);
         badge.addEventListener('click', _blk, true);
 
-        wrap.appendChild(moveAllBtn);
+        // [FIX v12] 카드 펼침/순환 버튼만 노출한다. 그룹 마커 일괄 이동 버튼은 숨긴다.
+        // wrap.appendChild(moveAllBtn);
         wrap.appendChild(expandBtn);
         wrap.appendChild(badge);
         targetEl.appendChild(wrap);
@@ -24191,7 +24247,108 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     window.buildMapCardBodyHTML = buildMapCardBodyHTML;
 
 
+
+
+// [v13 marker-lock] 실거래 스택 UI에서 마커 물리 이동 버튼/상태 정리
+(function(){
+  try{
+    var st=document.createElement('style');
+    st.textContent='.split-gather-btn,.card-expand-button[data-action="split"],.card-expand-button[data-action="gather"]{display:none!important;pointer-events:none!important;}';
+    document.head && document.head.appendChild(st);
+    window.__SK_TX_MARKER_PHYSICAL_SPLIT_DISABLED__ = true;
+  }catch(e){}
+})();
+
+// [v14 structural marker/card separation]
+// 원칙: markerAnchor(실제 지도 좌표)와 cardLayout(화면 카드 위치)을 별도 상태로 관리한다.
+// 카드 스택 펼침/접힘/정렬은 DOM 카드 좌표만 바꾸고, marker.setPosition()은 사용자 드래그/주소수정/명시적 결합에서만 허용한다.
+
+function _setCardLayoutState(ov, el, mode){
+  try {
+    if (!ov || !el) return null;
+    const left = parseFloat(el.style.left) || 0;
+    const top = parseFloat(el.style.top) || 0;
+    const baseLeft = parseFloat(el.dataset && el.dataset.baseLeft ? el.dataset.baseLeft : el.style.left) || left;
+    const baseTop = parseFloat(el.dataset && el.dataset.baseTop ? el.dataset.baseTop : el.style.top) || top;
+    const prev = ov.cardLayout || {};
+    ov.cardLayout = { mode: mode || prev.mode || 'manual', left, top, baseLeft, baseTop, display: el.style.display || '', updatedAt: Date.now() };
+    return ov.cardLayout;
+  } catch(e) { return null; }
+}
+function _mkLatLngKey(pos){
+  try {
+    if (!pos || !pos.getLat || !pos.getLng) return '';
+    return pos.getLat().toFixed(6) + '_' + pos.getLng().toFixed(6);
+  } catch(e) { return ''; }
+}
+function _setMarkerAnchorState(ov, pos){
+  try {
+    if (!ov || !pos || !pos.getLat || !pos.getLng) return;
+    ov.markerAnchor = { lat: pos.getLat(), lng: pos.getLng() };
+    ov.markerAnchorKey = _mkLatLngKey(pos);
+  } catch(e) {}
+}
+function _getMarkerAnchorPos(ov){
+  try {
+    if (ov && ov.markerAnchor && isFinite(ov.markerAnchor.lat) && isFinite(ov.markerAnchor.lng) && window.kakao && kakao.maps) {
+      return new kakao.maps.LatLng(ov.markerAnchor.lat, ov.markerAnchor.lng);
+    }
+    if (ov && ov.marker && ov.marker.getPosition) {
+      const pos = ov.marker.getPosition();
+      _setMarkerAnchorState(ov, pos);
+      return pos;
+    }
+    if (ov && ov.overlay && ov.overlay.getPosition) return ov.overlay.getPosition();
+  } catch(e) {}
+  return null;
+}
+function _getOverlayStackType(o){
+  try {
+    const pType = o.propertyType || o.item?.mode || 'general';
+    const src = o.item?.source || o.item?.data?.출처 || '';
+    if (pType === 'auction' || o.item?.mode === 'auction') return 'solo_' + o.id;
+    if (src === '디스코') return 'disco';
+    if (src === '부동산플래닛') return 'bds';
+    if (pType === 'transaction') return 'transaction';
+    if (src === '점포라인') return 'jumpo';
+    if (typeof _isAssaSource === 'function' && _isAssaSource(src)) return 'assa';
+    if (src === '네이버부동산' || src === '네이버' || pType === 'listing') return 'naver';
+  } catch(e) {}
+  return 'general';
+}
+function _getOverlayStackKey(o){
+  try {
+    const type = _getOverlayStackType(o);
+    if (String(type).startsWith('solo_')) return type;
+    const pos = _getMarkerAnchorPos(o);
+    const key = _mkLatLngKey(pos);
+    return key ? (type + '_' + key) : (type + '_unknown_' + (o && o.id || ''));
+  } catch(e) { return 'general_unknown'; }
+}
+function _restoreMarkerToAnchorIfDrifted(ov){
+  // 카드 레이아웃 동작 후 방어적으로 마커를 anchor로 되돌린다.
+  // 정상 루트에서는 drift가 발생하지 않아야 한다.
+  try {
+    const anchor = _getMarkerAnchorPos(ov);
+    if (!anchor || !ov || !ov.marker || !ov.marker.getPosition || !ov.marker.setPosition) return;
+    const cur = ov.marker.getPosition();
+    if (!cur) return;
+    const dLat = Math.abs(cur.getLat() - anchor.getLat());
+    const dLng = Math.abs(cur.getLng() - anchor.getLng());
+    if (dLat > 0.0000005 || dLng > 0.0000005) {
+      ov.marker.setPosition(anchor);
+    }
+  } catch(e) {}
+}
+
+
     function updateStackedCards(onlyKey) {
+      // [v13 marker-lock] 예전 💥 분리 상태가 남아 있으면 먼저 제거한다.
+      // 카드 펼침은 카드 DOM만 움직여야 하며, 마커 좌표는 절대 변경하지 않는다.
+      try {
+        if (window._splitGroups && window._splitGroups.size) window._splitGroups.clear();
+        document.querySelectorAll('.split-gather-btn').forEach(function(btn){ btn.remove(); });
+      } catch(e) {}
       const openObjs = mapOverlays.filter(o => o && o.isOpen && (!onlyKey || o.stackKey === onlyKey));
 
       // ── 그룹 구성 ──────────────────────────────────────
@@ -24201,35 +24358,10 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
       openObjs.forEach(o => {
         try {
-          const pos = o.marker && o.marker.getPosition
-            ? o.marker.getPosition()
-            : (o.overlay && o.overlay.getPosition ? o.overlay.getPosition() : null);
-          if (!pos) return;
-
-          // ★ 경매는 절대 스택 안 함 → 고유 ID 기반 키로 단독 처리
-          const pType = o.propertyType || o.item?.mode || 'general';
-          if (pType === 'auction' || o.item?.mode === 'auction') {
-            const soloKey = `solo_${o.id}`;
-            o.stackKey = soloKey;
-            if (!newGroups.has(soloKey)) newGroups.set(soloKey, []);
-            newGroups.get(soloKey).push(o.id);
-            return;
-          }
-
-          // ★ 유형별로만 스택: 같은 좌표라도 유형이 다르면 별도 그룹
-          const coordKey = `${pos.getLat().toFixed(6)}_${pos.getLng().toFixed(6)}`;
-          const src = o.item?.source || o.item?.data?.출처 || '';
-          let typeLabel;
-          // ★ [v142 FIX] disco/bds를 transaction보다 먼저
-          if (src === '디스코') typeLabel = 'disco';
-          else if (src === '부동산플래닛') typeLabel = 'bds';
-          else if (pType === 'transaction') typeLabel = 'transaction';
-          else if (src === '점포라인') typeLabel = 'jumpo';
-          else if (_isAssaSource(src)) typeLabel = 'assa';
-          else if (src === '네이버부동산' || src === '네이버' || pType === 'listing') typeLabel = 'naver';
-          else typeLabel = 'general';
-
-          const key = `${typeLabel}_${coordKey}`;
+          // [v14] 스택 그룹은 실제 마커 anchor 기준으로만 계산한다.
+          // 카드 펼침/정렬 좌표는 stackKey 산정에 절대 사용하지 않는다.
+          const key = _getOverlayStackKey(o);
+          if (!key) return;
           o.stackKey = key;
           if (!newGroups.has(key)) newGroups.set(key, []);
           newGroups.get(key).push(o.id);
@@ -24325,10 +24457,13 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       }
       // ── v52 추가: LOCK 버튼 헬퍼 ───────────────────────
       function makeLockBtn(key, orderedIds) {
+        // [v14] 그룹 LOCK은 카드 보기와 마커 좌표 이동을 다시 섞는 기능이라 제거한다.
+        // 마커 좌표 이동은 사용자가 각 마커를 직접 드래그할 때만 허용한다.
+        return null;
         // ★ 처음 생성되는 그룹이면 기본값 LOCK ON
         if (!window._groupLock) window._groupLock = new Map();
         if (window._groupLock.get(key) === undefined) {
-          window._groupLock.set(key, true);
+          window._groupLock.set(key, false); // [v13] 기본 LOCK OFF: 보기/드래그 중 의도치 않은 그룹 마커 이동 방지
           orderedIds.forEach(eid => {
             const el2 = document.getElementById(eid);
             if (el2) el2.classList.add('group-lock-active');
@@ -24356,42 +24491,13 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         }, true);
         return btn;
       }
-      // ── v53: 분리/모으기 토글 버튼 ──────────────────────
-      // 그룹이 같은 좌표에 모여 있으면 💥(분리), 흩어져 있으면 📍(모으기)
+      // ── v53: 마커 물리 분리 버튼 비활성화 ──────────────────────
+      // [FIX v12] 카드 묶음 보기(📋/📁)와 마커 좌표 이동을 분리한다.
+      // 실거래 다건(+N) 펼침 시 사용자가 기대하는 것은 '카드만 펼침'이고,
+      // 실제 위치 마커는 원 좌표를 절대 움직이면 안 된다.
+      // 예전 💥 버튼은 splitStackGroup()을 호출해 마커를 원형으로 이동시켰으므로 제거한다.
       function makeSplitBtn(key) {
-        // 같은 key로 묶인 마커들의 좌표가 모두 같은지 확인 → 분리 or 모으기 결정
-        const grpIds = (window._stackGroups && window._stackGroups.get(key)) || [];
-        const positions = grpIds.map(eid => {
-          const ov = mapOverlays.find(o => o.id === eid);
-          if (!ov || !ov.marker) return null;
-          const p = ov.marker.getPosition();
-          return `${p.getLat().toFixed(6)}_${p.getLng().toFixed(6)}`;
-        }).filter(Boolean);
-        const allSame = positions.length > 0 && positions.every(p => p === positions[0]);
-
-        const btn = document.createElement('div');
-        btn.className = 'card-expand-button';
-        if (allSame) {
-          // 같은 곳에 있음 → 분리 모드
-          btn.style.cssText = 'width:22px;height:22px;font-size:11px;border-radius:5px;background:rgba(255,71,87,.2);color:#ff4d4d;border:none;';
-          btn.textContent = '💥';
-          btn.title = '그룹 마커 분리 — 원형으로 벌리기 (다시 누르면 한 곳으로 모으기)';
-          btn.addEventListener('mousedown', function (e) { _blockEvent(e); }, true);
-          btn.addEventListener('touchstart', function (e) { _blockEvent(e); }, { capture: true, passive: false });
-          btn.addEventListener('click', function (e) { _blockEvent(e); splitStackGroup(key); }, true);
-        } else {
-          // 흩어져 있음 → 모으기 모드
-          btn.style.cssText = 'width:22px;height:22px;font-size:11px;border-radius:5px;background:rgba(255,180,0,.2);color:#ffd166;border:none;';
-          btn.textContent = '📍';
-          btn.title = '그룹 마커 한 곳으로 모으기 (대표 마커 위치로 집결)';
-          btn.addEventListener('mousedown', function (e) { _blockEvent(e); }, true);
-          btn.addEventListener('touchstart', function (e) { _blockEvent(e); }, { capture: true, passive: false });
-          btn.addEventListener('click', function (e) {
-            _blockEvent(e);
-            gatherStackGroup(key);
-          }, true);
-        }
-        return btn;
+        return null;
       }
       // 버튼들을 카드 우상단 모서리에 삽입 (extras: LOCK, 분리 등 추가 버튼)
       function insertActionBar(cardEl, badgeEl, expandEl, ...extras) {
@@ -24508,56 +24614,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           // expandMode가 false/undefined면 → 첫 번째 카드만 보이는 스택 모드
           const isOpenMode = (expandMode === 'open');
 
-          // 📍 일괄 이동 버튼 생성 헬퍼
-          const makeMoveAllBtn = () => {
-            return makeExpandBtn('📍', '그룹 마커를 한 곳으로 이동', function (e) {
-              e.stopPropagation(); e.preventDefault(); e.stopImmediatePropagation();
-              const grpNow = window._stackGroups && window._stackGroups.get(key);
-              if (!grpNow || grpNow.length < 2) return;
-              const repObj = mapOverlays.find(o => o.id === grpNow[0]);
-              if (!repObj || !repObj.marker) return;
-              const targetPos = repObj.marker.getPosition();
-              grpNow.slice(1).forEach(eid => {
-                const ov = mapOverlays.find(o => o.id === eid);
-                if (!ov || !ov.marker) return;
-                ov.marker.setPosition(targetPos);
-                if (ov.overlay) ov.overlay.setPosition(targetPos);
-                ov.stackKey = key;
-                updateMapLine(eid);
-              });
-              if (window.geocoder && typeof geocoder.coord2Address === 'function') {
-                geocoder.coord2Address(targetPos.getLng(), targetPos.getLat(), (res, status) => {
-                  if (status === kakao.maps.services.Status.OK && res && res.length) {
-                    const roadAddr = (res[0].road_address && res[0].road_address.address_name)
-                      ? res[0].road_address.address_name : '';
-                    const jibunAddr = (res[0].address && res[0].address.address_name)
-                      ? res[0].address.address_name : '';
-                    const addrName = roadAddr || jibunAddr;
-                    if (addrName) {
-                      const sv = getSv();
-                      grpNow.forEach(eid => {
-                        const ov = mapOverlays.find(o => o.id === eid);
-                        if (ov && ov.item) {
-                          ov.item.data = ov.item.data || {};
-                          _setDualAddressFields(ov.item.data, roadAddr, jibunAddr);
-                        }
-                        const it = sv.find(s => ov && ov.item && s.id === ov.item.id);
-                        if (it) {
-                          it.data = it.data || {};
-                          _setDualAddressFields(it.data, roadAddr, jibunAddr);
-                        }
-                      });
-                      setSv(sv); renderSaved();
-                      showToast(`📍 ${grpNow.length}개 마커 이동+주소: ${addrName}`, 'ok');
-                    }
-                  }
-                });
-              } else {
-                showToast(`📍 ${grpNow.length}개 마커를 한 곳으로 이동했습니다`, 'ok');
-              }
-              updateStackedCards(key || null);
-            });
-          };
+          // [v14] 마커 일괄 이동 헬퍼 제거: 스택 UI는 카드 레이아웃만 변경한다.
+          const makeMoveAllBtn = () => null;
 
           if (isOpenMode) {
             // ══ 위치복원 모드 (마커로 열기) ══
@@ -24703,43 +24761,27 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         }
       });
 
-      // ── _splitGroups: 분리된 그룹의 각 카드에 📍 모으기 버튼 표시 ──
-      if (window._splitGroups && window._splitGroups.size > 0) {
-        // 유효하지 않은 splitGroup 정리 (멤버가 실제로 없으면 삭제)
-        window._splitGroups.forEach((ids, splitKey) => {
-          const valid = ids.filter(eid => mapOverlays.find(o => o.id === eid && o.isOpen));
-          if (valid.length < 2) {
-            window._splitGroups.delete(splitKey);
-            return;
-          }
-          // 이미 좌표 기반으로 재결합됐으면 splitGroup 해제
-          const alreadyStacked = window._stackGroups.get(splitKey);
-          if (alreadyStacked && alreadyStacked.length >= 2) {
-            window._splitGroups.delete(splitKey);
-            return;
-          }
-          // 각 멤버 카드에 📍 버튼 삽입
-          valid.forEach(eid => {
-            const el = document.getElementById(eid);
-            if (!el) return;
-            // 이미 📍 버튼 있으면 스킵
-            if (el.querySelector('.split-gather-btn')) return;
-            const btn = document.createElement('div');
-            btn.className = 'card-expand-button split-gather-btn';
-            btn.style.cssText = 'width:22px;height:22px;font-size:11px;border-radius:5px;background:rgba(255,180,0,.2);color:#ffd166;border:none;position:absolute;top:-11px;left:-11px;z-index:10002;';
-            btn.textContent = '📍';
-            btn.title = `분리된 그룹 (${valid.length}개) — 클릭하면 한 곳으로 모으기`;
-            btn.addEventListener('mousedown', function (e) {
-              e.stopPropagation(); e.preventDefault(); e.stopImmediatePropagation();
-            }, true);
-            btn.addEventListener('click', function (e) {
-              e.stopPropagation(); e.preventDefault(); e.stopImmediatePropagation();
-              gatherStackGroup(splitKey);
-            }, true);
-            el.appendChild(btn);
-          });
+      // [v14] 물리 분리 그룹은 더 이상 사용하지 않는다.
+      // 남은 split 상태/버튼은 데이터 보정 차원에서 정리만 한다.
+      try {
+        if (window._splitGroups && window._splitGroups.clear) window._splitGroups.clear();
+        document.querySelectorAll('.split-gather-btn').forEach(function(btn){ btn.remove(); });
+      } catch(e) {}
+
+
+      // [v15 structural] 카드 배치 결과를 cardLayout에 즉시 반영한다.
+      try {
+        openObjs.forEach(function(o){
+          const el = document.getElementById(o.id);
+          if (!el || typeof _setCardLayoutState !== 'function') return;
+          const key = o.stackKey;
+          const mode = key && cardExpandState && cardExpandState.get ? (cardExpandState.get(key) || 'stack') : 'manual';
+          _setCardLayoutState(o, el, mode);
         });
-      }
+      } catch(e) {}
+
+      // [v14] 카드 레이아웃 갱신 후에도 마커는 anchor 좌표를 유지한다.
+      try { openObjs.forEach(function(o){ _restoreMarkerToAnchorIfDrifted(o); }); } catch(e) {}
 
       // ── 스케일 + 연결선 업데이트 ──────────────────────
       setTimeout(() => {
@@ -24757,102 +24799,18 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     // - 같은 stackKey로 묶인 마커들을 원형으로 벌려서 독립 마커로 만듦
     // ===================================================
     function splitStackGroup(key) {
+      // [v13 marker-lock]
+      // 과거 버전의 💥 분리 버튼은 marker.setPosition()으로 실제 마커 좌표를 원형 배치했다.
+      // 실거래 다건 확인은 "카드만" 펼쳐야 하므로, 이 함수는 영구적으로 no-op 처리한다.
       try {
-        if (!window._stackGroups) window._stackGroups = new Map();
-        if (!window._groupLock) window._groupLock = new Map();
-        if (!window._splitGroups) window._splitGroups = new Map();
-
-        // key가 바뀌었을 수 있으므로 실제 현재 stackKey를 동적으로 찾음
-        // 우선순위: (1) _splitGroups에서 원래 멤버 목록 복원 → 현재 key 추적
-        //          (2) _stackGroups에서 직접 조회
-        let ids = window._stackGroups.get(key) || [];
-        let actualKey = key;
-
-        if (ids.length < 2) {
-          // _splitGroups에 보존된 id 목록으로 현재 stackKey 탐색
-          window._splitGroups.forEach((savedIds, sKey) => {
-            if (ids.length >= 2) return;
-            // savedIds 중 하나의 현재 stackKey를 가져와서 _stackGroups 재조회
-            const pivot = mapOverlays.find(o => savedIds.includes(o.id) && o.stackKey);
-            if (pivot) {
-              const currentKey = pivot.stackKey;
-              const found = window._stackGroups.get(currentKey) || [];
-              if (found.length >= 2) { ids = found; actualKey = currentKey; }
-            }
-          });
-        }
-
-        if (!ids || ids.length < 2) {
-          showToast('해제할 그룹이 없습니다', 'warn');
-          return;
-        }
-        const first = mapOverlays.find(o => o.id === ids[0]);
-        if (!first || !first.marker) {
-          showToast('그룹 해제 실패: 기준 마커 없음', 'warn');
-          return;
-        }
-        const basePos = first.marker.getPosition();
-        const lat0 = basePos.getLat();
-        const lng0 = basePos.getLng();
-
-        // 현재 줌 레벨 기반 반경 계산 (화면상 약 80px)
-        const zoomLv = map.getLevel();
-        const metersPerPixel = 0.5 * Math.pow(2, zoomLv);
-        const radiusMeters = metersPerPixel * 35; // v56: 반경 축소 (너무 멀리 흩어지지 않게)
-        const dLatBase = radiusMeters / 111320;
-        const cosLat = Math.max(0.2, Math.cos(lat0 * Math.PI / 180));
-        const dLngBase = radiusMeters / (111320 * cosLat);
-
-        ids.forEach((eid, idx) => {
-          const ov = mapOverlays.find(o => o.id === eid);
-          if (!ov || !ov.marker) return;
-          const ang = (Math.PI * 2) * (idx / ids.length);
-          const newLat = lat0 + dLatBase * Math.cos(ang);
-          const newLng = lng0 + dLngBase * Math.sin(ang);
-          const np = new kakao.maps.LatLng(newLat, newLng);
-          ov.marker.setPosition(np);
-          if (ov.overlay) ov.overlay.setPosition(np);
-          // ★ [FIX] typeLabel 접두어 포함해서 updateStackedCards 키 형식과 일치
-          const _src = (ov.item && ov.item.source) || (ov.item && ov.item.data && ov.item.data['출처']) || '';
-          const _pt = ov.propertyType || (ov.item && ov.item.mode) || 'general';
-          let _tl;
-          if (_src === '디스코') _tl = 'disco';
-          else if (_src === '부동산플래닛') _tl = 'bds';
-          else if (_pt === 'transaction') _tl = 'transaction';
-          else if (_src === '점포라인') _tl = 'jumpo';
-          else if (_isAssaSource(_src)) _tl = 'assa';
-          else if (_src === '네이버부동산' || _src === '네이버' || _pt === 'listing') _tl = 'naver';
-          else _tl = 'general';
-          ov.stackKey = `${_tl}_${newLat.toFixed(6)}_${newLng.toFixed(6)}`;
-          ov.isOpen = !_isCompactMapUi();  // 📱 모바일: 복원 시도 차단
-          if (!_isCompactMapUi()) { try { if (ov.overlay) ov.overlay.setMap(map); } catch (e) { } }
-
-          const el = document.getElementById(eid);
-          if (el) {
-            el.classList.remove('split-flash', 'group-lock-active');
-            void el.offsetWidth; // reflow
-            el.classList.add('split-flash');
-            setTimeout(() => el.classList.remove('split-flash'), 650);
-          }
-        });
-
-        // ★ 물리적으로는 흩어지지만 논리 그룹은 _splitGroups에 보존
-        // → updateStackedCards가 이를 읽어 각 카드에 📍 버튼을 표시
-        if (!window._splitGroups) window._splitGroups = new Map();
-        window._splitGroups.set(actualKey, ids.slice()); // 현재 key로 저장
-        window._stackGroups.delete(actualKey);
-        window._groupLock.delete(actualKey);
-        // 이전 splitGroups 키도 정리 (key !== actualKey 인 경우)
-        if (key !== actualKey) window._splitGroups.delete(key);
-        try { cardExpandState && cardExpandState.delete && cardExpandState.delete(actualKey); } catch (e) { }
-        try { txSpreadState && txSpreadState.delete && txSpreadState.delete(actualKey); } catch (e) { }
-
-        showToast(`💥 분리 완료 (${ids.length}개) — 📍 버튼으로 다시 모을 수 있습니다`, 'ok');
-        setTimeout(() => { updateStackedCards(); mapOverlays.forEach(o => { if (o && o.isOpen) updateMapLine(o.id); }); }, 30);
-      } catch (err) {
-        console.error(err);
-        showToast('그룹 해제 중 오류', 'warn');
-      }
+        if (window._splitGroups && window._splitGroups.clear) window._splitGroups.clear();
+        if (cardExpandState && key) cardExpandState.set(key, 'grid');
+        updateStackedCards(key || null);
+        setTimeout(function(){
+          try { (mapOverlays || []).forEach(function(o){ if(o && o.isOpen) updateMapLine(o.id); }); } catch(e) {}
+        }, 0);
+        if (typeof showToast === 'function') showToast('마커는 고정했습니다. 카드는 📋 버튼으로만 정렬됩니다.', 'ok');
+      } catch(e) {}
     }
 
     // ===================================================
@@ -24860,71 +24818,14 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     // splitStackGroup의 반대 동작 — 대표 마커 위치로 전원 집결
     // ===================================================
     function gatherStackGroup(key) {
+      // [v13 marker-lock]
+      // 카드 보기/접기 때문에 실제 마커 위치를 모으거나 이동하지 않는다.
       try {
-        if (!window._splitGroups) window._splitGroups = new Map();
-        if (!window._stackGroups) window._stackGroups = new Map();
-        // _splitGroups에서 ids 우선 조회, key가 바뀌었으면 전체 탐색
-        let ids = window._splitGroups.get(key) || window._stackGroups.get(key) || [];
-        if (!ids || ids.length < 2) {
-          // 전체 _splitGroups에서 key를 포함하는 항목 탐색
-          window._splitGroups.forEach((savedIds, sKey) => {
-            if (ids.length >= 2) return;
-            ids = savedIds;
-            key = sKey;
-          });
-        }
-        if (!ids || ids.length < 2) {
-          showToast('모을 그룹이 없습니다', 'warn');
-          return;
-        }
-        // 살아있는 멤버만 (mapOverlays에 있는 것만)
-        const liveIds = ids.filter(eid => mapOverlays.find(o => o.id === eid));
-        if (liveIds.length < 1) { showToast('모을 마커가 없습니다', 'warn'); return; }
-        // ★ v57: 첫 번째 마커 기준이 아닌 모든 마커의 중심점(평균 좌표)으로 집결
-        // → 어느 한 방향으로 치우치지 않음
-        const liveObjs = liveIds.map(eid => mapOverlays.find(o => o.id === eid && o.marker)).filter(Boolean);
-        if (liveObjs.length < 1) { showToast('모으기 실패: 마커 없음', 'warn'); return; }
-        let _sumLat = 0, _sumLng = 0;
-        liveObjs.forEach(o => { const p = o.marker.getPosition(); _sumLat += p.getLat(); _sumLng += p.getLng(); });
-        const targetPos = new kakao.maps.LatLng(_sumLat / liveObjs.length, _sumLng / liveObjs.length);
-        const newKey = `${targetPos.getLat().toFixed(6)}_${targetPos.getLng().toFixed(6)}`;
-
-        liveIds.forEach((eid, idx) => {
-          const ov = mapOverlays.find(o => o.id === eid);
-          if (!ov || !ov.marker) return;
-          ov.marker.setPosition(targetPos);
-          if (ov.overlay) ov.overlay.setPosition(targetPos);
-          ov.stackKey = newKey;
-          ov.isOpen = !_isCompactMapUi();  // 📱 모바일 차단
-          if (!_isCompactMapUi()) { try { if (ov.overlay) ov.overlay.setMap(map); } catch (e) { } }
-
-          // 모이기 flash 애니메이션
-          const el = document.getElementById(eid);
-          if (el) {
-            el.classList.remove('merge-flash');
-            void el.offsetWidth;
-            el.classList.add('merge-flash');
-            setTimeout(() => el.classList.remove('merge-flash'), 650);
-          }
-        });
-
-        // stackGroups 키 갱신 (좌표가 바뀌었으므로)
-        window._stackGroups.delete(key);
-        window._stackGroups.set(newKey, liveIds);
-        if (window._groupLock) {
-          const wasLocked = window._groupLock.get(key);
-          window._groupLock.delete(key);
-          if (wasLocked) window._groupLock.set(newKey, true);
-        }
-        // _splitGroups에서 제거 (이제 진짜 스택 그룹으로 합쳐짐)
-        if (window._splitGroups) window._splitGroups.delete(key);
-
-        showToast(`📍 ${ids.length}개 마커를 한 곳으로 모았습니다`, 'ok');
-        setTimeout(() => { updateStackedCards(); mapOverlays.forEach(o => { if (o && o.isOpen) updateMapLine(o.id); }); }, 30);
-      } catch (err) {
-        console.error(err);
-        showToast('모으기 중 오류', 'warn');
-      }
+        if (window._splitGroups && window._splitGroups.clear) window._splitGroups.clear();
+        document.querySelectorAll('.split-gather-btn').forEach(function(btn){ btn.remove(); });
+        updateStackedCards(key || null);
+        if (typeof showToast === 'function') showToast('마커 위치는 그대로 유지됩니다.', 'ok');
+      } catch(e) {}
     }
 
     // ===================================================
@@ -26378,9 +26279,14 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         isOpen: initialTradeCardOpen,
         item,
         propertyType: 'transaction',
+        // [v14] markerAnchor와 cardLayout을 분리 저장
+        markerAnchor: { lat: position.getLat(), lng: position.getLng() },
+        markerAnchorKey: _mkLatLngKey(position),
+        cardLayout: { mode: 'stack', left: null, top: null },
         stackKey: getStackKeyFromPos(position),
         _userLoaded: true   // ★ 사용자 불러오기 마커
       };
+      overlayObj.stackKey = _getOverlayStackKey(overlayObj);
       mapOverlays.push(overlayObj);
       window.mapOverlays = mapOverlays; // 📱 모바일 동기화
 
@@ -27449,12 +27355,19 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     function applyTransactionYearFilter() {
       if (!map) return;
       const selectedYears = getSelectedTransactionYears();
-      // 선택된 연도 없으면 전체 표시
+      const lookbackMonths = (typeof _txGetLookbackMonths === 'function') ? _txGetLookbackMonths() : 24;
+      const passTxPeriod = function(item) {
+        try { return typeof _txInLookback === 'function' ? _txInLookback(item, lookbackMonths) : true; }
+        catch (e) { return true; }
+      };
+      // 선택 연도 + 조회기간(최근 N년)을 동시에 적용한다.
       // ★ mapOverlays(카드 오버레이)와 mapMarkers(마커) 모두 처리
       mapOverlays.forEach(o => {
         if (o.propertyType !== 'transaction') return;
         const year = String(o.item && o.item.year || '').replace(/[^0-9]/g, '').substring(0, 4);
-        const show = selectedYears.size === 0 || selectedYears.has(year);
+        const yearOk = selectedYears.size === 0 || selectedYears.has(year);
+        const periodOk = passTxPeriod(o.item);
+        const show = yearOk && periodOk;
         if (show) {
           o.marker.setMap(map);
           if (o.isOpen && !_isCompactMapUi()) o.overlay.setMap(map);  // 📱 모바일 차단
@@ -27469,10 +27382,11 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         // mapOverlays에서 이미 처리된 id는 건너뜀
         if (mapOverlays.find(o => o.id === m.id)) return;
         const year = String(m.item && m.item.year || '').replace(/[^0-9]/g, '').substring(0, 4);
-        const show = selectedYears.size === 0 || selectedYears.has(year);
-        m.marker.setMap(show ? map : null);
+        const yearOk = selectedYears.size === 0 || selectedYears.has(year);
+        const periodOk = passTxPeriod(m.item);
+        m.marker.setMap((yearOk && periodOk) ? map : null);
       });
-      // ★ 연도 필터 변경 후 카드 목록 카운트 업데이트
+      // ★ 연도/기간 필터 변경 후 카드 목록 카운트 업데이트
       if (typeof updateFilterCounts === 'function') updateFilterCounts();
     }
 
@@ -27487,6 +27401,9 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const el = document.getElementById('txLookbackExtraYears');
       if (el && String(el.value) !== String(n)) el.value = String(n);
       showToast(`실거래 조회 기간: 최근 ${2 + n}년`, 'ok');
+      // [FIX v12] 조회기간 변경 즉시 현재 표시 중인 실거래 마커/카드에도 기간 필터를 재적용한다.
+      try { if (typeof applyTransactionYearFilter === 'function') applyTransactionYearFilter(); } catch (e) {}
+      try { if (typeof updateFilterCounts === 'function') updateFilterCounts(); } catch (e) {}
     }
     window.setTxLookbackExtraYears = setTxLookbackExtraYears;
 
@@ -27495,6 +27412,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const extra = Math.max(0, Math.min(8, parseInt((el && el.value) || localStorage.getItem('txLookbackExtraYears') || '0', 10) || 0));
       return (2 + extra) * 12; // 기본 2년 + 추가 N년
     }
+    window._txGetLookbackMonths = _txGetLookbackMonths;
     (() => {
       const el = document.getElementById('txLookbackExtraYears');
       if (!el) return;
@@ -28358,10 +28276,15 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         isOpen: initialTradeCardOpen,
         item: tItem,
         propertyType: 'transaction',
+        // [v14] markerAnchor와 cardLayout을 분리 저장
+        markerAnchor: { lat: position.getLat(), lng: position.getLng() },
+        markerAnchorKey: _mkLatLngKey(position),
+        cardLayout: { mode: 'stack', left: null, top: null },
         stackKey: getStackKeyFromPos(position),
         transactionDupKey: dupKey,  // ★ 중복 방지용 키
         _userLoaded: true            // ★ 사용자 불러오기 마커
       };
+      overlayObj.stackKey = _getOverlayStackKey(overlayObj);
       mapOverlays.push(overlayObj);
       window.mapOverlays = mapOverlays; // 📱 모바일 동기화
 
@@ -28691,8 +28614,9 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const newKey = `${targetPos.getLat().toFixed(6)}_${targetPos.getLng().toFixed(6)}`;
 
       try { self.marker.setPosition(targetPos); } catch (_) { }
-      try { if (self.overlay) self.overlay.setPosition(targetPos); } catch (_) { }
-      self.stackKey = newKey;
+      // [v14] 결합은 명시적 마커 이동이지만 카드 위치는 보존한다.
+      try { _setMarkerAnchorState(self, targetPos); } catch (_) { }
+      self.stackKey = _getOverlayStackKey(self) || newKey;
 
       _mergePickMode = false;
       _mergeSourceId = null;
