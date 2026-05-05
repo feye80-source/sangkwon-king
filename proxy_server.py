@@ -580,6 +580,9 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 eais_pk      = payload.get('eais_pk', '')
                 r_type       = payload.get('r_type', '')
                 bldg_area_m2 = payload.get('bldg_area_m2', '')
+                global BDS_COOKIE_CACHE
+                if cookie and str(cookie).strip():
+                    BDS_COOKIE_CACHE = str(cookie).split('\n')[0].strip()
                 if not eais_pk:
                     self._ok(json.dumps({'floor': None, 'error': '필드 부족 (eais_pk 없음)'}, ensure_ascii=False))
                     return
@@ -594,7 +597,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
 
                 try:
                     # getBuildingInfo로 층수 조회 (로그인 쿠키 필요)
-                    bldg_url = f'https://www.bdsplanet.com/map/getBuildingInfo.ytp?pnu_enc={eais_pk}'
+                    bldg_url = f'https://www.bdsplanet.com/map/getBuildingInfo.ytp?pnu_enc={urllib.parse.quote(str(eais_pk))}'
                     print(f"  🏢 [플래닛 건물정보] {bldg_url}")
 
                     # 쿠키: 요청으로 전달된 cookie 우선, 없으면 캐시 사용
@@ -605,9 +608,11 @@ class ProxyHandler(BaseHTTPRequestHandler):
 
                     req = urllib.request.Request(bldg_url, headers=bldg_headers)
                     with _urlopen(req, timeout=10) as resp:
-                        raw = resp.read().decode('utf-8', errors='replace')
+                        raw = resp.read().decode('utf-8', errors='replace').strip()
 
                     print(f"  📦 getBuildingInfo 응답 앞부분: {raw[:200]}")
+                    if not raw or raw.lstrip().startswith('<'):
+                        raise ValueError('JSON이 아닌 응답/로그인 페이지 가능성')
                     bldg_data = json.loads(raw)
 
                     # eais_building_part_own_area에서 EAIS_KEY == eais_pk 인 "전유" 항목 찾기
@@ -617,7 +622,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     floor_val = None
                     # 1순위: 전유 면적 항목에서 매칭
                     for item in part_own_area:
-                        if item.get('EAIS_KEY') == eais_pk and item.get('EXPOS_PUB_CODE_NM') == '전유':
+                        if str(item.get('EAIS_KEY') or '').strip() == str(eais_pk).strip() and item.get('EXPOS_PUB_CODE_NM') == '전유':
                             floor_val = item.get('FLOOR_NO_NM')
                             print(f"  ✅ 전유 항목 매칭: EAIS_KEY={item.get('EAIS_KEY')}, 층={floor_val}")
                             break
@@ -625,7 +630,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     # 2순위: 전유 없으면 EAIS_KEY 매칭 첫 항목
                     if not floor_val:
                         for item in part_own_area:
-                            if item.get('EAIS_KEY') == eais_pk:
+                            if str(item.get('EAIS_KEY') or '').strip() == str(eais_pk).strip():
                                 floor_val = item.get('FLOOR_NO_NM')
                                 print(f"  ✅ 일반 항목 매칭: EAIS_KEY={item.get('EAIS_KEY')}, 층={floor_val}")
                                 break
@@ -658,31 +663,72 @@ class ProxyHandler(BaseHTTPRequestHandler):
 
             elif source == 'disco':
                 detail_url = payload.get('detail_url', '')
-                if not detail_url:
-                    self._ok(json.dumps({'floor': None, 'error': 'URL 없음'}, ensure_ascii=False))
+                uuid = payload.get('uuid', '') or ''
+                if not uuid and detail_url:
+                    m = _re.search(r'disco\.re/l/([^/?#]+)', detail_url)
+                    if m:
+                        uuid = m.group(1)
+                if not uuid:
+                    self._ok(json.dumps({'floor': None, 'error': 'uuid 없음'}, ensure_ascii=False))
                     return
-                print(f"  🏢 [디스코 층수조회] {detail_url[:80]}")
+                print(f"  🏢 [디스코 층수조회] uuid={uuid}")
                 try:
-                    headers = {
-                        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-                        'Accept': 'text/html,application/xhtml+xml,*/*',
-                        'Referer': 'https://www.disco.re/',
-                    }
-                    req = urllib.request.Request(detail_url, headers=headers)
-                    with _urlopen(req, timeout=10) as resp:
-                        html = resp.read().decode('utf-8', errors='replace')
-                    rows = _re.findall(r'class="trp-detail-table-row"[^>]*>(.*?)</div>\s*</div>', html, _re.DOTALL)
+                    def _extract_rows(obj):
+                        if isinstance(obj, list):
+                            return obj
+                        if not isinstance(obj, dict):
+                            return []
+                        for key in ('real_price', 'realPrice', 'data', 'list', 'items', 'result'):
+                            val = obj.get(key)
+                            if isinstance(val, list):
+                                return val
+                            if isinstance(val, dict):
+                                nested = _extract_rows(val)
+                                if nested:
+                                    return nested
+                        return []
+                    urls = [
+                        f'https://disco.re/real_price_table/?uuid={urllib.parse.quote(str(uuid))}',
+                        f'https://www.disco.re/real_price_table/?uuid={urllib.parse.quote(str(uuid))}',
+                    ]
                     floor_val = None
-                    for row in rows:
-                        cells = _re.findall(r'class="trp-detail-table-cell2"[^>]*>([^<]*)', row)
-                        if len(cells) >= 3:
-                            cell = cells[2].strip()
-                            if cell and cell != '-':
-                                floor_val = cell.split()[0] if cell.split() else None
-                                if floor_val:
+                    last_err = None
+                    for rp_url in urls:
+                        headers = {
+                            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+                            'Accept': 'application/json, text/javascript, */*; q=0.01',
+                            'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
+                            'Referer': f'https://disco.re/l/{uuid}',
+                            'Origin': 'https://disco.re',
+                            'X-Requested-With': 'XMLHttpRequest',
+                            'Sec-Fetch-Dest': 'empty',
+                            'Sec-Fetch-Mode': 'cors',
+                            'Sec-Fetch-Site': 'same-origin',
+                        }
+                        try:
+                            req = urllib.request.Request(rp_url, headers=headers)
+                            with _urlopen(req, timeout=10) as resp:
+                                txt = resp.read().decode('utf-8', errors='replace').strip()
+                            if not txt or txt.lstrip().startswith('<'):
+                                raise ValueError('JSON이 아닌 응답')
+                            rows = _extract_rows(json.loads(txt))
+                            for tr in rows:
+                                if str(tr.get('cancel', 0)).strip() not in ('', '0', 'N', 'n', 'false', 'False'):
+                                    continue
+                                t = str(tr.get('type', tr.get('t', ''))).strip()
+                                if t and t not in ('1', '7'):
+                                    continue
+                                fv = tr.get('floor') if tr.get('floor') not in (None, '', '0', 0) else (tr.get('fl') or tr.get('fl_nm'))
+                                if fv not in (None, '', '0', 0):
+                                    floor_val = fv
                                     break
+                            if floor_val:
+                                break
+                        except Exception as e:
+                            last_err = e
+                            print(f"  ⚠️ 디스코 real_price_table 층수조회 실패: {rp_url} / {e}")
                     print(f"  🏢 [디스코 층수] {floor_val}")
-                    self._ok(json.dumps({'floor': floor_val}, ensure_ascii=False))
+                    self._ok(json.dumps({'floor': floor_val, 'uuid': uuid, 'error': None if floor_val else str(last_err or '')}, ensure_ascii=False))
                 except Exception as e:
                     print(f"  ⚠️ 디스코 층수조회 실패: {e}")
                     self._ok(json.dumps({'floor': None, 'error': str(e)}, ensure_ascii=False))
@@ -2339,6 +2385,10 @@ class ProxyHandler(BaseHTTPRequestHandler):
                             '공급면적_m2':   supply_area,
                             '토지면적_m2':   clean(tr.get('land_area') or tr.get('la')),
                             '해당층':        floor_val,
+                            '층수':          floor_val,
+                            '층':            floor_val,
+                            'floor':         floor_val,
+                            '_resolved_floor': floor_val,
                             '호수':          tr.get('ho') or tr.get('room') or tr.get('dongho') or None,
                             '소재지':        '',
                             '거래년월':      ym,
@@ -2376,6 +2426,9 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     '공급면적_m2':   clean(b.get('sa')),
                     '토지면적_m2':   clean(b.get('la')),
                     '해당층':        clean(b.get('fl')) or b.get('fl_nm') or b.get('floor') or None,
+                    '층수':          clean(b.get('fl')) or b.get('fl_nm') or b.get('floor') or None,
+                    '층':            clean(b.get('fl')) or b.get('fl_nm') or b.get('floor') or None,
+                    'floor':         clean(b.get('fl')) or b.get('fl_nm') or b.get('floor') or None,
                     '소재지':        '',
                     '거래년월':      str(b.get('y') or ''),
                     'lat':           float(b['lat']) if b.get('lat') else None,
@@ -2834,6 +2887,10 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     '건물면적_m2':   clean(d.get('bldg_area_m2')),
                     '건축연도':      d.get('build_year') or None,
                     '해당층':        d.get('_resolved_floor') or d.get('t_floor') or d.get('t_flr') or d.get('floor_level') or d.get('flr') or d.get('floor') or d.get('f_nm') or d.get('bldg_flr') or d.get('obj_floor') or d.get('floor_no') or d.get('FLOOR_NO_NM') or d.get('FLOOR_NM') or None,
+                    '층수':          d.get('_resolved_floor') or d.get('t_floor') or d.get('t_flr') or d.get('floor_level') or d.get('flr') or d.get('floor') or d.get('f_nm') or d.get('bldg_flr') or d.get('obj_floor') or d.get('floor_no') or d.get('FLOOR_NO_NM') or d.get('FLOOR_NM') or None,
+                    '층':            d.get('_resolved_floor') or d.get('t_floor') or d.get('t_flr') or d.get('floor_level') or d.get('flr') or d.get('floor') or d.get('f_nm') or d.get('bldg_flr') or d.get('obj_floor') or d.get('floor_no') or d.get('FLOOR_NO_NM') or d.get('FLOOR_NM') or None,
+                    'floor':         d.get('_resolved_floor') or d.get('t_floor') or d.get('t_flr') or d.get('floor_level') or d.get('flr') or d.get('floor') or d.get('f_nm') or d.get('bldg_flr') or d.get('obj_floor') or d.get('floor_no') or d.get('FLOOR_NO_NM') or d.get('FLOOR_NM') or None,
+                    '_resolved_floor': d.get('_resolved_floor') or None,
                     '소재지':        (d.get('addr_nm') or d.get('_road_location') or d.get('_location') or (str(d.get('sigungu_nm','')) + ' ' + str(d.get('dong_nm') or d.get('dongnm') or '')).strip() or ''),
                     '지번주소':      (d.get('addr_nm') or d.get('_location') or '').strip() or None,
                     '도로명주소':    (d.get('_road_location') or '').strip() or None,
