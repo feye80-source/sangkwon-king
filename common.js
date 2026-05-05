@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260505-calc-ui-moneyfix-v15-complete';
+    window.__SK_BUILD = '20260506-calc-layout-restore-v18-linkbtn-stable';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -4858,6 +4858,49 @@ var _safeLocalSet = function(key, value) {
                   });
                 }
 
+                function wr2EnsureLinkSavedButton(detailEl, preferredHost) {
+                  try {
+                    const detail = detailEl || document.getElementById('wr2Detail') || document.querySelector('.wr2-detail') || document.body;
+                    let btn = document.getElementById('wr2LinkSavedBtn');
+                    if (!btn) {
+                      btn = document.createElement('button');
+                      btn.id = 'wr2LinkSavedBtn';
+                      btn.type = 'button';
+                      btn.className = 'wr2-hd-btn wr2-link-saved-btn';
+                    }
+                    let host = preferredHost || null;
+                    if (!host) {
+                      host = (detail && (
+                        detail.querySelector('.wr2-hdr-row1-btns') ||
+                        detail.querySelector('.wr2-header-actions') ||
+                        detail.querySelector('.wr2-detail-actions') ||
+                        detail.querySelector('.wr2-toolbar')
+                      )) || null;
+                    }
+                    if (!host) {
+                      host = document.getElementById('wr2LinkSavedHost');
+                      if (!host) {
+                        host = document.createElement('div');
+                        host.id = 'wr2LinkSavedHost';
+                        host.className = 'wr2-link-saved-host';
+                        if (detail && detail.firstChild) detail.insertBefore(host, detail.firstChild);
+                        else if (detail) detail.appendChild(host);
+                      }
+                    }
+                    if (btn.parentElement !== host) host.appendChild(btn);
+                    btn.style.display = '';
+                    btn.textContent = '+ 물건 연결';
+                    btn.title = '저장목록의 경매 물건을 이 작업룸에 추가 연결';
+                    btn.onclick = function(e) {
+                      if (e && e.stopPropagation) e.stopPropagation();
+                      const room = (typeof getActiveRoom === 'function') ? getActiveRoom() : null;
+                      if (!room) { try { if (typeof showToast === 'function') showToast('먼저 작업룸을 선택하세요', 'warn'); } catch(_e) {} return; }
+                      if (typeof wr2ShowLinkModal === 'function') wr2ShowLinkModal();
+                    };
+                    return btn;
+                  } catch (e) { console.warn('[wr2EnsureLinkSavedButton]', e); return null; }
+                }
+
                 function renderDetail() {
                   const emptyEl = document.getElementById('wr2DetailEmpty');
                   const detailEl = document.getElementById('wr2Detail');
@@ -4882,10 +4925,16 @@ var _safeLocalSet = function(key, value) {
                   if (addrInput) addrInput.value = room.address || '';
                   const host = (statusBadge && statusBadge.parentElement) || detailEl.querySelector('.wr2-hdr-row1-btns');
                   if (statusBadge) statusBadge.style.display = 'none';
+                  wr2EnsureLinkSavedButton(detailEl, host);
                   const linkBtnEl = document.getElementById('wr2LinkSavedBtn');
                   if (linkBtnEl) {
-                    linkBtnEl.style.display = 'none';
-                    linkBtnEl.onclick = null;
+                    linkBtnEl.style.display = '';
+                    linkBtnEl.textContent = '+ 물건 연결';
+                    linkBtnEl.title = '저장목록의 경매 물건을 이 작업룸에 추가 연결';
+                    linkBtnEl.onclick = function(e) {
+                      if (e && e.stopPropagation) e.stopPropagation();
+                      if (typeof wr2ShowLinkModal === 'function') wr2ShowLinkModal();
+                    };
                   }
                   if (host) {
                       const insertAnchor = document.getElementById('wr2LinkSavedBtn') || host.firstChild;
@@ -7312,142 +7361,53 @@ window.wr2SummaryCancelEdit = function() {
                   `;
                   document.head.appendChild(st);
                   st.textContent += `
-                    /* v13 calculator UI: amount-safe widths + modest KPI emphasis */
-                    .wr2-calc-pro-shell{max-width:1380px!important;font-size:13px!important;}
-                    .wcp-top{padding:8px 0 10px!important;margin-bottom:10px!important;}
-                    .wcp-title{font-size:18px!important;}
-                    .wcp-card{padding:12px!important;margin-bottom:10px!important;border-radius:13px!important;overflow:visible!important;}
-                    .wcp-card h3{font-size:16px!important;}.wcp-card h4{font-size:12.5px!important;margin-bottom:7px!important;}
-                    .wcp-section{padding:10px!important;border-radius:11px!important;overflow:visible!important;}
-                    .wcp-grid4{gap:9px!important;}.wcp-grid3{gap:9px!important;}.wcp-grid2{gap:10px!important;}
-                    .wcp-main-grid{display:grid!important;grid-template-columns:minmax(690px,1.15fr) minmax(500px,.85fr)!important;gap:12px!important;align-items:start!important;}
-                    .wcp-input-sections{display:grid!important;grid-template-columns:repeat(2,minmax(330px,1fr))!important;gap:10px!important;}
+                    /* v17: 원래 안정 레이아웃 복구 + 금액칸만 최소 보정 */
+                    .wr2-calc-pro-shell{max-width:1240px!important;overflow:visible!important;}
+                    .wr2-calc-pro-mount,.wr2-calc-pro-mount .wr2-section-body{overflow:visible!important;}
+                    .wcp-card,.wcp-section{overflow:hidden!important;}
+                    .wcp-main-grid{display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:10px!important;align-items:start!important;}
+                    .wcp-input-sections{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr))!important;gap:8px!important;min-width:0!important;}
                     .wcp-side-col{min-width:0!important;}
-                    .wcp-form{gap:7px!important;}
-                    .wcp-line{grid-template-columns:minmax(104px,132px) minmax(178px,1fr) 26px!important;gap:7px!important;}
-                    .wcp-line.rate{grid-template-columns:minmax(104px,132px) 72px 20px minmax(166px,1fr) 26px!important;gap:7px!important;}
-                    .wcp-line.double{grid-template-columns:minmax(104px,132px) minmax(178px,1fr) 26px minmax(104px,132px) minmax(178px,1fr) 26px!important;}
-                    .wcp-line label{font-size:11px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;}
-                    .wcp-inp{min-height:34px!important;padding:7px 10px!important;font-size:13px!important;font-weight:750!important;letter-spacing:-.01em!important;}
-                    .wcp-out{min-height:34px!important;padding:7px 10px!important;font-size:13px!important;overflow:visible!important;text-overflow:clip!important;}
-                    .wcp-unit{font-size:10.5px!important;overflow:visible!important;text-overflow:clip!important;}
-                    .wcp-note{font-size:10.5px!important;min-height:15px!important;}
-                    .wcp-note[id*="bench"],#wcp_my_bid_note,#wcp_price_note,#wcp_rent_note{color:#fb923c!important;font-weight:900!important;background:rgba(249,115,22,.08)!important;border:1px solid rgba(249,115,22,.20)!important;border-radius:7px!important;padding:3px 6px!important;margin-top:3px!important;}
-                    .wcp-kpi-strip{grid-template-columns:minmax(150px,1fr) minmax(150px,1fr) minmax(158px,1fr) minmax(166px,1.05fr) minmax(160px,1.08fr) minmax(176px,1.10fr) minmax(118px,.75fr)!important;gap:9px!important;margin-top:8px!important;}
-                    .wcp-kpi{padding:9px 10px!important;min-height:62px!important;position:relative!important;overflow:hidden!important;}
-                    .wcp-kpi .l{font-size:10.5px!important;white-space:normal!important;line-height:1.15!important;overflow:visible!important;text-overflow:clip!important;}
-                    .wcp-kpi .v{font-size:16px!important;line-height:1.15!important;white-space:nowrap!important;overflow:visible!important;text-overflow:clip!important;letter-spacing:-.035em!important;}
-                    .wcp-kpi.minfund{border-color:rgba(34,197,94,.42)!important;background:linear-gradient(180deg,rgba(34,197,94,.13),rgba(255,255,255,.035))!important;}
-                    .wcp-kpi.yield-main{border-color:rgba(96,165,250,.46)!important;background:linear-gradient(180deg,rgba(37,99,235,.16),rgba(255,255,255,.04))!important;}
-                    .wcp-kpi.yield-main .v{font-size:20px!important;color:#93c5fd!important;}
-                    .wcp-kpi.yield-main.lev{border-color:rgba(168,85,247,.42)!important;background:linear-gradient(180deg,rgba(126,34,206,.15),rgba(255,255,255,.04))!important;}
-                    .wcp-kpi.yield-main.lev .v{color:#c4b5fd!important;}
-                    .wcp-kpi.roi .v{font-size:18px!important;}
-                    .wcp-resultbar{padding:9px 11px!important;margin-top:7px!important;}
-                    .wcp-resultbar .value{font-size:17px!important;white-space:nowrap!important;}
-                    .wcp-tabs{margin:9px 0!important;padding-bottom:7px!important;}
-                    .wcp-tab{padding:5px 11px!important;font-size:10.8px!important;}
-                    .wcp-loan-rule{border:1px solid rgba(59,130,246,.32);background:linear-gradient(180deg,rgba(37,99,235,.12),rgba(5,9,15,.24));border-radius:10px;padding:8px;margin:2px 0 4px;}
-                    .wcp-loan-rule .title{display:flex;justify-content:space-between;gap:8px;color:#93c5fd;font-weight:900;font-size:11px;margin-bottom:6px;}
-                    .wcp-loan-rule .formula{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;}
-                    .wcp-loan-rule .chip{border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.04);border-radius:8px;padding:6px;min-width:0;}
-                    .wcp-loan-rule .chip span{display:block;color:#94a3b8;font-size:10px;margin-bottom:2px;}
-                    .wcp-loan-rule .chip b{display:block;color:#e8ecf4;font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+                    @media(min-width:1300px){.wcp-main-grid{grid-template-columns:minmax(0,1.15fr) minmax(360px,.85fr)!important;}}
+                    .wcp-line{grid-template-columns:96px minmax(0,1fr) 30px!important;gap:6px!important;}
+                    .wcp-line.rate,.wcp-line.rate.wcp-rate-field{grid-template-columns:96px 64px 20px minmax(118px,1fr) 30px!important;gap:6px!important;}
+                    .wcp-inp[data-wcp-money="1"],.wcp-money-cell{font-variant-numeric:tabular-nums!important;letter-spacing:-.025em!important;text-align:right!important;padding-left:6px!important;padding-right:6px!important;min-width:0!important;}
+                    .wcp-line.rate .wcp-money-cell{font-size:11.2px!important;}
+                    .wcp-unit{overflow:visible!important;text-overflow:clip!important;white-space:nowrap!important;}
+                    .wcp-loan-rule{border:1px solid rgba(59,130,246,.28);background:rgba(37,99,235,.08);border-radius:9px;padding:7px;margin:3px 0 5px;}
+                    .wcp-loan-rule .title{display:flex;justify-content:space-between;gap:8px;color:#93c5fd;font-weight:900;font-size:10.5px;margin-bottom:6px;}
+                    .wcp-loan-rule .formula{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;}
+                    .wcp-loan-rule .chip{border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.035);border-radius:8px;padding:5px;min-width:0;}
+                    .wcp-loan-rule .chip span{display:block;color:#94a3b8;font-size:9.5px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+                    .wcp-loan-rule .chip b{display:block;color:#e8ecf4;font-size:10.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums;letter-spacing:-.03em;}
                     .wcp-loan-rule .chip.on{border-color:rgba(96,165,250,.45);background:rgba(37,99,235,.16);}.wcp-loan-rule .chip.on b{color:#60a5fa;}
-                    .wcp-loan-rule .help{font-size:10px;color:#8b97ad;margin-top:6px;line-height:1.35;}
-                    .wcp-flow th,.wcp-table th,.wcp-tiny-table th{padding:7px 6px!important;font-size:10.5px!important;}
-                    .wcp-flow td,.wcp-table td,.wcp-tiny-table td{padding:7px 6px!important;font-size:10.5px!important;}
-                    .wcp-invest-table{width:100%;border-collapse:collapse;font-size:12px;table-layout:auto;}
-                    .wcp-invest-table td{border-bottom:1px solid rgba(255,255,255,.065);padding:8px 5px;color:#cbd5e1;vertical-align:middle;}
-                    .wcp-invest-table td:nth-child(1){min-width:108px;white-space:nowrap;}
-                    .wcp-invest-table td:nth-child(2){text-align:right;color:#f8fafc;font-weight:950;white-space:nowrap;min-width:142px;letter-spacing:-.025em;}
-                    .wcp-invest-table td:nth-child(3){text-align:left;color:#94a3b8;white-space:nowrap;padding-left:10px;}
-                    .wcp-invest-table tr.yield-row td:nth-child(2){font-size:15px;color:#93c5fd!important;}
-                    .wcp-invest-table tr.lev-row td:nth-child(2){font-size:15px;color:#c4b5fd!important;}
-                    .wcp-invest-table .hot{color:#fb923c!important}.wcp-invest-table .red{color:#fb7185!important}.wcp-invest-table .green{color:#4ade80!important;}
-                    #wcp_p_total_with_deposit{color:#4ade80!important;}
-                    #wr2TableWrap,.wr2-ft-block,.wr2-free-table{display:none!important;}
-                    @media(max-width:1260px){.wcp-main-grid{grid-template-columns:1fr!important}.wcp-kpi-strip{grid-template-columns:repeat(4,minmax(0,1fr))!important}.wcp-input-sections{grid-template-columns:repeat(2,minmax(310px,1fr))!important}}
-                    @media(max-width:980px){.wcp-kpi-strip{grid-template-columns:repeat(2,1fr)!important}.wcp-grid4,.wcp-grid3,.wcp-grid2,.wcp-input-sections{grid-template-columns:1fr!important}.wcp-line.rate{grid-template-columns:98px 66px 20px minmax(150px,1fr) 26px!important}.wcp-loan-rule .formula{grid-template-columns:1fr!important}}
-                    @media(max-width:620px){.wcp-line,.wcp-line.rate,.wcp-line.double{grid-template-columns:1fr!important}.wcp-inp{text-align:right!important}.wcp-unit{display:block!important}.wcp-kpi .v{font-size:15px!important}.wcp-kpi.yield-main .v{font-size:18px!important}}
-                    /* v14 calculator UI: rate+amount rows use nested groups so money is never clipped */
-                    .wcp-input-card{overflow:visible!important;}
-                    .wcp-input-sections{grid-template-columns:repeat(2,minmax(460px,1fr))!important;}
-                    .wcp-line.wcp-rate-field{grid-template-columns:minmax(112px,138px) minmax(82px,96px) minmax(186px,1fr)!important;gap:8px!important;align-items:center!important;}
-                    .wcp-rate-field>label{min-width:0!important;}
-                    .wcp-rate-box,.wcp-amount-box{display:grid!important;align-items:center!important;gap:6px!important;min-width:0!important;}
-                    .wcp-rate-box{grid-template-columns:minmax(62px,1fr) 20px!important;}
-                    .wcp-amount-box{grid-template-columns:minmax(160px,1fr) 26px!important;}
-                    .wcp-rate-box .wcp-inp,.wcp-amount-box .wcp-inp{min-width:0!important;width:100%!important;}
-                    .wcp-amount-box .wcp-inp{font-variant-numeric:tabular-nums!important;letter-spacing:-.02em!important;padding-left:8px!important;padding-right:8px!important;}
-                    .wcp-line:not(.wcp-rate-field) .wcp-inp[data-wcp-money="1"]{font-variant-numeric:tabular-nums!important;min-width:170px!important;}
+                    .wcp-loan-rule .help{font-size:9.5px;color:#8b97ad;margin-top:5px;line-height:1.35;}
+                    .wcp-kpi.minfund{border-color:rgba(34,197,94,.36)!important;background:linear-gradient(180deg,rgba(34,197,94,.12),rgba(255,255,255,.035))!important;}
                     .wcp-kpi.minfund .v{color:#4ade80!important;}
-                    .wcp-kpi.yield-main{box-shadow:0 0 0 1px rgba(96,165,250,.12) inset!important;}
-                    .wcp-kpi.yield-main.lev{box-shadow:0 0 0 1px rgba(168,85,247,.12) inset!important;}
-                    @media(max-width:1260px){.wcp-input-sections{grid-template-columns:1fr!important}.wcp-line.wcp-rate-field{grid-template-columns:minmax(112px,138px) minmax(82px,96px) minmax(220px,1fr)!important}.wcp-amount-box{grid-template-columns:minmax(190px,1fr) 26px!important}}
-                    @media(max-width:760px){.wcp-line.wcp-rate-field{grid-template-columns:1fr!important}.wcp-rate-box,.wcp-amount-box{grid-template-columns:minmax(0,1fr) 30px!important}.wcp-line:not(.wcp-rate-field) .wcp-inp[data-wcp-money="1"]{min-width:0!important}}
-
-                    /* v15 complete calculator fix: direct 5-column rate rows, no clipped won fields */
-                    .wr2-calc-pro-shell{max-width:min(100%,1480px)!important;}
-                    .wcp-card,.wcp-section{overflow:visible!important;}
-                    .wcp-main-grid{display:grid!important;grid-template-columns:minmax(0,1.12fr) minmax(480px,.88fr)!important;gap:12px!important;align-items:start!important;}
-                    .wcp-input-sections{display:grid!important;grid-template-columns:repeat(2,minmax(520px,1fr))!important;gap:10px!important;}
-                    .wcp-line{display:grid!important;grid-template-columns:minmax(120px,150px) minmax(220px,1fr) 30px!important;gap:8px!important;align-items:center!important;min-width:0!important;}
-                    .wcp-line.rate.wcp-rate-field{display:grid!important;grid-template-columns:minmax(120px,150px) minmax(70px,86px) 22px minmax(178px,1fr) 30px!important;gap:8px!important;align-items:center!important;min-width:0!important;}
-                    .wcp-line label{min-width:0!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;}
-                    .wcp-inp{min-width:0!important;width:100%!important;font-variant-numeric:tabular-nums!important;}
-                    .wcp-rate-input{min-width:70px!important;text-align:right!important;}
-                    .wcp-money-cell,.wcp-line:not(.rate) .wcp-inp[data-wcp-money="1"]{min-width:170px!important;text-align:right!important;letter-spacing:-.02em!important;}
-                    .wcp-unit{display:block!important;min-width:22px!important;text-align:left!important;overflow:visible!important;white-space:nowrap!important;}
-                    .wcp-rate-box,.wcp-amount-box{display:contents!important;}
-                    .wcp-kpi-strip{grid-template-columns:minmax(150px,1fr) minmax(150px,1fr) minmax(158px,1fr) minmax(168px,1.05fr) minmax(164px,1.1fr) minmax(178px,1.14fr) minmax(118px,.78fr)!important;}
-                    .wcp-kpi.minfund{border-color:rgba(34,197,94,.55)!important;background:linear-gradient(180deg,rgba(34,197,94,.16),rgba(34,197,94,.045))!important;}
-                    .wcp-kpi.minfund .v{color:#4ade80!important;}
-                    .wcp-kpi.yield-main{border-color:rgba(96,165,250,.56)!important;background:linear-gradient(180deg,rgba(37,99,235,.19),rgba(37,99,235,.045))!important;}
-                    .wcp-kpi.yield-main .v{font-size:20px!important;color:#93c5fd!important;}
-                    .wcp-kpi.yield-main.lev{border-color:rgba(168,85,247,.55)!important;background:linear-gradient(180deg,rgba(126,34,206,.18),rgba(126,34,206,.045))!important;}
+                    .wcp-kpi.yield-main{border-color:rgba(96,165,250,.42)!important;background:linear-gradient(180deg,rgba(37,99,235,.13),rgba(255,255,255,.04))!important;}
+                    .wcp-kpi.yield-main .v{color:#93c5fd!important;font-size:15px!important;}
+                    .wcp-kpi.yield-main.lev{border-color:rgba(168,85,247,.38)!important;background:linear-gradient(180deg,rgba(126,34,206,.12),rgba(255,255,255,.04))!important;}
                     .wcp-kpi.yield-main.lev .v{color:#c4b5fd!important;}
-                    .wcp-loan-rule .chip b{overflow:visible!important;text-overflow:clip!important;font-variant-numeric:tabular-nums!important;letter-spacing:-.03em!important;}
-                    .wcp-invest-table td:nth-child(2){min-width:170px!important;}
-                    @media(max-width:1420px){.wcp-main-grid{grid-template-columns:1fr!important}.wcp-input-sections{grid-template-columns:repeat(2,minmax(500px,1fr))!important}.wcp-kpi-strip{grid-template-columns:repeat(4,minmax(0,1fr))!important}}
-                    @media(max-width:1080px){.wcp-input-sections,.wcp-grid4,.wcp-grid3,.wcp-grid2{grid-template-columns:1fr!important}.wcp-line.rate.wcp-rate-field{grid-template-columns:minmax(120px,150px) minmax(70px,86px) 22px minmax(190px,1fr) 30px!important}}
-                    @media(max-width:680px){.wcp-line,.wcp-line.rate.wcp-rate-field{grid-template-columns:1fr!important}.wcp-money-cell,.wcp-line:not(.rate) .wcp-inp[data-wcp-money="1"]{min-width:0!important}.wcp-unit{text-align:right!important}.wcp-kpi-strip{grid-template-columns:1fr!important}}
-
-                    /* v16: 깨짐 복구 + 사진3 기반 계산기 레이아웃. hard min-width 제거 */
-                    .wr2-calc-pro-shell{width:100%!important;max-width:100%!important;box-sizing:border-box!important;overflow-x:hidden!important;}
-                    .wr2-calc-pro-shell *{box-sizing:border-box!important;}
-                    .wcp-card,.wcp-section{max-width:100%!important;overflow:visible!important;}
-                    .wcp-top{position:sticky!important;top:0!important;z-index:20!important;}
-                    .wcp-main-grid{display:grid!important;grid-template-columns:minmax(0,1.08fr) minmax(0,.82fr)!important;gap:12px!important;align-items:start!important;}
-                    .wcp-input-sections{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important;min-width:0!important;}
-                    .wcp-side-col{min-width:0!important;max-width:100%!important;}
-                    .wcp-line{display:grid!important;grid-template-columns:minmax(92px,126px) minmax(150px,1fr) 24px!important;gap:8px!important;align-items:center!important;min-width:0!important;}
-                    .wcp-line.rate.wcp-rate-field{display:grid!important;grid-template-columns:minmax(92px,126px) minmax(62px,74px) 18px minmax(132px,1fr) 24px!important;gap:8px!important;align-items:center!important;min-width:0!important;}
-                    .wcp-line label{min-width:0!important;overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important;}
-                    .wcp-inp{width:100%!important;min-width:0!important;max-width:100%!important;font-size:12.5px!important;line-height:1.2!important;font-variant-numeric:tabular-nums!important;}
-                    .wcp-rate-input{min-width:0!important;max-width:74px!important;}
-                    .wcp-money-cell,.wcp-line:not(.rate) .wcp-inp[data-wcp-money="1"]{min-width:0!important;text-align:right!important;letter-spacing:-.02em!important;}
-                    .wcp-unit{display:block!important;min-width:0!important;width:24px!important;text-align:left!important;white-space:nowrap!important;overflow:visible!important;}
-                    .wcp-output{min-width:0!important;}
-                    .wcp-output .v{white-space:nowrap!important;overflow:visible!important;text-overflow:clip!important;font-variant-numeric:tabular-nums!important;letter-spacing:-.025em!important;}
-                    .wcp-invest-table{table-layout:fixed!important;width:100%!important;}
-                    .wcp-invest-table td:nth-child(1){width:32%!important;min-width:0!important;}
-                    .wcp-invest-table td:nth-child(2){width:36%!important;min-width:0!important;white-space:nowrap!important;overflow:visible!important;}
-                    .wcp-invest-table td:nth-child(3){width:32%!important;min-width:0!important;white-space:nowrap!important;}
-                    .wcp-bench-compact{padding:0!important;background:rgba(249,115,22,.055)!important;border-color:rgba(249,115,22,.28)!important;}
-                    .wcp-bench-compact>summary{list-style:none;cursor:pointer;padding:10px 12px;display:flex;align-items:center;justify-content:space-between;gap:10px;}
-                    .wcp-bench-compact>summary::-webkit-details-marker{display:none;}
-                    .wcp-bench-compact .sum-title{font-size:13px;font-weight:950;color:#fed7aa;}
-                    .wcp-bench-compact .sum-sub{font-size:10.5px;color:#9aa6bd;}
-                    .wcp-bench-compact .wcp-bench-body{padding:0 12px 12px;}
-                    .wcp-bench-compact:not([open]){margin-bottom:8px!important;}
-                    .wcp-bench-compact:not([open]) .wcp-bench-body{display:none!important;}
-                    .wcp-kpi.yield-main .v{font-size:18px!important;}
-                    .wcp-kpi.yield-main.lev .v{font-size:18px!important;}
-                    .wcp-kpi.minfund .v{color:#4ade80!important;}
-                    @media(max-width:1320px){.wcp-main-grid{grid-template-columns:1fr!important}.wcp-input-sections{grid-template-columns:repeat(2,minmax(0,1fr))!important}.wcp-kpi-strip{grid-template-columns:repeat(4,minmax(0,1fr))!important}}
-                    @media(max-width:900px){.wcp-input-sections,.wcp-grid4,.wcp-grid3,.wcp-grid2{grid-template-columns:1fr!important}.wcp-line,.wcp-line.rate.wcp-rate-field{grid-template-columns:1fr!important}.wcp-unit{text-align:right!important;width:auto!important}.wcp-kpi-strip{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
-                    @media(max-width:560px){.wcp-kpi-strip{grid-template-columns:1fr!important}.wcp-actions{justify-content:flex-start!important}.wcp-kpi.yield-main .v,.wcp-kpi.yield-main.lev .v{font-size:17px!important}}
+                    @media(max-width:980px){.wcp-line.rate,.wcp-line.rate.wcp-rate-field{grid-template-columns:92px 60px 20px minmax(108px,1fr) 28px!important}.wcp-loan-rule .formula{grid-template-columns:1fr!important}}
+                    @media(max-width:760px){.wcp-line,.wcp-line.rate,.wcp-line.rate.wcp-rate-field{grid-template-columns:1fr!important}.wcp-unit{display:none!important}.wcp-inp{text-align:left!important}}
+                    /* v18: 깨진 레이아웃 복구. 외부 구조는 안정 grid, 금액칸만 확보 */
+                    .wr2-link-saved-host{display:flex;justify-content:flex-end;align-items:center;gap:6px;margin:0 0 8px 0;position:relative;z-index:5;}
+                    .wr2-link-saved-btn{border:1px solid rgba(59,130,246,.45)!important;background:rgba(37,99,235,.14)!important;color:#bfdbfe!important;border-radius:8px!important;padding:5px 10px!important;font-size:11px!important;font-weight:900!important;cursor:pointer!important;white-space:nowrap!important;}
+                    .wr2-link-saved-btn:hover{background:rgba(37,99,235,.24)!important;border-color:rgba(96,165,250,.75)!important;color:#fff!important;}
+                    .wcp-main-stable{display:grid!important;grid-template-columns:minmax(690px,1.12fr) minmax(360px,.88fr)!important;gap:10px!important;align-items:start!important;min-width:0!important;}
+                    .wcp-main-stable>.wcp-card,.wcp-main-stable>.wcp-side-col{min-width:0!important;position:relative!important;left:auto!important;right:auto!important;top:auto!important;transform:none!important;}
+                    .wcp-input-card{overflow:visible!important;}
+                    .wcp-input-sections{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(342px,1fr))!important;gap:8px!important;min-width:0!important;align-items:start!important;}
+                    .wcp-input-sections>.wcp-section{min-width:0!important;overflow:visible!important;}
+                    .wcp-card:not(.wcp-input-card),.wcp-section{overflow:hidden!important;}
+                    .wcp-line{grid-template-columns:96px minmax(0,1fr) 30px!important;gap:5px!important;}
+                    .wcp-line.rate,.wcp-line.rate.wcp-rate-field{grid-template-columns:96px 62px 18px minmax(124px,1fr) 28px!important;gap:5px!important;}
+                    .wcp-line.rate .wcp-inp,.wcp-line.rate.wcp-rate-field .wcp-inp{min-width:0!important;}
+                    .wcp-line.rate .wcp-money-cell{font-size:11.2px!important;letter-spacing:-.035em!important;padding-left:4px!important;padding-right:5px!important;font-variant-numeric:tabular-nums!important;}
+                    .wcp-unit{min-width:0!important;text-align:left!important;}
+                    .wcp-invest-table{table-layout:auto!important;width:100%!important;}
+                    @media(max-width:1180px){.wcp-main-stable{grid-template-columns:1fr!important}.wcp-input-sections{grid-template-columns:repeat(auto-fit,minmax(342px,1fr))!important;}}
+                    @media(max-width:760px){.wcp-input-sections{grid-template-columns:1fr!important}.wcp-line,.wcp-line.rate,.wcp-line.rate.wcp-rate-field{grid-template-columns:1fr!important}.wcp-line.rate .wcp-money-cell{font-size:12px!important}.wr2-link-saved-host{justify-content:flex-start!important}}
                   `;
 
                 }
@@ -7562,7 +7522,7 @@ window.wr2SummaryCancelEdit = function() {
                     </details>
                     <div class="wcp-tabs"><button class="wcp-tab active" data-pane="input">입력</button><button class="wcp-tab" data-pane="taxflow">세금·자금흐름</button><button class="wcp-tab" data-pane="save">저장·비교</button></div>
                     <div id="wcp_pane_input" class="wcp-pane active">
-                      <div class="wcp-main-grid">
+                      <div class="wcp-grid2 wcp-main-stable">
                         <div class="wcp-card wcp-input-card"><h3>2. 수익률 분석기 입력</h3><div class="wcp-input-sections" style="margin-top:8px;">
                           <div class="wcp-section"><h4>① 취득비용</h4><div class="wcp-form">${wcpField('wc_appraisal','감정가','원',s.appraisal,'','')}${wcpField('wc_price','입찰가/매수가','원',s.price,'wcp_price_note','')}${wcpRateField('wc_acq_tax_rate','wc_acq_tax','취등록세',s.acqTaxRate,s.acqTax,'')}${wcpRateField('wc_legal_rate','wc_legal_fee','법무비 등',s.legalRate,s.legalFee,'')}</div></div>
                           <div class="wcp-section"><h4>② 취득시 필요경비</h4><div class="wcp-form">${wcpField('wc_unpaid_mgmt','미납 관리비','원',s.unpaidMgmt,'','')}${wcpField('wc_unpaid_tax','미납 세금','원',s.unpaidTax,'','')}${wcpField('wc_eviction','명도비','원',s.eviction,'','')}${wcpField('wc_facility','시설비','원',s.facility,'','')}${wcpField('wc_vat','부가세 환급예상','원',s.vat,'','')}</div></div>
@@ -8027,6 +7987,7 @@ window.wr2SummaryCancelEdit = function() {
                   const addSecBtn = document.getElementById('wr2AddSectionBtn');
                   const secTypeSel = document.getElementById('wr2NewSectionType');
                   const delRoomBtn = document.getElementById('wr2DeleteRoomBtn');
+                  wr2EnsureLinkSavedButton(document.getElementById('wr2Detail'), null);
                   const linkBtn = document.getElementById('wr2LinkSavedBtn');
 
                   if (sortSel) sortSel.onchange = e => { wr2State.sort = e.target.value; wr2Render(); };
@@ -8034,8 +7995,13 @@ window.wr2SummaryCancelEdit = function() {
                   if (newCreate) newCreate.onclick = createRoomFromModal;
                   if (newCancel) newCancel.onclick = hideNewModal;
                   if (linkBtn) {
-                    linkBtn.style.display = 'none';
-                    linkBtn.onclick = null;
+                    linkBtn.style.display = '';
+                    linkBtn.textContent = '+ 물건 연결';
+                    linkBtn.title = '저장목록의 경매 물건을 이 작업룸에 추가 연결';
+                    linkBtn.onclick = function(e) {
+                      if (e && e.stopPropagation) e.stopPropagation();
+                      if (typeof wr2ShowLinkModal === 'function') wr2ShowLinkModal();
+                    };
                   }
 
                   const modal = document.getElementById('wr2NewModal');
