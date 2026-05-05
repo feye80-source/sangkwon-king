@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# patched: 20260505 floor/disco bug fix
 """
 부동산 통합 프록시 서버
 - 지원 사이트: 네이버 부동산 / 아싸점포거래소 / 점포라인 / 디스코 / 부동산플래닛
@@ -37,7 +36,7 @@ LOCAL_UPLOAD_ROOT = os.path.join(BASE_DIR, '_proxy_uploads')
 ALLOWED_STORAGE_BUCKETS = {'attachments', 'room-images', 'kcard-images'}
 
 # 플래닛 쿠키 전역 캐시 (수집 시 자동 저장, 층수 조회 시 재사용)
-BDS_COOKIE_CACHE = ''  # 사용자가 입력해 성공한 쿠키만 런타임 캐시. 오래된 하드코딩 쿠키 금지.
+BDS_COOKIE_CACHE = ''  # 런타임 캐시만 사용: 수집 요청에서 받은 부동산플래닛 Cookie를 저장
 
 TOKEN  = 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IlJFQUxFU1RBVEUiLCJpYXQiOjE3NzE4MzQ0NjgsImV4cCI6MTc3MTg0NTI2OH0.0JrIMhLcyMaiwG53ZCrWlQSJCYjBv7aU8CvBZVvwhRg'
 COOKIE = 'nhn.realestate.article.trade_type_cd=""; nhn.realestate.article.ipaddress_city=1100000000; _fwb=181mH6x2wXJDj21u5GAHx4P.1771610345285; landHomeFlashUseYn=Y; NAC=PHbTB8QuizZH; NNB=XFGGRJ7JUCMGS; BUC=uuOcrBxBEVOhIzqj7sRxhTfUr72bhkrkpOycivPRMwQ=; nhn.realestate.article.rlet_type_cd=A01; REALESTATE=Mon%20Feb%2023%202026%2017%3A14%3A28%20GMT%2B0900%20(Korean%20Standard%20Time); PROP_TEST_KEY=1771834468230.b0106ce42c27dcd1b4a1d804e79d6b08ae096517f2981164c4ccf057c170ccb5; PROP_TEST_ID=a4861023da9c97cf6f3bcd9052feceb7b1ce4cac9539cab47f65e3fc1625cd8b; _fwb=181mH6x2wXJDj21u5GAHx4P.1771610345285; NACT=1; SHOW_FIN_BADGE=Y; bnb_tooltip_shown_finance_v1=true; SRT30=1771834421; SRT5=1771834421'
@@ -322,12 +321,6 @@ class ProxyHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urllib.parse.urlparse(self.path)
-        def _read_max_n(payload, default=None):
-            try:
-                v = int(payload.get('max_n', 0))
-                return v if v > 0 else default
-            except Exception:
-                return default
 
         # ★ 신규: HTML에서 토큰/쿠키를 실시간으로 서버에 적용 (py 재시작 불필요)
         if parsed.path == '/api/set_token':
@@ -395,7 +388,6 @@ class ProxyHandler(BaseHTTPRequestHandler):
             swlat = payload.get('swlat', '')
             nelng = payload.get('nelng', '')
             swlng = payload.get('swlng', '')
-            max_n = _read_max_n(payload)
             ids   = payload.get('ids', [])  # 구형 fallback
             if not cisession and not ids:
                 self._error(400, 'cisession 쿠키 또는 ids가 필요합니다')
@@ -408,7 +400,6 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 nelat=nelat, swlat=swlat,
                 nelng=nelng, swlng=swlng,
                 ids=ids,
-                max_n=max_n,
             )
 
         elif parsed.path == '/api/jumpo':
@@ -427,7 +418,6 @@ class ProxyHandler(BaseHTTPRequestHandler):
             swlat = payload.get('swlat', '')
             nelng = payload.get('nelng', '')
             swlng = payload.get('swlng', '')
-            max_n = _read_max_n(payload)
             if not lat:
                 self._error(400, '좌표(lat/lng)가 필요합니다')
                 return
@@ -438,7 +428,6 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 lat=lat, lng=lng,
                 nelat=nelat, swlat=swlat,
                 nelng=nelng, swlng=swlng,
-                max_n=max_n,
             )
 
         elif parsed.path == '/api/nemo':
@@ -456,7 +445,6 @@ class ProxyHandler(BaseHTTPRequestHandler):
             swlat = payload.get('swlat', '')
             nelng = payload.get('nelng', '')
             swlng = payload.get('swlng', '')
-            max_n = _read_max_n(payload)
             if not lat:
                 self._error(400, '좌표(lat/lng)가 필요합니다')
                 return
@@ -466,7 +454,6 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 lat=lat, lng=lng,
                 nelat=nelat, swlat=swlat,
                 nelng=nelng, swlng=swlng,
-                max_n=max_n,
             )
 
         elif parsed.path == '/api/disco':
@@ -484,7 +471,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
             nelng = payload.get('nelng', '')
             swlng = payload.get('swlng', '')
             kakao_rest_key = payload.get('kakao_rest_key', '')
-            max_n = _read_max_n(payload)
+            max_n = _read_max_n(payload, 150)
             if not lat:
                 self._error(400, '좌표(lat/lng)가 필요합니다')
                 return
@@ -506,14 +493,13 @@ class ProxyHandler(BaseHTTPRequestHandler):
             nelng = payload.get('nelng', '')
             swlng = payload.get('swlng', '')
             cookie = payload.get('cookie', '')   # ★ 브라우저 쿠키 직접 수신
-            request_url = payload.get('request_url', '')  # ★ F12 실제 getRealpriceMapMarker Request URL
             kakao_rest_key = payload.get('kakao_rest_key', '')
-            max_n = _read_max_n(payload)
+            max_n = _read_max_n(payload, 150)
             if not lat:
                 self._error(400, '좌표(lat/lng)가 필요합니다')
                 return
             print(f"\n  🌍 부동산플래닛 수집 시작 (lat={lat}, lng={lng})...")
-            self._collect_bds(lat=lat, lng=lng, nelat=nelat, swlat=swlat, nelng=nelng, swlng=swlng, cookie=cookie, request_url=request_url, kakao_rest_key=kakao_rest_key, max_n=max_n)
+            self._collect_bds(lat=lat, lng=lng, nelat=nelat, swlat=swlat, nelng=nelng, swlng=swlng, cookie=cookie, kakao_rest_key=kakao_rest_key, max_n=max_n)
 
         elif parsed.path == '/api/naver_map':
             # ★ 신규: 토큰 없이 모바일 API로 지도 바운딩박스 수집
@@ -1948,7 +1934,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
 
     def _collect_assa(self, cisession='', kakao_rest_key='',
                        lat='', lng='', nelat='', swlat='', nelng='', swlng='',
-                       ids=None, max_n=None):
+                       ids=None):
         """
         아싸점포거래소 수집.
         - 신규 방식: cisession 쿠키 + 바운딩박스 → /item/get_item_json/map/0/0/0
@@ -2061,96 +2047,61 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 # 쿠키에 lat/lng/level 포함 (사이트 방식 그대로)
                 extra_cookie = f'lat={lat}; lng={lng}; level=2'
                 headers = make_headers(extra_cookie)
-                offset = 30
-                start = 0
-                max_target = max_n if (max_n and max_n > 0) else None
-                map_ids = []
-                seen_ids = set()
-                map_fallback_items = []
+                body_params = urllib.parse.urlencode({
+                    'lat':          lat,
+                    'lng':          lng,
+                    'nelat':        nelat,
+                    'swlat':        swlat,
+                    'nelng':        nelng,
+                    'swlng':        swlng,
+                    'offset':       '30',
+                    'start':        '0',
+                    'level':        '2',
+                    'franchise_id': '',
+                }).encode('utf-8')
 
-                while True:
-                    body_params = urllib.parse.urlencode({
-                        'lat':          lat,
-                        'lng':          lng,
-                        'nelat':        nelat,
-                        'swlat':        swlat,
-                        'nelng':        nelng,
-                        'swlng':        swlng,
-                        'offset':       str(offset),
-                        'start':        str(start),
-                        'level':        '2',
-                        'franchise_id': '',
-                    }).encode('utf-8')
+                req = urllib.request.Request(
+                    ASSA_BASE + '/item/get_item_json/map/0/0/0',
+                    data=body_params,
+                    headers=headers,
+                    method='POST'
+                )
+                print(f"  🌐 지도 API 호출: /item/get_item_json/map/0/0/0")
+                with _urlopen(req, timeout=15) as resp:
+                    raw = json.loads(resp.read().decode('utf-8'))
 
-                    req = urllib.request.Request(
-                        ASSA_BASE + '/item/get_item_json/map/0/0/0',
-                        data=body_params,
-                        headers=headers,
+                item_map = raw.get('item_map', [])
+                item_detail_one = raw.get('item', [])  # 이미 포함된 상세 1개
+
+                print(f"  📍 item_map: {len(item_map)}개 ID 수신")
+
+                # item_map의 ID 목록으로 일괄 상세 조회
+                if item_map:
+                    map_ids = [str(it.get('id', '')) for it in item_map if it.get('id')]
+                    ids_str = ','.join(map_ids) + ','
+                    body2 = f'ids={urllib.parse.quote(ids_str)}'.encode('utf-8')
+                    req2 = urllib.request.Request(
+                        ASSA_BASE + '/item/get_item_json/',
+                        data=body2,
+                        headers=make_headers(),
                         method='POST'
                     )
-                    print(f"  🌐 지도 API 호출: /item/get_item_json/map/0/0/0 (start={start}, offset={offset})")
-                    with _urlopen(req, timeout=15) as resp:
-                        raw = json.loads(resp.read().decode('utf-8'))
-
-                    item_map = raw.get('item_map', []) if isinstance(raw, dict) else []
-                    item_detail_one = raw.get('item', []) if isinstance(raw, dict) else []
-                    if item_detail_one:
-                        if isinstance(item_detail_one, list):
-                            map_fallback_items.extend(item_detail_one)
+                    print(f"  📦 일괄 상세 조회: {len(map_ids)}개 ID")
+                    with _urlopen(req2, timeout=20) as resp2:
+                        raw2 = resp2.read().decode('utf-8')
+                    detail_raw = json.loads(raw2)
+                    if isinstance(detail_raw, list):
+                        all_items_raw = detail_raw
+                    elif isinstance(detail_raw, dict):
+                        # ids= 방식 실패 시 (에러 응답) → item_detail_one만 사용
+                        if detail_raw.get('error') or not detail_raw.get('data'):
+                            print(f"  ⚠️ 일괄 조회 실패, item 단건 데이터 사용")
+                            all_items_raw = item_detail_one if isinstance(item_detail_one, list) else []
                         else:
-                            map_fallback_items.append(item_detail_one)
-
-                    added_this_page = 0
-                    for it in item_map:
-                        iid = str(it.get('id', '')).strip()
-                        if not iid or iid in seen_ids:
-                            continue
-                        seen_ids.add(iid)
-                        map_ids.append(iid)
-                        added_this_page += 1
-                        if max_target and len(map_ids) >= max_target:
-                            break
-                    print(f"  📍 item_map 누적 ID: {len(map_ids)}개")
-
-                    if max_target and len(map_ids) >= max_target:
-                        break
-                    if added_this_page < offset:
-                        break
-                    start += offset
-                    if start > 3000:
-                        break
-
-                # item_map의 ID 목록으로 상세 조회 (chunk)
-                if map_ids:
-                    if max_target:
-                        map_ids = map_ids[:max_target]
-                    print(f"  📦 상세 조회 대상 ID: {len(map_ids)}개")
-                    chunk_size = 80
-                    detail_rows = []
-                    for i in range(0, len(map_ids), chunk_size):
-                        chunk = map_ids[i:i + chunk_size]
-                        ids_str = ','.join(chunk) + ','
-                        body2 = f'ids={urllib.parse.quote(ids_str)}'.encode('utf-8')
-                        req2 = urllib.request.Request(
-                            ASSA_BASE + '/item/get_item_json/',
-                            data=body2,
-                            headers=make_headers(),
-                            method='POST'
-                        )
-                        with _urlopen(req2, timeout=20) as resp2:
-                            raw2 = resp2.read().decode('utf-8')
-                        detail_raw = json.loads(raw2)
-                        if isinstance(detail_raw, list):
-                            detail_rows.extend(detail_raw)
-                        elif isinstance(detail_raw, dict):
-                            rows = detail_raw.get('data') or detail_raw.get('list') or detail_raw.get('items') or []
-                            if isinstance(rows, list):
-                                detail_rows.extend(rows)
-                    all_items_raw = detail_rows
-
-                # 결과가 없으면 지도 응답에 포함된 단건 fallback 사용
-                if not all_items_raw and map_fallback_items:
-                    all_items_raw = map_fallback_items
+                            all_items_raw = detail_raw.get('data') or detail_raw.get('list') or []
+                    # 결과가 없으면 이미 받은 단건이라도 사용
+                    if not all_items_raw and item_detail_one:
+                        all_items_raw = item_detail_one if isinstance(item_detail_one, list) else [item_detail_one]
 
             # ── 구형 fallback: ids 배열로 직접 상세 조회 ────────────────
             elif ids:
@@ -2172,9 +2123,6 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 self._ok(json.dumps({'status': 'error', 'message': 'cisession과 좌표, 또는 ids가 필요합니다', 'data': []}, ensure_ascii=False))
                 return
 
-            if max_n and max_n > 0 and isinstance(all_items_raw, list):
-                all_items_raw = all_items_raw[:max_n]
-
             print(f"  📋 {len(all_items_raw)}개 매물 수신")
 
             if not all_items_raw:
@@ -2182,9 +2130,6 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 return
 
             result_items = parse_items(all_items_raw)
-            if max_n and max_n > 0:
-                result_items = result_items[:max_n]
-                print(f"  🎯 상권킹 최대 개수 적용: {len(result_items)}개")
 
             # 역지오코딩 (소재지가 없는 매물만)
             if kakao_rest_key:
@@ -2228,44 +2173,12 @@ class ProxyHandler(BaseHTTPRequestHandler):
             self._ok(json.dumps({'status': 'error', 'message': str(e), 'data': []}, ensure_ascii=False))
 
 
-    def _pick_floor_from_raw(self, d):
-        """여러 사이트/API의 층수 필드명을 통합해서 해당층/총층을 반환."""
-        if not isinstance(d, dict):
-            return (None, None)
-        floor_keys = [
-            '해당층','층수','층','floor','fl','fl_nm','flNm','flr','flrInfo','flr_info','floorInfo','floor_info',
-            't_floor','t_flr','deal_floor','dealFloor','real_floor','realFloor','object_floor','obj_floor',
-            'floor_level','floorLevel','floor_current','floorCurrent','currentFloor','current_floor',
-            'floor_no','floorNo','floor_no_nm','floorNoNm','floor_nm','floorName','floor_name',
-            'bldg_flr','bldg_floor','buildingFloor','building_floor','FLOOR_NO','FLOOR_NO_NM','FLOOR_NM',
-            'correspondingFloorCount','corresponding_floor_count','거래층','전용층','대상층','층정보'
-        ]
-        total_keys = ['총층','totalFloor','total_floor','floor_total','floorTotal','totalFloorCount','highestFloor','grndFlrCnt','지상층수']
-        def val(keys):
-            for k in keys:
-                v = d.get(k)
-                if v not in (None, '', '-', 'null', 'undefined', 0, '0'):
-                    return str(v).strip()
-            return None
-        floor = val(floor_keys)
-        if not floor:
-            for k, v in d.items():
-                lk = str(k).lower()
-                if ('floor' in lk or 'flr' in lk or '층' in str(k)) and not any(x in lk for x in ['total','cnt','count','highest']):
-                    if v not in (None, '', '-', 'null', 'undefined', 0, '0'):
-                        floor = str(v).strip()
-                        break
-        total = val(total_keys)
-        if floor and '/' in floor:
-            parts = floor.split('/')
-            floor = parts[0].strip()
-            if not total and len(parts) > 1:
-                total = parts[1].strip()
-        return (floor, total)
-
-
-    def _collect_disco(self, lat='', lng='', nelat='', swlat='', nelng='', swlng='', kakao_rest_key='', max_n=None):
-        """디스코 실거래가 수집: /home/hello/ API"""
+    def _collect_disco(self, lat='', lng='', nelat='', swlat='', nelng='', swlng='', kakao_rest_key='', max_n=150):
+        """디스코 실거래가 수집
+        - /home/hello/ 로 지도 범위의 건물(uuid)을 찾는다.
+        - 각 uuid별 /real_price_table/?uuid={uuid} 를 호출해 거래 N건을 펼친다.
+        - 층수는 real_price[].floor 를 표준값으로 사용한다.
+        """
         try:
             ts = int(time.time() * 1000)
             try:
@@ -2275,48 +2188,38 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 d_v = nelng if nelng else float(lng) + 0.007
             except:
                 a, b, c, d_v = lat, lng, lat, lng
+            try:
+                max_n = int(max_n or 150)
+            except:
+                max_n = 150
+            max_n = max(1, min(max_n, 300))
 
-            # i 파라미터: 건물 용도 코드
-            # 1=아파트, 2=연립/다세대, 3=단독/다가구, 4=근린생활, 5=판매, 6=숙박,
-            # 7=업무, 8=오피스텔, 9=공장/창고, 10=기타
-            # ★ 4,5,6,7 포함 (상업·업무·숙박), 오피스텔(8) 제외
-            # ★ current 파라미터 제거 — 해당 파라미터가 건물당 1건만 반환하는 원인일 수 있음
-            url = (
+            hello_url = (
                 f'https://www.disco.re/home/hello/'
                 f'?a={a}&b={b}&c={c}&d={d_v}'
                 f'&clat={lat}&clng={lng}'
                 f'&mlv=2&mt=0&at=0&ct=1&st=0&h=400'
-                f'&i=4%2C5%2C6%2C7&j=1&k=2006&l=2026&m=0&n=99999999999&o=0&p=0&q=0'
-                f'&sale_first=false&_={ts}'
+                f'&i=4%2C5%2C7&j=1&k=2006&l=2026&m=0&n=99999999999&o=0&p=0&q=0'
+                f'&current=0&sale_first=false&_={ts}'
             )
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            hello_headers = {
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
                 'Accept': 'application/json, text/javascript, */*; q=0.01',
                 'Accept-Language': 'ko-KR,ko;q=0.9',
-                'Referer': 'https://www.disco.re/',
-                'Origin': 'https://www.disco.re',
+                'Referer': 'https://disco.re/',
+                'Origin': 'https://disco.re',
                 'X-Requested-With': 'XMLHttpRequest',
+                'Sec-Fetch-Dest': 'empty',
+                'Sec-Fetch-Mode': 'cors',
+                'Sec-Fetch-Site': 'same-origin',
             }
-            req = urllib.request.Request(url, headers=headers)
-            print(f"  🌐 디스코 hello API 호출: {url[:120]}")
+            req = urllib.request.Request(hello_url, headers=hello_headers)
+            print(f"  🌐 디스코 hello API 호출: {hello_url[:120]}")
             with _urlopen(req, timeout=15) as resp:
                 raw = json.loads(resp.read().decode('utf-8'))
 
-            if isinstance(raw, list):
-                items_raw = raw
-            elif isinstance(raw, dict):
-                # dict 응답일 경우 data/list 키 탐색
-                for _k in ('data', 'list', 'result', 'items'):
-                    if isinstance(raw.get(_k), list):
-                        items_raw = raw[_k]
-                        break
-                else:
-                    items_raw = []
-            else:
-                items_raw = []
-            print(f"  📋 {len(items_raw)}개 건물 수신")
-            if not items_raw:
-                print(f"  ⚠️ 응답 타입: {type(raw).__name__}, 미리보기: {str(raw)[:200]}")
+            buildings = raw if isinstance(raw, list) else []
+            print(f"  📋 {len(buildings)}개 건물 수신")
 
             def clean(v):
                 if v is None or v == '' or v == '0': return None
@@ -2325,54 +2228,164 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     return n if n != 0 else None
                 except: return None
 
-            # t값: 1=매매, 2=전세, 3=월세, 4=임대, 5=단기임대, 7=매매
-            # 매매(t=1,7)만 수집 - 임대/전세/월세/-1 등 제외
-            DISCO_TRADE_OK = {1, 7}
-            # ★ 디스코 건물 유형(bt 또는 bt_nm)으로 오피스텔 제외
-            DISCO_EXCLUDE_BT = {'오피스텔', 'officetel'}
+            def to_int(v, default=None):
+                try:
+                    return int(str(v).strip())
+                except:
+                    return default
+
+            def is_cancelled(v):
+                return str(v if v is not None else '0').strip() not in ('', '0', 'N', 'n', 'false', 'False')
+
+            def disco_trade_ok(v):
+                return str(v).strip() in ('1', '7')
+
+            def extract_real_price_list(obj):
+                if isinstance(obj, list):
+                    return obj
+                if not isinstance(obj, dict):
+                    return []
+                for key in ('real_price', 'realPrice', 'data', 'list', 'items', 'result'):
+                    val = obj.get(key)
+                    if isinstance(val, list):
+                        return val
+                    if isinstance(val, dict):
+                        nested = extract_real_price_list(val)
+                        if nested:
+                            return nested
+                return []
+
+            def fetch_real_price_table(uuid):
+                if not uuid:
+                    return []
+                urls = [
+                    f'https://disco.re/real_price_table/?uuid={urllib.parse.quote(str(uuid))}',
+                    f'https://www.disco.re/real_price_table/?uuid={urllib.parse.quote(str(uuid))}',
+                ]
+                last_err = None
+                for rp_url in urls:
+                    headers = {
+                        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+                        'Accept': 'application/json, text/javascript, */*; q=0.01',
+                        'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
+                        'Referer': f'https://disco.re/l/{uuid}',
+                        'Origin': 'https://disco.re',
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Sec-Fetch-Dest': 'empty',
+                        'Sec-Fetch-Mode': 'cors',
+                        'Sec-Fetch-Site': 'same-origin',
+                        'Connection': 'keep-alive',
+                    }
+                    try:
+                        req = urllib.request.Request(rp_url, headers=headers)
+                        with _urlopen(req, timeout=10) as r:
+                            txt = r.read().decode('utf-8', errors='replace').strip()
+                        if not txt or txt.lstrip().startswith('<'):
+                            raise ValueError('JSON이 아닌 응답/빈 응답')
+                        data = json.loads(txt)
+                        rows = extract_real_price_list(data)
+                        print(f"  ✅ 디스코 real_price_table 성공: uuid={uuid}, rows={len(rows)}")
+                        return rows
+                    except Exception as e:
+                        last_err = e
+                        print(f"  ⚠️ 디스코 real_price_table 실패: {rp_url} / {e}")
+                return []
+
             result_items = []
-            disco_skipped = 0
+            floor_ok = 0
+            detail_ok = 0
+            detail_fail = 0
+            seen = set()
 
-            for d in items_raw:
-                t = d.get('t')
-                if t not in DISCO_TRADE_OK:
+            for b in buildings:
+                if len(result_items) >= max_n:
+                    break
+                uuid = b.get('u') or b.get('uuid') or b.get('id') or ''
+                pnu  = b.get('pnu') or b.get('PNU') or ''
+                rows = fetch_real_price_table(uuid) if uuid else []
+                if rows:
+                    detail_ok += 1
+                    for tr in rows:
+                        if len(result_items) >= max_n:
+                            break
+                        if not disco_trade_ok(tr.get('type', tr.get('t', b.get('t')))):
+                            continue
+                        if is_cancelled(tr.get('cancel', 0)):
+                            continue
+                        price = clean(tr.get('price') if tr.get('price') is not None else tr.get('p'))
+                        floor_val = tr.get('floor') if tr.get('floor') not in (None, '', '0', 0) else (tr.get('fl') or tr.get('fl_nm'))
+                        if floor_val not in (None, '', '0', 0):
+                            floor_ok += 1
+                        exclusive_area = clean(tr.get('exclusive_area') or tr.get('exclusiveArea') or tr.get('ea'))
+                        supply_area = clean(tr.get('supply_area') or tr.get('supplyArea') or tr.get('sa'))
+                        trade_no = str(tr.get('no') or tr.get('id') or '').strip()
+                        trade_date = str(tr.get('d') or tr.get('date') or tr.get('deal_date') or '').strip()
+                        ym = str(tr.get('year') or tr.get('y') or (trade_date[:6] if len(trade_date) >= 6 else '') or '').strip()
+                        unique_no = trade_no or f"{uuid}_{ym}_{trade_date}_{floor_val}_{price}_{exclusive_area}_{len(result_items)}"
+                        dedupe_key = f"{uuid}:{unique_no}"
+                        if dedupe_key in seen:
+                            continue
+                        seen.add(dedupe_key)
+                        result_items.append({
+                            '매물번호':      dedupe_key,
+                            '매물명':        '',
+                            '매물유형':      '실거래',
+                            '거래유형':      '매매',
+                            '매매가':        price,
+                            '기보증금_만원': None,
+                            '월세_만원':     None,
+                            '계약면적_m2':   supply_area or exclusive_area,
+                            '전용면적_m2':   exclusive_area,
+                            '공급면적_m2':   supply_area,
+                            '토지면적_m2':   clean(tr.get('land_area') or tr.get('la')),
+                            '해당층':        floor_val,
+                            '호수':          tr.get('ho') or tr.get('room') or tr.get('dongho') or None,
+                            '소재지':        '',
+                            '거래년월':      ym,
+                            '거래일':        trade_date,
+                            'lat':           float(b['lat']) if b.get('lat') else None,
+                            'lng':           float(b['lng']) if b.get('lng') else None,
+                            '상세URL':       f"https://disco.re/l/{uuid}" if uuid else f"https://disco.re/buildings/{pnu}",
+                            '출처':          '디스코',
+                            '_uuid':         uuid,
+                            '_pnu':          pnu,
+                        })
+                    time.sleep(0.05)
                     continue
-                # ★ 오피스텔 제외
-                bt_nm = str(d.get('bt_nm') or d.get('building_type') or '').lower()
-                if '오피스텔' in bt_nm or 'officetel' in bt_nm:
-                    disco_skipped += 1
-                    continue
-                # 디스코 p필드는 만원 단위 그대로 사용 (변환 없음)
-                p = clean(d.get('p'))
-                uuid = d.get('u') or ''
-                pnu  = d.get('pnu') or ''
-                # 매물번호: 개별거래 uuid 우선, 없으면 pnu
-                매물번호 = uuid if uuid else pnu
 
+                detail_fail += 1
+                # 상세 API가 막힌 경우에만 hello 요약 1건 fallback.
+                t = b.get('t')
+                if not disco_trade_ok(t):
+                    continue
+                p = clean(b.get('p'))
+                fallback_no = str(uuid or pnu or f"fallback_{len(result_items)}")
+                dedupe_key = f"{fallback_no}:summary"
+                if dedupe_key in seen:
+                    continue
+                seen.add(dedupe_key)
                 result_items.append({
-                    '매물번호':      매물번호,
+                    '매물번호':      dedupe_key,
                     '매물명':        '',
                     '매물유형':      '실거래',
                     '거래유형':      '매매',
                     '매매가':        p,
                     '기보증금_만원': None,
                     '월세_만원':     None,
-                    '전용면적_m2':   clean(d.get('ea')),
-                    '공급면적_m2':   clean(d.get('sa')),
-                    '토지면적_m2':   clean(d.get('la')),
-                    '해당층':        (self._pick_floor_from_raw(d)[0] or clean(d.get('fl')) or d.get('fl_nm') or d.get('floor') or None),
-                    '총층':          self._pick_floor_from_raw(d)[1],
+                    '전용면적_m2':   clean(b.get('ea')),
+                    '공급면적_m2':   clean(b.get('sa')),
+                    '토지면적_m2':   clean(b.get('la')),
+                    '해당층':        clean(b.get('fl')) or b.get('fl_nm') or b.get('floor') or None,
                     '소재지':        '',
-                    '거래년월':      str(d.get('y') or ''),
-                    'lat':           float(d['lat']) if d.get('lat') else None,
-                    'lng':           float(d['lng']) if d.get('lng') else None,
-                    '상세URL':       f"https://www.disco.re/l/{uuid}" if uuid else f"https://www.disco.re/buildings/{pnu}",
+                    '거래년월':      str(b.get('y') or ''),
+                    'lat':           float(b['lat']) if b.get('lat') else None,
+                    'lng':           float(b['lng']) if b.get('lng') else None,
+                    '상세URL':       f"https://disco.re/l/{uuid}" if uuid else f"https://disco.re/buildings/{pnu}",
                     '출처':          '디스코',
+                    '_uuid':         uuid,
+                    '_pnu':          pnu,
+                    '_detail_failed': True,
                 })
-
-            if max_n and max_n > 0:
-                result_items = result_items[:max_n]
-                print(f"  🎯 상권킹 최대 개수 적용: {len(result_items)}개")
 
             # ★ 역지오코딩: 카카오 REST API로 좌표→주소 변환
             if kakao_rest_key:
@@ -2380,34 +2393,40 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 if to_geo:
                     print(f"  📍 디스코 주소 변환 중... {len(to_geo)}건")
                     converted = 0
+                    geo_cache = {}
                     for item in to_geo:
                         try:
-                            geo_url = f"https://dapi.kakao.com/v2/local/geo/coord2address.json?x={item['lng']}&y={item['lat']}"
-                            geo_req = urllib.request.Request(geo_url, headers={'Authorization': f'KakaoAK {kakao_rest_key}'})
-                            with _urlopen(geo_req, timeout=5) as r:
-                                geo = json.loads(r.read())
-                            docs = geo.get('documents', [])
-                            if docs:
-                                rd = docs[0].get('road_address') or {}
-                                jb = docs[0].get('address') or {}
-                                road_addr = (rd.get('address_name') or '').strip()
-                                jibun_addr = (jb.get('address_name') or '').strip()
-                                addr = road_addr or jibun_addr
-                                if road_addr:
-                                    item['도로명주소'] = road_addr
-                                if jibun_addr:
-                                    item['지번주소'] = jibun_addr
-                                if addr:
-                                    item['소재지'] = addr
-                                    converted += 1
-                            time.sleep(0.05)
+                            ck = (round(float(item['lat']), 7), round(float(item['lng']), 7))
+                            if ck in geo_cache:
+                                road_addr, jibun_addr = geo_cache[ck]
+                            else:
+                                geo_url = f"https://dapi.kakao.com/v2/local/geo/coord2address.json?x={item['lng']}&y={item['lat']}"
+                                geo_req = urllib.request.Request(geo_url, headers={'Authorization': f'KakaoAK {kakao_rest_key}'})
+                                with _urlopen(geo_req, timeout=5) as r:
+                                    geo = json.loads(r.read())
+                                docs = geo.get('documents', [])
+                                if docs:
+                                    rd = docs[0].get('road_address') or {}
+                                    jb = docs[0].get('address') or {}
+                                    road_addr = (rd.get('address_name') or '').strip()
+                                    jibun_addr = (jb.get('address_name') or '').strip()
+                                else:
+                                    road_addr = jibun_addr = ''
+                                geo_cache[ck] = (road_addr, jibun_addr)
+                                time.sleep(0.05)
+                            addr = road_addr or jibun_addr
+                            if road_addr:
+                                item['도로명주소'] = road_addr
+                            if jibun_addr:
+                                item['지번주소'] = jibun_addr
+                            if addr:
+                                item['소재지'] = addr
+                                converted += 1
                         except:
                             pass
                     print(f"  ✅ 디스코 주소 변환 완료: {converted}건")
 
-            if disco_skipped:
-                print(f"  🏢 오피스텔 {disco_skipped}건 제외")
-            msg = f'{len(result_items)}개 수집 완료'
+            msg = f'{len(result_items)}개 수집 완료 (층수 {floor_ok}건 확인, 상세성공 {detail_ok}건, 상세실패 {detail_fail}건)'
             print(f"  ✅ {msg}")
             self._ok(json.dumps({'status': 'success', 'message': msg, 'data': result_items}, ensure_ascii=False))
 
@@ -2416,7 +2435,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
             print(f"  ❌ 디스코 수집 실패: {e}\n{traceback.format_exc()}")
             self._ok(json.dumps({'status': 'error', 'message': str(e), 'data': []}, ensure_ascii=False))
 
-    def _collect_bds(self, lat='', lng='', nelat='', swlat='', nelng='', swlng='', cookie='', request_url='', kakao_rest_key='', max_n=None):
+    def _collect_bds(self, lat='', lng='', nelat='', swlat='', nelng='', swlng='', cookie='', kakao_rest_key='', max_n=150):
         """부동산플래닛 실거래가 수집: getRealpriceMapMarker.ytp
         
         ★ v120 변경사항:
@@ -2455,48 +2474,40 @@ class ProxyHandler(BaseHTTPRequestHandler):
             _nelng = float(nelng) if nelng else _lng + 0.008
             _swlng = float(swlng) if swlng else _lng - 0.008
 
-            # ★ [BDS v15] 프론트에서 bbox가 점 하나로 들어오는 경우 서버에서도 안전 보정.
-            # 부동산플래닛 getRealpriceMapMarker는 x1/x2/y1/y2 면적이 없으면 200/빈 응답을 반환할 수 있다.
-            if _swlat > _nelat:
-                _swlat, _nelat = _nelat, _swlat
-            if _swlng > _nelng:
-                _swlng, _nelng = _nelng, _swlng
-            if abs(_nelat - _swlat) < 0.002:
-                _nelat = _lat + 0.01
-                _swlat = _lat - 0.01
-                print(f"  🧭 BDS bbox 위도 보정: swlat={_swlat}, nelat={_nelat}")
-            if abs(_nelng - _swlng) < 0.002:
-                _nelng = _lng + 0.01
-                _swlng = _lng - 0.01
-                print(f"  🧭 BDS bbox 경도 보정: swlng={_swlng}, nelng={_nelng}")
+            try:
+                max_n = int(max_n or 150)
+            except:
+                max_n = 150
+            max_n = max(1, min(max_n, 300))
 
-            request_limit = max_n if (max_n and max_n > 0) else 150
-            request_limit = max(50, min(int(request_limit), 150))
+            print(f"  🌍 부동산플래닛 수집 시작 (lat={_lat}, lng={_lng}, max_n={max_n})...")
 
-            print(f"  🌍 부동산플래닛 수집 시작 (lat={_lat}, lng={_lng})...")
-
-            # ★ 쿠키 정책 v20260502:
-            # - 오래된 하드코딩 쿠키/자동취득 쿠키를 쓰지 않는다.
-            # - 사용자가 F12에서 복사한 Cookie를 최우선으로 사용한다.
-            # - 서버 런타임 캐시는 "사용자 쿠키로 실제 수집 성공"한 경우에만 보조로 재사용한다.
-            # - 실패/빈 응답 쿠키는 캐시에 저장하지 않는다.
+            # ★ 쿠키 우선순위: (1) 브라우저에서 직접 전달 → (2) 자동취득 시도
             global BDS_COOKIE_CACHE
             bds_cookie = sanitize_cookie(cookie) if cookie and cookie.strip() else ''
-            cookie_source = ''
             if bds_cookie:
-                cookie_source = 'user'
-                print(f"  🍪 사용자 입력 쿠키 사용: {bds_cookie[:80]}...")
+                BDS_COOKIE_CACHE = bds_cookie  # ✨ 전역 캐시에 저장
+                print(f"  🍪 브라우저 쿠키 사용: {bds_cookie[:80]}...")
             else:
-                cached_cookie = sanitize_cookie(BDS_COOKIE_CACHE) if BDS_COOKIE_CACHE else ''
-                if cached_cookie:
-                    bds_cookie = cached_cookie
-                    cookie_source = 'runtime_cache'
-                    print(f"  🍪 성공 쿠키 런타임 캐시 사용: {bds_cookie[:80]}...")
-                else:
-                    cookie_source = 'none'
-                    msg = '부동산플래닛 수집에는 getRealpriceMapMarker.ytp 요청의 Cookie가 필요합니다. 플래닛 로그인 후 F12 → Network에서 해당 요청의 Request Headers → Cookie 전체를 입력하세요.'
-                    self._ok(json.dumps({'status': 'cookie_required', 'message': msg, 'data': [], 'cookie_source': cookie_source}, ensure_ascii=False))
-                    return
+                print(f"  🔄 쿠키 미입력 — 자동 취득 시도...")
+                try:
+                    import http.cookiejar
+                    cj = http.cookiejar.CookieJar()
+                    opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
+                    init_req = urllib.request.Request(
+                        'https://www.bdsplanet.com/map/realprice_map',
+                        headers={
+                            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+                            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                            'Accept-Language': 'ko-KR,ko;q=0.9',
+                        }
+                    )
+                    opener.open(init_req, timeout=10)
+                    bds_cookie = '; '.join([f'{c.name}={c.value}' for c in cj])
+                    print(f"  🍪 자동취득 쿠키: {bds_cookie[:80]}...")
+                    BDS_COOKIE_CACHE = bds_cookie  # ♋ 전역 캐시에 저장
+                except Exception as ce:
+                    print(f"  ⚠️ 쿠키 자동취득 실패: {ce} — 쿠키 없이 시도")
 
             # ★ F12에서 확인한 실제 공통 헤더
             base_headers = {
@@ -2514,40 +2525,11 @@ class ProxyHandler(BaseHTTPRequestHandler):
             if bds_cookie:
                 base_headers['Cookie'] = bds_cookie
 
-            def _build_bds_url_from_template(template_url, t_type_val):
-                """브라우저에서 복사한 실제 Request URL을 기준으로 좌표/limit만 현재 값으로 교체."""
-                raw_url = str(template_url or '').strip()
-                if not raw_url or 'getRealpriceMapMarker.ytp' not in raw_url:
-                    return ''
-                try:
-                    parsed_u = urllib.parse.urlsplit(raw_url)
-                    # 호스트는 항상 www.bdsplanet.com으로 고정하되, 기존 query 구조는 최대 보존
-                    q = urllib.parse.parse_qs(parsed_u.query, keep_blank_values=True)
-                    def set1(k, v): q[k] = [str(v)]
-                    set1('x1', _swlat)
-                    set1('x2', _nelat)
-                    set1('y1', _swlng)
-                    set1('y2', _nelng)
-                    set1('zoom', '18')
-                    set1('limit_cnt', request_limit)
-                    set1('t_type', t_type_val)
-                    set1('search_t_type', t_type_val)
-                    if 'search_erasure_status' not in q: set1('search_erasure_status', 'N')
-                    # doseq=True로 기존 다중값/빈값 보존
-                    query = urllib.parse.urlencode(q, doseq=True)
-                    return 'https://www.bdsplanet.com/map/getRealpriceMapMarker.ytp?' + query
-                except Exception as te:
-                    print(f"  ⚠️ BDS 요청 URL 템플릿 파싱 실패: {te}")
-                    return ''
-
             all_raw_items = []
-            empty_response_seen = False
-            parse_error_seen = False
-            unknown_structure_seen = False
             for t_type_val in ('1',):  # 매매만 수집 (임대 제외)
                 # ★ F12 실제 URL 파라미터 완전 반영 (누락 항목 추가)
                 params = urllib.parse.urlencode({
-                    'search_r_type': 'B,G,F',
+                    'search_r_type': '',
                     'search_t_type': t_type_val,
                     'search_year': '',
                     'search_price_tab': 'C0',
@@ -2563,7 +2545,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     'search_price_exclusive_from': '',  # ★ 추가
                     'search_price_exclusive_to': '',    # ★ 추가
                     'search_area_tab': 'A1',
-                    'search_area_set_tab': 'supply',
+                    'search_area_set_tab': 'exclusive',
                     'search_area_unit': 'py',
                     'search_area_bldg_from': '',        # ★ 추가
                     'search_area_bldg_to': '',          # ★ 추가
@@ -2584,14 +2566,12 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     'y1': str(_swlng),   # swlng (남서 경도)
                     'y2': str(_nelng),   # nelng (북동 경도)
                     'zoom': '18',        # ★ 실제 요청과 동일하게 18
-                    'limit_cnt': str(request_limit),
+                    'limit_cnt': str(max_n),  # ★ 수집 제한: 기본 150
                     't_type': t_type_val,
                     'search_erasure_status': 'N',
                 })
-                url = _build_bds_url_from_template(request_url, t_type_val) or f'https://www.bdsplanet.com/map/getRealpriceMapMarker.ytp?{params}'
+                url = f'https://www.bdsplanet.com/map/getRealpriceMapMarker.ytp?{params}'
                 print(f"  🌐 부동산플래닛 API 호출 (t_type={t_type_val})...")
-                if request_url and 'getRealpriceMapMarker.ytp' in str(request_url):
-                    print('     실제 Request URL 템플릿 사용')
                 print(f"     URL: {url[:120]}...")
                 try:
                     req = urllib.request.Request(url, headers=base_headers)
@@ -2606,71 +2586,43 @@ class ProxyHandler(BaseHTTPRequestHandler):
 
                 print(f"  🔍 응답 미리보기 (t_type={t_type_val}): {raw_text[:200]}")
                 if not raw_text:
-                    empty_response_seen = True
-                    print(f"  ⚠️ 빈 응답 (t_type={t_type_val}) — 쿠키/세션 부족 가능성이 큼")
+                    print(f"  ⚠️ 빈 응답 (t_type={t_type_val}) — 건너뜀")
                     continue
 
                 try:
                     raw = json.loads(raw_text)
                 except Exception as je:
-                    parse_error_seen = True
                     print(f"  ⚠️ JSON 파싱 실패 (t_type={t_type_val}): {je}")
                     print(f"     응답 원문: {raw_text[:500]}")
                     continue
 
-                def _find_bds_items(obj, depth=0):
-                    if depth > 5 or obj is None:
-                        return []
-                    if isinstance(obj, list):
-                        # 실거래 row는 dict 배열인 경우가 대부분이다.
-                        if not obj:
-                            return []
-                        if any(isinstance(x, dict) for x in obj):
-                            return obj
-                        return []
-                    if isinstance(obj, dict):
-                        # 부동산플래닛 응답 구조 변경 대비: 실거래 목록 후보 키 우선 탐색
-                        priority_keys = (
-                            'realpriceDealList', 'realPriceDealList', 'realpriceMapMarkerList',
-                            'markerList', 'dealList', 'list', 'items', 'contents', 'data', 'result',
-                            'body', 'payload', 'rows'
-                        )
-                        for key in priority_keys:
-                            if key in obj:
-                                found = _find_bds_items(obj.get(key), depth + 1)
-                                if found:
-                                    return found
-                        for val in obj.values():
-                            found = _find_bds_items(val, depth + 1)
-                            if found:
-                                return found
-                    return []
-
-                items_raw = _find_bds_items(raw)
-                if isinstance(raw, dict) and not items_raw:
-                    unknown_structure_seen = True
-                    print(f"  ⚠️ 알 수 없는 응답 구조 — 키 목록: {list(raw.keys())}")
+                items_raw = []
+                if isinstance(raw, list):
+                    items_raw = raw
+                elif isinstance(raw, dict):
+                    # 가능한 키 모두 시도
+                    for key in ('data', 'list', 'result', 'items', 'contents'):
+                        candidate = raw.get(key)
+                        if candidate:
+                            if isinstance(candidate, list):
+                                items_raw = candidate
+                                break
+                            elif isinstance(candidate, dict):
+                                for sub in ('list', 'data', 'items'):
+                                    if isinstance(candidate.get(sub), list):
+                                        items_raw = candidate[sub]
+                                        break
+                            if items_raw:
+                                break
+                    if not items_raw:
+                        print(f"  ⚠️ 알 수 없는 응답 구조 — 키 목록: {list(raw.keys())}")
 
                 print(f"  📋 t_type={t_type_val}: {len(items_raw)}개 수신")
                 all_raw_items.extend(items_raw)
 
             if not all_raw_items:
-                if empty_response_seen:
-                    msg = '부동산플래닛 API가 빈 응답을 반환했습니다. 저장된 쿠키가 없거나 권한이 부족합니다. getRealpriceMapMarker.ytp 요청의 Cookie 전체를 다시 입력하세요.'
-                    if cookie_source == 'user':
-                        msg = '입력한 부동산플래닛 Cookie로도 빈 응답이 왔습니다. Cookie가 만료됐거나, getRealpriceMapMarker.ytp가 아닌 다른 요청의 Cookie일 가능성이 큽니다.'
-                    if not request_url:
-                        msg += ' 가능하면 같은 요청의 Request URL도 함께 저장하세요.'
-                    self._ok(json.dumps({'status': 'cookie_required', 'message': msg, 'data': [], 'cookie_source': cookie_source}, ensure_ascii=False))
-                    return
-                if parse_error_seen or unknown_structure_seen:
-                    self._ok(json.dumps({'status': 'warn', 'message': '부동산플래닛 응답 구조를 읽지 못했습니다. proxy_server.py 파서 업데이트가 필요합니다.', 'data': []}, ensure_ascii=False))
-                    return
-                self._ok(json.dumps({'status': 'warn', 'message': '해당 지도 범위의 부동산플래닛 실거래 데이터가 없습니다.', 'data': []}, ensure_ascii=False))
+                self._ok(json.dumps({'status': 'warn', 'message': '해당 지역 부동산플래닛 실거래 데이터 없음 (쿠키가 만료됐을 수 있습니다)', 'data': []}, ensure_ascii=False))
                 return
-
-            if bds_cookie and all_raw_items and cookie_source in ('user', 'runtime_cache'):
-                BDS_COOKIE_CACHE = bds_cookie
 
             def clean(v):
                 if v is None or v == '' or v == '0': return None
@@ -2682,58 +2634,143 @@ class ProxyHandler(BaseHTTPRequestHandler):
             # ★ 상가/업무용만 포함 - 아파트/빌라/주거용 제외
             # r_type_nm: '근린생활', '업무', '판매', '숙박', '공장', '창고' 등 포함
             # 제외: '아파트', '연립다세대', '단독다가구', '단독주택' 등 주거용
-            # ★ 오피스텔 명시적 제외 추가 (기존에 EXCLUDE에 없어서 그대로 통과되던 문제 수정)
-            EXCLUDE_R_TYPES = {'아파트', '연립다세대', '단독다가구', '다세대', '단독주택', '다가구', '오피스텔'}
-            # '오피스' 키워드는 오피스텔과 겹치므로 제거, 대신 '오피스(건물)' 처리는 r_type 코드로
-            INCLUDE_KEYWORDS = ['근린', '업무', '판매', '숙박', '상가']  # 공장/창고/토지/오피스텔 제외
+            EXCLUDE_R_TYPES = {'아파트', '연립다세대', '단독다가구', '다세대', '단독주택', '다가구'}
+            INCLUDE_KEYWORDS = ['근린', '업무', '판매', '숙박', '상가', '오피스']  # 공장/창고/토지 제외
 
-            def bds_addr_key(d):
-                addr = str(d.get('addr_nm') or '').strip()
-                if addr:
-                    return 'addr:' + ' '.join(addr.split())
-                pnu = str(d.get('pnu') or '').strip()
-                if pnu:
-                    return 'pnu:' + pnu
-                eais_pk = str(d.get('eais_pk') or '').strip()
-                if eais_pk:
-                    return 'eais:' + eais_pk
-                lat_v = d.get('lat')
-                lng_v = d.get('lng')
-                if lat_v and lng_v:
-                    return f"coord:{lat_v},{lng_v}"
-                return ''
+            def first_value(d, keys):
+                for k in keys:
+                    v = d.get(k)
+                    if v not in (None, '', '0', 0):
+                        return v
+                return None
 
-            def bds_trade_rank(d):
-                try:
-                    year = int(str(d.get('t_year') or '0').strip() or '0')
-                except:
-                    year = 0
-                try:
-                    month = int(str(d.get('t_month') or '0').strip() or '0')
-                except:
-                    month = 0
-                try:
-                    t_no_num = int(str(d.get('t_no') or '0').strip() or '0')
-                except:
-                    t_no_num = 0
-                info_score = 0
-                for k in ('excl_area_m2', 'pvt_area_m2', 'exclusive_area_m2', 'exclusiveArea', 'spc2', 'bldg_area_m2', 'obj_amt', 't_floor', 't_flr', 'floor_level', 'flr', 'floor', 'f_nm', 'bldg_flr', 'obj_floor', 'floor_no', 'floor_no_nm', 'floor_nm', 'FLOOR_NO', 'FLOOR_NO_NM', 'FLOOR_NM'):
-                    if d.get(k) not in (None, '', '0', 0):
-                        info_score += 1
-                return (year, month, info_score, t_no_num)
+            def bds_trade_key(d, idx=0):
+                primary = str(d.get('t_no') or d.get('trade_no') or d.get('no') or d.get('idx') or '').strip()
+                if primary:
+                    return primary
+                parts = [
+                    d.get('pnu') or d.get('eais_pk') or d.get('addr_nm') or '',
+                    d.get('t_year') or '', d.get('t_month') or '',
+                    d.get('obj_amt') or '',
+                    d.get('excl_area_m2') or d.get('pvt_area_m2') or d.get('spc2') or d.get('bldg_area_m2') or '',
+                    first_value(d, ('t_floor', 'floor_level', 'flr', 'floor', 'f_nm', 'bldg_flr', 'obj_floor', 'floor_no', 'FLOOR_NO_NM', 'FLOOR_NM')) or '',
+                    str(idx)
+                ]
+                return 'auto_' + '_'.join(str(x).strip().replace(' ', '') for x in parts if x not in (None, ''))[:160]
 
-            latest_by_addr = {}
+            def extract_bds_floor_from_detail(bldg_data, eais_pk='', bldg_area_m2=''):
+                detail = bldg_data.get('detail', {}) if isinstance(bldg_data, dict) else {}
+                part_own_area = detail.get('eais_building_part_own_area', []) or []
+                floor_val = None
+                eais_pk_s = str(eais_pk or '').strip()
+
+                # 1순위: EAIS_KEY가 현재 거래키와 맞는 전유 항목
+                if eais_pk_s:
+                    for item in part_own_area:
+                        if str(item.get('EAIS_KEY') or '').strip() == eais_pk_s and item.get('EXPOS_PUB_CODE_NM') == '전유':
+                            floor_val = item.get('FLOOR_NO_NM') or item.get('FLOOR_NM')
+                            break
+
+                # 2순위: EAIS_KEY 매칭 첫 항목
+                if not floor_val and eais_pk_s:
+                    for item in part_own_area:
+                        if str(item.get('EAIS_KEY') or '').strip() == eais_pk_s:
+                            floor_val = item.get('FLOOR_NO_NM') or item.get('FLOOR_NM')
+                            break
+
+                # 3순위: 전유 항목이 1개뿐이면 해당 층 사용
+                if not floor_val:
+                    owned = [x for x in part_own_area if x.get('EXPOS_PUB_CODE_NM') == '전유' and (x.get('FLOOR_NO_NM') or x.get('FLOOR_NM'))]
+                    if len(owned) == 1:
+                        floor_val = owned[0].get('FLOOR_NO_NM') or owned[0].get('FLOOR_NM')
+
+                # 4순위: 면적 근사 매칭
+                if not floor_val and bldg_area_m2:
+                    building_floor = detail.get('eais_building_floor', []) or []
+                    try:
+                        target_area = float(str(bldg_area_m2).replace(',', ''))
+                    except:
+                        target_area = 0
+                    if target_area > 0:
+                        best_diff = float('inf')
+                        best_floor = None
+                        for item in building_floor:
+                            try:
+                                area = float(str(item.get('AREA_M2') or item.get('AREA') or '0').replace(',', ''))
+                                diff = abs(area - target_area)
+                                if diff < best_diff:
+                                    best_diff = diff
+                                    best_floor = item.get('FLOOR_NM') or item.get('FLOOR_NO_NM') or item.get('CSTM_FLOOR_NM')
+                            except:
+                                pass
+                        if best_floor and best_diff <= max(1.0, target_area * 0.10):
+                            floor_val = best_floor
+                return floor_val
+
+            bldg_info_cache = {}
+            def enrich_bds_item(d):
+                # marker 응답 자체에 층수가 있으면 그대로 사용
+                floor_val = first_value(d, ('t_floor', 't_flr', 'floor_level', 'flr', 'floor', 'f_nm', 'bldg_flr', 'obj_floor', 'floor_no', 'FLOOR_NO_NM', 'FLOOR_NM'))
+                eais_pk = str(d.get('eais_pk') or d.get('EAIS_KEY') or d.get('pnu_enc') or '').strip()
+                if floor_val:
+                    d['_floor_enrich_status'] = 'raw'
+                    return floor_val
+                if not eais_pk:
+                    d['_floor_enrich_status'] = 'no_eais_pk'
+                    return None
+                if not bds_cookie:
+                    d['_floor_enrich_status'] = 'no_cookie'
+                    return None
+
+                if eais_pk not in bldg_info_cache:
+                    bldg_url = f'https://www.bdsplanet.com/map/getBuildingInfo.ytp?pnu_enc={urllib.parse.quote(eais_pk)}'
+                    headers = dict(base_headers)
+                    headers['Referer'] = f'https://www.bdsplanet.com/map/realprice_map/{eais_pk}/N/{d.get("r_type") or ""}/1/{d.get("bldg_area_m2") or ""}.ytp'
+                    try:
+                        req = urllib.request.Request(bldg_url, headers=headers)
+                        with _urlopen(req, timeout=10) as resp:
+                            raw_bldg = resp.read().decode('utf-8', errors='replace').strip()
+                        if not raw_bldg or raw_bldg.lstrip().startswith('<'):
+                            raise ValueError('JSON이 아닌 응답/로그인 페이지 가능성')
+                        bldg_info_cache[eais_pk] = json.loads(raw_bldg)
+                        print(f"  ✅ 플래닛 getBuildingInfo 성공: {eais_pk}")
+                    except Exception as e:
+                        bldg_info_cache[eais_pk] = None
+                        print(f"  ⚠️ 플래닛 층수 보강 실패: eais_pk={eais_pk} / {e}")
+                bldg_data = bldg_info_cache.get(eais_pk)
+                if not bldg_data:
+                    d['_floor_enrich_status'] = 'detail_fail'
+                    return None
+
+                # 건물 대표 주소/건물명 보강
+                try:
+                    set_info = ((bldg_data.get('detail') or {}).get('eais_building_set_info') or {})
+                    if set_info:
+                        d.setdefault('_road_location', set_info.get('ROAD_LOCATION') or '')
+                        d.setdefault('_location', set_info.get('LOCATION') or '')
+                        d.setdefault('_building_nm', set_info.get('BUILDING_NM') or '')
+                        d.setdefault('_ground_floor', set_info.get('GROUND_FLOOR') or '')
+                        d.setdefault('_under_floor', set_info.get('UNDER_FLOOR') or '')
+                except:
+                    pass
+                floor_val = extract_bds_floor_from_detail(bldg_data, eais_pk=eais_pk, bldg_area_m2=d.get('bldg_area_m2') or d.get('excl_area_m2') or d.get('spc2'))
+                if floor_val:
+                    d['_floor_enrich_status'] = 'detail_ok'
+                else:
+                    d['_floor_enrich_status'] = 'not_matched'
+                return floor_val
+
+            filtered_raw_items = []
             skipped_residential = 0
-            server_filter_kept = 0
-            for d in all_raw_items:
-                # r_type_nm으로 주거용/오피스텔 필터링
+            seen_trade_keys = set()
+            floor_enriched = 0
+            floor_raw = 0
+            floor_missing = 0
+            for idx, d in enumerate(all_raw_items):
+                # r_type_nm으로 주거용 필터링
                 r_nm = str(d.get('r_type_nm') or '').strip()
                 if r_nm:
                     if r_nm in EXCLUDE_R_TYPES:
-                        skipped_residential += 1
-                        continue
-                    # 오피스텔이 r_type_nm에 부분 포함되는 경우도 제외
-                    if '오피스텔' in r_nm:
                         skipped_residential += 1
                         continue
                     has_residential = any(kw in r_nm for kw in ['아파트', '연립', '다가구', '다세대', '단독주택'])
@@ -2741,30 +2778,30 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     if has_residential and not has_include:
                         skipped_residential += 1
                         continue
-                else:
-                    # ★ r_type_nm 비어있으면: r_type 코드로 주거 판단 시도
-                    # r_type: 1=아파트, 2=연립다세대, 3=단독, 7=오피스텔 (플래닛 기준 추정)
-                    r_type_code = str(d.get('r_type') or '').strip()
-                    if r_type_code in ('1', '2', '3', '7'):
-                        skipped_residential += 1
-                        continue
-                    # r_type_nm도 없고 코드도 없으면 일단 수집 (주소로 사후 판단)
 
-                server_filter_kept += 1
-                addr_key = bds_addr_key(d)
-                if addr_key:
-                    prev = latest_by_addr.get(addr_key)
-                    if prev is None or bds_trade_rank(d) > bds_trade_rank(prev):
-                        latest_by_addr[addr_key] = d
+                trade_key = bds_trade_key(d, idx)
+                if trade_key in seen_trade_keys:
                     continue
-                anon_key = f"anon:{len(latest_by_addr)}"
-                latest_by_addr[anon_key] = d
+                seen_trade_keys.add(trade_key)
+                d['_trade_key'] = trade_key
+                before_floor = first_value(d, ('t_floor', 't_flr', 'floor_level', 'flr', 'floor', 'f_nm', 'bldg_flr', 'obj_floor', 'floor_no', 'FLOOR_NO_NM', 'FLOOR_NM'))
+                floor_val = enrich_bds_item(d)
+                if floor_val:
+                    d['_resolved_floor'] = floor_val
+                    if before_floor:
+                        floor_raw += 1
+                    else:
+                        floor_enriched += 1
+                else:
+                    floor_missing += 1
+                filtered_raw_items.append(d)
 
-            if latest_by_addr and len(latest_by_addr) < len(all_raw_items):
-                print(f"  🧹 주소 기준 최신거래만 유지: {len(all_raw_items)}개 → {len(latest_by_addr)}개")
+            if len(filtered_raw_items) > max_n:
+                filtered_raw_items = filtered_raw_items[:max_n]
+            print(f"  🧾 플래닛 거래 유지: 원본 {len(all_raw_items)}개 → 저장대상 {len(filtered_raw_items)}개, 주거 제외 {skipped_residential}개, 층수 raw {floor_raw}건/보강 {floor_enriched}건/누락 {floor_missing}건")
 
             result_items = []
-            for d in latest_by_addr.values():
+            for d in filtered_raw_items:
 
                 obj_amt = clean(d.get('obj_amt'))  # 원 단위
                 obj_amt_만 = round(obj_amt / 10000) if obj_amt and obj_amt >= 10000 else obj_amt
@@ -2782,11 +2819,10 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     or clean(d.get('spc2'))
                     or clean(d.get('bldg_area_m2'))
                 )
-                floor_val, total_floor_val = self._pick_floor_from_raw(d)
 
                 result_items.append({
-                    '매물번호':      str(d.get('t_no') or d.get('pnu') or d.get('eais_pk') or ''),
-                    '매물명':        d.get('r_type_nm') or '',
+                    '매물번호':      str(d.get('_trade_key') or d.get('t_no') or d.get('pnu') or d.get('eais_pk') or ''),
+                    '매물명':        d.get('r_type_nm') or d.get('_building_nm') or '',
                     '매물유형':      '실거래',
                     '거래유형':      t_type_nm,
                     '매매가':        obj_amt_만 if t_type == '1' else None,
@@ -2797,10 +2833,12 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     '공급면적_m2':   clean(d.get('supply_area_m2')) or clean(d.get('supplyArea')),
                     '건물면적_m2':   clean(d.get('bldg_area_m2')),
                     '건축연도':      d.get('build_year') or None,
-                    '해당층':        floor_val,
-                    '총층':          total_floor_val,
-                    '소재지':        (d.get('addr_nm') or (str(d.get('sigungu_nm','')) + ' ' + str(d.get('dong_nm') or d.get('dongnm') or '')).strip() or ''),
-                    '지번주소':      (d.get('addr_nm') or '').strip() or None,
+                    '해당층':        d.get('_resolved_floor') or d.get('t_floor') or d.get('t_flr') or d.get('floor_level') or d.get('flr') or d.get('floor') or d.get('f_nm') or d.get('bldg_flr') or d.get('obj_floor') or d.get('floor_no') or d.get('FLOOR_NO_NM') or d.get('FLOOR_NM') or None,
+                    '소재지':        (d.get('addr_nm') or d.get('_road_location') or d.get('_location') or (str(d.get('sigungu_nm','')) + ' ' + str(d.get('dong_nm') or d.get('dongnm') or '')).strip() or ''),
+                    '지번주소':      (d.get('addr_nm') or d.get('_location') or '').strip() or None,
+                    '도로명주소':    (d.get('_road_location') or '').strip() or None,
+                    '건물명':        d.get('_building_nm') or None,
+                    '총층':          d.get('_ground_floor') or None,
                     '거래년월':      거래년월,
                     'lat':           float(d['lat']) if d.get('lat') else None,
                     'lng':           float(d['lng']) if d.get('lng') else None,
@@ -2809,12 +2847,6 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     '_r_type':        d.get('r_type') or '',
                     '_bldg_area_m2':  float(d['bldg_area_m2']) if d.get('bldg_area_m2') else None,
                 })
-
-            max_n_applied = None
-            if max_n and max_n > 0:
-                max_n_applied = int(max_n)
-                result_items = result_items[:max_n]
-                print(f"  🎯 상권킹 최대 개수 적용: {len(result_items)}개")
 
             # ★ 역지오코딩: 플래닛은 원본 지번주소를 대표 소재지로 유지하고, 도로명주소만 보조로 채움
             if kakao_rest_key:
@@ -2847,17 +2879,9 @@ class ProxyHandler(BaseHTTPRequestHandler):
                             pass
                     print(f"  ✅ 부동산플래닛 주소 변환 완료: {converted}건")
 
-            msg = f'{len(result_items)}개 수집 완료'
-            meta = {
-                'raw_count': len(all_raw_items),
-                'skipped_residential': skipped_residential,
-                'after_server_filter_count': server_filter_kept,
-                'after_dedupe_count': len(latest_by_addr),
-                'final_count': len(result_items),
-                'max_n_applied': max_n_applied,
-            }
-            print(f"  ✅ {msg} / 진단: {meta}")
-            self._ok(json.dumps({'status': 'success', 'message': msg, 'data': result_items, 'meta': meta}, ensure_ascii=False))
+            msg = f'{len(result_items)}개 수집 완료 (층수 {sum(1 for x in result_items if x.get("해당층"))}건 확인)'
+            print(f"  ✅ {msg}")
+            self._ok(json.dumps({'status': 'success', 'message': msg, 'data': result_items}, ensure_ascii=False))
 
         except Exception as e:
             import traceback
@@ -2866,7 +2890,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
 
 
     def _collect_nemo(self, kakao_rest_key='',
-                      lat='', lng='', nelat='', swlat='', nelng='', swlng='', max_n=None):
+                      lat='', lng='', nelat='', swlat='', nelng='', swlng=''):
         """네모 수집: www.nemoapp.kr/api/store/search-list"""
         NEMO_API = 'https://www.nemoapp.kr/api/store/search-list'
 
@@ -2996,6 +3020,18 @@ class ProxyHandler(BaseHTTPRequestHandler):
             _nelng = float(nelng) if nelng else _lng + 0.005
             _swlng = float(swlng) if swlng else _lng - 0.005
 
+            params = urllib.parse.urlencode({
+                'CompletedOnly': 'false',
+                'NELat': _nelat,
+                'NELng': _nelng,
+                'SWLat': _swlat,
+                'SWLng': _swlng,
+                'Zoom': 17,
+                'SortBy': 29,
+                'PageIndex': 0,
+            })
+            url = f'{NEMO_API}?{params}'
+
             headers = {
                 'accept': 'application/json, text/plain, */*',
                 'accept-language': 'ko-KR,ko;q=0.9',
@@ -3003,39 +3039,13 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 'referer': 'https://www.nemoapp.kr/',
                 'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
             }
-            target_n = max_n if (max_n and max_n > 0) else None
-            items = []
-            page_index = 0
-            while True:
-                params = urllib.parse.urlencode({
-                    'CompletedOnly': 'false',
-                    'NELat': _nelat,
-                    'NELng': _nelng,
-                    'SWLat': _swlat,
-                    'SWLng': _swlng,
-                    'Zoom': 17,
-                    'SortBy': 29,
-                    'PageIndex': page_index,
-                })
-                url = f'{NEMO_API}?{params}'
-                req = urllib.request.Request(url, headers=headers)
-                print(f"  🌐 네모 API 호출... (page={page_index})")
-                with _urlopen(req, timeout=15) as resp:
-                    raw = json.loads(resp.read().decode('utf-8'))
-                page_items = raw.get('items', []) if isinstance(raw, dict) else []
-                if not page_items:
-                    break
-                items.extend(page_items)
-                if target_n and len(items) >= target_n:
-                    break
-                if len(page_items) < 20:
-                    break
-                page_index += 1
-                if page_index > 50:
-                    break
-            if target_n:
-                items = items[:target_n]
-                print(f"  🎯 상권킹 최대 개수 적용: {len(items)}개")
+
+            req = urllib.request.Request(url, headers=headers)
+            print(f"  🌐 네모 API 호출...")
+            with _urlopen(req, timeout=15) as resp:
+                raw = json.loads(resp.read().decode('utf-8'))
+
+            items = raw.get('items', [])
             print(f"  📋 {len(items)}개 매물 수신")
 
             if not items:
@@ -3158,7 +3168,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
             self._ok(json.dumps({'status': 'error', 'message': str(e), 'data': []}, ensure_ascii=False))
 
     def _collect_jumpo(self, cookie='', kakao_rest_key='',
-                        lat='', lng='', nelat='', swlat='', nelng='', swlng='', max_n=None):
+                        lat='', lng='', nelat='', swlat='', nelng='', swlng=''):
         """점포라인 수집: api.jumpoline.com/Api/Maps/findrt"""
         JUMPO_API = 'https://api.jumpoline.com/Api/Maps/findrt'
 
@@ -3207,9 +3217,6 @@ class ProxyHandler(BaseHTTPRequestHandler):
 
             items = raw.get('contents', [])
             print(f"  📋 {len(items)}개 매물 수신")
-            if max_n and max_n > 0:
-                items = items[:max_n]
-                print(f"  🎯 상권킹 최대 개수 적용: {len(items)}개")
 
             if not items:
                 self._ok(json.dumps({'status': 'warn', 'message': '매물 없음 (해당 지역 매물 없거나 쿠키 필요)', 'data': []}, ensure_ascii=False))
@@ -3307,8 +3314,6 @@ class ProxyHandler(BaseHTTPRequestHandler):
                         except: pass
                     print(f"  ✅ 주소 변환 완료: {converted}건")
 
-            if max_n and max_n > 0:
-                result_items = result_items[:max_n]
             msg = f'{len(result_items)}개 수집 완료'
             print(f"  ✅ {msg}")
             self._ok(json.dumps({'status': 'success', 'message': msg, 'data': result_items}, ensure_ascii=False))
