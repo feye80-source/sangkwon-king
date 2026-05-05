@@ -1586,21 +1586,7 @@
     function _wrFindFreeTableSection(sections, roomId) {
       return (Array.isArray(sections) ? sections : []).find(sec => sec && !sec.deletedAt && (sec.roomId === roomId || sec.room_id === roomId) && sec.type === 'free_table') || null;
     }
-    window._wrGetFreeTables = function(room) {
-      if (!room || !room.id) return [];
-      const sections = _wrGetSectionStoreSnapshot();
-      const section = _wrFindFreeTableSection(sections, room.id);
-      if (section && section.data && Array.isArray(section.data.tables)) {
-        return section.data.tables;
-      }
-      const legacy = _wrLegacyFreeTables(room);
-      if (legacy && legacy.length && window._wrPersistFreeTables) {
-        window._wrPersistFreeTables(room.id, legacy, { quiet: true });
-        return legacy;
-      }
-      if (!room.__ftDraft) room.__ftDraft = (typeof _ftMakeTable === 'function') ? [_ftMakeTable('')] : [{ title:'', cols:['층','평단가','방향','월세','보증금','메모'], rows:[['1층','','남향','150만','1000만',''],['2층','','동향','180만','1000만','']] }];
-      return room.__ftDraft;
-    };
+    window._wrGetFreeTables = function(room) { return []; };
     window._wrPersistFreeTables = function(roomId, tables, opts) {
       if (!roomId) return null;
       const options = opts || {};
@@ -5678,17 +5664,41 @@ var _safeLocalSet = function(key, value) {
                 function wr2BuildLinkedItemCard(seed, idx, roomId){
                   const sid=String(seed.id||''), safeId=sid.replace(/[^a-zA-Z0-9_-]/g,'_');
                   const dday=seed.biddate&&typeof getDDayLabel==='function'?getDDayLabel(seed.biddate):'';
-                  const perPy=seed.minWon&&seed.areaPy?' · @'+Math.round(seed.minWon/seed.areaPy/10000).toLocaleString('ko-KR')+'만/평':'';
-                  return `<div class="wr2-linked-item" style="border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.035);border-radius:12px;padding:10px;margin-top:8px;">
-                    <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;"><div style="min-width:0;"><div style="font-weight:900;color:var(--tx);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${idx+1}. ${wr2SummaryEsc(seed.title)}</div><div style="font-size:11px;color:var(--mu);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${wr2SummaryEsc(seed.address||'-')}</div></div><button class="wr2-small-btn" onclick="wr2UnlinkSaved('${wr2SummaryJs(roomId)}','${wr2SummaryJs(sid)}')">해제</button></div>
-                    <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:8px;font-size:11px;"><div><span style="color:var(--mu);">감정가</span><br><b>${wr2SummaryFormatWon(seed.appraisalWon)}</b></div><div><span style="color:var(--mu);">최저가</span><br><b style="color:var(--ac);">${wr2SummaryFormatWon(seed.minWon)}</b></div><div><span style="color:var(--mu);">면적</span><br><b>${seed.areaM2?seed.areaM2.toFixed(2)+'㎡ / '+seed.areaPy.toFixed(1)+'평':'-'}</b></div><div><span style="color:var(--mu);">기일</span><br><b>${wr2SummaryEsc(seed.biddate||'-')} ${dday?'<span style="color:var(--ac);">'+wr2SummaryEsc(dday)+'</span>':''}</b></div></div>
-                    <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:6px;margin-top:8px;align-items:center;"><input id="wr2LinkedBid_${safeId}" class="wr2-input" value="${wr2SummaryEsc(seed.biddate||'')}" placeholder="매각기일"><input id="wr2LinkedMin_${safeId}" class="wr2-input" value="${wr2SummaryEsc(seed.minWon?Math.round(seed.minWon).toLocaleString('ko-KR'):'')}" placeholder="최저가"><button class="wr2-small-btn" onclick="wr2LinkedItemSave('${wr2SummaryJs(roomId)}','${wr2SummaryJs(sid)}')">저장</button></div>
-                    <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;"><button class="wr2-small-btn" onclick="wr2CalcLoadLinkedItem('${wr2SummaryJs(roomId)}','${wr2SummaryJs(sid)}')">이 물건 계산</button><button class="wr2-small-btn" onclick="openPopup('${wr2SummaryJs(sid)}')">원본 열기</button>${seed.url?`<button class="wr2-small-btn" onclick="window.open('${wr2SummaryJs(seed.url)}','_blank')">상세URL</button>`:''}<span style="margin-left:auto;color:var(--mu);font-size:10px;">${perPy}</span></div>
+                  const perPy=seed.minWon&&seed.areaPy?'@'+Math.round(seed.minWon/seed.areaPy/10000).toLocaleString('ko-KR')+'만/평':'';
+                  const item=seed.item||{}, d=item.data||{};
+                  const type=d['물건종류']||d['용도']||'';
+                  const caseNo=seed.caseNo||d['사건번호']||d['경매번호']||'';
+                  const sourceUrl=seed.url||d['상세URL']||d['옥션원URL']||d['온비드URL']||'';
+                  const bidInput=(function(v){ const raw=String(v||'').trim(); const dt=(typeof wr2ParseSaleDateLoose==='function')?wr2ParseSaleDateLoose(raw):null; if(dt&&!isNaN(dt.getTime())){return dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0');} return raw; })(seed.biddate||'');
+                  const minInput=seed.minWon?Math.round(seed.minWon).toLocaleString('ko-KR'):'';
+                  function row(label,value){ return '<div class="wr2-info-row"><span class="wr2-info-lbl">'+wr2SummaryEsc(label)+'</span><span class="wr2-info-val">'+(value||'<span style="color:var(--mu);">-</span>')+'</span></div>'; }
+                  return `<div class="wr2-linked-item-clean">
+                    <div class="top">
+                      <div style="min-width:0;flex:1;">
+                        <div class="title">${idx+1}. ${wr2SummaryEsc(seed.title)}</div>
+                        <div class="addr">${wr2SummaryEsc(seed.address||'-')}</div>
+                      </div>
+                      <button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();wr2UnlinkSaved('${wr2SummaryJs(roomId)}','${wr2SummaryJs(sid)}')">해제</button>
+                    </div>
+                    <div class="rows">
+                      ${caseNo?row('경매번호',wr2SummaryEsc(caseNo)):''}
+                      ${type?row('물건종류',wr2SummaryEsc(type)):''}
+                      ${row('전용면적',seed.areaM2?seed.areaM2.toFixed(2)+'㎡ <span style="color:var(--ac);font-weight:600;">('+seed.areaPy.toFixed(1)+'평)</span>':'')}
+                      ${row('감정가',seed.appraisalWon?wr2SummaryFormatWon(seed.appraisalWon):'')}
+                      ${row('최저가','<span style="display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:wrap;"><input id="wr2LinkedMin_'+safeId+'" class="money" type="text" inputmode="numeric" value="'+wr2SummaryEsc(minInput)+'" placeholder="원 단위 입력"><span class="wr2-sub-py">'+wr2SummaryEsc(perPy)+'</span></span>')}
+                      ${row('매각기일','<span style="display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:wrap;"><input id="wr2LinkedBid_'+safeId+'" type="text" value="'+wr2SummaryEsc(bidInput)+'" placeholder="YYYY-MM-DD">'+(dday?'<span style="display:inline-block;padding:1px 6px;border-radius:999px;font-size:10px;font-weight:700;border:1px solid rgba(255,140,66,.45);background:rgba(255,140,66,.12);color:#ff8c42;">'+wr2SummaryEsc(dday)+'</span>':'')+'</span>')}
+                    </div>
+                    <div class="wr2-linked-actions">
+                      <button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();wr2LinkedItemSave('${wr2SummaryJs(roomId)}','${wr2SummaryJs(sid)}')">저장</button>
+                      <button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();wr2CalcLoadLinkedItem('${wr2SummaryJs(roomId)}','${wr2SummaryJs(sid)}')">이 물건 계산</button>
+                      <button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();openPopup('${wr2SummaryJs(sid)}')">원본 열기</button>
+                      ${sourceUrl?`<button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();window.open('${wr2SummaryJs(sourceUrl)}','_blank')">상세URL</button>`:''}
+                    </div>
                   </div>`;
                 }
                 function wr2BuildMultiLinkedSummaryHtml(room, items){
                   const seeds=(items||[]).map(wr2SummarySeed), totalMin=seeds.reduce((a,s)=>a+(s.minWon||0),0), totalApp=seeds.reduce((a,s)=>a+(s.appraisalWon||0),0), totalArea=seeds.reduce((a,s)=>a+(s.areaM2||0),0), totalPy=totalArea?totalArea/3.305785:0;
-                  return `<div class="wr2-linked-total" style="border:1px solid rgba(249,115,22,.28);background:rgba(249,115,22,.07);border-radius:13px;padding:11px;margin-bottom:10px;"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center;"><b style="font-size:14px;color:var(--tx);">연결 경매 물건 ${seeds.length}개</b><button class="wr2-small-btn" onclick="wr2CalcLoadLinkedTotal('${wr2SummaryJs(room.id)}')">합산 계산 불러오기</button></div><div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:9px;font-size:11px;"><div><span style="color:var(--mu);">합산 최저가</span><br><b style="color:var(--ac);font-size:13px;">${wr2SummaryFormatWon(totalMin)}</b></div><div><span style="color:var(--mu);">합산 감정가</span><br><b>${wr2SummaryFormatWon(totalApp)}</b></div><div><span style="color:var(--mu);">합산 면적</span><br><b>${totalArea?totalArea.toFixed(2)+'㎡ / '+totalPy.toFixed(1)+'평':'-'}</b></div></div></div>` + seeds.map((seed,idx)=>wr2BuildLinkedItemCard(seed,idx,room.id)).join('');
+                  return `<div class="wr2-linked-total-clean"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap;"><b style="font-size:15px;color:var(--tx);">연결 경매 물건 ${seeds.length}개</b><button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();wr2CalcLoadLinkedTotal('${wr2SummaryJs(room.id)}')">합산 계산 불러오기</button></div><div class="grid"><div><span style="color:var(--mu);font-size:11px;">합산 최저가</span><br><b style="color:var(--ac);font-size:15px;">${wr2SummaryFormatWon(totalMin)}</b></div><div><span style="color:var(--mu);font-size:11px;">합산 감정가</span><br><b>${wr2SummaryFormatWon(totalApp)}</b></div><div><span style="color:var(--mu);font-size:11px;">합산 면적</span><br><b>${totalArea?totalArea.toFixed(2)+'㎡ / '+totalPy.toFixed(1)+'평':'-'}</b></div></div></div>` + seeds.map((seed,idx)=>wr2BuildLinkedItemCard(seed,idx,room.id)).join('');
                 }
                 window.wr2UnlinkSaved=function(roomId,savedId){ const room=(wr2State.rooms||[]).find(r=>String(r.id)===String(roomId)); if(!room)return; const sid=String(savedId||''); wr2NormalizeRoomLinkedItems(room); room.linkedItems=(room.linkedItems||[]).filter(x=>String((x&&(x.savedId||x.linkedSavedId||x.itemId||x.id))||'')!==sid); if(String(room.linkedSavedId||'')===sid)room.linkedSavedId=room.linkedItems[0]?room.linkedItems[0].savedId:''; room.updatedAt=Date.now(); saveRooms(); renderItemSummary(room); try{ if(typeof wr2Render==='function')wr2Render(); }catch(e){} try{ if(typeof showToast==='function')showToast('연결 물건을 해제했습니다','ok'); }catch(e){} };
                 window.wr2LinkedItemSave=function(roomId,savedId){ const safe=String(savedId||''), domId=safe.replace(/[^a-zA-Z0-9_-]/g,'_'); const bidEl=document.getElementById('wr2LinkedBid_'+domId), minEl=document.getElementById('wr2LinkedMin_'+domId); const sv=(typeof getSv==='function')?getSv():[]; const item=(sv||[]).find(s=>String(s&&s.id)===safe); if(!item)return; item.data=item.data||{}; if(bidEl){item.data['매각기일']=bidEl.value.trim(); item.biddate=bidEl.value.trim();} if(minEl){const won=wr2SummaryMoneyWon(minEl.value,false,item.data['감정가']||item.appraisal||0); if(won){item.data['최저가']=won; item.minprice=won;}} item.updatedAt=Date.now(); if(typeof setSv==='function')setSv(sv); const room=(wr2State.rooms||[]).find(r=>String(r.id)===String(roomId)); if(room){room.updatedAt=Date.now(); saveRooms(); renderItemSummary(room);} try{ if(typeof showToast==='function')showToast('연결 물건 정보를 저장했습니다','ok'); }catch(e){} };
@@ -5708,6 +5718,7 @@ var _safeLocalSet = function(key, value) {
                   if (linkedItemsAll.length > 1) {
                     try { var _stMulti = window.wr2SummaryGetEditState ? window.wr2SummaryGetEditState() : null; if (_stMulti && String(_stMulti.roomId || '') === String(room.id || '')) _stMulti.activeKey = ''; } catch (e) {}
                     el.innerHTML = wr2BuildMultiLinkedSummaryHtml(room, linkedItemsAll);
+                    try { el.querySelectorAll('.wr2-linked-edit-row input.money,.wr2-linked-item-clean input.money').forEach(function(inp){ inp.addEventListener('input', function(){ if (window.wr2SummaryMoneyInput) window.wr2SummaryMoneyInput(this); }); }); } catch(e) {}
                     return;
                   }
 
@@ -7361,53 +7372,69 @@ window.wr2SummaryCancelEdit = function() {
                   `;
                   document.head.appendChild(st);
                   st.textContent += `
-                    /* v17: 원래 안정 레이아웃 복구 + 금액칸만 최소 보정 */
-                    .wr2-calc-pro-shell{max-width:1240px!important;overflow:visible!important;}
-                    .wr2-calc-pro-mount,.wr2-calc-pro-mount .wr2-section-body{overflow:visible!important;}
-                    .wcp-card,.wcp-section{overflow:hidden!important;}
-                    .wcp-main-grid{display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:10px!important;align-items:start!important;}
-                    .wcp-input-sections{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr))!important;gap:8px!important;min-width:0!important;}
-                    .wcp-side-col{min-width:0!important;}
-                    @media(min-width:1300px){.wcp-main-grid{grid-template-columns:minmax(0,1.15fr) minmax(360px,.85fr)!important;}}
-                    .wcp-line{grid-template-columns:96px minmax(0,1fr) 30px!important;gap:6px!important;}
-                    .wcp-line.rate,.wcp-line.rate.wcp-rate-field{grid-template-columns:96px 64px 20px minmax(118px,1fr) 30px!important;gap:6px!important;}
-                    .wcp-inp[data-wcp-money="1"],.wcp-money-cell{font-variant-numeric:tabular-nums!important;letter-spacing:-.025em!important;text-align:right!important;padding-left:6px!important;padding-right:6px!important;min-width:0!important;}
-                    .wcp-line.rate .wcp-money-cell{font-size:11.2px!important;}
-                    .wcp-unit{overflow:visible!important;text-overflow:clip!important;white-space:nowrap!important;}
-                    .wcp-loan-rule{border:1px solid rgba(59,130,246,.28);background:rgba(37,99,235,.08);border-radius:9px;padding:7px;margin:3px 0 5px;}
-                    .wcp-loan-rule .title{display:flex;justify-content:space-between;gap:8px;color:#93c5fd;font-weight:900;font-size:10.5px;margin-bottom:6px;}
-                    .wcp-loan-rule .formula{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;}
-                    .wcp-loan-rule .chip{border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.035);border-radius:8px;padding:5px;min-width:0;}
-                    .wcp-loan-rule .chip span{display:block;color:#94a3b8;font-size:9.5px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-                    .wcp-loan-rule .chip b{display:block;color:#e8ecf4;font-size:10.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums;letter-spacing:-.03em;}
-                    .wcp-loan-rule .chip.on{border-color:rgba(96,165,250,.45);background:rgba(37,99,235,.16);}.wcp-loan-rule .chip.on b{color:#60a5fa;}
-                    .wcp-loan-rule .help{font-size:9.5px;color:#8b97ad;margin-top:5px;line-height:1.35;}
-                    .wcp-kpi.minfund{border-color:rgba(34,197,94,.36)!important;background:linear-gradient(180deg,rgba(34,197,94,.12),rgba(255,255,255,.035))!important;}
+                    /* v19: 현재 파일 기준 안정화 — 레이아웃은 깨지지 않게, 금액칸만 충분히 확보 */
+                    .wr2-calc-pro-shell{width:100%!important;max-width:none!important;margin:0!important;padding:0 14px 18px!important;overflow:hidden!important;}
+                    .wr2-calc-pro-mount,.wr2-calc-pro-mount .wr2-section-body{overflow:hidden!important;}
+                    .wcp-top{position:relative!important;top:auto!important;z-index:1!important;margin-bottom:12px!important;}
+                    .wcp-head{gap:12px!important;}
+                    .wcp-title{font-size:18px!important;line-height:1.25!important;}
+                    .wcp-sub{font-size:11px!important;line-height:1.35!important;}
+                    .wcp-actions{gap:7px!important;}
+                    .wcp-kpi-strip{grid-template-columns:repeat(7,minmax(0,1fr))!important;gap:9px!important;}
+                    .wcp-kpi{min-height:58px!important;padding:9px 10px!important;}
+                    .wcp-kpi .v{font-size:15px!important;line-height:1.25!important;letter-spacing:-.03em!important;}
+                    .wcp-kpi.minfund{border-color:rgba(34,197,94,.40)!important;background:linear-gradient(180deg,rgba(34,197,94,.13),rgba(255,255,255,.035))!important;}
                     .wcp-kpi.minfund .v{color:#4ade80!important;}
-                    .wcp-kpi.yield-main{border-color:rgba(96,165,250,.42)!important;background:linear-gradient(180deg,rgba(37,99,235,.13),rgba(255,255,255,.04))!important;}
-                    .wcp-kpi.yield-main .v{color:#93c5fd!important;font-size:15px!important;}
-                    .wcp-kpi.yield-main.lev{border-color:rgba(168,85,247,.38)!important;background:linear-gradient(180deg,rgba(126,34,206,.12),rgba(255,255,255,.04))!important;}
+                    .wcp-kpi.yield-main{border-color:rgba(96,165,250,.45)!important;background:linear-gradient(180deg,rgba(37,99,235,.14),rgba(255,255,255,.04))!important;}
+                    .wcp-kpi.yield-main .v{color:#93c5fd!important;font-size:17px!important;}
+                    .wcp-kpi.yield-main.lev{border-color:rgba(168,85,247,.42)!important;background:linear-gradient(180deg,rgba(126,34,206,.13),rgba(255,255,255,.04))!important;}
                     .wcp-kpi.yield-main.lev .v{color:#c4b5fd!important;}
-                    @media(max-width:980px){.wcp-line.rate,.wcp-line.rate.wcp-rate-field{grid-template-columns:92px 60px 20px minmax(108px,1fr) 28px!important}.wcp-loan-rule .formula{grid-template-columns:1fr!important}}
-                    @media(max-width:760px){.wcp-line,.wcp-line.rate,.wcp-line.rate.wcp-rate-field{grid-template-columns:1fr!important}.wcp-unit{display:none!important}.wcp-inp{text-align:left!important}}
-                    /* v18: 깨진 레이아웃 복구. 외부 구조는 안정 grid, 금액칸만 확보 */
-                    .wr2-link-saved-host{display:flex;justify-content:flex-end;align-items:center;gap:6px;margin:0 0 8px 0;position:relative;z-index:5;}
+                    .wcp-card{overflow:hidden!important;}
+                    .wcp-card h3{font-size:18px!important;line-height:1.25!important;}
+                    .wcp-card h4{font-size:13px!important;line-height:1.25!important;}
+                    .wcp-main-stable{display:grid!important;grid-template-columns:minmax(0,1.18fr) minmax(340px,.82fr)!important;gap:12px!important;align-items:start!important;width:100%!important;min-width:0!important;}
+                    .wcp-main-stable>.wcp-card,.wcp-main-stable>.wcp-side-col{min-width:0!important;max-width:100%!important;position:static!important;left:auto!important;right:auto!important;top:auto!important;transform:none!important;}
+                    .wcp-input-card{overflow:hidden!important;}
+                    .wcp-input-sections{display:grid!important;grid-template-columns:repeat(2,minmax(330px,1fr))!important;gap:10px!important;align-items:start!important;min-width:0!important;}
+                    .wcp-input-sections>.wcp-section{min-width:0!important;overflow:hidden!important;}
+                    .wcp-grid2{grid-template-columns:repeat(2,minmax(0,1fr))!important;}
+                    .wcp-line{grid-template-columns:120px minmax(0,1fr) 32px!important;gap:7px!important;align-items:center!important;}
+                    .wcp-line.rate,.wcp-line.rate.wcp-rate-field{grid-template-columns:120px 72px 22px minmax(150px,1fr) 32px!important;gap:7px!important;align-items:center!important;}
+                    .wcp-line label{font-size:12px!important;color:#9aa8bd!important;}
+                    .wcp-inp{min-height:36px!important;font-size:13px!important;border-radius:9px!important;}
+                    .wcp-inp[data-wcp-money="1"],.wcp-money-cell{font-variant-numeric:tabular-nums!important;letter-spacing:-.025em!important;text-align:right!important;padding-left:8px!important;padding-right:9px!important;min-width:0!important;}
+                    .wcp-line.rate .wcp-money-cell{font-size:12.5px!important;letter-spacing:-.035em!important;}
+                    .wcp-unit{font-size:11px!important;white-space:nowrap!important;overflow:visible!important;text-overflow:clip!important;color:#8d9aad!important;}
+                    .wcp-out{min-height:34px!important;font-size:12.5px!important;}
+                    .wcp-loan-rule{border:1px solid rgba(59,130,246,.30)!important;background:rgba(37,99,235,.08)!important;border-radius:10px!important;padding:9px!important;margin:6px 0 8px!important;}
+                    .wcp-loan-rule .title{display:flex!important;justify-content:space-between!important;gap:8px!important;color:#93c5fd!important;font-weight:900!important;font-size:11px!important;margin-bottom:7px!important;}
+                    .wcp-loan-rule .formula{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:7px!important;}
+                    .wcp-loan-rule .chip{border:1px solid rgba(255,255,255,.10)!important;background:rgba(255,255,255,.035)!important;border-radius:9px!important;padding:7px!important;min-width:0!important;}
+                    .wcp-loan-rule .chip span{display:block!important;color:#94a3b8!important;font-size:10px!important;margin-bottom:3px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;}
+                    .wcp-loan-rule .chip b{display:block!important;color:#e8ecf4!important;font-size:11.5px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;font-variant-numeric:tabular-nums!important;letter-spacing:-.03em!important;}
+                    .wcp-loan-rule .chip.on{border-color:rgba(96,165,250,.50)!important;background:rgba(37,99,235,.18)!important;}.wcp-loan-rule .chip.on b{color:#60a5fa!important;}
+                    .wcp-loan-rule .help{font-size:10px!important;color:#8b97ad!important;margin-top:6px!important;line-height:1.35!important;}
+                    .wcp-invest-table{table-layout:fixed!important;width:100%!important;}
+                    .wcp-invest-table td{white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;}
+                    .wcp-invest-table td:nth-child(1){width:32%!important;}.wcp-invest-table td:nth-child(2){width:36%!important;text-align:right!important;}.wcp-invest-table td:nth-child(3){width:32%!important;}
+                    .wcp-bench-compact{margin-bottom:10px!important;}
+                    .wcp-bench-compact>summary{cursor:pointer!important;}
+                    .wr2-link-saved-host{display:flex!important;justify-content:flex-end!important;align-items:center!important;gap:6px!important;margin:0 0 8px 0!important;position:relative!important;z-index:5!important;}
                     .wr2-link-saved-btn{border:1px solid rgba(59,130,246,.45)!important;background:rgba(37,99,235,.14)!important;color:#bfdbfe!important;border-radius:8px!important;padding:5px 10px!important;font-size:11px!important;font-weight:900!important;cursor:pointer!important;white-space:nowrap!important;}
-                    .wr2-link-saved-btn:hover{background:rgba(37,99,235,.24)!important;border-color:rgba(96,165,250,.75)!important;color:#fff!important;}
-                    .wcp-main-stable{display:grid!important;grid-template-columns:minmax(690px,1.12fr) minmax(360px,.88fr)!important;gap:10px!important;align-items:start!important;min-width:0!important;}
-                    .wcp-main-stable>.wcp-card,.wcp-main-stable>.wcp-side-col{min-width:0!important;position:relative!important;left:auto!important;right:auto!important;top:auto!important;transform:none!important;}
-                    .wcp-input-card{overflow:visible!important;}
-                    .wcp-input-sections{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(342px,1fr))!important;gap:8px!important;min-width:0!important;align-items:start!important;}
-                    .wcp-input-sections>.wcp-section{min-width:0!important;overflow:visible!important;}
-                    .wcp-card:not(.wcp-input-card),.wcp-section{overflow:hidden!important;}
-                    .wcp-line{grid-template-columns:96px minmax(0,1fr) 30px!important;gap:5px!important;}
-                    .wcp-line.rate,.wcp-line.rate.wcp-rate-field{grid-template-columns:96px 62px 18px minmax(124px,1fr) 28px!important;gap:5px!important;}
-                    .wcp-line.rate .wcp-inp,.wcp-line.rate.wcp-rate-field .wcp-inp{min-width:0!important;}
-                    .wcp-line.rate .wcp-money-cell{font-size:11.2px!important;letter-spacing:-.035em!important;padding-left:4px!important;padding-right:5px!important;font-variant-numeric:tabular-nums!important;}
-                    .wcp-unit{min-width:0!important;text-align:left!important;}
-                    .wcp-invest-table{table-layout:auto!important;width:100%!important;}
-                    @media(max-width:1180px){.wcp-main-stable{grid-template-columns:1fr!important}.wcp-input-sections{grid-template-columns:repeat(auto-fit,minmax(342px,1fr))!important;}}
-                    @media(max-width:760px){.wcp-input-sections{grid-template-columns:1fr!important}.wcp-line,.wcp-line.rate,.wcp-line.rate.wcp-rate-field{grid-template-columns:1fr!important}.wcp-line.rate .wcp-money-cell{font-size:12px!important}.wr2-link-saved-host{justify-content:flex-start!important}}
+                    .wr2-linked-total-clean{border:1px solid rgba(249,115,22,.28)!important;background:rgba(249,115,22,.07)!important;border-radius:12px!important;padding:12px 14px!important;margin:0 0 12px!important;}
+                    .wr2-linked-total-clean .grid{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:12px!important;margin-top:9px!important;}
+                    .wr2-linked-item-clean{border:1px solid rgba(255,255,255,.09)!important;background:rgba(20,26,36,.72)!important;border-radius:13px!important;padding:12px 14px!important;margin-top:10px!important;}
+                    .wr2-linked-item-clean .top{display:flex!important;justify-content:space-between!important;align-items:flex-start!important;gap:10px!important;margin-bottom:8px!important;}
+                    .wr2-linked-item-clean .title{font-weight:900!important;color:var(--tx)!important;font-size:14px!important;line-height:1.35!important;}
+                    .wr2-linked-item-clean .addr{font-size:11px!important;color:var(--mu)!important;margin-top:3px!important;line-height:1.35!important;}
+                    .wr2-linked-item-clean .rows{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:0 18px!important;}
+                    .wr2-linked-edit-row{display:flex!important;justify-content:flex-end!important;align-items:center!important;gap:6px!important;flex-wrap:wrap!important;margin-top:8px!important;}
+                    .wr2-linked-edit-row input{padding:5px 8px!important;border-radius:8px!important;border:1px solid rgba(255,255,255,.16)!important;background:rgba(255,255,255,.05)!important;color:var(--tx)!important;font-size:12px!important;text-align:center!important;min-width:128px!important;max-width:160px!important;}
+                    .wr2-linked-edit-row input.money{text-align:right!important;}
+                    .wr2-linked-actions{display:flex!important;gap:6px!important;flex-wrap:wrap!important;margin-top:8px!important;}
+                    @media(max-width:1380px){.wcp-main-stable{grid-template-columns:1fr!important}.wcp-input-sections{grid-template-columns:repeat(2,minmax(320px,1fr))!important}.wcp-side-col .wcp-grid2{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+                    @media(max-width:980px){.wcp-input-sections,.wcp-side-col .wcp-grid2,.wcp-kpi-strip{grid-template-columns:1fr!important}.wcp-line{grid-template-columns:112px minmax(0,1fr) 30px!important}.wcp-line.rate,.wcp-line.rate.wcp-rate-field{grid-template-columns:112px 66px 20px minmax(130px,1fr) 30px!important}.wcp-loan-rule .formula{grid-template-columns:1fr!important}.wr2-linked-item-clean .rows{grid-template-columns:1fr!important}.wr2-linked-total-clean .grid{grid-template-columns:1fr!important}}
+                    @media(max-width:700px){.wr2-calc-pro-shell{padding:0 8px 14px!important}.wcp-head{display:block!important}.wcp-actions{justify-content:flex-start!important;margin-top:8px!important}.wcp-line,.wcp-line.rate,.wcp-line.rate.wcp-rate-field{grid-template-columns:1fr!important}.wcp-unit{display:none!important}.wcp-inp{text-align:left!important}.wcp-line.rate .wcp-money-cell{font-size:13px!important}.wr2-link-saved-host{justify-content:flex-start!important}}
                   `;
 
                 }
@@ -7604,7 +7631,7 @@ window.wr2SummaryCancelEdit = function() {
                   const phaseKeys = wr2PhaseKeysForView(wr2State.activePhase);
 
                   const list = wr2State.sections
-                    .filter(s => s.roomId === room.id && phaseKeys.indexOf(s.phase || 'review') >= 0)
+                    .filter(s => s.roomId === room.id && s.type !== 'free_table' && phaseKeys.indexOf(s.phase || 'review') >= 0)
                     .slice()
                     .sort((a, b) => (a.order || 1) - (b.order || 1));
 
