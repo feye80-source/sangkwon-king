@@ -23,6 +23,8 @@ import math
 import ssl
 import base64
 import mimetypes
+import gzip
+import zlib
 import certifi
 
 # SSL 인증서 전역 설정 (macOS Python 3.11에서 필요)
@@ -2280,6 +2282,21 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 except:
                     return default
 
+            def _read_resp_text(resp):
+                data = resp.read()
+                ce = (resp.headers.get('Content-Encoding') or '').lower()
+                try:
+                    if 'gzip' in ce:
+                        data = gzip.decompress(data)
+                    elif 'deflate' in ce:
+                        try:
+                            data = zlib.decompress(data)
+                        except Exception:
+                            data = zlib.decompress(data, -zlib.MAX_WBITS)
+                except Exception:
+                    pass
+                return data.decode('utf-8', errors='replace').strip()
+
             def is_cancelled(v):
                 return str(v if v is not None else '0').strip() not in ('', '0', 'N', 'n', 'false', 'False')
 
@@ -2301,20 +2318,51 @@ class ProxyHandler(BaseHTTPRequestHandler):
                             return nested
                 return []
 
-            def fetch_real_price_table(uuid):
+            def fetch_real_price_table(uuid, building=None):
+                """디스코 상세 실거래 API.
+                중요: /home/hello 요약에는 floor가 없으므로, 이 함수가 성공한 거래만 실거래 카드로 만든다.
+                """
                 if not uuid:
                     return []
-                urls = [
-                    f'https://disco.re/real_price_table/?uuid={urllib.parse.quote(str(uuid))}',
-                    f'https://www.disco.re/real_price_table/?uuid={urllib.parse.quote(str(uuid))}',
-                ]
+                building = building or {}
+                import http.cookiejar
+                cj = http.cookiejar.CookieJar()
+                opener = urllib.request.build_opener(
+                    urllib.request.HTTPCookieProcessor(cj),
+                    urllib.request.HTTPSHandler(context=_SSL_CTX)
+                )
+                detail_url = f'https://disco.re/l/{uuid}'
+                # 브라우저와 동일하게 상세 페이지를 먼저 열어 세션/쿠키를 만든 뒤 API를 호출한다.
+                try:
+                    init_headers = {
+                        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+                        'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
+                        'Referer': 'https://disco.re/',
+                    }
+                    opener.open(urllib.request.Request(detail_url, headers=init_headers), timeout=8).read(1)
+                except Exception as e:
+                    print(f"  ⚠️ 디스코 상세페이지 세션 준비 실패: uuid={uuid} / {e}")
+
+                # 일부 환경에서 area 파라미터가 같이 붙어야 통과하는 경우가 있어 후보를 같이 시도한다.
+                area_candidates = []
+                for k in ('ea', 'exclusive_area', 'exclusiveArea', 'area', 'sa'):
+                    v = building.get(k)
+                    if v not in (None, '', 0, '0'):
+                        area_candidates.append(str(v))
+                urls = []
+                urls.append(f'https://disco.re/real_price_table/?uuid={urllib.parse.quote(str(uuid))}')
+                for av in area_candidates[:3]:
+                    urls.append(f'https://disco.re/real_price_table/?uuid={urllib.parse.quote(str(uuid))}&area={urllib.parse.quote(str(av))}')
+                urls.append(f'https://www.disco.re/real_price_table/?uuid={urllib.parse.quote(str(uuid))}')
                 last_err = None
                 for rp_url in urls:
                     headers = {
                         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
                         'Accept': 'application/json, text/javascript, */*; q=0.01',
                         'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
-                        'Referer': f'https://disco.re/l/{uuid}',
+                        'Accept-Encoding': 'gzip, deflate, br',
+                        'Referer': detail_url,
                         'Origin': 'https://disco.re',
                         'X-Requested-With': 'XMLHttpRequest',
                         'Sec-Fetch-Dest': 'empty',
@@ -2324,14 +2372,16 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     }
                     try:
                         req = urllib.request.Request(rp_url, headers=headers)
-                        with _urlopen(req, timeout=10) as r:
-                            txt = r.read().decode('utf-8', errors='replace').strip()
+                        with opener.open(req, timeout=12) as r:
+                            txt = _read_resp_text(r)
                         if not txt or txt.lstrip().startswith('<'):
                             raise ValueError('JSON이 아닌 응답/빈 응답')
                         data = json.loads(txt)
                         rows = extract_real_price_list(data)
-                        print(f"  ✅ 디스코 real_price_table 성공: uuid={uuid}, rows={len(rows)}")
-                        return rows
+                        if rows:
+                            print(f"  ✅ 디스코 real_price_table 성공: uuid={uuid}, rows={len(rows)}, url={rp_url}")
+                            return rows
+                        raise ValueError('real_price rows 0건')
                     except Exception as e:
                         last_err = e
                         print(f"  ⚠️ 디스코 real_price_table 실패: {rp_url} / {e}")
@@ -2348,7 +2398,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     break
                 uuid = b.get('u') or b.get('uuid') or b.get('id') or ''
                 pnu  = b.get('pnu') or b.get('PNU') or ''
-                rows = fetch_real_price_table(uuid) if uuid else []
+                rows = fetch_real_price_table(uuid, b) if uuid else []
                 if rows:
                     detail_ok += 1
                     for tr in rows:
@@ -2399,46 +2449,19 @@ class ProxyHandler(BaseHTTPRequestHandler):
                             '출처':          '디스코',
                             '_uuid':         uuid,
                             '_pnu':          pnu,
+                            '_detail_source':'real_price_table',
+                            '_source_lat':   b.get('lat') or b.get('y') or b.get('latitude'),
+                            '_source_lng':   b.get('lng') or b.get('x') or b.get('longitude'),
                         })
                     time.sleep(0.05)
                     continue
 
                 detail_fail += 1
-                # 상세 API가 막힌 경우에만 hello 요약 1건 fallback.
-                t = b.get('t')
-                if not disco_trade_ok(t):
-                    continue
-                p = clean(b.get('p'))
-                fallback_no = str(uuid or pnu or f"fallback_{len(result_items)}")
-                dedupe_key = f"{fallback_no}:summary"
-                if dedupe_key in seen:
-                    continue
-                seen.add(dedupe_key)
-                result_items.append({
-                    '매물번호':      dedupe_key,
-                    '매물명':        '',
-                    '매물유형':      '실거래',
-                    '거래유형':      '매매',
-                    '매매가':        p,
-                    '기보증금_만원': None,
-                    '월세_만원':     None,
-                    '전용면적_m2':   clean(b.get('ea')),
-                    '공급면적_m2':   clean(b.get('sa')),
-                    '토지면적_m2':   clean(b.get('la')),
-                    '해당층':        clean(b.get('fl')) or b.get('fl_nm') or b.get('floor') or None,
-                    '층수':          clean(b.get('fl')) or b.get('fl_nm') or b.get('floor') or None,
-                    '층':            clean(b.get('fl')) or b.get('fl_nm') or b.get('floor') or None,
-                    'floor':         clean(b.get('fl')) or b.get('fl_nm') or b.get('floor') or None,
-                    '소재지':        '',
-                    '거래년월':      str(b.get('y') or ''),
-                    'lat':           float(b['lat']) if b.get('lat') else None,
-                    'lng':           float(b['lng']) if b.get('lng') else None,
-                    '상세URL':       f"https://disco.re/l/{uuid}" if uuid else f"https://disco.re/buildings/{pnu}",
-                    '출처':          '디스코',
-                    '_uuid':         uuid,
-                    '_pnu':          pnu,
-                    '_detail_failed': True,
-                })
+                # /home/hello 요약은 건물/필지 대표 1건이고 floor가 없다.
+                # 여기서 카드를 만들면 "층수 -" 카드가 양산되고, 같은 좌표에 +N 스택이 생긴다.
+                # 따라서 상세 real_price_table 실패 건은 저장하지 않고 진단만 남긴다.
+                print(f"  ⏭️ 디스코 요약 fallback 저장 안 함: uuid={uuid}, pnu={pnu} (층수 없는 hello 요약)")
+                continue
 
             # ★ 역지오코딩: 카카오 REST API로 좌표→주소 변환
             if kakao_rest_key:
@@ -2760,6 +2783,73 @@ class ProxyHandler(BaseHTTPRequestHandler):
                             floor_val = best_floor
                 return floor_val
 
+            def extract_any_floor(obj):
+                """응답 어디에 있든 거래층 후보를 재귀적으로 찾는다."""
+                if isinstance(obj, dict):
+                    for k in ('t_floor', 'T_FLOOR', 'floor', 'floor_no', 'FLOOR_NO_NM', 'FLOOR_NM', 'CSTM_FLOOR_NM', '층수', '해당층'):
+                        v = obj.get(k)
+                        if v not in (None, '', '0', 0):
+                            return v
+                    # rpInfo/detail 같은 주요 객체를 먼저 탐색
+                    for k in ('rpInfo', 'realprice', 'real_price', 'detail', 'data', 'result', 'item'):
+                        if k in obj:
+                            v = extract_any_floor(obj.get(k))
+                            if v not in (None, '', '0', 0): return v
+                    for v in obj.values():
+                        got = extract_any_floor(v)
+                        if got not in (None, '', '0', 0): return got
+                elif isinstance(obj, list):
+                    for x in obj:
+                        got = extract_any_floor(x)
+                        if got not in (None, '', '0', 0): return got
+                return None
+
+            trade_detail_cache = {}
+            def fetch_bds_trade_detail_floor(d):
+                """플래닛 거래 상세 API에서 t_floor를 직접 가져온다.
+                getBuildingInfo는 건물/호실 매칭용이라 실패할 수 있으므로 t_no 상세를 먼저 시도한다.
+                """
+                t_no = str(d.get('t_no') or d.get('trade_no') or d.get('no') or '').strip()
+                if not t_no or not bds_cookie:
+                    return None
+                if t_no in trade_detail_cache:
+                    return trade_detail_cache[t_no]
+                q_common = {
+                    't_no': t_no,
+                    't_type': d.get('t_type') or '1',
+                    'r_type': d.get('r_type') or '',
+                    'eais_pk': d.get('eais_pk') or '',
+                    'pnu_enc': d.get('eais_pk') or d.get('pnu_enc') or '',
+                    'areaDetail': d.get('bldg_area_m2') or d.get('excl_area_m2') or d.get('spc2') or '',
+                    'status': 'N',
+                }
+                candidates = []
+                # Network 목록에서 CS000....ytp 형태로 보이는 거래 상세 요청을 우선 시도
+                candidates.append(f'https://www.bdsplanet.com/map/{urllib.parse.quote(t_no)}.ytp')
+                for ep in ('simpleInfo.ytp', 'realtyInfo.ytp', 'getRealpriceInfo.ytp', 'getRealpriceDetail.ytp'):
+                    candidates.append('https://www.bdsplanet.com/map/' + ep + '?' + urllib.parse.urlencode(q_common))
+                last_err = None
+                for url in candidates:
+                    headers = dict(base_headers)
+                    headers['Referer'] = f'https://www.bdsplanet.com/map/realprice_map/{q_common["pnu_enc"]}/N/{q_common["r_type"]}/1/{q_common["areaDetail"]}.ytp'
+                    try:
+                        req = urllib.request.Request(url, headers=headers)
+                        with _urlopen(req, timeout=8) as resp:
+                            raw_txt = resp.read().decode('utf-8', errors='replace').strip()
+                        if not raw_txt or raw_txt.lstrip().startswith('<'):
+                            raise ValueError('JSON 아님')
+                        data = json.loads(raw_txt)
+                        floor = extract_any_floor(data)
+                        if floor not in (None, '', '0', 0):
+                            trade_detail_cache[t_no] = floor
+                            print(f"  ✅ 플래닛 거래상세 층수 성공: t_no={t_no}, floor={floor}, url={url[:70]}")
+                            return floor
+                    except Exception as e:
+                        last_err = e
+                trade_detail_cache[t_no] = None
+                print(f"  ⚠️ 플래닛 거래상세 층수 실패: t_no={t_no} / {last_err}")
+                return None
+
             bldg_info_cache = {}
             def enrich_bds_item(d):
                 # marker 응답 자체에 층수가 있으면 그대로 사용
@@ -2768,6 +2858,11 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 if floor_val:
                     d['_floor_enrich_status'] = 'raw'
                     return floor_val
+                # 1차 보강: 거래 상세(t_no)에서 정확한 t_floor 조회
+                detail_floor = fetch_bds_trade_detail_floor(d)
+                if detail_floor:
+                    d['_floor_enrich_status'] = 'trade_detail_ok'
+                    return detail_floor
                 if not eais_pk:
                     d['_floor_enrich_status'] = 'no_eais_pk'
                     return None
@@ -2903,6 +2998,8 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     '_eais_pk':       d.get('eais_pk') or '',
                     '_r_type':        d.get('r_type') or '',
                     '_bldg_area_m2':  float(d['bldg_area_m2']) if d.get('bldg_area_m2') else None,
+                    '_floor_enrich_status': d.get('_floor_enrich_status') or '',
+                    '_trade_no':      d.get('t_no') or '',
                 })
 
             # ★ 역지오코딩: 플래닛은 원본 지번주소를 대표 소재지로 유지하고, 도로명주소만 보조로 채움

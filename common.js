@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260505-workroom-calc-v9-floor-kpi';
+    window.__SK_BUILD = '20260505-workroom-calc-v11-all-floor';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -8544,12 +8544,14 @@ window.wr2SummaryCancelEdit = function() {
     }
     function _toApiTransactionRows(arr) {
       if (!Array.isArray(arr)) return [];
-      return arr.filter(_isApiTransactionRow).map(item => ({
+      return arr.filter(_isApiTransactionRow).map(item => {
+        const _txFloor = _resolveFloorValue(item) || '';
+        return ({
         name: item.name || '',
         address: item.address || item.sigungu || (item.dong ? (item.sigungu || '') + ' ' + item.dong : ''),
         price: item.price,
         area: item.area || '-',
-        floor: item.floor || '-',
+        floor: _txFloor,
         year: item.year || '',
         month: item.month || '',
         day: item.day || '',
@@ -8564,19 +8566,23 @@ window.wr2SummaryCancelEdit = function() {
         name2: item.name || '',
         fromApi: true,
         mode: 'transaction',
-        data: Object.assign({
-          소재지: item.address || item.sigungu || '',
-          매매가_만원: item.price || '',
-          실거래가_만원: item.price || '',
+        data: Object.assign({}, (item.data && typeof item.data === 'object') ? item.data : {}, {
+          소재지: item.address || item.sigungu || ((item.data && item.data.소재지) || ''),
+          매매가_만원: item.price || ((item.data && item.data.매매가_만원) || ''),
+          실거래가_만원: item.price || ((item.data && item.data.실거래가_만원) || ''),
           거래년월: String(item.year || '') + String(item.month || ''),
-          전용면적_m2: item.area || '',
-          해당층: item.floor || '',
-          층수: item.floor || '',
+          전용면적_m2: item.area || ((item.data && item.data.전용면적_m2) || ''),
+          해당층: _txFloor,
+          층수: _txFloor,
+          층: _txFloor,
+          floor: _txFloor,
+          _resolved_floor: _txFloor,
           매물유형: '실거래',
           거래유형: '실거래',
           출처: item.source || '국토부실거래API'
-        }, (item.data && typeof item.data === 'object') ? item.data : {})
-      }));
+        })
+      });
+      });
     }
     function _applyTxApiOnlyUI() {
       if (!TX_API_ONLY_MODE) return;
@@ -8646,10 +8652,11 @@ window.wr2SummaryCancelEdit = function() {
         }
         // 기존 데이터 유지 + 새 데이터 병합 (중복 제거는 address+year+month 기준)
         transactionDataRaw = _toApiTransactionRows(transactionDataRaw);
-        const existingKeys = new Set(transactionDataRaw.map(i => `${i.address || ''}|${i.year || ''}|${i.month || ''}`));
+        const _txKey = (i) => `${i.address || ''}|${i.year || ''}|${i.month || ''}|${i.day || ''}|${i.price || ''}|${i.area || ''}|${_resolveFloorValue(i) || ''}`;
+        const existingKeys = new Set(transactionDataRaw.map(_txKey));
         let added = 0;
         parsedApiOnly.forEach(item => {
-          const key = `${item.address || ''}|${item.year || ''}|${item.month || ''}`;
+          const key = _txKey(item);
           if (!existingKeys.has(key)) {
             transactionDataRaw.push(item);
             existingKeys.add(key);
@@ -8883,13 +8890,59 @@ window.wr2SummaryCancelEdit = function() {
       return base + ' / ' + (totalText.includes('층') ? totalText : totalText + '층');
     }
 
+
+    // ★ [v11] 층수 통합 헬퍼 — 디스코/플래닛/국토부 실거래 공통
+    // 수집 단계마다 field명이 달라져도 카드/저장목록/정규화에서 같은 값으로 읽게 한다.
+    const _FLOOR_ALIAS_KEYS = [
+      '해당층','층수','층','floor','flr','fl','fl_nm','t_floor','t_flr','floor_no','floorNo','floor_num','floorNum',
+      'FLOOR','FLR','FLOOR_NO','FLOOR_NO_NM','FLOOR_NM','CSTM_FLOOR_NM','floor_level','floorLevel','f_nm','bldg_flr','obj_floor',
+      '_resolved_floor','resolved_floor','raw_floor','real_floor','dealFloor','deal_floor','dealFlr','deal_flr'
+    ];
+    function _floorDirectCandidate(obj) {
+      if (!obj || typeof obj !== 'object') return '';
+      for (const k of _FLOOR_ALIAS_KEYS) {
+        if (Object.prototype.hasOwnProperty.call(obj, k)) {
+          const v = obj[k];
+          if (v != null && v !== '' && v !== '-' && v !== '0' && v !== 0) return v;
+        }
+      }
+      return '';
+    }
+    function _resolveFloorValue(itemOrData, fallbackData) {
+      const data = fallbackData || (itemOrData && itemOrData.data) || itemOrData || {};
+      let v = _floorDirectCandidate(data);
+      if (v) return _normalizeFloorValue(v);
+      if (itemOrData && typeof itemOrData === 'object') {
+        v = _floorDirectCandidate(itemOrData);
+        if (v) return _normalizeFloorValue(v);
+        // 원본 거래 row를 보존해 둔 경우만 1단계로 확인한다. getBuildingInfo 전체를 깊게 훑으면 총층/건물층을 거래층으로 오인할 수 있어 깊은 재귀는 하지 않는다.
+        const rawCandidates = [itemOrData.raw, itemOrData._raw, itemOrData.original, itemOrData.data && itemOrData.data._raw, itemOrData.data && itemOrData.data.raw, itemOrData.data && itemOrData.data.original];
+        for (const raw of rawCandidates) {
+          v = _floorDirectCandidate(raw);
+          if (v) return _normalizeFloorValue(v);
+        }
+      }
+      return '';
+    }
+    function _applyResolvedFloor(item, rawValue) {
+      if (!item || typeof item !== 'object') return item;
+      const v = rawValue != null && rawValue !== '' ? rawValue : _resolveFloorValue(item);
+      if (v == null || v === '') return item;
+      item.data = item.data || {};
+      _syncFloorAliases(item.data, v);
+      item.floor = _normalizeFloorValue(v);
+      return item;
+    }
+    window._resolveFloorValue = _resolveFloorValue;
+
     function _syncFloorAliases(d, rawValue) {
       if (!d || typeof d !== 'object') return d;
-      if (rawValue == null || rawValue === '') {
+      if (rawValue == null || rawValue === '' || rawValue === '-') {
         delete d.해당층;
         delete d.층수;
         delete d.층;
         delete d.floor;
+        delete d._resolved_floor;
         return d;
       }
       const normalized = _normalizeFloorValue(rawValue);
@@ -8897,6 +8950,10 @@ window.wr2SummaryCancelEdit = function() {
       d.층수 = normalized;
       d.층 = normalized;
       d.floor = normalized;
+      d._resolved_floor = normalized;
+      // 원본 floor 계열이 없던 데이터도 이후 카드 렌더링에서 확실히 읽히도록 보조 alias 유지
+      if (d.raw_floor == null || d.raw_floor === '') d.raw_floor = normalized;
+      if (d.real_floor == null || d.real_floor === '') d.real_floor = normalized;
       return d;
     }
 
@@ -8913,7 +8970,7 @@ window.wr2SummaryCancelEdit = function() {
     }
 
     function _isFloorField(key) {
-      return key === '해당층' || key === '층수' || key === '층' || key === 'floor';
+      return _FLOOR_ALIAS_KEYS.includes(key);
     }
 
     function _isDirectionField(key) {
@@ -13456,7 +13513,13 @@ window.wr2SummaryCancelEdit = function() {
       if (!item) return item;
       const d = item.data || {};
       if (!d.출처 && item.source) d.출처 = item.source;
-      if ((d.해당층 == null || d.해당층 === '') && item.floor != null && item.floor !== '') _syncFloorAliases(d, item.floor);
+      const _resolvedFloorForNorm = _resolveFloorValue(item, d);
+      if (_resolvedFloorForNorm !== '') {
+        _syncFloorAliases(d, _resolvedFloorForNorm);
+        item.floor = _normalizeFloorValue(_resolvedFloorForNorm);
+      } else if ((d.해당층 == null || d.해당층 === '') && item.floor != null && item.floor !== '') {
+        _syncFloorAliases(d, item.floor);
+      }
       if (!d.방향 && item.direction) _syncDirectionAliases(d, item.direction);
       if ((item.floor == null || item.floor === '') && d.해당층 != null && d.해당층 !== '') item.floor = _normalizeFloorValue(d.해당층);
       if ((!item.direction || item.direction === '') && d.방향) item.direction = d.방향;
@@ -13542,8 +13605,8 @@ window.wr2SummaryCancelEdit = function() {
       const 면적_평 = 면적_m2 ? Math.round((면적_m2 / 3.3058) * 100) / 100 : null;
 
       // ── 층 ──────────────────────────────────────────────────────
-      const 층raw = d.해당층 ?? d.층수 ?? d.층 ?? d.floor ?? null;
-      const 층 = 층raw != null ? (_normalizeFloorValue(층raw) || null) : null;
+      const 층raw = _resolveFloorValue(item, d);
+      const 층 = 층raw !== '' ? (_normalizeFloorValue(층raw) || null) : null;
 
       // ── 가격 ────────────────────────────────────────────────────
       // 경매/온비드: 감정가·최저가는 원 단위로 저장됨
@@ -14904,11 +14967,11 @@ window.wr2SummaryCancelEdit = function() {
       }
 
       // ④ 층수 — _norm 기준, 총층은 raw fallback 허용
-      const _층 = n.층 ?? null;
+      const _층 = _resolveFloorValue(item, d) || n.층 || null;
       const 총층 = d.총층 || d.floor_total || d.totalFloorCount || null;
-      if (_층 != null) {
-        const tStr = 총층 ? ' / ' + parseInt(String(총층).trim(), 10) + '층' : '';
-        extraRows += _sied('층수', '해당층', _층 + '층' + tStr, _층, true);
+      if (_층 != null && _층 !== '') {
+        const floorLabel = _formatFloorLabel(_층, 총층);
+        extraRows += _sied('층수', '해당층', floorLabel || (_층 + '층'), _층, true);
       } else if (ia && d.소재지) {
         const floorMatch = String(d.소재지).match(/(\d+)층/);
         if (floorMatch) extraRows += _sied('층수', '해당층', floorMatch[1] + '층', floorMatch[1], true);
@@ -15485,7 +15548,7 @@ window.wr2SummaryCancelEdit = function() {
           address: item.소재지 || item['도로명주소'] || item['지번주소'] || item['주소'] || '',
           data: normalizeTxData(item, '디스코'), memo: '', timestamp: now
         };
-        if (entry.data && entry.data.해당층) entry.floor = entry.data.해당층;
+        _applyResolvedFloor(entry);
         normalizeItem(entry);
         if (!checkCollectFilter(entry.data, entry.lat, entry.lng)) return; // ★ 수집 필터
         if (exists) { Object.assign(exists, entry); updated++; } else { sv.push(entry); added++; }
@@ -15538,7 +15601,7 @@ window.wr2SummaryCancelEdit = function() {
           address: item.소재지 || item.도로명주소 || item.지번주소 || item.주소 || '',
           data: normalizeTxData(item, '부동산플래닛'), memo: '', timestamp: now
         };
-        if (entry.data && entry.data.해당층) entry.floor = entry.data.해당층;
+        _applyResolvedFloor(entry);
         normalizeItem(entry);
         if (!checkCollectFilter(entry.data, entry.lat, entry.lng)) return; // ★ 수집 필터
         const existsIdx = key ? bdsByKey.get(key) : undefined;
@@ -23818,8 +23881,9 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           const 매매가str = nT.실거래가_만원 ? fM(nT.실거래가_만원) : (nT.매매가_만원 ? fM(nT.매매가_만원) : '-');
           const 면적str = nT.면적_m2 && nT.면적_m2 > 0 ? fmtArea(nT.면적_m2) : null;
           const 면적라벨 = areaLabelFromNorm(nT);
-          const _rawFloorTx = nT.층 ?? d.해당층 ?? d.층수 ?? d.층 ?? d._resolved_floor ?? d.raw_floor ?? d.real_floor ?? d.floor ?? d.t_floor ?? d.t_flr ?? d.FLOOR_NO_NM ?? d.FLOOR_NM ?? item.floor ?? null;
-          const 층str = _rawFloorTx != null && _rawFloorTx !== '' ? (_formatFloorLabel ? _formatFloorLabel(_rawFloorTx, d.총층) : (String(_rawFloorTx).replace(/층.*$/, '') + '층')) : '';
+          const _rawFloorTx = _resolveFloorValue(item, d);
+          if (_rawFloorTx !== '') { _syncFloorAliases(d, _rawFloorTx); item.floor = _normalizeFloorValue(_rawFloorTx); }
+          const 층str = _rawFloorTx !== '' ? (_formatFloorLabel ? _formatFloorLabel(_rawFloorTx, d.총층) : (String(_rawFloorTx).replace(/층.*$/, '') + '층')) : '';
           const 층표시HTML = 층str ? 층str : '<button class="mca-btn" onclick="fetchFloor(\'' + item.id + '\',this)" onmousedown="event.stopPropagation()" style="padding:2px 6px;font-size:10px;">층수조회</button>';
           const 거래년월 = nT.거래년월 ? fmtYearMonth(nT.거래년월) : '-';
           // ★ 평단가는 항상 재계산 (저장된 값이 단위 오류로 잘못됐을 수 있음)
@@ -23853,7 +23917,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         const priceText = priceNum ? `[실거래] ${moneyShortMan(priceNum)}` : '[실거래] -';
         const areaNum = parseFloat(item.area) || 0;
         const areaStr = fmtArea(item.area);
-        const floor = item.floor ? String(item.floor).trim() : '';
+        const floor = _resolveFloorValue(item) ? String(_resolveFloorValue(item)).trim() : '';
         const floorNum = parseInt(floor, 10);
         const floorLabel = (floor && floor !== '-' && floor !== '0' && !isNaN(floorNum)) ? floorNum + '층' : '-';
         const y = item.year || '', m = item.month || '', day = item.day ? '.' + item.day : '';
@@ -23991,7 +24055,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
       // 층수 — _norm 우선
       let 층표기 = '-';
-      const _floorLabel = _formatFloorLabel(nL.층 ?? d.층수 ?? d.해당층, d.총층);
+      const _floorLabel = _formatFloorLabel(_resolveFloorValue(item, d) || nL.층, d.총층);
       if (_floorLabel) {
         층표기 = _floorLabel;
       }
@@ -25240,7 +25304,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
               address: fullAddress,
               price: price,
               area: area || '-',
-              floor: floor || '-',
+              floor: floor || '',
               year: year,
               month: month,
               day: day,
@@ -26106,7 +26170,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
               jibun,
               price,
               area: area1 || area2 || '-',
-              floor: floor || '-',
+              floor: floor || '',
               year,
               month,
               day,
@@ -27310,7 +27374,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
               address: fullAddress,
               price: price,
               area: areaRaw || '-',
-              floor: floor || '-',
+              floor: floor || '',
               year: year,
               month: month,
               day: day,
@@ -27589,7 +27653,10 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         const umd = _txXmlText(item, ['umdNm', 'UMD_NM', '법정동']);
         const jibun = _txXmlText(item, ['jibun', 'JIBUN', '지번']);
         const bld = _txXmlText(item, ['buildingNm', 'BLDG_NM', '건물명']);
-        const floor = _txXmlText(item, ['flr', 'FLR', '층']);
+        let floor = _txXmlText(item, ['flr', 'FLR', 'floor', 'FLOOR', 'floorNo', 'FLOOR_NO', 'floor_no', 'floorNum', 'FLOOR_NUM', 'flrNo', 'FLR_NO', 'dealFloor', 'DEAL_FLOOR', '층', '층수', '해당층']);
+        if (!floor) {
+          floor = _pickAnyNumeric(item, tag => /(floor|flr|층)/i.test(tag) && !/(total|ground|under|cnt|count|전체|총층|지하|지상)/i.test(tag));
+        }
         const area = _txParseFloat(_txXmlText(item, ['archArea', 'ARCH_AREA', 'excluUseAr', 'EXCLU_USE_AR', 'buildingAr', 'BLDG_AREA', '전용면적']));
         const dealDay = _txXmlText(item, ['dealDay', 'DEAL_DAY', '거래일', '계약일']);
         const address = [regionLabel, umd, jibun].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
@@ -27601,7 +27668,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           address: address || regionLabel,
           price: priceMan,
           area: area || '-',
-          floor: floor || '-',
+          floor: floor || '',
           year: ym.slice(0, 4),
           month: ym.slice(4, 6),
           day: dealDay || '',
@@ -27616,6 +27683,9 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             전용면적_m2: area || '',
             해당층: floor || '',
             층수: floor || '',
+            층: floor || '',
+            floor: floor || '',
+            _resolved_floor: floor || '',
             매물유형: '실거래',
             거래유형: '실거래',
             출처: '국토부실거래API'
@@ -27628,10 +27698,12 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     function _txMergeRows(rows) {
       if (!Array.isArray(rows) || !rows.length) return 0;
       if (TX_API_ONLY_MODE) transactionDataRaw = _toApiTransactionRows(transactionDataRaw);
-      const keys = new Set(transactionDataRaw.map(it => `${it.address || ''}|${it.year || ''}|${it.month || ''}|${it.price || ''}|${it.floor || ''}`));
+      const _txKey = (it) => `${it.address || ''}|${it.year || ''}|${it.month || ''}|${it.day || ''}|${it.price || ''}|${it.area || ''}|${_resolveFloorValue(it) || ''}`;
+      const keys = new Set(transactionDataRaw.map(_txKey));
       let added = 0;
       rows.forEach(it => {
-        const key = `${it.address || ''}|${it.year || ''}|${it.month || ''}|${it.price || ''}|${it.floor || ''}`;
+        _applyResolvedFloor(it);
+        const key = _txKey(it);
         if (keys.has(key)) return;
         keys.add(key);
         transactionDataRaw.push(TX_API_ONLY_MODE ? Object.assign({}, it, { fromApi: true, source: '국토부실거래API' }) : it);
@@ -27896,8 +27968,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             if (!it.data.매매가_만원) it.data.매매가_만원 = it.price || '';
             if (!it.data.실거래가_만원) it.data.실거래가_만원 = it.price || '';
             if (!it.data.전용면적_m2) it.data.전용면적_m2 = it.area || '';
-            if (!it.data.해당층) it.data.해당층 = it.floor || '';
-            if (!it.data.층수) it.data.층수 = it.floor || '';
+            const _f = _resolveFloorValue(it) || '';
+            if (_f) { _syncFloorAliases(it.data, _f); it.floor = _normalizeFloorValue(_f); }
             if (!it.data.거래년월) it.data.거래년월 = String(it.year || '') + String(it.month || '');
             if (!it.data.매물유형) it.data.매물유형 = '실거래';
             if (!it.data.거래유형) it.data.거래유형 = '실거래';
@@ -28008,13 +28080,14 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         if (_ftInArea(lat, lng) && yearPass) {
           m.marker.setMap(map);
           reused++;
-          if (m.item && m.item.address) existingMarkerAddresses.add(m.item.address + '|' + (m.item.year || '') + '|' + (m.item.month || ''));
+          if (m.item && m.item.address) existingMarkerAddresses.add((m.item.address || '') + '|' + (m.item.year || '') + '|' + (m.item.month || '') + '|' + (m.item.day || '') + '|' + (m.item.price || '') + '|' + (m.item.area || '') + '|' + (_resolveFloorValue(m.item) || ''));
         }
       });
 
       // filtered 중에서 기존 마커가 없는 것만 새로 생성
       const newFiltered = filtered.filter(item => {
-        const key = (item.address || '') + '|' + (item.year || '') + '|' + (item.month || '');
+        _applyResolvedFloor(item);
+        const key = (item.address || '') + '|' + (item.year || '') + '|' + (item.month || '') + '|' + (item.day || '') + '|' + (item.price || '') + '|' + (item.area || '') + '|' + (_resolveFloorValue(item) || '');
         return !existingMarkerAddresses.has(key);
       });
 
@@ -28186,7 +28259,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const position = new kakao.maps.LatLng(item.lat, item.lng);
       // ★ [BUG FIX v123] 카운터+랜덤 방식으로 id 생성 → 드래그 버그 해결
       // 중복 방지는 데이터 비교(dupKey)로 별도 처리
-      const dupKey = (item.address || item.dong || '') + '_' + (item.year || '') + '_' + (item.month || '') + '_' + (item.price || '') + '_' + (item.floor || '');
+      _applyResolvedFloor(item);
+      const dupKey = (item.address || item.dong || '') + '_' + (item.year || '') + '_' + (item.month || '') + '_' + (item.day || '') + '_' + (item.price || '') + '_' + (item.area || '') + '_' + (_resolveFloorValue(item) || '');
       const alreadyExists = mapOverlays.some(o => o.transactionDupKey === dupKey);
       if (alreadyExists) return;
       const id = stableId('transaction', dupKey);
@@ -37554,7 +37628,8 @@ ${newsContext}
             area: parseFloat(item.전용면적 || item.공급면적 || 0),
             year: new Date().getFullYear().toString(), month: (new Date().getMonth() + 1).toString(),
             lat: null, lng: null, source: '네이버부동산',
-            거래유형: item.거래유형, 층수: item.층수
+            floor: item.층수 || '',
+            거래유형: item.거래유형, 층수: item.층수, 해당층: item.층수 || ''
           });
         });
         saveTransactionRawToStorage();
@@ -37714,9 +37789,9 @@ ${newsContext}
       if (!d.매물특징 && d.특징) d.매물특징 = d.특징;
       if (!d.매물특징 && d.특이사항) d.매물특징 = d.특이사항;
       if (!d.특이사항 && d.매물특징) d.특이사항 = d.매물특징;
-      const _colFloor = d.해당층 ?? d.층수 ?? d.층 ?? d._resolved_floor ?? d.raw_floor ?? d.real_floor ?? d.floor ?? d.t_floor ?? d.t_flr ?? d.FLOOR_NO_NM ?? d.FLOOR_NM ?? d.CSTM_FLOOR_NM ?? null;
-      if (_colFloor != null && _colFloor !== '') {
-        if (!d.해당층) d.해당층 = _colFloor;
+      const _colFloor = _resolveFloorValue(d);
+      if (_colFloor !== '') {
+        d.해당층 = _colFloor;
         if (typeof _syncFloorAliases === 'function') _syncFloorAliases(d, d.해당층);
         else { d.층수 = d.층수 || d.해당층; d.층 = d.층 || d.해당층; d.floor = d.floor || d.해당층; }
       }
@@ -38321,8 +38396,8 @@ ${newsContext}
     function normalizeTxData(it, source) {
       const d = { ...it, 출처: source };
       // 층수 통합 (다양한 raw 필드명 → 해당층)
-      const _floorCandidate = d.해당층 ?? d.층수 ?? d.층 ?? d._resolved_floor ?? d.resolved_floor ?? d.raw_floor ?? d.real_floor ?? d.fl ?? d.t_floor ?? d.t_flr ?? d.floor ?? d.bldg_flr ?? d.flr ?? d.f_nm ?? d.floor_current ?? d.floor_level ?? d.obj_floor ?? d.floor_no ?? d.FLOOR_NO_NM ?? d.FLOOR_NM ?? d.CSTM_FLOOR_NM ?? null;
-      if ((d.해당층 == null || d.해당층 === '') && _floorCandidate != null && _floorCandidate !== '') d.해당층 = _floorCandidate;
+      const _floorCandidate = _resolveFloorValue(d) || null;
+      if (_floorCandidate != null && _floorCandidate !== '') d.해당층 = _floorCandidate;
       if (d.해당층 != null && d.해당층 !== '') {
         // "2/8" 형식이면 분리
         const fs = String(d.해당층);
