@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260505-cloudflare-r2-json-a9-intent-collect-all';
+    window.__SK_BUILD = '20260505-cloudflare-r2-json-a10-bds-request-replay';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -16118,15 +16118,18 @@ window.wr2SummaryCancelEdit = function() {
     }
     function _bdsCleanRequestUrlInput(raw) {
       let v = String(raw || '').trim();
-      const urlLine = v.split(/[\r\n]+/).find(line => /getRealpriceMapMarker\.ytp/i.test(line));
+      // 플래닛은 marker API 외에도 주변 실거래/상세 API를 따로 호출한다.
+      // DevTools에서 헤더 전체를 복사한 경우, bdsplanet .ytp URL이 들어간 줄을 우선 추출한다.
+      const urlLine = v.split(/[\r\n]+/).find(line => /bdsplanet\.com\/.*\.ytp/i.test(line));
       if (urlLine) v = urlLine.trim();
       v = v.replace(/^request\s*url\s*:\s*/i, '').trim();
+      v = v.replace(/^url\s*:\s*/i, '').trim();
       return v.split(/[\r\n]+/)[0].trim();
     }
     window.bdsSetCookieUI = function() {
       const key = 'bds_cookie';
       const prev = (() => { try { return localStorage.getItem(key) || ''; } catch(e) { return ''; } })();
-      const v = window.prompt('부동산플래닛 Cookie 전체를 붙여넣으세요.\nF12 → Network → getRealpriceMapMarker.ytp → Headers → Request Headers → Cookie', prev);
+      const v = window.prompt('부동산플래닛 Cookie 전체를 붙여넣으세요.\nF12 → Network → 실거래 관련 요청 → Headers → Request Headers → Cookie', prev);
       if (v === null) return;
       const clean = _bdsCleanCookieInput(v);
       try {
@@ -16140,12 +16143,12 @@ window.wr2SummaryCancelEdit = function() {
     window.bdsSetRequestUrlUI = function() {
       const key = 'bds_request_url';
       const prev = (() => { try { return localStorage.getItem(key) || ''; } catch(e) { return ''; } })();
-      const v = window.prompt('부동산플래닛 실제 요청 URL을 붙여넣으세요.\nF12 → Network → getRealpriceMapMarker.ytp → Headers → General → Request URL', prev);
+      const v = window.prompt('부동산플래닛 실제 요청 URL을 붙여넣으세요.\nF12 → Network → 실거래 관련 요청(getRealpriceMapMarker / getSurroundingsRealpriceInfo / realtyInfo 등) → Headers → General → Request URL', prev);
       if (v === null) return;
       const clean = _bdsCleanRequestUrlInput(v);
-      if (clean && !/getRealpriceMapMarker\.ytp/i.test(clean)) {
-        try { shopStatus('bds', '⚠️ getRealpriceMapMarker.ytp 요청 URL이 아닙니다.', '#ff8c42'); } catch(e) {}
-        try { showToast('부동산플래닛 getRealpriceMapMarker.ytp 요청 URL을 넣어주세요.', 'warn'); } catch(e) {}
+      if (clean && !/bdsplanet\.com\/.*\.ytp/i.test(clean)) {
+        try { shopStatus('bds', '⚠️ 부동산플래닛 .ytp 요청 URL이 아닙니다.', '#ff8c42'); } catch(e) {}
+        try { showToast('부동산플래닛 실거래 관련 Request URL을 넣어주세요.', 'warn'); } catch(e) {}
         return;
       }
       try {
@@ -16279,7 +16282,7 @@ window.wr2SummaryCancelEdit = function() {
       // 부동산플래닛은 자동취득 쿠키만으로 빈 응답을 주는 경우가 많다.
       // 이 경우 한 번만 사용자가 복사한 브라우저 Cookie를 받아 저장하고 재시도한다.
       if (data && data.status === 'cookie_required') {
-        const msg = (data.message || '부동산플래닛 쿠키가 필요합니다.') + '\n\n부동산플래닛 로그인/지도 화면에서 F12 → Network → getRealpriceMapMarker.ytp 요청의 Request Headers → Cookie 값을 복사해 붙여넣으세요.\n같은 요청의 Request URL도 🔗 URL 버튼에 저장하면 더 정확합니다.\n\n취소하면 수집을 중단합니다.';
+        const msg = (data.message || '부동산플래닛 쿠키가 필요합니다.') + '\n\n부동산플래닛 로그인/지도 화면에서 F12 → Network → 실거래 관련 요청의 Request Headers → Cookie 값을 복사해 붙여넣으세요.\n같은 요청의 Request URL도 🔗 URL 버튼에 저장하면 더 정확합니다.\n\n취소하면 수집을 중단합니다.';
         const pasted = window.prompt(msg, _bdsGetSavedCookie());
         const nextCookie = _bdsSaveCookie(pasted || '');
         if (!nextCookie) { shopStatus('bds', '⚠️ 부동산플래닛 쿠키 입력이 취소되어 수집을 중단했습니다.', '#ff8c42'); return; }
