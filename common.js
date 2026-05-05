@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260505-cloudflare-r2-json-a8-dday-exact-color';
+    window.__SK_BUILD = '20260505-cloudflare-r2-json-a9-intent-collect-all';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -5419,7 +5419,7 @@ var _safeLocalSet = function(key, value) {
                     const priceRaw = metaInfo.priceRaw;
                     const price = fmtMetaPrice(priceRaw) || String(priceRaw || '').trim();
                     const intent = String(metaInfo.intent || '').trim();
-                    const intentColor = intent === '최상' ? '#ff4f69' : (intent === '상' ? '#f59e0b' : (intent === '중' ? '#60a5fa' : (intent === '하' ? '#4ade80' : '#8ea7c9')));
+                    const intentColor = intent === '최상' ? '#ff4f69' : (intent === '상' ? '#f59e0b' : (intent === '중' ? '#4ade80' : (intent === '하' ? '#60a5fa' : '#8ea7c9')));
                     const intentChip = intent
                       ? ('<span style="padding:1px 6px;border-radius:999px;border:1px solid ' + intentColor + '55;background:' + intentColor + '18;color:' + intentColor + ';font-size:10px;font-weight:800;white-space:nowrap;">' + esc(intent) + '</span>')
                       : '';
@@ -16048,7 +16048,8 @@ window.wr2SummaryCancelEdit = function() {
     // ── 디스코 자동수집 ──
     async function collectDiscoAuto() {
       const proxyBase = window.PROXY_URL;
-      const maxN = getCollectMaxCountForRequest();
+      // 디스코는 네이버처럼 과다 물건 제한 대상이 아니므로 최대개수 필터를 적용하지 않는다.
+      const maxN = null;
 
       let bounds = window._discoBounds || null;
       const regionInput = (document.getElementById('discoRegionInput')?.value || '').trim();
@@ -16158,7 +16159,8 @@ window.wr2SummaryCancelEdit = function() {
     // ── 부동산플래닛 자동수집 ──
     async function collectBdsAuto() {
       const proxyBase = window.PROXY_URL;
-      const maxN = getCollectMaxCountForRequest();
+      // 부동산플래닛은 네이버처럼 과다 물건 제한 대상이 아니므로 최대개수 필터를 적용하지 않는다.
+      const maxN = null;
 
       let bounds = window._bdsBounds || null;
       const regionInput = (document.getElementById('bdsRegionInput')?.value || '').trim();
@@ -16357,14 +16359,20 @@ window.wr2SummaryCancelEdit = function() {
       const bdsByKey = new Map();
       const bdsByAddr = new Map();
       const _bdsAddrKey = (d) => {
+        // 플래닛은 같은 주소에 여러 실거래가 있을 수 있으므로 주소만으로 중복 제거하지 않는다.
+        // 주소 + 거래월 + 금액 + 면적 + 층 조합을 거래 식별키로 사용한다.
         const addr = String(
           (d && (d.소재지 || d.지번주소 || d.도로명주소 || d.주소 || d.address)) || ''
         ).trim().replace(/\s+/g, ' ');
-        if (addr) return 'addr:' + addr;
+        const ym = String((d && (d.거래년월 || d.t_year || d.yearMonth)) || '').trim();
+        const price = String((d && (d.매매가_만원 || d.실거래가_만원 || d.매매가 || d.obj_amt || d.price)) || '').replace(/[^0-9.\-]/g, '');
+        const area = String((d && (d.전용면적_m2 || d.건물면적_m2 || d.공급면적_m2 || d.계약면적_m2 || d.excl_area_m2 || d.bldg_area_m2)) || '').replace(/[^0-9.\-]/g, '');
+        const floor = String((d && (d.해당층 || d.t_floor || d.floor || d.flr || d.floor_no)) || '').trim();
+        if (addr) return ['tx', addr, ym, price, area, floor].join('|');
         const lat = d && (d.lat ?? d.latitude);
         const lng = d && (d.lng ?? d.longitude);
         if (lat != null && lng != null && !isNaN(parseFloat(lat)) && !isNaN(parseFloat(lng))) {
-          return 'coord:' + Number(lat).toFixed(6) + ',' + Number(lng).toFixed(6);
+          return ['coordtx', Number(lat).toFixed(6), Number(lng).toFixed(6), ym, price, area, floor].join('|');
         }
         return '';
       };
@@ -16463,7 +16471,7 @@ window.wr2SummaryCancelEdit = function() {
           const parts = [];
           if (meta.raw_count != null) parts.push(`원본 ${meta.raw_count}건`);
           if (meta.after_server_filter_count != null) parts.push(`상가/업무 필터 후 ${meta.after_server_filter_count}건`);
-          if (meta.after_dedupe_count != null && meta.after_dedupe_count !== meta.after_server_filter_count) parts.push(`주소 최신거래 정리 후 ${meta.after_dedupe_count}건`);
+          if (meta.after_dedupe_count != null && meta.after_dedupe_count !== meta.after_server_filter_count) parts.push(`거래 중복 정리 후 ${meta.after_dedupe_count}건`);
           if (meta.max_n_applied) parts.push(`최대개수 ${meta.max_n_applied}건 적용`);
           parts.push(`프론트 수신 ${clientReceived}건`);
           if (clientFilterDropped) parts.push(`화면/반경 필터 제외 ${clientFilterDropped}건`);
@@ -35480,8 +35488,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
       const v = String(intent || '').trim();
       if (v === '최상') return { color: '#ff4f69', bg: 'rgba(255,79,105,.16)' };
       if (v === '상') return { color: '#f59e0b', bg: 'rgba(245,158,11,.16)' };
-      if (v === '중') return { color: '#60a5fa', bg: 'rgba(96,165,250,.16)' };
-      if (v === '하') return { color: '#4ade80', bg: 'rgba(74,222,128,.16)' };
+      if (v === '중') return { color: '#4ade80', bg: 'rgba(74,222,128,.16)' };
+      if (v === '하') return { color: '#60a5fa', bg: 'rgba(96,165,250,.16)' };
       return null;
     }
     function _plIntentChip(intent) {
@@ -46015,12 +46023,12 @@ window.addEventListener('DOMContentLoaded', () => {
   };
   function intentBadge(v) {
     if (!v) return '<span style="color:#555;">—</span>';
-    var map = { '최상':'#ff4f69', '상':'#f59e0b', '중':'#60a5fa', '하':'#4ade80' };
+    var map = { '최상':'#ff4f69', '상':'#f59e0b', '중':'#4ade80', '하':'#60a5fa' };
     return '<span style="font-weight:700;color:'+ (map[v]||'#aaa') +';">'+plEscHtml(v)+'</span>';
   }
   function intentCell(it) {
     var v = it.intent || '';
-    var cm = { '최상':'#ff4f69', '상':'#f59e0b', '중':'#60a5fa', '하':'#4ade80' };
+    var cm = { '최상':'#ff4f69', '상':'#f59e0b', '중':'#4ade80', '하':'#60a5fa' };
     var col = cm[v] || '#555';
     var idEsc = plEscHtml(it.id);
     return '<select onclick="event.stopPropagation()" onchange="plInlineSetSelect(\'' + idEsc + '\',\'intent\',this.value);event.stopPropagation()" '
@@ -46028,8 +46036,8 @@ window.addEventListener('DOMContentLoaded', () => {
       + '<option value=""'+(v===''?' selected':'')+'>—</option>'
       + '<option value="최상"'+(v==='최상'?' selected':'')+' style="color:#ff4f69">최상</option>'
       + '<option value="상"'+(v==='상'?' selected':'')+' style="color:#f59e0b">상</option>'
-      + '<option value="중"'+(v==='중'?' selected':'')+' style="color:#60a5fa">중</option>'
-      + '<option value="하"'+(v==='하'?' selected':'')+' style="color:#4ade80">하</option>'
+      + '<option value="중"'+(v==='중'?' selected':'')+' style="color:#4ade80">중</option>'
+      + '<option value="하"'+(v==='하'?' selected':'')+' style="color:#60a5fa">하</option>'
       + '</select>';
   }
   function statusCell(item, forcedSimple) {
