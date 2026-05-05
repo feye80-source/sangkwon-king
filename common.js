@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260505-cloudflare-r2-json-a6-quiet-poll-render';
+    window.__SK_BUILD = '20260505-cloudflare-r2-json-a8-dday-exact-color';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -219,199 +219,6 @@
       zone._skDropBound = true;
       return zone;
     };
-
-    // ═══════════════════════════════════════════════════════
-    // Cloudflare R2 데이터/이미지 백엔드
-    // - Supabase Auth가 막혀도 이미지 업로드와 주요 JSON 동기화가 작동하도록 분리
-    // - 같은 계정의 여러 기기가 같은 sk_cloud_user_key를 사용해야 서로 동기화됨
-    // ═══════════════════════════════════════════════════════
-    window.CF_WORKER_URL = window.CF_WORKER_URL || window.R2_WORKER_URL || window.EDGE_URL || 'https://sangkwon-upload-worker.feye80.workers.dev';
-    window.SK_USE_CLOUDFLARE_DATA = (window.SK_USE_CLOUDFLARE_DATA !== false);
-    window.SK_ALLOW_SUPABASE_FALLBACK = false;
-    window._skMakeLocalKey = window._skMakeLocalKey || function() {
-      return 'sk_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 12);
-    };
-    window._skResolveStoredSupabaseUserId = window._skResolveStoredSupabaseUserId || function() {
-      try {
-        const raw = localStorage.getItem('sb_sangkwon_session') || sessionStorage.getItem('sb_sangkwon_session') || '';
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          const sess = parsed && (parsed.currentSession || parsed.session || parsed);
-          const uid = sess && sess.user && sess.user.id;
-          if (uid) return String(uid);
-        }
-      } catch(e) {}
-      try { return localStorage.getItem('sb_sangkwon_last_uid') || localStorage.getItem('sb_last_uid_sangkwon') || ''; } catch(e) { return ''; }
-    };
-    window.skGetCloudUserKey = window.skGetCloudUserKey || function() {
-      try {
-        let key = String(localStorage.getItem('sk_cloud_user_key') || '').trim();
-        if (!key && window._skResolveStoredSupabaseUserId) key = String(window._skResolveStoredSupabaseUserId() || '').trim();
-        if (!key) key = window._skMakeLocalKey();
-        key = key.replace(/[^a-zA-Z0-9_\-:.@]/g, '_').slice(0, 120);
-        localStorage.setItem('sk_cloud_user_key', key);
-        try { localStorage.setItem('sb_sangkwon_last_uid', key); } catch(e) {}
-        return key;
-      } catch(e) {
-        return 'local_' + Date.now().toString(36);
-      }
-    };
-    window.skSetCloudUserKey = window.skSetCloudUserKey || function(key) {
-      const clean = String(key || '').trim().replace(/[^a-zA-Z0-9_\-:.@]/g, '_').slice(0, 120);
-      if (!clean) throw new Error('cloud user key가 비어 있습니다.');
-      localStorage.setItem('sk_cloud_user_key', clean);
-      localStorage.setItem('sb_sangkwon_last_uid', clean);
-      console.log('[CF] cloud user key set:', clean);
-      return clean;
-    };
-    function _cfBaseUrl() {
-      return String(window.CF_WORKER_URL || window.R2_WORKER_URL || window.EDGE_URL || '').replace(/\/$/, '');
-    }
-    function _cfDataPath(key) {
-      const userKey = encodeURIComponent(window.skGetCloudUserKey());
-      const safeKey = encodeURIComponent(String(key || '').replace(/[^a-zA-Z0-9_\-.]/g, '_'));
-      return '/__data/' + userKey + '/' + safeKey + '.json';
-    }
-    window._cfDataUrl = window._cfDataUrl || function(key) {
-      const base = _cfBaseUrl();
-      if (!base) throw new Error('Cloudflare Worker URL 미설정');
-      return base + _cfDataPath(key);
-    };
-    window._cfFetchJson = window._cfFetchJson || async function(url, options) {
-      const opts = Object.assign({}, options || {});
-      opts.cache = opts.cache || 'no-store';
-      opts.headers = Object.assign({ 'accept': 'application/json' }, opts.headers || {});
-      if (!opts.signal && window._skTimeoutSignal) opts.signal = window._skTimeoutSignal(12000);
-      return await fetch(url, opts);
-    };
-    window._cfSaveJson = window._cfSaveJson || async function(key, value) {
-      if (window.SK_USE_CLOUDFLARE_DATA === false) return false;
-      const url = window._cfDataUrl(key);
-      const res = await window._cfFetchJson(url, {
-        method: 'PUT',
-        headers: {
-          'content-type': 'application/json',
-          'x-sk-user-key': window.skGetCloudUserKey ? window.skGetCloudUserKey() : ''
-        },
-        body: JSON.stringify({ version: 1, key, updatedAt: Date.now(), value })
-      });
-      if (!res.ok) throw new Error('Cloudflare 저장 실패 ' + key + ': ' + res.status);
-      return true;
-    };
-    window._cfLoadJson = window._cfLoadJson || async function(key) {
-      if (window.SK_USE_CLOUDFLARE_DATA === false) return null;
-      const url = window._cfDataUrl(key);
-      const res = await window._cfFetchJson(url, {
-        method: 'GET',
-        headers: { 'x-sk-user-key': window.skGetCloudUserKey ? window.skGetCloudUserKey() : '' }
-      });
-      if (res.status === 404) return null;
-      if (!res.ok) throw new Error('Cloudflare 로드 실패 ' + key + ': ' + res.status);
-      let json = null;
-      try { json = await res.json(); } catch(_e) { json = null; }
-      if (!json || json.missing === true) return null;
-      return Object.prototype.hasOwnProperty.call(json, 'value') ? json.value : json;
-    };
-    window._cfDeleteJson = window._cfDeleteJson || async function(key) {
-      if (window.SK_USE_CLOUDFLARE_DATA === false) return false;
-      const res = await window._cfFetchJson(window._cfDataUrl(key), { method: 'DELETE' });
-      if (!res.ok && res.status !== 404) throw new Error('Cloudflare 삭제 실패 ' + key + ': ' + res.status);
-      return true;
-    };
-    // ── [A3] 모든 이미지/첨부 업로드 공통 동기화 가드 ─────────────
-    // 업로드 직후 오래된 Cloudflare JSON pull이 방금 추가한 이미지/첨부를 덮는 문제를 막고,
-    // 어느 화면에서 업로드했든 관련 저장소를 한 번 더 Cloudflare에 확정 저장한다.
-    window._skMarkMediaWrite = window._skMarkMediaWrite || function(reason, holdMs) {
-      const until = Date.now() + (typeof holdMs === 'number' ? holdMs : 22000);
-      window.__skCloudLocalWriteUntil = Math.max(Number(window.__skCloudLocalWriteUntil || 0), until);
-      window.__skMediaWriteUntil = Math.max(Number(window.__skMediaWriteUntil || 0), until);
-      window.__wr2ImageWriteUntil = Math.max(Number(window.__wr2ImageWriteUntil || 0), until);
-      window.__skLastMediaWriteReason = reason || 'media';
-      return until;
-    };
-    window._skFlushAllImageStores = window._skFlushAllImageStores || (function() {
-      let timer = null;
-      let running = false;
-      return function(reason, delay) {
-        window._skMarkMediaWrite(reason || 'flush', 45000);
-        clearTimeout(timer);
-        timer = setTimeout(async function() {
-          timer = null;
-          if (running) return;
-          running = true;
-          try {
-            const jobs = [];
-            const add = function(label, fn) {
-              try { jobs.push(Promise.resolve().then(fn).catch(function(e){ console.warn('[SK][media flush]', label, e); })); } catch(e) {}
-            };
-            // 작업룸 본문: 작업이미지, 작업룸 노트 첨부, 체크리스트 첨부 등
-            if (typeof window._sbSaveRooms === 'function') {
-              add('wr2_rooms', function() {
-                const rooms = (typeof window._wrGetRoomsCache === 'function')
-                  ? window._wrGetRoomsCache()
-                  : ((window._idbCache && window._idbCache['wr2_rooms']) || []);
-                return window._sbSaveRooms((rooms || []).filter(function(r){ return r && r.id; }));
-              });
-            }
-            // 작업룸 섹션: 사용자 섹션/섹션 체크리스트/자유표 등
-            if (typeof window._sbSaveSections === 'function') {
-              add('wr2_sections', function() {
-                const sections = (typeof window._wrGetSectionsCache === 'function')
-                  ? window._wrGetSectionsCache()
-                  : ((window._idbCache && window._idbCache['wr2_sections']) || []);
-                return window._sbSaveSections((sections || []).filter(function(s){ return s && s.id; }));
-              });
-            }
-            // 저장목록 첨부
-            if (typeof window._sbSaveSv === 'function') {
-              add('re_sv', function() {
-                const sv = (typeof window.getSv === 'function') ? window.getSv() : ((window._idbCache && window._idbCache['re_sv']) || []);
-                return window._sbSaveSv(Array.isArray(sv) ? sv : []);
-              });
-            }
-            // 인사이트/노트 첨부
-            if (typeof window._sbSaveNtNotes === 'function') {
-              add('nt_notes', function() {
-                const notes = (typeof window._ntGetNotes === 'function') ? window._ntGetNotes() : ((window._idbCache && window._idbCache['nt_notes']) || window.ntNotes || []);
-                return window._sbSaveNtNotes(Array.isArray(notes) ? notes : []);
-              });
-            }
-            // 알짜카드 이미지
-            if (typeof window._sbSaveKcards === 'function') {
-              add('ins_kcards', function() {
-                const cards = (window._idbCache && window._idbCache['ins_kcards']) || window.kcards || [];
-                return window._sbSaveKcards(Array.isArray(cards) ? cards : []);
-              });
-            }
-            // 지도메모 첨부
-            if (typeof window._sbSaveMapMemos === 'function') {
-              add('map_memos', function() {
-                const memos = (window._idbCache && window._idbCache['map_memos']) || [];
-                return window._sbSaveMapMemos(Array.isArray(memos) ? memos : []);
-              });
-            }
-            // 지도/스냅샷 이미지
-            if (typeof window._sbSaveWorkScenes === 'function') {
-              add('re_ws', function() {
-                const scenes = (window._idbCache && window._idbCache['re_ws']) || [];
-                return window._sbSaveWorkScenes(Array.isArray(scenes) ? scenes : []);
-              });
-            }
-            await Promise.all(jobs);
-          } finally {
-            running = false;
-          }
-        }, typeof delay === 'number' ? delay : 900);
-      };
-    })();
-    window._skAfterMediaMutation = window._skAfterMediaMutation || function(reason) {
-      try { if (typeof window._skMarkMediaWrite === 'function') window._skMarkMediaWrite(reason || 'media-mutation', 45000); } catch(e) {}
-      try { if (typeof window.__wr2FlushSaveRooms === 'function') window.__wr2FlushSaveRooms(); } catch(e) {}
-      try { if (typeof window._skFlushAllImageStores === 'function') window._skFlushAllImageStores(reason || 'media-mutation', 250); } catch(e) {}
-      setTimeout(function(){ try { if (typeof window._skFlushAllImageStores === 'function') window._skFlushAllImageStores((reason || 'media-mutation') + ':late', 0); } catch(e){} }, 2500);
-      setTimeout(function(){ try { if (typeof window._skFlushAllImageStores === 'function') window._skFlushAllImageStores((reason || 'media-mutation') + ':final', 0); } catch(e){} }, 8000);
-    };
-    console.log('[CF] backend ready', _cfBaseUrl(), 'userKey=', window.skGetCloudUserKey());
 
 /* ════════════════════════════════════════════════════════
    블록1-B: IndexedDB 래퍼 (대용량 데이터 로컬 저장소)
@@ -678,14 +485,11 @@
     }
 
     // Supabase 클라이언트 초기화
-    // A안(Cloudflare R2 JSON 모드)에서는 Supabase Auth를 런타임 저장 경로로 쓰지 않는다.
-    // 단, 기존 코드 호환을 위해 클라이언트 객체는 만들되 세션 자동갱신/URL 감지는 꺼서 gotrue lock/timeout을 막는다.
-    const _skCloudflareOnlyMode = (window.SK_USE_CLOUDFLARE_DATA === true && window.SK_ALLOW_SUPABASE_FALLBACK !== true);
     window._sb = _sbLib.createClient(SUPABASE_URL, SUPABASE_KEY, {
       auth: {
-        persistSession: !_skCloudflareOnlyMode,
-        autoRefreshToken: false,
-        detectSessionInUrl: false,
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
         storageKey: 'sb_sangkwon_session'
       }
     });
@@ -784,7 +588,7 @@
         if (timer) clearTimeout(timer);
       }
     }
-    if (!_skCloudflareOnlyMode) window._sb.auth.onAuthStateChange((event, session) => {
+    window._sb.auth.onAuthStateChange((event, session) => {
       if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session) {
         _sbCachedUserId = session && session.user ? (session.user.id || null) : null;
         _sbSessionReq = null;
@@ -860,10 +664,6 @@
     }
     async function _sbGetSessionShared(opts) {
       const options = opts || {};
-      if (_skCloudflareOnlyMode) {
-        const uid = window.skGetCloudUserKey ? window.skGetCloudUserKey() : '';
-        return { data: { session: uid ? { user: { id: uid } } : null }, error: null, cloudflare: true };
-      }
       if (_sbSessionReq && !options.force) return _sbSessionReq;
       const req = Promise.resolve()
         .then(() => _sbWithTimeout(window._sb.auth.getSession(), 'auth getSession', 15000))
@@ -885,7 +685,6 @@
       return req;
     }
     async function _sbGetUserId() {
-      if (_skCloudflareOnlyMode) return window.skGetCloudUserKey ? window.skGetCloudUserKey() : '';
       if (_sbCachedUserId) return _sbCachedUserId;
       try {
         const { data: { session } } = await _sbGetSessionShared();
@@ -898,9 +697,6 @@
     // ── kv_store 헬퍼 (섹션/API키 등 키-값 단건 저장) ──────
     async function kvGet(key) {
       try {
-        if (_skCloudflareOnlyMode && window._cfLoadJson) {
-          return await window._cfLoadJson('kv_' + key);
-        }
         const uid = await _sbGetUserId();
         if (!uid) return null;
         const id = uid + '_' + key;
@@ -914,9 +710,6 @@
     }
     async function kvSet(key, value) {
       try {
-        if (_skCloudflareOnlyMode && window._cfSaveJson) {
-          return await window._cfSaveJson('kv_' + key, value);
-        }
         const uid = await _sbGetUserId();
         if (!uid) return;
         const id = uid + '_' + key;
@@ -1189,7 +982,7 @@
       if (String(msg || '').indexOf('물건리스트 동기화') >= 0) return;
       // 백그라운드 저장 성공 토스트는 UX 방해가 커서 숨긴다.
       // 경고/실패(ok=false)나 의미 있는 상태 메시지만 노출한다.
-      if (ok && /(동기화 완료|저장 완료|Cloudflare)/.test(String(msg || ''))) return;
+      if (ok && /동기화 완료/.test(String(msg || ''))) return;
       // 동일 메시지 연속 노출(짧은 시간 내 반복) 방지
       var now = Date.now();
       if (window._sbLastStatusMsg === msg && window._sbLastStatusAt && (now - window._sbLastStatusAt) < 3500) {
@@ -1371,10 +1164,12 @@
       }, typeof delay === 'number' ? delay : 950);
     };
     window._sbSaveSv = async function(arr) {
+      // DB 저장 전 대용량 필드 제거 (items 테이블 경량화)
       const clean = (arr || []).map(item => {
         const cleaned = { ...item };
         delete cleaned._norm;
         delete cleaned._normKey;
+        // pdfFullText 제거
         delete cleaned.pdfFullText;
         if (cleaned.originalFile) {
           cleaned.originalFile = {
@@ -1386,11 +1181,13 @@
             isOriginal: !!cleaned.originalFile.isOriginal
           };
         }
+        // AI분석은 ai_analysis 테이블로 분리 → items에서 제거
         if (cleaned.data) {
           cleaned.data = { ...cleaned.data };
           delete cleaned.data.AI기본분석;
           delete cleaned.data.AI추가분석;
         }
+        // additionalDocs 안의 text/base64 제거
         if (cleaned.additionalDocs && cleaned.additionalDocs.length) {
           cleaned.additionalDocs = cleaned.additionalDocs.map(d => ({
             name: d.name, size: d.size, type: d.type,
@@ -1399,19 +1196,12 @@
         }
         return cleaned;
       });
-      if (window._cfSaveJson) {
-        await window._cfSaveJson('re_sv', clean);
-        _clearDirty('items');
-        window._sbSyncStatus('☁️ 저장목록 Cloudflare 동기화 완료', true);
-        return true;
-      }
-      if (window.SK_ALLOW_SUPABASE_FALLBACK === true) {
-        await tblSaveDirty('items', clean);
-        const deleted = (arr || []).filter(i => i.deletedAt).map(i => i.id);
-        if (deleted.length) await tblSoftDelete('items', deleted);
-        window._sbSyncStatus('☁️ 저장목록 동기화 완료', true);
-      }
-      return false;
+      // dirty tracking: 변경분만 upsert
+      await tblSaveDirty('items', clean);
+      // 소프트삭제 항목 클라우드에서도 제거
+      const deleted = (arr || []).filter(i => i.deletedAt).map(i => i.id);
+      if (deleted.length) await tblSoftDelete('items', deleted);
+      window._sbSyncStatus('☁️ 저장목록 동기화 완료', true);
     };
     // 저장목록 삭제 → Supabase soft delete (scheduleSvCloudDelete에서 호출)
     window._sbDeleteSvRows = async function(rows) {
@@ -1422,11 +1212,7 @@
     };
 
     window._sbLoadSv = async function() {
-      if (window._cfLoadJson) {
-        const d = await window._cfLoadJson('re_sv');
-        return Array.isArray(d) ? _sbPruneTombstones(d) : null;
-      }
-      return window.SK_ALLOW_SUPABASE_FALLBACK === true ? await tblLoadArr('items') : null;
+      return await tblLoadArr('items');
     };
     window._svGetItemsCache = function() {
       return _sbGetCachedArray('re_sv').filter(item => item && item.id);
@@ -2193,10 +1979,7 @@
       const options = opts || {};
       const localBusy =
         Number(window.__wr2UploadBusy || 0) > 0 ||
-        Number(window.__skImageUploadBusy || 0) > 0 ||
         !!window.__wr2SaveRoomsTimer ||
-        (Number(window.__skCloudLocalWriteUntil || 0) > Date.now()) ||
-        (Number(window.__skMediaWriteUntil || 0) > Date.now()) ||
         (Number(window.__wr2ImageWriteUntil || 0) > Date.now()) ||
         (Number(window.__mbRoomLocalWriteUntil || 0) > Date.now());
       if (localBusy) {
@@ -2204,12 +1987,9 @@
       }
       let roomPayload = null;
       let sectionPayload = null;
-      const hadRoomDirty = !!(_dirtyItems.workrooms && _dirtyItems.workrooms.size);
-      if (hadRoomDirty && window._sbSaveRooms) {
+      if (_dirtyItems.workrooms && _dirtyItems.workrooms.size && window._sbSaveRooms) {
         try {
           await window._sbSaveRooms(_sbGetCachedArray('wr2_rooms').filter(r => r && r.id));
-          // 로컬 이미지/작업룸 변경 직후에는 오래된 Cloudflare JSON을 다시 받아 덮지 않는다.
-          return { rooms: null, sections: null, skipped: 'dirty_flushed' };
         } catch (e) {
           console.warn('[SB] room flush before refresh', e);
         }
@@ -2217,8 +1997,6 @@
       if (_hasKvDirty('wr2_sections') && window._sbSaveSections) {
         try {
           await window._sbSaveSections(_sbGetCachedArray('wr2_sections').filter(s => s && s.id));
-          // 로컬 섹션 첨부/이미지 변경 직후에는 오래된 Cloudflare 섹션 JSON으로 덮지 않는다.
-          return { rooms: null, sections: null, skipped: 'section_dirty_flushed' };
         } catch (e) {
           console.warn('[SB] section flush before refresh', e);
         }
@@ -2227,47 +2005,25 @@
       if (cloudRooms !== null) {
         const localRooms = window._wrGetRoomsCache ? window._wrGetRoomsCache() : ((window._idbCache && window._idbCache['wr2_rooms']) || []);
         const hasRoomDirty = !!(_dirtyItems.workrooms && _dirtyItems.workrooms.size);
-        const cloudById = new Map((Array.isArray(cloudRooms) ? cloudRooms : []).filter(r => r && r.id).map(r => [String(r.id), r]));
-        const localById = new Map((Array.isArray(localRooms) ? localRooms : []).filter(r => r && r.id).map(r => [String(r.id), r]));
-        let mergedRooms = _sbMergeTrackedById('workrooms', cloudRooms, localRooms);
-        // Cloudflare JSON 방식에서는 force=true라도 cloud-only로 덮지 않는다.
-        // 로컬의 captureImages 타임스탬프가 더 최신이면 로컬 이미지를 보존한다.
-        if (typeof _wrMergeRoomPreserveImages === 'function') {
-          mergedRooms = (mergedRooms || []).map(function(r) {
-            if (!r || !r.id) return r;
-            const id = String(r.id);
-            const local = localById.get(id);
-            const cloud = cloudById.get(id);
-            const localImgTs = Number(local && (local._captureImagesUpdatedAt || local.captureImagesUpdatedAt || local.imagesUpdatedAt || 0)) || 0;
-            const cloudImgTs = Number(cloud && (cloud._captureImagesUpdatedAt || cloud.captureImagesUpdatedAt || cloud.imagesUpdatedAt || 0)) || 0;
-            if (local && localImgTs && localImgTs >= cloudImgTs) return _wrMergeRoomPreserveImages(cloud || r, local, { explicitEmptyImages: true });
-            return _wrMergeRoomPreserveImages(local || r, r);
-          });
-        }
-        let roomsChanged = true;
-        try { roomsChanged = JSON.stringify(localRooms || []) !== JSON.stringify(mergedRooms || []); } catch(e) { roomsChanged = true; }
-        if (roomsChanged) {
-          if (window._wrPersistRoomCache) roomPayload = window._wrPersistRoomCache(mergedRooms, { syncState: false });
-          else {
-            const activeRooms = (window._wrFilterActiveRooms ? window._wrFilterActiveRooms(mergedRooms) : mergedRooms.filter(r => r && !r.deletedAt));
-            _sbPersistCachedArray('wr2_rooms', mergedRooms);
-            roomPayload = { full: mergedRooms, active: activeRooms };
-          }
+        const mergedRooms = (options.force === true && !hasRoomDirty)
+          ? _sbTakeCloudArray(cloudRooms)
+          : _sbMergeTrackedById('workrooms', cloudRooms, localRooms);
+        if (window._wrPersistRoomCache) roomPayload = window._wrPersistRoomCache(mergedRooms, { syncState: false });
+        else {
+          const activeRooms = (window._wrFilterActiveRooms ? window._wrFilterActiveRooms(mergedRooms) : mergedRooms.filter(r => r && !r.deletedAt));
+          _sbPersistCachedArray('wr2_rooms', mergedRooms);
+          roomPayload = { full: mergedRooms, active: activeRooms };
         }
       }
       const cloudSections = window._sbLoadSections ? await window._sbLoadSections() : null;
       if (cloudSections !== null) {
         const localSections = window._wrGetSectionsCache ? window._wrGetSectionsCache() : ((window._idbCache && window._idbCache['wr2_sections']) || []);
-        const mergedSections = (typeof _sbMergeById === 'function') ? _sbMergeById(cloudSections, localSections) : _sbTakeCloudArray(cloudSections);
-        let sectionsChanged = true;
-        try { sectionsChanged = JSON.stringify(localSections || []) !== JSON.stringify(mergedSections || []); } catch(e) { sectionsChanged = true; }
-        if (sectionsChanged) {
-          if (window._wrPersistSectionsCache) sectionPayload = window._wrPersistSectionsCache(mergedSections, { keepDeleted: true, sync: false, syncState: false });
-          else {
-            const activeSections = (window._wrFilterActiveSections ? window._wrFilterActiveSections(mergedSections) : mergedSections.filter(s => s && !s.deletedAt));
-            _sbPersistCachedArray('wr2_sections', mergedSections);
-            sectionPayload = { full: mergedSections, active: activeSections };
-          }
+        const mergedSections = _sbTakeCloudArray(cloudSections);
+        if (window._wrPersistSectionsCache) sectionPayload = window._wrPersistSectionsCache(mergedSections, { keepDeleted: true, sync: false, syncState: false });
+        else {
+          const activeSections = (window._wrFilterActiveSections ? window._wrFilterActiveSections(mergedSections) : mergedSections.filter(s => s && !s.deletedAt));
+          _sbPersistCachedArray('wr2_sections', mergedSections);
+          sectionPayload = { full: mergedSections, active: activeSections };
         }
       }
       const activeRooms = roomPayload
@@ -2310,40 +2066,26 @@
         const prevMap = new Map((prev || []).filter(r => r && r.id).map(r => [r.id, r]));
         const cleanArr = _wrStripFreeTableLegacyRooms(arr).map(function(r) {
           if (!r || !r.id) return r;
-          return (typeof _wrMergeRoomPreserveImages === 'function') ? _wrMergeRoomPreserveImages(prevMap.get(r.id), r) : r;
+          return _wrMergeRoomPreserveImages(prevMap.get(r.id), r);
         });
         const full = _sbPruneTombstones(_sbKeepTombstones(prev, cleanArr)).filter(r => r && r.id);
         const changedIds = _sbChangedIds(prev, full);
         const hasDirty = !!(_dirtyItems.workrooms && _dirtyItems.workrooms.size);
+        if (!changedIds.length && !hasDirty) return;
+        const active = window._wrFilterActiveRooms ? window._wrFilterActiveRooms(full) : full.filter(r => !r.deletedAt);
+        const deleted = full.filter(r => r.deletedAt).map(r => r.id);
+        await tblSaveDirty('workrooms', active);
+        if (deleted.length) await tblSoftDelete('workrooms', deleted);
         if (window._wrPersistRoomCache) window._wrPersistRoomCache(full, { syncState: false });
-        if (!changedIds.length && !hasDirty) return true;
-        changedIds.forEach(id => { if (id && window._sbMarkRoomDirty) window._sbMarkRoomDirty(id); });
-        if (window._cfSaveJson) {
-          await window._cfSaveJson('wr2_rooms', full);
-          _clearDirty('workrooms');
-          synced = true;
-        } else if (window.SK_ALLOW_SUPABASE_FALLBACK === true) {
-          const active = window._wrFilterActiveRooms ? window._wrFilterActiveRooms(full) : full.filter(r => !r.deletedAt);
-          const deleted = full.filter(r => r.deletedAt).map(r => r.id);
-          await tblSaveDirty('workrooms', active);
-          if (deleted.length) await tblSoftDelete('workrooms', deleted);
-          synced = true;
-        }
+        synced = true;
       } catch(e) {
-        console.warn('[CF] saveRooms error', e);
-        window._sbSyncStatus('⚠️ 작업룸 Cloudflare 동기화 재시도 중', false);
+        console.warn('[SB] saveRooms error', e);
+        window._sbSyncStatus('⚠️ 작업룸 동기화 재시도 중', false);
       }
-      if (synced) window._sbSyncStatus('☁️ 작업룸 Cloudflare 동기화 완료', true);
-      return synced;
+      if (synced) window._sbSyncStatus('☁️ 작업룸 동기화 완료', true);
     };
     window._sbMarkRoomDirty = function(roomId) { _markDirty('workrooms', roomId); };
-    window._sbLoadRooms = async function() {
-      if (window._cfLoadJson) {
-        const d = await window._cfLoadJson('wr2_rooms');
-        return Array.isArray(d) ? _sbPruneTombstones(d) : null;
-      }
-      return window.SK_ALLOW_SUPABASE_FALLBACK === true ? await tblLoadArr('workrooms') : null;
-    };
+    window._sbLoadRooms = async function() { return await tblLoadArr('workrooms'); };
     window._skDebugWorkrooms = async function(label) {
       const summarize = function(arr) {
         return (Array.isArray(arr) ? arr : [])
@@ -2385,31 +2127,14 @@
     // 섹션은 kv_store에 통째로 저장 (섹션은 roomId 참조 구조라 개별 행 관리 복잡)
     window._sbSaveSections = async function(arr) {
       const full = _sbPruneTombstones((Array.isArray(arr) ? arr : []).filter(s => s && s.id));
-      _sbPersistCachedArray('wr2_sections', full);
       _markKvDirty('wr2_sections');
-      if (window._cfSaveJson) {
-        await window._cfSaveJson('wr2_sections', full);
-        _clearKvDirty('wr2_sections');
-        window._sbSyncStatus('☁️ 작업룸 섹션 Cloudflare 동기화 완료', true);
-        return true;
-      }
-      if (window.SK_ALLOW_SUPABASE_FALLBACK === true) {
-        await kvSet('wr2_sections', full);
-        _clearKvDirty('wr2_sections');
-        window._sbSyncStatus('☁️ 작업룸 섹션 동기화 완료', true);
-      }
-      return false;
+      await kvSet('wr2_sections', full);
+      _clearKvDirty('wr2_sections');
+      window._sbSyncStatus('☁️ 작업룸 섹션 동기화 완료', true);
     };
     window._sbLoadSections = async function() {
-      if (window._cfLoadJson) {
-        const d = await window._cfLoadJson('wr2_sections');
-        return Array.isArray(d) ? _sbPruneTombstones(d) : null;
-      }
-      if (window.SK_ALLOW_SUPABASE_FALLBACK === true) {
-        const d = await kvGet('wr2_sections');
-        return Array.isArray(d) ? _sbPruneTombstones(d) : null;
-      }
-      return null;
+      const d = await kvGet('wr2_sections');
+      return Array.isArray(d) ? _sbPruneTombstones(d) : null;
     };
 
     // 물건리스트(page4)는 kv_store + IDB 캐시로 동기화
@@ -2442,13 +2167,11 @@
     // ─── v3 root sync: 물건리스트 row 동기화 + 작업이미지 row 동기화 ─────────────
     // 목적: 큰 배열 전체 저장으로 기기끼리 덮어쓰는 구조를 끊고,
     //       변경된 물건 1개 / 이미지 1장 단위로 서버 기준점을 만든다.
-    window.__SK_SYNC_DEBUG = (window.__SK_SYNC_DEBUG === true);
-    window.__SK_ROW_PULL_LOG = (window.__SK_ROW_PULL_LOG === true);
+    window.__SK_SYNC_DEBUG = (window.__SK_SYNC_DEBUG !== false);
     function _skSyncLog() {
       try {
+        if (window.__SK_SYNC_DEBUG === false) return;
         const args = Array.prototype.slice.call(arguments);
-        if (String(args[0] || '').indexOf('row pull ok') >= 0 && window.__SK_ROW_PULL_LOG !== true) return;
-        if (window.__SK_SYNC_DEBUG === false && window.__SK_ROW_PULL_LOG !== true) return;
         args.unshift('[SK-SYNC]');
         console.log.apply(console, args);
       } catch(e) {}
@@ -2458,12 +2181,7 @@
     const _PL_ROW_MANIFEST_KEY = 'pl_items_row_manifest_v1';
     const _PL_ROW_PREFIX = 'pl_item_row_v1_';
     const _PL_DIRTY_KEY = 'pl_dirty_item_ids_v1';
-    const _PL_ROW_CONCURRENCY = 6;
-    window.__SK_PL_POLL_MS = Number(window.__SK_PL_POLL_MS || 60000);
-    window.__SK_WORK_REFRESH_MS = Number(window.__SK_WORK_REFRESH_MS || 60000);
-    window.__SK_IMAGE_ROW_POLL_MS = Number(window.__SK_IMAGE_ROW_POLL_MS || 60000);
-    window.__plCloudRowsCacheSig = window.__plCloudRowsCacheSig || '';
-    window.__plCloudRowsCache = Array.isArray(window.__plCloudRowsCache) ? window.__plCloudRowsCache : [];
+    const _PL_ROW_CONCURRENCY = 10;
     function _plEnc(v) { return encodeURIComponent(String(v || '')); }
     function _plRowKey(id) { return _PL_ROW_PREFIX + _plEnc(id); }
     function _plRowTime(item) {
@@ -2587,12 +2305,6 @@
         saved.push(String(id));
       }
       await _plSaveRowManifest(saved);
-      try {
-        window.__plCloudRowsCacheSig = '';
-        const cur = new Map((Array.isArray(window.__plCloudRowsCache) ? window.__plCloudRowsCache : []).filter(r => r && r.id).map(r => [String(r.id), r]));
-        saved.forEach(function(id) { const src = byId.get(String(id)); if (src) cur.set(String(id), Object.assign({}, src)); });
-        window.__plCloudRowsCache = Array.from(cur.values());
-      } catch(e) {}
       _plClearDirtyIds(saved);
       _skSyncLog('[PL] row push ok', { reason: reason || '', ids: saved });
       return saved;
@@ -2601,11 +2313,6 @@
       const man = await _plLoadRowManifest();
       const ids = man.ids;
       if (!ids.length) return [];
-      let sig = '';
-      try { sig = JSON.stringify({ ids: ids, count: man.meta && man.meta.count, updatedAt: man.meta && man.meta.updatedAt }); } catch(e) { sig = ids.join('|'); }
-      if (sig && window.__plCloudRowsCacheSig === sig && Array.isArray(window.__plCloudRowsCache) && window.__plCloudRowsCache.length) {
-        return window.__plCloudRowsCache.slice();
-      }
       const rows = new Array(ids.length);
       let cursor = 0;
       const workers = Array.from({ length: Math.min(_PL_ROW_CONCURRENCY, ids.length) }, async function() {
@@ -2616,8 +2323,6 @@
       });
       await Promise.all(workers);
       const out = _sbPruneTombstones(rows.filter(r => r && r.id));
-      window.__plCloudRowsCacheSig = sig;
-      window.__plCloudRowsCache = out.slice();
       _skSyncLog('[PL] row pull ok', { count: out.length });
       return out;
     }
@@ -2768,20 +2473,6 @@
       }
       return room;
     }
-    function _wrCaptureImagesSignature(list) {
-      try {
-        return JSON.stringify((Array.isArray(list) ? list : []).map(function(img) {
-          if (!img) return '';
-          return [
-            img.storagePath || img.path || '',
-            img.src || img.url || '',
-            img.snapName || '',
-            img.parentSnapName || '',
-            img.savedAt || img.createdAt || ''
-          ].join('|');
-        }));
-      } catch(e) { return ''; }
-    }
     window._wrSaveImageRows = _wrSaveImageRows;
     window._wrLoadImageRows = _wrLoadImageRows;
     window._wrPullImagesForRoom = async function(roomId, opts) {
@@ -2793,12 +2484,10 @@
       let changedRoom = null;
       const nextRooms = (cacheRooms || []).map(r => {
         if (!r || String(r.id) !== String(roomId)) return r;
-        const before = _wrCaptureImagesSignature(r.captureImages || []);
+        const before = JSON.stringify(r.captureImages || []);
         const nr = _wrApplyImageRowsToRoom(Object.assign({}, r), rows);
-        const after = _wrCaptureImagesSignature(nr.captureImages || []);
-        if (after !== before) {
-          nr._captureImagesUpdatedAt = Date.now();
-          nr.updatedAt = Math.max(Number(nr.updatedAt || 0), Number(r.updatedAt || 0), nr._captureImagesUpdatedAt);
+        if (JSON.stringify(nr.captureImages || []) !== before) {
+          nr.updatedAt = Math.max(Number(nr.updatedAt || 0), Date.now());
           changedRoom = nr;
         }
         return nr;
@@ -2822,56 +2511,43 @@
         return window._sbSavePlItems(latest);
       }, typeof delay === 'number' ? delay : 650);
     };
-    window._sbSavePlItems = async function(arr, opts) {
-      const saveOptions = opts || {};
-      const prev = _sbGetCachedArray('pl_items_v3');
-      const nextInput = (Array.isArray(arr) ? arr : []).filter(it => it && it.id);
-      const full = _sbPruneTombstones(_sbKeepTombstones(prev, nextInput)).filter(it => it && it.id);
-      _sbPersistCachedArray('pl_items_v3', full, { delay: 80 });
-      _markKvDirty('pl_items_v3');
+    window._sbSavePlItems = async function(arr) {
       try {
-        if (window._cfSaveJson) {
-          await window._cfSaveJson('pl_items_v3', full);
-          if (window._plClearDirtyIds) window._plClearDirtyIds(full.map(it => it.id));
-          _clearKvDirty('pl_items_v3');
-          if (!saveOptions.quiet) window._sbSyncStatus('☁️ 물건리스트 Cloudflare 동기화 완료', true);
-          return true;
+        const uid = await _sbGetUserId();
+        if (!uid) throw new Error('no session');
+        const prev = _sbGetCachedArray('pl_items_v3');
+        const nextInput = (Array.isArray(arr) ? arr : []).filter(it => it && it.id);
+        const full = _sbPruneTombstones(_sbKeepTombstones(prev, nextInput)).filter(it => it && it.id);
+        _sbPersistCachedArray('pl_items_v3', full, { delay: 80 });
+        const dirtyIds = (window._plGetDirtyIds ? window._plGetDirtyIds() : []).map(String).filter(Boolean);
+        if (dirtyIds.length) {
+          await _plSaveRowsFromItems(full, dirtyIds, 'dirty-save');
+          if (!window._plGetDirtyIds || !window._plGetDirtyIds().length) _clearKvDirty('pl_items_v3');
+          window._sbSyncStatus('☁️ 물건리스트 변경분 동기화 완료', true);
+          return;
         }
-        if (window.SK_ALLOW_SUPABASE_FALLBACK === true) {
-          const dirtyIds = (window._plGetDirtyIds ? window._plGetDirtyIds() : []).map(String).filter(Boolean);
-          if (dirtyIds.length) {
-            await _plSaveRowsFromItems(full, dirtyIds, 'dirty-save');
-            if (!window._plGetDirtyIds || !window._plGetDirtyIds().length) _clearKvDirty('pl_items_v3');
-            window._sbSyncStatus('☁️ 물건리스트 변경분 동기화 완료', true);
-            return true;
-          }
-          await _plSaveRowsFromItems(full, full.map(it => it.id), 'full-backup');
-          const chunks = _plSplitChunks(full);
-          const prevMeta = await kvGet(_PL_META_KEY);
-          const prevCount = prevMeta && prevMeta.count ? parseInt(prevMeta.count, 10) || 0 : 0;
-          for (let i = 0; i < chunks.length; i += 1) await kvSet(_PL_CHUNK_PREFIX + i, chunks[i]);
-          for (let j = chunks.length; j < prevCount; j += 1) await kvSet(_PL_CHUNK_PREFIX + j, []);
-          await kvSet(_PL_META_KEY, { version: 3, count: chunks.length, updatedAt: Date.now() });
-          if (full.length <= 120) await kvSet('pl_items_v3', full);
-          _clearKvDirty('pl_items_v3');
-          window._sbSyncStatus('☁️ 물건리스트 동기화 완료', true);
-          return true;
-        }
+        // 강제 업로드/초기화: row 기준 전체 백업 + legacy chunk 백업.
+        await _plSaveRowsFromItems(full, full.map(it => it.id), 'full-backup');
+        const chunks = _plSplitChunks(full);
+        const prevMeta = await kvGet(_PL_META_KEY);
+        const prevCount = prevMeta && prevMeta.count ? parseInt(prevMeta.count, 10) || 0 : 0;
+        for (let i = 0; i < chunks.length; i += 1) await kvSet(_PL_CHUNK_PREFIX + i, chunks[i]);
+        for (let j = chunks.length; j < prevCount; j += 1) await kvSet(_PL_CHUNK_PREFIX + j, []);
+        await kvSet(_PL_META_KEY, { version: 3, count: chunks.length, updatedAt: Date.now() });
+        if (full.length <= 120) await kvSet('pl_items_v3', full);
+        _clearKvDirty('pl_items_v3');
+        window._sbSyncStatus('☁️ 물건리스트 동기화 완료', true);
       } catch (e) {
-        console.warn('[CF] savePlItems error', e);
+        console.warn('[SB] savePlItems error', e);
         _markKvDirty('pl_items_v3');
-        window._sbSyncStatus('⚠️ 물건리스트 Cloudflare 동기화 재시도 중', false);
-        try { window._sbScheduleSavePlItems(_sbGetCachedArray('pl_items_v3'), 5000); } catch (e2) {}
-        return false;
+        if (e && e.message !== 'no session') window._sbSyncStatus('⚠️ 물건리스트 동기화 재시도 중', false);
+        try {
+          const retryPayload = _sbGetCachedArray('pl_items_v3');
+          window._sbScheduleSavePlItems(retryPayload, 2500);
+        } catch (e2) {}
       }
-      return false;
     };
     window._sbLoadPlItems = async function(opts) {
-      if (window._cfLoadJson) {
-        const d = await window._cfLoadJson('pl_items_v3');
-        return Array.isArray(d) ? _sbPruneTombstones(d) : [];
-      }
-      if (window.SK_ALLOW_SUPABASE_FALLBACK !== true) return _sbPruneTombstones(_sbGetCachedArray('pl_items_v3'));
       const options = opts || {};
       let legacy = [];
       try {
@@ -2909,11 +2585,9 @@
         options.preferLocalLifecycle === true ||
         (localLifecycleMutationAt && (nowTs - localLifecycleMutationAt) < 120000)
       );
-      const hadPlDirty = !!_hasKvDirty('pl_items_v3');
-      if (hadPlDirty && window._sbSavePlItems) {
+      if (_hasKvDirty('pl_items_v3') && window._sbSavePlItems) {
         try {
-          await window._sbSavePlItems(_sbGetCachedArray('pl_items_v3').filter(it => it && it.id), { quiet: true });
-          return { full: _sbGetCachedArray('pl_items_v3'), active: _sbGetCachedArray('pl_items_v3'), skipped: 'dirty_flushed' };
+          await window._sbSavePlItems(_sbGetCachedArray('pl_items_v3').filter(it => it && it.id));
         } catch (e) {
           console.warn('[SB] pl flush before refresh', e);
         }
@@ -3087,45 +2761,40 @@
       try { return localStorage.getItem('sb_sangkwon_last_uid') || ''; } catch(e) { return ''; }
     };
     window._sbUploadImage = async function(source, folder) {
-      // Cloudflare R2를 기본 업로드 경로로 사용한다.
-      // Supabase Auth가 죽어도 이미지 업로드가 막히지 않도록 user key는 로컬/기존 세션 캐시에서 해결한다.
-      const uid = (window.skGetCloudUserKey ? window.skGetCloudUserKey() : (window._skResolveStoredSupabaseUserId && window._skResolveStoredSupabaseUserId()) || ('local_' + Date.now().toString(36)));
-      if (typeof window._skMarkMediaWrite === 'function') window._skMarkMediaWrite('upload-start:' + (folder || 'uploads'), 24000);
-      window.__skImageUploadBusy = Number(window.__skImageUploadBusy || 0) + 1;
+      let uid = await _sbGetUserId();
+      if (!uid && window._skResolveStoredSupabaseUserId) uid = window._skResolveStoredSupabaseUserId();
+      if (!uid) {
+        for (let i = 0; i < 10 && !uid; i += 1) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+          uid = await _sbGetUserId();
+          if (!uid && window._skResolveStoredSupabaseUserId) uid = window._skResolveStoredSupabaseUserId();
+        }
+      }
+      if (!uid) throw new Error('로그인 세션 확인 실패: 새로고침 후 다시 업로드하세요.');
+      try { localStorage.setItem('sb_sangkwon_last_uid', uid); } catch(e) {}
       if (typeof window._ensureInlineUploadHelpers === 'function') window._ensureInlineUploadHelpers();
       const target = window._sbResolveUploadTarget(uid, folder);
       const payload = await window._sbMakeUploadPayload(source, target.folder);
       const path = target.pathPrefix + payload.fileName;
 
+      // ★ [R2] Cloudflare R2 Worker로 업로드
       try {
-        const workerUrl = (window.CF_WORKER_URL || window.R2_WORKER_URL || '').replace(/\/$/, '');
-        if (!workerUrl) throw new Error('CF_WORKER_URL 미설정');
+        const workerUrl = (window.R2_WORKER_URL || '').replace(/\/$/, '');
+        if (!workerUrl) throw new Error('R2_WORKER_URL 미설정');
         const res = await fetch(workerUrl + '/' + path, {
           method: 'PUT',
-          headers: {
-            'content-type': payload.mimeType,
-            'x-sk-user-key': uid
-          },
+          headers: { 'content-type': payload.mimeType },
           body: payload.file,
         });
         if (!res.ok) throw new Error('R2 업로드 실패: ' + res.status);
         let json = null;
         try { json = await res.json(); } catch(_e) { json = null; }
         const url = (json && json.url) || (workerUrl + '/' + path);
-        if (typeof window._skMarkMediaWrite === 'function') window._skMarkMediaWrite('upload-ok:' + (folder || 'uploads'), 26000);
-        // caller가 room/section/saved/note 데이터에 URL을 붙인 뒤 저장할 시간을 확보하고,
-        // 잠깐 뒤 모든 이미지 가능 저장소를 한 번 더 Cloudflare에 확정 저장한다.
-        if (typeof window._skFlushAllImageStores === 'function') {
-          window._skFlushAllImageStores('upload-ok:' + (folder || 'uploads'), 1200);
-          setTimeout(function(){ try { window._skFlushAllImageStores('upload-ok-late:' + (folder || 'uploads'), 0); } catch(e){} }, 4500);
-        }
-        return { url, path, bucket: 'r2', provider: 'cloudflare' };
+        return { url, path, bucket: 'r2' };
       } catch(e) {
-        console.warn('[R2] 업로드 실패:', e.message || e);
-        if (typeof showToast === 'function') showToast('Cloudflare 이미지 업로드 실패: Worker/R2 설정을 확인하세요.', 'warn');
+        console.warn('[R2] 업로드 실패 → inline 저장으로 fallback:', e.message || e);
+        if (typeof window._sbMakeInlineUpload === 'function') return await window._sbMakeInlineUpload(source, folder);
         throw e;
-      } finally {
-        window.__skImageUploadBusy = Math.max(0, Number(window.__skImageUploadBusy || 1) - 1);
       }
     };
 
@@ -3138,10 +2807,8 @@
       if (!workerUrl) return;
       try {
         for (const p of realPaths) {
-          await fetch(workerUrl + '/' + p, { method: 'DELETE', headers: { 'x-sk-user-key': window.skGetCloudUserKey ? window.skGetCloudUserKey() : '' } }).catch(e => console.warn('[R2] delete error', e));
+          await fetch(workerUrl + '/' + p, { method: 'DELETE' }).catch(e => console.warn('[R2] delete error', e));
         }
-        if (typeof window._skMarkMediaWrite === 'function') window._skMarkMediaWrite('delete-images', 22000);
-        if (typeof window._skFlushAllImageStores === 'function') window._skFlushAllImageStores('delete-images', 900);
       } catch(e) { console.warn('[R2] deleteImages error', e); }
     };
 
@@ -5756,15 +5423,10 @@ var _safeLocalSet = function(key, value) {
                     const intentChip = intent
                       ? ('<span style="padding:1px 6px;border-radius:999px;border:1px solid ' + intentColor + '55;background:' + intentColor + '18;color:' + intentColor + ';font-size:10px;font-weight:800;white-space:nowrap;">' + esc(intent) + '</span>')
                       : '';
-                    const ddayLabel = (saleDday == null)
-                      ? ''
-                      : (saleDday < 0 ? ('D+' + Math.abs(saleDday)) : (saleDday === 0 ? 'D-Day' : ('D-' + saleDday)));
-                    const ddayColor = (saleDday == null)
-                      ? ''
-                      : _plGetDdayTone(saleDday).color;
-                    const resultAlertText = (saleDday == null)
-                      ? ''
-                      : (saleDday < 0 ? ' (결과 업데이트)' : (saleDday === 0 ? ' (결과 입력)' : ''));
+                    const ddayTone = (saleDday == null) ? null : _plGetDdayTone(saleDday);
+                    const ddayLabel = ddayTone ? ddayTone.label : '';
+                    const ddayColor = ddayTone ? ddayTone.color : '';
+                    const resultAlertText = (saleDday != null && saleDday < 0) ? '결과입력' : '';
                     const meta = document.createElement('div');
                     meta.className = 'wr2-room-meta';
                     if (no || addr || price) {
@@ -5774,8 +5436,8 @@ var _safeLocalSet = function(key, value) {
                         + (price ? ('<span style="color:#ffb36c;white-space:nowrap;font-weight:700;">' + esc(price) + '</span>') : '')
                         + intentChip
                         + (ddayLabel ? ('<span style="color:' + ddayColor + ';white-space:nowrap;font-weight:700;">' + esc(ddayLabel) + '</span>') : '')
-                        + (resultAlertText ? ('<span style="color:#ff9eab;white-space:nowrap;font-weight:800;">' + esc(resultAlertText) + '</span>') : '')
-                        + (saleOverdueNeedsAction ? ('<span style="padding:1px 6px;border-radius:999px;border:1px solid rgba(255,107,122,.52);background:rgba(255,107,122,.16);color:#ff9eab;font-size:10px;font-weight:800;white-space:nowrap;">⚠ 기일지남 · 수정필요</span>') : '')
+                        + (resultAlertText ? ('<span style="padding:1px 6px;border-radius:999px;border:1px solid rgba(167,139,250,.52);background:rgba(167,139,250,.16);color:#c4b5fd;font-size:10px;font-weight:800;white-space:nowrap;">⚠ ' + esc(resultAlertText) + '</span>') : '')
+                        + (saleOverdueNeedsAction ? ('<span style="padding:1px 6px;border-radius:999px;border:1px solid rgba(167,139,250,.52);background:rgba(167,139,250,.12);color:#c4b5fd;font-size:10px;font-weight:800;white-space:nowrap;">결과입력 필요</span>') : '')
                         + '</div>'
                         + (addr ? ('<div style="margin-top:2px;color:#8ea7c9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(addr) + '</div>') : '');
                     } else {
@@ -6663,12 +6325,11 @@ var _safeLocalSet = function(key, value) {
                   const saleDateRaw = String(d['매각기일'] || d['매각일'] || d['경매일'] || '').trim();
                   const saleDateObj = wr2ParseSaleDateLoose(saleDateRaw);
                   const saleDday = wr2CalcDdayFromDate(saleDateObj);
-                  const saleDdayLabel = (saleDday == null)
-                    ? ''
-                    : (saleDday < 0 ? '기일지남·수정필요' : (saleDday === 0 ? 'D-Day' : 'D-' + saleDday));
+                  const saleDdayTone = (saleDday == null) ? null : _plGetDdayTone(saleDday);
+                  const saleDdayLabel = saleDdayTone ? saleDdayTone.label : '';
                   const lifecycle = wr2GetLifecycle(room);
                   const saleOverdueNeedsAction = !!(saleDateRaw && saleDday != null && saleDday < 0 && lifecycle !== 'closed');
-                  const warnTone = saleOverdueNeedsAction ? '#ff6b7a' : '#ff8c42';
+                  const warnTone = saleOverdueNeedsAction ? '#a78bfa' : '#ff8c42';
 
                   const primaryAddr = d['소재지'] || d['도로명주소'] || d['지번주소'] || d['주소'] || room.address || '-';
                   const pdfDoc = _getPrimaryPdfDoc(item);
@@ -6694,7 +6355,8 @@ var _safeLocalSet = function(key, value) {
                   const bidRaw = String(item.biddate || '').trim() || saleDateRaw || String(room.biddate || '').trim();
                   const bidObj = wr2ParseSaleDateLoose(bidRaw);
                   const bidDday = wr2CalcDdayFromDate(bidObj);
-                  const bidLabel = (bidDday == null) ? '' : (bidDday < 0 ? '기일지남·수정필요' : (bidDday === 0 ? 'D-Day' : 'D-' + bidDday));
+                  const bidTone = (bidDday == null) ? null : _plGetDdayTone(bidDday);
+                  const bidLabel = bidTone ? bidTone.label : '';
                   const bidNeedsAction = !!(bidRaw && bidDday != null && bidDday <= 0 && lifecycle !== 'closed');
                   const bidBadge = bidLabel
                     ? `<span style="display:inline-block;margin-left:6px;padding:1px 6px;border-radius:999px;font-size:10px;font-weight:700;border:1px solid ${warnTone}66;background:${warnTone}18;color:${warnTone};">${bidLabel}</span>`
@@ -6969,10 +6631,7 @@ var _safeLocalSet = function(key, value) {
                     wr2PushActivity(room, '"' + (item.txt || '체크 항목') + '"을 ' + (done ? '완료' : '미완료') + '로 변경했습니다', phase);
                   }
                   room.updatedAt = Date.now();
-                  if (typeof window._skMarkMediaWrite === 'function') window._skMarkMediaWrite('phase-checklist', 22000);
                   saveRooms();
-                  if (typeof window.__wr2FlushSaveRooms === 'function') window.__wr2FlushSaveRooms();
-                  if (typeof window._skFlushAllImageStores === 'function') window._skFlushAllImageStores('phase-checklist', 900);
                   renderSections(room);
                   renderTimeline(room);
                   if (window._mbRefreshRoomSections) window._mbRefreshRoomSections(room.id);
@@ -7010,8 +6669,6 @@ var _safeLocalSet = function(key, value) {
                   if (input) input.value = '';
                   room.updatedAt = Date.now();
                   saveRooms();
-                  if (typeof window.__wr2FlushSaveRooms === 'function') window.__wr2FlushSaveRooms();
-                  if (typeof window._skAfterMediaMutation === 'function') window._skAfterMediaMutation('phase-checklist');
                   renderSections(room);
                   renderTimeline(room);
                   if (window._mbRefreshRoomSections) window._mbRefreshRoomSections(room.id);
@@ -7640,14 +7297,11 @@ window.wr2SummaryCancelEdit = function() {
                 function _wrRefreshSectionChecklist(secId) {
                   const sec = _wrGetSectionChecklistSec(secId);
                   const room = getActiveRoom();
-                  if (typeof window._skMarkMediaWrite === 'function') window._skMarkMediaWrite('section-checklist', 24000);
                   if (room) {
                     room.updatedAt = Date.now();
                     saveRooms();
-                    if (typeof window.__wr2FlushSaveRooms === 'function') window.__wr2FlushSaveRooms();
                   }
                   saveSections();
-                  if (typeof window._skAfterMediaMutation === 'function') window._skAfterMediaMutation('section-checklist'); else if (typeof window._skFlushAllImageStores === 'function') window._skFlushAllImageStores('section-checklist', 800);
                   if (room) renderSections(room);
                   if (room) renderTimeline(room);
                   if (room && window._mbRefreshRoomSections) window._mbRefreshRoomSections(room.id);
@@ -8175,11 +7829,7 @@ window.wr2SummaryCancelEdit = function() {
                   }
                   note.attachments.splice(idx, 1);
                   room.updatedAt = Date.now();
-                  if (typeof window._skMarkMediaWrite === 'function') window._skMarkMediaWrite('workroom-note-delete', 22000);
-                  saveRooms();
-                  if (typeof window.__wr2FlushSaveRooms === 'function') window.__wr2FlushSaveRooms();
-                  if (typeof window._skAfterMediaMutation === 'function') window._skAfterMediaMutation('workroom-note-delete'); else if (typeof window._skFlushAllImageStores === 'function') window._skFlushAllImageStores('workroom-note-delete', 600);
-                  renderAttachments(room);
+                  saveRooms(); renderAttachments(room);
                 };
 
                 // 수익률 계산기 위젯 (초기값 없이 그냥 유지 — 별도 상태관리)
@@ -8715,10 +8365,8 @@ window.wr2SummaryCancelEdit = function() {
                     const stamp = Date.now();
                     note.updatedAt = stamp;
                     room.updatedAt = stamp;
-                    if (typeof window._skMarkMediaWrite === 'function') window._skMarkMediaWrite('workroom-note', 26000);
                     saveRooms();
                     if (typeof window.__wr2FlushSaveRooms === 'function') window.__wr2FlushSaveRooms();
-                    if (typeof window._skAfterMediaMutation === 'function') window._skAfterMediaMutation('workroom-note'); else if (typeof window._skFlushAllImageStores === 'function') window._skFlushAllImageStores('workroom-note', 700);
                     if (ok) wr2PushActivity(room, '노트 첨부 ' + ok + '개를 추가했습니다', room.phase || room.status);
                     renderAttachments(room);
                     if (ok) showToast(`📎 ${ok}개 첨부 완료`, fail ? 'warn' : 'ok');
@@ -9676,11 +9324,54 @@ window.wr2SummaryCancelEdit = function() {
       if (rawValue == null) return '';
       if (typeof rawValue === 'number' && isFinite(rawValue)) return rawValue;
       const text = String(rawValue).trim();
-      if (!text) return '';
+      if (!text || text === '-' || text === 'null' || text === 'undefined') return '';
+      const b1 = text.match(/지하\s*(\d+)\s*층?/);
+      if (b1) return -Math.abs(parseInt(b1[1], 10));
+      const b2 = text.match(/^B\s*(\d+)$/i);
+      if (b2) return -Math.abs(parseInt(b2[1], 10));
       const simpleMatch = text.match(/^(-?\d+)(?:\s*층)?$/);
       if (simpleMatch) return parseInt(simpleMatch[1], 10);
+      const loose = text.match(/(-?\d+)\s*층/);
+      if (loose) return parseInt(loose[1], 10);
       return text;
     }
+
+    function _pickFloorValueFromAny(obj) {
+      const d = obj && typeof obj === 'object' ? obj : {};
+      const floorKeys = [
+        '해당층','층수','층','floor','fl','fl_nm','flNm','flr','flrInfo','flr_info','floorInfo','floor_info',
+        't_floor','t_flr','deal_floor','dealFloor','real_floor','realFloor','object_floor','obj_floor',
+        'floor_level','floorLevel','floor_current','floorCurrent','currentFloor','current_floor',
+        'floor_no','floorNo','floor_no_nm','floorNoNm','floor_nm','floorName','floor_name',
+        'bldg_flr','bldg_floor','buildingFloor','building_floor','FLOOR_NO','FLOOR_NO_NM','FLOOR_NM',
+        'correspondingFloorCount','corresponding_floor_count','거래층','전용층','대상층','층정보'
+      ];
+      const totalKeys = ['총층','totalFloor','total_floor','floor_total','floorTotal','totalFloorCount','highestFloor','grndFlrCnt','지상층수'];
+      let floor = '';
+      for (const k of floorKeys) {
+        if (d[k] != null && String(d[k]).trim() !== '' && String(d[k]).trim() !== '-') { floor = d[k]; break; }
+      }
+      if (!floor) {
+        for (const k of Object.keys(d)) {
+          const lk = String(k).toLowerCase();
+          if (/(floor|flr|층)/.test(lk) && !/(total|cnt|count|총|전체|지상|highest)/.test(lk)) {
+            const v = d[k];
+            if (v != null && String(v).trim() !== '' && String(v).trim() !== '-') { floor = v; break; }
+          }
+        }
+      }
+      let total = '';
+      for (const k of totalKeys) {
+        if (d[k] != null && String(d[k]).trim() !== '' && String(d[k]).trim() !== '-') { total = d[k]; break; }
+      }
+      if (floor && String(floor).includes('/')) {
+        const parts = String(floor).split('/');
+        floor = parts[0].trim();
+        if (!total && parts[1]) total = parts[1].trim();
+      }
+      return { floor: floor ? _normalizeFloorValue(floor) : '', total: total ? _normalizeFloorValue(total) : '' };
+    }
+    window._pickFloorValueFromAny = _pickFloorValueFromAny;
 
     function _formatFloorLabel(rawValue, totalFloor) {
       const normalized = _normalizeFloorValue(rawValue);
@@ -14567,7 +14258,10 @@ window.wr2SummaryCancelEdit = function() {
       const 면적_평 = 면적_m2 ? Math.round((면적_m2 / 3.3058) * 100) / 100 : null;
 
       // ── 층 ──────────────────────────────────────────────────────
-      const 층raw = d.해당층 ?? d.층수 ?? d.층 ?? d.floor ?? null;
+      const _floorPicked = _pickFloorValueFromAny(d);
+      if ((d.해당층 == null || d.해당층 === '') && _floorPicked.floor !== '') _syncFloorAliases(d, _floorPicked.floor);
+      if ((d.총층 == null || d.총층 === '') && _floorPicked.total !== '') d.총층 = _floorPicked.total;
+      const 층raw = d.해당층 ?? d.층수 ?? d.층 ?? d.floor ?? _floorPicked.floor ?? null;
       const 층 = 층raw != null ? (_normalizeFloorValue(층raw) || null) : null;
 
       // ── 가격 ────────────────────────────────────────────────────
@@ -15819,7 +15513,8 @@ window.wr2SummaryCancelEdit = function() {
           })(saleDateObj)
         : null;
       const isSaleOverdue = !!(saleDateRaw && saleDday != null && saleDday < 0);
-      const saleDdayLabel = saleDday == null ? '' : (saleDday < 0 ? '기일지남' : (saleDday === 0 ? 'D-Day' : 'D-' + saleDday));
+      const saleDdayTone = saleDday == null ? null : _plGetDdayTone(saleDday);
+      const saleDdayLabel = saleDdayTone ? saleDdayTone.label : '';
 
       // ── 아싸 상세URL /item/{id} → /item/view/{id} 자동 교정 ──
       if (d.상세URL && d.상세URL.includes('/item/') && !d.상세URL.includes('/item/view/') && !d.상세URL.includes('/item/get_item_json')) {
@@ -15878,9 +15573,9 @@ window.wr2SummaryCancelEdit = function() {
         if (n.감정가_만원) extraRows += _sied('감정가', '감정가', fM(n.감정가_만원), d.감정가, true);
         if (n.평당가_만원) extraRows += _sied('평단가', '평당가_만원', (function (v) { const nv = Math.round(v); if (nv >= 10000) { const e = Math.floor(nv / 10000), m = nv % 10000; return m ? e + '억 ' + m.toLocaleString() + '만원/평' : e + '억원/평'; } return nv.toLocaleString() + '만원/평'; })(n.평당가_만원), n.평당가_만원, true);
         if (saleDateRaw) {
-          const tone = isSaleOverdue ? '#ff6b7a' : (saleDday != null && saleDday <= 3 ? '#ff8c42' : '#4ade80');
+          const tone = saleDday != null ? _plGetDdayTone(saleDday).color : 'var(--di)';
           const saleText = saleDdayLabel
-            ? `${saleDateRaw} (${saleDdayLabel}${isSaleOverdue ? ' · 수동수정' : ''})`
+            ? `${saleDateRaw} (${saleDdayLabel}${isSaleOverdue ? ' 필요' : ''})`
             : saleDateRaw;
           extraRows += _sied('매각일', '매각기일', saleText, saleDateRaw, true, `color:${tone};font-weight:700;`);
         }
@@ -17710,29 +17405,6 @@ window.wr2SummaryCancelEdit = function() {
         return n; // 이미 만원 단위
       };
 
-      function _bdsExtractFloorRaw(d) {
-        if (!d || typeof d !== 'object') return null;
-        const aliases = [
-          't_floor','t_flr','deal_floor','dealFloor','real_floor','realFloor','floor_level','floorLevel',
-          'flr','fl','floor','f_nm','floor_nm','floorName','bldg_flr','bldg_floor','buildingFloor',
-          'obj_floor','object_floor','floor_no','floorNo','floor_no_nm','floorNoNm','FLOOR_NO','FLOOR_NO_NM','FLOOR_NM',
-          '층','층수','해당층','거래층','전용층','대상층','건물층','층정보'
-        ];
-        for (const k of aliases) {
-          if (d[k] === null || d[k] === undefined) continue;
-          const v = String(d[k]).trim();
-          if (v && v !== '-' && v !== 'null' && v !== 'undefined') return v;
-        }
-        // API 필드명이 바뀐 경우까지 대비: key 이름에 floor/flr/층이 들어간 값을 자동 탐색
-        for (const k of Object.keys(d)) {
-          if (!/(floor|flr|층)/i.test(k)) continue;
-          const v = d[k];
-          if (v === null || v === undefined) continue;
-          const t = String(v).trim();
-          if (t && t !== '-' && t !== 'null' && t !== 'undefined') return t;
-        }
-        return null;
-      }
       // 부동산플래닛 실거래 필드: obj_amt=원단위, t_type=거래유형, bldg_area_m2=건물면적
       const items = rawItems.map(d => {
         const obj_amt = parseFloat(d.obj_amt || 0);
@@ -17758,7 +17430,7 @@ window.wr2SummaryCancelEdit = function() {
             return val > 0 ? val : null;
           })(),
           '건물면적_m2': parseFloat(d.bldg_area_m2 || d.bldg_area || 0) || null,
-          '해당층': _bdsExtractFloorRaw(d),
+          '해당층': d.t_floor || d.floor_level || d.flr || d.floor || d.f_nm || d.bldg_flr || null,
           '건축연도': d.build_year || null,
           '소재지': d.addr_nm || d.address || d.road_addr || d.addr || ((d.sigungu_nm || '') + ' ' + (d.dong_nm || d.dongnm || '')).trim() || '',
           '거래년월': 거래년월,
@@ -19024,9 +18696,7 @@ window.wr2SummaryCancelEdit = function() {
         }
       }
       if (successCount > 0) {
-        if (typeof window._skMarkMediaWrite === 'function') window._skMarkMediaWrite('saved-popup-attach', 22000);
         setSv(sv);
-        if (typeof window._skFlushAllImageStores === 'function') window._skFlushAllImageStores('saved-popup-attach', 700);
         renderPopup(id);
         showToast(`✅ ${successCount}개 파일 첨부됨`, 'ok');
       }
@@ -19365,8 +19035,6 @@ window.wr2SummaryCancelEdit = function() {
           }
 
           results[idx].additionalDocs.push({ name: file.name, size: file.size, type: file.type, url, storagePath: path, text });
-          if (typeof window._skMarkMediaWrite === 'function') window._skMarkMediaWrite('result-additional-docs', 22000);
-          if (typeof window._skFlushAllImageStores === 'function') window._skFlushAllImageStores('result-additional-docs', 1200);
           renderTab(idx);
         } catch (e) {
           console.error('추가 문서 업로드 실패:', e);
@@ -24130,12 +23798,16 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           _blk(e);
           const repEl = document.getElementById(grp[0]);
           if (repEl) {
-            repEl.dataset.baseLeft = String(parseFloat(repEl.style.left) || 0);
-            repEl.dataset.baseTop = String(parseFloat(repEl.style.top) || 0);
+            const bl = String(parseFloat(repEl.style.left) || 0);
+            const bt = String(parseFloat(repEl.style.top) || 0);
+            grp.forEach(eid => {
+              const el2 = document.getElementById(eid);
+              if (el2) { el2.dataset.baseLeft = bl; el2.dataset.baseTop = bt; }
+            });
           }
           cardExpandState.set(stackKey, 'grid');
-          updateStackedCards(stackKey);
-          setTimeout(() => { (window._stackGroups && window._stackGroups.get(stackKey) || []).forEach(eid => updateMapLine(eid)); }, 0);
+          updateStackedCards();
+          setTimeout(() => { mapOverlays.forEach(o => { if (o && o.isOpen) updateMapLine(o.id); }); }, 0);
         }, true);
         expandBtn.addEventListener('click', _blk, true);
 
@@ -24167,7 +23839,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             }
             const ov = mapOverlays.find(o => o.id === eid);
             if (ov) {
-              if (idx === 0) ov.savedPos = { left: curLeft, top: curTop };
+              ov.savedPos = { left: curLeft, top: curTop };
               if (ov.overlay && ov.overlay.setZIndex) ov.overlay.setZIndex(idx === 0 ? 200 : 10 - idx);
             }
           });
@@ -25107,7 +24779,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         // 원 API 필드(fl/flr/t_floor/floor_level 등) 중 한 곳에만 남는 경우가 있다.
         // 카드 렌더링에서는 한 필드만 보지 말고 모든 alias를 정규화해서 표시한다.
         function _txFloorCandidate() {
-          const aliases = ['floor','층','층수','해당층','거래층','전용층','건물층','대상층','층정보','fl','flr','t_floor','t_flr','deal_floor','dealFloor','real_floor','realFloor','floor_level','floorLevel','floorNo','floor_no','floor_no_nm','floorNoNm','floor_nm','floorName','obj_floor','object_floor','bldg_flr','bldg_floor','buildingFloor','f_nm','FLOOR_NO','FLOOR_NO_NM','FLOOR_NM'];
+          const aliases = ['floor','층','층수','해당층','거래층','전용층','건물층','대상층','층정보','fl','flr','t_floor','floor_level','floorNo','floor_no','obj_floor','bldg_flr','f_nm','FLOOR_NO_NM','FLOOR_NM'];
           function pick(obj) {
             if (!obj || typeof obj !== 'object') return '';
             for (const k of aliases) {
@@ -25487,7 +25159,6 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
     function updateStackedCards(onlyKey) {
       if (window.__skipTransactionAutoStack) return;
-      const __otherPosSnap = onlyKey ? _snapshotOtherCardPositions(onlyKey) : null;
       const openObjs = mapOverlays.filter(o => o && o.isOpen && (!onlyKey || o.stackKey === onlyKey));
 
       // ── 그룹 구성 ──────────────────────────────────────
@@ -25756,7 +25427,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
             }
             const ov = mapOverlays.find(o => o.id === eid);
             if (ov) {
-              if (idx === 0) ov.savedPos = { left: curLeft2, top: curTop2 };
+              ov.savedPos = { left: curLeft2, top: curTop2 };
               if (ov.overlay && ov.overlay.setZIndex) {
                 ov.overlay.setZIndex(idx === 0 ? 200 : 10 - idx);
               }
@@ -25787,8 +25458,12 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           e.stopPropagation(); e.preventDefault(); e.stopImmediatePropagation();
           const repEl = document.getElementById(orderedIds[0]);
           if (repEl) {
-            repEl.dataset.baseLeft = String(parseFloat(repEl.style.left) || 0);
-            repEl.dataset.baseTop = String(parseFloat(repEl.style.top) || 0);
+            const bl = String(parseFloat(repEl.style.left) || 0);
+            const bt = String(parseFloat(repEl.style.top) || 0);
+            orderedIds.forEach(id => {
+              const el = document.getElementById(id);
+              if (el) { el.dataset.baseLeft = bl; el.dataset.baseTop = bt; }
+            });
           }
           cardExpandState.set(key, 'grid');
           updateStackedCards(key || null);
@@ -26048,7 +25723,6 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           const el = document.getElementById(o.id);
           if (el && el.style.display !== 'none') updateMapLine(o.id);
         });
-        if (__otherPosSnap) _restoreOtherCardPositions(__otherPosSnap);
       }, 0);
     }
 
@@ -30374,8 +30048,6 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
               if (window._wrPersistRooms) window._wrPersistRooms(_allRooms, { syncState: false });
               else if (typeof window._sbSaveRooms === 'function') window._sbSaveRooms(_allRooms).catch(()=>{});
             }
-            if (typeof window._skMarkMediaWrite === 'function') window._skMarkMediaWrite('map-capture-room', 26000);
-            if (typeof window._skFlushAllImageStores === 'function') window._skFlushAllImageStores('map-capture-room', 800);
             if (typeof window.wr2Render === 'function') window.wr2Render();
             setTimeout(function() {
               try {
@@ -30413,9 +30085,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
               storagePath: path
             });
             note.updatedAt = new Date().toISOString();
-            if (typeof window._skMarkMediaWrite === 'function') window._skMarkMediaWrite('map-capture-note', 22000);
             if (typeof ntSave === 'function') ntSave(noteId);
-            if (typeof window._skAfterMediaMutation === 'function') window._skAfterMediaMutation('map-capture-note'); else if (typeof window._skFlushAllImageStores === 'function') window._skFlushAllImageStores('map-capture-note', 700);
             if (typeof ntOpen === 'function') ntOpen(noteId);
             if (typeof ntRender === 'function') ntRender();
             try { showToast('📸 노트에 캡처 이미지 추가됨', 'ok'); } catch (e) { }
@@ -32682,9 +32352,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           }
         }
         note.updatedAt = new Date().toISOString();
-        if (typeof window._skMarkMediaWrite === 'function') window._skMarkMediaWrite('nt-attachment', 22000);
         ntSave(id);
-        if (typeof window._skAfterMediaMutation === 'function') window._skAfterMediaMutation('nt-attachment'); else if (typeof window._skFlushAllImageStores === 'function') window._skFlushAllImageStores('nt-attachment', 700);
         ntOpen(id);
         input.value = '';
         if (ok) showToast(`📎 파일 ${ok}개 첨부 완료`, fail ? 'warn' : 'ok');
@@ -35443,8 +35111,6 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
           const publicUrl = url || '';
           if (!publicUrl) throw new Error('이미지 URL 생성 실패');
           window._kcardPendingImgs.push(publicUrl);
-          if (typeof window._skMarkMediaWrite === 'function') window._skMarkMediaWrite('kcard-image', 22000);
-          if (typeof window._skFlushAllImageStores === 'function') window._skFlushAllImageStores('kcard-image', 1500);
 
           // 로딩 완료 표시
           wrap.style.opacity = '1';
@@ -35790,11 +35456,16 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     function _plGetDdayTone(dday) {
       const d = Number(dday);
       if (!isFinite(d)) return { color: 'var(--di)', label: '', state: 'none' };
-      if (d < 0) return { color: '#8b93a7', label: 'D+' + Math.abs(d), state: 'past' };
-      if (d === 0) return { color: '#ff6370', label: 'D-Day', state: 'today' };
-      if (d <= 3) return { color: '#ff8c42', label: 'D-' + d, state: 'urgent' };
-      if (d <= 7) return { color: '#fbbf24', label: 'D-' + d, state: 'near' };
-      if (d <= 29) return { color: '#4ade80', label: 'D-' + d, state: 'normal' };
+      // 최종 D-day 색상 기준
+      // - 지난 기일(D+)은 빨강 금지: D-day 체계와 분리하여 결과입력 액션으로만 표시
+      // - D-Day ~ D-3만 빨강
+      // - 이후는 주황 → 노랑 → 초록 → 파랑 순차 표시
+      if (d < 0) return { color: '#a78bfa', label: '결과입력', state: 'past_action' };
+      if (d === 0) return { color: '#ef4444', label: 'D-Day', state: 'today' };
+      if (d <= 3) return { color: '#ef4444', label: 'D-' + d, state: 'urgent' };
+      if (d <= 7) return { color: '#fb923c', label: 'D-' + d, state: 'near' };
+      if (d <= 14) return { color: '#fbbf24', label: 'D-' + d, state: 'watch' };
+      if (d <= 30) return { color: '#4ade80', label: 'D-' + d, state: 'normal' };
       return { color: '#60a5fa', label: 'D-' + d, state: 'far' };
     }
     window._skGetUnifiedDdayTone = _plGetDdayTone;
@@ -36385,7 +36056,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
               const dday = _calcDday(group.date);
               const tone = _plGetDdayTone(dday);
               const color = tone.color;
-              const ddayLabel = dday < 0 ? '종료' : tone.label;
+              const ddayLabel = tone.label;
               const isPast = dday < 0;
               return '<div data-sched-key="' + group.key + '" style="min-width:220px;max-width:220px;background:' + (isPast ? 'rgba(11,13,19,.72)' : 'rgba(14,17,24,.92)') + ';border:1px solid ' + (isPast ? 'rgba(255,255,255,.05)' : 'rgba(255,255,255,.08)') + ';border-radius:10px;padding:10px;opacity:' + (isPast ? '0.72' : '1') + ';">'
                 + '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:8px;">'
@@ -36481,7 +36152,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
               if (dDay != null) {
                 const dTone = _plGetDdayTone(dDay);
                 const dColor = dDay < 0 ? 'var(--di)' : dTone.color;
-                const dLabel = dDay < 0 ? '기일지남·수정' : dTone.label;
+                const dLabel = dTone.label;
                 ddayHtml = `<span style="font-size:10px;font-weight:700;color:${dColor};background:${dColor}18;padding:1px 5px;border-radius:4px;">${dLabel}</span>`;
               }
             }
@@ -39942,34 +39613,13 @@ ${newsContext}
       return d;
     }
 
-    function _extractAnyFloorValue(obj) {
-      if (!obj || typeof obj !== 'object') return null;
-      const aliases = [
-        'floor','floorLevel','floor_level','floorNo','floor_no','floor_no_nm','floorNoNm','floor_nm','floorName',
-        'fl','flr','t_floor','t_flr','deal_floor','dealFloor','real_floor','realFloor','obj_floor','object_floor',
-        'bldg_flr','bldg_floor','buildingFloor','floor_current','f_nm','FLOOR_NO','FLOOR_NO_NM','FLOOR_NM',
-        '층','층수','해당층','거래층','전용층','건물층','대상층','층정보'
-      ];
-      for (const k of aliases) {
-        if (obj[k] === null || obj[k] === undefined) continue;
-        const v = String(obj[k]).trim();
-        if (v && v !== '-' && v !== 'null' && v !== 'undefined') return v;
-      }
-      for (const k of Object.keys(obj)) {
-        if (!/(floor|flr|층)/i.test(k)) continue;
-        const v = obj[k];
-        if (v === null || v === undefined) continue;
-        const t = String(v).trim();
-        if (t && t !== '-' && t !== 'null' && t !== 'undefined') return t;
-      }
-      return null;
-    }
-
     // ── 디스코/플래닛 실거래 데이터 정규화 ──────────────────────────
     function normalizeTxData(it, source) {
       const d = { ...it, 출처: source };
       // 층수 통합 (다양한 raw 필드명 → 해당층)
-      if (!d.해당층) d.해당층 = _extractAnyFloorValue(d);
+      const _txFloorPicked = _pickFloorValueFromAny(d);
+      if (!d.해당층 && _txFloorPicked.floor !== '') d.해당층 = _txFloorPicked.floor;
+      if (!d.총층 && _txFloorPicked.total !== '') d.총층 = _txFloorPicked.total;
       if (d.해당층 != null) {
         // "2/8" 형식이면 분리
         const s = String(d.해당층);
@@ -43645,12 +43295,18 @@ ${newsContext}
       var 매각일 = d['매각기일'] || d['매각일'] || '';
       var 면적 = d['전용면적'] || d['건물면적'] || '';
 
-      // D-day
+      // D-day: 날짜 자정 기준으로 정확히 계산. 지난 기일은 빨강이 아니라 결과입력 배지로 표시.
       var ddayBadge = '';
       if (매각일) {
-        var dDay = Math.ceil((new Date(매각일) - new Date()) / (1000 * 60 * 60 * 24));
-        var dc = dDay < 0 ? '#6b7280' : dDay <= 3 ? '#ff6370' : dDay <= 7 ? '#f97316' : '#4ade80';
-        ddayBadge = '<span style="padding:2px 8px;border-radius:5px;background:' + dc + '22;color:' + dc + ';border:1px solid ' + dc + '44;font-size:11px;font-weight:700;flex-shrink:0;">' + (dDay < 0 ? '종료' : (dDay === 0 ? 'D-Day' : 'D-' + dDay)) + '</span>';
+        var _saleDateForBadge = (typeof _parseSaleDate === 'function') ? _parseSaleDate(매각일) : new Date(매각일);
+        if (_saleDateForBadge && !isNaN(_saleDateForBadge.getTime())) {
+          var _nowForBadge = new Date();
+          var _todayForBadge = new Date(_nowForBadge.getFullYear(), _nowForBadge.getMonth(), _nowForBadge.getDate());
+          var dDay = Math.round((_saleDateForBadge - _todayForBadge) / (1000 * 60 * 60 * 24));
+          var _toneForBadge = (typeof _plGetDdayTone === 'function') ? _plGetDdayTone(dDay) : { color: (dDay <= 3 && dDay >= 0 ? '#ef4444' : '#60a5fa'), label: (dDay < 0 ? '결과입력' : (dDay === 0 ? 'D-Day' : 'D-' + dDay)) };
+          var dc = _toneForBadge.color;
+          ddayBadge = '<span style="padding:2px 8px;border-radius:5px;background:' + dc + '22;color:' + dc + ';border:1px solid ' + dc + '44;font-size:11px;font-weight:700;flex-shrink:0;">' + _toneForBadge.label + '</span>';
+        }
       }
 
       var ws = mainItem ? (mainItem.watchStatus || '') : '';
@@ -47174,7 +46830,7 @@ window.addEventListener('DOMContentLoaded', () => {
     var el = document.getElementById('pl-alerts');
     if (!el) return;
     var chips = [];
-    if (overdue.length) chips.push('<span style="padding:6px 14px;border-radius:20px;font-size:12px;font-weight:700;background:#3a0000;color:#ff8e9a;border:1px solid #ff6b6b66;cursor:pointer;" onclick="document.getElementById(\'pl-filter-status\').value=\'\';renderPropertyList()">⚠ 기일지남 '+overdue.length+'건 — 자동갱신 없음 · 수동 수정 필요</span>');
+    if (overdue.length) chips.push('<span style="padding:6px 14px;border-radius:20px;font-size:12px;font-weight:700;background:rgba(167,139,250,.14);color:#c4b5fd;border:1px solid rgba(167,139,250,.45);cursor:pointer;" onclick="document.getElementById(\'pl-filter-status\').value=\'\';renderPropertyList()">⚠ 결과입력 '+overdue.length+'건</span>');
     if (needField.length) chips.push('<span style="padding:6px 14px;border-radius:20px;font-size:12px;font-weight:600;background:#3a2e00;color:#f5a623;border:1px solid #f5a62355;">● 임장 필요 '+needField.length+'건 — 7일 이내 & 임장 없음</span>');
     if (needBid.length)   chips.push('<span style="padding:6px 14px;border-radius:20px;font-size:12px;font-weight:600;background:#003050;color:#4f8eff;border:1px solid #4f8eff55;">● 입찰 준비 '+needBid.length+'건 — 3일 이내</span>');
     el.innerHTML = chips.join('');
@@ -48546,33 +48202,32 @@ window.addEventListener('DOMContentLoaded', () => {
       if (lastMutation && (Date.now() - lastMutation) < 1500) return;
       var plPull = window._plPullRowsToLocal || window._plRefreshFromCloud;
       if (typeof plPull === 'function') {
-        Promise.resolve(plPull({ render: false, force: true, sync: false, lightweight: true })).then(function(res) {
-          if (res && res.changed > 0 && window.__pmActiveTab === 'list' && typeof window.renderPropertyList === 'function') window.renderPropertyList();
+        Promise.resolve(plPull({ render: false, force: true, sync: false, lightweight: true })).then(function() {
+          if (window.__pmActiveTab === 'list' && typeof window.renderPropertyList === 'function') window.renderPropertyList();
         }).catch(function(){});
       }
       var workTabActive = (window.__pmActiveTab === 'work' || window.__pmActiveTab === 'pipeline');
       if (workTabActive && typeof window._wrRefreshFromCloud === 'function') {
-        window._wrRefreshFromCloud({ render: false, force: true }).then(function(payload) {
-          var changed = !!(payload && (payload.rooms || payload.sections));
-          if (!changed) return;
+        window._wrRefreshFromCloud({ render: false, force: true }).then(function() {
           if (window.__pmActiveTab === 'work' && typeof window.wr2Render === 'function') window.wr2Render();
           if (window.__pmActiveTab === 'pipeline' && typeof window.renderWatchBoard === 'function') window.renderWatchBoard();
         }).catch(function(){});
       }
       if (typeof window._svRefreshFromCloud === 'function') {
-        // 저장목록 refresh 결과만으로 작업룸 화면을 통째로 다시 그리면 이미지가 깜빡인다.
-        // 필요한 화면은 명시적 변경/진입 시 렌더하고, 백그라운드 refresh는 조용히 처리한다.
-        window._svRefreshFromCloud({ render: false }).catch(function(){});
+        window._svRefreshFromCloud({ render: false }).then(function() {
+          if (window.__pmActiveTab === 'work' && typeof window.wr2Render === 'function') window.wr2Render();
+          if (window.__pmActiveTab === 'pipeline' && typeof window.renderWatchBoard === 'function') window.renderWatchBoard();
+        }).catch(function(){});
       }
     } catch (e) {}
-  }, window.__SK_WORK_REFRESH_MS || 60000);
+  }, 20000);
   function _plQuickCloudPull() {
     try {
       if (typeof currentPage === 'undefined' || currentPage !== 4) return;
       if (window.__plAutoCloudPull !== true) return;
       var now = Date.now();
       var last = Number(window.__plQuickCloudPullAt || 0);
-      if (last && (now - last) < 30000) return;
+      if (last && (now - last) < 5000) return;
       window.__plQuickCloudPullAt = now;
       if (Number(window.__wr2UploadBusy || 0) > 0) return;
       if (window.__wr2SaveRoomsTimer) return;
@@ -48583,14 +48238,12 @@ window.addEventListener('DOMContentLoaded', () => {
       if (lastMutation && (Date.now() - lastMutation) < 45000) return;
       var rowPullFn = window._plPullRowsToLocal || window._plRefreshFromCloud;
       if (typeof rowPullFn === 'function') {
-        rowPullFn({ render: false, force: true, sync: false, lightweight: true }).then(function(res) {
-          if (res && res.changed > 0 && window.__pmActiveTab === 'list' && typeof window.renderPropertyList === 'function') window.renderPropertyList();
+        rowPullFn({ render: false, force: true, sync: false, lightweight: true }).then(function() {
+          if (window.__pmActiveTab === 'list' && typeof window.renderPropertyList === 'function') window.renderPropertyList();
         }).catch(function(){});
       }
       if ((window.__pmActiveTab === 'work' || window.__pmActiveTab === 'pipeline') && typeof window._wrRefreshFromCloud === 'function') {
-        window._wrRefreshFromCloud({ render: false, force: true }).then(function(payload) {
-          var changed = !!(payload && (payload.rooms || payload.sections));
-          if (!changed) return;
+        window._wrRefreshFromCloud({ render: false, force: true }).then(function() {
           if (window.__pmActiveTab === 'work' && typeof window.wr2Render === 'function') window.wr2Render();
           if (window.__pmActiveTab === 'pipeline' && typeof window.renderWatchBoard === 'function') window.renderWatchBoard();
         }).catch(function(){});
@@ -48619,14 +48272,9 @@ window.addEventListener('DOMContentLoaded', () => {
         var ae = document.activeElement;
         if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT' || ae.isContentEditable)) return;
         var fn = window._plPullRowsToLocal || window._plRefreshFromCloud;
-        if (typeof fn === 'function') Promise.resolve(fn({ render: false, lightweight: true, sync: false })).then(function(res){
-          if (res && res.changed > 0) {
-            if (desktopList && typeof window.renderPropertyList === 'function') window.renderPropertyList();
-            if (mobileList && typeof window.mbPlistRender === 'function') window.mbPlistRender();
-          }
-        }).catch(function(e){ console.warn('[PL] row poll', e); });
+        if (typeof fn === 'function') Promise.resolve(fn({ render: true, lightweight: true, sync: false })).catch(function(e){ console.warn('[PL] row poll', e); });
       } catch(e) {}
-    }, window.__SK_PL_POLL_MS || 60000);
+    }, 5000);
   }
   if (!window.__wrImageRowPollBound) {
     window.__wrImageRowPollBound = true;
@@ -48643,7 +48291,7 @@ window.addEventListener('DOMContentLoaded', () => {
           try { if (typeof window.mbRoomLoad === 'function' && window._mbActiveRoomId) window.mbRoomLoad(window._mbActiveRoomId, { cloud: false }); } catch(e) {}
         }).catch(function(e){ console.warn('[IMG] row poll', e); });
       } catch(e) {}
-    }, window.__SK_IMAGE_ROW_POLL_MS || 60000);
+    }, 5000);
   }
 
 })();
@@ -49431,7 +49079,7 @@ window.addEventListener('DOMContentLoaded', () => {
         var dday = calcDday(group.date);
         var tone = _plGetDdayTone(dday);
         var color = tone.color;
-        var ddayLabel = dday < 0 ? '종료' : tone.label;
+        var ddayLabel = tone.label;
         var isPast = dday < 0;
         var cardBg = isPast ? 'rgba(11,13,19,.72)' : 'rgba(14,17,24,.92)';
         var cardBd = isPast ? 'rgba(255,255,255,.05)' : 'rgba(255,255,255,.1)';
@@ -51330,7 +50978,7 @@ window.addEventListener('DOMContentLoaded', () => {
 // v10 diagnostic: 선택한 실거래 카드/주소의 층수 원본 필드를 콘솔에서 확인
 window.skDebugTxFloor = window.skDebugTxFloor || function(keyword) {
   const q = String(keyword || '').replace(/\s+/g, '').trim();
-  const aliases = ['floor','층','층수','해당층','거래층','전용층','건물층','대상층','층정보','fl','flr','t_floor','t_flr','deal_floor','dealFloor','real_floor','realFloor','floor_level','floorLevel','floorNo','floor_no','floor_no_nm','floorNoNm','floor_nm','floorName','obj_floor','object_floor','bldg_flr','bldg_floor','buildingFloor','f_nm','FLOOR_NO','FLOOR_NO_NM','FLOOR_NM'];
+  const aliases = ['floor','층','층수','해당층','거래층','전용층','건물층','대상층','층정보','fl','flr','t_floor','floor_level','floorNo','floor_no','obj_floor','bldg_flr','f_nm','FLOOR_NO_NM','FLOOR_NM'];
   function pick(obj) {
     const out = {};
     if (!obj || typeof obj !== 'object') return out;

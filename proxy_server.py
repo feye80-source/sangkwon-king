@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# patched: 20260505 floor/disco bug fix
 """
 부동산 통합 프록시 서버
 - 지원 사이트: 네이버 부동산 / 아싸점포거래소 / 점포라인 / 디스코 / 부동산플래닛
@@ -2227,6 +2228,42 @@ class ProxyHandler(BaseHTTPRequestHandler):
             self._ok(json.dumps({'status': 'error', 'message': str(e), 'data': []}, ensure_ascii=False))
 
 
+    def _pick_floor_from_raw(self, d):
+        """여러 사이트/API의 층수 필드명을 통합해서 해당층/총층을 반환."""
+        if not isinstance(d, dict):
+            return (None, None)
+        floor_keys = [
+            '해당층','층수','층','floor','fl','fl_nm','flNm','flr','flrInfo','flr_info','floorInfo','floor_info',
+            't_floor','t_flr','deal_floor','dealFloor','real_floor','realFloor','object_floor','obj_floor',
+            'floor_level','floorLevel','floor_current','floorCurrent','currentFloor','current_floor',
+            'floor_no','floorNo','floor_no_nm','floorNoNm','floor_nm','floorName','floor_name',
+            'bldg_flr','bldg_floor','buildingFloor','building_floor','FLOOR_NO','FLOOR_NO_NM','FLOOR_NM',
+            'correspondingFloorCount','corresponding_floor_count','거래층','전용층','대상층','층정보'
+        ]
+        total_keys = ['총층','totalFloor','total_floor','floor_total','floorTotal','totalFloorCount','highestFloor','grndFlrCnt','지상층수']
+        def val(keys):
+            for k in keys:
+                v = d.get(k)
+                if v not in (None, '', '-', 'null', 'undefined', 0, '0'):
+                    return str(v).strip()
+            return None
+        floor = val(floor_keys)
+        if not floor:
+            for k, v in d.items():
+                lk = str(k).lower()
+                if ('floor' in lk or 'flr' in lk or '층' in str(k)) and not any(x in lk for x in ['total','cnt','count','highest']):
+                    if v not in (None, '', '-', 'null', 'undefined', 0, '0'):
+                        floor = str(v).strip()
+                        break
+        total = val(total_keys)
+        if floor and '/' in floor:
+            parts = floor.split('/')
+            floor = parts[0].strip()
+            if not total and len(parts) > 1:
+                total = parts[1].strip()
+        return (floor, total)
+
+
     def _collect_disco(self, lat='', lng='', nelat='', swlat='', nelng='', swlng='', kakao_rest_key='', max_n=None):
         """디스코 실거래가 수집: /home/hello/ API"""
         try:
@@ -2281,9 +2318,6 @@ class ProxyHandler(BaseHTTPRequestHandler):
             if not items_raw:
                 print(f"  ⚠️ 응답 타입: {type(raw).__name__}, 미리보기: {str(raw)[:200]}")
 
-            if bds_cookie and all_raw_items and cookie_source in ('user', 'runtime_cache'):
-                BDS_COOKIE_CACHE = bds_cookie
-
             def clean(v):
                 if v is None or v == '' or v == '0': return None
                 try:
@@ -2326,7 +2360,8 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     '전용면적_m2':   clean(d.get('ea')),
                     '공급면적_m2':   clean(d.get('sa')),
                     '토지면적_m2':   clean(d.get('la')),
-                    '해당층':        clean(d.get('fl')) or d.get('fl_nm') or d.get('floor') or None,
+                    '해당층':        (self._pick_floor_from_raw(d)[0] or clean(d.get('fl')) or d.get('fl_nm') or d.get('floor') or None),
+                    '총층':          self._pick_floor_from_raw(d)[1],
                     '소재지':        '',
                     '거래년월':      str(d.get('y') or ''),
                     'lat':           float(d['lat']) if d.get('lat') else None,
@@ -2682,7 +2717,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 except:
                     t_no_num = 0
                 info_score = 0
-                for k in ('excl_area_m2', 'pvt_area_m2', 'exclusive_area_m2', 'exclusiveArea', 'spc2', 'bldg_area_m2', 'obj_amt', 't_floor', 'floor_level', 'flr', 'floor', 'f_nm', 'bldg_flr'):
+                for k in ('excl_area_m2', 'pvt_area_m2', 'exclusive_area_m2', 'exclusiveArea', 'spc2', 'bldg_area_m2', 'obj_amt', 't_floor', 't_flr', 'floor_level', 'flr', 'floor', 'f_nm', 'bldg_flr', 'obj_floor', 'floor_no', 'floor_no_nm', 'floor_nm', 'FLOOR_NO', 'FLOOR_NO_NM', 'FLOOR_NM'):
                     if d.get(k) not in (None, '', '0', 0):
                         info_score += 1
                 return (year, month, info_score, t_no_num)
@@ -2747,6 +2782,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     or clean(d.get('spc2'))
                     or clean(d.get('bldg_area_m2'))
                 )
+                floor_val, total_floor_val = self._pick_floor_from_raw(d)
 
                 result_items.append({
                     '매물번호':      str(d.get('t_no') or d.get('pnu') or d.get('eais_pk') or ''),
@@ -2761,7 +2797,8 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     '공급면적_m2':   clean(d.get('supply_area_m2')) or clean(d.get('supplyArea')),
                     '건물면적_m2':   clean(d.get('bldg_area_m2')),
                     '건축연도':      d.get('build_year') or None,
-                    '해당층':        d.get('t_floor') or d.get('floor_level') or d.get('flr') or d.get('floor') or d.get('f_nm') or d.get('bldg_flr') or d.get('obj_floor') or d.get('floor_no') or None,
+                    '해당층':        floor_val,
+                    '총층':          total_floor_val,
                     '소재지':        (d.get('addr_nm') or (str(d.get('sigungu_nm','')) + ' ' + str(d.get('dong_nm') or d.get('dongnm') or '')).strip() or ''),
                     '지번주소':      (d.get('addr_nm') or '').strip() or None,
                     '거래년월':      거래년월,
