@@ -4655,7 +4655,7 @@ var _safeLocalSet = function(key, value) {
                     const linkedSavedId = linked ? String(linked.id || '') : '';
                     const linkedPl = wr2ResolveLinkedPlItemMeta(r, linkedSavedId);
                     const intentRaw = String(linkedPl && linkedPl.intent || '').trim();
-                    const intentRank = intentRaw === '상' ? 3 : (intentRaw === '중' ? 2 : (intentRaw === '하' ? 1 : 0));
+                    const intentRank = intentRaw === '최상' ? 4 : (intentRaw === '상' ? 3 : (intentRaw === '중' ? 2 : (intentRaw === '하' ? 1 : 0)));
                     return {
                       linked: linked,
                       linkedPl: linkedPl,
@@ -4780,7 +4780,7 @@ var _safeLocalSet = function(key, value) {
                     const priceRaw = metaInfo.priceRaw;
                     const price = fmtMetaPrice(priceRaw) || String(priceRaw || '').trim();
                     const intent = String(metaInfo.intent || '').trim();
-                    const intentColor = intent === '상' ? '#ff6b6b' : (intent === '중' ? '#60a5fa' : (intent === '하' ? '#4ade80' : '#8ea7c9'));
+                    const intentColor = intent === '최상' ? '#ff4d5e' : (intent === '상' ? '#fb923c' : (intent === '중' ? '#60a5fa' : (intent === '하' ? '#4ade80' : '#8ea7c9')));
                     const intentChip = intent
                       ? ('<span style="padding:1px 6px;border-radius:999px;border:1px solid ' + intentColor + '55;background:' + intentColor + '18;color:' + intentColor + ';font-size:10px;font-weight:800;white-space:nowrap;">' + esc(intent) + '</span>')
                       : '';
@@ -34226,10 +34226,11 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
 
     function _plIntentRank(intent) {
       const s = String(intent || '').trim();
-      if (s === '상') return 0;
-      if (s === '중') return 1;
-      if (s === '하') return 2;
-      return 3;
+      if (s === '최상') return 0;
+      if (s === '상') return 1;
+      if (s === '중') return 2;
+      if (s === '하') return 3;
+      return 4;
     }
     function _plRoundScore(entry) {
       const it = entry && entry.item ? entry.item : {};
@@ -34289,13 +34290,15 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     }
     function _plGetDdayTone(dday) {
       const d = Number(dday);
-      if (!isFinite(d)) return { color: 'var(--di)', label: '', state: 'none' };
-      if (d < 0) return { color: '#8b93a7', label: 'D+' + Math.abs(d), state: 'past' };
-      if (d === 0) return { color: '#ff6370', label: 'D-Day', state: 'today' };
-      if (d <= 3) return { color: '#ff8c42', label: 'D-' + d, state: 'urgent' };
-      if (d <= 7) return { color: '#fbbf24', label: 'D-' + d, state: 'near' };
-      if (d <= 29) return { color: '#4ade80', label: 'D-' + d, state: 'normal' };
-      return { color: '#60a5fa', label: 'D-' + d, state: 'far' };
+      if (!isFinite(d)) return { color: 'var(--di)', bg: 'transparent', label: '', state: 'none' };
+      if (d < 0) return { color: '#8b93a7', bg: 'rgba(139,147,167,.12)', label: 'D+' + Math.abs(d), state: 'past' };
+      // 정책: D-3부터 D-day까지는 모두 빨간색
+      if (d <= 3) return { color: '#ff4d5e', bg: 'rgba(255,77,94,.16)', label: d === 0 ? 'D-Day' : 'D-' + d, state: d === 0 ? 'today' : 'urgent' };
+      // 이후 주황/노랑/초록/파랑 단계
+      if (d <= 7) return { color: '#fb923c', bg: 'rgba(251,146,60,.15)', label: 'D-' + d, state: 'orange' };
+      if (d <= 14) return { color: '#facc15', bg: 'rgba(250,204,21,.14)', label: 'D-' + d, state: 'yellow' };
+      if (d <= 30) return { color: '#4ade80', bg: 'rgba(74,222,128,.14)', label: 'D-' + d, state: 'green' };
+      return { color: '#60a5fa', bg: 'rgba(96,165,250,.14)', label: 'D-' + d, state: 'blue' };
     }
     window._skGetUnifiedDdayTone = _plGetDdayTone;
     function _plDdayColor(dt) {
@@ -34307,7 +34310,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
     }
     function _plIntentTone(intent) {
       const v = String(intent || '').trim();
-      if (v === '상') return { color: '#ff6b6b', bg: 'rgba(255,107,107,.16)' };
+      if (v === '최상') return { color: '#ff4d5e', bg: 'rgba(255,77,94,.18)' };
+      if (v === '상') return { color: '#fb923c', bg: 'rgba(251,146,60,.16)' };
       if (v === '중') return { color: '#60a5fa', bg: 'rgba(96,165,250,.16)' };
       if (v === '하') return { color: '#4ade80', bg: 'rgba(74,222,128,.16)' };
       return null;
@@ -44584,18 +44588,19 @@ window.addEventListener('DOMContentLoaded', () => {
   };
   function intentBadge(v) {
     if (!v) return '<span style="color:#555;">—</span>';
-    var map = { '상':'#ff6b6b', '중':'#60a5fa', '하':'#4ade80' };
-    return '<span style="font-weight:700;color:'+ (map[v]||'#aaa') +';">'+v+'</span>';
+    var map = { '최상':'#ff4d5e', '상':'#fb923c', '중':'#60a5fa', '하':'#4ade80' };
+    return '<span style="font-weight:800;color:'+ (map[v]||'#aaa') +';">'+v+'</span>';
   }
   function intentCell(it) {
     var v = it.intent || '';
-    var cm = { '상':'#ff6b6b', '중':'#60a5fa', '하':'#4ade80' };
+    var cm = { '최상':'#ff4d5e', '상':'#fb923c', '중':'#60a5fa', '하':'#4ade80' };
     var col = cm[v] || '#555';
     var idEsc = plEscHtml(it.id);
     return '<select onclick="event.stopPropagation()" onchange="plInlineSetSelect(\'' + idEsc + '\',\'intent\',this.value);event.stopPropagation()" '
       + 'style="appearance:none;-webkit-appearance:none;border:none;background:transparent;color:'+col+';font-size:13px;font-weight:800;cursor:pointer;text-align:center;padding:2px;width:100%;">'
       + '<option value=""'+(v===''?' selected':'')+'>—</option>'
-      + '<option value="상"'+(v==='상'?' selected':'')+' style="color:#ff6b6b">상</option>'
+      + '<option value="최상"'+(v==='최상'?' selected':'')+' style="color:#ff4d5e">최상</option>'
+      + '<option value="상"'+(v==='상'?' selected':'')+' style="color:#fb923c">상</option>'
       + '<option value="중"'+(v==='중'?' selected':'')+' style="color:#60a5fa">중</option>'
       + '<option value="하"'+(v==='하'?' selected':'')+' style="color:#4ade80">하</option>'
       + '</select>';
@@ -46240,6 +46245,20 @@ window.addEventListener('DOMContentLoaded', () => {
     renderPropertyList();
   };
 
+
+  function plEnsureIntentOptions() {
+    var sel = document.getElementById('pl-f-intent');
+    if (!sel || sel.dataset.intentV2 === '1') return;
+    var cur = sel.value || '';
+    sel.innerHTML = '<option value="">—</option>'
+      + '<option value="최상" style="color:#ff4d5e">최상</option>'
+      + '<option value="상" style="color:#fb923c">상</option>'
+      + '<option value="중" style="color:#60a5fa">중</option>'
+      + '<option value="하" style="color:#4ade80">하</option>';
+    sel.value = cur;
+    sel.dataset.intentV2 = '1';
+  }
+
   // ── 모달: 추가 ──────────────────────────
   window.plOpenAdd = function() {
     document.getElementById('pl-modal-title').textContent = '물건 추가';
@@ -46247,7 +46266,7 @@ window.addEventListener('DOMContentLoaded', () => {
       var el = document.getElementById(id); if (el) el.value = '';
     });
     var fs = document.getElementById('pl-f-status'); if (fs) fs.value = 'active';
-    var fi = document.getElementById('pl-f-intent'); if (fi) fi.value = '';
+    plEnsureIntentOptions(); var fi = document.getElementById('pl-f-intent'); if (fi) fi.value = '';
     var ft = document.getElementById('pl-f-type'); if (ft) ft.value = '경매';
     var fsi = document.getElementById('pl-f-site'); if (fsi) fsi.value = '0';
     var eid = document.getElementById('pl-edit-id'); if (eid) eid.value = '';
@@ -46274,7 +46293,7 @@ window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('pl-f-feature').value = it.feature||'';
     document.getElementById('pl-f-type').value = it.type||'경매';
     document.getElementById('pl-f-status').value = (it.archived || it.status==='archived') ? 'closed' : plSimpleStatusKey(it.status||'review');
-    document.getElementById('pl-f-intent').value = it.intent||'';
+    plEnsureIntentOptions(); document.getElementById('pl-f-intent').value = it.intent||'';
     document.getElementById('pl-f-appraisal').value = plDisplayMoney(it.appraisal||'');
     document.getElementById('pl-f-minprice').value = plDisplayMoney(it.minprice||'');
     document.getElementById('pl-f-round').value = it.round||'';
