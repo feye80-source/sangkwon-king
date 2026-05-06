@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260507-workroom-v45-aggregate-ui-safe-money';
+    window.__SK_BUILD = '20260507-workroom-v46-horizontal-linked-aggregate';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -5664,72 +5664,80 @@ var _safeLocalSet = function(key, value) {
                 }
                 function wr2BuildMultiLinkedSummaryHtml(room, items){
                   const seeds=(items||[]).map(wr2SummarySeed).filter(Boolean);
-                  const totalMin=seeds.reduce((a,s)=>a+(s.minWon||0),0);
-                  const totalApp=seeds.reduce((a,s)=>a+(s.appraisalWon||0),0);
-                  const totalArea=seeds.reduce((a,s)=>a+(s.areaM2||0),0);
-                  const totalPy=totalArea?totalArea/3.305785:0;
-                  const totalDeposit=seeds.reduce((a,s)=>a+(s.depositWon||0),0);
-                  const totalRent=seeds.reduce((a,s)=>a+(s.rentWon||0),0);
+                  // 합산 화면과 수익률 계산기 주입값은 같은 집계식을 사용한다.
+                  const _aggSeed=(typeof wcpAggregateSeedForCalc==='function')?wcpAggregateSeedForCalc(seeds):null;
+                  const totalMin=_aggSeed?_aggSeed.minWon:seeds.reduce((a,s)=>a+(s.minWon||0),0);
+                  const totalApp=_aggSeed?_aggSeed.appraisalWon:seeds.reduce((a,s)=>a+(s.appraisalWon||0),0);
+                  const totalArea=_aggSeed?_aggSeed.areaM2:seeds.reduce((a,s)=>a+(s.areaM2||0),0);
+                  const totalPy=_aggSeed?_aggSeed.areaPy:(totalArea?totalArea/3.305785:0);
+                  const totalDeposit=_aggSeed?_aggSeed.depositWon:seeds.reduce((a,s)=>a+(s.depositWon||0),0);
+                  const totalRent=_aggSeed?_aggSeed.rentWon:seeds.reduce((a,s)=>a+(s.rentWon||0),0);
                   const totalPerPy=(totalMin&&totalPy)?('@'+Math.round(totalMin/totalPy/10000).toLocaleString('ko-KR')+'만/평'):'-';
                   const rentPerPy=(totalRent&&totalPy)?('@'+Math.round(totalRent/totalPy/10000).toLocaleString('ko-KR')+'만/평'):'-';
                   const netPrice=totalMin-totalDeposit;
                   const yieldRate=(netPrice>0&&totalRent>0)?(totalRent*12/netPrice*100):0;
                   const rid=wr2SummaryJs(room&&room.id||'');
-                  const caseNos=seeds.map(function(seed){return seed.caseNo || (seed.objectNo ? '물건 '+seed.objectNo : '');}).filter(Boolean);
-                  const dates=Array.from(new Set(seeds.map(function(seed){return String(seed.biddate||'').trim();}).filter(Boolean)));
-                  const addrText=seeds.length>1
-                    ? ((seeds[0]&&seeds[0].address?seeds[0].address:'-')+(seeds.length>1?' 외 '+(seeds.length-1)+'개':''))
-                    : (seeds[0]&&seeds[0].address||'-');
-                  const dateText=dates.length===1?dates[0]:(dates.length>1?'물건별 상이':'-');
-                  function infoRow(label,value,opts){
+
+                  function cardRow(label,value,opts){
                     const o=opts||{};
-                    return '<div class="wr2-info-row"><span class="wr2-info-lbl">'+wr2SummaryEsc(label)+'</span><span class="wr2-info-val"'+(o.style?' style="'+o.style+'"':'')+'>'+String(value||'-')+'</span></div>';
+                    return '<div class="wr2-ml-card-row'+(o.wide?' wide':'')+'"><span>'+wr2SummaryEsc(label)+'</span><b'+(o.cls?' class="'+o.cls+'"':'')+'>'+String(value||'-')+'</b></div>';
                   }
-                  const originalButtons=seeds.map(function(seed,idx){
+                  function metricCell(label,value,opts){
+                    const o=opts||{};
+                    return '<div class="wr2-agg-cell"><span>'+wr2SummaryEsc(label)+'</span><b'+(o.cls?' class="'+o.cls+'"':'')+'>'+String(value||'-')+'</b></div>';
+                  }
+
+                  const itemCards=seeds.map(function(seed,idx){
                     const sid=wr2SummaryJs(seed.id||'');
-                    const ttl=wr2SummaryEsc('물건'+(idx+1));
-                    return '<span style="display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end;">'
-                      + '<button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();wr2CalcLoadLinkedItem(&quot;'+rid+'&quot;,&quot;'+sid+'&quot;)">'+ttl+' 계산</button>'
-                      + '<button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();openPopup(&quot;'+sid+'&quot;)">원본 보기</button>'
-                      + (seed.url?'<a class="wr2-mini-btn" href="'+wr2SummaryEsc(seed.url)+'" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">상세URL</a>':'')
-                      + '<button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();wr2UnlinkSaved(&quot;'+rid+'&quot;,&quot;'+sid+'&quot;)">연결 해제</button>'
-                      + '</span>';
+                    const title=wr2SummaryEsc((idx+1)+'. '+(seed.title||'경매 물건'));
+                    const caseText=wr2SummaryEsc(seed.caseNo || (seed.objectNo ? '물건 '+seed.objectNo : '-') || '-');
+                    const areaText=seed.areaM2 ? wr2SummaryEsc(seed.areaM2.toFixed(2)+'㎡ / '+seed.areaPy.toFixed(1)+'평') : '-';
+                    const urlMenu=seed.url?'<a href="'+wr2SummaryEsc(seed.url)+'" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">상세 URL 열기</a>':'';
+                    return '<article class="wr2-ml-card">'
+                      + '<div class="wr2-ml-card-head"><div class="wr2-ml-card-title">'+title+'</div>'
+                      + '<div class="wr2-ml-card-actions">'
+                      + '<button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();wr2CalcLoadLinkedItem(&quot;'+rid+'&quot;,&quot;'+sid+'&quot;)">계산</button>'
+                      + '<button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();openPopup(&quot;'+sid+'&quot;)">원본</button>'
+                      + '<details class="wr2-ml-more" onclick="event.stopPropagation()"><summary>⋯</summary><div class="wr2-ml-more-menu">'
+                      + urlMenu
+                      + '<button type="button" onclick="event.stopPropagation();wr2UnlinkSaved(&quot;'+rid+'&quot;,&quot;'+sid+'&quot;)">연결 해제</button>'
+                      + '</div></details>'
+                      + '</div></div>'
+                      + '<div class="wr2-ml-card-sub">'+wr2SummaryEsc(seed.address||'-')+'</div>'
+                      + '<div class="wr2-ml-card-grid">'
+                      + cardRow('경매번호',caseText)
+                      + cardRow('전용면적',areaText)
+                      + cardRow('감정가',wr2SummaryFormatWon(seed.appraisalWon))
+                      + cardRow('최저가','<span>'+wr2SummaryFormatWon(seed.minWon)+'</span>',{cls:'accent'})
+                      + cardRow('매각기일',wr2SummaryEsc(seed.biddate||'-'))
+                      + cardRow('임차 보증금',wr2SummaryFormatWon(seed.depositWon))
+                      + cardRow('임차 월세',wr2SummaryFormatWon(seed.rentWon))
+                      + '</div>'
+                      + '</article>';
                   }).join('');
-                  const itemList=seeds.map(function(seed,idx){
-                    const sid=wr2SummaryJs(seed.id||'');
-                    return '<div class="wr2-linked-item-compact">'
-                      + '<div class="wr2-lic-main"><b>'+wr2SummaryEsc((idx+1)+'. '+(seed.title||'경매 물건'))+'</b><span>'+wr2SummaryEsc(seed.address||'-')+'</span></div>'
-                      + '<div class="wr2-lic-meta"><span>'+wr2SummaryFormatWon(seed.minWon)+'</span><span>'+(seed.areaM2?wr2SummaryEsc(seed.areaM2.toFixed(2)+'㎡ / '+seed.areaPy.toFixed(1)+'평'):'-')+'</span></div>'
-                      + '<div class="wr2-lic-actions"><button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();wr2CalcLoadLinkedItem(&quot;'+rid+'&quot;,&quot;'+sid+'&quot;)">계산</button><button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();openPopup(&quot;'+sid+'&quot;)">원본</button></div>'
-                      + '</div>';
-                  }).join('');
+
                   let html='';
                   html += '<div class="wr2-multi-linked-summary wr2-multi-linked-summary-plain">';
-                  html += '<div class="wr2-ml-top"><div><b>연결 경매 물건 '+seeds.length+'개</b><span> · 화면 구성은 기존 물건정보 형식을 유지하고, 금액만 합산 기준으로 표시합니다.</span></div><div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;"><button type="button" class="wr2-mini-btn primary" onclick="event.stopPropagation();wr2CalcLoadLinkedTotal(&quot;'+rid+'&quot;)">합산 계산</button><button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();wr2ShowLinkModal()">＋ 물건 추가</button></div></div>';
-                  html += infoRow('경매번호', caseNos.length?wr2SummaryEsc(caseNos.join(' / ')):'-');
-                  html += infoRow('소재지', wr2SummaryEsc(addrText));
-                  html += infoRow('전용면적', totalArea?(totalArea.toFixed(2)+'㎡ <span style="color:var(--ac);font-weight:600;">('+totalPy.toFixed(1)+'평)</span>'):'-');
-                  html += infoRow('감정가', wr2SummaryFormatWon(totalApp));
-                  html += infoRow('최저가', '<b style="color:var(--ac);">'+wr2SummaryFormatWon(totalMin)+'</b> <span class="wr2-auto-badge">합산</span>');
-                  html += infoRow('매각기일', wr2SummaryEsc(dateText));
-                  html += infoRow('원본 링크', originalButtons || '-', {style:'display:flex;justify-content:flex-end;gap:6px;flex-wrap:wrap;'});
-                  html += '<div style="margin-top:6px;padding:8px 12px;border:1px solid rgba(148,163,184,.18);background:rgba(148,163,184,.07);border-radius:12px;">'
-                    + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;color:#8fa3c5;font-size:10px;font-weight:700;letter-spacing:.2px;"><span>임차 정보</span><span style="opacity:.8;">합산</span></div>'
-                    + '<div style="display:flex;flex-direction:column;gap:5px;">'
-                    + '<div style="display:flex;justify-content:space-between;gap:8px;"><span style="color:#8fa3c5;font-size:11px;">임차 보증금 <span class="wr2-auto-badge">합산</span></span><b style="color:#c9d6f2;font-size:12px;font-weight:600;">'+wr2SummaryFormatWon(totalDeposit)+'</b></div>'
-                    + '<div style="display:flex;justify-content:space-between;gap:8px;"><span style="color:#8fa3c5;font-size:11px;">임차 월세 <span class="wr2-auto-badge">합산</span></span><b style="color:#c9d6f2;font-size:12px;font-weight:600;">'+wr2SummaryFormatWon(totalRent)+'</b></div>'
-                    + '<div style="display:flex;justify-content:space-between;gap:8px;"><span style="color:#8fa3c5;font-size:11px;">연결 물건</span><b style="color:#c9d6f2;font-size:12px;font-weight:600;">'+seeds.length+'개</b></div>'
-                    + '</div></div>';
-                  if(totalPy>0 || totalMin>0 || totalRent>0){
-                    html += '<div class="wr2-summary-calc-bar">';
-                    if(totalPerPy && totalPerPy!=='-') html += '<div class="wr2-scb-row"><span class="wr2-scb-lbl">💰 매매 평단가</span><b style="color:#4f8eff;">'+totalPerPy+'</b></div>';
-                    if(rentPerPy && rentPerPy!=='-') html += '<div class="wr2-scb-row"><span class="wr2-scb-lbl">💵 월세 평단가</span><b style="color:#4ade80;">'+rentPerPy+'</b></div>';
-                    if(yieldRate>0) html += '<div class="wr2-scb-row"><span class="wr2-scb-lbl">📈 수익률</span><b style="color:#ffd166;">'+yieldRate.toFixed(2)+'%</b></div>';
-                    html += '</div>';
-                  }
-                  html += '<div class="wr2-linked-compact-list">'+itemList+'</div>';
+                  html += '<div class="wr2-ml-top"><div><b>연결 경매 물건 '+seeds.length+'개</b><span>물건별 정보를 먼저 확인하고, 아래 합산 기준으로 계산합니다.</span></div><div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;"><button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();wr2ShowLinkModal()">＋ 물건 연결</button><button type="button" class="wr2-mini-btn primary" onclick="event.stopPropagation();wr2CalcLoadLinkedTotal(&quot;'+rid+'&quot;)">합산 계산</button></div></div>';
+                  html += '<div class="wr2-ml-card-wrap'+(seeds.length>2?' has-more':'')+'">';
+                  if(seeds.length>2) html += '<div class="wr2-ml-scroll-cue">더 보기 →</div>';
+                  html += '<div class="wr2-ml-card-track">'+itemCards+'</div>';
                   html += '</div>';
-                  return wr2BuildLinkedSummaryActionBar(room) + html;
+                  html += '<div class="wr2-aggregate-card">'
+                    + '<div class="wr2-aggregate-head"><div><b>▦ 합산 기준</b><span>연결 물건 전체를 더한 계산 기준값입니다.</span></div><button type="button" class="wr2-mini-btn primary" onclick="event.stopPropagation();wr2CalcLoadLinkedTotal(&quot;'+rid+'&quot;)">합산값으로 계산기에 반영 ›</button></div>'
+                    + '<div class="wr2-agg-grid">'
+                    + metricCell('전용면적', totalArea?(totalArea.toFixed(2)+'㎡<em>('+totalPy.toFixed(1)+'평)</em>'):'-')
+                    + metricCell('감정가', wr2SummaryFormatWon(totalApp))
+                    + metricCell('최저가', wr2SummaryFormatWon(totalMin), {cls:'accent'})
+                    + metricCell('임차 보증금', wr2SummaryFormatWon(totalDeposit))
+                    + metricCell('임차 월세', wr2SummaryFormatWon(totalRent))
+                    + metricCell('매매 평단가', totalPerPy, {cls:'green'})
+                    + metricCell('월세 평단가', rentPerPy, {cls:'green'})
+                    + (yieldRate>0?metricCell('수익률', yieldRate.toFixed(2)+'%', {cls:'orange'}):'')
+                    + '</div>'
+                    + '</div>';
+                  html += '</div>';
+                  return html;
                 }
 
                 window.wr2UnlinkSaved=function(roomId,savedId){
@@ -7311,24 +7319,31 @@ window.wr2SummaryCancelEdit = function() {
                     #wr2TableWrap,.wr2-ft-block,.wr2-free-table,[data-free-table]{display:none!important;}
                     .wr2-linked-actions .wr2-mini-btn{border-color:rgba(79,142,255,.38)!important;color:#dbeafe!important;background:rgba(79,142,255,.10)!important;font-weight:800!important;}
                     .wr2-multi-linked-summary{border:1px solid rgba(255,255,255,.10);background:rgba(15,23,42,.35);border-radius:14px;padding:12px;margin-top:4px;}
-                    .wr2-ml-top{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px;color:var(--tx);}
-                    .wr2-ml-top b{font-size:14px;}.wr2-ml-top span{font-size:11px;color:var(--mu);font-weight:500;}
-                    .wr2-ml-scroll{overflow:auto;border:1px solid rgba(255,255,255,.08);border-radius:11px;background:rgba(5,9,15,.25);}
-                    .wr2-ml-table{width:100%;min-width:760px;border-collapse:collapse;font-size:12px;table-layout:fixed;}
-                    .wr2-ml-table th,.wr2-ml-table td{border-bottom:1px solid rgba(255,255,255,.065);padding:9px 10px;vertical-align:middle;color:#d7deed;}
-                    .wr2-ml-table th{background:rgba(255,255,255,.04);font-weight:900;text-align:left;color:#f1f5f9;}
-                    .wr2-ml-table tr:last-child td{border-bottom:0;}
-                    .wr2-ml-label{width:118px;color:#90a0b8!important;font-weight:850;white-space:nowrap;}
-                    .wr2-ml-col{min-width:210px;}.wr2-ml-total{width:180px;border-left:1px solid rgba(249,115,22,.22);background:rgba(249,115,22,.08)!important;}.wr2-ml-total-cell{border-left:1px solid rgba(249,115,22,.18);background:rgba(249,115,22,.045);font-weight:900;color:#fed7aa!important;}
-                    .wr2-ml-head-title{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;font-size:12px;}.wr2-ml-head-actions{display:flex;gap:5px;flex-wrap:wrap;margin-top:6px;}
                     .wr2-multi-linked-summary-plain{background:rgba(15,23,42,.22)!important;}
-                    .wr2-linked-compact-list{margin-top:8px;display:flex;flex-direction:column;gap:6px;}
-                    .wr2-linked-item-compact{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(120px,.7fr) auto;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.08);background:rgba(5,9,15,.18);border-radius:10px;}
-                    .wr2-lic-main{min-width:0;display:flex;flex-direction:column;gap:2px;}.wr2-lic-main b{font-size:12px;color:#e8eefb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}.wr2-lic-main span{font-size:10px;color:#8fa0b7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-                    .wr2-lic-meta{display:flex;flex-direction:column;gap:2px;text-align:right;font-size:10.5px;color:#cbd5e1;font-weight:800;white-space:nowrap;}.wr2-lic-actions{display:flex;gap:5px;justify-content:flex-end;flex-wrap:wrap;}
+                    .wr2-ml-top{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px;color:var(--tx);}
+                    .wr2-ml-top b{display:block;font-size:14px;line-height:1.35;}.wr2-ml-top span{display:block;margin-top:2px;font-size:11px;color:var(--mu);font-weight:500;}
+                    .wr2-ml-card-wrap{position:relative;margin-top:8px;}
+                    .wr2-ml-card-track{display:flex;gap:10px;overflow-x:auto;overflow-y:visible;padding:1px 2px 7px;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;}
+                    .wr2-ml-card-track::-webkit-scrollbar{height:6px}.wr2-ml-card-track::-webkit-scrollbar-thumb{background:rgba(96,165,250,.35);border-radius:999px}.wr2-ml-card-track::-webkit-scrollbar-track{background:rgba(255,255,255,.04);border-radius:999px}
+                    .wr2-ml-card{flex:0 0 calc((100% - 10px)/2);min-width:360px;scroll-snap-align:start;border:1px solid rgba(148,163,184,.18);background:linear-gradient(180deg,rgba(15,23,42,.48),rgba(5,9,15,.22));border-radius:14px;padding:10px;box-shadow:0 10px 28px rgba(0,0,0,.14);}
+                    .wr2-ml-card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px;}
+                    .wr2-ml-card-title{min-width:0;font-size:13px;font-weight:900;color:#eef4ff;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+                    .wr2-ml-card-actions{display:flex;align-items:center;gap:5px;flex:0 0 auto;}
+                    .wr2-ml-card-sub{font-size:10.5px;color:#9ca9bf;line-height:1.4;min-height:28px;margin:0 0 8px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+                    .wr2-ml-card-grid{border:1px solid rgba(255,255,255,.07);border-radius:10px;background:rgba(2,6,23,.22);overflow:hidden;}
+                    .wr2-ml-card-row{display:grid;grid-template-columns:82px minmax(0,1fr);gap:8px;align-items:center;min-height:32px;padding:7px 9px;border-bottom:1px solid rgba(255,255,255,.055);}
+                    .wr2-ml-card-row:last-child{border-bottom:0}.wr2-ml-card-row span{font-size:10.8px;color:#8797b1;font-weight:800;white-space:nowrap}.wr2-ml-card-row b{font-size:11.5px;color:#dbe5f6;text-align:right;font-weight:850;min-width:0;overflow:hidden;text-overflow:ellipsis}.wr2-ml-card-row b.accent,.wr2-ml-card-row b.accent span{color:#4f8eff!important;}
+                    .wr2-ml-more{position:relative}.wr2-ml-more summary{list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:center;width:28px;height:28px;border:1px solid rgba(148,163,184,.25);border-radius:999px;color:#dbeafe;background:rgba(255,255,255,.04);font-weight:900}.wr2-ml-more summary::-webkit-details-marker{display:none}
+                    .wr2-ml-more-menu{position:absolute;right:0;top:32px;z-index:50;min-width:118px;padding:6px;border:1px solid rgba(148,163,184,.22);border-radius:10px;background:#111827;box-shadow:0 14px 32px rgba(0,0,0,.35);display:flex;flex-direction:column;gap:4px}.wr2-ml-more-menu a,.wr2-ml-more-menu button{border:0;background:transparent;color:#dbeafe;text-align:left;font-size:11px;font-weight:800;padding:7px 8px;border-radius:8px;text-decoration:none;cursor:pointer}.wr2-ml-more-menu a:hover,.wr2-ml-more-menu button:hover{background:rgba(96,165,250,.14)}
+                    .wr2-ml-card-wrap.has-more:after{content:'';position:absolute;right:0;top:0;bottom:8px;width:54px;pointer-events:none;background:linear-gradient(90deg,rgba(15,23,42,0),rgba(15,23,42,.90));border-radius:0 14px 14px 0;}
+                    .wr2-ml-scroll-cue{position:absolute;right:10px;top:50%;transform:translateY(-50%);z-index:2;padding:5px 8px;border:1px solid rgba(96,165,250,.34);border-radius:999px;background:rgba(15,23,42,.78);backdrop-filter:blur(8px);color:#bfdbfe;font-size:10px;font-weight:900;pointer-events:none;}
+                    .wr2-aggregate-card{margin-top:10px;border:1px solid rgba(79,142,255,.34);background:linear-gradient(180deg,rgba(30,64,175,.14),rgba(15,23,42,.24));border-radius:14px;padding:10px;}
+                    .wr2-aggregate-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px}.wr2-aggregate-head b{font-size:13px;color:#eef4ff}.wr2-aggregate-head span{margin-left:6px;font-size:10.5px;color:#91a4c4;font-weight:700}
+                    .wr2-agg-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));border:1px solid rgba(255,255,255,.07);border-radius:10px;overflow:hidden;background:rgba(2,6,23,.17)}.wr2-agg-cell{min-height:56px;padding:8px 6px;border-right:1px solid rgba(255,255,255,.065);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;text-align:center}.wr2-agg-cell:last-child{border-right:0}.wr2-agg-cell span{font-size:10px;color:#92a2ba;font-weight:800}.wr2-agg-cell b{font-size:12.5px;color:#e5edf9;font-weight:950;line-height:1.25}.wr2-agg-cell b em{display:block;font-style:normal;color:#cbd5e1;font-size:11px;margin-top:2px}.wr2-agg-cell b.accent{color:#4f8eff}.wr2-agg-cell b.green{color:#4ade80}.wr2-agg-cell b.orange{color:#ffd166}
                     .wcp-linked-picker{display:flex;align-items:center;gap:6px;flex-wrap:wrap;border:1px solid rgba(249,115,22,.26);background:rgba(249,115,22,.06);border-radius:12px;padding:9px 10px;margin:8px 0 10px;}
                     .wcp-linked-picker>span{font-size:11px;color:#fed7aa;font-weight:950;margin-right:2px;}.wcp-link-choice{border:1px solid rgba(255,255,255,.13);background:rgba(255,255,255,.045);border-radius:999px;color:#d8e0ef;padding:5px 10px;font-size:11px;font-weight:850;cursor:pointer;}.wcp-link-choice.primary{background:#f97316;border-color:#f97316;color:#fff;}
-                    @media(max-width:760px){.wr2-ml-table{min-width:680px}.wr2-multi-linked-summary{padding:9px}.wr2-ml-top{align-items:flex-start;flex-direction:column}.wcp-linked-picker{align-items:flex-start}.wr2-linked-item-compact{grid-template-columns:1fr}.wr2-lic-meta{text-align:left}.wr2-lic-actions{justify-content:flex-start}}
+                    @media(max-width:1180px){.wr2-agg-grid{grid-template-columns:repeat(4,minmax(0,1fr));}.wr2-agg-cell{border-bottom:1px solid rgba(255,255,255,.055)}}
+                    @media(max-width:760px){.wr2-multi-linked-summary{padding:9px}.wr2-ml-top{align-items:flex-start;flex-direction:column}.wcp-linked-picker{align-items:flex-start}.wr2-ml-card{flex-basis:86%;min-width:280px}.wr2-ml-card-row{grid-template-columns:78px minmax(0,1fr)}.wr2-aggregate-head{align-items:flex-start;flex-direction:column}.wr2-agg-grid{grid-template-columns:repeat(2,minmax(0,1fr));}.wr2-agg-cell{border-bottom:1px solid rgba(255,255,255,.055)}}
                   `;
 
                 }
