@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260507-workroom-v44-stable-summary-rate';
+    window.__SK_BUILD = '20260507-workroom-v45-aggregate-ui-safe-money';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -1529,33 +1529,10 @@
 
       return next;
     }
-    function _wrNormalizeRoomLinks(room) {
-      if (!room || typeof room !== 'object') return room;
-      const next = Object.assign({}, room);
-      const seen = Object.create(null);
-      const ids = [];
-      function add(raw) {
-        let id = '';
-        if (raw == null) return;
-        if (typeof raw === 'string' || typeof raw === 'number') id = String(raw).trim();
-        else if (typeof raw === 'object') id = String(raw.savedId || raw.linkedSavedId || raw.itemId || raw.id || '').trim();
-        if (!id || seen[id]) return;
-        seen[id] = true;
-        ids.push(id);
-      }
-      // 저장목록 연결 ID만 canonical 연결로 취급한다.
-      // auctionId/listingId는 사건번호/매물번호 성격이라 여기서 linkedItems로 승격하지 않는다.
-      add(next.linkedSavedId);
-      (Array.isArray(next.linkedSavedIds) ? next.linkedSavedIds : []).forEach(add);
-      (Array.isArray(next.linkedItems) ? next.linkedItems : []).forEach(add);
-      next.linkedItems = ids;
-      next.linkedSavedId = ids[0] || '';
-      return next;
-    }
     function _wrStripFreeTableLegacyRoom(room) {
       if (!room || typeof room !== 'object') return room;
-      let next = _wrNormalizeRoomLinks(_wrNormalizeRoomLifecycle(room));
-      if (!('_freeTables' in next) && !('_freeTable' in next) && !('_freeTable2' in next) && !('__ftDraft' in next)) return next;
+      if (!('_freeTables' in room) && !('_freeTable' in room) && !('_freeTable2' in room) && !('__ftDraft' in room)) return room;
+      const next = _wrNormalizeRoomLifecycle(room);
       delete next._freeTables;
       delete next._freeTable;
       delete next._freeTable2;
@@ -1607,57 +1584,27 @@
       return _sbPruneTombstones(_sbGetCachedArray('wr2_sections')).filter(s => s && s.id);
     }
     function _wrFindFreeTableSection(sections, roomId) {
-      return (Array.isArray(sections) ? sections : []).find(sec => sec && !sec.deletedAt && (sec.roomId === roomId || sec.room_id === roomId) && sec.type === 'free_table') || null;
+      return null;
+    }
+    function _wrRemoveFreeTableSections(sections) {
+      return (Array.isArray(sections) ? sections : []).filter(function(sec) {
+        return sec && sec.id && sec.type !== 'free_table';
+      });
     }
     window._wrGetFreeTables = function(room) {
-      if (!room || !room.id) return [];
-      const sections = _wrGetSectionStoreSnapshot();
-      const section = _wrFindFreeTableSection(sections, room.id);
-      if (section && section.data && Array.isArray(section.data.tables)) {
-        return section.data.tables;
-      }
-      const legacy = _wrLegacyFreeTables(room);
-      if (legacy && legacy.length && window._wrPersistFreeTables) {
-        window._wrPersistFreeTables(room.id, legacy, { quiet: true });
-        return legacy;
-      }
-      if (!room.__ftDraft) room.__ftDraft = (typeof _ftMakeTable === 'function') ? [_ftMakeTable('')] : [{ title:'', cols:['층','평단가','방향','월세','보증금','메모'], rows:[['1층','','남향','150만','1000만',''],['2층','','동향','180만','1000만','']] }];
-      return room.__ftDraft;
+      return [];
     };
     window._wrPersistFreeTables = function(roomId, tables, opts) {
-      if (!roomId) return null;
-      const options = opts || {};
-      const sections = _wrGetSectionStoreSnapshot();
-      const cloned = _wrCloneFreeTables(tables);
-      let section = _wrFindFreeTableSection(sections, roomId);
-      if (!section) {
-        section = {
-          id: 'ft_' + roomId,
-          roomId: roomId,
-          room_id: roomId,
-          phase: null,
-          type: 'free_table',
-          title: '자유 비교표',
-          order: 0,
-          data: { tables: cloned },
-          updatedAt: Date.now()
-        };
-        sections.push(section);
-      } else {
-        section.data = section.data || {};
-        section.data.tables = cloned;
-        section.updatedAt = Date.now();
-      }
+      const sections = _wrRemoveFreeTableSections(_wrGetSectionStoreSnapshot());
       if (window._wrPersistSectionsCache) {
-        window._wrPersistSectionsCache(sections, { sync: options.sync !== false });
+        window._wrPersistSectionsCache(sections, { sync: !(opts && opts.sync === false) });
       } else {
         if (window._idbCache) window._idbCache['wr2_sections'] = sections;
         if (window.idbSet) window.idbSet('wr2_sections', sections).catch(()=>{});
         try { localStorage.setItem('wr2_sections', JSON.stringify(sections)); } catch(e) {}
         if (window.wr2State) window.wr2State.sections = sections;
-        if (options.sync !== false && window._sbSaveSections) window._sbSaveSections(sections).catch(e => console.warn('[SB] free table sync fail', e));
       }
-      return cloned;
+      return [];
     };
     window._wrPersistRoomCache = function(arr, opts) {
       const options = opts || {};
@@ -1721,15 +1668,16 @@
       });
     };
     window._wrGetSectionsCache = function() {
-      return _sbPruneTombstones(_sbGetCachedArray('wr2_sections')).filter(s => s && s.id);
+      return _sbPruneTombstones(_sbGetCachedArray('wr2_sections')).filter(s => s && s.id && s.type !== 'free_table');
     };
     window._wrFilterActiveSections = function(arr) {
-      return (Array.isArray(arr) ? arr : []).filter(s => s && s.id && !s.deletedAt);
+      return (Array.isArray(arr) ? arr : []).filter(s => s && s.id && !s.deletedAt && s.type !== 'free_table');
     };
     window._wrPersistSectionsCache = function(arr, opts) {
       const options = opts || {};
       const prev = window._wrGetSectionsCache();
-      const nextFull = _sbPruneTombstones(_sbTouchNumericRecords(prev, _sbBuildFullEntitySet(prev, arr, { keepDeleted: !!options.keepDeleted })));
+      const cleanedInput = (Array.isArray(arr) ? arr : []).filter(s => s && s.id && s.type !== 'free_table');
+      const nextFull = _sbPruneTombstones(_sbTouchNumericRecords(prev, _sbBuildFullEntitySet(prev, cleanedInput, { keepDeleted: !!options.keepDeleted })));
       const active = window._wrFilterActiveSections(nextFull);
       _sbPersistCachedArray('wr2_sections', nextFull);
       if (window.wr2State && options.syncState !== false) window.wr2State.sections = active;
@@ -1745,7 +1693,7 @@
           keepDeleted: !!options.keepDeleted
         });
       }
-      const next = _sbPersistCachedArray('wr2_sections', (Array.isArray(arr) ? arr : []).filter(s => s && s.id));
+      const next = _sbPersistCachedArray('wr2_sections', (Array.isArray(arr) ? arr : []).filter(s => s && s.id && s.type !== 'free_table'));
       const active = window._wrFilterActiveSections(next);
       if (window.wr2State && options.syncState !== false) window.wr2State.sections = active;
       if (options.sync !== false && window._sbSaveSections) window._sbSaveSections(next).catch(e => console.warn('[SB] section sync fallback fail', e));
@@ -3450,9 +3398,10 @@ var _safeLocalSet = function(key, value) {
                 };
                 function loadSections() {
                   const raw = (window._wrGetSectionsCache && window._wrGetSectionsCache()) || ((window._idbCache && window._idbCache[LS_KEY_SECTIONS]) || []);
-                  wr2State.sections = window._wrFilterActiveSections ? window._wrFilterActiveSections(raw) : raw.filter(s => s && !s.deletedAt);
+                  wr2State.sections = window._wrFilterActiveSections ? window._wrFilterActiveSections(raw) : raw.filter(s => s && !s.deletedAt && s.type !== 'free_table');
                 }
                 function saveSections() {
+                  wr2State.sections = (wr2State.sections || []).filter(function(s){ return s && s.id && s.type !== 'free_table'; });
                   if (window._wrPersistSections) window._wrPersistSections(wr2State.sections, { syncState: false });
                   else if (window._wrPersistSectionsCache) window._wrPersistSectionsCache(wr2State.sections, { syncState: false });
                 }
@@ -3650,9 +3599,8 @@ var _safeLocalSet = function(key, value) {
                     candidates.push(id);
                   };
                   pushCandidate(room.linkedSavedId);
-                  // auctionId/listingId는 저장목록 ID가 아닐 수 있어 무조건 후보에 넣지 않는다.
-                  if (room.auctionId && byId[String(room.auctionId).trim()]) pushCandidate(room.auctionId);
-                  if (room.listingId && byId[String(room.listingId).trim()]) pushCandidate(room.listingId);
+                  pushCandidate(room.auctionId);
+                  pushCandidate(room.listingId);
                   (room.linkedItems || []).forEach(function(raw) {
                     const id = String(raw || '').trim();
                     if (!id) return;
@@ -3996,7 +3944,7 @@ var _safeLocalSet = function(key, value) {
 
                 function createSection(phase, type, title, dataOverride) {
                   const room = getActiveRoom();
-                  if (!room) return;
+                  if (!room || type === 'free_table') return;
                   const sec = {
                     id: genId('sec'),
                     roomId: room.id,
@@ -5233,6 +5181,28 @@ var _safeLocalSet = function(key, value) {
                 }
                 window.wr2SwitchView = wr2SwitchView;
 
+                function wr2RemoveFreeCompareWidget() {
+                  try {
+                    var ids = ['wr2TableWrap'];
+                    ids.forEach(function(id){
+                      var el = document.getElementById(id);
+                      if (!el) return;
+                      var host = el.closest('.wr2-section-card,.wr2-card,.card,.wr2-widget,section,article') || el;
+                      if (host && host.parentNode) host.parentNode.removeChild(host);
+                    });
+                    var needle = '자유' + ' 비교표';
+                    Array.prototype.slice.call(document.querySelectorAll('body *')).forEach(function(el){
+                      if (!el || !el.textContent) return;
+                      var txt = String(el.textContent || '').replace(/\s+/g,' ').trim();
+                      if (txt === needle || txt.indexOf(needle) === 0) {
+                        var host = el.closest('.wr2-section-card,.wr2-card,.card,.wr2-widget,section,article');
+                        if (host && host.parentNode) host.parentNode.removeChild(host);
+                      }
+                    });
+                  } catch(e) {}
+                }
+                window.wr2RemoveFreeCompareWidget = wr2RemoveFreeCompareWidget;
+
                 // ── 대시보드 렌더 ────────────────────────────────────
                 function renderDashboard(room) {
                   renderCaptureWidget(room);
@@ -5240,7 +5210,7 @@ var _safeLocalSet = function(key, value) {
                   // 체크리스트는 단계별 탭으로 이동 — 개요탭에서 제거
                   renderNoteWidget(room);
                   renderCalcWidget(room);
-                  renderFreeTableWidget(room);
+                  wr2RemoveFreeCompareWidget();
                 }
 
                 // ── 지도 캡처 위젯 ──────────────────────────────────
@@ -5636,56 +5606,61 @@ var _safeLocalSet = function(key, value) {
                   const min=wr2SummaryMoneyWon(item.minprice||d['최저가']||d['최저매각가격']||d['최저매각가']||0,false,app)||wr2SummaryMoneyWon(d['최저가_만원']||n.최저가_만원||0,true,app);
                   const areaM2=wr2SummaryAreaM2(item), areaPy=areaM2?areaM2/3.305785:0;
                   let occ=null; try{ occ=window._getSavedOccupancySnapshot?window._getSavedOccupancySnapshot(item,d):null; }catch(e){}
-                  return {id:String(item.id||''), item, title, address, caseNo:d['사건번호']||d['경매번호']||item.caseNo||'', objectNo:d['물건번호']||item.objectNo||'', biddate:d['매각기일']||item.biddate||item.bidDate||'', appraisalWon:app, minWon:min, areaM2, areaPy, depositWon:occ&&occ.leaseDepositWon?occ.leaseDepositWon:wr2SummaryMoneyWon(d['보증금']||d['임대보증금']||d['기보증금_만원']||0,true,0), rentWon:occ&&occ.monthlyRentWon?occ.monthlyRentWon:wr2SummaryMoneyWon(d['월세']||d['월세_만원']||0,true,0), url:d['상세URL']||d['url']||item.url||''};
-                }
-                function wr2LinkedIdOf(x){
-                  if (x == null) return '';
-                  if (typeof x === 'string' || typeof x === 'number') return String(x).trim();
-                  if (typeof x === 'object') return String(x.savedId || x.linkedSavedId || x.itemId || x.id || '').trim();
-                  return '';
+                  return {id:String(item.id||''), item, title, address, caseNo:d['사건번호']||d['경매번호']||item.caseNo||'', objectNo:d['물건번호']||item.objectNo||'', biddate:d['매각기일']||item.biddate||item.bidDate||'', appraisalWon:app, minWon:min, areaM2, areaPy, depositWon:occ&&occ.leaseDepositWon?occ.leaseDepositWon:wr2SummaryMoneyWon(d['보증금']||d['임대보증금']||d['기보증금_만원']||0,true,0), rentWon:occ&&occ.monthlyRentWon?occ.monthlyRentWon:wr2SummaryMoneyWon(d['월세']||d['월세_만원']||0,true,0), url:d['상세URL']||d['옥션원URL']||d['온비드URL']||d['url']||item.url||''};
                 }
                 function wr2NormalizeRoomLinkedItems(room){
                   if(!room)return [];
-                  const metaArr=[], idArr=[], seen=new Set();
+                  const arr=[], seen=new Set();
+                  function readId(x){
+                    if(x==null) return '';
+                    if(typeof x==='string' || typeof x==='number') return String(x).trim();
+                    if(typeof x==='object') return String(x.savedId||x.linkedSavedId||x.itemId||x.id||'').trim();
+                    return '';
+                  }
                   function add(id,meta){
                     id=String(id||'').trim();
                     if(!id||seen.has(id))return;
                     seen.add(id);
-                    idArr.push(id);
-                    metaArr.push(Object.assign({savedId:id,linkedAt:Date.now()},meta||{}));
+                    arr.push(Object.assign({savedId:id,linkedAt:Date.now()},meta||{}));
                   }
-                  if(room.linkedSavedId)add(room.linkedSavedId,{primary:true});
-                  (room.linkedSavedIds||[]).forEach(function(id){ add(id,{}); });
-                  (room.linkedItems||[]).forEach(function(x){ add(wr2LinkedIdOf(x), (x&&typeof x==='object')?x:{}); });
-                  // 중요: 저장 포맷은 문자열 ID 배열로 유지한다. 객체 배열로 바꾸면
-                  // 물건리스트/파이프라인/레거시 작업룸의 indexOf/map(String) 연결 판정이 깨진다.
-                  // auctionId/listingId는 사건번호/매물번호 성격이라 연결 ID로 승격하지 않는다.
-                  room.linkedItems=idArr;
-                  room.linkedSavedId=idArr[0]||'';
-                  return metaArr;
+                  add(room.linkedSavedId,{primary:true});
+                  add(room.auctionId,{});
+                  add(room.listingId,{});
+                  (room.linkedSavedIds||[]).forEach(function(id){add(id,{});});
+                  (room.linkedItems||[]).forEach(function(x){add(readId(x), (x&&typeof x==='object')?x:{});});
+                  // 호환성 유지: linkedItems는 기존 코드들이 기대하는 문자열 ID 배열로 보관한다.
+                  room.linkedItems = arr.map(function(x){return String(x.savedId||'');}).filter(Boolean);
+                  if(!room.linkedSavedId&&arr[0])room.linkedSavedId=arr[0].savedId;
+                  return arr;
                 }
                 function wr2ResolveLinkedSavedItems(room, sv, plLinkedMap){
                   sv=Array.isArray(sv)?sv:[]; const byId=new Map(); sv.forEach(it=>{if(it&&it.id)byId.set(String(it.id),it);}); const out=[], seen=new Set();
                   wr2NormalizeRoomLinkedItems(room).forEach(function(link){ let id=String((link&&(link.savedId||link.linkedSavedId||link.itemId||link.id))||'').trim(); if(!id)return; let resolved=byId.get(id); if(!resolved&&plLinkedMap&&plLinkedMap[id])resolved=byId.get(String(plLinkedMap[id])); if(resolved&&resolved.id&&!seen.has(String(resolved.id))){seen.add(String(resolved.id)); out.push(resolved);} });
                   return out;
                 }
-                function wr2SummaryLinkToolbar(room, count){
-                  const rid = wr2SummaryJs(room && room.id || '');
-                  const label = count > 0 ? '＋ 물건 추가 연결' : '＋ 물건 연결';
-                  return '<div class="wr2-link-toolbar" style="display:flex;align-items:center;justify-content:flex-end;gap:8px;margin:0 0 10px 0;">'
-                    + '<button type="button" class="wr2-mini-btn primary" onclick="event.stopPropagation();window.wr2OpenSourceRelink && window.wr2OpenSourceRelink(\''+rid+'\')">'+label+'</button>'
+
+                function wr2BuildLinkedSummaryActionBar(room){
+                  const rid=wr2SummaryJs(room&&room.id||'');
+                  return '<div class="wr2-linked-actions" style="display:flex;justify-content:flex-end;gap:6px;margin:0 0 8px;">'
+                    + '<button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();wr2ShowLinkModal()">＋ 물건 연결</button>'
                     + '</div>';
                 }
-                function wr2BuildLinkedItemCard(seed, idx, roomId){
-                  const sid=String(seed.id||''), safeId=sid.replace(/[^a-zA-Z0-9_-]/g,'_');
-                  const dday=seed.biddate&&typeof getDDayLabel==='function'?getDDayLabel(seed.biddate):'';
-                  const perPy=seed.minWon&&seed.areaPy?' · @'+Math.round(seed.minWon/seed.areaPy/10000).toLocaleString('ko-KR')+'만/평':'';
-                  return `<div class="wr2-linked-item" style="border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.035);border-radius:12px;padding:10px;margin-top:8px;">
-                    <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;"><div style="min-width:0;"><div style="font-weight:900;color:var(--tx);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${idx+1}. ${wr2SummaryEsc(seed.title)}</div><div style="font-size:11px;color:var(--mu);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${wr2SummaryEsc(seed.address||'-')}</div></div><button class="wr2-small-btn" onclick="wr2UnlinkSaved('${wr2SummaryJs(roomId)}','${wr2SummaryJs(sid)}')">해제</button></div>
-                    <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:8px;font-size:11px;"><div><span style="color:var(--mu);">감정가</span><br><b>${wr2SummaryFormatWon(seed.appraisalWon)}</b></div><div><span style="color:var(--mu);">최저가</span><br><b style="color:var(--ac);">${wr2SummaryFormatWon(seed.minWon)}</b></div><div><span style="color:var(--mu);">면적</span><br><b>${seed.areaM2?seed.areaM2.toFixed(2)+'㎡ / '+seed.areaPy.toFixed(1)+'평':'-'}</b></div><div><span style="color:var(--mu);">기일</span><br><b>${wr2SummaryEsc(seed.biddate||'-')} ${dday?'<span style="color:var(--ac);">'+wr2SummaryEsc(dday)+'</span>':''}</b></div></div>
-                    <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:6px;margin-top:8px;align-items:center;"><input id="wr2LinkedBid_${safeId}" class="wr2-input" value="${wr2SummaryEsc(seed.biddate||'')}" placeholder="매각기일"><input id="wr2LinkedMin_${safeId}" class="wr2-input" value="${wr2SummaryEsc(seed.minWon?Math.round(seed.minWon).toLocaleString('ko-KR'):'')}" placeholder="최저가"><button class="wr2-small-btn" onclick="wr2LinkedItemSave('${wr2SummaryJs(roomId)}','${wr2SummaryJs(sid)}')">저장</button></div>
-                    <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;"><button class="wr2-small-btn" onclick="wr2CalcLoadLinkedItem('${wr2SummaryJs(roomId)}','${wr2SummaryJs(sid)}')">이 물건 계산</button><button class="wr2-small-btn" onclick="openPopup('${wr2SummaryJs(sid)}')">원본 열기</button>${seed.url?`<button class="wr2-small-btn" onclick="window.open('${wr2SummaryJs(seed.url)}','_blank')">상세URL</button>`:''}<span style="margin-left:auto;color:var(--mu);font-size:10px;">${perPy}</span></div>
-                  </div>`;
+                function wr2LinkedVal(seed, key){
+                  if(!seed) return '-';
+                  if(key==='title') return wr2SummaryEsc(seed.title||'-');
+                  if(key==='caseNo') return wr2SummaryEsc(seed.caseNo || (seed.objectNo ? '물건 '+seed.objectNo : '-') || '-');
+                  if(key==='address') return wr2SummaryEsc(seed.address||'-');
+                  if(key==='area') return seed.areaM2 ? wr2SummaryEsc(seed.areaM2.toFixed(2)+'㎡ / '+seed.areaPy.toFixed(1)+'평') : '-';
+                  if(key==='appraisal') return wr2SummaryFormatWon(seed.appraisalWon);
+                  if(key==='min') return '<b style="color:var(--ac);">'+wr2SummaryFormatWon(seed.minWon)+'</b>';
+                  if(key==='biddate'){
+                    const dday=seed.biddate&&typeof getDDayLabel==='function'?getDDayLabel(seed.biddate):'';
+                    return wr2SummaryEsc(seed.biddate||'-')+(dday?' <span style="color:var(--ac);font-weight:800;">'+wr2SummaryEsc(dday)+'</span>':'');
+                  }
+                  if(key==='deposit') return wr2SummaryFormatWon(seed.depositWon);
+                  if(key==='rent') return wr2SummaryFormatWon(seed.rentWon);
+                  if(key==='perPy') return (seed.minWon&&seed.areaPy)?('@'+Math.round(seed.minWon/seed.areaPy/10000).toLocaleString('ko-KR')+'만/평'):'-';
+                  return '-';
                 }
                 function wr2BuildMultiLinkedSummaryHtml(room, items){
                   const seeds=(items||[]).map(wr2SummarySeed).filter(Boolean);
@@ -5696,63 +5671,80 @@ var _safeLocalSet = function(key, value) {
                   const totalDeposit=seeds.reduce((a,s)=>a+(s.depositWon||0),0);
                   const totalRent=seeds.reduce((a,s)=>a+(s.rentWon||0),0);
                   const totalPerPy=(totalMin&&totalPy)?('@'+Math.round(totalMin/totalPy/10000).toLocaleString('ko-KR')+'만/평'):'-';
+                  const rentPerPy=(totalRent&&totalPy)?('@'+Math.round(totalRent/totalPy/10000).toLocaleString('ko-KR')+'만/평'):'-';
+                  const netPrice=totalMin-totalDeposit;
+                  const yieldRate=(netPrice>0&&totalRent>0)?(totalRent*12/netPrice*100):0;
                   const rid=wr2SummaryJs(room&&room.id||'');
-                  const cols=seeds.map(function(seed,idx){
+                  const caseNos=seeds.map(function(seed){return seed.caseNo || (seed.objectNo ? '물건 '+seed.objectNo : '');}).filter(Boolean);
+                  const dates=Array.from(new Set(seeds.map(function(seed){return String(seed.biddate||'').trim();}).filter(Boolean)));
+                  const addrText=seeds.length>1
+                    ? ((seeds[0]&&seeds[0].address?seeds[0].address:'-')+(seeds.length>1?' 외 '+(seeds.length-1)+'개':''))
+                    : (seeds[0]&&seeds[0].address||'-');
+                  const dateText=dates.length===1?dates[0]:(dates.length>1?'물건별 상이':'-');
+                  function infoRow(label,value,opts){
+                    const o=opts||{};
+                    return '<div class="wr2-info-row"><span class="wr2-info-lbl">'+wr2SummaryEsc(label)+'</span><span class="wr2-info-val"'+(o.style?' style="'+o.style+'"':'')+'>'+String(value||'-')+'</span></div>';
+                  }
+                  const originalButtons=seeds.map(function(seed,idx){
                     const sid=wr2SummaryJs(seed.id||'');
-                    const title=wr2SummaryEsc((idx+1)+'. '+(seed.title||'경매 물건'));
-                    const url=seed.url?String(seed.url).replace(/'/g,"\'"):'';
-                    return '<th class="wr2-ml-col"><div class="wr2-ml-head-title">'+title+'</div><div class="wr2-ml-head-actions">'
-                      + '<button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();wr2CalcLoadLinkedItem(\''+rid+'\',\''+sid+'\')">이 물건 계산</button>'
-                      + '<button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();openPopup(\''+sid+'\')">원본 보기</button>'
-                      + (url?'<button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();window.open(\''+url+'\',\'_blank\')">상세URL</button>':'')
-                      + '<button type="button" class="wr2-mini-btn danger" onclick="event.stopPropagation();wr2UnlinkSaved(\''+rid+'\',\''+sid+'\')">연결 해제</button>'
-                      + '</div></th>';
+                    const ttl=wr2SummaryEsc('물건'+(idx+1));
+                    return '<span style="display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end;">'
+                      + '<button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();wr2CalcLoadLinkedItem(&quot;'+rid+'&quot;,&quot;'+sid+'&quot;)">'+ttl+' 계산</button>'
+                      + '<button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();openPopup(&quot;'+sid+'&quot;)">원본 보기</button>'
+                      + (seed.url?'<a class="wr2-mini-btn" href="'+wr2SummaryEsc(seed.url)+'" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">상세URL</a>':'')
+                      + '<button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();wr2UnlinkSaved(&quot;'+rid+'&quot;,&quot;'+sid+'&quot;)">연결 해제</button>'
+                      + '</span>';
                   }).join('');
-                  const totalHead='<th class="wr2-ml-total"><div class="wr2-ml-head-title">합산</div><div class="wr2-ml-head-actions"><button type="button" class="wr2-mini-btn primary" onclick="event.stopPropagation();wr2CalcLoadLinkedTotal(\''+rid+'\')">합산 계산</button></div></th>';
-                  function val(seed,key){
-                    if(!seed) return '-';
-                    if(key==='caseNo') return wr2SummaryEsc(seed.caseNo || (seed.objectNo ? '물건 '+seed.objectNo : '-') || '-');
-                    if(key==='address') return wr2SummaryEsc(seed.address||'-');
-                    if(key==='area') return seed.areaM2 ? wr2SummaryEsc(seed.areaM2.toFixed(2)+'㎡ / '+seed.areaPy.toFixed(1)+'평') : '-';
-                    if(key==='appraisal') return wr2SummaryFormatWon(seed.appraisalWon);
-                    if(key==='min') return '<b class="wr2-ml-blue">'+wr2SummaryFormatWon(seed.minWon)+'</b>';
-                    if(key==='biddate'){
-                      const dday=seed.biddate&&typeof getDDayLabel==='function'?getDDayLabel(seed.biddate):'';
-                      return wr2SummaryEsc(seed.biddate||'-')+(dday?' <span class="wr2-ml-dday">'+wr2SummaryEsc(dday)+'</span>':'');
-                    }
-                    if(key==='deposit') return wr2SummaryFormatWon(seed.depositWon);
-                    if(key==='rent') return wr2SummaryFormatWon(seed.rentWon);
-                    if(key==='perPy') return (seed.minWon&&seed.areaPy)?('@'+Math.round(seed.minWon/seed.areaPy/10000).toLocaleString('ko-KR')+'만/평'):'-';
-                    return '-';
+                  const itemList=seeds.map(function(seed,idx){
+                    const sid=wr2SummaryJs(seed.id||'');
+                    return '<div class="wr2-linked-item-compact">'
+                      + '<div class="wr2-lic-main"><b>'+wr2SummaryEsc((idx+1)+'. '+(seed.title||'경매 물건'))+'</b><span>'+wr2SummaryEsc(seed.address||'-')+'</span></div>'
+                      + '<div class="wr2-lic-meta"><span>'+wr2SummaryFormatWon(seed.minWon)+'</span><span>'+(seed.areaM2?wr2SummaryEsc(seed.areaM2.toFixed(2)+'㎡ / '+seed.areaPy.toFixed(1)+'평'):'-')+'</span></div>'
+                      + '<div class="wr2-lic-actions"><button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();wr2CalcLoadLinkedItem(&quot;'+rid+'&quot;,&quot;'+sid+'&quot;)">계산</button><button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();openPopup(&quot;'+sid+'&quot;)">원본</button></div>'
+                      + '</div>';
+                  }).join('');
+                  let html='';
+                  html += '<div class="wr2-multi-linked-summary wr2-multi-linked-summary-plain">';
+                  html += '<div class="wr2-ml-top"><div><b>연결 경매 물건 '+seeds.length+'개</b><span> · 화면 구성은 기존 물건정보 형식을 유지하고, 금액만 합산 기준으로 표시합니다.</span></div><div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;"><button type="button" class="wr2-mini-btn primary" onclick="event.stopPropagation();wr2CalcLoadLinkedTotal(&quot;'+rid+'&quot;)">합산 계산</button><button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();wr2ShowLinkModal()">＋ 물건 추가</button></div></div>';
+                  html += infoRow('경매번호', caseNos.length?wr2SummaryEsc(caseNos.join(' / ')):'-');
+                  html += infoRow('소재지', wr2SummaryEsc(addrText));
+                  html += infoRow('전용면적', totalArea?(totalArea.toFixed(2)+'㎡ <span style="color:var(--ac);font-weight:600;">('+totalPy.toFixed(1)+'평)</span>'):'-');
+                  html += infoRow('감정가', wr2SummaryFormatWon(totalApp));
+                  html += infoRow('최저가', '<b style="color:var(--ac);">'+wr2SummaryFormatWon(totalMin)+'</b> <span class="wr2-auto-badge">합산</span>');
+                  html += infoRow('매각기일', wr2SummaryEsc(dateText));
+                  html += infoRow('원본 링크', originalButtons || '-', {style:'display:flex;justify-content:flex-end;gap:6px;flex-wrap:wrap;'});
+                  html += '<div style="margin-top:6px;padding:8px 12px;border:1px solid rgba(148,163,184,.18);background:rgba(148,163,184,.07);border-radius:12px;">'
+                    + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;color:#8fa3c5;font-size:10px;font-weight:700;letter-spacing:.2px;"><span>임차 정보</span><span style="opacity:.8;">합산</span></div>'
+                    + '<div style="display:flex;flex-direction:column;gap:5px;">'
+                    + '<div style="display:flex;justify-content:space-between;gap:8px;"><span style="color:#8fa3c5;font-size:11px;">임차 보증금 <span class="wr2-auto-badge">합산</span></span><b style="color:#c9d6f2;font-size:12px;font-weight:600;">'+wr2SummaryFormatWon(totalDeposit)+'</b></div>'
+                    + '<div style="display:flex;justify-content:space-between;gap:8px;"><span style="color:#8fa3c5;font-size:11px;">임차 월세 <span class="wr2-auto-badge">합산</span></span><b style="color:#c9d6f2;font-size:12px;font-weight:600;">'+wr2SummaryFormatWon(totalRent)+'</b></div>'
+                    + '<div style="display:flex;justify-content:space-between;gap:8px;"><span style="color:#8fa3c5;font-size:11px;">연결 물건</span><b style="color:#c9d6f2;font-size:12px;font-weight:600;">'+seeds.length+'개</b></div>'
+                    + '</div></div>';
+                  if(totalPy>0 || totalMin>0 || totalRent>0){
+                    html += '<div class="wr2-summary-calc-bar">';
+                    if(totalPerPy && totalPerPy!=='-') html += '<div class="wr2-scb-row"><span class="wr2-scb-lbl">💰 매매 평단가</span><b style="color:#4f8eff;">'+totalPerPy+'</b></div>';
+                    if(rentPerPy && rentPerPy!=='-') html += '<div class="wr2-scb-row"><span class="wr2-scb-lbl">💵 월세 평단가</span><b style="color:#4ade80;">'+rentPerPy+'</b></div>';
+                    if(yieldRate>0) html += '<div class="wr2-scb-row"><span class="wr2-scb-lbl">📈 수익률</span><b style="color:#ffd166;">'+yieldRate.toFixed(2)+'%</b></div>';
+                    html += '</div>';
                   }
-                  function row(label,key,totalHtml){
-                    return '<tr><td class="wr2-ml-label">'+label+'</td>'+seeds.map(function(seed){return '<td>'+val(seed,key)+'</td>';}).join('')+'<td class="wr2-ml-total-cell">'+(totalHtml||'-')+'</td></tr>';
-                  }
-                  return '<div class="wr2-multi-linked-summary">'
-                    + '<div class="wr2-ml-top"><div><b>연결 경매 물건 '+seeds.length+'개</b><span> · 물건별 정보와 합산 기준을 한 화면에서 확인합니다.</span></div><button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();wr2ShowLinkModal()">＋ 물건 추가</button></div>'
-                    + '<div class="wr2-ml-scroll"><table class="wr2-ml-table"><thead><tr><th class="wr2-ml-label">항목</th>'+cols+totalHead+'</tr></thead><tbody>'
-                    + row('경매번호','caseNo','-')
-                    + row('소재지','address','-')
-                    + row('전용면적','area', totalArea?wr2SummaryEsc(totalArea.toFixed(2)+'㎡ / '+totalPy.toFixed(1)+'평'):'-')
-                    + row('감정가','appraisal', wr2SummaryFormatWon(totalApp))
-                    + row('최저가','min', '<b class="wr2-ml-blue">'+wr2SummaryFormatWon(totalMin)+'</b>')
-                    + row('매각기일','biddate','-')
-                    + row('임차 보증금','deposit', wr2SummaryFormatWon(totalDeposit))
-                    + row('임차 월세','rent', wr2SummaryFormatWon(totalRent))
-                    + row('매매 평단가','perPy', totalPerPy)
-                    + '</tbody></table></div></div>';
+                  html += '<div class="wr2-linked-compact-list">'+itemList+'</div>';
+                  html += '</div>';
+                  return wr2BuildLinkedSummaryActionBar(room) + html;
                 }
+
                 window.wr2UnlinkSaved=function(roomId,savedId){
                   const room=(wr2State.rooms||[]).find(r=>String(r.id)===String(roomId)); if(!room)return;
                   const sid=String(savedId||'').trim();
                   wr2NormalizeRoomLinkedItems(room);
-                  room.linkedItems=(room.linkedItems||[]).map(wr2LinkedIdOf).filter(function(id){ return id && String(id)!==sid; });
+                  room.linkedItems=(room.linkedItems||[]).map(function(x){return String((x&&typeof x==='object')?(x.savedId||x.linkedSavedId||x.itemId||x.id):x||'').trim();}).filter(function(id){return id && id!==sid;});
                   if(String(room.linkedSavedId||'')===sid)room.linkedSavedId=room.linkedItems[0]||'';
-                  room.updatedAt=Date.now(); saveRooms(); try{ if(typeof window.__wr2FlushSaveRooms==='function') window.__wr2FlushSaveRooms(); }catch(e){} renderItemSummary(room);
+                  room.updatedAt=Date.now();
+                  saveRooms();
+                  renderItemSummary(room);
                   try{ if(typeof wr2Render==='function')wr2Render(); }catch(e){}
                   try{ if(typeof showToast==='function')showToast('연결 물건을 해제했습니다','ok'); }catch(e){}
                 };
-                window.wr2LinkedItemSave=function(roomId,savedId){ const safe=String(savedId||''), domId=safe.replace(/[^a-zA-Z0-9_-]/g,'_'); const bidEl=document.getElementById('wr2LinkedBid_'+domId), minEl=document.getElementById('wr2LinkedMin_'+domId); const sv=(typeof getSv==='function')?getSv():[]; const item=(sv||[]).find(s=>String(s&&s.id)===safe); if(!item)return; item.data=item.data||{}; if(bidEl){item.data['매각기일']=bidEl.value.trim(); item.biddate=bidEl.value.trim();} if(minEl){const won=wr2SummaryMoneyWon(minEl.value,false,item.data['감정가']||item.appraisal||0); if(won){item.data['최저가']=won; item.minprice=won;}} item.updatedAt=Date.now(); if(typeof setSv==='function')setSv(sv); const room=(wr2State.rooms||[]).find(r=>String(r.id)===String(roomId)); if(room){room.updatedAt=Date.now(); saveRooms(); try{ if(typeof window.__wr2FlushSaveRooms==='function') window.__wr2FlushSaveRooms(); }catch(e){} renderItemSummary(room);} try{ if(typeof showToast==='function')showToast('연결 물건 정보를 저장했습니다','ok'); }catch(e){} };
+                window.wr2LinkedItemSave=function(roomId,savedId){ const safe=String(savedId||''), domId=safe.replace(/[^a-zA-Z0-9_-]/g,'_'); const bidEl=document.getElementById('wr2LinkedBid_'+domId), minEl=document.getElementById('wr2LinkedMin_'+domId); const sv=(typeof getSv==='function')?getSv():[]; const item=(sv||[]).find(s=>String(s&&s.id)===safe); if(!item)return; item.data=item.data||{}; if(bidEl){item.data['매각기일']=bidEl.value.trim(); item.biddate=bidEl.value.trim();} if(minEl){const won=wr2SummaryMoneyWon(minEl.value,false,item.data['감정가']||item.appraisal||0); if(won){item.data['최저가']=won; item.minprice=won;}} item.updatedAt=Date.now(); if(typeof setSv==='function')setSv(sv); const room=(wr2State.rooms||[]).find(r=>String(r.id)===String(roomId)); if(room){room.updatedAt=Date.now(); saveRooms(); renderItemSummary(room);} try{ if(typeof showToast==='function')showToast('연결 물건 정보를 저장했습니다','ok'); }catch(e){} };
 
                 function renderItemSummary(room) {
                   const el = document.getElementById('wr2ItemSummary');
@@ -5766,7 +5758,7 @@ var _safeLocalSet = function(key, value) {
                   if (openBtn) openBtn.style.display = item ? '' : 'none';
                   if (openBtn && item) { openBtn.onclick = () => { if (typeof openPopup === 'function') openPopup(item.id); }; }
 
-                  if (linkedItemsAll.length >= 1) {
+                  if (linkedItemsAll.length > 1) {
                     try { var _stMulti = window.wr2SummaryGetEditState ? window.wr2SummaryGetEditState() : null; if (_stMulti && String(_stMulti.roomId || '') === String(room.id || '')) _stMulti.activeKey = ''; } catch (e) {}
                     el.innerHTML = wr2BuildMultiLinkedSummaryHtml(room, linkedItemsAll);
                     return;
@@ -5780,7 +5772,7 @@ var _safeLocalSet = function(key, value) {
                     } catch (e) {}
                     const _niBiddate = String(room.biddate || '').trim();
                     const _niBidHtml = `<div class="wr2-info-row"><span class="wr2-info-lbl">매각기일</span><span class="wr2-info-val">${_niBiddate || '<span style="color:var(--mu);">미입력</span>'}</span></div>`;
-                    el.innerHTML = _niBidHtml + '<div class="wr2-no-item">연결된 원본 물건이 없습니다.<br><button type="button" class="wr2-mini-btn primary" style="margin-top:8px;" onclick="event.stopPropagation();window.wr2OpenSourceRelink && window.wr2OpenSourceRelink()">＋ 물건 연결</button></div>';
+                    el.innerHTML = wr2BuildLinkedSummaryActionBar(room) + _niBidHtml + '<div class="wr2-no-item">연결된 원본 물건이 없습니다. [＋ 물건 연결]로 저장목록 경매 물건을 붙여 주세요.</div>';
                     return;
                   }
 
@@ -5972,8 +5964,7 @@ var _safeLocalSet = function(key, value) {
                   }
 
                   if (_sameRoomDraft && _summaryEditState.activeKey) _summaryEditState.suppressBlurUntil = Date.now() + 260;
-                  el.innerHTML = (typeof wr2SummaryLinkToolbar === 'function' ? wr2SummaryLinkToolbar(room, linkedItemsAll.length || (item ? 1 : 0)) : '')
-                    + (html || '<div class="wr2-no-item">연결된 물건 정보가 없습니다.<br><button type="button" class="wr2-mini-btn primary" style="margin-top:8px;" onclick="event.stopPropagation();window.wr2OpenSourceRelink && window.wr2OpenSourceRelink()">＋ 물건 연결</button></div>');
+                  el.innerHTML = wr2BuildLinkedSummaryActionBar(room) + (html || '<div class="wr2-no-item">연결된 물건 정보가 없습니다.</div>');
                   if (_sameRoomDraft && _summaryEditState.activeKey) {
                     setTimeout(function() {
                       var targetId = (_summaryEditState.activeKey === 'biddate') ? 'wr2SummaryBidInput' : 'wr2SummaryMinInput';
@@ -6224,282 +6215,14 @@ var _safeLocalSet = function(key, value) {
                   if (window._mbRefreshRoomSections) window._mbRefreshRoomSections(room.id);
                 };
 
-                // ── 자유 비교표 위젯 v4: 표 복수 + 열=항목 + 행=데이터 ──────────────────────────
-                // 자동포맷 컬럼 정의 (열 이름 기준)
-                var _FT_COL_FMTS = {
-                  '매매가':    function(v){ var n=parseFloat(String(v||'').replace(/,/g,'')); if(isNaN(n)||!v) return v||''; return n>=10000?(n/10000).toFixed(1)+'억':n+'만'; },
-                  '평당매매가': function(v){ var n=parseFloat(String(v||'').replace(/,/g,'')); return (!v||isNaN(n))?v||'':Math.round(n).toLocaleString()+'만/평'; },
-                  '평당월세':  function(v){ var n=parseFloat(String(v||'').replace(/,/g,'')); return (!v||isNaN(n))?v||'':n.toFixed(1)+'만/평'; },
-                  '수익률':    function(v){ var n=parseFloat(v); return (!v||isNaN(n))?v||'':n.toFixed(2)+'%'; },
-                  '면적':      function(v){ var n=parseFloat(v); return (!v||isNaN(n))?v||'':Math.round(n/3.3058)+'평('+n+'㎡)'; },
-                  '보증금':    function(v){ var n=parseFloat(String(v||'').replace(/,/g,'')); return (!v||isNaN(n))?v||'':n>=10000?(n/10000).toFixed(1)+'억':n+'만'; },
-                  '월세':      function(v){ var n=parseFloat(String(v||'').replace(/,/g,'')); return (!v||isNaN(n))?v||'':n+'만'; },
-                };
-                var _FT_DEFAULT_COLS = ['층','평단가','방향','월세','보증금','메모'];
-
-                // 표 하나의 기본값
-                function _ftMakeTable(title) {
-                  return {
-                    title: title || '',
-                    cols: _FT_DEFAULT_COLS.slice(),
-                    rows: [
-                      ['1층','','남향','150만','1000만',''],
-                      ['2층','','동향','180만','1000만',''],
-                    ]
-                  };
-                }
-
-                window._ftMakeTable = _ftMakeTable;
-                // room._freeTables = 표 배열 (legacy) / 현재는 wr2_sections.free_table 사용
-                function _ftGetAll(room) {
-                  if (window._wrGetFreeTables) return window._wrGetFreeTables(room);
-                  if (!room._freeTables) room._freeTables = [_ftMakeTable('')];
-                  return room._freeTables;
-                }
-                window._ftGetAll = _ftGetAll;
-
-                function renderFreeTableWidget(room) {
-                  var wrap = document.getElementById('wr2TableWrap'); if (wrap) { var host = wrap.closest('.wr2-section-card,.wr2-card,.card,.wr2-widget'); if (host) host.style.display='none'; else wrap.style.display='none'; } return;
-                  var wrap = document.getElementById('wr2TableWrap'); if (!wrap) return;
-                  var tables = _ftGetAll(room);
-
-                  function fmtCell(colName, val) {
-                    var fn = _FT_COL_FMTS[colName];
-                    return (fn && val !== '' && val !== undefined) ? fn(val) : (val || '');
-                  }
-
-                  var html = '';
-                  tables.forEach(function(t, ti) {
-                    var titleBar = tables.length > 1
-                      ? '<div class="wr2-ft-title-bar"><input class="wr2-ft-title-inp" value="' + (t.title||'').replace(/"/g,'&quot;') + '" placeholder="표 제목 (선택)" onblur="wr2FtSetTitle(' + ti + ',this.value)" onkeydown=\"if(event.key===\'Enter\')this.blur()\"><button onclick="wr2FtDelTable(' + ti + ')" class="wr2-ft-del-tbl-btn" title="이 표 삭제">🗑</button></div>'
-                      : (t.title ? '<div class="wr2-ft-title-bar"><input class="wr2-ft-title-inp" value="' + t.title.replace(/"/g,'&quot;') + '" placeholder="표 제목" onblur="wr2FtSetTitle(' + ti + ',this.value)" onkeydown=\"if(event.key===\'Enter\')this.blur()\"><button onclick="wr2FtDelTable(' + ti + ')" class="wr2-ft-del-tbl-btn" title="이 표 삭제">🗑</button></div>' : '');
-
-                    // ★ 열 너비 상태 (테이블별, 열별)
-                    if (!t.colWidths) t.colWidths = t.cols.map(function() { return 110; });
-                    while (t.colWidths.length < t.cols.length) t.colWidths.push(110);
-
-                    var thead = '<thead><tr><th style="width:22px;min-width:22px;background:var(--s2);"></th>' +
-                      t.cols.map(function(c, ci) {
-                        var hasAuto = !!_FT_COL_FMTS[c];
-                        var colW = (t.colWidths && t.colWidths[ci]) ? t.colWidths[ci] : 110;
-                        return '<th style="min-width:60px;width:' + colW + 'px;position:relative;"><div class="wr2-ft-th"><input class="wr2-ft-head-inp" value="' + c.replace(/"/g,'&quot;') + '" onblur="wr2FtSetCol(' + ti + ',' + ci + ',this.value)" onkeydown=\"if(event.key===\'Enter\')this.blur()\" placeholder="열 이름">' + (hasAuto ? '<span class="wr2-ft-auto-badge">자동</span>' : '') + '<button onclick="wr2FtDelCol(' + ti + ',' + ci + ')" class="wr2-ft-del-btn" title="열 삭제">✕</button></div><div class="wr2-ft-col-resizer" onmousedown="wr2FtColResizeStart(event,' + ti + ',' + ci + ')" title="드래그하여 열 너비 조절"></div></th>';
-                      }).join('') + '</tr></thead>';
-
-                    var tbody = '<tbody>' +
-                      t.rows.map(function(row, ri) {
-                        var cells = t.cols.map(function(colName, ci) {
-                          var raw = (row[ci] !== undefined && row[ci] !== null) ? String(row[ci]) : '';
-                          var disp = fmtCell(colName, raw);
-                          var isAuto = !!_FT_COL_FMTS[colName] && raw !== '';
-                          var displayVal = (isAuto ? disp : raw).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-                          // ★ [FIX] oninput을 인라인 attribute 대신 data-autogrow로 처리 (이스케이프 충돌 방지)
-                          return '<td style="padding:0;vertical-align:top;"><textarea class="wr2-ft-cell-inp' + (isAuto ? ' wr2-ft-auto' : '') + '" data-raw="' + raw.replace(/"/g,'&quot;') + '" data-ti="' + ti + '" data-ri="' + ri + '" data-ci="' + ci + '" data-autogrow="1" onfocus="wr2FtCellFocus(this)" onblur="wr2FtCellBlur(this)" onkeydown="wr2FtCellKey(event,this,' + ti + ',' + ri + ',' + ci + ')" rows="1" style="min-width:80px;width:100%;resize:none;overflow:hidden;box-sizing:border-box;">' + displayVal + '</textarea></td>';
-                        }).join('');
-                        return '<tr><td class="wr2-ft-row-num"><button onclick="wr2FtDelRow(' + ti + ',' + ri + ')" class="wr2-ft-del-btn" title="행 삭제">✕</button></td>' + cells + '</tr>';
-                      }).join('') + '</tbody>';
-
-                    html += '<div class="wr2-ft-block" data-ti="' + ti + '">' + titleBar + '<div class="wr2-ft-scroll-wrap" style="overflow:auto;cursor:grab;user-select:none;" onmousedown="wr2FtDragStart(event,this)"><table class="wr2-free-table">' + thead + tbody + '</table></div><button onclick="wr2FtAddRow(' + ti + ')" class="wr2-ft-add-row-btn">＋ 행</button><button onclick="wr2FtAddCol(' + ti + ')" class="wr2-ft-add-col-btn">＋ 열</button></div>';
-                  });
-
-                  wrap.innerHTML = html;
-
-                  // ★ textarea 초기 높이 자동 조정 + autogrow 이벤트 위임
-                  wrap.querySelectorAll('.wr2-ft-cell-inp').forEach(function(ta) {
-                    ta.style.height = 'auto';
-                    ta.style.height = ta.scrollHeight + 'px';
-                    // oninput 직접 바인딩 (인라인 attribute 이스케이프 불필요)
-                    ta.oninput = function() {
-                      this.style.height = 'auto';
-                      this.style.height = this.scrollHeight + 'px';
-                    };
-                  });
-                }
-
-                // ★ 열 너비 드래그 리사이즈
-                window.wr2FtColResizeStart = function(e, ti, ci) {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  var startX = e.clientX;
-                  var room = getActiveRoom(); if (!room) return;
-                  var tables = _ftGetAll(room); if (!tables[ti]) return;
-                  var t = tables[ti];
-                  if (!t.colWidths) t.colWidths = t.cols.map(function() { return 110; });
-                  var startW = t.colWidths[ci] || 110;
-
-                  // 현재 th 강조
-                  var block = document.querySelector('.wr2-ft-block[data-ti="' + ti + '"]');
-                  var ths = block ? block.querySelectorAll('thead th') : [];
-                  // th[0]은 번호칸이므로 ci+1
-                  var th = ths[ci + 1];
-                  if (th) th.style.outline = '2px solid var(--ac)';
-
-                  function onMove(ev) {
-                    var dx = ev.clientX - startX;
-                    var newW = Math.max(60, startW + dx);
-                    t.colWidths[ci] = newW;
-                    if (th) th.style.width = newW + 'px';
-                    // textarea 너비도 갱신
-                    if (block) {
-                      var cells = block.querySelectorAll('tbody tr td:nth-child(' + (ci + 2) + ') textarea');
-                      cells.forEach(function(ta) { ta.style.minWidth = newW + 'px'; });
-                    }
-                  }
-                  function onUp() {
-                    if (th) th.style.outline = '';
-                    if (window._wrPersistFreeTables) window._wrPersistFreeTables(room.id, tables);
-                    document.removeEventListener('mousemove', onMove);
-                    document.removeEventListener('mouseup', onUp);
-                  }
-                  document.addEventListener('mousemove', onMove);
-                  document.addEventListener('mouseup', onUp);
-                };
-
-                // ★ 드래그 스크롤
-                window.wr2FtDragStart = function(e, el) {
-                  if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON') return;
-                  e.preventDefault();
-                  el.style.cursor = 'grabbing';
-                  var startX = e.pageX + el.scrollLeft;
-                  var startY = e.pageY + el.scrollTop;
-                  function onMove(ev) { el.scrollLeft = startX - ev.pageX; el.scrollTop = startY - ev.pageY; }
-                  function onUp() { el.style.cursor = 'grab'; document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); }
-                  document.addEventListener('mousemove', onMove);
-                  document.addEventListener('mouseup', onUp);
-                };
-
-                // ── 셀 포커스/블러 ──
-                window.wr2FtCellFocus = function(inp) {
-                  inp.value = inp.dataset.raw || '';
-                  inp.classList.remove('wr2-ft-auto');
-                  inp.style.height = 'auto';
-                  inp.style.height = inp.scrollHeight + 'px';
-                };
-                window.wr2FtCellBlur = function(inp) {
-                  var ti = parseInt(inp.dataset.ti), ri = parseInt(inp.dataset.ri), ci = parseInt(inp.dataset.ci);
-                  var val = inp.value;
-                  inp.dataset.raw = val;
-                  wr2FtSetCell(ti, ri, ci, val);
-                };
-                window.wr2FtCellKey = function(e, inp, ti, ri, ci) {
-                  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); inp.blur(); }
-                  if (e.key === 'Tab') {
-                    e.preventDefault();
-                    var room = getActiveRoom(); if (!room) return;
-                    var t = _ftGetAll(room)[ti]; if (!t) return;
-                    var total = t.rows.length * t.cols.length;
-                    var idx = ri * t.cols.length + ci + (e.shiftKey ? -1 : 1);
-                    idx = ((idx % total) + total) % total;
-                    // ★ [FIX] blur 전 값 먼저 저장 후 포커스 이동 (마지막 글자 복사 버그 수정)
-                    var val = inp.value;
-                    inp.dataset.raw = val;
-                    wr2FtSetCell(ti, ri, ci, val);
-                    var block = document.querySelector('.wr2-ft-block[data-ti="' + ti + '"]');
-                    if (block) {
-                      var inps = block.querySelectorAll('.wr2-ft-cell-inp');
-                      if (inps[idx]) {
-                        inp.blur();
-                        setTimeout(function() { if (inps[idx]) { inps[idx].focus(); inps[idx].select(); } }, 20);
-                      }
-                    }
-                  }
-                };
-
-                // ── CRUD 함수들 ──
-                window.wr2FtSetTitle = function(ti, val) {
-                  var room = getActiveRoom(); if (!room) return;
-                  var tables = _ftGetAll(room); if (!tables[ti]) return;
-                  tables[ti].title = val;
-                  if (window._wrPersistFreeTables) window._wrPersistFreeTables(room.id, tables);
-                };
-                window.wr2FtSetCol = function(ti, ci, val) {
-                  var room = getActiveRoom(); if (!room) return;
-                  var tables = _ftGetAll(room); if (!tables[ti]) return;
-                  tables[ti].cols[ci] = val;
-                  if (window._wrPersistFreeTables) window._wrPersistFreeTables(room.id, tables);
-                  renderFreeTableWidget(room);
-                };
-                window.wr2FtSetCell = function(ti, ri, ci, val) {
-                  var room = getActiveRoom(); if (!room) return;
-                  var t = _ftGetAll(room)[ti]; if (!t) return;
-                  if (!t.rows[ri]) return;
-                  t.rows[ri][ci] = val;
-                  if (window._wrPersistFreeTables) window._wrPersistFreeTables(room.id, _ftGetAll(room), { quiet: true });
-                  // 포맷 갱신
-                  var fn = _FT_COL_FMTS[t.cols[ci]];
-                  if (fn && val !== '') {
-                    var block = document.querySelector('.wr2-ft-block[data-ti="' + ti + '"]');
-                    if (block) {
-                      var inp = block.querySelector('[data-ri="' + ri + '"][data-ci="' + ci + '"]');
-                      if (inp) { inp.value = fn(val); inp.dataset.raw = val; inp.classList.add('wr2-ft-auto'); }
-                    }
-                  }
-                };
-                window.wr2FtAddRow = function(ti) {
-                  var room = getActiveRoom(); if (!room) return;
-                  var t = _ftGetAll(room)[ti]; if (!t) return;
-                  t.rows.push(Array(t.cols.length).fill(''));
-                  if (window._wrPersistFreeTables) window._wrPersistFreeTables(room.id, _ftGetAll(room));
-                  renderFreeTableWidget(room);
-                };
-                window.wr2FtAddCol = function(ti) {
-                  var room = getActiveRoom(); if (!room) return;
-                  var t = _ftGetAll(room)[ti]; if (!t) return;
-                  t.cols.push('새 열');
-                  t.rows.forEach(function(r){ r.push(''); });
-                  if (window._wrPersistFreeTables) window._wrPersistFreeTables(room.id, _ftGetAll(room));
-                  renderFreeTableWidget(room);
-                };
-                window.wr2FtDelRow = function(ti, ri) {
-                  var room = getActiveRoom(); if (!room) return;
-                  var t = _ftGetAll(room)[ti]; if (!t) return;
-                  t.rows.splice(ri, 1);
-                  if (window._wrPersistFreeTables) window._wrPersistFreeTables(room.id, _ftGetAll(room));
-                  renderFreeTableWidget(room);
-                };
-                window.wr2FtDelCol = function(ti, ci) {
-                  var room = getActiveRoom(); if (!room) return;
-                  var t = _ftGetAll(room)[ti]; if (!t) return;
-                  t.cols.splice(ci, 1);
-                  t.rows.forEach(function(r){ r.splice(ci, 1); });
-                  if (window._wrPersistFreeTables) window._wrPersistFreeTables(room.id, _ftGetAll(room));
-                  renderFreeTableWidget(room);
-                };
-                window.wr2FtDelTable = function(ti) {
-                  var room = getActiveRoom(); if (!room) return;
-                  var tables = _ftGetAll(room);
-                  if (tables.length <= 1) { if (!confirm('마지막 표도 삭제할까요?')) return; }
-                  tables.splice(ti, 1);
-                  if (!tables.length) tables.push(_ftMakeTable(''));
-                  if (window._wrPersistFreeTables) window._wrPersistFreeTables(room.id, tables);
-                  renderFreeTableWidget(room);
-                };
-
-                // 헤더 버튼용 글로벌 함수 (index.html에서 호출)
-                window.wr2TableAddRow = function() {
-                  // 마지막 표에 행 추가
-                  var room = getActiveRoom(); if (!room) return;
-                  var tables = _ftGetAll(room);
-                  wr2FtAddRow(tables.length - 1);
-                };
-                window.wr2TableAddCol = function() {
-                  // 새 표 추가
-                  var room = getActiveRoom(); if (!room) return;
-                  var tables = _ftGetAll(room);
-                  tables.push(_ftMakeTable('표 ' + (tables.length + 1)));
-                  if (window._wrPersistFreeTables) window._wrPersistFreeTables(room.id, tables);
-                  renderFreeTableWidget(room);
-                };
-                window.wr2TableReset = function() {
-                  if (!confirm('모든 표를 초기화할까요?')) return;
-                  var room = getActiveRoom(); if (!room) return;
-                  if (window._wrPersistFreeTables) window._wrPersistFreeTables(room.id, [_ftMakeTable('')]);
-                  renderFreeTableWidget(room);
-                };
-                // 구버전 호환
-                window.wr2TableDelCol = function(ci) { wr2FtDelCol(0, ci); };
-                window.wr2TableDelRow = function(ri) { wr2FtDelRow(0, ri); };
-                window.wr2TableFocusNext = function(ri, ci, dir) { wr2FtCellKey({key:'Tab',shiftKey:dir<0,preventDefault:function(){}}, null, 0, ri, ci); };
-
+                // Legacy table widget removed. Keep old global names as no-op compatibility hooks.
+                function renderFreeTableWidget(room) { if (typeof wr2RemoveFreeCompareWidget === 'function') wr2RemoveFreeCompareWidget(); }
+                window._ftMakeTable = function(){ return { title:'', cols:[], rows:[] }; };
+                window._ftGetAll = function(){ return []; };
+                window.wr2FtSetTitle = window.wr2FtSetCol = window.wr2FtSetCell = function(){};
+                window.wr2FtAddRow = window.wr2FtAddCol = window.wr2FtDelRow = window.wr2FtDelCol = window.wr2FtDelTable = function(){};
+                window.wr2TableAddRow = window.wr2TableAddCol = window.wr2TableReset = function(){ if (typeof wr2RemoveFreeCompareWidget === 'function') wr2RemoveFreeCompareWidget(); };
+                window.wr2TableDelCol = window.wr2TableDelRow = function(){};
 
 window.wr2SummaryCancelEdit = function() {
                   const room = getActiveRoom(); if (!room) return;
@@ -6507,10 +6230,15 @@ window.wr2SummaryCancelEdit = function() {
                   renderItemSummary(room);
                 };
 
+                function wr2IsAuctionSavedItem(s){
+                  const d=(s&&s.data)||{};
+                  return !!(s && (s.mode==='auction' || s.type==='auction' || d['경매번호'] || d['사건번호'] || d['물건번호'] || d['매각기일'] || d['최저가'] || d['최저매각가격'] || d['감정가']));
+                }
+
                 // ── 저장목록 연결 모달 ──────────────────────────────
                 window.wr2ShowLinkModal = function () {
                   if (document.getElementById('wr2LinkModal')) return;
-                  const sv = ((typeof getSv === 'function') ? getSv() : []).filter(s => (s.mode || '') === 'auction');
+                  const sv = ((typeof getSv === 'function') ? getSv() : []).filter(wr2IsAuctionSavedItem);
                   const modal = document.createElement('div');
                   modal.id = 'wr2LinkModal';
                   modal.innerHTML = `
@@ -6528,7 +6256,7 @@ window.wr2SummaryCancelEdit = function() {
                 };
 
                 window.wr2FilterLmList = function (q) {
-                  const sv = ((typeof getSv === 'function') ? getSv() : []).filter(s => (s.mode || '') === 'auction');
+                  const sv = ((typeof getSv === 'function') ? getSv() : []).filter(wr2IsAuctionSavedItem);
                   wr2RenderLmList(sv, q);
                 };
                 function wr2RenderLmList(sv, q) {
@@ -6557,8 +6285,7 @@ window.wr2SummaryCancelEdit = function() {
                   if (!item) return;
                   const sid = String(savedId);
                   if (typeof wr2NormalizeRoomLinkedItems === 'function') wr2NormalizeRoomLinkedItems(room);
-                  room.linkedItems = Array.isArray(room.linkedItems) ? room.linkedItems.map(wr2LinkedIdOf).filter(Boolean) : [];
-                  const exists = (room.linkedItems || []).some(function(x){ return String(wr2LinkedIdOf(x)) === sid; });
+                  const exists = (room.linkedItems || []).some(function(x){ return String((x&&typeof x==='object')?(x.savedId||x.linkedSavedId||x.itemId||x.id):x||'') === sid; });
                   if (!exists) room.linkedItems.push(sid);
                   if (!room.linkedSavedId) room.linkedSavedId = sid;
                   const d = item.data || {};
@@ -6566,7 +6293,6 @@ window.wr2SummaryCancelEdit = function() {
                   if (!room.title || room.title === '새 작업룸') { room.title = item.title || d['소재지'] || ''; const titleEl = document.getElementById('wr2Title'); if (titleEl) titleEl.value = room.title; }
                   room.updatedAt = Date.now();
                   saveRooms();
-                  try { if (typeof window.__wr2FlushSaveRooms === 'function') window.__wr2FlushSaveRooms(); } catch(e) {}
                   renderItemSummary(room);
                   const searchInput = document.getElementById('wr2LinkSearch');
                   if (searchInput && typeof renderLinkResults === 'function') renderLinkResults(searchInput.value || '');
@@ -7402,12 +7128,9 @@ window.wr2SummaryCancelEdit = function() {
                     .wcp-section + .wcp-section{margin-top:10px;}
                     .wcp-form{display:grid;gap:7px;}
                     .wcp-line{display:grid;grid-template-columns:112px minmax(0,1fr) 34px;gap:6px;align-items:center;min-width:0;}
-                    .wcp-line.rate{grid-template-columns:96px 74px minmax(92px,1fr) 24px;gap:5px;}
+                    .wcp-line.rate{grid-template-columns:112px 72px 24px minmax(0,1fr) 34px;}
                     .wcp-line.double{grid-template-columns:112px minmax(0,1fr) 34px 112px minmax(0,1fr) 34px;}
                     .wcp-line label{font-size:11px;color:#96a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-                    .wcp-rate-wrap{display:grid;grid-template-columns:minmax(0,1fr) 16px;gap:4px;align-items:center;min-width:0;}
-                    .wcp-rate-wrap .wcp-inp{text-align:right;}
-                    .wcp-rate-amount{min-width:0!important;font-size:11px!important;letter-spacing:-.035em!important;padding-left:5px!important;padding-right:5px!important;}
                     .wcp-inp{width:100%;min-width:0;border:1px solid rgba(255,255,255,.12);background:rgba(6,10,16,.78);border-radius:8px;color:#eef3fb;padding:7px 9px;font-size:12px;text-align:right;font-family:inherit;outline:none;min-height:32px;}
                     .wcp-inp::placeholder{color:#647084;}.wcp-inp:focus{border-color:#f97316;box-shadow:0 0 0 2px rgba(249,115,22,.13);}textarea.wcp-inp{text-align:left;min-height:70px;line-height:1.45;resize:vertical;}
                     .wcp-rate{color:#ffd166;font-weight:900;}.wcp-unit{font-size:10px;color:#8b97ad;white-space:nowrap;}.wcp-note{font-size:10px;color:#9aa6bd;line-height:1.35;min-height:14px;text-align:right;}.wcp-note.orange{color:#fb923c;font-weight:850;}.wcp-note.green{color:#4ade80;font-weight:850;}.wcp-note.blue{color:#60a5fa;font-weight:850;}
@@ -7428,42 +7151,184 @@ window.wr2SummaryCancelEdit = function() {
                   `;
                   document.head.appendChild(st);
                   st.textContent += `
-                    /* v7 UI polish: compact, no overlap, highlighted @price notes */
-                    .wr2-calc-pro-shell{max-width:1180px!important;font-size:12px!important;}
-                    .wcp-top{padding:6px 0 8px!important;margin-bottom:8px!important;}
-                    .wcp-title{font-size:17px!important;}
-                    .wcp-card{padding:10px!important;margin-bottom:8px!important;border-radius:12px!important;}
-                    .wcp-card h3{font-size:16px!important;}.wcp-card h4{font-size:12px!important;margin-bottom:6px!important;}
-                    .wcp-section{padding:9px!important;border-radius:10px!important;}
-                    .wcp-grid4{gap:8px!important;}.wcp-grid3{gap:8px!important;}.wcp-grid2{gap:8px!important;}
-                    .wcp-form{gap:6px!important;}
-                    .wcp-line{grid-template-columns:96px minmax(0,1fr) 30px!important;gap:5px!important;}
-                    .wcp-line.rate{grid-template-columns:86px 72px minmax(98px,1fr) 24px!important;gap:5px!important;}
-                    .wcp-rate-wrap{display:grid!important;grid-template-columns:minmax(0,1fr) 14px!important;gap:3px!important;align-items:center!important;min-width:0!important;}
-                    .wcp-rate-amount{min-width:98px!important;font-size:11px!important;letter-spacing:-.045em!important;padding-left:5px!important;padding-right:5px!important;}
-                    .wcp-line label{font-size:10.5px!important;}
-                    .wcp-inp{min-height:29px!important;padding:5px 7px!important;font-size:11.5px!important;}
-                    .wcp-out{min-height:29px!important;padding:5px 7px!important;font-size:11.5px!important;}
-                    .wcp-unit{font-size:10px!important;overflow:visible!important;text-overflow:clip!important;}
+                    /* v13 calculator UI: amount-safe widths + modest KPI emphasis */
+                    .wr2-calc-pro-shell{max-width:1380px!important;font-size:13px!important;}
+                    .wcp-top{padding:8px 0 10px!important;margin-bottom:10px!important;}
+                    .wcp-title{font-size:18px!important;}
+                    .wcp-card{padding:12px!important;margin-bottom:10px!important;border-radius:13px!important;overflow:visible!important;}
+                    .wcp-card h3{font-size:16px!important;}.wcp-card h4{font-size:12.5px!important;margin-bottom:7px!important;}
+                    .wcp-section{padding:10px!important;border-radius:11px!important;overflow:visible!important;}
+                    .wcp-grid4{gap:9px!important;}.wcp-grid3{gap:9px!important;}.wcp-grid2{gap:10px!important;}
+                    .wcp-main-grid{display:grid!important;grid-template-columns:minmax(690px,1.15fr) minmax(500px,.85fr)!important;gap:12px!important;align-items:start!important;}
+                    .wcp-input-sections{display:grid!important;grid-template-columns:repeat(2,minmax(330px,1fr))!important;gap:10px!important;}
+                    .wcp-side-col{min-width:0!important;}
+                    .wcp-form{gap:7px!important;}
+                    .wcp-line{grid-template-columns:minmax(104px,132px) minmax(178px,1fr) 26px!important;gap:7px!important;}
+                    .wcp-line.rate{grid-template-columns:minmax(104px,132px) 72px 20px minmax(166px,1fr) 26px!important;gap:7px!important;}
+                    .wcp-line.double{grid-template-columns:minmax(104px,132px) minmax(178px,1fr) 26px minmax(104px,132px) minmax(178px,1fr) 26px!important;}
+                    .wcp-line label{font-size:11px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;}
+                    .wcp-inp{min-height:34px!important;padding:7px 10px!important;font-size:13px!important;font-weight:750!important;letter-spacing:-.01em!important;}
+                    .wcp-out{min-height:34px!important;padding:7px 10px!important;font-size:13px!important;overflow:visible!important;text-overflow:clip!important;}
+                    .wcp-unit{font-size:10.5px!important;overflow:visible!important;text-overflow:clip!important;}
                     .wcp-note{font-size:10.5px!important;min-height:15px!important;}
-                    .wcp-note[id*="bench"],#wcp_my_bid_note,#wcp_price_note,#wcp_rent_note{color:#fb923c!important;font-weight:950!important;background:rgba(249,115,22,.08)!important;border:1px solid rgba(249,115,22,.22)!important;border-radius:7px!important;padding:3px 6px!important;margin-top:3px!important;}
-                    .wcp-kpi-strip{gap:7px!important;margin-top:7px!important;}
-                    .wcp-kpi{padding:7px 8px!important;min-height:49px!important;}
-                    .wcp-kpi .l{font-size:9.8px!important;white-space:normal!important;line-height:1.15!important;overflow:visible!important;text-overflow:clip!important;}
-                    .wcp-kpi .v{font-size:13px!important;}
-                    .wcp-resultbar{padding:8px 10px!important;margin-top:6px!important;}
-                    .wcp-resultbar .value{font-size:16px!important;}
-                    .wcp-tabs{margin:8px 0!important;padding-bottom:6px!important;}
-                    .wcp-tab{padding:5px 10px!important;font-size:10.5px!important;}
-                    .wcp-flow th,.wcp-table th,.wcp-tiny-table th{padding:6px 5px!important;font-size:10.5px!important;}
-                    .wcp-flow td,.wcp-table td,.wcp-tiny-table td{padding:6px 5px!important;font-size:10.5px!important;}
-                    .wcp-invest-table{width:100%;border-collapse:collapse;font-size:11px;}
-                    .wcp-invest-table td{border-bottom:1px solid rgba(255,255,255,.065);padding:6px 4px;color:#cbd5e1;}
-                    .wcp-invest-table td:nth-child(2){text-align:right;color:#f8fafc;font-weight:950;white-space:nowrap;}
-                    .wcp-invest-table td:nth-child(3){text-align:left;color:#94a3b8;white-space:nowrap;padding-left:8px;}
+                    .wcp-note[id*="bench"],#wcp_my_bid_note,#wcp_price_note,#wcp_rent_note{color:#fb923c!important;font-weight:900!important;background:rgba(249,115,22,.08)!important;border:1px solid rgba(249,115,22,.20)!important;border-radius:7px!important;padding:3px 6px!important;margin-top:3px!important;}
+                    .wcp-kpi-strip{grid-template-columns:minmax(150px,1fr) minmax(150px,1fr) minmax(158px,1fr) minmax(166px,1.05fr) minmax(160px,1.08fr) minmax(176px,1.10fr) minmax(118px,.75fr)!important;gap:9px!important;margin-top:8px!important;}
+                    .wcp-kpi{padding:9px 10px!important;min-height:62px!important;position:relative!important;overflow:hidden!important;}
+                    .wcp-kpi .l{font-size:10.5px!important;white-space:normal!important;line-height:1.15!important;overflow:visible!important;text-overflow:clip!important;}
+                    .wcp-kpi .v{font-size:16px!important;line-height:1.15!important;white-space:nowrap!important;overflow:visible!important;text-overflow:clip!important;letter-spacing:-.035em!important;}
+                    .wcp-kpi.minfund{border-color:rgba(34,197,94,.42)!important;background:linear-gradient(180deg,rgba(34,197,94,.13),rgba(255,255,255,.035))!important;}
+                    .wcp-kpi.yield-main{border-color:rgba(96,165,250,.46)!important;background:linear-gradient(180deg,rgba(37,99,235,.16),rgba(255,255,255,.04))!important;}
+                    .wcp-kpi.yield-main .v{font-size:20px!important;color:#93c5fd!important;}
+                    .wcp-kpi.yield-main.lev{border-color:rgba(168,85,247,.42)!important;background:linear-gradient(180deg,rgba(126,34,206,.15),rgba(255,255,255,.04))!important;}
+                    .wcp-kpi.yield-main.lev .v{color:#c4b5fd!important;}
+                    .wcp-kpi.roi .v{font-size:18px!important;}
+                    .wcp-resultbar{padding:9px 11px!important;margin-top:7px!important;}
+                    .wcp-resultbar .value{font-size:17px!important;white-space:nowrap!important;}
+                    .wcp-tabs{margin:9px 0!important;padding-bottom:7px!important;}
+                    .wcp-tab{padding:5px 11px!important;font-size:10.8px!important;}
+                    .wcp-loan-rule{border:1px solid rgba(59,130,246,.32);background:linear-gradient(180deg,rgba(37,99,235,.12),rgba(5,9,15,.24));border-radius:10px;padding:8px;margin:2px 0 4px;}
+                    .wcp-loan-rule .title{display:flex;justify-content:space-between;gap:8px;color:#93c5fd;font-weight:900;font-size:11px;margin-bottom:6px;}
+                    .wcp-loan-rule .formula{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;}
+                    .wcp-loan-rule .chip{border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.04);border-radius:8px;padding:6px;min-width:0;}
+                    .wcp-loan-rule .chip span{display:block;color:#94a3b8;font-size:10px;margin-bottom:2px;}
+                    .wcp-loan-rule .chip b{display:block;color:#e8ecf4;font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+                    .wcp-loan-rule .chip.on{border-color:rgba(96,165,250,.45);background:rgba(37,99,235,.16);}.wcp-loan-rule .chip.on b{color:#60a5fa;}
+                    .wcp-loan-rule .help{font-size:10px;color:#8b97ad;margin-top:6px;line-height:1.35;}
+                    .wcp-flow th,.wcp-table th,.wcp-tiny-table th{padding:7px 6px!important;font-size:10.5px!important;}
+                    .wcp-flow td,.wcp-table td,.wcp-tiny-table td{padding:7px 6px!important;font-size:10.5px!important;}
+                    .wcp-invest-table{width:100%;border-collapse:collapse;font-size:12px;table-layout:auto;}
+                    .wcp-invest-table td{border-bottom:1px solid rgba(255,255,255,.065);padding:8px 5px;color:#cbd5e1;vertical-align:middle;}
+                    .wcp-invest-table td:nth-child(1){min-width:108px;white-space:nowrap;}
+                    .wcp-invest-table td:nth-child(2){text-align:right;color:#f8fafc;font-weight:950;white-space:nowrap;min-width:142px;letter-spacing:-.025em;}
+                    .wcp-invest-table td:nth-child(3){text-align:left;color:#94a3b8;white-space:nowrap;padding-left:10px;}
+                    .wcp-invest-table tr.yield-row td:nth-child(2){font-size:15px;color:#93c5fd!important;}
+                    .wcp-invest-table tr.lev-row td:nth-child(2){font-size:15px;color:#c4b5fd!important;}
                     .wcp-invest-table .hot{color:#fb923c!important}.wcp-invest-table .red{color:#fb7185!important}.wcp-invest-table .green{color:#4ade80!important;}
+                    #wcp_p_total_with_deposit{color:#4ade80!important;}
                     #wr2TableWrap,.wr2-ft-block,.wr2-free-table{display:none!important;}
-                    @media(max-width:980px){.wcp-kpi-strip{grid-template-columns:repeat(2,1fr)!important}.wcp-grid4,.wcp-grid3,.wcp-grid2{grid-template-columns:1fr!important}.wcp-line.rate{grid-template-columns:86px 70px minmax(98px,1fr) 24px!important}.wcp-rate-amount{min-width:98px!important}}
+                    @media(max-width:1260px){.wcp-main-grid{grid-template-columns:1fr!important}.wcp-kpi-strip{grid-template-columns:repeat(4,minmax(0,1fr))!important}.wcp-input-sections{grid-template-columns:repeat(2,minmax(310px,1fr))!important}}
+                    @media(max-width:980px){.wcp-kpi-strip{grid-template-columns:repeat(2,1fr)!important}.wcp-grid4,.wcp-grid3,.wcp-grid2,.wcp-input-sections{grid-template-columns:1fr!important}.wcp-line.rate{grid-template-columns:98px 66px 20px minmax(150px,1fr) 26px!important}.wcp-loan-rule .formula{grid-template-columns:1fr!important}}
+                    @media(max-width:620px){.wcp-line,.wcp-line.rate,.wcp-line.double{grid-template-columns:1fr!important}.wcp-inp{text-align:right!important}.wcp-unit{display:block!important}.wcp-kpi .v{font-size:15px!important}.wcp-kpi.yield-main .v{font-size:18px!important}}
+                    /* v14 calculator UI: rate+amount rows use nested groups so money is never clipped */
+                    .wcp-input-card{overflow:visible!important;}
+                    .wcp-input-sections{grid-template-columns:repeat(2,minmax(460px,1fr))!important;}
+                    .wcp-line.wcp-rate-field{grid-template-columns:minmax(112px,138px) minmax(82px,96px) minmax(186px,1fr)!important;gap:8px!important;align-items:center!important;}
+                    .wcp-rate-field>label{min-width:0!important;}
+                    .wcp-rate-box,.wcp-amount-box{display:grid!important;align-items:center!important;gap:6px!important;min-width:0!important;}
+                    .wcp-rate-box{grid-template-columns:minmax(62px,1fr) 20px!important;}
+                    .wcp-amount-box{grid-template-columns:minmax(160px,1fr) 26px!important;}
+                    .wcp-rate-box .wcp-inp,.wcp-amount-box .wcp-inp{min-width:0!important;width:100%!important;}
+                    .wcp-amount-box .wcp-inp{font-variant-numeric:tabular-nums!important;letter-spacing:-.02em!important;padding-left:8px!important;padding-right:8px!important;}
+                    .wcp-line:not(.wcp-rate-field) .wcp-inp[data-wcp-money="1"]{font-variant-numeric:tabular-nums!important;min-width:170px!important;}
+                    .wcp-kpi.minfund .v{color:#4ade80!important;}
+                    .wcp-kpi.yield-main{box-shadow:0 0 0 1px rgba(96,165,250,.12) inset!important;}
+                    .wcp-kpi.yield-main.lev{box-shadow:0 0 0 1px rgba(168,85,247,.12) inset!important;}
+                    @media(max-width:1260px){.wcp-input-sections{grid-template-columns:1fr!important}.wcp-line.wcp-rate-field{grid-template-columns:minmax(112px,138px) minmax(82px,96px) minmax(220px,1fr)!important}.wcp-amount-box{grid-template-columns:minmax(190px,1fr) 26px!important}}
+                    @media(max-width:760px){.wcp-line.wcp-rate-field{grid-template-columns:1fr!important}.wcp-rate-box,.wcp-amount-box{grid-template-columns:minmax(0,1fr) 30px!important}.wcp-line:not(.wcp-rate-field) .wcp-inp[data-wcp-money="1"]{min-width:0!important}}
+
+                    /* v15 complete calculator fix: direct 5-column rate rows, no clipped won fields */
+                    .wr2-calc-pro-shell{max-width:min(100%,1480px)!important;}
+                    .wcp-card,.wcp-section{overflow:visible!important;}
+                    .wcp-main-grid{display:grid!important;grid-template-columns:minmax(0,1.12fr) minmax(480px,.88fr)!important;gap:12px!important;align-items:start!important;}
+                    .wcp-input-sections{display:grid!important;grid-template-columns:repeat(2,minmax(520px,1fr))!important;gap:10px!important;}
+                    .wcp-line{display:grid!important;grid-template-columns:minmax(120px,150px) minmax(220px,1fr) 30px!important;gap:8px!important;align-items:center!important;min-width:0!important;}
+                    .wcp-line.rate.wcp-rate-field{display:grid!important;grid-template-columns:minmax(120px,150px) minmax(70px,86px) 22px minmax(178px,1fr) 30px!important;gap:8px!important;align-items:center!important;min-width:0!important;}
+                    .wcp-line label{min-width:0!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;}
+                    .wcp-inp{min-width:0!important;width:100%!important;font-variant-numeric:tabular-nums!important;}
+                    .wcp-rate-input{min-width:70px!important;text-align:right!important;}
+                    .wcp-money-cell,.wcp-line:not(.rate) .wcp-inp[data-wcp-money="1"]{min-width:170px!important;text-align:right!important;letter-spacing:-.02em!important;}
+                    .wcp-unit{display:block!important;min-width:22px!important;text-align:left!important;overflow:visible!important;white-space:nowrap!important;}
+                    .wcp-rate-box,.wcp-amount-box{display:contents!important;}
+                    .wcp-kpi-strip{grid-template-columns:minmax(150px,1fr) minmax(150px,1fr) minmax(158px,1fr) minmax(168px,1.05fr) minmax(164px,1.1fr) minmax(178px,1.14fr) minmax(118px,.78fr)!important;}
+                    .wcp-kpi.minfund{border-color:rgba(34,197,94,.55)!important;background:linear-gradient(180deg,rgba(34,197,94,.16),rgba(34,197,94,.045))!important;}
+                    .wcp-kpi.minfund .v{color:#4ade80!important;}
+                    .wcp-kpi.yield-main{border-color:rgba(96,165,250,.56)!important;background:linear-gradient(180deg,rgba(37,99,235,.19),rgba(37,99,235,.045))!important;}
+                    .wcp-kpi.yield-main .v{font-size:20px!important;color:#93c5fd!important;}
+                    .wcp-kpi.yield-main.lev{border-color:rgba(168,85,247,.55)!important;background:linear-gradient(180deg,rgba(126,34,206,.18),rgba(126,34,206,.045))!important;}
+                    .wcp-kpi.yield-main.lev .v{color:#c4b5fd!important;}
+                    .wcp-loan-rule .chip b{overflow:visible!important;text-overflow:clip!important;font-variant-numeric:tabular-nums!important;letter-spacing:-.03em!important;}
+                    .wcp-invest-table td:nth-child(2){min-width:170px!important;}
+                    @media(max-width:1420px){.wcp-main-grid{grid-template-columns:1fr!important}.wcp-input-sections{grid-template-columns:repeat(2,minmax(500px,1fr))!important}.wcp-kpi-strip{grid-template-columns:repeat(4,minmax(0,1fr))!important}}
+                    @media(max-width:1080px){.wcp-input-sections,.wcp-grid4,.wcp-grid3,.wcp-grid2{grid-template-columns:1fr!important}.wcp-line.rate.wcp-rate-field{grid-template-columns:minmax(120px,150px) minmax(70px,86px) 22px minmax(190px,1fr) 30px!important}}
+                    @media(max-width:680px){.wcp-line,.wcp-line.rate.wcp-rate-field{grid-template-columns:1fr!important}.wcp-money-cell,.wcp-line:not(.rate) .wcp-inp[data-wcp-money="1"]{min-width:0!important}.wcp-unit{text-align:right!important}.wcp-kpi-strip{grid-template-columns:1fr!important}}
+
+                    /* v16: 깨짐 복구 + 사진3 기반 계산기 레이아웃. hard min-width 제거 */
+                    .wr2-calc-pro-shell{width:100%!important;max-width:100%!important;box-sizing:border-box!important;overflow-x:hidden!important;}
+                    .wr2-calc-pro-shell *{box-sizing:border-box!important;}
+                    .wcp-card,.wcp-section{max-width:100%!important;overflow:visible!important;}
+                    .wcp-top{position:sticky!important;top:0!important;z-index:20!important;}
+                    .wcp-main-grid{display:grid!important;grid-template-columns:minmax(0,1.08fr) minmax(0,.82fr)!important;gap:12px!important;align-items:start!important;}
+                    .wcp-input-sections{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important;min-width:0!important;}
+                    .wcp-side-col{min-width:0!important;max-width:100%!important;}
+                    .wcp-line{display:grid!important;grid-template-columns:minmax(92px,126px) minmax(150px,1fr) 24px!important;gap:8px!important;align-items:center!important;min-width:0!important;}
+                    .wcp-line.rate.wcp-rate-field{display:grid!important;grid-template-columns:minmax(92px,126px) minmax(62px,74px) 18px minmax(132px,1fr) 24px!important;gap:8px!important;align-items:center!important;min-width:0!important;}
+                    .wcp-line label{min-width:0!important;overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important;}
+                    .wcp-inp{width:100%!important;min-width:0!important;max-width:100%!important;font-size:12.5px!important;line-height:1.2!important;font-variant-numeric:tabular-nums!important;}
+                    .wcp-rate-input{min-width:0!important;max-width:74px!important;}
+                    .wcp-money-cell,.wcp-line:not(.rate) .wcp-inp[data-wcp-money="1"]{min-width:0!important;text-align:right!important;letter-spacing:-.02em!important;}
+                    .wcp-unit{display:block!important;min-width:0!important;width:24px!important;text-align:left!important;white-space:nowrap!important;overflow:visible!important;}
+                    .wcp-output{min-width:0!important;}
+                    .wcp-output .v{white-space:nowrap!important;overflow:visible!important;text-overflow:clip!important;font-variant-numeric:tabular-nums!important;letter-spacing:-.025em!important;}
+                    .wcp-invest-table{table-layout:fixed!important;width:100%!important;}
+                    .wcp-invest-table td:nth-child(1){width:32%!important;min-width:0!important;}
+                    .wcp-invest-table td:nth-child(2){width:36%!important;min-width:0!important;white-space:nowrap!important;overflow:visible!important;}
+                    .wcp-invest-table td:nth-child(3){width:32%!important;min-width:0!important;white-space:nowrap!important;}
+                    .wcp-bench-compact{padding:0!important;background:rgba(249,115,22,.055)!important;border-color:rgba(249,115,22,.28)!important;}
+                    .wcp-bench-compact>summary{list-style:none;cursor:pointer;padding:10px 12px;display:flex;align-items:center;justify-content:space-between;gap:10px;}
+                    .wcp-bench-compact>summary::-webkit-details-marker{display:none;}
+                    .wcp-bench-compact .sum-title{font-size:13px;font-weight:950;color:#fed7aa;}
+                    .wcp-bench-compact .sum-sub{font-size:10.5px;color:#9aa6bd;}
+                    .wcp-bench-compact .wcp-bench-body{padding:0 12px 12px;}
+                    .wcp-bench-compact:not([open]){margin-bottom:8px!important;}
+                    .wcp-bench-compact:not([open]) .wcp-bench-body{display:none!important;}
+                    .wcp-kpi.yield-main .v{font-size:18px!important;}
+                    .wcp-kpi.yield-main.lev .v{font-size:18px!important;}
+                    .wcp-kpi.minfund .v{color:#4ade80!important;}
+                    @media(max-width:1320px){.wcp-main-grid{grid-template-columns:1fr!important}.wcp-input-sections{grid-template-columns:repeat(2,minmax(0,1fr))!important}.wcp-kpi-strip{grid-template-columns:repeat(4,minmax(0,1fr))!important}}
+                    @media(max-width:900px){.wcp-input-sections,.wcp-grid4,.wcp-grid3,.wcp-grid2{grid-template-columns:1fr!important}.wcp-line,.wcp-line.rate.wcp-rate-field{grid-template-columns:1fr!important}.wcp-unit{text-align:right!important;width:auto!important}.wcp-kpi-strip{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+                    @media(max-width:560px){.wcp-kpi-strip{grid-template-columns:1fr!important}.wcp-actions{justify-content:flex-start!important}.wcp-kpi.yield-main .v,.wcp-kpi.yield-main.lev .v{font-size:17px!important}}
+
+
+                    /* v31: 공실대비비용은 운영시 필요경비 하단에 컴팩트 배치, 월세 호가 목표수익률 복구 */
+                    .wcp-vacancy-compact{margin-top:10px;border:1px solid rgba(96,165,250,.25);background:linear-gradient(180deg,rgba(37,99,235,.10),rgba(5,9,15,.16));border-radius:10px;padding:10px;}
+                    .wcp-vacancy-compact .head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;}
+                    .wcp-vacancy-compact .head b{font-size:12px;color:#dbeafe;}
+                    .wcp-vacancy-compact .head span{font-size:10px;color:#93a4bd;}
+                    .wcp-vacancy-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;}
+                    .wcp-vacancy-cell{border:1px solid rgba(255,255,255,.07);background:rgba(0,0,0,.16);border-radius:8px;padding:7px 8px;min-width:0;}
+                    .wcp-vacancy-cell label{display:block;font-size:10px;color:#8fa0b7;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+                    .wcp-vacancy-cell .val{font-size:12px;font-weight:900;color:#e8ecf4;text-align:right;white-space:nowrap;overflow:visible;text-overflow:clip;}
+                    .wcp-vacancy-cell.hot{grid-column:1 / -1;display:grid;grid-template-columns:minmax(96px,1fr) auto;align-items:center;gap:10px;background:rgba(251,146,60,.08);border-color:rgba(251,146,60,.30);}
+                    .wcp-vacancy-cell.hot label{margin-bottom:0;}
+                    .wcp-vacancy-cell.hot .val{color:#fb923c;font-size:14px;min-width:max-content;}
+                    .wcp-bench-card.rent-yield .rent-yield-row{display:grid;grid-template-columns:minmax(0,1fr) 82px 24px;gap:6px;align-items:center;margin-top:7px;}
+                    .wcp-bench-card.rent-yield .rent-yield-row span{font-size:10px;color:#9aa6bd;white-space:nowrap;}
+                    .wcp-bench-card.rent-yield .rent-yield-row .wcp-inp{min-height:30px;padding:6px 8px;}
+                    .wcp-loan-rule .title span:last-child{color:#bfdbfe;}
+                    @media(max-width:1180px){.wcp-vacancy-grid{grid-template-columns:repeat(2,minmax(0,1fr));}.wcp-vacancy-cell.hot{grid-column:1 / -1;}}
+                    @media(max-width:620px){.wcp-vacancy-grid{grid-template-columns:1fr;}.wcp-bench-card.rent-yield .rent-yield-row{grid-template-columns:1fr 70px 24px;}}
+                    /* v20: 작업룸 복수 경매 물건 요약 + 계산 기준 선택. 기존 자유비교표는 사용하지 않음 */
+                    #wr2TableWrap,.wr2-ft-block,.wr2-free-table,[data-free-table]{display:none!important;}
+                    .wr2-linked-actions .wr2-mini-btn{border-color:rgba(79,142,255,.38)!important;color:#dbeafe!important;background:rgba(79,142,255,.10)!important;font-weight:800!important;}
+                    .wr2-multi-linked-summary{border:1px solid rgba(255,255,255,.10);background:rgba(15,23,42,.35);border-radius:14px;padding:12px;margin-top:4px;}
+                    .wr2-ml-top{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px;color:var(--tx);}
+                    .wr2-ml-top b{font-size:14px;}.wr2-ml-top span{font-size:11px;color:var(--mu);font-weight:500;}
+                    .wr2-ml-scroll{overflow:auto;border:1px solid rgba(255,255,255,.08);border-radius:11px;background:rgba(5,9,15,.25);}
+                    .wr2-ml-table{width:100%;min-width:760px;border-collapse:collapse;font-size:12px;table-layout:fixed;}
+                    .wr2-ml-table th,.wr2-ml-table td{border-bottom:1px solid rgba(255,255,255,.065);padding:9px 10px;vertical-align:middle;color:#d7deed;}
+                    .wr2-ml-table th{background:rgba(255,255,255,.04);font-weight:900;text-align:left;color:#f1f5f9;}
+                    .wr2-ml-table tr:last-child td{border-bottom:0;}
+                    .wr2-ml-label{width:118px;color:#90a0b8!important;font-weight:850;white-space:nowrap;}
+                    .wr2-ml-col{min-width:210px;}.wr2-ml-total{width:180px;border-left:1px solid rgba(249,115,22,.22);background:rgba(249,115,22,.08)!important;}.wr2-ml-total-cell{border-left:1px solid rgba(249,115,22,.18);background:rgba(249,115,22,.045);font-weight:900;color:#fed7aa!important;}
+                    .wr2-ml-head-title{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;font-size:12px;}.wr2-ml-head-actions{display:flex;gap:5px;flex-wrap:wrap;margin-top:6px;}
+                    .wr2-multi-linked-summary-plain{background:rgba(15,23,42,.22)!important;}
+                    .wr2-linked-compact-list{margin-top:8px;display:flex;flex-direction:column;gap:6px;}
+                    .wr2-linked-item-compact{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(120px,.7fr) auto;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.08);background:rgba(5,9,15,.18);border-radius:10px;}
+                    .wr2-lic-main{min-width:0;display:flex;flex-direction:column;gap:2px;}.wr2-lic-main b{font-size:12px;color:#e8eefb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}.wr2-lic-main span{font-size:10px;color:#8fa0b7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+                    .wr2-lic-meta{display:flex;flex-direction:column;gap:2px;text-align:right;font-size:10.5px;color:#cbd5e1;font-weight:800;white-space:nowrap;}.wr2-lic-actions{display:flex;gap:5px;justify-content:flex-end;flex-wrap:wrap;}
+                    .wcp-linked-picker{display:flex;align-items:center;gap:6px;flex-wrap:wrap;border:1px solid rgba(249,115,22,.26);background:rgba(249,115,22,.06);border-radius:12px;padding:9px 10px;margin:8px 0 10px;}
+                    .wcp-linked-picker>span{font-size:11px;color:#fed7aa;font-weight:950;margin-right:2px;}.wcp-link-choice{border:1px solid rgba(255,255,255,.13);background:rgba(255,255,255,.045);border-radius:999px;color:#d8e0ef;padding:5px 10px;font-size:11px;font-weight:850;cursor:pointer;}.wcp-link-choice.primary{background:#f97316;border-color:#f97316;color:#fff;}
+                    @media(max-width:760px){.wr2-ml-table{min-width:680px}.wr2-multi-linked-summary{padding:9px}.wr2-ml-top{align-items:flex-start;flex-direction:column}.wcp-linked-picker{align-items:flex-start}.wr2-linked-item-compact{grid-template-columns:1fr}.wr2-lic-meta{text-align:left}.wr2-lic-actions{justify-content:flex-start}}
                   `;
 
                 }
@@ -7478,38 +7343,103 @@ window.wr2SummaryCancelEdit = function() {
                 function wcpSetWon(id,n){ const el=document.getElementById(id); if(el) el.value=n?Math.round(n).toLocaleString('ko-KR'):''; }
                 function wcpSetPct(id,n,d){ const el=document.getElementById(id); if(el && isFinite(n)) el.value=(+n).toFixed(d==null?2:d).replace(/\.00$/,''); }
                 function wcpFormatWon(n){ n=Math.round(Number(n)||0); return n? n.toLocaleString('ko-KR')+'원' : '-'; }
+                function wcpCommaValue(v){ const raw=String(v==null?'':v).trim(); if(!raw) return ''; const n=wcpNum(raw); if(!n) return raw==='0'?'0':''; return Math.round(n).toLocaleString('ko-KR'); }
+                function wcpFormatMoneyInput(el){ if(!el) return; const raw=String(el.value||''); if(!raw || !/[0-9]/.test(raw)) return; const pos=el.selectionStart||raw.length; const digitBefore=raw.slice(0,pos).replace(/[^0-9]/g,'').length; const only=raw.replace(/[^0-9]/g,''); if(!only){ el.value=''; return; } const next=Number(only).toLocaleString('ko-KR'); el.value=next; try{ let seen=0, newPos=next.length; for(let i=0;i<next.length;i++){ if(/[0-9]/.test(next[i])) seen++; if(seen>=digitBefore){ newPos=i+1; break; } } el.setSelectionRange(newPos,newPos); }catch(e){} }
+                function wcpFormatMoneyInputs(){ document.querySelectorAll('.wr2-calc-pro-shell [data-wcp-money="1"]').forEach(function(el){ if(el.value) wcpSetWon(el.id,wcpReadWon(el.id)); }); }
                 function wcpFormatShort(n){ n=Math.round(Number(n)||0); if(!n) return '-'; if(n>=100000000) return (n/100000000).toFixed(n%100000000?1:0).replace('.0','')+'억'; return Math.round(n/10000).toLocaleString('ko-KR')+'만'; }
                 function wcpNowText(ts){ const d=new Date(ts||Date.now()); const z=function(n){return String(n).padStart(2,'0')}; return d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate())+' '+z(d.getHours())+':'+z(d.getMinutes()); }
                 function wcpLocalKey(room){ return 'wr2_calc_pro_v6_'+(room&&room.id||'default'); }
                 function wcpLocalLoad(room){ try{return JSON.parse(localStorage.getItem(wcpLocalKey(room))||'null')}catch(e){return null} }
                 function wcpLocalSave(room,store){ try{localStorage.setItem(wcpLocalKey(room),JSON.stringify(store));}catch(e){console.warn('[WCP] local save fail',e);} }
                 function wcpGetStore(room){ if(!room) return {version:7,current:{},scenarios:[],snapshots:[],rev:0}; let store=room.calcProV7 || room.calcProV5 || room.calcProV3 || null; if(!store){ store={version:7,current:Object.assign({},room.calcProState||{}),scenarios:(room.calcScenarios||[]).slice(),snapshots:(room.calcSnapshots||[]).slice(),rev:Number(room.calcProRev||0),updatedAt:room.updatedAt||Date.now()}; } const local=wcpLocalLoad(room); if(local && Number(local.rev||0)>Number(store.rev||0)) store=Object.assign({version:7,current:{},scenarios:[],snapshots:[]},local); store.version=6; store.current=store.current||{}; store.scenarios=Array.isArray(store.scenarios)?store.scenarios:[]; store.snapshots=Array.isArray(store.snapshots)?store.snapshots:[]; room.calcProV7=store; room.calcProV5=store; room.calcProV3=store; room.calcProState=store.current; room.calcScenarios=store.scenarios; room.calcSnapshots=store.snapshots; return store; }
-                function wcpDefaultState(room){ const store=wcpGetStore(room), s=Object.assign({},store.current||{}), legacy=(room&&room.calcState)||{}; function pick(k,v){ if((s[k]==null||s[k]==='') && v!=null && v!=='') s[k]=v; } pick('price',legacy.price||''); pick('myBid',s.price||legacy.price||''); pick('deposit',legacy.deposit||''); pick('rent',legacy.rent||''); pick('yield',legacy.yield||''); pick('area',legacy.area||''); pick('areaPy',legacy.area_py||legacy.areaPy||''); pick('bunyangPy',legacy.bunyangPy||''); pick('appraisal',legacy.appraisal||''); try{ const sv=(typeof getSv==='function')?getSv():[]; const items=(typeof wr2ResolveLinkedSavedItems==='function')?wr2ResolveLinkedSavedItems(room,sv,typeof wr2BuildPlLinkedMap==='function'?wr2BuildPlLinkedMap():{}):[]; if(items.length){ const seeds=items.map(wr2SummarySeed); const area=seeds.reduce((a,x)=>a+(x.areaM2||0),0), py=area?area/3.305785:0, min=seeds.reduce((a,x)=>a+(x.minWon||0),0), app=seeds.reduce((a,x)=>a+(x.appraisalWon||0),0), dep=seeds.reduce((a,x)=>a+(x.depositWon||0),0), rent=seeds.reduce((a,x)=>a+(x.rentWon||0),0); pick('area',area?area.toFixed(2):''); pick('areaPy',py?py.toFixed(2):''); pick('bunyangPy',py?py.toFixed(2):''); pick('price',min?Math.round(min).toLocaleString('ko-KR'):''); pick('myBid',min?Math.round(min).toLocaleString('ko-KR'):''); pick('appraisal',app?Math.round(app).toLocaleString('ko-KR'):''); pick('deposit',dep?Math.round(dep).toLocaleString('ko-KR'):''); pick('rent',rent?Math.round(rent).toLocaleString('ko-KR'):''); pick('calcLinkMode',items.length>1?'total':'single'); }}catch(e){} pick('loanRate',legacy.cf_loan_rate||'85'); pick('loan',legacy.cf_loan||''); pick('interestRate',legacy.cf_rate||'5'); pick('facility',legacy.cf_extra||''); pick('managementMonthly',legacy.managementMonthly||'5000'); if(!s.acqTaxRate) s.acqTaxRate='4.60'; if(!s.legalRate) s.legalRate='1.00'; if(!s.rentBrokerRate) s.rentBrokerRate='0.90'; if(!s.saleBrokerRate) s.saleBrokerRate='0.90'; if(!s.corpRateUnder) s.corpRateUnder='19'; if(!s.corpRateOver) s.corpRateOver='21'; if(!s.targetYield1) s.targetYield1='8.0'; if(!s.targetYield2) s.targetYield2='6.0'; if(!s.targetYield3) s.targetYield3='7.0'; if(!s.benchYieldRate) s.benchYieldRate='8.0'; return s; }
-                function wcpCollectState(){ return { area:wcpRead('wc_area'), areaPy:wcpRead('wc_area_py'), bunyangPy:wcpRead('wc_bunyang_py'), appraisal:wcpRead('wc_appraisal'), price:wcpRead('wc_price'), myBid:wcpRead('wc_my_bid'), contractDeposit:wcpRead('wc_contract_deposit'), extraReserve:wcpRead('wc_extra_reserve'), targetProfit:wcpRead('wc_target_profit'), calcLinkMode:wcpRead('wc_calc_link_mode'), benchMax:wcpRead('wc_bench_max'), benchMid:wcpRead('wc_bench_mid'), benchMin:wcpRead('wc_bench_min'), benchRentPy:wcpRead('wc_bench_rent_py'), benchYieldRate:wcpRead('wc_bench_yield_rate'), acqTaxRate:wcpRead('wc_acq_tax_rate'), acqTax:wcpRead('wc_acq_tax'), legalRate:wcpRead('wc_legal_rate'), legalFee:wcpRead('wc_legal_fee'), unpaidMgmt:wcpRead('wc_unpaid_mgmt'), unpaidTax:wcpRead('wc_unpaid_tax'), eviction:wcpRead('wc_eviction'), facility:wcpRead('wc_facility'), vat:wcpRead('wc_vat'), operatingAnnual:wcpRead('wc_operating_annual'), rentBrokerRate:wcpRead('wc_rent_broker_rate'), rentBrokerFee:wcpRead('wc_rent_broker_fee'), saleBrokerRate:wcpRead('wc_sale_broker_rate'), saleBrokerFee:wcpRead('wc_sale_broker_fee'), sellPrice:wcpRead('wc_sell_price'), loanRate:wcpRead('wc_cf_loan_rate'), loan:wcpRead('wc_cf_loan'), interestRate:wcpRead('wc_cf_rate'), interestAnnual:wcpRead('wc_cf_interest_amt'), interestMonthly:wcpRead('wc_cf_interest_monthly'), deposit:wcpRead('wc_deposit'), rent:wcpRead('wc_rent'), yield:wcpRead('wc_yield'), managementMonthly:wcpRead('wc_management_monthly'), corpRateUnder:wcpRead('wc_corp_rate_under'), corpRateOver:wcpRead('wc_corp_rate_over'), targetYield1:wcpRead('wc_target_yield_1'), targetYield2:wcpRead('wc_target_yield_2'), targetYield3:wcpRead('wc_target_yield_3'), memo:wcpRead('wc_calc_memo')}; }
-                function wcpApplyState(s){ s=s||{}; const map={wc_area:'area',wc_area_py:'areaPy',wc_bunyang_py:'bunyangPy',wc_appraisal:'appraisal',wc_price:'price',wc_my_bid:'myBid',wc_contract_deposit:'contractDeposit',wc_extra_reserve:'extraReserve',wc_target_profit:'targetProfit',wc_calc_link_mode:'calcLinkMode',wc_bench_max:'benchMax',wc_bench_mid:'benchMid',wc_bench_min:'benchMin',wc_bench_rent_py:'benchRentPy',wc_bench_yield_rate:'benchYieldRate',wc_acq_tax_rate:'acqTaxRate',wc_acq_tax:'acqTax',wc_legal_rate:'legalRate',wc_legal_fee:'legalFee',wc_unpaid_mgmt:'unpaidMgmt',wc_unpaid_tax:'unpaidTax',wc_eviction:'eviction',wc_facility:'facility',wc_vat:'vat',wc_operating_annual:'operatingAnnual',wc_rent_broker_rate:'rentBrokerRate',wc_rent_broker_fee:'rentBrokerFee',wc_sale_broker_rate:'saleBrokerRate',wc_sale_broker_fee:'saleBrokerFee',wc_sell_price:'sellPrice',wc_cf_loan_rate:'loanRate',wc_cf_loan:'loan',wc_cf_rate:'interestRate',wc_cf_interest_amt:'interestAnnual',wc_cf_interest_monthly:'interestMonthly',wc_deposit:'deposit',wc_rent:'rent',wc_yield:'yield',wc_management_monthly:'managementMonthly',wc_corp_rate_under:'corpRateUnder',wc_corp_rate_over:'corpRateOver',wc_target_yield_1:'targetYield1',wc_target_yield_2:'targetYield2',wc_target_yield_3:'targetYield3',wc_calc_memo:'memo'}; Object.keys(map).forEach(function(id){wcpSet(id,s[map[id]]||'');}); }
-                function wcpParsePyVals(raw){
-                  const src=String(raw||'').replace(/＠/g,'@').trim();
-                  const isRange=/\d\s*[~～\-]\s*\d/.test(src) && !/[;,\n]/.test(src);
-                  const cleaned=src.replace(/만원|만\/평|평당|원\/평|원|평|@/g,' ');
-                  const nums=(cleaned.match(/\d[\d,]*(?:\.\d+)?/g)||[]).map(function(x){return parseFloat(x.replace(/,/g,''));}).filter(function(n){return isFinite(n)&&n>0;});
-                  if(!nums.length) return {values:[],avg:0,min:0,max:0,label:'-'};
-                  const min=Math.min.apply(null,nums), max=Math.max.apply(null,nums), avg=nums.reduce(function(a,b){return a+b;},0)/nums.length;
-                  let label='';
-                  if(nums.length===1) label=avg.toLocaleString('ko-KR')+'만/평';
-                  else if(isRange && nums.length>=2) label='범위 '+min.toLocaleString('ko-KR')+'~'+max.toLocaleString('ko-KR')+' · 평균 '+avg.toFixed(1)+'만/평';
-                  else label='개별 '+nums.length+'건 · '+min.toLocaleString('ko-KR')+'~'+max.toLocaleString('ko-KR')+' · 평균 '+avg.toFixed(1)+'만/평';
-                  return {values:nums,avg:avg,min:min,max:max,label:label};
+                function wcpGetLinkedSeeds(room){
+                  try{
+                    const sv=(typeof getSv==='function')?getSv():[];
+                    const items=(typeof wr2ResolveLinkedSavedItems==='function')?wr2ResolveLinkedSavedItems(room,sv,typeof wr2BuildPlLinkedMap==='function'?wr2BuildPlLinkedMap():{}):[];
+                    return (items||[]).map(wr2SummarySeed).filter(Boolean);
+                  }catch(e){ return []; }
                 }
-                function wcpBenchAmount(stat,areaPy){ return stat&&stat.avg&&areaPy ? stat.avg*areaPy*10000 : 0; }
-                function wcpField(id,label,unit,val,noteId,ph){ return '<div class="wcp-line"><label>'+wcpEsc(label)+'</label><input id="'+id+'" class="wcp-inp" value="'+wcpEsc(val||'')+'" placeholder="'+wcpEsc(ph||'')+'"><span class="wcp-unit">'+wcpEsc(unit||'')+'</span></div>'+(noteId?'<div class="wcp-note" id="'+noteId+'">-</div>':''); }
-                function wcpRateField(rateId,amountId,label,rate,amount,noteId){ return '<div class="wcp-line wcp-rate-row"><label>'+wcpEsc(label)+'</label><div class="wcp-rate-controls"><div class="wcp-rate-wrap"><input id="'+rateId+'" class="wcp-inp wcp-rate" value="'+wcpEsc(rate||'')+'"><span class="wcp-unit">%</span></div><input id="'+amountId+'" class="wcp-inp wcp-rate-amount" value="'+wcpEsc(amount||'')+'"><span class="wcp-unit">원</span></div></div>'+(noteId?'<div class="wcp-note" id="'+noteId+'">-</div>':''); }
+                function wcpSeedSignature(seeds){
+                  return (seeds||[]).map(function(x){return [x.id||'',Math.round(x.areaM2||0),Math.round(x.appraisalWon||0),Math.round(x.minWon||0),Math.round(x.depositWon||0),Math.round(x.rentWon||0)].join(':');}).join('|');
+                }
+                function wcpAggregateSeedForCalc(seeds){
+                  seeds=seeds||[]; const totalArea=seeds.reduce((a,s)=>a+(s.areaM2||0),0);
+                  return {areaM2:totalArea, areaPy:totalArea?totalArea/3.305785:0, appraisalWon:seeds.reduce((a,s)=>a+(s.appraisalWon||0),0), minWon:seeds.reduce((a,s)=>a+(s.minWon||0),0), depositWon:seeds.reduce((a,s)=>a+(s.depositWon||0),0), rentWon:seeds.reduce((a,s)=>a+(s.rentWon||0),0)};
+                }
+                function wcpApplySeedDefaults(s,seeds,force){
+                  if(!seeds||!seeds.length) return s;
+                  const seed=wcpAggregateSeedForCalc(seeds), sig=wcpSeedSignature(seeds);
+                  const shouldForce = force || !s.seedSignature || String(s.seedSignature)!==String(sig);
+                  function set(k,v){ if(v!=null && v!=='' && (shouldForce || s[k]==null || s[k]==='')) s[k]=v; }
+                  set('area',seed.areaM2?seed.areaM2.toFixed(2):'');
+                  set('areaPy',seed.areaPy?seed.areaPy.toFixed(2):'');
+                  set('bunyangPy',seed.areaPy?seed.areaPy.toFixed(2):'');
+                  set('appraisal',seed.appraisalWon?Math.round(seed.appraisalWon).toLocaleString('ko-KR'):'');
+                  set('price',seed.minWon?Math.round(seed.minWon).toLocaleString('ko-KR'):'');
+                  set('myBid',seed.minWon?Math.round(seed.minWon).toLocaleString('ko-KR'):'');
+                  set('deposit',seed.depositWon?Math.round(seed.depositWon).toLocaleString('ko-KR'):'');
+                  set('rent',seed.rentWon?Math.round(seed.rentWon).toLocaleString('ko-KR'):'');
+                  if(shouldForce || !s.calcLinkMode) s.calcLinkMode=seeds.length>1?'total':'single';
+                  s.seedSignature=sig;
+                  return s;
+                }
+                function wcpDefaultState(room){
+                  const store=wcpGetStore(room), s=Object.assign({},store.current||{}), legacy=(room&&room.calcState)||{};
+                  function pick(k,v){ if((s[k]==null||s[k]==='') && v!=null && v!=='') s[k]=v; }
+                  pick('price',legacy.price||''); pick('myBid',s.price||legacy.price||''); pick('deposit',legacy.deposit||''); pick('rent',legacy.rent||''); pick('yield',legacy.yield||''); pick('area',legacy.area||''); pick('areaPy',legacy.area_py||legacy.areaPy||''); pick('bunyangPy',legacy.bunyangPy||''); pick('appraisal',legacy.appraisal||'');
+                  const linkedSeeds=wcpGetLinkedSeeds(room);
+                  wcpApplySeedDefaults(s,linkedSeeds,false);
+                  pick('loanManualMode', legacy.loanManualMode || legacy.loanMode || ''); if(!s.loanManualMode){ s.loanRate='80.00'; s.loan=''; } pick('loanRate',legacy.cf_loan_rate||'80'); if(!s.loanManualMode){ s.loanRate='80.00'; } pick('loan',legacy.cf_loan||''); pick('interestRate',legacy.cf_rate||'5'); pick('interestAnnual',legacy.cf_interest_amt||legacy.interestAnnual||''); pick('interestMonthly',legacy.cf_interest_monthly||legacy.interestMonthly||''); pick('facility',legacy.cf_extra||''); pick('managementMonthly',legacy.managementMonthly||'5000');
+                  if(!s.acqTaxRate) s.acqTaxRate='4.60'; if(!s.legalRate) s.legalRate='1.00'; if(!s.rentBrokerRate) s.rentBrokerRate='0.90'; if(!s.saleBrokerRate) s.saleBrokerRate='0.90'; if(!s.corpRateUnder) s.corpRateUnder='19'; if(!s.corpRateOver) s.corpRateOver='21'; if(!s.targetYield1) s.targetYield1='8.0'; if(!s.targetYield2) s.targetYield2='6.0'; if(!s.targetYield3) s.targetYield3='7.0'; if(!s.benchYieldRate) s.benchYieldRate='8.0';
+                  return s;
+                }
+                function wcpCollectState(){ return { seedSignature:wcpRead('wc_seed_signature'), loanManualMode:wcpRead('wc_loan_manual_mode'), area:wcpRead('wc_area'), areaPy:wcpRead('wc_area_py'), bunyangPy:wcpRead('wc_bunyang_py'), appraisal:wcpRead('wc_appraisal'), price:wcpRead('wc_price'), myBid:wcpRead('wc_my_bid'), contractDeposit:wcpRead('wc_contract_deposit'), extraReserve:wcpRead('wc_extra_reserve'), targetProfit:wcpRead('wc_target_profit'), calcLinkMode:wcpRead('wc_calc_link_mode'), benchMax:wcpRead('wc_bench_max'), benchMid:wcpRead('wc_bench_mid'), benchMin:wcpRead('wc_bench_min'), benchRentPy:wcpRead('wc_bench_rent_py'), benchYieldRate:wcpRead('wc_bench_yield_rate'), acqTaxRate:wcpRead('wc_acq_tax_rate'), acqTax:wcpRead('wc_acq_tax'), legalRate:wcpRead('wc_legal_rate'), legalFee:wcpRead('wc_legal_fee'), unpaidMgmt:wcpRead('wc_unpaid_mgmt'), unpaidTax:wcpRead('wc_unpaid_tax'), eviction:wcpRead('wc_eviction'), facility:wcpRead('wc_facility'), vat:wcpRead('wc_vat'), operatingAnnual:wcpRead('wc_operating_annual'), rentBrokerRate:wcpRead('wc_rent_broker_rate'), rentBrokerFee:wcpRead('wc_rent_broker_fee'), saleBrokerRate:wcpRead('wc_sale_broker_rate'), saleBrokerFee:wcpRead('wc_sale_broker_fee'), sellPrice:wcpRead('wc_sell_price'), loanRate:wcpRead('wc_cf_loan_rate'), loan:wcpRead('wc_cf_loan'), interestRate:wcpRead('wc_cf_rate'), interestAnnual:wcpRead('wc_cf_interest_amt'), interestMonthly:wcpRead('wc_cf_interest_monthly'), deposit:wcpRead('wc_deposit'), rent:wcpRead('wc_rent'), yield:wcpRead('wc_yield'), managementMonthly:wcpRead('wc_management_monthly'), corpRateUnder:wcpRead('wc_corp_rate_under'), corpRateOver:wcpRead('wc_corp_rate_over'), targetYield1:wcpRead('wc_target_yield_1'), targetYield2:wcpRead('wc_target_yield_2'), targetYield3:wcpRead('wc_target_yield_3'), memo:wcpRead('wc_calc_memo')}; }
+                function wcpApplyState(s){
+                  s=s||{};
+                  const map={wc_seed_signature:'seedSignature',wc_loan_manual_mode:'loanManualMode',wc_area:'area',wc_area_py:'areaPy',wc_bunyang_py:'bunyangPy',wc_appraisal:'appraisal',wc_price:'price',wc_my_bid:'myBid',wc_contract_deposit:'contractDeposit',wc_extra_reserve:'extraReserve',wc_target_profit:'targetProfit',wc_calc_link_mode:'calcLinkMode',wc_bench_max:'benchMax',wc_bench_mid:'benchMid',wc_bench_min:'benchMin',wc_bench_rent_py:'benchRentPy',wc_bench_yield_rate:'benchYieldRate',wc_acq_tax_rate:'acqTaxRate',wc_acq_tax:'acqTax',wc_legal_rate:'legalRate',wc_legal_fee:'legalFee',wc_unpaid_mgmt:'unpaidMgmt',wc_unpaid_tax:'unpaidTax',wc_eviction:'eviction',wc_facility:'facility',wc_vat:'vat',wc_operating_annual:'operatingAnnual',wc_rent_broker_rate:'rentBrokerRate',wc_rent_broker_fee:'rentBrokerFee',wc_sale_broker_rate:'saleBrokerRate',wc_sale_broker_fee:'saleBrokerFee',wc_sell_price:'sellPrice',wc_cf_loan_rate:'loanRate',wc_cf_loan:'loan',wc_cf_rate:'interestRate',wc_cf_interest_amt:'interestAnnual',wc_cf_interest_monthly:'interestMonthly',wc_deposit:'deposit',wc_rent:'rent',wc_yield:'yield',wc_management_monthly:'managementMonthly',wc_corp_rate_under:'corpRateUnder',wc_corp_rate_over:'corpRateOver',wc_target_yield_1:'targetYield1',wc_target_yield_2:'targetYield2',wc_target_yield_3:'targetYield3',wc_calc_memo:'memo'};
+                  Object.keys(map).forEach(function(id){wcpSet(id,s[map[id]]||'');});
+                  wcpFormatMoneyInputs();
+                }
+                function wcpField(id,label,unit,val,noteId,ph){ const isMoney=String(unit||'').indexOf('원')>=0; const attrs=isMoney?' data-wcp-money="1" inputmode="numeric" autocomplete="off"':''; const shown=isMoney?wcpEsc(wcpCommaValue(val)):wcpEsc(val||''); return '<div class="wcp-line"><label>'+wcpEsc(label)+'</label><input id="'+id+'" class="wcp-inp"'+attrs+' value="'+shown+'" placeholder="'+wcpEsc(ph||'')+'"><span class="wcp-unit">'+wcpEsc(unit||'')+'</span></div>'+(noteId?'<div class="wcp-note" id="'+noteId+'">-</div>':''); }
+                function wcpRateField(rateId,amountId,label,rate,amount,noteId){ const amountIsPct=/corp_rate_over/i.test(amountId); const unit2=amountIsPct?'%':'원'; const attrs=amountIsPct?' inputmode="decimal" autocomplete="off"':' data-wcp-money="1" inputmode="numeric" autocomplete="off"'; const amountShown=amountIsPct?wcpEsc(amount||''):wcpEsc(wcpCommaValue(amount)); return '<div class="wcp-line rate wcp-rate-field"><label>'+wcpEsc(label)+'</label><input id="'+rateId+'" class="wcp-inp wcp-rate wcp-rate-input" inputmode="decimal" autocomplete="off" value="'+wcpEsc(rate||'')+'"><span class="wcp-unit">%</span><input id="'+amountId+'" class="wcp-inp wcp-money-cell"'+attrs+' value="'+amountShown+'"><span class="wcp-unit">'+unit2+'</span></div>'+(noteId?'<div class="wcp-note" id="'+noteId+'">-</div>':''); }
                 function wcpOutputRow(label,id,unit,cls){ return '<div class="wcp-line"><label>'+wcpEsc(label)+'</label><div id="'+id+'" class="wcp-out '+(cls||'')+'">-</div><span class="wcp-unit">'+wcpEsc(unit||'')+'</span></div>'; }
+                function wcpLoanRuleBox(){ return '<div class="wcp-loan-rule"><div class="title"><span>대출 가능금액 자동 계산</span><span>작은 금액 적용</span></div><div class="formula"><div class="chip"><span>감정가 × 60%</span><b id="wcp_loan_app_cap">-</b></div><div class="chip"><span id="wcp_loan_bid_label">낙찰가 × LTV(현재 80%)</span><b id="wcp_loan_bid_cap">-</b></div><div class="chip on"><span>적용 대출금</span><b id="wcp_loan_rule_applied">-</b></div></div><div class="help" id="wcp_loan_rule_text">기준값(%) 또는 대출금액을 바꾸면 서로 연동됩니다.</div></div>'; }
+                function wcpParsePyVals(raw){
+                  const src=String(raw||'').replace(/@|만원|평|,/g,' ').trim();
+                  const nums=(src.match(/\d+(?:\.\d+)?/g)||[]).map(Number).filter(function(n){return isFinite(n)&&n>0;});
+                  if(!nums.length) return {avg:0,label:'-'};
+                  const avg=nums.reduce(function(a,b){return a+b;},0)/nums.length;
+                  const label=nums.length===1?('@ '+nums[0].toLocaleString('ko-KR')+'만/평'):(nums.map(function(n){return n.toLocaleString('ko-KR');}).join(' / ')+' 평균 @ '+avg.toFixed(1).replace(/\.0$/,'')+'만/평');
+                  return {avg:avg,label:label,values:nums};
+                }
+                function wcpBenchAmount(parsed,areaPy){
+                  const py=Number(areaPy)||0, avg=parsed&&Number(parsed.avg)||0;
+                  return (py&&avg)?Math.round(avg*py*10000):0;
+                }
                 function wcpBenchCard(num,title,desc,id,val,badge,noteId){ return '<div class="wcp-bench-card"><div class="top"><span class="num">'+num+'</span><span class="name">'+wcpEsc(title)+'</span></div><div class="desc">'+wcpEsc(desc)+'</div><input id="'+id+'" class="wcp-inp" value="'+wcpEsc(val||'')+'" placeholder="예: @2926 / 2500~3100 / 2900,3244"><div class="wcp-note orange" id="'+noteId+'">-</div><span class="wcp-badge">'+wcpEsc(badge)+'</span></div>'; }
+                function wcpRentBenchCard(num,title,desc,pyId,pyVal,yieldId,yieldVal,badge,noteId){
+                  return '<div class="wcp-bench-card rent-yield"><div class="top"><span class="num">'+num+'</span><span class="name">'+wcpEsc(title)+'</span></div><div class="desc">'+wcpEsc(desc)+'</div><input id="'+pyId+'" class="wcp-inp" value="'+wcpEsc(pyVal||'')+'" placeholder="예: 7.5 / @7.5"><div class="rent-yield-row"><span>원하는 수익률</span><input id="'+yieldId+'" class="wcp-inp wcp-rate" inputmode="decimal" autocomplete="off" value="'+wcpEsc(yieldVal||'')+'"><span class="wcp-unit">%</span></div><div class="wcp-note orange" id="'+noteId+'">-</div><span class="wcp-badge">'+wcpEsc(badge)+'</span></div>';
+                }
+                function wcpVacancyCompactBox(managementVal){
+                  return '<div class="wcp-vacancy-compact"><div class="head"><b>공실 대비 비용</b><span>임대가 늦어질 때 1년 버틸 비용</span></div><div class="wcp-form">'+wcpField('wc_management_monthly','관리비(평·월)','원',managementVal||'5000','','월 기본관리비')+'</div><div class="wcp-vacancy-grid" style="margin-top:8px;"><div class="wcp-vacancy-cell"><label>분양평수</label><div class="val" id="wcp_vac_side_bunyang">-</div></div><div class="wcp-vacancy-cell"><label>1년치 이자</label><div class="val" id="wcp_vac_side_interest">-</div></div><div class="wcp-vacancy-cell"><label>1년치 관리비</label><div class="val" id="wcp_vac_side_mgmt_year">-</div></div><div class="wcp-vacancy-cell hot"><label>초기 필요자금</label><div class="val" id="wcp_vac_side_initial">-</div></div></div></div>';
+                }
 
-                function wcpBuildLinkedCalcPicker(room){ try{ const sv=(typeof getSv==='function')?getSv():[]; const items=(typeof wr2ResolveLinkedSavedItems==='function')?wr2ResolveLinkedSavedItems(room,sv,typeof wr2BuildPlLinkedMap==='function'?wr2BuildPlLinkedMap():{}):[]; if(!items.length)return ''; const buttons=items.map(function(it,idx){ const seed=wr2SummarySeed(it); return '<button class="wcp-btn small" onclick="wr2CalcLoadLinkedItem(\''+wcpEsc(room.id)+'\',\''+wcpEsc(seed.id)+'\')">'+(idx+1)+'. '+wcpEsc(seed.title).slice(0,16)+'</button>'; }).join(''); return '<div class="wcp-card" style="border-color:rgba(249,115,22,.28);"><h4>연결 물건 계산 기준</h4><div class="wcp-sub">각 물건 단독 또는 전체 합산 기준으로 계산값을 불러옵니다.</div><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;"><button class="wcp-btn primary small" onclick="wr2CalcLoadLinkedTotal(\''+wcpEsc(room.id)+'\')">전체 합산</button>'+buttons+'</div><input id="wc_calc_link_mode" type="hidden" value=""></div>'; }catch(e){ return ''; } }
+                function wcpBuildLinkedCalcPicker(room){
+                  try{
+                    const sv=(typeof getSv==='function')?getSv():[];
+                    const items=(typeof wr2ResolveLinkedSavedItems==='function')?wr2ResolveLinkedSavedItems(room,sv,typeof wr2BuildPlLinkedMap==='function'?wr2BuildPlLinkedMap():{}):[];
+                    if(!items.length)return '';
+                    const buttons=items.map(function(it,idx){
+                      const seed=wr2SummarySeed(it);
+                      const label='물건'+(idx+1)+(seed.title?' · '+String(seed.title).slice(0,14):'');
+                      return '<button class="wcp-link-choice" onclick="wr2CalcLoadLinkedItem(\''+wcpEsc(room.id)+'\',\''+wcpEsc(seed.id)+'\')">'+wcpEsc(label)+'</button>';
+                    }).join('');
+                    return '<div class="wcp-linked-picker"><span>계산 기준</span><button class="wcp-link-choice primary" onclick="wr2CalcLoadLinkedTotal(\''+wcpEsc(room.id)+'\')">합산</button>'+buttons+'<input id="wc_calc_link_mode" type="hidden" value=""></div>';
+                  }catch(e){ return ''; }
+                }
                 function wcpBuildHtml(room){
                   const s=wcpDefaultState(room);
-                  return `<div class="wr2-calc-pro-shell">
+                  return `<div class="wr2-calc-pro-shell"><input id="wc_seed_signature" type="hidden" value="${wcpEsc(s.seedSignature||'')}"><input id="wc_loan_manual_mode" type="hidden" value="${wcpEsc(s.loanManualMode||'')}">
                     <div class="wcp-top">
                       <div class="wcp-head">
                         <div><div class="wcp-title">수익률 계산기</div><div class="wcp-sub">@만원/평 기준으로 입찰가를 정하고, 입력·세금/자금흐름·저장비교를 분리해서 봅니다.</div></div>
@@ -7519,18 +7449,18 @@ window.wr2SummaryCancelEdit = function() {
                         <div class="wcp-kpi"><div class="l">추천 입찰가</div><div class="v orange" id="wcp_k_suggested">-</div></div>
                         <div class="wcp-kpi"><div class="l">나의 입찰가</div><div class="v" id="wcp_k_price">-</div></div>
                         <div class="wcp-kpi"><div class="l">최대 필요자금</div><div class="v orange" id="wcp_k_need">-</div></div>
-                        <div class="wcp-kpi"><div class="l">최소 필요자금</div><div class="v green" id="wcp_k_minneed">-</div></div>
-                        <div class="wcp-kpi"><div class="l">절대 수익률</div><div class="v blue" id="wcp_k_abs">-</div></div>
-                        <div class="wcp-kpi"><div class="l">레버리지 수익률</div><div class="v green" id="wcp_k_lev">-</div></div>
-                        <div class="wcp-kpi"><div class="l">ROI</div><div class="v orange" id="wcp_k_roi">-</div></div>
+                        <div class="wcp-kpi minfund"><div class="l">최소 필요자금</div><div class="v green" id="wcp_k_minneed">-</div></div>
+                        <div class="wcp-kpi yield-main"><div class="l">절대 수익률</div><div class="v blue" id="wcp_k_abs">-</div></div>
+                        <div class="wcp-kpi yield-main lev"><div class="l">레버리지 수익률</div><div class="v green" id="wcp_k_lev">-</div></div>
+                        <div class="wcp-kpi roi"><div class="l">ROI</div><div class="v orange" id="wcp_k_roi">-</div></div>
                       </div>
                     </div>
                     ${wcpBuildLinkedCalcPicker(room)}
-                    <div class="wcp-card orange">
-                      <h3>1. 4가지 손품 기반 입찰가 추정</h3>
-                      <div class="wcp-sub">MAX·MID·MIN은 @만원/평으로 입력합니다. 개별값은 쉼표/공백/줄바꿈으로, 범위는 1000~1200처럼 입력하세요.</div>
+                    <details class="wcp-card orange wcp-bench-compact" open>
+                      <summary><span class="sum-title">손품 기반 입찰가 추정</span><span class="sum-sub">사진3의 MAX·MID·MIN 기준으로 입찰가 계산</span></summary>
+                      <div class="wcp-bench-body"><div class="wcp-sub">MAX·MID·MIN은 @만원/평으로 입력합니다. 범위는 1000~1200처럼 입력하세요.</div>
                       <div class="wcp-grid3" style="margin-top:8px;">
-                        <div class="wcp-section"><h4>기준면적</h4><div class="wcp-form">${wcpField('wc_area','전용면적','㎡',s.area,'','')}${wcpField('wc_area_py','전용평수','평',s.areaPy,'','')}</div></div>
+                        <div class="wcp-section"><h4>기준면적</h4><div class="wcp-form">${wcpField('wc_area','전용면적','㎡',s.area,'','')}${wcpField('wc_area_py','전용평수','평',s.areaPy,'','')}${wcpField('wc_bunyang_py','분양평수','평',s.bunyangPy,'','')}</div></div>
                         <div class="wcp-section"><h4>나의 입찰가</h4><div class="wcp-form">${wcpField('wc_my_bid','입찰가','원',s.myBid,'wcp_my_bid_note','')}${wcpField('wc_extra_reserve','예비비','원',s.extraReserve,'','')}${wcpField('wc_target_profit','목표 순이익','원',s.targetProfit,'','예: 30,000,000')}<button class="wcp-btn primary" onclick="wr2CalcUseSuggestedBid()" style="justify-self:start;">추천가 적용</button></div></div>
                         <div class="wcp-section"><h4>입찰가 추정 결과</h4><div class="wcp-resultbar"><span class="label">추천 입찰가</span><span class="value" id="wcp_suggested_bid">-</span></div><div class="wcp-note orange" id="wcp_bench_summary" style="text-align:left;margin-top:6px;">-</div></div>
                       </div>
@@ -7538,21 +7468,21 @@ window.wr2SummaryCancelEdit = function() {
                         ${wcpBenchCard(1,'네이버 매매 호가','현재 시장 상한선','wc_bench_max',s.benchMax,'MAX','wcp_bench_max_note')}
                         ${wcpBenchCard(2,'최근 2년치 거래 사례','실거래 중간값','wc_bench_mid',s.benchMid,'MID','wcp_bench_mid_note')}
                         ${wcpBenchCard(3,'최근 2년치 낙찰가','시장 하한선','wc_bench_min',s.benchMin,'MIN','wcp_bench_min_note')}
-                        <div class="wcp-bench-card"><div class="top"><span class="num">4</span><span class="name">네이버 월세 호가</span></div><div class="desc">월세 평단가와 연동</div>${wcpField('wc_bench_rent_py','월세 평단가','만/평·월',s.benchRentPy,'wcp_bench_rent_note','예: 5.6 / 5.0~6.2')}<span class="wcp-badge">YIELD</span></div>
-                      </div>
-                    </div>
+                        ${wcpRentBenchCard(4,'네이버 월세 호가','월세 평단가와 원하는 수익률로 예상 매도가를 봅니다','wc_bench_rent_py',s.benchRentPy,'wc_bench_yield_rate',s.benchYieldRate,'YIELD','wcp_bench_rent_note')}
+                      </div></div>
+                    </details>
                     <div class="wcp-tabs"><button class="wcp-tab active" data-pane="input">입력</button><button class="wcp-tab" data-pane="taxflow">세금·자금흐름</button><button class="wcp-tab" data-pane="save">저장·비교</button></div>
                     <div id="wcp_pane_input" class="wcp-pane active">
-                      <div class="wcp-grid2">
-                        <div class="wcp-card"><h3>2. 수익률 분석기 입력</h3><div class="wcp-grid2" style="margin-top:8px;">
+                      <div class="wcp-main-grid">
+                        <div class="wcp-card wcp-input-card"><h3>2. 수익률 분석기 입력</h3><div class="wcp-input-sections" style="margin-top:8px;">
                           <div class="wcp-section"><h4>① 취득비용</h4><div class="wcp-form">${wcpField('wc_appraisal','감정가','원',s.appraisal,'','')}${wcpField('wc_price','입찰가/매수가','원',s.price,'wcp_price_note','')}${wcpRateField('wc_acq_tax_rate','wc_acq_tax','취등록세',s.acqTaxRate,s.acqTax,'')}${wcpRateField('wc_legal_rate','wc_legal_fee','법무비 등',s.legalRate,s.legalFee,'')}</div></div>
                           <div class="wcp-section"><h4>② 취득시 필요경비</h4><div class="wcp-form">${wcpField('wc_unpaid_mgmt','미납 관리비','원',s.unpaidMgmt,'','')}${wcpField('wc_unpaid_tax','미납 세금','원',s.unpaidTax,'','')}${wcpField('wc_eviction','명도비','원',s.eviction,'','')}${wcpField('wc_facility','시설비','원',s.facility,'','')}${wcpField('wc_vat','부가세 환급예상','원',s.vat,'','')}</div></div>
-                          <div class="wcp-section"><h4>③ 운영시 필요경비</h4><div class="wcp-form">${wcpField('wc_operating_annual','운영비(연)','원',s.operatingAnnual,'','')}${wcpRateField('wc_rent_broker_rate','wc_rent_broker_fee','임대중개수수료',s.rentBrokerRate,s.rentBrokerFee,'')}${wcpRateField('wc_sale_broker_rate','wc_sale_broker_fee','매도중개수수료',s.saleBrokerRate,s.saleBrokerFee,'')}${wcpField('wc_sell_price','예상 매도가','원',s.sellPrice,'','')}</div></div>
-                          <div class="wcp-section"><h4>④ 이자·수익</h4><div class="wcp-form">${wcpRateField('wc_cf_loan_rate','wc_cf_loan','LTV/대출금',s.loanRate,s.loan,'')}${wcpRateField('wc_cf_rate','wc_cf_interest_amt','대출이자율/년이자',s.interestRate,s.interestAmt,'')}${wcpField('wc_cf_interest_monthly','대출 이자(월)','원',s.interestMonthly,'','')}${wcpField('wc_deposit','임대 보증금','원',s.deposit,'','')}${wcpField('wc_rent','월 임대료','원',s.rent,'wcp_rent_note','')}${wcpRateField('wc_rental_yield','wc_management_monthly','임대수익률/관리비',s.rentalYield,s.managementMonthly,'')}${wcpField('wc_contract_deposit','계약금/입찰보증금','원',s.contractDeposit,'','')}</div></div>
+                          <div class="wcp-section"><h4>③ 운영시 필요경비</h4><div class="wcp-form">${wcpField('wc_operating_annual','운영비(연)','원',s.operatingAnnual,'','')}${wcpRateField('wc_rent_broker_rate','wc_rent_broker_fee','임대중개수수료',s.rentBrokerRate,s.rentBrokerFee,'')}${wcpRateField('wc_sale_broker_rate','wc_sale_broker_fee','매도중개수수료',s.saleBrokerRate,s.saleBrokerFee,'')}${wcpField('wc_sell_price','예상 매도가','원',s.sellPrice,'','')}</div>${wcpVacancyCompactBox(s.managementMonthly)}</div>
+                          <div class="wcp-section"><h4>④ 이자·수익</h4><div class="wcp-form">${wcpRateField('wc_cf_loan_rate','wc_cf_loan','LTV/대출금',s.loanRate,s.loan,'')}${wcpLoanRuleBox()}${wcpRateField('wc_cf_rate','wc_cf_interest_amt','대출이자율/년이자',s.interestRate,s.interestAnnual,'')}${wcpField('wc_cf_interest_monthly','대출 이자(월)','원',s.interestMonthly,'','')}${wcpField('wc_deposit','임대 보증금','원',s.deposit,'','')}${wcpField('wc_rent','월 임대료','원',s.rent,'wcp_rent_note','')}${wcpField('wc_contract_deposit','계약금/입찰보증금','원',s.contractDeposit,'','')}</div></div>
                         </div></div>
-                        <div>
-                          <div class="wcp-card"><h3>3. KPI 요약</h3><div class="wcp-grid2" style="margin-top:8px;"><div class="wcp-section"><h4>현금흐름</h4>${wcpOutputRow('월 순수익','wcp_o_month_net','원','blue')}${wcpOutputRow('년 순수익','wcp_o_year_net','원','')}${wcpOutputRow('초기 필요자금','wcp_o_initial_need','원','orange')}${wcpOutputRow('전용 평단가','wcp_o_per_py','원/평','')}</div><div class="wcp-section"><h4>자동 산출</h4>${wcpOutputRow('부가세 환급예상','wcp_o_vat','원','green')}${wcpOutputRow('1년치 이자','wcp_o_interest_year','원','')}${wcpOutputRow('1년치 관리비','wcp_o_management_year','원','')}${wcpOutputRow('절대 수익률','wcp_o_abs_yield','%','green')}</div></div></div>
-                          <div class="wcp-card"><h3>투자금 and 투자수익</h3><table class="wcp-invest-table"><tbody><tr><td>총 투자금</td><td id="wcp_p_total_no_deposit">-</td><td>보증금 미포함</td></tr><tr><td>총 투자금</td><td id="wcp_p_total_with_deposit" class="red">-</td><td>보증금 포함</td></tr><tr><td>절대 수익률</td><td id="wcp_p_abs_yield">-</td><td>%</td></tr><tr><td>레버리지 수익률</td><td id="wcp_p_lev_yield">-</td><td>%</td></tr><tr><td>예상 매도가</td><td id="wcp_p_sell_price" class="hot">-</td><td>원</td></tr><tr><td>ROI</td><td id="wcp_p_roi" class="red">-</td><td>%</td></tr><tr><td>세후수익</td><td id="wcp_p_after_tax" class="hot">-</td><td>원</td></tr></tbody></table></div>
+                        <div class="wcp-side-col">
+                          <div class="wcp-card wcp-kpi-card"><h3>3. KPI 요약</h3><div class="wcp-grid2" style="margin-top:8px;"><div class="wcp-section"><h4>현금흐름</h4>${wcpOutputRow('월 순수익','wcp_o_month_net','원','blue')}${wcpOutputRow('년 순수익','wcp_o_year_net','원','')}${wcpOutputRow('초기 필요자금','wcp_o_initial_need','원','orange')}${wcpOutputRow('전용 평단가','wcp_o_per_py','원/평','')}</div><div class="wcp-section"><h4>자동 산출</h4>${wcpOutputRow('부가세 환급예상','wcp_o_vat','원','green')}${wcpOutputRow('1년치 이자','wcp_o_interest_year','원','')}${wcpOutputRow('1년치 관리비','wcp_o_management_year','원','')}${wcpOutputRow('절대 수익률','wcp_o_abs_yield','%','green')}</div></div></div>
+                          <div class="wcp-card"><h3>투자금 and 투자수익</h3><table class="wcp-invest-table"><tbody><tr><td>총 투자금</td><td id="wcp_p_total_no_deposit">-</td><td>보증금 미포함</td></tr><tr><td>총 투자금</td><td id="wcp_p_total_with_deposit" class="red">-</td><td>보증금 포함</td></tr><tr class="yield-row"><td>절대 수익률</td><td id="wcp_p_abs_yield">-</td><td>%</td></tr><tr class="lev-row"><td>레버리지 수익률</td><td id="wcp_p_lev_yield">-</td><td>%</td></tr><tr><td>예상 매도가</td><td id="wcp_p_sell_price" class="hot">-</td><td>원</td></tr><tr><td>ROI</td><td id="wcp_p_roi" class="red">-</td><td>%</td></tr><tr><td>세후수익</td><td id="wcp_p_after_tax" class="hot">-</td><td>원</td></tr></tbody></table></div>
                         </div>
                       </div>
                     </div>
@@ -7565,21 +7495,97 @@ window.wr2SummaryCancelEdit = function() {
                     <div id="wcp_pane_save" class="wcp-pane"><div class="wcp-card"><h3>입찰가 시나리오 비교</h3><div class="wcp-sub">각 입찰가의 계산 결과를 저장·불러오기·비교합니다.</div><div class="wcp-table-wrap" style="margin-top:8px;"><table class="wcp-table"><thead><tr><th>시나리오명</th><th>입찰가</th><th>최대 필요자금</th><th>최소 필요자금</th><th>레버리지 수익률</th><th>절대 수익률</th><th>ROI</th><th>세후수익</th><th>전용 평단가</th><th>저장일</th><th>작업</th></tr></thead><tbody id="wcp_scenario_body"></tbody></table></div><button class="wcp-btn primary" onclick="wr2CalcScenarioSave()" style="margin-top:8px;">+ 비교 추가</button></div><div class="wcp-grid2"><div class="wcp-card"><h3>저장된 입찰가 시나리오 <span id="wcp_saved_count" class="wcp-sub">0개 저장됨</span></h3><div id="wcp_saved_list" class="wcp-saved-list"></div></div><div class="wcp-card"><h3>계산 스냅샷</h3><div id="wcp_snapshot_grid" class="wcp-shot-grid"></div><button class="wcp-btn" onclick="wr2CalcSnapshotSave()" style="margin-top:8px;">현재 화면 캡처 저장</button></div></div></div>
                   </div>`;
                 }
-                function wcpSyncPairs(trigger){ const area=wcpNum(wcpRead('wc_area')), areaPy=wcpNum(wcpRead('wc_area_py')); if(trigger==='wc_area' && area>0) wcpSet('wc_area_py',(area/3.305785).toFixed(2)); if(trigger==='wc_area_py' && areaPy>0) wcpSet('wc_area',(areaPy*3.305785).toFixed(2)); const rentDup=document.getElementById('wc_bench_rent_py_dup'); const rentMain=document.getElementById('wc_bench_rent_py'); if(trigger==='wc_bench_rent_py' && rentDup) rentDup.value=wcpRead('wc_bench_rent_py'); if(trigger==='wc_bench_rent_py_dup' && rentMain) rentMain.value=wcpRead('wc_bench_rent_py_dup'); const priceBase=wcpReadWon('wc_my_bid')||wcpReadWon('wc_price'); if(trigger==='wc_my_bid' && priceBase) wcpSetWon('wc_price',priceBase); if(trigger==='wc_price' && priceBase) wcpSetWon('wc_my_bid',priceBase); const price=wcpReadWon('wc_price')||wcpReadWon('wc_my_bid'), appraisal=wcpReadWon('wc_appraisal'); [['wc_acq_tax_rate','wc_acq_tax',price],['wc_legal_rate','wc_legal_fee',price]].forEach(function(p){ const rateId=p[0], amtId=p[1], base=p[2]; if(!base) return; if(trigger===amtId){ const amt=wcpReadWon(amtId); if(amt) wcpSetPct(rateId,amt/base*100,2); } else { const rate=wcpReadPct(rateId); if(rate) wcpSetWon(amtId,base*rate/100); } }); if(price){ if(trigger==='wc_cf_loan'){ const loan=wcpReadWon('wc_cf_loan'); if(loan) wcpSetPct('wc_cf_loan_rate',loan/price*100,2); } else { const ltv=wcpReadPct('wc_cf_loan_rate'); if(ltv){ let loan=price*ltv/100; if(appraisal) loan=Math.min(appraisal*0.60, loan); loan=Math.floor(loan/100000)*100000; wcpSetWon('wc_cf_loan',loan); } } } const loan=wcpReadWon('wc_cf_loan'); if(loan){ if(trigger==='wc_cf_interest_amt'){ const a=wcpReadWon('wc_cf_interest_amt'); if(a){ wcpSetPct('wc_cf_rate',a/loan*100,2); wcpSetWon('wc_cf_interest_monthly',a/12); } } else if(trigger==='wc_cf_interest_monthly'){ const m=wcpReadWon('wc_cf_interest_monthly'); if(m){ wcpSetWon('wc_cf_interest_amt',m*12); wcpSetPct('wc_cf_rate',m*12/loan*100,2); } } else { const r=wcpReadPct('wc_cf_rate'); if(r){ wcpSetWon('wc_cf_interest_amt',loan*r/100); wcpSetWon('wc_cf_interest_monthly',loan*r/100/12); } } } const rent=wcpReadWon('wc_rent'), dep=wcpReadWon('wc_deposit'); const rentBase=dep+rent*100; if(rentBase){ if(trigger==='wc_rent_broker_fee'){ const a=wcpReadWon('wc_rent_broker_fee'); if(a) wcpSetPct('wc_rent_broker_rate',a/rentBase*100,2); } else { const r=wcpReadPct('wc_rent_broker_rate'); if(r) wcpSetWon('wc_rent_broker_fee',rentBase*r/100); } } const sell=wcpReadWon('wc_sell_price'); if(sell){ if(trigger==='wc_sale_broker_fee'){ const a=wcpReadWon('wc_sale_broker_fee'); if(a) wcpSetPct('wc_sale_broker_rate',a/sell*100,2); } else { const r=wcpReadPct('wc_sale_broker_rate'); if(r) wcpSetWon('wc_sale_broker_fee',sell*r/100); } } if(trigger==='wc_yield' && price && wcpReadPct('wc_yield')) wcpSetWon('wc_rent',price*wcpReadPct('wc_yield')/100/12); }
-                function wcpCalc(trigger){ wcpSyncPairs(trigger||''); const areaPy=wcpNum(wcpRead('wc_area_py')), bunyangPy=wcpNum(wcpRead('wc_bunyang_py'))||areaPy; const price=wcpReadWon('wc_price')||wcpReadWon('wc_my_bid'); const maxS=wcpParsePyVals(wcpRead('wc_bench_max')), midS=wcpParsePyVals(wcpRead('wc_bench_mid')), minS=wcpParsePyVals(wcpRead('wc_bench_min')), rentPyS=wcpParsePyVals(wcpRead('wc_bench_rent_py')); const yRate=wcpReadPct('wc_bench_yield_rate')||8; const benchAmts=[wcpBenchAmount(maxS,areaPy),wcpBenchAmount(midS,areaPy),wcpBenchAmount(minS,areaPy)].filter(Boolean); let rentMonthly=rentPyS.avg&&areaPy?rentPyS.avg*areaPy*10000:0; let yieldAmt=rentMonthly&&yRate?((wcpReadWon('wc_deposit')||0)+(rentMonthly*12)/(yRate/100)):0; let pyCandidates=[maxS.avg,midS.avg,minS.avg]; if(yieldAmt&&areaPy) pyCandidates.push(yieldAmt/areaPy/10000); pyCandidates=pyCandidates.filter(Boolean); const suggestedPy=pyCandidates.length?pyCandidates.reduce((a,b)=>a+b,0)/pyCandidates.length:0; const marketSuggested=suggestedPy&&areaPy?suggestedPy*areaPy*10000:0; const acq=wcpReadWon('wc_acq_tax'), legal=wcpReadWon('wc_legal_fee'), unpaid=wcpReadWon('wc_unpaid_mgmt'), unpaidTax=wcpReadWon('wc_unpaid_tax'), eviction=wcpReadWon('wc_eviction'), facility=wcpReadWon('wc_facility'), vat=wcpReadWon('wc_vat'), operating=wcpReadWon('wc_operating_annual'), rentBroker=wcpReadWon('wc_rent_broker_fee'), saleBroker=wcpReadWon('wc_sale_broker_fee'), loan=wcpReadWon('wc_cf_loan'), intY=wcpReadWon('wc_cf_interest_amt'), intM=wcpReadWon('wc_cf_interest_monthly'), dep=wcpReadWon('wc_deposit'), rent=wcpReadWon('wc_rent'), contract=wcpReadWon('wc_contract_deposit')||(price?price*0.1:0), reserve=wcpReadWon('wc_extra_reserve'); const mgmtMonthlyPy=wcpReadWon('wc_management_monthly'); const mgmtYear=mgmtMonthlyPy*bunyangPy*12; const monthNet=rent-intM; const yearNet=monthNet*12; const maxRequired=Math.max(0, price+acq+legal+unpaid+unpaidTax+eviction+facility+operating+rentBroker+saleBroker+intY+mgmtYear+reserve-loan); const minRequired=Math.max(0,maxRequired-dep-vat); const initialNeed=maxRequired; const absYield=price?rent*12/price*100:0; const levYield=minRequired?yearNet/minRequired*100:0; const sell=wcpReadWon('wc_sell_price')||0; const targetProfit=wcpReadWon('wc_target_profit')||0; const acqRate=wcpReadPct('wc_acq_tax_rate')||0, legalRate=wcpReadPct('wc_legal_rate')||0; const variableRate=(acqRate+legalRate)/100; const fixedForProfit=unpaid+unpaidTax+eviction+facility+operating+rentBroker+saleBroker+intY+mgmtYear+reserve-dep-vat; const profitCap=(sell&&targetProfit)?Math.max(0,(sell-targetProfit-fixedForProfit)/(1+variableRate)):0; const suggested=profitCap?(marketSuggested?Math.min(marketSuggested,profitCap):profitCap):marketSuggested; const suggestedSource=profitCap?(marketSuggested&&profitCap<marketSuggested?'profit_cap':'market_below_cap'):'market'; const saleGain=sell?Math.max(0,sell-price-acq-legal):0; const taxBase=Math.max(0,saleGain); const under=Math.min(taxBase,200000000)*(wcpReadPct('wc_corp_rate_under')/100); const over=Math.max(0,taxBase-200000000)*(wcpReadPct('wc_corp_rate_over')/100); const tax=under+over; const afterTax=saleGain-tax; const roi=minRequired&&afterTax?afterTax/minRequired*100:0; return {areaPy,bunyangPy,price,maxS,midS,minS,rentPyS,rentMonthly,yieldAmt,suggestedPy,marketSuggested,profitCap,targetProfit,suggested,suggestedSource,acq,legal,unpaid,unpaidTax,eviction,facility,vat,operating,rentBroker,saleBroker,loan,intY,intM,dep,rent,contract,reserve,mgmtYear,monthNet,yearNet,maxRequired,minRequired,initialNeed,absYield,levYield,sell,saleGain,taxBase,under,over,tax,afterTax,roi,perPy:areaPy&&price?price/areaPy:0,rentPerPy:areaPy&&rent?rent/areaPy/10000:0}; }
-                function wcpRenderOutputs(trigger){ const r=wcpCalc(trigger||''); function put(id,val,cls){ wcpSetText(id,val); } wcpSetText('wcp_k_suggested',wcpFormatWon(r.suggested)); wcpSetText('wcp_k_price',wcpFormatWon(r.price)); wcpSetText('wcp_k_need',wcpFormatWon(r.maxRequired)); wcpSetText('wcp_k_minneed',wcpFormatWon(r.minRequired)); wcpSetText('wcp_k_abs',(r.absYield||0).toFixed(2)+'%'); wcpSetText('wcp_k_lev',(r.levYield||0).toFixed(2)+'%'); wcpSetText('wcp_k_roi',(r.roi||0).toFixed(0)+'%'); wcpSetText('wcp_suggested_bid',wcpFormatWon(r.suggested)); let summary=''; if(r.profitCap){ summary='시장/수익 기준 '+wcpFormatWon(r.marketSuggested)+' · 목표순이익 상한 '+wcpFormatWon(r.profitCap)+' → 추천 입찰가 '+wcpFormatWon(r.suggested); } else if(r.suggestedPy){ summary='시장/수익 기준 @ '+r.suggestedPy.toFixed(1)+'만원/평 · '+wcpFormatWon(r.suggested)+' · 예상 매도가와 목표 순이익을 입력하면 입찰상한을 자동으로 걸어줍니다.'; } else { summary='@만원/평 값을 입력하면 시장 기준 추천가가 계산되고, 예상 매도가+목표 순이익 입력 시 남는 금액 기준 입찰가로 보정됩니다.'; } wcpSetText('wcp_bench_summary',summary); wcpSetText('wcp_bench_max_note',r.maxS.avg?r.maxS.label+' · '+wcpFormatWon(wcpBenchAmount(r.maxS,r.areaPy)):'-'); wcpSetText('wcp_bench_mid_note',r.midS.avg?r.midS.label+' · '+wcpFormatWon(wcpBenchAmount(r.midS,r.areaPy)):'-'); wcpSetText('wcp_bench_min_note',r.minS.avg?r.minS.label+' · '+wcpFormatWon(wcpBenchAmount(r.minS,r.areaPy)):'-'); wcpSetText('wcp_bench_rent_note',r.rentPyS.avg?r.rentPyS.label+' · 월세 '+wcpFormatWon(r.rentMonthly):'-'); wcpSetText('wcp_bench_yield_note',r.yieldAmt?'수익환산 '+wcpFormatWon(r.yieldAmt)+' / @ '+(r.areaPy?r.yieldAmt/r.areaPy/10000:0).toFixed(1)+'만/평':'-'); wcpSetText('wcp_my_bid_note',r.profitCap?'목표순이익 기준 상한: '+wcpFormatWon(r.profitCap):(r.suggested?'시장 기준 추천가: '+wcpFormatWon(r.marketSuggested||r.suggested):'-')); wcpSetText('wcp_price_note',r.price&&r.areaPy?'@ '+Math.round(r.price/r.areaPy/10000).toLocaleString('ko-KR')+'만/평':'-'); wcpSetText('wcp_rent_note',r.rentPerPy?'월세 @ '+r.rentPerPy.toFixed(1)+'만/평':'-'); wcpSetText('wcp_o_month_net',wcpFormatWon(r.monthNet)); wcpSetText('wcp_o_year_net',wcpFormatWon(r.yearNet)); wcpSetText('wcp_o_initial_need',wcpFormatWon(r.initialNeed)); wcpSetText('wcp_o_per_py',r.perPy?Math.round(r.perPy).toLocaleString('ko-KR'):'-'); wcpSetText('wcp_o_vat',wcpFormatWon(r.vat)); wcpSetText('wcp_o_interest_year',wcpFormatWon(r.intY)); wcpSetText('wcp_o_management_year',wcpFormatWon(r.mgmtYear)); wcpSetText('wcp_o_abs_yield',(r.absYield||0).toFixed(2)); wcpSetText('wcp_p_total_no_deposit',wcpFormatWon(r.maxRequired)); wcpSetText('wcp_p_total_with_deposit',wcpFormatWon(r.minRequired)); wcpSetText('wcp_p_abs_yield',(r.absYield||0).toFixed(2)); wcpSetText('wcp_p_lev_yield',(r.levYield||0).toFixed(2)); wcpSetText('wcp_p_sell_price',wcpFormatWon(r.sell)); wcpSetText('wcp_p_roi',(r.roi||0).toFixed(0)); wcpSetText('wcp_p_after_tax',wcpFormatWon(r.afterTax)); wcpSetText('wcp_tax_gain',wcpFormatWon(r.saleGain)); wcpSetText('wcp_tax_base',wcpFormatWon(r.taxBase)); wcpSetText('wcp_tax_under',wcpFormatWon(r.under)); wcpSetText('wcp_tax_over',wcpFormatWon(r.over)); wcpSetText('wcp_tax_total',wcpFormatWon(r.tax)); wcpSetText('wcp_tax_after',wcpFormatWon(r.afterTax)); wcpSetText('wcp_tax_per_py',r.areaPy&&r.price?Math.round(r.price/r.areaPy).toLocaleString('ko-KR'):'-'); wcpSetText('wcp_tax_ex_per_py',r.areaPy&&r.price?Math.round(r.price/r.areaPy).toLocaleString('ko-KR'):'-'); [1,2,3].forEach(function(i){ const rate=wcpReadPct('wc_target_yield_'+i); const target=(r.dep||0)+(r.rent||0)*12/(rate/100); wcpSetWon('wcp_target_price_'+i,rate?target:0); }); wcpRenderFlow(r); return r; }
+                function wcpSyncPairs(trigger){
+                  trigger=trigger||'';
+                  const modeEl=document.getElementById('wc_loan_manual_mode');
+                  const setLoanMode=function(v){ if(modeEl) modeEl.value=v||''; };
+                  const getLoanMode=function(){ return modeEl?String(modeEl.value||''):''; };
+                  const area=wcpNum(wcpRead('wc_area')), areaPy=wcpNum(wcpRead('wc_area_py'));
+                  if(trigger==='wc_area' && area>0) wcpSet('wc_area_py',(area/3.305785).toFixed(2));
+                  if(trigger==='wc_area_py' && areaPy>0) wcpSet('wc_area',(areaPy*3.305785).toFixed(2));
+
+                  const priceBase=wcpReadWon('wc_my_bid')||wcpReadWon('wc_price');
+                  if(trigger==='wc_my_bid' && priceBase) wcpSetWon('wc_price',priceBase);
+                  if(trigger==='wc_price' && priceBase) wcpSetWon('wc_my_bid',priceBase);
+                  const price=wcpReadWon('wc_price')||wcpReadWon('wc_my_bid'), appraisal=wcpReadWon('wc_appraisal');
+
+                  [['wc_acq_tax_rate','wc_acq_tax',price],['wc_legal_rate','wc_legal_fee',price]].forEach(function(p){
+                    const rateId=p[0], amtId=p[1], base=p[2]; if(!base) return;
+                    if(trigger===amtId){ const amt=wcpReadWon(amtId); if(amt) wcpSetPct(rateId,amt/base*100,2); }
+                    else { const rate=wcpReadPct(rateId); if(rate) wcpSetWon(amtId,base*rate/100); }
+                  });
+
+                  if(trigger==='wc_cf_loan_rate') setLoanMode('rate');
+                  if(trigger==='wc_cf_loan') setLoanMode('amount');
+
+                  if(price){
+                    let mode=getLoanMode();
+                    const appCap=appraisal?appraisal*0.60:0;
+                    if(mode==='amount'){
+                      const manualLoan=wcpReadWon('wc_cf_loan');
+                      if(manualLoan) wcpSetPct('wc_cf_loan_rate',manualLoan/price*100,2);
+                    }else{
+                      let enteredRate=wcpReadPct('wc_cf_loan_rate');
+                      if(!enteredRate || mode===''){
+                        enteredRate=80;
+                        if(mode==='') setLoanMode('');
+                      }
+                      const bidCap=price*enteredRate/100;
+                      const appliedLoan=appCap?Math.min(appCap,bidCap):bidCap;
+                      if(appliedLoan){
+                        wcpSetWon('wc_cf_loan',Math.round(appliedLoan));
+                        // 자동 모드에서는 실제 적용 대출금 기준의 LTV가 화면에 표시되어야 한다.
+                        // 수동 rate 모드에서는 입력한 rate를 유지하고, 금액만 그 기준으로 연동한다.
+                        if(mode==='') wcpSetPct('wc_cf_loan_rate',appliedLoan/price*100,2);
+                        else wcpSetPct('wc_cf_loan_rate',enteredRate,2);
+                      }
+                    }
+                  }
+
+                  const loan=wcpReadWon('wc_cf_loan');
+                  if(loan){
+                    if(trigger==='wc_cf_interest_amt'){
+                      const a=wcpReadWon('wc_cf_interest_amt'); if(a){ wcpSetPct('wc_cf_rate',a/loan*100,2); wcpSetWon('wc_cf_interest_monthly',a/12); }
+                    } else if(trigger==='wc_cf_interest_monthly'){
+                      const m=wcpReadWon('wc_cf_interest_monthly'); if(m){ wcpSetWon('wc_cf_interest_amt',m*12); wcpSetPct('wc_cf_rate',m*12/loan*100,2); }
+                    } else {
+                      const r=wcpReadPct('wc_cf_rate'); if(r){ wcpSetWon('wc_cf_interest_amt',loan*r/100); wcpSetWon('wc_cf_interest_monthly',loan*r/100/12); }
+                    }
+                  }
+
+                  const rent=wcpReadWon('wc_rent'), dep=wcpReadWon('wc_deposit');
+                  const rentBase=dep+rent*100;
+                  if(rentBase){
+                    if(trigger==='wc_rent_broker_fee'){ const a=wcpReadWon('wc_rent_broker_fee'); if(a) wcpSetPct('wc_rent_broker_rate',a/rentBase*100,2); }
+                    else { const r=wcpReadPct('wc_rent_broker_rate'); if(r) wcpSetWon('wc_rent_broker_fee',rentBase*r/100); }
+                  }
+                  const sell=wcpReadWon('wc_sell_price');
+                  if(sell){
+                    if(trigger==='wc_sale_broker_fee'){ const a=wcpReadWon('wc_sale_broker_fee'); if(a) wcpSetPct('wc_sale_broker_rate',a/sell*100,2); }
+                    else { const r=wcpReadPct('wc_sale_broker_rate'); if(r) wcpSetWon('wc_sale_broker_fee',sell*r/100); }
+                  }
+
+                  const rentPyParsed=(typeof wcpParsePyVals==='function')?wcpParsePyVals(wcpRead('wc_bench_rent_py')):{avg:0};
+                  const curAreaPy=wcpNum(wcpRead('wc_area_py'));
+                  if((trigger==='wc_bench_rent_py' || trigger==='wc_bench_yield_rate' || ((trigger==='wc_area'||trigger==='wc_area_py') && !wcpReadWon('wc_rent'))) && rentPyParsed.avg && curAreaPy){
+                    wcpSetWon('wc_rent',rentPyParsed.avg*curAreaPy*10000);
+                  }
+                  if(trigger==='wc_yield' && price && wcpReadPct('wc_yield')) wcpSetWon('wc_rent',price*wcpReadPct('wc_yield')/100/12);
+                }
+                function wcpCalc(trigger){ wcpSyncPairs(trigger||''); const areaPy=wcpNum(wcpRead('wc_area_py')), bunyangPy=wcpNum(wcpRead('wc_bunyang_py'))||areaPy; const price=wcpReadWon('wc_price')||wcpReadWon('wc_my_bid'); const maxS=wcpParsePyVals(wcpRead('wc_bench_max')), midS=wcpParsePyVals(wcpRead('wc_bench_mid')), minS=wcpParsePyVals(wcpRead('wc_bench_min')), rentPyS=wcpParsePyVals(wcpRead('wc_bench_rent_py')); const yRate=wcpReadPct('wc_bench_yield_rate')||8; const benchAmts=[wcpBenchAmount(maxS,areaPy),wcpBenchAmount(midS,areaPy),wcpBenchAmount(minS,areaPy)].filter(Boolean); let rentMonthly=rentPyS.avg&&areaPy?rentPyS.avg*areaPy*10000:0; let yieldAmt=0; let pyCandidates=[maxS.avg,midS.avg,minS.avg].filter(Boolean); const suggestedPy=pyCandidates.length?pyCandidates.reduce((a,b)=>a+b,0)/pyCandidates.length:0; const marketSuggested=suggestedPy&&areaPy?suggestedPy*areaPy*10000:0; const acq=wcpReadWon('wc_acq_tax'), legal=wcpReadWon('wc_legal_fee'), unpaid=wcpReadWon('wc_unpaid_mgmt'), unpaidTax=wcpReadWon('wc_unpaid_tax'), eviction=wcpReadWon('wc_eviction'), facility=wcpReadWon('wc_facility'), vat=wcpReadWon('wc_vat'), operating=wcpReadWon('wc_operating_annual'), rentBroker=wcpReadWon('wc_rent_broker_fee'), saleBroker=wcpReadWon('wc_sale_broker_fee'), loan=wcpReadWon('wc_cf_loan'), intY=wcpReadWon('wc_cf_interest_amt'), intM=wcpReadWon('wc_cf_interest_monthly'), dep=wcpReadWon('wc_deposit'), rent=wcpReadWon('wc_rent'), contract=wcpReadWon('wc_contract_deposit')||(price?price*0.1:0), reserve=wcpReadWon('wc_extra_reserve'); const mgmtMonthlyPy=wcpReadWon('wc_management_monthly'); const mgmtYear=mgmtMonthlyPy*bunyangPy*12; const monthNet=rent-intM; const yearNet=monthNet*12; const maxRequired=Math.max(0, price+acq+legal+unpaid+unpaidTax+eviction+facility+operating+rentBroker+saleBroker+intY+mgmtYear+reserve-loan); const minRequired=Math.max(0,maxRequired-dep-vat); const initialNeed=maxRequired; const absYield=price?rent*12/price*100:0; const levYield=minRequired?yearNet/minRequired*100:0; const sell=wcpReadWon('wc_sell_price')||0; const targetProfit=wcpReadWon('wc_target_profit')||0; const acqRate=wcpReadPct('wc_acq_tax_rate')||0, legalRate=wcpReadPct('wc_legal_rate')||0; const variableRate=(acqRate+legalRate)/100; const fixedForProfit=unpaid+unpaidTax+eviction+facility+operating+rentBroker+saleBroker+intY+mgmtYear+reserve-dep-vat; const profitCap=(sell&&targetProfit)?Math.max(0,(sell-targetProfit-fixedForProfit)/(1+variableRate)):0; const suggested=profitCap?(marketSuggested?Math.min(marketSuggested,profitCap):profitCap):marketSuggested; const suggestedSource=profitCap?(marketSuggested&&profitCap<marketSuggested?'profit_cap':'market_below_cap'):'market'; const saleGain=sell?Math.max(0,sell-price-acq-legal):0; const taxBase=Math.max(0,saleGain); const under=Math.min(taxBase,200000000)*(wcpReadPct('wc_corp_rate_under')/100); const over=Math.max(0,taxBase-200000000)*(wcpReadPct('wc_corp_rate_over')/100); const tax=under+over; const afterTax=saleGain-tax; const roi=minRequired&&afterTax?afterTax/minRequired*100:0; return {areaPy,bunyangPy,price,maxS,midS,minS,rentPyS,rentMonthly,yieldAmt,suggestedPy,marketSuggested,profitCap,targetProfit,suggested,suggestedSource,acq,legal,unpaid,unpaidTax,eviction,facility,vat,operating,rentBroker,saleBroker,loan,intY,intM,dep,rent,contract,reserve,mgmtYear,monthNet,yearNet,maxRequired,minRequired,initialNeed,absYield,levYield,sell,saleGain,taxBase,under,over,tax,afterTax,roi,perPy:areaPy&&price?price/areaPy:0,rentPerPy:areaPy&&rent?rent/areaPy/10000:0}; }
+                function wcpRenderOutputs(trigger){ const r=wcpCalc(trigger||''); function put(id,val,cls){ wcpSetText(id,val); } wcpSetText('wcp_k_suggested',wcpFormatWon(r.suggested)); wcpSetText('wcp_k_price',wcpFormatWon(r.price)); wcpSetText('wcp_k_need',wcpFormatWon(r.maxRequired)); wcpSetText('wcp_k_minneed',wcpFormatWon(r.minRequired)); wcpSetText('wcp_k_abs',(r.absYield||0).toFixed(2)+'%'); wcpSetText('wcp_k_lev',(r.levYield||0).toFixed(2)+'%'); wcpSetText('wcp_k_roi',(r.roi||0).toFixed(0)+'%'); wcpSetText('wcp_suggested_bid',wcpFormatWon(r.suggested)); let summary=''; if(r.profitCap){ summary='시장 기준 '+wcpFormatWon(r.marketSuggested)+' · 목표순이익 상한 '+wcpFormatWon(r.profitCap)+' → 추천 입찰가 '+wcpFormatWon(r.suggested); } else if(r.suggestedPy){ summary='시장 기준 @ '+r.suggestedPy.toFixed(1)+'만원/평 · '+wcpFormatWon(r.suggested)+' · 월세 수익환산값은 추천입찰가 평균에 넣지 않습니다.'; } else { summary='MAX/MID/MIN @만원/평을 입력하면 추천입찰가가 계산됩니다. 월세 수익환산값은 제외합니다.'; } wcpSetText('wcp_bench_summary',summary); wcpSetText('wcp_bench_max_note',r.maxS.avg?r.maxS.label+' · '+wcpFormatWon(wcpBenchAmount(r.maxS,r.areaPy)):'-'); wcpSetText('wcp_bench_mid_note',r.midS.avg?r.midS.label+' · '+wcpFormatWon(wcpBenchAmount(r.midS,r.areaPy)):'-'); wcpSetText('wcp_bench_min_note',r.minS.avg?r.minS.label+' · '+wcpFormatWon(wcpBenchAmount(r.minS,r.areaPy)):'-'); wcpSetText('wcp_bench_rent_note',r.rentPyS.avg?(r.rentPyS.label+' · 월세 '+wcpFormatWon(r.rentMonthly)+' · 목표수익률 '+((wcpReadPct('wc_bench_yield_rate')||8).toFixed(2).replace(/\.00$/,''))+'% 기준 매도가 '+wcpFormatWon((r.dep||0)+((r.rentMonthly||0)*12/((wcpReadPct('wc_bench_yield_rate')||8)/100)))+' · 추천입찰가 제외'):'월세 평단가와 원하는 수익률을 입력하면 월세·수익률 계산에 반영됩니다.'); wcpSetText('wcp_my_bid_note',r.profitCap?'목표순이익 기준 상한: '+wcpFormatWon(r.profitCap):(r.suggested?'시장 기준 추천가: '+wcpFormatWon(r.marketSuggested||r.suggested):'-')); wcpSetText('wcp_price_note',r.price&&r.areaPy?'@ '+Math.round(r.price/r.areaPy/10000).toLocaleString('ko-KR')+'만/평':'-'); wcpSetText('wcp_rent_note',r.rentPerPy?'월세 @ '+r.rentPerPy.toFixed(1)+'만/평':'-'); const _loanRate=wcpReadPct('wc_cf_loan_rate')||80, _app=wcpReadWon('wc_appraisal'), _bid=r.price||0, _appCap=_app?_app*0.60:0, _bidCap=_bid?_bid*_loanRate/100:0, _autoLoan=(_appCap&&_bidCap)?Math.min(_appCap,_bidCap):(_bidCap||_appCap||0), _loanMode=wcpRead('wc_loan_manual_mode'); wcpSetText('wcp_loan_app_cap',_appCap?wcpFormatWon(_appCap):'-'); wcpSetText('wcp_loan_bid_cap',_bidCap?wcpFormatWon(_bidCap):'-'); wcpSetText('wcp_loan_rule_applied',r.loan?wcpFormatWon(r.loan):(_autoLoan?wcpFormatWon(_autoLoan):'-')); wcpSetText('wcp_loan_bid_label','낙찰가 × LTV(현재 '+_loanRate.toFixed(2).replace(/\.00$/,'')+'%)'); wcpSetText('wcp_loan_rule_text',_appCap&&_bidCap?('감정가 60%와 낙찰가 '+_loanRate.toFixed(2).replace(/\.00$/,'')+'% 중 작은 금액을 적용합니다. '+(_loanMode==='amount'?'대출금 직접입력 기준입니다.':(_loanMode==='rate'?'LTV 직접입력 기준입니다.':'자동 기본은 80%입니다.'))):'감정가와 입찰가를 입력하면 대출 가능금액이 자동 계산됩니다.'); wcpSetText('wcp_o_month_net',wcpFormatWon(r.monthNet)); wcpSetText('wcp_o_year_net',wcpFormatWon(r.yearNet)); wcpSetText('wcp_o_initial_need',wcpFormatWon(r.initialNeed)); wcpSetText('wcp_o_per_py',r.perPy?Math.round(r.perPy).toLocaleString('ko-KR'):'-'); wcpSetText('wcp_o_vat',wcpFormatWon(r.vat)); wcpSetText('wcp_o_interest_year',wcpFormatWon(r.intY)); wcpSetText('wcp_o_management_year',wcpFormatWon(r.mgmtYear)); wcpSetText('wcp_vac_interest_year',wcpFormatWon(r.intY)); wcpSetText('wcp_vac_management_year',wcpFormatWon(r.mgmtYear)); wcpSetText('wcp_vac_initial_need',wcpFormatWon(r.initialNeed)); wcpSetText('wcp_vac_side_bunyang',r.bunyangPy?r.bunyangPy.toFixed(2):'-'); wcpSetText('wcp_vac_side_area',r.areaPy?r.areaPy.toFixed(2):'-'); wcpSetText('wcp_vac_side_vat',wcpFormatWon(r.vat)); wcpSetText('wcp_vac_side_mgmt_monthly',wcpFormatWon(wcpReadWon('wc_management_monthly'))); wcpSetText('wcp_vac_side_interest',wcpFormatWon(r.intY)); wcpSetText('wcp_vac_side_mgmt_year',wcpFormatWon(r.mgmtYear)); wcpSetText('wcp_vac_side_initial',wcpFormatWon(r.initialNeed)); wcpSetText('wcp_o_abs_yield',(r.absYield||0).toFixed(2)); wcpSetText('wcp_p_total_no_deposit',wcpFormatWon(r.maxRequired)); wcpSetText('wcp_p_total_with_deposit',wcpFormatWon(r.minRequired)); wcpSetText('wcp_p_abs_yield',(r.absYield||0).toFixed(2)); wcpSetText('wcp_p_lev_yield',(r.levYield||0).toFixed(2)); wcpSetText('wcp_p_sell_price',wcpFormatWon(r.sell)); wcpSetText('wcp_p_roi',(r.roi||0).toFixed(0)); wcpSetText('wcp_p_after_tax',wcpFormatWon(r.afterTax)); wcpSetText('wcp_tax_gain',wcpFormatWon(r.saleGain)); wcpSetText('wcp_tax_base',wcpFormatWon(r.taxBase)); wcpSetText('wcp_tax_under',wcpFormatWon(r.under)); wcpSetText('wcp_tax_over',wcpFormatWon(r.over)); wcpSetText('wcp_tax_total',wcpFormatWon(r.tax)); wcpSetText('wcp_tax_after',wcpFormatWon(r.afterTax)); wcpSetText('wcp_tax_per_py',r.areaPy&&r.price?Math.round(r.price/r.areaPy).toLocaleString('ko-KR'):'-'); wcpSetText('wcp_tax_ex_per_py',r.areaPy&&r.price?Math.round(r.price/r.areaPy).toLocaleString('ko-KR'):'-'); [1,2,3].forEach(function(i){ const rate=wcpReadPct('wc_target_yield_'+i); const target=(r.dep||0)+(r.rent||0)*12/(rate/100); wcpSetWon('wcp_target_price_'+i,rate?target:0); }); wcpRenderFlow(r); return r; }
                 function wcpRenderFlow(r){ const rows=[]; let bal=0; function add(t,g,item,out,income,note){ out=out||0; income=income||0; bal+=out-income; rows.push({t,g,item,out,income,bal,note}); } add('-30일','매매계약','계약금',r.contract,0,'자기자본'); add('잔금 전','미납관리','미납 관리비',r.unpaid,0,''); add('잔금 전','미납세금','미납 세금',r.unpaidTax,0,''); add('D-day','매매잔금','잔금',Math.max(0,r.price-r.contract-r.loan),0,'자기자본'); add('D-day','부동산등기','취등록세',r.acq,0,''); add('D-day','부동산등기','법무비',r.legal,0,''); add('D+1','임대계약전','명도비',r.eviction,0,''); add('D+1','임대계약전','시설비',r.facility,0,''); add('D+7','예비비','1년치 이자',r.intY,0,'예비비'); add('D+7','예비비','1년치 관리비',r.mgmtYear,0,'예비비'); add('D+10','임대계약','임대보증금',0,r.dep,''); add('D+10','임대계약','임대중개수수료',r.rentBroker,0,''); add('+60일','부가세환급','부가세 환급',0,r.vat,'잔금 1개월 이내 임대 계약 시'); const body=document.getElementById('wcp_flow_body'); if(body) body.innerHTML=rows.map(function(x){return '<tr><td>'+wcpEsc(x.t)+'</td><td>'+wcpEsc(x.g)+'</td><td>'+wcpEsc(x.item)+'</td><td class="red">'+(x.out?wcpFormatWon(x.out):'-')+'</td><td class="blue">'+(x.income?wcpFormatWon(x.income):'-')+'</td><td>'+wcpFormatWon(x.bal)+'</td><td>'+wcpEsc(x.note||'')+'</td></tr>';}).join(''); wcpSetText('wcp_flow_max',wcpFormatWon(r.maxRequired)); wcpSetText('wcp_flow_min',wcpFormatWon(r.minRequired)); }
                 function wcpPersistCurrent(options){ const room=wcpActiveRoom(); if(!room) return; const opts=options||{}, store=wcpGetStore(room); store.current=wcpCollectState(); store.updatedAt=Date.now(); store.rev=Number(store.rev||0)+1; room.calcProV7=store; room.calcProV5=store; room.calcProV3=store; room.calcProState=store.current; room.calcScenarios=store.scenarios; room.calcSnapshots=store.snapshots; room.calcProRev=store.rev; room.updatedAt=Date.now(); wcpLocalSave(room,store); clearTimeout(window.__wcpSaveTimerV6); const run=function(){ try{ saveRooms(); }catch(e){ console.warn('[WCP] saveRooms fail',e); } if(opts.immediate){ try{ if(typeof window.__wr2FlushSaveRooms==='function') window.__wr2FlushSaveRooms(); }catch(e){} } wcpSetText('wcp_auto_save_status','자동저장됨 '+wcpNowText(Date.now()).slice(11)); }; if(opts.immediate) run(); else window.__wcpSaveTimerV6=setTimeout(run,700); }
-                function wcpBind(){ document.querySelectorAll('.wr2-calc-pro-shell .wcp-inp').forEach(function(el){ el.addEventListener('input',function(){ wcpRenderOutputs(el.id); wcpPersistCurrent({immediate:false}); }); el.addEventListener('blur',function(){ if(!/(bench|memo|rate|yield)/i.test(el.id) && el.value && /[0-9]/.test(el.value)){ if(!el.id.includes('wc_area') && !el.id.includes('wc_bunyang') && !el.id.includes('wc_cf_rate') && !el.id.includes('wc_yield') && !el.id.includes('corp_rate') && !el.id.includes('target_yield')) wcpSetWon(el.id,wcpReadWon(el.id)); } }); }); document.querySelectorAll('.wcp-tab').forEach(function(btn){ btn.addEventListener('click',function(){ document.querySelectorAll('.wcp-tab').forEach(function(b){b.classList.remove('active')}); document.querySelectorAll('.wcp-pane').forEach(function(p){p.classList.remove('active')}); btn.classList.add('active'); const pane=document.getElementById('wcp_pane_'+btn.getAttribute('data-pane')); if(pane) pane.classList.add('active'); }); }); }
+                function wcpBind(){ document.querySelectorAll('.wr2-calc-pro-shell .wcp-inp').forEach(function(el){ el.addEventListener('input',function(){ if(el.id==='wc_cf_loan_rate') wcpSet('wc_loan_manual_mode','rate'); if(el.id==='wc_cf_loan') wcpSet('wc_loan_manual_mode','amount'); if(el.getAttribute('data-wcp-money')==='1') wcpFormatMoneyInput(el); wcpRenderOutputs(el.id); wcpPersistCurrent({immediate:false}); }); el.addEventListener('blur',function(){ if(el.getAttribute('data-wcp-money')==='1') wcpSetWon(el.id,wcpReadWon(el.id)); }); }); document.querySelectorAll('.wcp-tab').forEach(function(btn){ btn.addEventListener('click',function(){ document.querySelectorAll('.wcp-tab').forEach(function(b){b.classList.remove('active')}); document.querySelectorAll('.wcp-pane').forEach(function(p){p.classList.remove('active')}); btn.classList.add('active'); const pane=document.getElementById('wcp_pane_'+btn.getAttribute('data-pane')); if(pane) pane.classList.add('active'); }); }); }
                 function wcpResolveMount(){ const p=document.getElementById('wc_price')||document.getElementById('wr2CalcTabBar')||document.getElementById('wc_result'); if(!p) return null; return p.closest('.wr2-section-card,.wr2-card,.wr2-widget,.wr2-dash-card,.card')||p.parentElement; }
 
-                function wcpLoadSeedIntoForm(seed, mode){ if(!seed)return; wcpSet('wc_calc_link_mode',mode||''); wcpSet('wc_area',seed.areaM2?seed.areaM2.toFixed(2):''); wcpSet('wc_area_py',seed.areaPy?seed.areaPy.toFixed(2):''); wcpSet('wc_bunyang_py',seed.areaPy?seed.areaPy.toFixed(2):''); wcpSetWon('wc_appraisal',seed.appraisalWon||0); wcpSetWon('wc_price',seed.minWon||0); wcpSetWon('wc_my_bid',seed.minWon||0); wcpSetWon('wc_deposit',seed.depositWon||0); wcpSetWon('wc_rent',seed.rentWon||0); wcpRenderOutputs('wc_my_bid'); wcpPersistCurrent({immediate:true}); }
-                function wcpAggregateSeeds(seeds){ seeds=seeds||[]; const totalArea=seeds.reduce((a,s)=>a+(s.areaM2||0),0); return {areaM2:totalArea, areaPy:totalArea?totalArea/3.305785:0, appraisalWon:seeds.reduce((a,s)=>a+(s.appraisalWon||0),0), minWon:seeds.reduce((a,s)=>a+(s.minWon||0),0), depositWon:seeds.reduce((a,s)=>a+(s.depositWon||0),0), rentWon:seeds.reduce((a,s)=>a+(s.rentWon||0),0)}; }
+                function wcpLoadSeedIntoForm(seed, mode){ if(!seed)return; wcpSet('wc_calc_link_mode',mode||''); wcpSet('wc_seed_signature',wcpSeedSignature([seed])); wcpSet('wc_area',seed.areaM2?seed.areaM2.toFixed(2):''); wcpSet('wc_area_py',seed.areaPy?seed.areaPy.toFixed(2):''); wcpSet('wc_bunyang_py',seed.areaPy?seed.areaPy.toFixed(2):''); wcpSetWon('wc_appraisal',seed.appraisalWon||0); wcpSetWon('wc_price',seed.minWon||0); wcpSetWon('wc_my_bid',seed.minWon||0); wcpSetWon('wc_deposit',seed.depositWon||0); wcpSetWon('wc_rent',seed.rentWon||0); wcpRenderOutputs('wc_my_bid'); wcpPersistCurrent({immediate:true}); }
+                function wcpAggregateSeeds(seeds){ return wcpAggregateSeedForCalc(seeds||[]); }
                 window.wr2CalcLoadLinkedItem=function(roomId,itemId){ const room=(wr2State.rooms||[]).find(r=>String(r.id)===String(roomId))||wcpActiveRoom(); const sv=(typeof getSv==='function')?getSv():[]; const item=(sv||[]).find(x=>String(x&&x.id)===String(itemId)); if(!room||!item)return; wcpLoadSeedIntoForm(wr2SummarySeed(item),'single:'+itemId); try{ if(typeof showToast==='function')showToast('단일 물건 기준 계산값을 불러왔습니다','ok'); }catch(e){} };
-                window.wr2CalcLoadLinkedTotal=function(roomId){ const room=(wr2State.rooms||[]).find(r=>String(r.id)===String(roomId))||wcpActiveRoom(); if(!room)return; const sv=(typeof getSv==='function')?getSv():[]; const items=(typeof wr2ResolveLinkedSavedItems==='function')?wr2ResolveLinkedSavedItems(room,sv,typeof wr2BuildPlLinkedMap==='function'?wr2BuildPlLinkedMap():{}):[]; if(!items.length)return; wcpLoadSeedIntoForm(wcpAggregateSeeds(items.map(wr2SummarySeed)),'total'); try{ if(typeof showToast==='function')showToast('연결 물건 합산 계산값을 불러왔습니다','ok'); }catch(e){} };
-                window.wr2RenderProCalc=function(room){ const mount=wcpResolveMount(); if(!mount||!room) return false; wcpGetStore(room); mount.classList.add('wr2-calc-pro-mount'); mount.innerHTML=wcpBuildHtml(room); wcpApplyState(wcpDefaultState(room)); wcpBind(); wcpRenderOutputs(''); wcpRenderScenarioTable(); wcpRenderSnapshots(); return true; };
+                window.wr2CalcLoadLinkedTotal=function(roomId){ const room=(wr2State.rooms||[]).find(r=>String(r.id)===String(roomId))||wcpActiveRoom(); if(!room)return; const sv=(typeof getSv==='function')?getSv():[]; const items=(typeof wr2ResolveLinkedSavedItems==='function')?wr2ResolveLinkedSavedItems(room,sv,typeof wr2BuildPlLinkedMap==='function'?wr2BuildPlLinkedMap():{}):[]; if(!items.length)return; const _seeds=items.map(wr2SummarySeed); const _agg=wcpAggregateSeeds(_seeds); wcpLoadSeedIntoForm(_agg,'total'); wcpSet('wc_seed_signature',wcpSeedSignature(_seeds)); try{ if(typeof showToast==='function')showToast('연결 물건 합산 계산값을 불러왔습니다','ok'); }catch(e){} };
+                window.wr2RenderProCalc=function(room){ const mount=wcpResolveMount(); if(!mount||!room) return false; wcpGetStore(room); mount.classList.add('wr2-calc-pro-mount'); mount.innerHTML=wcpBuildHtml(room); wcpApplyState(wcpDefaultState(room)); wcpFormatMoneyInputs(); wcpBind(); wcpRenderOutputs(''); wcpRenderScenarioTable(); wcpRenderSnapshots(); return true; };
                 window.wr2CalcProRun=function(){ wcpRenderOutputs(''); wcpPersistCurrent({immediate:true}); try{ if(typeof showToast==='function') showToast('계산 완료·자동저장됨','ok'); }catch(e){} };
-                window.wr2CalcProClear=function(){ if(!confirm('현재 계산 입력값을 초기화할까요? 저장된 시나리오는 유지됩니다.')) return; document.querySelectorAll('.wr2-calc-pro-shell .wcp-inp').forEach(function(el){el.value='';}); [['wc_acq_tax_rate','4.60'],['wc_legal_rate','1.00'],['wc_rent_broker_rate','0.90'],['wc_sale_broker_rate','0.90'],['wc_cf_rate','5.00'],['wc_cf_loan_rate','85.00'],['wc_corp_rate_under','19'],['wc_corp_rate_over','21'],['wc_target_yield_1','8.0'],['wc_target_yield_2','6.0'],['wc_target_yield_3','7.0'],['wc_bench_yield_rate','8.0'],['wc_management_monthly','5000']].forEach(function(p){wcpSet(p[0],p[1]);}); wcpRenderOutputs(''); wcpPersistCurrent({immediate:true}); };
+                window.wr2CalcProClear=function(){ if(!confirm('현재 계산 입력값을 초기화할까요? 저장된 시나리오는 유지됩니다.')) return; document.querySelectorAll('.wr2-calc-pro-shell .wcp-inp').forEach(function(el){el.value='';}); [['wc_loan_manual_mode',''],['wc_acq_tax_rate','4.60'],['wc_legal_rate','1.00'],['wc_rent_broker_rate','0.90'],['wc_sale_broker_rate','0.90'],['wc_cf_rate','5.00'],['wc_cf_loan_rate','80.00'],['wc_corp_rate_under','19'],['wc_corp_rate_over','21'],['wc_target_yield_1','8.0'],['wc_target_yield_2','6.0'],['wc_target_yield_3','7.0'],['wc_bench_yield_rate','8.0'],['wc_management_monthly','5000']].forEach(function(p){wcpSet(p[0],p[1]);}); wcpRenderOutputs(''); wcpPersistCurrent({immediate:true}); };
                 window.wr2CalcUseSuggestedBid=function(){ const r=wcpCalc(''); if(r.suggested){ wcpSetWon('wc_my_bid',r.suggested); wcpSetWon('wc_price',r.suggested); wcpRenderOutputs('wc_my_bid'); wcpPersistCurrent({immediate:true}); } };
                 window.wr2CalcScenarioSave=function(name){ const room=wcpActiveRoom(); if(!room) return; const store=wcpGetStore(room); const r=wcpRenderOutputs(''); const defaultName=(r.price?wcpFormatShort(r.price):'입찰가')+' 시나리오'; const label=name||prompt('시나리오 이름',defaultName); if(label===null) return; const clean=String(label||'').trim()||defaultName; const item={id:'sc_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,7),version:7,name:clean,state:wcpCollectState(),result:r,savedAt:Date.now(),updatedAt:Date.now()}; store.scenarios=Array.isArray(store.scenarios)?store.scenarios:[]; store.scenarios.unshift(item); store.scenarios=store.scenarios.slice(0,40); store.current=item.state; store.updatedAt=Date.now(); store.rev=Number(store.rev||0)+1; room.calcProV7=store; room.calcProV5=store; room.calcProV3=store; room.calcProState=store.current; room.calcScenarios=store.scenarios; room.calcSnapshots=store.snapshots||[]; room.calcProRev=store.rev; room.updatedAt=Date.now(); wcpLocalSave(room,store); try{ saveRooms(); if(typeof window.__wr2FlushSaveRooms==='function') window.__wr2FlushSaveRooms(); }catch(e){} wcpRenderScenarioTable(); try{ if(typeof showToast==='function') showToast('입찰가 시나리오 저장됨','ok'); }catch(e){} };
                 window.wr2CalcScenarioLoad=function(id){ const room=wcpActiveRoom(); if(!room) return; const store=wcpGetStore(room); const sc=(store.scenarios||[]).find(function(x){return x.id===id;}); if(!sc) return; wcpApplyState(sc.state||{}); store.current=Object.assign({},sc.state||{}); store.updatedAt=Date.now(); store.rev=Number(store.rev||0)+1; wcpLocalSave(room,store); wcpRenderOutputs(''); wcpPersistCurrent({immediate:true}); try{ if(typeof showToast==='function') showToast('시나리오 불러오기 완료','ok'); }catch(e){} };
@@ -7625,7 +7631,7 @@ window.wr2SummaryCancelEdit = function() {
                   const phaseKeys = wr2PhaseKeysForView(wr2State.activePhase);
 
                   const list = wr2State.sections
-                    .filter(s => s.roomId === room.id && phaseKeys.indexOf(s.phase || 'review') >= 0)
+                    .filter(s => s && s.type !== 'free_table' && s.roomId === room.id && phaseKeys.indexOf(s.phase || 'review') >= 0)
                     .slice()
                     .sort((a, b) => (a.order || 1) - (b.order || 1));
 
@@ -9401,12 +9407,22 @@ window.wr2SummaryCancelEdit = function() {
       if (val == null || val === '') return 0;
       const src = String(val).trim();
       if (!src) return 0;
+
+      // 금액 단위는 큰 단위부터 해석한다. 기존 로직은 "억원"도 /원/에 먼저 걸려
+      // 2억원 → 2원처럼 깨질 수 있어, 경매 임차 정보가 계산기로 잘못 전파될 수 있었다.
+      let won = 0;
+      const eok = src.match(/([0-9,.]+)\s*억/);
+      const man = src.match(/([0-9,.]+)\s*만/);
+      if (eok) won += Math.round(Number(eok[1].replace(/,/g, '')) * 100000000);
+      if (man) won += Math.round(Number(man[1].replace(/,/g, '')) * 10000);
+      if (won > 0) return won;
+
       const raw = src.replace(/[^0-9.]/g, '');
       if (!raw) return 0;
       const num = Number(raw);
       if (!isFinite(num) || num <= 0) return 0;
-      if (/원/.test(src)) return Math.round(num);
       if (/만원/.test(src)) return Math.round(num * 10000);
+      if (/원/.test(src)) return Math.round(num);
       if (defaultManUnit === true) return Math.round(num * 10000);
       if (num >= 100000) return Math.round(num);
       return Math.round(num * 10000);
@@ -9430,12 +9446,48 @@ window.wr2SummaryCancelEdit = function() {
         || !!(d['경매번호'] || d['사건번호'] || d['매각기일'] || d['매각일'] || d['옥션원URL'] || d['product_id']);
     }
 
+    function _getSavedPriceRefWon(item, d) {
+      d = d || (item && item.data) || {};
+      const n = (item && item._norm) || {};
+      const vals = [
+        _pickFirstWonValue([{ value: d['감정가'] || item && item.appraisal || item && item.appraise, defaultManUnit: false }, { value: d['감정가_만원'] || n.감정가_만원, defaultManUnit: true }]),
+        _pickFirstWonValue([{ value: item && item.minprice || d['최저가'] || d['최저매각가격'] || d['최저매각가'], defaultManUnit: false }, { value: d['최저가_만원'] || n.최저가_만원, defaultManUnit: true }]),
+        _pickFirstWonValue([{ value: d['매매가'] || item && item.price, defaultManUnit: false }, { value: d['매매가_만원'] || n.매매가_만원, defaultManUnit: true }])
+      ].filter(v => v > 0);
+      return vals.length ? Math.max.apply(null, vals) : 0;
+    }
+
+    function _sanitizeOccupancyWon(won, refWon, kind) {
+      let n = Math.round(Number(won) || 0);
+      const ref = Math.round(Number(refWon) || 0);
+      if (!n) return 0;
+      if (String(kind || '') === 'rent') {
+        // 월세가 물건가 대비 비정상적으로 크면 원/만원 중복 환산값으로 보고 1회 역환산한다.
+        if (ref > 0 && n >= ref * 0.2 && n >= 10000000) {
+          const down = Math.round(n / 10000);
+          if (down > 0 && down < ref * 0.2) n = down;
+        }
+        // 여전히 과도한 월세는 자동 주입하지 않는다. 수동 입력으로 보정 가능.
+        if (ref > 0 && n > ref * 0.5) return 0;
+        return n;
+      }
+      // 임차보증금/입찰보증금: 감정가·최저가 대비 수십 배 이상이면 1만 배 중복 환산으로 판단한다.
+      if (ref > 0 && n >= ref * 20 && n >= 1000000000) {
+        const down = Math.round(n / 10000);
+        if (down > 0 && down <= ref * 5) n = down;
+      }
+      // 역환산 후에도 물건가 대비 10배 이상이면 자동 계산에서 제외해 KPI 폭주를 막는다.
+      if (ref > 0 && n > ref * 10) return 0;
+      return n;
+    }
+
     function _getSavedOccupancySnapshot(item, fallbackData) {
       const d = fallbackData || (item && item.data) || {};
       const tenants = Array.isArray(d['임차인_목록']) ? d['임차인_목록'] : [];
       const firstTenant = tenants[0] || {};
       const isAuction = _isAuctionSavedItem(item, d);
-      const leaseDepositWon = _pickFirstWonValue(isAuction ? [
+      const priceRefWon = _getSavedPriceRefWon(item, d);
+      let leaseDepositWon = _pickFirstWonValue(isAuction ? [
         { value: d['임차인_보증금'], defaultManUnit: false },
         { value: d['임차보증금'], defaultManUnit: false },
         { value: d['임차인 보증금'], defaultManUnit: false },
@@ -9452,7 +9504,7 @@ window.wr2SummaryCancelEdit = function() {
         { value: d['보증금_만원'], defaultManUnit: true },
         { value: d['보증금'], defaultManUnit: false }
       ]);
-      const monthlyRentWon = _pickFirstWonValue(isAuction ? [
+      let monthlyRentWon = _pickFirstWonValue(isAuction ? [
         { value: d['임차인_월세'], defaultManUnit: false },
         { value: d['임차월세'], defaultManUnit: false },
         { value: d['임차인 월세'], defaultManUnit: false },
@@ -9470,12 +9522,15 @@ window.wr2SummaryCancelEdit = function() {
         { value: d['월세_만원'], defaultManUnit: true },
         { value: d['월세'], defaultManUnit: false }
       ]);
-      const bidDepositWon = _pickFirstWonValue([
+      let bidDepositWon = _pickFirstWonValue([
         { value: d['입찰보증금'], defaultManUnit: false },
         { value: d['입찰보증금_만원'], defaultManUnit: true },
         { value: isAuction ? d['보증금_만원'] : '', defaultManUnit: true },
         { value: isAuction ? d['보증금'] : '', defaultManUnit: false }
       ]);
+      leaseDepositWon = _sanitizeOccupancyWon(leaseDepositWon, priceRefWon, 'deposit');
+      monthlyRentWon = _sanitizeOccupancyWon(monthlyRentWon, priceRefWon, 'rent');
+      bidDepositWon = _sanitizeOccupancyWon(bidDepositWon, priceRefWon, 'deposit');
       const claimTotalWon = _pickFirstWonValue([
         { value: d['채권액합계'], defaultManUnit: false },
         { value: d['채권합계'], defaultManUnit: false },
@@ -48772,18 +48827,9 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   };
 
-  // [FIX] 물건연결 버튼 복구: 더 이상 no-op가 아니다.
-  // 작업룸 화면 어디에서 호출해도 저장목록 연결 모달을 연다.
+  // 물건연결 버튼 제거 후 호환용 no-op
   window.wr2OpenSourceRelink = function(_roomId){
-    try {
-      if (typeof window.wr2ShowLinkModal === 'function') {
-        window.wr2ShowLinkModal();
-        return;
-      }
-    } catch (e) {
-      console.warn('[wr2OpenSourceRelink]', e);
-    }
-    if (typeof showToast === 'function') showToast('물건 연결 모달을 열 수 없습니다. 새로고침 후 다시 시도하세요.', 'warn');
+    if (typeof showToast === 'function') showToast('물건연결 버튼은 제거되었습니다. 물건관리에서 연결을 관리해 주세요.', 'warn');
   };
   window.wr2OpenManualBidEdit = function(roomId){
     try {
@@ -49255,80 +49301,4 @@ window.addEventListener('DOMContentLoaded', () => {
   } catch (e) {
     console.warn('[lifecycle local override patch]', e);
   }
-})();
-
-
-
-/* [v44] obsolete v41/v43 layout patches removed. */
-
-/* [v44] stable workroom summary + calculator rate rows
-   - single/multi linked items share the same table component
-   - rate+amount input rows use a stable inner grid, so focus/typing never changes layout
-*/
-(function(){
-  if (window.__WR2_V44_STABLE_LAYOUT) return;
-  window.__WR2_V44_STABLE_LAYOUT = true;
-  function inject(){
-    if (document.getElementById('wr2-v44-stable-layout')) return;
-    var st = document.createElement('style');
-    st.id = 'wr2-v44-stable-layout';
-    st.textContent = `
-      #wr2ItemSummary{min-width:0!important;overflow-x:auto!important;overflow-y:visible!important;}
-      #wr2ItemSummary .wr2-multi-linked-summary,
-      #wr2ItemSummary .wr2-multi-linked-summary *{box-sizing:border-box!important;}
-      #wr2ItemSummary .wr2-multi-linked-summary{width:100%!important;max-width:100%!important;min-width:0!important;padding:10px!important;border:1px solid rgba(79,142,255,.22)!important;border-radius:12px!important;background:rgba(14,19,29,.72)!important;color:var(--tx,#e8ecf4)!important;font-size:12px!important;line-height:1.35!important;overflow:visible!important;}
-      #wr2ItemSummary .wr2-ml-top{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:8px!important;margin:0 0 8px 0!important;min-width:0!important;}
-      #wr2ItemSummary .wr2-ml-top b{font-size:13px!important;font-weight:900!important;color:#f3f6fb!important;white-space:nowrap!important;}
-      #wr2ItemSummary .wr2-ml-top span{font-size:11px!important;color:#8fa3c5!important;white-space:normal!important;}
-      #wr2ItemSummary .wr2-ml-scroll{width:100%!important;max-width:100%!important;overflow-x:auto!important;overflow-y:visible!important;border:1px solid rgba(255,255,255,.08)!important;border-radius:10px!important;background:rgba(4,8,14,.28)!important;}
-      #wr2ItemSummary .wr2-ml-table{width:100%!important;min-width:620px!important;table-layout:fixed!important;border-collapse:collapse!important;font-size:11.5px!important;line-height:1.34!important;}
-      #wr2ItemSummary .wr2-ml-table th,
-      #wr2ItemSummary .wr2-ml-table td{padding:7px 8px!important;border-bottom:1px solid rgba(255,255,255,.07)!important;vertical-align:middle!important;text-align:left!important;color:#dbe4f4!important;font-size:11.5px!important;line-height:1.34!important;word-break:keep-all!important;overflow-wrap:anywhere!important;white-space:normal!important;}
-      #wr2ItemSummary .wr2-ml-table th{background:rgba(255,255,255,.035)!important;font-weight:900!important;}
-      #wr2ItemSummary .wr2-ml-table tr:last-child td{border-bottom:0!important;}
-      #wr2ItemSummary .wr2-ml-label{width:70px!important;min-width:70px!important;max-width:70px!important;color:#94a3b8!important;font-weight:850!important;white-space:normal!important;overflow-wrap:keep-all!important;}
-      #wr2ItemSummary .wr2-ml-col{min-width:165px!important;width:auto!important;}
-      #wr2ItemSummary .wr2-ml-total,
-      #wr2ItemSummary .wr2-ml-total-cell{width:122px!important;min-width:122px!important;background:rgba(249,115,22,.07)!important;border-left:1px solid rgba(249,115,22,.22)!important;color:#fed7aa!important;font-weight:900!important;}
-      #wr2ItemSummary .wr2-ml-head-title{display:block!important;color:#f3f6fb!important;font-size:11.8px!important;font-weight:950!important;line-height:1.25!important;letter-spacing:-.02em!important;white-space:normal!important;word-break:keep-all!important;overflow-wrap:anywhere!important;margin:0 0 5px 0!important;}
-      #wr2ItemSummary .wr2-ml-head-actions{display:flex!important;align-items:center!important;gap:4px!important;flex-wrap:wrap!important;}
-      #wr2ItemSummary .wr2-mini-btn{display:inline-flex!important;align-items:center!important;justify-content:center!important;min-height:23px!important;padding:4px 7px!important;border-radius:999px!important;font-size:10.5px!important;line-height:1.1!important;font-weight:850!important;white-space:nowrap!important;}
-      #wr2ItemSummary .wr2-ml-blue{color:#60a5fa!important;font-weight:950!important;}
-      #wr2ItemSummary .wr2-ml-dday{color:#fb923c!important;font-size:10.5px!important;font-weight:900!important;white-space:nowrap!important;}
-      @media(max-width:980px){
-        #wr2ItemSummary .wr2-ml-table{min-width:560px!important;}
-        #wr2ItemSummary .wr2-ml-label{width:64px!important;min-width:64px!important;max-width:64px!important;}
-        #wr2ItemSummary .wr2-ml-total,#wr2ItemSummary .wr2-ml-total-cell{width:110px!important;min-width:110px!important;}
-      }
-
-      .wr2-calc-pro-shell .wcp-section{min-width:0!important;overflow:visible!important;}
-      .wr2-calc-pro-shell .wcp-form{min-width:0!important;}
-      .wr2-calc-pro-shell .wcp-grid2,
-      .wr2-calc-pro-shell .wcp-grid3,
-      .wr2-calc-pro-shell .wcp-grid4{min-width:0!important;}
-      .wr2-calc-pro-shell .wcp-grid2 > *,
-      .wr2-calc-pro-shell .wcp-grid3 > *,
-      .wr2-calc-pro-shell .wcp-grid4 > *{min-width:0!important;}
-      .wr2-calc-pro-shell .wcp-rate-row{display:grid!important;grid-template-columns:minmax(82px,112px) minmax(0,1fr)!important;gap:7px!important;align-items:center!important;width:100%!important;min-width:0!important;}
-      .wr2-calc-pro-shell .wcp-rate-row > label{min-width:0!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;color:#96a3b8!important;}
-      .wr2-calc-pro-shell .wcp-rate-controls{display:grid!important;grid-template-columns:72px minmax(0,1fr) 22px!important;gap:7px!important;align-items:center!important;min-width:0!important;width:100%!important;}
-      .wr2-calc-pro-shell .wcp-rate-row .wcp-rate-wrap{display:grid!important;grid-template-columns:minmax(0,1fr) 16px!important;gap:3px!important;align-items:center!important;width:100%!important;min-width:0!important;max-width:none!important;}
-      .wr2-calc-pro-shell .wcp-rate-row .wcp-rate-wrap .wcp-inp{min-width:0!important;width:100%!important;padding-left:5px!important;padding-right:5px!important;text-align:right!important;}
-      .wr2-calc-pro-shell .wcp-rate-row .wcp-rate-amount{min-width:0!important;width:100%!important;max-width:none!important;font-size:12px!important;letter-spacing:-.02em!important;padding-left:8px!important;padding-right:8px!important;text-align:right!important;overflow:visible!important;text-overflow:clip!important;}
-      .wr2-calc-pro-shell .wcp-rate-row .wcp-unit{white-space:nowrap!important;overflow:visible!important;}
-      .wr2-calc-pro-shell .wcp-rate-row:focus-within{position:relative!important;z-index:2!important;}
-      @media(max-width:1120px){
-        .wr2-calc-pro-shell .wcp-rate-row{grid-template-columns:1fr!important;align-items:start!important;}
-        .wr2-calc-pro-shell .wcp-rate-row > label{white-space:normal!important;}
-        .wr2-calc-pro-shell .wcp-rate-controls{grid-template-columns:72px minmax(0,1fr) 22px!important;}
-      }
-      @media(max-width:760px){
-        .wr2-calc-pro-shell .wcp-rate-controls{grid-template-columns:1fr!important;}
-        .wr2-calc-pro-shell .wcp-rate-row .wcp-rate-wrap{grid-template-columns:minmax(0,1fr) 22px!important;}
-        .wr2-calc-pro-shell .wcp-rate-controls > .wcp-unit:last-child{display:none!important;}
-      }
-    `;
-    document.head.appendChild(st);
-  }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', inject); else inject();
 })();
