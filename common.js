@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260507-workroom-v49-unlink-clean-aggregate';
+    window.__SK_BUILD = '20260507-workroom-v50-unlink-persist-fix';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -5791,35 +5791,91 @@ var _safeLocalSet = function(key, value) {
                   if(!room) return;
                   const sid=String(savedId||'').trim();
                   if(!sid) return;
+
+                  const sv=(typeof getSv==='function')?getSv():[];
+                  const validMap=new Map((Array.isArray(sv)?sv:[]).filter(function(it){return it&&it.id&&!it.deletedAt;}).map(function(it){return [String(it.id),it];}));
+                  const plLinkedMap=(typeof wr2BuildPlLinkedMap==='function')?wr2BuildPlLinkedMap():{};
+
                   const readId=function(x){
                     if(x==null) return '';
                     if(typeof x==='string'||typeof x==='number') return String(x).trim();
                     if(typeof x==='object') return String(x.savedId||x.linkedSavedId||x.itemId||x.id||'').trim();
                     return '';
                   };
-                  const keep=function(id){ return String(id||'').trim() && String(id||'').trim()!==sid; };
-                  // 먼저 모든 명시 연결 필드에서 대상 ID를 제거한다. 기존에는 linkedItems만 지워서
-                  // linkedSavedId / auctionId / listingId가 다시 정규화되며 되살아나는 문제가 있었다.
+                  const resolvesToTarget=function(raw){
+                    const id=readId(raw);
+                    if(!id) return false;
+                    if(id===sid) return true;
+                    // 물건리스트/파이프라인 ID가 저장목록 ID로 매핑되는 레거시 연결까지 같이 제거한다.
+                    // 기존에는 linkedItems만 지우고 auctionId/listingId 또는 plItemId→savedId 매핑이 남아
+                    // 새로고침 후 wr2NormalizeRoomLinkedItems()에서 다시 연결이 살아났다.
+                    const mapped=plLinkedMap&&plLinkedMap[id]?String(plLinkedMap[id]).trim():'';
+                    return !!mapped && mapped===sid;
+                  };
+                  const normalizeKeep=function(list){
+                    const out=[];
+                    (Array.isArray(list)?list:[]).forEach(function(x){
+                      const id=readId(x);
+                      if(!id || resolvesToTarget(x)) return;
+                      const savedId=(validMap.has(id)?id:(plLinkedMap&&plLinkedMap[id]?String(plLinkedMap[id]):''));
+                      if(savedId && validMap.has(savedId) && out.indexOf(savedId)<0) out.push(savedId);
+                    });
+                    return out;
+                  };
+
                   const beforeIds=(typeof wr2ResolveLinkedSavedItems==='function')
-                    ? wr2ResolveLinkedSavedItems(room, (typeof getSv==='function'?getSv():[]), (typeof wr2BuildPlLinkedMap==='function'?wr2BuildPlLinkedMap():{})).map(function(it){return String(it&&it.id||'');})
+                    ? wr2ResolveLinkedSavedItems(room, sv, plLinkedMap).map(function(it){return String(it&&it.id||'');})
                     : [];
-                  room.linkedItems=(Array.isArray(room.linkedItems)?room.linkedItems:[]).map(readId).filter(keep);
-                  room.linkedSavedIds=(Array.isArray(room.linkedSavedIds)?room.linkedSavedIds:[]).map(readId).filter(keep);
-                  ['linkedSavedId','auctionId','listingId'].forEach(function(k){ if(String(room[k]||'').trim()===sid) room[k]=''; });
-                  // 남은 연결 중 실제 저장목록에 존재하는 첫 번째 것을 대표 연결로 승격한다.
-                  const sv=(typeof getSv==='function')?getSv():[];
-                  const validMap=new Map((Array.isArray(sv)?sv:[]).filter(function(it){return it&&it.id&&!it.deletedAt;}).map(function(it){return [String(it.id),it];}));
+
+                  // 모든 연결 출처에서 같은 saved item으로 해석되는 값까지 제거한다.
+                  room.linkedItems=normalizeKeep(room.linkedItems);
+                  room.linkedSavedIds=normalizeKeep(room.linkedSavedIds);
+                  ['linkedSavedId','auctionId','listingId'].forEach(function(k){
+                    if(resolvesToTarget(room[k])) room[k]='';
+                  });
+
+                  // 남은 명시 연결들을 하나의 canonical 목록으로 정리한다.
                   const merged=[];
-                  (room.linkedItems||[]).concat(room.linkedSavedIds||[]).forEach(function(id){ id=String(id||'').trim(); if(id&&id!==sid&&validMap.has(id)&&merged.indexOf(id)<0) merged.push(id); });
+                  ['linkedSavedId','auctionId','listingId'].forEach(function(k){
+                    const id=readId(room[k]);
+                    if(!id || resolvesToTarget(id)) return;
+                    const savedId=validMap.has(id)?id:(plLinkedMap&&plLinkedMap[id]?String(plLinkedMap[id]):'');
+                    if(savedId && validMap.has(savedId) && merged.indexOf(savedId)<0) merged.push(savedId);
+                  });
+                  (room.linkedItems||[]).concat(room.linkedSavedIds||[]).forEach(function(id){
+                    id=String(id||'').trim();
+                    if(id&&id!==sid&&validMap.has(id)&&merged.indexOf(id)<0) merged.push(id);
+                  });
                   room.linkedItems=merged;
                   room.linkedSavedIds=merged.slice();
                   room.linkedSavedId=merged[0]||'';
+                  // auctionId/listingId는 레거시 단일 연결 복원 경로라서, 연결 해제 후에는 대표 연결과 중복될 때만 유지하지 않고 비운다.
+                  // 사용자가 별도 텍스트로 사건번호를 쓰는 경우는 상세 입력란에서 다시 저장 가능하다.
+                  room.auctionId='';
+                  room.listingId='';
                   room.updatedAt=Date.now();
-                  try{ if(typeof saveRooms==='function') saveRooms(); }catch(e){ console.warn('[wr2 unlink save]',e); }
+
+                  try{ if(window._sbMarkRoomDirty) window._sbMarkRoomDirty(room.id); }catch(e){}
+                  try{
+                    const fullCache=(window._wrGetRoomsCache&&window._wrGetRoomsCache())||[];
+                    const map={};
+                    fullCache.forEach(function(r){ if(r&&r.id) map[String(r.id)]=r; });
+                    (wr2State.rooms||[]).forEach(function(r){ if(r&&r.id) map[String(r.id)]=r; });
+                    map[String(room.id)]=room;
+                    const full=Object.keys(map).map(function(k){return map[k];}).filter(function(r){return r&&r.id;});
+                    if(window._wrPersistRooms) window._wrPersistRooms(full,{keepDeletedInState:true,syncState:true,sync:true});
+                    else if(typeof saveRooms==='function') saveRooms();
+                    // 새로고침 직후 stale cloud가 되살리는 문제를 막기 위해 즉시 flush도 한 번 시도한다.
+                    if(window._sbSaveRooms) window._sbSaveRooms(full).catch(function(e){console.warn('[wr2 unlink immediate cloud save]',e);});
+                  }catch(e){
+                    console.warn('[wr2 unlink persist]',e);
+                    try{ if(typeof saveRooms==='function') saveRooms(); }catch(e2){}
+                  }
+
                   try{ renderItemSummary(room); }catch(e){}
                   try{ if(typeof wr2Render==='function') wr2Render(); }catch(e){}
                   try{ if(typeof renderPropertyList==='function') renderPropertyList(); }catch(e){}
-                  try{ if(typeof showToast==='function') showToast('연결 물건을 해제했습니다','ok'); }catch(e){}
+
                   setTimeout(function(){
                     try{
                       const after=(typeof wr2ResolveLinkedSavedItems==='function')
@@ -5828,8 +5884,12 @@ var _safeLocalSet = function(key, value) {
                       if(after.indexOf(sid)>=0){
                         console.warn('[wr2 unlink] target still present', {roomId:roomId, savedId:sid, before:beforeIds, after:after, room:room});
                         if(typeof showToast==='function') showToast('연결 해제가 반영되지 않았습니다. 새로고침 후 다시 시도해 주세요.','warn');
+                      } else {
+                        if(typeof showToast==='function') showToast('연결 물건을 해제했습니다','ok');
                       }
-                    }catch(e){}
+                    }catch(e){
+                      try{ if(typeof showToast==='function') showToast('연결 물건을 해제했습니다','ok'); }catch(e2){}
+                    }
                   },80);
                 };
                 window.wr2LinkedItemSave=function(roomId,savedId){ const safe=String(savedId||''), domId=safe.replace(/[^a-zA-Z0-9_-]/g,'_'); const bidEl=document.getElementById('wr2LinkedBid_'+domId), minEl=document.getElementById('wr2LinkedMin_'+domId); const sv=(typeof getSv==='function')?getSv():[]; const item=(sv||[]).find(s=>String(s&&s.id)===safe); if(!item)return; item.data=item.data||{}; if(bidEl){item.data['매각기일']=bidEl.value.trim(); item.biddate=bidEl.value.trim();} if(minEl){const won=wr2SummaryMoneyWon(minEl.value,false,item.data['감정가']||item.appraisal||0); if(won){item.data['최저가']=won; item.minprice=won;}} item.updatedAt=Date.now(); if(typeof setSv==='function')setSv(sv); const room=(wr2State.rooms||[]).find(r=>String(r.id)===String(roomId)); if(room){room.updatedAt=Date.now(); saveRooms(); renderItemSummary(room);} try{ if(typeof showToast==='function')showToast('연결 물건 정보를 저장했습니다','ok'); }catch(e){} };
