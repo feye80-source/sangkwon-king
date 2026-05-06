@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260505-workroom-multi-auction-v12';
+    window.__SK_BUILD = '20260507-workroom-ui-link-rate-v43';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -5669,6 +5669,13 @@ var _safeLocalSet = function(key, value) {
                   wr2NormalizeRoomLinkedItems(room).forEach(function(link){ let id=String((link&&(link.savedId||link.linkedSavedId||link.itemId||link.id))||'').trim(); if(!id)return; let resolved=byId.get(id); if(!resolved&&plLinkedMap&&plLinkedMap[id])resolved=byId.get(String(plLinkedMap[id])); if(resolved&&resolved.id&&!seen.has(String(resolved.id))){seen.add(String(resolved.id)); out.push(resolved);} });
                   return out;
                 }
+                function wr2SummaryLinkToolbar(room, count){
+                  const rid = wr2SummaryJs(room && room.id || '');
+                  const label = count > 0 ? '＋ 물건 추가 연결' : '＋ 물건 연결';
+                  return '<div class="wr2-link-toolbar" style="display:flex;align-items:center;justify-content:flex-end;gap:8px;margin:0 0 10px 0;">'
+                    + '<button type="button" class="wr2-mini-btn primary" onclick="event.stopPropagation();window.wr2OpenSourceRelink && window.wr2OpenSourceRelink(\''+rid+'\')">'+label+'</button>'
+                    + '</div>';
+                }
                 function wr2BuildLinkedItemCard(seed, idx, roomId){
                   const sid=String(seed.id||''), safeId=sid.replace(/[^a-zA-Z0-9_-]/g,'_');
                   const dday=seed.biddate&&typeof getDDayLabel==='function'?getDDayLabel(seed.biddate):'';
@@ -5773,7 +5780,7 @@ var _safeLocalSet = function(key, value) {
                     } catch (e) {}
                     const _niBiddate = String(room.biddate || '').trim();
                     const _niBidHtml = `<div class="wr2-info-row"><span class="wr2-info-lbl">매각기일</span><span class="wr2-info-val">${_niBiddate || '<span style="color:var(--mu);">미입력</span>'}</span></div>`;
-                    el.innerHTML = _niBidHtml + '<div class="wr2-no-item">연결된 원본 물건이 없습니다.<br><button type="button" class="wr2-mini-btn" style="margin-top:8px;" onclick="event.stopPropagation();wr2ShowLinkModal()">＋ 물건 연결</button></div>';
+                    el.innerHTML = _niBidHtml + '<div class="wr2-no-item">연결된 원본 물건이 없습니다.<br><button type="button" class="wr2-mini-btn primary" style="margin-top:8px;" onclick="event.stopPropagation();window.wr2OpenSourceRelink && window.wr2OpenSourceRelink()">＋ 물건 연결</button></div>';
                     return;
                   }
 
@@ -5965,7 +5972,8 @@ var _safeLocalSet = function(key, value) {
                   }
 
                   if (_sameRoomDraft && _summaryEditState.activeKey) _summaryEditState.suppressBlurUntil = Date.now() + 260;
-                  el.innerHTML = html || '<div class="wr2-no-item">연결된 물건 정보가 없습니다.</div>';
+                  el.innerHTML = (typeof wr2SummaryLinkToolbar === 'function' ? wr2SummaryLinkToolbar(room, linkedItemsAll.length || (item ? 1 : 0)) : '')
+                    + (html || '<div class="wr2-no-item">연결된 물건 정보가 없습니다.<br><button type="button" class="wr2-mini-btn primary" style="margin-top:8px;" onclick="event.stopPropagation();window.wr2OpenSourceRelink && window.wr2OpenSourceRelink()">＋ 물건 연결</button></div>');
                   if (_sameRoomDraft && _summaryEditState.activeKey) {
                     setTimeout(function() {
                       var targetId = (_summaryEditState.activeKey === 'biddate') ? 'wr2SummaryBidInput' : 'wr2SummaryMinInput';
@@ -48764,9 +48772,18 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   };
 
-  // 물건연결 버튼 제거 후 호환용 no-op
+  // [FIX] 물건연결 버튼 복구: 더 이상 no-op가 아니다.
+  // 작업룸 화면 어디에서 호출해도 저장목록 연결 모달을 연다.
   window.wr2OpenSourceRelink = function(_roomId){
-    if (typeof showToast === 'function') showToast('물건연결 버튼은 제거되었습니다. 물건관리에서 연결을 관리해 주세요.', 'warn');
+    try {
+      if (typeof window.wr2ShowLinkModal === 'function') {
+        window.wr2ShowLinkModal();
+        return;
+      }
+    } catch (e) {
+      console.warn('[wr2OpenSourceRelink]', e);
+    }
+    if (typeof showToast === 'function') showToast('물건 연결 모달을 열 수 없습니다. 새로고침 후 다시 시도하세요.', 'warn');
   };
   window.wr2OpenManualBidEdit = function(roomId){
     try {
@@ -49280,6 +49297,230 @@ window.addEventListener('DOMContentLoaded', () => {
         .wr2-calc-pro-shell .wcp-line.rate{grid-template-columns:1fr!important;}
         .wr2-calc-pro-shell .wcp-rate-wrap{grid-template-columns:1fr 22px!important;}
         .wr2-calc-pro-shell .wcp-rate-amount{min-width:0!important;font-size:12px!important;}
+      }
+    `;
+    document.head.appendChild(st);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', inject); else inject();
+})();
+
+
+/* [v43] workroom multi linked summary + rate amount layout final patch */
+(function(){
+  if (window.__WR2_UI_LINK_RATE_FIX_V43) return;
+  window.__WR2_UI_LINK_RATE_FIX_V43 = true;
+  function inject(){
+    if (document.getElementById('wr2-ui-link-rate-fix-v43')) return;
+    var st = document.createElement('style');
+    st.id = 'wr2-ui-link-rate-fix-v43';
+    st.textContent = `
+      /* 1) 복수 물건 요약표: 기존 작업룸 스타일 영향 차단 */
+      #wr2ItemSummary .wr2-multi-linked-summary,
+      #wr2ItemSummary .wr2-multi-linked-summary *{
+        box-sizing:border-box!important;
+      }
+      #wr2ItemSummary .wr2-multi-linked-summary{
+        width:100%!important;
+        max-width:100%!important;
+        min-width:0!important;
+        overflow:hidden!important;
+        padding:12px!important;
+        border:1px solid rgba(79,142,255,.22)!important;
+        border-radius:14px!important;
+        background:rgba(14,19,29,.72)!important;
+        color:var(--tx,#e8ecf4)!important;
+        font-size:12px!important;
+        line-height:1.38!important;
+      }
+      #wr2ItemSummary .wr2-ml-top{
+        display:flex!important;
+        align-items:center!important;
+        justify-content:space-between!important;
+        gap:10px!important;
+        margin:0 0 10px 0!important;
+        min-width:0!important;
+      }
+      #wr2ItemSummary .wr2-ml-top b{
+        display:inline!important;
+        font-size:14px!important;
+        line-height:1.25!important;
+        letter-spacing:-.02em!important;
+        color:#f3f6fb!important;
+        white-space:nowrap!important;
+      }
+      #wr2ItemSummary .wr2-ml-top span{
+        display:inline!important;
+        margin-left:6px!important;
+        font-size:11px!important;
+        color:#8fa3c5!important;
+        white-space:nowrap!important;
+      }
+      #wr2ItemSummary .wr2-ml-scroll{
+        width:100%!important;
+        max-width:100%!important;
+        overflow-x:auto!important;
+        overflow-y:hidden!important;
+        border:1px solid rgba(255,255,255,.08)!important;
+        border-radius:12px!important;
+        background:rgba(4,8,14,.28)!important;
+      }
+      #wr2ItemSummary .wr2-ml-table{
+        width:100%!important;
+        min-width:760px!important;
+        table-layout:fixed!important;
+        border-collapse:collapse!important;
+        border-spacing:0!important;
+        font-size:12px!important;
+        line-height:1.35!important;
+      }
+      #wr2ItemSummary .wr2-ml-table th,
+      #wr2ItemSummary .wr2-ml-table td{
+        padding:9px 10px!important;
+        border-bottom:1px solid rgba(255,255,255,.075)!important;
+        vertical-align:middle!important;
+        text-align:left!important;
+        color:#dbe4f4!important;
+        font-size:12px!important;
+        line-height:1.35!important;
+        word-break:keep-all!important;
+        overflow-wrap:normal!important;
+      }
+      #wr2ItemSummary .wr2-ml-table th{
+        background:rgba(255,255,255,.035)!important;
+        font-weight:900!important;
+      }
+      #wr2ItemSummary .wr2-ml-table tr:last-child td{border-bottom:0!important;}
+      #wr2ItemSummary .wr2-ml-label{
+        width:92px!important;
+        min-width:92px!important;
+        max-width:92px!important;
+        white-space:nowrap!important;
+        color:#94a3b8!important;
+        font-weight:850!important;
+        word-break:keep-all!important;
+        overflow-wrap:normal!important;
+      }
+      #wr2ItemSummary th.wr2-ml-col,
+      #wr2ItemSummary .wr2-ml-table th.wr2-ml-col{
+        width:29%!important;
+        min-width:220px!important;
+      }
+      #wr2ItemSummary .wr2-ml-total,
+      #wr2ItemSummary .wr2-ml-total-cell{
+        width:150px!important;
+        min-width:150px!important;
+        background:rgba(249,115,22,.07)!important;
+        border-left:1px solid rgba(249,115,22,.22)!important;
+        color:#fed7aa!important;
+        font-weight:900!important;
+      }
+      #wr2ItemSummary .wr2-ml-head-title{
+        display:block!important;
+        color:#f3f6fb!important;
+        font-size:12.5px!important;
+        font-weight:950!important;
+        line-height:1.28!important;
+        letter-spacing:-.02em!important;
+        white-space:normal!important;
+        word-break:keep-all!important;
+        overflow-wrap:anywhere!important;
+        margin:0 0 6px 0!important;
+      }
+      #wr2ItemSummary .wr2-ml-head-actions{
+        display:flex!important;
+        align-items:center!important;
+        gap:4px!important;
+        flex-wrap:wrap!important;
+        margin:0!important;
+      }
+      #wr2ItemSummary .wr2-ml-head-actions .wr2-mini-btn,
+      #wr2ItemSummary .wr2-ml-top .wr2-mini-btn{
+        display:inline-flex!important;
+        align-items:center!important;
+        justify-content:center!important;
+        min-height:24px!important;
+        padding:4px 7px!important;
+        border-radius:999px!important;
+        font-size:10.5px!important;
+        line-height:1.1!important;
+        font-weight:850!important;
+        white-space:nowrap!important;
+      }
+      #wr2ItemSummary .wr2-ml-blue{color:#60a5fa!important;font-weight:950!important;}
+      #wr2ItemSummary .wr2-ml-dday{color:#fb923c!important;font-size:10.5px!important;font-weight:900!important;white-space:nowrap!important;}
+      @media(max-width:980px){
+        #wr2ItemSummary .wr2-ml-table{min-width:700px!important;}
+        #wr2ItemSummary .wr2-ml-label{width:84px!important;min-width:84px!important;max-width:84px!important;}
+        #wr2ItemSummary .wr2-ml-total,#wr2ItemSummary .wr2-ml-total-cell{width:135px!important;min-width:135px!important;}
+      }
+
+      /* 2) 수익률 계산기: % + 금액 행 금액칸 우선 확보 */
+      .wr2-calc-pro-shell .wcp-line.rate{
+        display:grid!important;
+        grid-template-columns:88px 64px minmax(148px,1fr) 24px!important;
+        gap:6px!important;
+        align-items:center!important;
+        width:100%!important;
+        min-width:0!important;
+      }
+      .wr2-calc-pro-shell .wcp-line.rate > label{
+        min-width:0!important;
+        width:88px!important;
+        max-width:88px!important;
+        white-space:nowrap!important;
+        overflow:hidden!important;
+        text-overflow:ellipsis!important;
+      }
+      .wr2-calc-pro-shell .wcp-rate-wrap{
+        width:64px!important;
+        min-width:64px!important;
+        max-width:64px!important;
+        display:grid!important;
+        grid-template-columns:minmax(0,1fr) 14px!important;
+        gap:3px!important;
+        align-items:center!important;
+      }
+      .wr2-calc-pro-shell .wcp-rate-wrap .wcp-inp{
+        min-width:0!important;
+        width:100%!important;
+        padding-left:4px!important;
+        padding-right:4px!important;
+        text-align:right!important;
+      }
+      .wr2-calc-pro-shell .wcp-rate-amount{
+        width:100%!important;
+        min-width:148px!important;
+        max-width:none!important;
+        padding-left:7px!important;
+        padding-right:7px!important;
+        font-size:12px!important;
+        letter-spacing:-.03em!important;
+        text-align:right!important;
+        overflow:visible!important;
+        text-overflow:clip!important;
+      }
+      .wr2-calc-pro-shell .wcp-line.rate > .wcp-unit:last-child{
+        width:24px!important;
+        min-width:24px!important;
+        display:inline-block!important;
+        overflow:visible!important;
+      }
+      .wr2-calc-pro-shell .wcp-section{min-width:0!important;}
+      .wr2-calc-pro-shell .wcp-grid2 > *,
+      .wr2-calc-pro-shell .wcp-grid3 > *,
+      .wr2-calc-pro-shell .wcp-grid4 > *{min-width:0!important;}
+      @media(max-width:1120px){
+        .wr2-calc-pro-shell .wcp-line.rate{grid-template-columns:82px 62px minmax(132px,1fr) 22px!important;gap:5px!important;}
+        .wr2-calc-pro-shell .wcp-line.rate > label{width:82px!important;max-width:82px!important;}
+        .wr2-calc-pro-shell .wcp-rate-wrap{width:62px!important;min-width:62px!important;max-width:62px!important;}
+        .wr2-calc-pro-shell .wcp-rate-amount{min-width:132px!important;font-size:11.5px!important;}
+      }
+      @media(max-width:760px){
+        .wr2-calc-pro-shell .wcp-line.rate{grid-template-columns:1fr!important;}
+        .wr2-calc-pro-shell .wcp-line.rate > label{width:auto!important;max-width:none!important;}
+        .wr2-calc-pro-shell .wcp-rate-wrap{width:100%!important;max-width:none!important;grid-template-columns:minmax(0,1fr) 22px!important;}
+        .wr2-calc-pro-shell .wcp-rate-amount{min-width:0!important;font-size:12px!important;}
+        .wr2-calc-pro-shell .wcp-line.rate > .wcp-unit:last-child{display:none!important;}
       }
     `;
     document.head.appendChild(st);
