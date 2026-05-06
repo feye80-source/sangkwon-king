@@ -1529,10 +1529,33 @@
 
       return next;
     }
+    function _wrNormalizeRoomLinks(room) {
+      if (!room || typeof room !== 'object') return room;
+      const next = Object.assign({}, room);
+      const seen = Object.create(null);
+      const ids = [];
+      function add(raw) {
+        let id = '';
+        if (raw == null) return;
+        if (typeof raw === 'string' || typeof raw === 'number') id = String(raw).trim();
+        else if (typeof raw === 'object') id = String(raw.savedId || raw.linkedSavedId || raw.itemId || raw.id || '').trim();
+        if (!id || seen[id]) return;
+        seen[id] = true;
+        ids.push(id);
+      }
+      // 저장목록 연결 ID만 canonical 연결로 취급한다.
+      // auctionId/listingId는 사건번호/매물번호 성격이라 여기서 linkedItems로 승격하지 않는다.
+      add(next.linkedSavedId);
+      (Array.isArray(next.linkedSavedIds) ? next.linkedSavedIds : []).forEach(add);
+      (Array.isArray(next.linkedItems) ? next.linkedItems : []).forEach(add);
+      next.linkedItems = ids;
+      next.linkedSavedId = ids[0] || '';
+      return next;
+    }
     function _wrStripFreeTableLegacyRoom(room) {
       if (!room || typeof room !== 'object') return room;
-      if (!('_freeTables' in room) && !('_freeTable' in room) && !('_freeTable2' in room) && !('__ftDraft' in room)) return room;
-      const next = _wrNormalizeRoomLifecycle(room);
+      let next = _wrNormalizeRoomLinks(_wrNormalizeRoomLifecycle(room));
+      if (!('_freeTables' in next) && !('_freeTable' in next) && !('_freeTable2' in next) && !('__ftDraft' in next)) return next;
       delete next._freeTables;
       delete next._freeTable;
       delete next._freeTable2;
@@ -3627,8 +3650,9 @@ var _safeLocalSet = function(key, value) {
                     candidates.push(id);
                   };
                   pushCandidate(room.linkedSavedId);
-                  pushCandidate(room.auctionId);
-                  pushCandidate(room.listingId);
+                  // auctionId/listingId는 저장목록 ID가 아닐 수 있어 무조건 후보에 넣지 않는다.
+                  if (room.auctionId && byId[String(room.auctionId).trim()]) pushCandidate(room.auctionId);
+                  if (room.listingId && byId[String(room.listingId).trim()]) pushCandidate(room.listingId);
                   (room.linkedItems || []).forEach(function(raw) {
                     const id = String(raw || '').trim();
                     if (!id) return;
@@ -5614,12 +5638,31 @@ var _safeLocalSet = function(key, value) {
                   let occ=null; try{ occ=window._getSavedOccupancySnapshot?window._getSavedOccupancySnapshot(item,d):null; }catch(e){}
                   return {id:String(item.id||''), item, title, address, caseNo:d['사건번호']||d['경매번호']||item.caseNo||'', objectNo:d['물건번호']||item.objectNo||'', biddate:d['매각기일']||item.biddate||item.bidDate||'', appraisalWon:app, minWon:min, areaM2, areaPy, depositWon:occ&&occ.leaseDepositWon?occ.leaseDepositWon:wr2SummaryMoneyWon(d['보증금']||d['임대보증금']||d['기보증금_만원']||0,true,0), rentWon:occ&&occ.monthlyRentWon?occ.monthlyRentWon:wr2SummaryMoneyWon(d['월세']||d['월세_만원']||0,true,0), url:d['상세URL']||d['url']||item.url||''};
                 }
+                function wr2LinkedIdOf(x){
+                  if (x == null) return '';
+                  if (typeof x === 'string' || typeof x === 'number') return String(x).trim();
+                  if (typeof x === 'object') return String(x.savedId || x.linkedSavedId || x.itemId || x.id || '').trim();
+                  return '';
+                }
                 function wr2NormalizeRoomLinkedItems(room){
-                  if(!room)return []; const arr=[], seen=new Set();
-                  function add(id,meta){ id=String(id||'').trim(); if(!id||seen.has(id))return; seen.add(id); arr.push(Object.assign({savedId:id,linkedAt:Date.now()},meta||{})); }
-                  if(room.linkedSavedId)add(room.linkedSavedId,{primary:true}); if(room.auctionId)add(room.auctionId,{}); if(room.listingId)add(room.listingId,{}); (room.linkedSavedIds||[]).forEach(id=>add(id,{}));
-                  (room.linkedItems||[]).forEach(function(x){ if(typeof x==='string')add(x,{}); else if(x&&typeof x==='object')add(x.savedId||x.linkedSavedId||x.itemId||x.id,x); });
-                  room.linkedItems=arr; if(!room.linkedSavedId&&arr[0])room.linkedSavedId=arr[0].savedId; return arr;
+                  if(!room)return [];
+                  const metaArr=[], idArr=[], seen=new Set();
+                  function add(id,meta){
+                    id=String(id||'').trim();
+                    if(!id||seen.has(id))return;
+                    seen.add(id);
+                    idArr.push(id);
+                    metaArr.push(Object.assign({savedId:id,linkedAt:Date.now()},meta||{}));
+                  }
+                  if(room.linkedSavedId)add(room.linkedSavedId,{primary:true});
+                  (room.linkedSavedIds||[]).forEach(function(id){ add(id,{}); });
+                  (room.linkedItems||[]).forEach(function(x){ add(wr2LinkedIdOf(x), (x&&typeof x==='object')?x:{}); });
+                  // 중요: 저장 포맷은 문자열 ID 배열로 유지한다. 객체 배열로 바꾸면
+                  // 물건리스트/파이프라인/레거시 작업룸의 indexOf/map(String) 연결 판정이 깨진다.
+                  // auctionId/listingId는 사건번호/매물번호 성격이라 연결 ID로 승격하지 않는다.
+                  room.linkedItems=idArr;
+                  room.linkedSavedId=idArr[0]||'';
+                  return metaArr;
                 }
                 function wr2ResolveLinkedSavedItems(room, sv, plLinkedMap){
                   sv=Array.isArray(sv)?sv:[]; const byId=new Map(); sv.forEach(it=>{if(it&&it.id)byId.set(String(it.id),it);}); const out=[], seen=new Set();
@@ -5678,8 +5721,7 @@ var _safeLocalSet = function(key, value) {
                   function row(label,key,totalHtml){
                     return '<tr><td class="wr2-ml-label">'+label+'</td>'+seeds.map(function(seed){return '<td>'+val(seed,key)+'</td>';}).join('')+'<td class="wr2-ml-total-cell">'+(totalHtml||'-')+'</td></tr>';
                   }
-                  return wr2BuildLinkedSummaryActionBar(room)
-                    + '<div class="wr2-multi-linked-summary">'
+                  return '<div class="wr2-multi-linked-summary">'
                     + '<div class="wr2-ml-top"><div><b>연결 경매 물건 '+seeds.length+'개</b><span> · 물건별 정보와 합산 기준을 한 화면에서 확인합니다.</span></div><button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();wr2ShowLinkModal()">＋ 물건 추가</button></div>'
                     + '<div class="wr2-ml-scroll"><table class="wr2-ml-table"><thead><tr><th class="wr2-ml-label">항목</th>'+cols+totalHead+'</tr></thead><tbody>'
                     + row('경매번호','caseNo','-')
@@ -5693,8 +5735,17 @@ var _safeLocalSet = function(key, value) {
                     + row('매매 평단가','perPy', totalPerPy)
                     + '</tbody></table></div></div>';
                 }
-                window.wr2UnlinkSaved=function(roomId,savedId){ const room=(wr2State.rooms||[]).find(r=>String(r.id)===String(roomId)); if(!room)return; const sid=String(savedId||''); wr2NormalizeRoomLinkedItems(room); room.linkedItems=(room.linkedItems||[]).filter(x=>String((x&&(x.savedId||x.linkedSavedId||x.itemId||x.id))||'')!==sid); if(String(room.linkedSavedId||'')===sid)room.linkedSavedId=room.linkedItems[0]?room.linkedItems[0].savedId:''; room.updatedAt=Date.now(); saveRooms(); renderItemSummary(room); try{ if(typeof wr2Render==='function')wr2Render(); }catch(e){} try{ if(typeof showToast==='function')showToast('연결 물건을 해제했습니다','ok'); }catch(e){} };
-                window.wr2LinkedItemSave=function(roomId,savedId){ const safe=String(savedId||''), domId=safe.replace(/[^a-zA-Z0-9_-]/g,'_'); const bidEl=document.getElementById('wr2LinkedBid_'+domId), minEl=document.getElementById('wr2LinkedMin_'+domId); const sv=(typeof getSv==='function')?getSv():[]; const item=(sv||[]).find(s=>String(s&&s.id)===safe); if(!item)return; item.data=item.data||{}; if(bidEl){item.data['매각기일']=bidEl.value.trim(); item.biddate=bidEl.value.trim();} if(minEl){const won=wr2SummaryMoneyWon(minEl.value,false,item.data['감정가']||item.appraisal||0); if(won){item.data['최저가']=won; item.minprice=won;}} item.updatedAt=Date.now(); if(typeof setSv==='function')setSv(sv); const room=(wr2State.rooms||[]).find(r=>String(r.id)===String(roomId)); if(room){room.updatedAt=Date.now(); saveRooms(); renderItemSummary(room);} try{ if(typeof showToast==='function')showToast('연결 물건 정보를 저장했습니다','ok'); }catch(e){} };
+                window.wr2UnlinkSaved=function(roomId,savedId){
+                  const room=(wr2State.rooms||[]).find(r=>String(r.id)===String(roomId)); if(!room)return;
+                  const sid=String(savedId||'').trim();
+                  wr2NormalizeRoomLinkedItems(room);
+                  room.linkedItems=(room.linkedItems||[]).map(wr2LinkedIdOf).filter(function(id){ return id && String(id)!==sid; });
+                  if(String(room.linkedSavedId||'')===sid)room.linkedSavedId=room.linkedItems[0]||'';
+                  room.updatedAt=Date.now(); saveRooms(); try{ if(typeof window.__wr2FlushSaveRooms==='function') window.__wr2FlushSaveRooms(); }catch(e){} renderItemSummary(room);
+                  try{ if(typeof wr2Render==='function')wr2Render(); }catch(e){}
+                  try{ if(typeof showToast==='function')showToast('연결 물건을 해제했습니다','ok'); }catch(e){}
+                };
+                window.wr2LinkedItemSave=function(roomId,savedId){ const safe=String(savedId||''), domId=safe.replace(/[^a-zA-Z0-9_-]/g,'_'); const bidEl=document.getElementById('wr2LinkedBid_'+domId), minEl=document.getElementById('wr2LinkedMin_'+domId); const sv=(typeof getSv==='function')?getSv():[]; const item=(sv||[]).find(s=>String(s&&s.id)===safe); if(!item)return; item.data=item.data||{}; if(bidEl){item.data['매각기일']=bidEl.value.trim(); item.biddate=bidEl.value.trim();} if(minEl){const won=wr2SummaryMoneyWon(minEl.value,false,item.data['감정가']||item.appraisal||0); if(won){item.data['최저가']=won; item.minprice=won;}} item.updatedAt=Date.now(); if(typeof setSv==='function')setSv(sv); const room=(wr2State.rooms||[]).find(r=>String(r.id)===String(roomId)); if(room){room.updatedAt=Date.now(); saveRooms(); try{ if(typeof window.__wr2FlushSaveRooms==='function') window.__wr2FlushSaveRooms(); }catch(e){} renderItemSummary(room);} try{ if(typeof showToast==='function')showToast('연결 물건 정보를 저장했습니다','ok'); }catch(e){} };
 
                 function renderItemSummary(room) {
                   const el = document.getElementById('wr2ItemSummary');
@@ -5722,7 +5773,7 @@ var _safeLocalSet = function(key, value) {
                     } catch (e) {}
                     const _niBiddate = String(room.biddate || '').trim();
                     const _niBidHtml = `<div class="wr2-info-row"><span class="wr2-info-lbl">매각기일</span><span class="wr2-info-val">${_niBiddate || '<span style="color:var(--mu);">미입력</span>'}</span></div>`;
-                    el.innerHTML = _niBidHtml + '<div class="wr2-no-item">연결된 원본 물건이 없습니다. 물건관리에서 먼저 연결해 주세요.</div>';
+                    el.innerHTML = _niBidHtml + '<div class="wr2-no-item">연결된 원본 물건이 없습니다.<br><button type="button" class="wr2-mini-btn" style="margin-top:8px;" onclick="event.stopPropagation();wr2ShowLinkModal()">＋ 물건 연결</button></div>';
                     return;
                   }
 
@@ -6498,14 +6549,16 @@ window.wr2SummaryCancelEdit = function() {
                   if (!item) return;
                   const sid = String(savedId);
                   if (typeof wr2NormalizeRoomLinkedItems === 'function') wr2NormalizeRoomLinkedItems(room);
-                  const exists = (room.linkedItems || []).some(function(x){ return String(x && (x.savedId || x.linkedSavedId || x.itemId || x.id) || '') === sid; });
-                  if (!exists) room.linkedItems.push({ savedId:sid, type:'auction', linkedAt:Date.now() });
+                  room.linkedItems = Array.isArray(room.linkedItems) ? room.linkedItems.map(wr2LinkedIdOf).filter(Boolean) : [];
+                  const exists = (room.linkedItems || []).some(function(x){ return String(wr2LinkedIdOf(x)) === sid; });
+                  if (!exists) room.linkedItems.push(sid);
                   if (!room.linkedSavedId) room.linkedSavedId = sid;
                   const d = item.data || {};
                   if (!room.address || room.address === '') { room.address = d['소재지'] || d['주소'] || d['도로명주소'] || ''; const addrEl = document.getElementById('wr2Address'); if (addrEl) addrEl.value = room.address; }
                   if (!room.title || room.title === '새 작업룸') { room.title = item.title || d['소재지'] || ''; const titleEl = document.getElementById('wr2Title'); if (titleEl) titleEl.value = room.title; }
                   room.updatedAt = Date.now();
                   saveRooms();
+                  try { if (typeof window.__wr2FlushSaveRooms === 'function') window.__wr2FlushSaveRooms(); } catch(e) {}
                   renderItemSummary(room);
                   const searchInput = document.getElementById('wr2LinkSearch');
                   if (searchInput && typeof renderLinkResults === 'function') renderLinkResults(searchInput.value || '');
@@ -7341,9 +7394,12 @@ window.wr2SummaryCancelEdit = function() {
                     .wcp-section + .wcp-section{margin-top:10px;}
                     .wcp-form{display:grid;gap:7px;}
                     .wcp-line{display:grid;grid-template-columns:112px minmax(0,1fr) 34px;gap:6px;align-items:center;min-width:0;}
-                    .wcp-line.rate{grid-template-columns:112px 72px 24px minmax(0,1fr) 34px;}
+                    .wcp-line.rate{grid-template-columns:96px 74px minmax(92px,1fr) 24px;gap:5px;}
                     .wcp-line.double{grid-template-columns:112px minmax(0,1fr) 34px 112px minmax(0,1fr) 34px;}
                     .wcp-line label{font-size:11px;color:#96a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+                    .wcp-rate-wrap{display:grid;grid-template-columns:minmax(0,1fr) 16px;gap:4px;align-items:center;min-width:0;}
+                    .wcp-rate-wrap .wcp-inp{text-align:right;}
+                    .wcp-rate-amount{min-width:0!important;font-size:11px!important;letter-spacing:-.035em!important;padding-left:5px!important;padding-right:5px!important;}
                     .wcp-inp{width:100%;min-width:0;border:1px solid rgba(255,255,255,.12);background:rgba(6,10,16,.78);border-radius:8px;color:#eef3fb;padding:7px 9px;font-size:12px;text-align:right;font-family:inherit;outline:none;min-height:32px;}
                     .wcp-inp::placeholder{color:#647084;}.wcp-inp:focus{border-color:#f97316;box-shadow:0 0 0 2px rgba(249,115,22,.13);}textarea.wcp-inp{text-align:left;min-height:70px;line-height:1.45;resize:vertical;}
                     .wcp-rate{color:#ffd166;font-weight:900;}.wcp-unit{font-size:10px;color:#8b97ad;white-space:nowrap;}.wcp-note{font-size:10px;color:#9aa6bd;line-height:1.35;min-height:14px;text-align:right;}.wcp-note.orange{color:#fb923c;font-weight:850;}.wcp-note.green{color:#4ade80;font-weight:850;}.wcp-note.blue{color:#60a5fa;font-weight:850;}
@@ -7374,7 +7430,9 @@ window.wr2SummaryCancelEdit = function() {
                     .wcp-grid4{gap:8px!important;}.wcp-grid3{gap:8px!important;}.wcp-grid2{gap:8px!important;}
                     .wcp-form{gap:6px!important;}
                     .wcp-line{grid-template-columns:96px minmax(0,1fr) 30px!important;gap:5px!important;}
-                    .wcp-line.rate{grid-template-columns:96px 64px 20px minmax(0,1fr) 30px!important;}
+                    .wcp-line.rate{grid-template-columns:86px 72px minmax(98px,1fr) 24px!important;gap:5px!important;}
+                    .wcp-rate-wrap{display:grid!important;grid-template-columns:minmax(0,1fr) 14px!important;gap:3px!important;align-items:center!important;min-width:0!important;}
+                    .wcp-rate-amount{min-width:98px!important;font-size:11px!important;letter-spacing:-.045em!important;padding-left:5px!important;padding-right:5px!important;}
                     .wcp-line label{font-size:10.5px!important;}
                     .wcp-inp{min-height:29px!important;padding:5px 7px!important;font-size:11.5px!important;}
                     .wcp-out{min-height:29px!important;padding:5px 7px!important;font-size:11.5px!important;}
@@ -7397,7 +7455,7 @@ window.wr2SummaryCancelEdit = function() {
                     .wcp-invest-table td:nth-child(3){text-align:left;color:#94a3b8;white-space:nowrap;padding-left:8px;}
                     .wcp-invest-table .hot{color:#fb923c!important}.wcp-invest-table .red{color:#fb7185!important}.wcp-invest-table .green{color:#4ade80!important;}
                     #wr2TableWrap,.wr2-ft-block,.wr2-free-table{display:none!important;}
-                    @media(max-width:980px){.wcp-kpi-strip{grid-template-columns:repeat(2,1fr)!important}.wcp-grid4,.wcp-grid3,.wcp-grid2{grid-template-columns:1fr!important}.wcp-line.rate{grid-template-columns:92px 60px 20px minmax(0,1fr) 28px!important}}
+                    @media(max-width:980px){.wcp-kpi-strip{grid-template-columns:repeat(2,1fr)!important}.wcp-grid4,.wcp-grid3,.wcp-grid2{grid-template-columns:1fr!important}.wcp-line.rate{grid-template-columns:86px 70px minmax(98px,1fr) 24px!important}.wcp-rate-amount{min-width:98px!important}}
                   `;
 
                 }
@@ -7436,7 +7494,7 @@ window.wr2SummaryCancelEdit = function() {
                 }
                 function wcpBenchAmount(stat,areaPy){ return stat&&stat.avg&&areaPy ? stat.avg*areaPy*10000 : 0; }
                 function wcpField(id,label,unit,val,noteId,ph){ return '<div class="wcp-line"><label>'+wcpEsc(label)+'</label><input id="'+id+'" class="wcp-inp" value="'+wcpEsc(val||'')+'" placeholder="'+wcpEsc(ph||'')+'"><span class="wcp-unit">'+wcpEsc(unit||'')+'</span></div>'+(noteId?'<div class="wcp-note" id="'+noteId+'">-</div>':''); }
-                function wcpRateField(rateId,amountId,label,rate,amount,noteId){ return '<div class="wcp-line rate"><label>'+wcpEsc(label)+'</label><input id="'+rateId+'" class="wcp-inp wcp-rate" value="'+wcpEsc(rate||'')+'"><span class="wcp-unit">%</span><input id="'+amountId+'" class="wcp-inp" value="'+wcpEsc(amount||'')+'"><span class="wcp-unit">원</span></div>'+(noteId?'<div class="wcp-note" id="'+noteId+'">-</div>':''); }
+                function wcpRateField(rateId,amountId,label,rate,amount,noteId){ return '<div class="wcp-line rate"><label>'+wcpEsc(label)+'</label><div class="wcp-rate-wrap"><input id="'+rateId+'" class="wcp-inp wcp-rate" value="'+wcpEsc(rate||'')+'"><span class="wcp-unit">%</span></div><input id="'+amountId+'" class="wcp-inp wcp-rate-amount" value="'+wcpEsc(amount||'')+'"><span class="wcp-unit">원</span></div>'+(noteId?'<div class="wcp-note" id="'+noteId+'">-</div>':''); }
                 function wcpOutputRow(label,id,unit,cls){ return '<div class="wcp-line"><label>'+wcpEsc(label)+'</label><div id="'+id+'" class="wcp-out '+(cls||'')+'">-</div><span class="wcp-unit">'+wcpEsc(unit||'')+'</span></div>'; }
                 function wcpBenchCard(num,title,desc,id,val,badge,noteId){ return '<div class="wcp-bench-card"><div class="top"><span class="num">'+num+'</span><span class="name">'+wcpEsc(title)+'</span></div><div class="desc">'+wcpEsc(desc)+'</div><input id="'+id+'" class="wcp-inp" value="'+wcpEsc(val||'')+'" placeholder="예: @2926 / 2500~3100 / 2900,3244"><div class="wcp-note orange" id="'+noteId+'">-</div><span class="wcp-badge">'+wcpEsc(badge)+'</span></div>'; }
 
@@ -49180,4 +49238,51 @@ window.addEventListener('DOMContentLoaded', () => {
   } catch (e) {
     console.warn('[lifecycle local override patch]', e);
   }
+})();
+
+
+/* [v41] 수익률 계산기 % + 금액 입력칸 폭 보정: 기존 UI 구조 유지, 금액칸만 확보 */
+(function(){
+  if (window.__WCP_RATE_AMOUNT_WIDTHFIX_V41) return;
+  window.__WCP_RATE_AMOUNT_WIDTHFIX_V41 = true;
+  function inject(){
+    if (document.getElementById('wcp-rate-amount-widthfix-v41')) return;
+    var st = document.createElement('style');
+    st.id = 'wcp-rate-amount-widthfix-v41';
+    st.textContent = `
+      .wr2-calc-pro-shell .wcp-line.rate{
+        grid-template-columns:86px 72px minmax(104px,1fr) 24px!important;
+        gap:5px!important;
+        align-items:center!important;
+      }
+      .wr2-calc-pro-shell .wcp-line.rate > label{min-width:0!important;}
+      .wr2-calc-pro-shell .wcp-rate-wrap{
+        display:grid!important;
+        grid-template-columns:minmax(0,1fr) 14px!important;
+        gap:3px!important;
+        align-items:center!important;
+        min-width:0!important;
+      }
+      .wr2-calc-pro-shell .wcp-rate-wrap .wcp-inp{min-width:0!important;padding-left:4px!important;padding-right:4px!important;}
+      .wr2-calc-pro-shell .wcp-rate-amount{
+        min-width:104px!important;
+        width:100%!important;
+        font-size:11px!important;
+        letter-spacing:-.045em!important;
+        padding-left:5px!important;
+        padding-right:5px!important;
+      }
+      @media(max-width:980px){
+        .wr2-calc-pro-shell .wcp-line.rate{grid-template-columns:80px 70px minmax(104px,1fr) 24px!important;}
+        .wr2-calc-pro-shell .wcp-rate-amount{min-width:104px!important;}
+      }
+      @media(max-width:760px){
+        .wr2-calc-pro-shell .wcp-line.rate{grid-template-columns:1fr!important;}
+        .wr2-calc-pro-shell .wcp-rate-wrap{grid-template-columns:1fr 22px!important;}
+        .wr2-calc-pro-shell .wcp-rate-amount{min-width:0!important;font-size:12px!important;}
+      }
+    `;
+    document.head.appendChild(st);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', inject); else inject();
 })();
