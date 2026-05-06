@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260506-workroom-v31-vacancy-rent-ltv-clean';
+    window.__SK_BUILD = '20260506-workroom-v32-vacancy-initial-widthfix';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -7265,16 +7265,18 @@ window.wr2SummaryCancelEdit = function() {
                     .wcp-vacancy-compact .head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;}
                     .wcp-vacancy-compact .head b{font-size:12px;color:#dbeafe;}
                     .wcp-vacancy-compact .head span{font-size:10px;color:#93a4bd;}
-                    .wcp-vacancy-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;}
+                    .wcp-vacancy-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;}
                     .wcp-vacancy-cell{border:1px solid rgba(255,255,255,.07);background:rgba(0,0,0,.16);border-radius:8px;padding:7px 8px;min-width:0;}
                     .wcp-vacancy-cell label{display:block;font-size:10px;color:#8fa0b7;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-                    .wcp-vacancy-cell .val{font-size:12px;font-weight:900;color:#e8ecf4;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-                    .wcp-vacancy-cell.hot .val{color:#fb923c;font-size:13px;}
+                    .wcp-vacancy-cell .val{font-size:12px;font-weight:900;color:#e8ecf4;text-align:right;white-space:nowrap;overflow:visible;text-overflow:clip;}
+                    .wcp-vacancy-cell.hot{grid-column:1 / -1;display:grid;grid-template-columns:minmax(96px,1fr) auto;align-items:center;gap:10px;background:rgba(251,146,60,.08);border-color:rgba(251,146,60,.30);}
+                    .wcp-vacancy-cell.hot label{margin-bottom:0;}
+                    .wcp-vacancy-cell.hot .val{color:#fb923c;font-size:14px;min-width:max-content;}
                     .wcp-bench-card.rent-yield .rent-yield-row{display:grid;grid-template-columns:minmax(0,1fr) 82px 24px;gap:6px;align-items:center;margin-top:7px;}
                     .wcp-bench-card.rent-yield .rent-yield-row span{font-size:10px;color:#9aa6bd;white-space:nowrap;}
                     .wcp-bench-card.rent-yield .rent-yield-row .wcp-inp{min-height:30px;padding:6px 8px;}
                     .wcp-loan-rule .title span:last-child{color:#bfdbfe;}
-                    @media(max-width:1180px){.wcp-vacancy-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
+                    @media(max-width:1180px){.wcp-vacancy-grid{grid-template-columns:repeat(2,minmax(0,1fr));}.wcp-vacancy-cell.hot{grid-column:1 / -1;}}
                     @media(max-width:620px){.wcp-vacancy-grid{grid-template-columns:1fr;}.wcp-bench-card.rent-yield .rent-yield-row{grid-template-columns:1fr 70px 24px;}}
                     /* v20: 작업룸 복수 경매 물건 요약 + 계산 기준 선택. 기존 자유비교표는 사용하지 않음 */
                     #wr2TableWrap,.wr2-ft-block,.wr2-free-table,[data-free-table]{display:none!important;}
