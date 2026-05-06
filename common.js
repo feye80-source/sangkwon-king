@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260507-workroom-ui-link-rate-v43';
+    window.__SK_BUILD = '20260507-workroom-v44-stable-summary-rate';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -5766,7 +5766,7 @@ var _safeLocalSet = function(key, value) {
                   if (openBtn) openBtn.style.display = item ? '' : 'none';
                   if (openBtn && item) { openBtn.onclick = () => { if (typeof openPopup === 'function') openPopup(item.id); }; }
 
-                  if (linkedItemsAll.length > 1) {
+                  if (linkedItemsAll.length >= 1) {
                     try { var _stMulti = window.wr2SummaryGetEditState ? window.wr2SummaryGetEditState() : null; if (_stMulti && String(_stMulti.roomId || '') === String(room.id || '')) _stMulti.activeKey = ''; } catch (e) {}
                     el.innerHTML = wr2BuildMultiLinkedSummaryHtml(room, linkedItemsAll);
                     return;
@@ -7502,7 +7502,7 @@ window.wr2SummaryCancelEdit = function() {
                 }
                 function wcpBenchAmount(stat,areaPy){ return stat&&stat.avg&&areaPy ? stat.avg*areaPy*10000 : 0; }
                 function wcpField(id,label,unit,val,noteId,ph){ return '<div class="wcp-line"><label>'+wcpEsc(label)+'</label><input id="'+id+'" class="wcp-inp" value="'+wcpEsc(val||'')+'" placeholder="'+wcpEsc(ph||'')+'"><span class="wcp-unit">'+wcpEsc(unit||'')+'</span></div>'+(noteId?'<div class="wcp-note" id="'+noteId+'">-</div>':''); }
-                function wcpRateField(rateId,amountId,label,rate,amount,noteId){ return '<div class="wcp-line rate"><label>'+wcpEsc(label)+'</label><div class="wcp-rate-wrap"><input id="'+rateId+'" class="wcp-inp wcp-rate" value="'+wcpEsc(rate||'')+'"><span class="wcp-unit">%</span></div><input id="'+amountId+'" class="wcp-inp wcp-rate-amount" value="'+wcpEsc(amount||'')+'"><span class="wcp-unit">원</span></div>'+(noteId?'<div class="wcp-note" id="'+noteId+'">-</div>':''); }
+                function wcpRateField(rateId,amountId,label,rate,amount,noteId){ return '<div class="wcp-line wcp-rate-row"><label>'+wcpEsc(label)+'</label><div class="wcp-rate-controls"><div class="wcp-rate-wrap"><input id="'+rateId+'" class="wcp-inp wcp-rate" value="'+wcpEsc(rate||'')+'"><span class="wcp-unit">%</span></div><input id="'+amountId+'" class="wcp-inp wcp-rate-amount" value="'+wcpEsc(amount||'')+'"><span class="wcp-unit">원</span></div></div>'+(noteId?'<div class="wcp-note" id="'+noteId+'">-</div>':''); }
                 function wcpOutputRow(label,id,unit,cls){ return '<div class="wcp-line"><label>'+wcpEsc(label)+'</label><div id="'+id+'" class="wcp-out '+(cls||'')+'">-</div><span class="wcp-unit">'+wcpEsc(unit||'')+'</span></div>'; }
                 function wcpBenchCard(num,title,desc,id,val,badge,noteId){ return '<div class="wcp-bench-card"><div class="top"><span class="num">'+num+'</span><span class="name">'+wcpEsc(title)+'</span></div><div class="desc">'+wcpEsc(desc)+'</div><input id="'+id+'" class="wcp-inp" value="'+wcpEsc(val||'')+'" placeholder="예: @2926 / 2500~3100 / 2900,3244"><div class="wcp-note orange" id="'+noteId+'">-</div><span class="wcp-badge">'+wcpEsc(badge)+'</span></div>'; }
 
@@ -49258,269 +49258,74 @@ window.addEventListener('DOMContentLoaded', () => {
 })();
 
 
-/* [v41] 수익률 계산기 % + 금액 입력칸 폭 보정: 기존 UI 구조 유지, 금액칸만 확보 */
-(function(){
-  if (window.__WCP_RATE_AMOUNT_WIDTHFIX_V41) return;
-  window.__WCP_RATE_AMOUNT_WIDTHFIX_V41 = true;
-  function inject(){
-    if (document.getElementById('wcp-rate-amount-widthfix-v41')) return;
-    var st = document.createElement('style');
-    st.id = 'wcp-rate-amount-widthfix-v41';
-    st.textContent = `
-      .wr2-calc-pro-shell .wcp-line.rate{
-        grid-template-columns:86px 72px minmax(104px,1fr) 24px!important;
-        gap:5px!important;
-        align-items:center!important;
-      }
-      .wr2-calc-pro-shell .wcp-line.rate > label{min-width:0!important;}
-      .wr2-calc-pro-shell .wcp-rate-wrap{
-        display:grid!important;
-        grid-template-columns:minmax(0,1fr) 14px!important;
-        gap:3px!important;
-        align-items:center!important;
-        min-width:0!important;
-      }
-      .wr2-calc-pro-shell .wcp-rate-wrap .wcp-inp{min-width:0!important;padding-left:4px!important;padding-right:4px!important;}
-      .wr2-calc-pro-shell .wcp-rate-amount{
-        min-width:104px!important;
-        width:100%!important;
-        font-size:11px!important;
-        letter-spacing:-.045em!important;
-        padding-left:5px!important;
-        padding-right:5px!important;
-      }
-      @media(max-width:980px){
-        .wr2-calc-pro-shell .wcp-line.rate{grid-template-columns:80px 70px minmax(104px,1fr) 24px!important;}
-        .wr2-calc-pro-shell .wcp-rate-amount{min-width:104px!important;}
-      }
-      @media(max-width:760px){
-        .wr2-calc-pro-shell .wcp-line.rate{grid-template-columns:1fr!important;}
-        .wr2-calc-pro-shell .wcp-rate-wrap{grid-template-columns:1fr 22px!important;}
-        .wr2-calc-pro-shell .wcp-rate-amount{min-width:0!important;font-size:12px!important;}
-      }
-    `;
-    document.head.appendChild(st);
-  }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', inject); else inject();
-})();
 
+/* [v44] obsolete v41/v43 layout patches removed. */
 
-/* [v43] workroom multi linked summary + rate amount layout final patch */
+/* [v44] stable workroom summary + calculator rate rows
+   - single/multi linked items share the same table component
+   - rate+amount input rows use a stable inner grid, so focus/typing never changes layout
+*/
 (function(){
-  if (window.__WR2_UI_LINK_RATE_FIX_V43) return;
-  window.__WR2_UI_LINK_RATE_FIX_V43 = true;
+  if (window.__WR2_V44_STABLE_LAYOUT) return;
+  window.__WR2_V44_STABLE_LAYOUT = true;
   function inject(){
-    if (document.getElementById('wr2-ui-link-rate-fix-v43')) return;
+    if (document.getElementById('wr2-v44-stable-layout')) return;
     var st = document.createElement('style');
-    st.id = 'wr2-ui-link-rate-fix-v43';
+    st.id = 'wr2-v44-stable-layout';
     st.textContent = `
-      /* 1) 복수 물건 요약표: 기존 작업룸 스타일 영향 차단 */
+      #wr2ItemSummary{min-width:0!important;overflow-x:auto!important;overflow-y:visible!important;}
       #wr2ItemSummary .wr2-multi-linked-summary,
-      #wr2ItemSummary .wr2-multi-linked-summary *{
-        box-sizing:border-box!important;
-      }
-      #wr2ItemSummary .wr2-multi-linked-summary{
-        width:100%!important;
-        max-width:100%!important;
-        min-width:0!important;
-        overflow:hidden!important;
-        padding:12px!important;
-        border:1px solid rgba(79,142,255,.22)!important;
-        border-radius:14px!important;
-        background:rgba(14,19,29,.72)!important;
-        color:var(--tx,#e8ecf4)!important;
-        font-size:12px!important;
-        line-height:1.38!important;
-      }
-      #wr2ItemSummary .wr2-ml-top{
-        display:flex!important;
-        align-items:center!important;
-        justify-content:space-between!important;
-        gap:10px!important;
-        margin:0 0 10px 0!important;
-        min-width:0!important;
-      }
-      #wr2ItemSummary .wr2-ml-top b{
-        display:inline!important;
-        font-size:14px!important;
-        line-height:1.25!important;
-        letter-spacing:-.02em!important;
-        color:#f3f6fb!important;
-        white-space:nowrap!important;
-      }
-      #wr2ItemSummary .wr2-ml-top span{
-        display:inline!important;
-        margin-left:6px!important;
-        font-size:11px!important;
-        color:#8fa3c5!important;
-        white-space:nowrap!important;
-      }
-      #wr2ItemSummary .wr2-ml-scroll{
-        width:100%!important;
-        max-width:100%!important;
-        overflow-x:auto!important;
-        overflow-y:hidden!important;
-        border:1px solid rgba(255,255,255,.08)!important;
-        border-radius:12px!important;
-        background:rgba(4,8,14,.28)!important;
-      }
-      #wr2ItemSummary .wr2-ml-table{
-        width:100%!important;
-        min-width:760px!important;
-        table-layout:fixed!important;
-        border-collapse:collapse!important;
-        border-spacing:0!important;
-        font-size:12px!important;
-        line-height:1.35!important;
-      }
+      #wr2ItemSummary .wr2-multi-linked-summary *{box-sizing:border-box!important;}
+      #wr2ItemSummary .wr2-multi-linked-summary{width:100%!important;max-width:100%!important;min-width:0!important;padding:10px!important;border:1px solid rgba(79,142,255,.22)!important;border-radius:12px!important;background:rgba(14,19,29,.72)!important;color:var(--tx,#e8ecf4)!important;font-size:12px!important;line-height:1.35!important;overflow:visible!important;}
+      #wr2ItemSummary .wr2-ml-top{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:8px!important;margin:0 0 8px 0!important;min-width:0!important;}
+      #wr2ItemSummary .wr2-ml-top b{font-size:13px!important;font-weight:900!important;color:#f3f6fb!important;white-space:nowrap!important;}
+      #wr2ItemSummary .wr2-ml-top span{font-size:11px!important;color:#8fa3c5!important;white-space:normal!important;}
+      #wr2ItemSummary .wr2-ml-scroll{width:100%!important;max-width:100%!important;overflow-x:auto!important;overflow-y:visible!important;border:1px solid rgba(255,255,255,.08)!important;border-radius:10px!important;background:rgba(4,8,14,.28)!important;}
+      #wr2ItemSummary .wr2-ml-table{width:100%!important;min-width:620px!important;table-layout:fixed!important;border-collapse:collapse!important;font-size:11.5px!important;line-height:1.34!important;}
       #wr2ItemSummary .wr2-ml-table th,
-      #wr2ItemSummary .wr2-ml-table td{
-        padding:9px 10px!important;
-        border-bottom:1px solid rgba(255,255,255,.075)!important;
-        vertical-align:middle!important;
-        text-align:left!important;
-        color:#dbe4f4!important;
-        font-size:12px!important;
-        line-height:1.35!important;
-        word-break:keep-all!important;
-        overflow-wrap:normal!important;
-      }
-      #wr2ItemSummary .wr2-ml-table th{
-        background:rgba(255,255,255,.035)!important;
-        font-weight:900!important;
-      }
+      #wr2ItemSummary .wr2-ml-table td{padding:7px 8px!important;border-bottom:1px solid rgba(255,255,255,.07)!important;vertical-align:middle!important;text-align:left!important;color:#dbe4f4!important;font-size:11.5px!important;line-height:1.34!important;word-break:keep-all!important;overflow-wrap:anywhere!important;white-space:normal!important;}
+      #wr2ItemSummary .wr2-ml-table th{background:rgba(255,255,255,.035)!important;font-weight:900!important;}
       #wr2ItemSummary .wr2-ml-table tr:last-child td{border-bottom:0!important;}
-      #wr2ItemSummary .wr2-ml-label{
-        width:92px!important;
-        min-width:92px!important;
-        max-width:92px!important;
-        white-space:nowrap!important;
-        color:#94a3b8!important;
-        font-weight:850!important;
-        word-break:keep-all!important;
-        overflow-wrap:normal!important;
-      }
-      #wr2ItemSummary th.wr2-ml-col,
-      #wr2ItemSummary .wr2-ml-table th.wr2-ml-col{
-        width:29%!important;
-        min-width:220px!important;
-      }
+      #wr2ItemSummary .wr2-ml-label{width:70px!important;min-width:70px!important;max-width:70px!important;color:#94a3b8!important;font-weight:850!important;white-space:normal!important;overflow-wrap:keep-all!important;}
+      #wr2ItemSummary .wr2-ml-col{min-width:165px!important;width:auto!important;}
       #wr2ItemSummary .wr2-ml-total,
-      #wr2ItemSummary .wr2-ml-total-cell{
-        width:150px!important;
-        min-width:150px!important;
-        background:rgba(249,115,22,.07)!important;
-        border-left:1px solid rgba(249,115,22,.22)!important;
-        color:#fed7aa!important;
-        font-weight:900!important;
-      }
-      #wr2ItemSummary .wr2-ml-head-title{
-        display:block!important;
-        color:#f3f6fb!important;
-        font-size:12.5px!important;
-        font-weight:950!important;
-        line-height:1.28!important;
-        letter-spacing:-.02em!important;
-        white-space:normal!important;
-        word-break:keep-all!important;
-        overflow-wrap:anywhere!important;
-        margin:0 0 6px 0!important;
-      }
-      #wr2ItemSummary .wr2-ml-head-actions{
-        display:flex!important;
-        align-items:center!important;
-        gap:4px!important;
-        flex-wrap:wrap!important;
-        margin:0!important;
-      }
-      #wr2ItemSummary .wr2-ml-head-actions .wr2-mini-btn,
-      #wr2ItemSummary .wr2-ml-top .wr2-mini-btn{
-        display:inline-flex!important;
-        align-items:center!important;
-        justify-content:center!important;
-        min-height:24px!important;
-        padding:4px 7px!important;
-        border-radius:999px!important;
-        font-size:10.5px!important;
-        line-height:1.1!important;
-        font-weight:850!important;
-        white-space:nowrap!important;
-      }
+      #wr2ItemSummary .wr2-ml-total-cell{width:122px!important;min-width:122px!important;background:rgba(249,115,22,.07)!important;border-left:1px solid rgba(249,115,22,.22)!important;color:#fed7aa!important;font-weight:900!important;}
+      #wr2ItemSummary .wr2-ml-head-title{display:block!important;color:#f3f6fb!important;font-size:11.8px!important;font-weight:950!important;line-height:1.25!important;letter-spacing:-.02em!important;white-space:normal!important;word-break:keep-all!important;overflow-wrap:anywhere!important;margin:0 0 5px 0!important;}
+      #wr2ItemSummary .wr2-ml-head-actions{display:flex!important;align-items:center!important;gap:4px!important;flex-wrap:wrap!important;}
+      #wr2ItemSummary .wr2-mini-btn{display:inline-flex!important;align-items:center!important;justify-content:center!important;min-height:23px!important;padding:4px 7px!important;border-radius:999px!important;font-size:10.5px!important;line-height:1.1!important;font-weight:850!important;white-space:nowrap!important;}
       #wr2ItemSummary .wr2-ml-blue{color:#60a5fa!important;font-weight:950!important;}
       #wr2ItemSummary .wr2-ml-dday{color:#fb923c!important;font-size:10.5px!important;font-weight:900!important;white-space:nowrap!important;}
       @media(max-width:980px){
-        #wr2ItemSummary .wr2-ml-table{min-width:700px!important;}
-        #wr2ItemSummary .wr2-ml-label{width:84px!important;min-width:84px!important;max-width:84px!important;}
-        #wr2ItemSummary .wr2-ml-total,#wr2ItemSummary .wr2-ml-total-cell{width:135px!important;min-width:135px!important;}
+        #wr2ItemSummary .wr2-ml-table{min-width:560px!important;}
+        #wr2ItemSummary .wr2-ml-label{width:64px!important;min-width:64px!important;max-width:64px!important;}
+        #wr2ItemSummary .wr2-ml-total,#wr2ItemSummary .wr2-ml-total-cell{width:110px!important;min-width:110px!important;}
       }
 
-      /* 2) 수익률 계산기: % + 금액 행 금액칸 우선 확보 */
-      .wr2-calc-pro-shell .wcp-line.rate{
-        display:grid!important;
-        grid-template-columns:88px 64px minmax(148px,1fr) 24px!important;
-        gap:6px!important;
-        align-items:center!important;
-        width:100%!important;
-        min-width:0!important;
-      }
-      .wr2-calc-pro-shell .wcp-line.rate > label{
-        min-width:0!important;
-        width:88px!important;
-        max-width:88px!important;
-        white-space:nowrap!important;
-        overflow:hidden!important;
-        text-overflow:ellipsis!important;
-      }
-      .wr2-calc-pro-shell .wcp-rate-wrap{
-        width:64px!important;
-        min-width:64px!important;
-        max-width:64px!important;
-        display:grid!important;
-        grid-template-columns:minmax(0,1fr) 14px!important;
-        gap:3px!important;
-        align-items:center!important;
-      }
-      .wr2-calc-pro-shell .wcp-rate-wrap .wcp-inp{
-        min-width:0!important;
-        width:100%!important;
-        padding-left:4px!important;
-        padding-right:4px!important;
-        text-align:right!important;
-      }
-      .wr2-calc-pro-shell .wcp-rate-amount{
-        width:100%!important;
-        min-width:148px!important;
-        max-width:none!important;
-        padding-left:7px!important;
-        padding-right:7px!important;
-        font-size:12px!important;
-        letter-spacing:-.03em!important;
-        text-align:right!important;
-        overflow:visible!important;
-        text-overflow:clip!important;
-      }
-      .wr2-calc-pro-shell .wcp-line.rate > .wcp-unit:last-child{
-        width:24px!important;
-        min-width:24px!important;
-        display:inline-block!important;
-        overflow:visible!important;
-      }
-      .wr2-calc-pro-shell .wcp-section{min-width:0!important;}
+      .wr2-calc-pro-shell .wcp-section{min-width:0!important;overflow:visible!important;}
+      .wr2-calc-pro-shell .wcp-form{min-width:0!important;}
+      .wr2-calc-pro-shell .wcp-grid2,
+      .wr2-calc-pro-shell .wcp-grid3,
+      .wr2-calc-pro-shell .wcp-grid4{min-width:0!important;}
       .wr2-calc-pro-shell .wcp-grid2 > *,
       .wr2-calc-pro-shell .wcp-grid3 > *,
       .wr2-calc-pro-shell .wcp-grid4 > *{min-width:0!important;}
+      .wr2-calc-pro-shell .wcp-rate-row{display:grid!important;grid-template-columns:minmax(82px,112px) minmax(0,1fr)!important;gap:7px!important;align-items:center!important;width:100%!important;min-width:0!important;}
+      .wr2-calc-pro-shell .wcp-rate-row > label{min-width:0!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;color:#96a3b8!important;}
+      .wr2-calc-pro-shell .wcp-rate-controls{display:grid!important;grid-template-columns:72px minmax(0,1fr) 22px!important;gap:7px!important;align-items:center!important;min-width:0!important;width:100%!important;}
+      .wr2-calc-pro-shell .wcp-rate-row .wcp-rate-wrap{display:grid!important;grid-template-columns:minmax(0,1fr) 16px!important;gap:3px!important;align-items:center!important;width:100%!important;min-width:0!important;max-width:none!important;}
+      .wr2-calc-pro-shell .wcp-rate-row .wcp-rate-wrap .wcp-inp{min-width:0!important;width:100%!important;padding-left:5px!important;padding-right:5px!important;text-align:right!important;}
+      .wr2-calc-pro-shell .wcp-rate-row .wcp-rate-amount{min-width:0!important;width:100%!important;max-width:none!important;font-size:12px!important;letter-spacing:-.02em!important;padding-left:8px!important;padding-right:8px!important;text-align:right!important;overflow:visible!important;text-overflow:clip!important;}
+      .wr2-calc-pro-shell .wcp-rate-row .wcp-unit{white-space:nowrap!important;overflow:visible!important;}
+      .wr2-calc-pro-shell .wcp-rate-row:focus-within{position:relative!important;z-index:2!important;}
       @media(max-width:1120px){
-        .wr2-calc-pro-shell .wcp-line.rate{grid-template-columns:82px 62px minmax(132px,1fr) 22px!important;gap:5px!important;}
-        .wr2-calc-pro-shell .wcp-line.rate > label{width:82px!important;max-width:82px!important;}
-        .wr2-calc-pro-shell .wcp-rate-wrap{width:62px!important;min-width:62px!important;max-width:62px!important;}
-        .wr2-calc-pro-shell .wcp-rate-amount{min-width:132px!important;font-size:11.5px!important;}
+        .wr2-calc-pro-shell .wcp-rate-row{grid-template-columns:1fr!important;align-items:start!important;}
+        .wr2-calc-pro-shell .wcp-rate-row > label{white-space:normal!important;}
+        .wr2-calc-pro-shell .wcp-rate-controls{grid-template-columns:72px minmax(0,1fr) 22px!important;}
       }
       @media(max-width:760px){
-        .wr2-calc-pro-shell .wcp-line.rate{grid-template-columns:1fr!important;}
-        .wr2-calc-pro-shell .wcp-line.rate > label{width:auto!important;max-width:none!important;}
-        .wr2-calc-pro-shell .wcp-rate-wrap{width:100%!important;max-width:none!important;grid-template-columns:minmax(0,1fr) 22px!important;}
-        .wr2-calc-pro-shell .wcp-rate-amount{min-width:0!important;font-size:12px!important;}
-        .wr2-calc-pro-shell .wcp-line.rate > .wcp-unit:last-child{display:none!important;}
+        .wr2-calc-pro-shell .wcp-rate-controls{grid-template-columns:1fr!important;}
+        .wr2-calc-pro-shell .wcp-rate-row .wcp-rate-wrap{grid-template-columns:minmax(0,1fr) 22px!important;}
+        .wr2-calc-pro-shell .wcp-rate-controls > .wcp-unit:last-child{display:none!important;}
       }
     `;
     document.head.appendChild(st);
