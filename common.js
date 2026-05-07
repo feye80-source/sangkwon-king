@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260508-workroom-v69-excel-formula-match';
+    window.__SK_BUILD = '20260508-workroom-v71-ui-realign';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -7965,6 +7965,140 @@ window.wr2SummaryCancelEdit = function() {
                     @media(max-width:860px){
                       .wcp-kpi-strip{grid-template-columns:repeat(2,minmax(0,1fr))!important}.wcp-basis-toolbar{grid-template-columns:1fr!important}.wcp-basis-summary{grid-template-columns:repeat(2,minmax(0,1fr))!important}.wcp-calc-combined-grid,.wcp-bench-panel .wcp-grid3,.wcp-bench-panel .wcp-grid4{grid-template-columns:1fr!important}.wcp-line,.wcp-line.rate,.wcp-line.rate.wcp-rate-field{grid-template-columns:1fr!important}.wcp-unit{text-align:right!important}.wcp-kpi-summary-panel .wcp-line{grid-template-columns:1fr!important}.wcp-kpi-summary-panel .wcp-out{justify-content:flex-start!important}
                     }
+
+                    /* v71: site-aligned corrective pass — no oversized emphasis, restore 2x2 scenario cards */
+                    .wr2-calc-pro-shell{
+                      font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Pretendard","Noto Sans KR","Malgun Gothic",sans-serif!important;
+                      font-size:11px!important;line-height:1.2!important;color:#d8e1ef!important;
+                    }
+                    .wr2-calc-pro-shell *{font-weight:inherit;}
+                    .wcp-card,.wcp-section,.wcp-bench-card,.wcp-basis-chip,.wcp-kpi{
+                      box-shadow:none!important;
+                    }
+                    .wcp-card{
+                      padding:10px!important;border-radius:11px!important;
+                      background:linear-gradient(180deg,rgba(11,25,43,.92),rgba(6,15,26,.96))!important;
+                      border-color:rgba(88,127,170,.26)!important;
+                    }
+                    .wcp-card h3,.wcp-calc-combined-head h3{
+                      font-size:16px!important;line-height:1.1!important;margin:0 0 8px!important;
+                      font-weight:760!important;letter-spacing:-.035em!important;color:#eef5ff!important;
+                    }
+                    .wcp-section h4,.wcp-calc-col>h4{
+                      font-size:11.5px!important;font-weight:720!important;color:#d9e3f1!important;margin:0 0 6px!important;
+                    }
+                    .wcp-subsec h5{font-size:10.5px!important;font-weight:700!important;color:#d3deed!important;margin:0 0 5px!important;}
+                    .wcp-line label,.wcp-kpi-summary-panel .wcp-line label{
+                      font-size:10.2px!important;font-weight:620!important;color:#aebbd0!important;letter-spacing:-.02em!important;
+                    }
+                    .wcp-inp,.wcp-out{
+                      min-height:25px!important;padding:4px 7px!important;font-size:11px!important;
+                      font-weight:680!important;letter-spacing:-.01em!important;
+                    }
+
+                    /* Top three hand-estimate cards: stop area/py values from clipping */
+                    .wcp-bench-panel .wcp-grid3{
+                      grid-template-columns:minmax(150px,.86fr) minmax(218px,1.22fr) minmax(160px,.92fr)!important;
+                      gap:8px!important;align-items:stretch!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3 .wcp-section{
+                      min-height:104px!important;padding:9px!important;overflow:visible!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3 .wcp-section:first-child .wcp-line{
+                      grid-template-columns:54px 70px 18px!important;gap:5px!important;min-height:30px!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3 .wcp-section:first-child .wcp-line label{
+                      font-size:10.2px!important;overflow:visible!important;text-overflow:clip!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3 .wcp-section:first-child .wcp-inp{
+                      min-width:70px!important;max-width:70px!important;font-size:11px!important;overflow:visible!important;text-overflow:clip!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3 .wcp-section:first-child .wcp-unit{
+                      min-width:18px!important;font-size:9.5px!important;
+                    }
+
+                    /* Restore the four lower benchmark cards to stable 2x2 layout */
+                    .wcp-bench-panel .wcp-grid4{
+                      grid-template-columns:repeat(2,minmax(0,1fr))!important;
+                      gap:8px!important;margin-top:8px!important;
+                    }
+                    .wcp-bench-card{
+                      min-height:104px!important;padding:9px 10px!important;border-radius:9px!important;gap:4px!important;
+                      display:flex!important;flex-direction:column!important;justify-content:space-between!important;
+                    }
+                    .wcp-bench-card .top-left{gap:6px!important;min-width:0!important;}
+                    .wcp-bench-card .num{width:18px!important;height:18px!important;font-size:10px!important;font-weight:760!important;flex:0 0 auto!important;}
+                    .wcp-bench-card .name{
+                      font-size:11.2px!important;font-weight:720!important;line-height:1.12!important;
+                      white-space:normal!important;overflow:visible!important;text-overflow:clip!important;color:#edf4ff!important;
+                    }
+                    .wcp-bench-card .desc{font-size:9.6px!important;color:#8fa0b7!important;font-weight:520!important;}
+                    .wcp-badge{font-size:9px!important;font-weight:760!important;padding:1px 7px!important;}
+                    .wcp-bench-card .wcp-inp{min-height:28px!important;font-size:12px!important;font-weight:720!important;}
+                    .wcp-bench-note{min-height:24px!important;}
+                    .wcp-bench-note-py{font-size:9.5px!important;font-weight:600!important;color:#95a4b8!important;}
+                    .wcp-bench-note-amt{font-size:10.8px!important;font-weight:720!important;}
+                    .wcp-bench-card.rent-yield .rent-yield-row{grid-template-columns:minmax(0,1fr) 58px 14px!important;}
+                    .wcp-bench-card.rent-yield .rent-yield-row span{font-size:9.5px!important;}
+
+                    /* Loan auto-calculation: make it a small helper, not a KPI */
+                    .wcp-loan-rule{
+                      margin-top:6px!important;padding:7px 9px!important;border-radius:8px!important;
+                      background:rgba(7,17,31,.58)!important;border:1px solid rgba(96,165,250,.18)!important;
+                    }
+                    .wcp-loan-rule .title{
+                      display:block!important;font-size:10.2px!important;font-weight:650!important;color:#8fb3e7!important;
+                      border:0!important;padding:0!important;margin:0 0 4px!important;
+                    }
+                    .wcp-loan-rule .chip.on b{
+                      font-size:13.5px!important;font-weight:700!important;color:#9fc7ff!important;letter-spacing:-.02em!important;
+                    }
+                    .wcp-loan-rule .help{
+                      font-size:9.5px!important;font-weight:520!important;color:#8192aa!important;margin-top:2px!important;
+                    }
+
+                    /* KPI summary: smaller, cleaner, stronger label-value pairing */
+                    .wcp-kpi-summary-panel h3{
+                      font-size:15px!important;font-weight:760!important;margin-bottom:8px!important;
+                    }
+                    .wcp-kpi-summary-panel .wcp-form{gap:3px!important;}
+                    .wcp-kpi-summary-panel .wcp-line{
+                      grid-template-columns:minmax(110px,1fr) minmax(102px,130px) 22px!important;
+                      min-height:26px!important;gap:5px!important;padding:1px 0!important;
+                    }
+                    .wcp-kpi-summary-panel .wcp-line label:before{
+                      content:'•'!important;font-size:10px!important;margin-right:5px!important;color:#6aa7ff!important;
+                    }
+                    .wcp-kpi-summary-panel .wcp-out{
+                      font-size:clamp(11px,.82vw,14px)!important;font-weight:720!important;
+                      line-height:1.08!important;text-align:right!important;
+                    }
+                    .wcp-kpi-summary-panel .wcp-unit{font-size:9.5px!important;color:#9eaabe!important;}
+                    .wcp-kpi-summary-panel .wcp-divider{margin:3px 0!important;}
+
+                    /* Bottom KPI banner: calmer and less bulky */
+                    .wcp-top.wcp-kpi-banner-bottom{margin:8px 0 0!important;}
+                    .wcp-kpi{min-height:58px!important;padding:7px 9px!important;grid-template-columns:20px minmax(0,1fr)!important;gap:6px!important;}
+                    .wcp-kpi .kicon{width:19px!important;height:19px!important;font-size:15px!important;filter:none!important;}
+                    .wcp-kpi .l{font-size:9.8px!important;font-weight:650!important;color:#b7c4d5!important;}
+                    .wcp-kpi .v{font-size:clamp(12px,.86vw,16px)!important;font-weight:760!important;letter-spacing:-.025em!important;}
+                    .wcp-kpi .sub{font-size:9px!important;font-weight:520!important;color:#8393aa!important;}
+
+                    @media(max-width:1600px){
+                      .wcp-main-grid{grid-template-columns:minmax(420px,.92fr) minmax(520px,1.18fr) minmax(270px,.72fr)!important;}
+                      .wcp-bench-panel .wcp-grid3{grid-template-columns:minmax(150px,.86fr) minmax(210px,1.18fr) minmax(154px,.88fr)!important;}
+                    }
+                    @media(max-width:1380px){
+                      .wcp-main-grid{grid-template-columns:1fr!important;}
+                      .wcp-bench-panel .wcp-grid3{grid-template-columns:minmax(150px,.7fr) minmax(220px,1fr) minmax(160px,.74fr)!important;}
+                      .wcp-bench-panel .wcp-grid4{grid-template-columns:repeat(2,minmax(0,1fr))!important;}
+                    }
+                    @media(max-width:760px){
+                      .wcp-bench-panel .wcp-grid3,.wcp-bench-panel .wcp-grid4{grid-template-columns:1fr!important;}
+                      .wcp-bench-panel .wcp-grid3 .wcp-section:first-child .wcp-line{grid-template-columns:64px 82px 22px!important;}
+                      .wcp-bench-panel .wcp-grid3 .wcp-section:first-child .wcp-inp{min-width:82px!important;max-width:82px!important;}
+                    }
+
                   `;
 
                 }
