@@ -7546,6 +7546,29 @@ window.wr2SummaryCancelEdit = function() {
                     @media(max-width:1280px){.wcp-basis-toolbar{grid-template-columns:1fr}.wcp-basis-summary{grid-template-columns:repeat(4,minmax(0,1fr));}}
                     @media(max-width:760px){.wcp-basis-summary{grid-template-columns:repeat(2,minmax(0,1fr));}.wcp-linked-picker{overflow:auto}.wcp-link-choice{min-width:78px;padding:8px 11px}.wcp-basis-statusbar{flex-wrap:wrap;white-space:normal}.wcp-basis-toolbar{gap:6px}}
                     @media(max-width:760px){.wr2-ml-table{min-width:680px}.wr2-multi-linked-summary{padding:9px}.wr2-ml-top{align-items:flex-start;flex-direction:column}.wcp-linked-picker{align-items:flex-start}.wr2-linked-item-compact{grid-template-columns:1fr}.wr2-lic-meta{text-align:left}.wr2-lic-actions{justify-content:flex-start}}
+
+                    /* v60: clean 3-column layout (bench / input / KPI) */
+                    .wcp-main-grid{display:grid!important;grid-template-columns:minmax(360px,.9fr) minmax(560px,1.32fr) minmax(340px,.88fr)!important;gap:12px!important;align-items:start!important;}
+                    .wcp-main-grid>.wcp-card,.wcp-main-grid>.wcp-side-col>.wcp-card{margin-bottom:0!important;}
+                    .wcp-bench-panel{border-color:rgba(249,115,22,.28)!important;background:linear-gradient(180deg,rgba(249,115,22,.06),rgba(10,15,26,.98))!important;}
+                    .wcp-bench-panel .wcp-grid3{grid-template-columns:1fr!important;gap:8px!important;}
+                    .wcp-bench-panel .wcp-grid4{grid-template-columns:1fr 1fr!important;gap:8px!important;}
+                    .wcp-input-card{border-color:rgba(99,102,241,.20)!important;}
+                    .wcp-input-sections{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important;}
+                    .wcp-side-col{display:grid!important;gap:10px!important;align-content:start!important;}
+                    .wcp-kpi-card{border-color:rgba(56,189,248,.22)!important;}
+                    .wcp-section{background:linear-gradient(180deg,rgba(6,10,17,.72),rgba(4,8,14,.82))!important;border-color:rgba(148,163,184,.16)!important;}
+
+                    @media(max-width:1520px){
+                      .wcp-main-grid{grid-template-columns:minmax(320px,.86fr) minmax(540px,1.28fr) minmax(320px,.86fr)!important;}
+                    }
+                    @media(max-width:1320px){
+                      .wcp-main-grid{grid-template-columns:1fr!important;}
+                      .wcp-bench-panel .wcp-grid3,.wcp-bench-panel .wcp-grid4{grid-template-columns:1fr 1fr!important;}
+                    }
+                    @media(max-width:860px){
+                      .wcp-bench-panel .wcp-grid3,.wcp-bench-panel .wcp-grid4,.wcp-input-sections{grid-template-columns:1fr!important;}
+                    }
                   `;
 
                 }
@@ -7704,24 +7727,23 @@ window.wr2SummaryCancelEdit = function() {
                       <div class="wcp-btnrow"><button class="wcp-btn" onclick="wr2CalcProRun()">다시 계산</button><button class="wcp-btn primary" onclick="wr2CalcSnapshotSave()">보고서 저장</button></div>
                     </div>
                     ${wcpBasisSummaryHtml()}
-                    <details class="wcp-card orange wcp-bench-compact" open>
-                      <summary><span class="sum-title">손품 기반 입찰가 추정</span></summary>
-                      <div class="wcp-bench-body">
-                      <div class="wcp-grid3" style="margin-top:8px;">
-                        <div class="wcp-section"><h4>기준면적</h4><div class="wcp-form">${wcpField('wc_area','전용면적','㎡',s.area,'','')}${wcpField('wc_area_py','전용평수','평',s.areaPy,'','')}</div></div>
-                        <div class="wcp-section"><h4>나의 입찰가</h4><div class="wcp-form">${wcpField('wc_my_bid','입찰가','원',s.myBid,'wcp_my_bid_note','')}${wcpField('wc_extra_reserve','예비비','원',s.extraReserve,'','')}${wcpField('wc_target_profit','목표 순이익','원',s.targetProfit,'','예: 30,000,000')}<button class="wcp-btn primary" onclick="wr2CalcUseSuggestedBid()" style="justify-self:start;">추천가 적용</button></div></div>
-                        <div class="wcp-section"><h4>입찰가 추정 결과</h4><div class="wcp-resultbar"><span class="label">추천 입찰가</span><span class="value" id="wcp_suggested_bid">-</span></div><div class="wcp-note orange" id="wcp_bench_summary" style="text-align:left;margin-top:6px;">-</div></div>
-                      </div>
-                      <div class="wcp-grid4" style="margin-top:8px;">
-                        ${wcpBenchCard(1,'네이버 매매 호가','현재 시장 상한선','wc_bench_max',s.benchMax,'MAX','wcp_bench_max_note')}
-                        ${wcpBenchCard(2,'최근 2년치 거래 사례','실거래 중간값','wc_bench_mid',s.benchMid,'MID','wcp_bench_mid_note')}
-                        ${wcpBenchCard(3,'최근 2년치 낙찰가','시장 하한선','wc_bench_min',s.benchMin,'MIN','wcp_bench_min_note')}
-                        ${wcpRentBenchCard(4,'네이버 월세 호가','월세 평단가와 원하는 수익률로 예상 매도가를 봅니다','wc_bench_rent_py',s.benchRentPy,'wc_bench_yield_rate',s.benchYieldRate,'YIELD','wcp_bench_rent_note')}
-                      </div></div>
-                    </details>
                     <div class="wcp-tabs"><button class="wcp-tab active" data-pane="input">입력</button><button class="wcp-tab" data-pane="taxflow">세금·자금흐름</button><button class="wcp-tab" data-pane="save">저장·비교</button></div>
                     <div id="wcp_pane_input" class="wcp-pane active">
                       <div class="wcp-main-grid">
+                        <div class="wcp-card orange wcp-bench-panel">
+                          <h3>손품 기반 입찰가 추정</h3>
+                          <div class="wcp-grid3" style="margin-top:8px;">
+                            <div class="wcp-section"><h4>기준면적</h4><div class="wcp-form">${wcpField('wc_area','전용면적','㎡',s.area,'','')}${wcpField('wc_area_py','전용평수','평',s.areaPy,'','')}</div></div>
+                            <div class="wcp-section"><h4>나의 입찰가</h4><div class="wcp-form">${wcpField('wc_my_bid','입찰가','원',s.myBid,'wcp_my_bid_note','')}${wcpField('wc_extra_reserve','예비비','원',s.extraReserve,'','')}${wcpField('wc_target_profit','목표 순이익','원',s.targetProfit,'','예: 30,000,000')}<button class="wcp-btn primary" onclick="wr2CalcUseSuggestedBid()" style="justify-self:start;">추천가 적용</button></div></div>
+                            <div class="wcp-section"><h4>입찰가 추정 결과</h4><div class="wcp-resultbar"><span class="label">추천 입찰가</span><span class="value" id="wcp_suggested_bid">-</span></div><div class="wcp-note orange" id="wcp_bench_summary" style="text-align:left;margin-top:6px;">-</div></div>
+                          </div>
+                          <div class="wcp-grid4" style="margin-top:8px;">
+                            ${wcpBenchCard(1,'네이버 매매 호가','현재 시장 상한선','wc_bench_max',s.benchMax,'MAX','wcp_bench_max_note')}
+                            ${wcpBenchCard(2,'최근 2년치 거래 사례','실거래 중간값','wc_bench_mid',s.benchMid,'MID','wcp_bench_mid_note')}
+                            ${wcpBenchCard(3,'최근 2년치 낙찰가','시장 하한선','wc_bench_min',s.benchMin,'MIN','wcp_bench_min_note')}
+                            ${wcpRentBenchCard(4,'네이버 월세 호가','월세 평단가와 원하는 수익률로 예상 매도가를 봅니다','wc_bench_rent_py',s.benchRentPy,'wc_bench_yield_rate',s.benchYieldRate,'YIELD','wcp_bench_rent_note')}
+                          </div>
+                        </div>
                         <div class="wcp-card wcp-input-card"><h3>2. 수익률 분석기 입력</h3><div class="wcp-input-sections" style="margin-top:8px;">
                           <div class="wcp-section"><h4>① 취득비용</h4><div class="wcp-form">${wcpField('wc_appraisal','감정가','원',s.appraisal,'','')}${wcpField('wc_price','입찰가/매수가','원',s.price,'wcp_price_note','')}${wcpRateField('wc_acq_tax_rate','wc_acq_tax','취등록세',s.acqTaxRate,s.acqTax,'')}${wcpRateField('wc_legal_rate','wc_legal_fee','법무비 등',s.legalRate,s.legalFee,'')}</div></div>
                           <div class="wcp-section"><h4>② 취득시 필요경비</h4><div class="wcp-form">${wcpField('wc_unpaid_mgmt','미납 관리비','원',s.unpaidMgmt,'','')}${wcpField('wc_unpaid_tax','미납 세금','원',s.unpaidTax,'','')}${wcpField('wc_eviction','명도비','원',s.eviction,'','')}${wcpField('wc_facility','시설비','원',s.facility,'','')}${wcpField('wc_vat','부가세 환급예상','원',s.vat,'','')}</div></div>
