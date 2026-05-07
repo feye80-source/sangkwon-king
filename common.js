@@ -7590,41 +7590,66 @@ window.wr2SummaryCancelEdit = function() {
                       .wcp-bench-panel .wcp-grid3,.wcp-bench-panel .wcp-grid4,.wcp-input-sections{grid-template-columns:1fr!important;}
                     }
 
-                    /* v61: scale normalization (keep layout, remove oversized typography) */
+                    /* v61: tone + responsive hardening (font scale down / no overlap on laptop widths) */
                     .wcp-kpi-strip{gap:8px!important;}
-                    .wcp-kpi{min-height:68px!important;padding:9px 10px!important;border-radius:11px!important;}
-                    .wcp-kpi .l{font-size:10.5px!important;}
-                    .wcp-kpi .v{font-size:clamp(14px,1.22vw,22px)!important;line-height:1.15!important;}
-                    .wcp-kpi.yield-main .v,.wcp-kpi.yield-main.lev .v,.wcp-kpi.roi .v{font-size:clamp(14px,1.24vw,23px)!important;}
+                    .wcp-kpi{min-height:60px!important;padding:8px 9px!important;border-radius:11px!important;}
+                    .wcp-kpi .l{font-size:10px!important;line-height:1.2!important;}
+                    .wcp-kpi .v{font-size:clamp(13px,.92vw,17px)!important;line-height:1.14!important;letter-spacing:-.02em!important;overflow:hidden!important;text-overflow:ellipsis!important;}
+                    .wcp-kpi.yield-main .v,.wcp-kpi.yield-main.lev .v,.wcp-kpi.roi .v{font-size:clamp(13px,.95vw,18px)!important;}
 
-                    .wcp-card h3{font-size:clamp(20px,1.6vw,30px)!important;letter-spacing:-.02em!important;}
+                    .wcp-card h3{font-size:clamp(17px,1.2vw,24px)!important;letter-spacing:-.02em!important;line-height:1.15!important;}
+                    .wcp-card h4{font-size:13px!important;margin-bottom:7px!important;}
+                    .wcp-basis-titlewrap b{font-size:clamp(18px,1.42vw,28px)!important;line-height:1.06!important;}
+                    .wcp-calc-combined-head h3{font-size:clamp(18px,1.42vw,28px)!important;line-height:1.06!important;letter-spacing:-.02em!important;}
+
                     .wcp-basis-summary{padding:9px 10px!important;gap:8px!important;}
-                    .wcp-basis-chip{min-height:0!important;padding:8px 9px!important;}
-                    .wcp-basis-chip .l{font-size:10.5px!important;}
-                    .wcp-basis-chip .v{font-size:clamp(12px,1.04vw,18px)!important;}
+                    .wcp-basis-chip{min-height:0!important;padding:7px 8px!important;}
+                    .wcp-basis-chip .l{font-size:10px!important;}
+                    .wcp-basis-chip .v{font-size:clamp(12px,.9vw,16px)!important;}
                     .wcp-basis-chip .sub{font-size:10px!important;}
 
                     .wcp-calc-combined-head{margin-bottom:8px!important;}
-                    .wcp-calc-combined-grid{gap:10px!important;grid-template-columns:minmax(0,1.02fr) minmax(0,1fr) minmax(300px,.9fr)!important;}
-                    .wcp-calc-col{padding:10px!important;}
-                    .wcp-calc-col>h4{font-size:15px!important;margin-bottom:8px!important;}
-                    .wcp-subsec h5{font-size:12px!important;margin-bottom:6px!important;}
+                    .wcp-calc-combined-grid{gap:9px!important;grid-template-columns:minmax(0,1.04fr) minmax(0,1fr) minmax(280px,.86fr)!important;align-items:start!important;}
+                    .wcp-main-grid,.wcp-calc-combined-grid,.wcp-calc-col,.wcp-section,.wcp-form,.wcp-line,.wcp-line.rate,.wcp-line.double{min-width:0!important;}
+                    .wcp-card,.wcp-section,.wcp-calc-col{overflow:hidden!important;}
+                    .wcp-calc-col{padding:9px!important;}
+                    .wcp-calc-col>h4{font-size:14px!important;margin-bottom:7px!important;}
+                    .wcp-subsec{padding-top:7px!important;margin-top:7px!important;}
+                    .wcp-subsec h5{font-size:11.5px!important;margin-bottom:5px!important;}
 
-                    .wcp-line{min-height:34px!important;}
-                    .wcp-line label{font-size:11.5px!important;}
-                    .wcp-inp,.wcp-out{min-height:34px!important;font-size:13px!important;padding:7px 10px!important;}
-                    .wcp-unit{font-size:10.5px!important;}
-                    .wcp-note{font-size:10.5px!important;}
-                    .wcp-resultbar .value{font-size:clamp(16px,1.35vw,24px)!important;}
-                    .wcp-kpi-summary-col .wcp-out{font-size:13px!important;}
+                    .wcp-line{min-height:32px!important;}
+                    .wcp-line label{font-size:11px!important;}
+                    .wcp-inp,.wcp-out{min-height:32px!important;font-size:12.5px!important;padding:6px 9px!important;max-width:100%!important;}
+                    .wcp-out{overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important;}
+                    .wcp-unit{font-size:10px!important;}
+                    .wcp-note{font-size:10px!important;max-width:100%!important;overflow:hidden!important;text-overflow:ellipsis!important;}
+                    .wcp-resultbar{padding:8px 10px!important;gap:7px!important;}
+                    .wcp-resultbar .label{font-size:11px!important;}
+                    .wcp-resultbar .value{font-size:clamp(15px,1.08vw,20px)!important;}
+                    .wcp-kpi-summary-col .wcp-line label{font-size:11px!important;}
+                    .wcp-kpi-summary-col .wcp-out{font-size:12.5px!important;}
+                    .wcp-loan-rule .formula{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:5px!important;}
+                    .wcp-loan-rule .chip{padding:5px!important;}
+                    .wcp-loan-rule .chip b{font-size:11px!important;white-space:normal!important;line-height:1.2!important;}
 
-                    @media(max-width:1420px){
+                    @media(max-width:1850px){
+                      .wcp-main-grid{grid-template-columns:minmax(360px,.92fr) minmax(0,1.45fr)!important;}
+                      .wcp-calc-combined-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;}
+                      .wcp-kpi-summary-col{grid-column:1/-1!important;}
+                    }
+                    @media(max-width:1500px){
                       .wcp-main-grid{grid-template-columns:1fr!important;}
+                      .wcp-calc-combined-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;}
+                    }
+                    @media(max-width:1260px){
                       .wcp-calc-combined-grid{grid-template-columns:1fr!important;}
+                      .wcp-bench-panel .wcp-grid3,.wcp-bench-panel .wcp-grid4{grid-template-columns:1fr!important;}
+                      .wcp-kpi-strip{grid-template-columns:repeat(4,minmax(0,1fr))!important;}
                     }
                     @media(max-width:900px){
                       .wcp-kpi-strip{grid-template-columns:repeat(2,minmax(0,1fr))!important;}
-                      .wcp-line,.wcp-line.rate.wcp-rate-field{grid-template-columns:1fr!important;}
+                      .wcp-line,.wcp-line.rate,.wcp-line.double{grid-template-columns:1fr!important;}
+                      .wcp-basis-titlewrap b,.wcp-calc-combined-head h3{font-size:21px!important;}
                     }
                   `;
 
