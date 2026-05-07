@@ -8654,6 +8654,81 @@ window.wr2SummaryCancelEdit = function() {
                         white-space:normal!important;
                       }
                     }
+
+
+                    /* v79: 보증금/월임대료를 KPI 상단 입력값으로 이동, 월세평단가 별도행 제거, 추정결과 하단 평단가 제거 */
+                    .wcp-basis-lease-divider,.wcp-basis-lease{display:none!important;}
+                    .wcp-kpi-summary-panel .wcp-kpi-lease-inputs{
+                      border:1px solid rgba(251,146,60,.20)!important;
+                      background:rgba(249,115,22,.035)!important;
+                      border-radius:10px!important;
+                      padding:8px 9px!important;
+                      margin:2px 0 7px!important;
+                      display:grid!important;
+                      gap:6px!important;
+                    }
+                    .wcp-kpi-summary-panel .wcp-kpi-lease-inputs .wcp-line{
+                      grid-template-columns:86px minmax(0,1fr) 18px!important;
+                      min-height:28px!important;
+                      gap:6px!important;
+                      padding:0!important;
+                    }
+                    .wcp-kpi-summary-panel .wcp-kpi-lease-inputs .wcp-line label{
+                      font-size:10.2px!important;
+                      font-weight:680!important;
+                      color:#c8d4e6!important;
+                    }
+                    .wcp-kpi-summary-panel .wcp-kpi-lease-inputs .wcp-line label:before{
+                      content:''!important;
+                      margin:0!important;
+                    }
+                    .wcp-kpi-summary-panel .wcp-kpi-lease-inputs .wcp-inp{
+                      min-height:28px!important;
+                      font-size:11px!important;
+                      font-weight:720!important;
+                      border-color:rgba(251,146,60,.28)!important;
+                      box-shadow:inset 0 0 0 1px rgba(251,146,60,.08)!important;
+                    }
+                    .wcp-kpi-summary-panel .wcp-kpi-lease-inputs .wcp-unit{
+                      font-size:9.5px!important;
+                    }
+                    .wcp-kpi-rent-row{
+                      display:grid!important;
+                      grid-template-columns:minmax(0,1fr) auto!important;
+                      gap:8px!important;
+                      align-items:center!important;
+                    }
+                    .wcp-kpi-rent-row .wcp-line{margin:0!important;}
+                    .wcp-rent-py-inline{
+                      color:#fb923c!important;
+                      font-size:10.5px!important;
+                      font-weight:760!important;
+                      white-space:nowrap!important;
+                    }
+                    #wcp_bench_summary{display:none!important;}
+                    .wcp-bench-panel .wcp-grid3{
+                      grid-template-columns:minmax(300px,.92fr) minmax(0,1fr)!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(3){
+                      min-height:64px!important;
+                      padding:8px 12px!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(3) .wcp-resultbar{
+                      min-height:42px!important;
+                      padding:7px 10px!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(3) .wcp-resultbar .label{
+                      font-size:9.8px!important;
+                      margin-bottom:2px!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(3) .wcp-resultbar .value{
+                      font-size:14.5px!important;
+                      line-height:1.05!important;
+                    }
+                    @media(max-width:1180px){
+                      .wcp-kpi-rent-row{grid-template-columns:1fr!important;}
+                      .wcp-rent-py-inline{text-align:right!important;}
+                    }
                   `;
 
                 }
@@ -8824,9 +8899,9 @@ window.wr2SummaryCancelEdit = function() {
                         <div class="wcp-card orange wcp-bench-panel">
                           <h3>손품 기반 입찰가 추정</h3>
                           <div class="wcp-grid3" style="margin-top:8px;">
-                            <div class="wcp-section"><h4>기준면적</h4><div class="wcp-form">${wcpField('wc_area','전용면적','㎡',s.area,'','')}${wcpField('wc_area_py','전용평수','평',s.areaPy,'','')}<div class="wcp-basis-lease-divider"></div><div class="wcp-basis-lease">${wcpField('wc_deposit','임대 보증금','원',s.deposit,'','')}${wcpField('wc_rent','월 임대료','원',s.rent,'','')}</div></div></div>
+                            <div class="wcp-section"><h4>기준면적</h4><div class="wcp-form">${wcpField('wc_area','전용면적','㎡',s.area,'','')}${wcpField('wc_area_py','전용평수','평',s.areaPy,'','')}</div></div>
                             <div class="wcp-section"><h4>나의 입찰가</h4><div class="wcp-form">${wcpField('wc_my_bid','입찰가','원',s.myBid,'','')}${wcpField('wc_extra_reserve','예비비','원',s.extraReserve,'','')}${wcpField('wc_target_profit','목표 순이익','원',s.targetProfit,'','예: 30,000,000')}<div class="wcp-bid-actions"><div class="wcp-note orange" id="wcp_my_bid_note">-</div><button class="wcp-btn primary" onclick="wr2CalcUseSuggestedBid()" title="추천 입찰가를 나의 입찰가에 반영">추가 적용</button></div></div></div>
-                            <div class="wcp-section"><h4>입찰가 추정 결과</h4><div class="wcp-resultbar"><span class="label">추천 입찰가</span><span class="value" id="wcp_suggested_bid">-</span></div><div class="wcp-note orange" id="wcp_bench_summary" style="text-align:left;margin-top:4px;">-</div></div>
+                            <div class="wcp-section"><h4>입찰가 추정 결과</h4><div class="wcp-resultbar"><span class="label">추천 입찰가</span><span class="value" id="wcp_suggested_bid">-</span></div></div>
                           </div>
                           <div class="wcp-grid4" style="margin-top:8px;">
                             ${wcpBenchCard(1,'네이버 매매 호가','현재 시장 상한선','wc_bench_max',s.benchMax,'MAX','wcp_bench_max_note')}
@@ -8857,7 +8932,13 @@ window.wr2SummaryCancelEdit = function() {
                         <div class="wcp-card wcp-kpi-summary-panel">
                           <h3>▥ 결과 / KPI 요약</h3>
                               <div class="wcp-form">
-                                ${wcpOutputRow('월세 평단가','wcp_o_rent_per_py','','orange')}
+                                <div class="wcp-kpi-lease-inputs">
+                                  ${wcpField('wc_deposit','임대 보증금','원',s.deposit,'','')}
+                                  <div class="wcp-kpi-rent-row">
+                                    ${wcpField('wc_rent','월 임대료','원',s.rent,'','')}
+                                    <div class="wcp-rent-py-inline" id="wcp_o_rent_per_py">-</div>
+                                  </div>
+                                </div>
                                 ${wcpOutputRow('월 순수익','wcp_o_month_net_kpi','원','blue')}
                                 ${wcpOutputRow('연 순수익','wcp_o_year_net','원','orange')}
                                 ${wcpOutputRow('초기 필요자금','wcp_o_initial_need','원','orange')}
