@@ -7787,6 +7787,89 @@ window.wr2SummaryCancelEdit = function() {
                     @media(max-width:760px){.wcp-kpi-strip{grid-template-columns:repeat(2,minmax(0,1fr))!important}.wcp-basis-summary{grid-template-columns:repeat(2,minmax(0,1fr))!important}.wcp-calc-combined-grid{grid-template-columns:1fr!important}.wcp-bench-panel .wcp-grid3,.wcp-bench-panel .wcp-grid4{grid-template-columns:1fr!important}.wcp-line,.wcp-line.rate,.wcp-line.rate.wcp-rate-field{grid-template-columns:1fr!important}.wcp-unit{text-align:right!important}.wcp-kpi-summary-panel .wcp-line{grid-template-columns:1fr!important}.wcp-kpi-summary-panel .wcp-out{justify-content:flex-start!important}}
 
 
+
+                    /* v70: compact pc balance + bottom KPI banner + refined typography */
+                    .wr2-calc-pro-shell{font-family:Inter,"Pretendard Variable","Pretendard","Noto Sans KR",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif!important;font-size:11px!important;line-height:1.18!important;}
+                    .wcp-top.wcp-kpi-banner-bottom{margin:8px 0 0!important;}
+                    .wcp-kpi-strip{grid-template-columns:repeat(7,minmax(0,1fr))!important;gap:7px!important;}
+                    .wcp-kpi{grid-template-columns:24px minmax(0,1fr)!important;gap:7px!important;min-height:64px!important;padding:8px 10px!important;border-radius:10px!important;}
+                    .wcp-kpi .kicon{width:22px!important;height:22px!important;font-size:18px!important;filter:none!important;opacity:.95!important;}
+                    .wcp-kpi .kmeta{gap:2px!important;}
+                    .wcp-kpi .l{font-size:10.5px!important;font-weight:850!important;color:#c9d4e2!important;letter-spacing:-.015em!important;}
+                    .wcp-kpi .v{font-size:clamp(13px,.98vw,18px)!important;line-height:1.04!important;letter-spacing:-.03em!important;}
+                    .wcp-kpi .sub{font-size:10px!important;color:#90a0b8!important;}
+                    .wcp-kpi.roi .v,.wcp-kpi.yield-main .v,.wcp-kpi.yield-main.lev .v{font-size:clamp(13px,.94vw,17px)!important;}
+
+                    .wcp-basis-toolbar{padding:7px 11px!important;gap:7px!important;}
+                    .wcp-basis-titlewrap b{font-size:15px!important;letter-spacing:-.02em!important;}
+                    .wcp-link-choice,.wcp-btn,.wcp-btn.small{font-size:11px!important;padding:6px 10px!important;}
+                    .wcp-basis-summary{grid-template-columns:minmax(88px,.7fr) minmax(128px,1.05fr) minmax(128px,1.05fr) minmax(136px,1.12fr) minmax(100px,.74fr) minmax(104px,.74fr) minmax(128px,.96fr) minmax(100px,.7fr) minmax(92px,.64fr)!important;gap:7px!important;padding:9px 11px!important;margin:0 0 8px!important;}
+                    .wcp-basis-chip{min-height:64px!important;padding:9px 10px!important;gap:4px!important;}
+                    .wcp-basis-chip .l{font-size:10.5px!important;}
+                    .wcp-basis-chip .v{font-size:clamp(12px,.9vw,17px)!important;}
+                    .wcp-basis-chip .sub{font-size:10px!important;}
+
+                    .wcp-main-grid{grid-template-columns:minmax(310px,.9fr) minmax(520px,1.18fr) minmax(260px,.72fr)!important;gap:8px!important;}
+                    .wcp-card{padding:11px!important;border-radius:12px!important;}
+                    .wcp-card h3{font-size:15px!important;letter-spacing:-.02em!important;}
+                    .wcp-section h4{font-size:12px!important;}
+                    .wcp-sub,.wcp-sub-inline,.wcp-note,.wcp-bench-card .desc,.wcp-bench-note-py{font-size:10px!important;line-height:1.25!important;}
+
+                    .wcp-bench-panel .wcp-grid3{grid-template-columns:minmax(126px,.82fr) minmax(214px,1.18fr) minmax(154px,.84fr)!important;gap:8px!important;margin-top:6px!important;align-items:stretch!important;}
+                    .wcp-bench-panel .wcp-grid4{grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:8px!important;margin-top:8px!important;align-items:stretch!important;}
+                    .wcp-bench-panel .wcp-section,.wcp-bench-card{min-height:160px!important;display:flex!important;flex-direction:column!important;}
+                    .wcp-bench-card{padding:10px!important;}
+                    .wcp-resultbar{min-height:72px!important;padding:10px!important;}
+                    .wcp-resultbar .label{font-size:10.5px!important;}
+                    .wcp-resultbar .value{font-size:clamp(15px,1.1vw,21px)!important;}
+                    #wcp_bench_summary{font-size:11px!important;line-height:1.25!important;}
+
+                    .wcp-calc-combined-head{margin:0 0 8px!important;}
+                    .wcp-calc-combined-head h3{font-size:15px!important;}
+                    .wcp-status{font-size:10.5px!important;}
+                    .wcp-calc-combined-grid{grid-template-columns:minmax(0,1fr) minmax(0,1.02fr)!important;gap:8px!important;}
+                    .wcp-calc-col{padding:9px!important;}
+                    .wcp-subsec{padding-top:7px!important;margin-top:7px!important;}
+                    .wcp-subsec h5{font-size:11px!important;margin:0 0 6px!important;}
+                    .wcp-form{gap:5px!important;}
+                    .wcp-line{grid-template-columns:minmax(82px,102px) minmax(0,1fr) 16px!important;gap:6px!important;min-height:26px!important;}
+                    .wcp-line.rate,.wcp-line.rate.wcp-rate-field{grid-template-columns:minmax(82px,102px) 44px 12px minmax(0,1fr) 16px!important;gap:6px!important;}
+                    .wcp-line label{font-size:10.5px!important;color:#acb8ca!important;}
+                    .wcp-inp,.wcp-out{min-height:26px!important;padding:4px 7px!important;font-size:11px!important;border-radius:6px!important;}
+                    .wcp-unit{font-size:9.5px!important;}
+                    .wcp-note{margin-top:1px!important;}
+
+                    .wcp-loan-rule{padding:8px!important;margin-top:7px!important;}
+                    .wcp-loan-rule .title{font-size:10.5px!important;padding-bottom:5px!important;margin-bottom:6px!important;color:#c7dcff!important;}
+                    .wcp-loan-rule .chip.on b{font-size:clamp(16px,1.25vw,22px)!important;letter-spacing:-.025em!important;}
+                    .wcp-loan-rule .help{font-size:10px!important;margin-top:3px!important;color:#9fb7e1!important;}
+
+                    .wcp-kpi-summary-panel{padding:12px 10px!important;}
+                    .wcp-kpi-summary-panel h3{font-size:14px!important;margin-bottom:6px!important;}
+                    .wcp-kpi-summary-panel .wcp-form{gap:4px!important;}
+                    .wcp-kpi-summary-panel .wcp-line{grid-template-columns:minmax(0,1fr) minmax(96px,132px) 24px!important;gap:6px!important;min-height:27px!important;align-items:center!important;padding:2px 0!important;}
+                    .wcp-kpi-summary-panel .wcp-line label{font-size:11px!important;color:#d0d8e6!important;font-weight:850!important;display:flex!important;align-items:center!important;gap:6px!important;}
+                    .wcp-kpi-summary-panel .wcp-line label:before{content:'•'!important;color:#6ea8ff!important;margin-right:0!important;font-size:11px!important;}
+                    .wcp-kpi-summary-panel .wcp-out{font-size:clamp(11px,.98vw,15px)!important;line-height:1.08!important;text-align:right!important;}
+                    .wcp-kpi-summary-panel .wcp-unit{font-size:10px!important;text-align:left!important;color:#9ca8bc!important;}
+                    .wcp-kpi-summary-panel .wcp-divider{margin:4px 0 3px!important;}
+
+                    @media(max-width:1500px){
+                      .wcp-main-grid{grid-template-columns:minmax(290px,.88fr) minmax(480px,1.14fr) minmax(245px,.7fr)!important;}
+                      .wcp-bench-panel .wcp-grid3{grid-template-columns:minmax(118px,.8fr) minmax(196px,1.15fr) minmax(142px,.82fr)!important;}
+                    }
+                    @media(max-width:1380px){
+                      .wcp-kpi-strip{grid-template-columns:repeat(4,minmax(0,1fr))!important;}
+                      .wcp-basis-summary{grid-template-columns:repeat(3,minmax(0,1fr))!important;}
+                      .wcp-main-grid{grid-template-columns:1fr!important;}
+                      .wcp-main-grid>.wcp-card{height:auto!important;}
+                    }
+                    @media(max-width:760px){
+                      .wcp-kpi-strip{grid-template-columns:repeat(2,minmax(0,1fr))!important;}
+                      .wcp-bench-panel .wcp-grid3,.wcp-bench-panel .wcp-grid4,.wcp-calc-combined-grid{grid-template-columns:1fr!important;}
+                      .wcp-kpi-summary-panel .wcp-line,.wcp-line,.wcp-line.rate,.wcp-line.rate.wcp-rate-field{grid-template-columns:1fr!important;}
+                    }
+
                     /* v68: PC reference compact exact-pass — generated mockup proportions, smaller font, no clipping */
                     .wr2-calc-pro-shell{font-size:12px!important;line-height:1.24!important;padding:0 0 4px!important;overflow-x:hidden!important;}
                     .wcp-top{margin:0 0 8px!important;}
@@ -8035,21 +8118,6 @@ window.wr2SummaryCancelEdit = function() {
                 function wcpBuildHtml(room){
                   const s=wcpDefaultState(room);
                   return `<div class="wr2-calc-pro-shell"><input id="wc_seed_signature" type="hidden" value="${wcpEsc(s.seedSignature||'')}"><input id="wc_loan_manual_mode" type="hidden" value="${wcpEsc(s.loanManualMode||'')}">
-                    <div class="wcp-top">
-                      <div class="wcp-head">
-                        <div><div class="wcp-title">수익률 계산기</div><div class="wcp-sub">@만원/평 기준으로 입찰가를 정하고, 입력·세금/자금흐름·저장비교를 분리해서 봅니다.</div></div>
-                        <div class="wcp-actions"><span class="wcp-status" id="wcp_auto_save_status">자동저장 대기</span><button class="wcp-btn" onclick="wr2CalcProClear()">초기화</button><button class="wcp-btn primary" onclick="wr2CalcScenarioSave()">시나리오 저장</button><button class="wcp-btn" onclick="wr2CalcSnapshotSave()">현재 화면 캡처 저장</button><button class="wcp-btn primary" onclick="wr2CalcProRun()">계산하기</button></div>
-                      </div>
-                      <div class="wcp-kpi-strip">
-                        <div class="wcp-kpi accent-orange"><div class="kicon">⌖</div><div class="kmeta"><div class="l">추천 입찰가</div><div class="v orange" id="wcp_k_suggested">-</div><div class="sub" id="wcp_k_suggested_sub">-</div></div></div>
-                        <div class="wcp-kpi accent-blue"><div class="kicon">♙</div><div class="kmeta"><div class="l">나의 입찰가</div><div class="v blue" id="wcp_k_price">-</div><div class="sub" id="wcp_k_price_sub">-</div></div></div>
-                        <div class="wcp-kpi accent-purple"><div class="kicon">▣</div><div class="kmeta"><div class="l">최대 필요자금</div><div class="v purple" id="wcp_k_need">-</div><div class="sub">보수적 기준</div></div></div>
-                        <div class="wcp-kpi accent-green minfund"><div class="kicon">▰</div><div class="kmeta"><div class="l">최소 필요자금</div><div class="v green" id="wcp_k_minneed">-</div><div class="sub">보증금·환급 반영</div></div></div>
-                        <div class="wcp-kpi accent-cyan yield-main"><div class="kicon">↗</div><div class="kmeta"><div class="l">절대 수익률</div><div class="v blue" id="wcp_k_abs">-</div><div class="sub">매입가 대비</div></div></div>
-                        <div class="wcp-kpi accent-violet yield-main lev"><div class="kicon">♕</div><div class="kmeta"><div class="l">레버리지 수익률</div><div class="v purple" id="wcp_k_lev">-</div><div class="sub">실투자금 대비</div></div></div>
-                        <div class="wcp-kpi accent-yellow roi"><div class="kicon">↗</div><div class="kmeta"><div class="l">ROI</div><div class="v yellow" id="wcp_k_roi">-</div><div class="sub">세후수익 기준</div></div></div>
-                      </div>
-                    </div>
                     <div class="wcp-basis-toolbar">
                       <div class="wcp-basis-titlewrap"><b>합산 기준</b><button class="wcp-btn small" onclick="wr2CalcLoadLinkedTotal('${wcpEsc(room.id)}')">계산기에 반영 ›</button></div>
                       <div class="wcp-hidden-picker">${wcpBuildLinkedCalcPicker(room)}</div>
@@ -8111,6 +8179,22 @@ window.wr2SummaryCancelEdit = function() {
                             </div>
 
                       </div>
+                                          <div class="wcp-top wcp-kpi-banner-bottom">
+                      <div class="wcp-head">
+                        <div><div class="wcp-title">수익률 계산기</div><div class="wcp-sub">@만원/평 기준으로 입찰가를 정하고, 입력·세금/자금흐름·저장비교를 분리해서 봅니다.</div></div>
+                        <div class="wcp-actions"><span class="wcp-status" id="wcp_auto_save_status">자동저장 대기</span><button class="wcp-btn" onclick="wr2CalcProClear()">초기화</button><button class="wcp-btn primary" onclick="wr2CalcScenarioSave()">시나리오 저장</button><button class="wcp-btn" onclick="wr2CalcSnapshotSave()">현재 화면 캡처 저장</button><button class="wcp-btn primary" onclick="wr2CalcProRun()">계산하기</button></div>
+                      </div>
+                      <div class="wcp-kpi-strip">
+                        <div class="wcp-kpi accent-orange"><div class="kicon">⌖</div><div class="kmeta"><div class="l">추천 입찰가</div><div class="v orange" id="wcp_k_suggested">-</div><div class="sub" id="wcp_k_suggested_sub">-</div></div></div>
+                        <div class="wcp-kpi accent-blue"><div class="kicon">♙</div><div class="kmeta"><div class="l">나의 입찰가</div><div class="v blue" id="wcp_k_price">-</div><div class="sub" id="wcp_k_price_sub">-</div></div></div>
+                        <div class="wcp-kpi accent-purple"><div class="kicon">▣</div><div class="kmeta"><div class="l">최대 필요자금</div><div class="v purple" id="wcp_k_need">-</div><div class="sub">보수적 기준</div></div></div>
+                        <div class="wcp-kpi accent-green minfund"><div class="kicon">▰</div><div class="kmeta"><div class="l">최소 필요자금</div><div class="v green" id="wcp_k_minneed">-</div><div class="sub">보증금·환급 반영</div></div></div>
+                        <div class="wcp-kpi accent-cyan yield-main"><div class="kicon">↗</div><div class="kmeta"><div class="l">절대 수익률</div><div class="v blue" id="wcp_k_abs">-</div><div class="sub">매입가 대비</div></div></div>
+                        <div class="wcp-kpi accent-violet yield-main lev"><div class="kicon">♕</div><div class="kmeta"><div class="l">레버리지 수익률</div><div class="v purple" id="wcp_k_lev">-</div><div class="sub">실투자금 대비</div></div></div>
+                        <div class="wcp-kpi accent-yellow roi"><div class="kicon">↗</div><div class="kmeta"><div class="l">ROI</div><div class="v yellow" id="wcp_k_roi">-</div><div class="sub">세후수익 기준</div></div></div>
+                      </div>
+                    </div>
+
                     </div>
                     <div id="wcp_pane_taxflow" class="wcp-pane">
                       <div class="wcp-grid2">
