@@ -8725,9 +8725,193 @@ window.wr2SummaryCancelEdit = function() {
                       font-size:14.5px!important;
                       line-height:1.05!important;
                     }
+
                     @media(max-width:1180px){
                       .wcp-kpi-rent-row{grid-template-columns:1fr!important;}
                       .wcp-rent-py-inline{text-align:right!important;}
+                    }
+
+                    /* v80: 최종 정리 - KPI 상단 임대입력 정렬, 추정결과 하단 요약 제거, 손품 상단 높이 compact */
+                    .wcp-bench-panel .wcp-grid3{
+                      grid-template-columns:minmax(360px,.82fr) minmax(0,.98fr)!important;
+                      grid-template-areas:'basis bid' 'basis result'!important;
+                      gap:12px!important;
+                      align-items:stretch!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(1){
+                      min-height:224px!important;
+                      padding:14px 16px!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(2){
+                      min-height:154px!important;
+                      padding:14px 16px 12px!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(3){
+                      min-height:86px!important;
+                      padding:12px 16px!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3 .wcp-section:first-child .wcp-line{
+                      grid-template-columns:96px minmax(112px,1fr) 26px!important;
+                      gap:8px!important;
+                      min-height:36px!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3 .wcp-section:first-child .wcp-inp{
+                      min-width:0!important;
+                      font-size:13px!important;
+                      padding:7px 12px!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3 .wcp-section:nth-child(2) .wcp-line{
+                      grid-template-columns:110px minmax(0,1fr) 22px!important;
+                      min-height:34px!important;
+                      gap:8px!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(2) .wcp-form{
+                      gap:8px!important;
+                    }
+                    .wcp-bid-actions{
+                      display:flex!important;
+                      align-items:center!important;
+                      justify-content:flex-start!important;
+                      gap:12px!important;
+                      margin-top:4px!important;
+                    }
+                    #wcp_my_bid_note{
+                      flex:0 1 auto!important;
+                      min-width:0!important;
+                      margin:0!important;
+                      padding:0!important;
+                      background:none!important;
+                      border:0!important;
+                      color:#fb923c!important;
+                      font-size:12px!important;
+                      font-weight:850!important;
+                      line-height:1.1!important;
+                      white-space:nowrap!important;
+                      overflow:hidden!important;
+                      text-overflow:ellipsis!important;
+                    }
+                    .wcp-bid-actions .wcp-btn{
+                      flex:0 0 auto!important;
+                      margin-top:0!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(3) h4{
+                      margin-bottom:10px!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(3) .wcp-resultbar{
+                      min-height:64px!important;
+                      margin-top:0!important;
+                      padding:12px 16px!important;
+                      gap:6px!important;
+                      border-radius:12px!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(3) .wcp-resultbar .label{
+                      font-size:11px!important;
+                      color:#d7dee9!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(3) .wcp-resultbar .value{
+                      font-size:clamp(16px,1.18vw,22px)!important;
+                      line-height:1.06!important;
+                    }
+                    #wcp_bench_summary{display:none!important;}
+
+                    .wcp-kpi-summary-panel .wcp-kpi-lease-inputs{
+                      border:1px solid rgba(251,146,60,.18)!important;
+                      background:rgba(249,115,22,.035)!important;
+                      border-radius:12px!important;
+                      padding:12px 16px!important;
+                      margin:2px 0 10px!important;
+                      display:grid!important;
+                      gap:10px!important;
+                    }
+                    .wcp-kpi-summary-panel .wcp-kpi-lease-line{
+                      display:grid!important;
+                      grid-template-columns:112px minmax(0,1fr) 26px auto!important;
+                      align-items:center!important;
+                      gap:10px!important;
+                      min-height:40px!important;
+                    }
+                    .wcp-kpi-summary-panel .wcp-kpi-lease-line label{
+                      font-size:13px!important;
+                      font-weight:820!important;
+                      color:#d8e2ef!important;
+                      display:block!important;
+                    }
+                    .wcp-kpi-summary-panel .wcp-kpi-lease-line label:before{
+                      content:none!important;
+                      display:none!important;
+                    }
+                    .wcp-kpi-summary-panel .wcp-kpi-lease-line .wcp-inp{
+                      min-height:38px!important;
+                      padding:8px 14px!important;
+                      font-size:14px!important;
+                      font-weight:860!important;
+                      border-color:rgba(251,146,60,.30)!important;
+                      box-shadow:inset 0 0 0 1px rgba(251,146,60,.08)!important;
+                    }
+                    .wcp-kpi-summary-panel .wcp-kpi-lease-line .wcp-unit{
+                      font-size:12px!important;
+                      color:#b3bfd1!important;
+                      text-align:left!important;
+                    }
+                    .wcp-kpi-summary-panel .wcp-rent-py-inline{
+                      justify-self:start!important;
+                      align-self:center!important;
+                      margin-left:8px!important;
+                      color:#fb923c!important;
+                      font-size:13px!important;
+                      font-weight:860!important;
+                      line-height:1!important;
+                      white-space:nowrap!important;
+                    }
+                    .wcp-kpi-summary-panel .wcp-form>.wcp-line{
+                      grid-template-columns:minmax(0,1fr) minmax(108px,auto) 28px!important;
+                      min-height:34px!important;
+                      gap:8px!important;
+                    }
+                    .wcp-kpi-summary-panel .wcp-form>.wcp-line label{
+                      font-size:13px!important;
+                      font-weight:820!important;
+                      color:#d8e2ef!important;
+                    }
+                    .wcp-kpi-summary-panel .wcp-form>.wcp-line label:before{
+                      color:#6ea8ff!important;
+                      margin-right:8px!important;
+                    }
+                    .wcp-kpi-summary-panel .wcp-form>.wcp-line .wcp-out{
+                      font-size:clamp(14px,1.08vw,18px)!important;
+                      font-weight:900!important;
+                    }
+                    .wcp-kpi-summary-panel .wcp-form>.wcp-line .wcp-unit{
+                      font-size:12px!important;
+                    }
+                    @media(max-width:1380px){
+                      .wcp-bench-panel .wcp-grid3{
+                        grid-template-columns:minmax(320px,.84fr) minmax(0,1fr)!important;
+                      }
+                      .wcp-kpi-summary-panel .wcp-kpi-lease-line{
+                        grid-template-columns:96px minmax(0,1fr) 24px auto!important;
+                        gap:8px!important;
+                      }
+                    }
+                    @media(max-width:1180px){
+                      .wcp-bench-panel .wcp-grid3{
+                        grid-template-columns:1fr!important;
+                        grid-template-areas:none!important;
+                      }
+                      .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(1),
+                      .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(2),
+                      .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(3){
+                        grid-area:auto!important;
+                        min-height:auto!important;
+                      }
+                      .wcp-kpi-summary-panel .wcp-kpi-lease-line{
+                        grid-template-columns:1fr!important;
+                        gap:6px!important;
+                      }
+                      .wcp-kpi-summary-panel .wcp-rent-py-inline{
+                        margin-left:0!important;
+                        justify-self:flex-end!important;
+                      }
                     }
                   `;
 
@@ -8933,9 +9117,15 @@ window.wr2SummaryCancelEdit = function() {
                           <h3>▥ 결과 / KPI 요약</h3>
                               <div class="wcp-form">
                                 <div class="wcp-kpi-lease-inputs">
-                                  ${wcpField('wc_deposit','임대 보증금','원',s.deposit,'','')}
-                                  <div class="wcp-kpi-rent-row">
-                                    ${wcpField('wc_rent','월 임대료','원',s.rent,'','')}
+                                  <div class="wcp-kpi-lease-line">
+                                    <label for="wc_deposit">임대 보증금</label>
+                                    <input id="wc_deposit" class="wcp-inp" data-wcp-money="1" inputmode="numeric" autocomplete="off" value="${wcpEsc(wcpCommaValue(s.deposit))}">
+                                    <span class="wcp-unit">원</span>
+                                  </div>
+                                  <div class="wcp-kpi-lease-line is-rent">
+                                    <label for="wc_rent">월 임대료</label>
+                                    <input id="wc_rent" class="wcp-inp" data-wcp-money="1" inputmode="numeric" autocomplete="off" value="${wcpEsc(wcpCommaValue(s.rent))}">
+                                    <span class="wcp-unit">원</span>
                                     <div class="wcp-rent-py-inline" id="wcp_o_rent_per_py">-</div>
                                   </div>
                                 </div>
