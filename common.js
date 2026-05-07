@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260508-workroom-v71-ui-realign';
+    window.__SK_BUILD = '20260508-workroom-v72-bench-fix';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -8099,6 +8099,72 @@ window.wr2SummaryCancelEdit = function() {
                       .wcp-bench-panel .wcp-grid3 .wcp-section:first-child .wcp-inp{min-width:82px!important;max-width:82px!important;}
                     }
 
+
+
+                    /* v72: fix clipped hand-estimate row, keep lower 2x2 cards intact, reduce calc header bulk */
+                    .wcp-bench-panel>h3,.wcp-calc-combined-head h3{font-size:14px!important;line-height:1.08!important;margin-bottom:6px!important;}
+                    .wcp-calc-combined-head .wcp-sub-inline{display:none!important;}
+                    .wcp-calc-col{padding:8px 9px!important;}
+                    .wcp-subsec{padding-top:6px!important;margin-top:6px!important;}
+
+                    /* top area in bench panel: use spare vertical space instead of squeezing 3 cards in one line */
+                    .wcp-bench-panel .wcp-grid3{
+                      grid-template-columns:minmax(184px,.54fr) minmax(0,1fr)!important;
+                      grid-template-areas:
+                        'basis bid'
+                        'basis result'!important;
+                      gap:10px!important;
+                      align-items:stretch!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(1){grid-area:basis!important;min-height:250px!important;}
+                    .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(2){grid-area:bid!important;min-height:118px!important;}
+                    .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(3){grid-area:result!important;min-height:118px!important;}
+                    .wcp-bench-panel .wcp-grid3 .wcp-section:first-child .wcp-line{
+                      grid-template-columns:84px minmax(94px,120px) 20px!important;
+                      gap:6px!important;min-height:32px!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3 .wcp-section:first-child .wcp-inp{
+                      min-width:94px!important;max-width:none!important;font-size:11px!important;padding:5px 10px!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3 .wcp-section:first-child .wcp-unit{min-width:20px!important;font-size:10px!important;}
+                    .wcp-bench-panel .wcp-grid3 .wcp-section:nth-child(2) .wcp-form{gap:8px!important;}
+                    .wcp-bench-panel .wcp-grid3 .wcp-section:nth-child(3) .wcp-resultbar{min-height:98px!important;display:flex!important;flex-direction:column!important;justify-content:center!important;}
+                    .wcp-bench-panel .wcp-grid3 .wcp-section:nth-child(3) .wcp-resultbar .value{font-size:clamp(16px,1.45vw,20px)!important;}
+
+                    /* lower 4 scenario cards: keep original stable 2x2 layout */
+                    .wcp-bench-panel .wcp-grid4{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important;margin-top:8px!important;}
+                    .wcp-bench-card{min-height:154px!important;}
+
+                    /* inline @평단가 / @만원 tags instead of separate full-width strip */
+                    .wcp-line-note-right{grid-template-columns:minmax(92px,122px) minmax(148px,1fr) 18px auto!important;gap:7px!important;align-items:center!important;}
+                    .wcp-inline-note{
+                      justify-self:end!important;white-space:nowrap!important;
+                      font-size:10.2px!important;font-weight:720!important;color:#f4a45a!important;
+                      background:none!important;border:0!important;padding:0!important;margin:0!important;
+                    }
+                    #wcp_my_bid_note,#wcp_price_note,#wcp_rent_note{
+                      color:#f4a45a!important;background:none!important;border:0!important;padding:0!important;margin:0!important;
+                      font-weight:720!important;border-radius:0!important;min-height:auto!important;
+                    }
+
+                    /* loan helper should stay quiet */
+                    .wcp-loan-rule{padding:6px 8px!important;border-radius:8px!important;}
+                    .wcp-loan-rule .title{font-size:10px!important;margin-bottom:3px!important;}
+                    .wcp-loan-rule .chip.on b{font-size:12px!important;font-weight:680!important;}
+                    .wcp-loan-rule .help{font-size:9px!important;}
+
+                    @media(max-width:1380px){
+                      .wcp-bench-panel .wcp-grid3{
+                        grid-template-columns:minmax(170px,.52fr) minmax(0,1fr)!important;
+                        grid-template-areas:'basis bid' 'basis result'!important;
+                      }
+                    }
+                    @media(max-width:920px){
+                      .wcp-bench-panel .wcp-grid3{grid-template-columns:1fr!important;grid-template-areas:none!important;}
+                      .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(1),.wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(2),.wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(3){grid-area:auto!important;min-height:auto!important;}
+                      .wcp-line-note-right{grid-template-columns:1fr!important;}
+                      .wcp-inline-note{text-align:right!important;}
+                    }
                   `;
 
                 }
@@ -8181,7 +8247,16 @@ window.wr2SummaryCancelEdit = function() {
                   Object.keys(map).forEach(function(id){wcpSet(id,s[map[id]]||'');});
                   wcpFormatMoneyInputs();
                 }
-                function wcpField(id,label,unit,val,noteId,ph){ const isMoney=String(unit||'').indexOf('원')>=0; const attrs=isMoney?' data-wcp-money="1" inputmode="numeric" autocomplete="off"':''; const shown=isMoney?wcpEsc(wcpCommaValue(val)):wcpEsc(val||''); return '<div class="wcp-line"><label>'+wcpEsc(label)+'</label><input id="'+id+'" class="wcp-inp"'+attrs+' value="'+shown+'" placeholder="'+wcpEsc(ph||'')+'"><span class="wcp-unit">'+wcpEsc(unit||'')+'</span></div>'+(noteId?'<div class="wcp-note" id="'+noteId+'">-</div>':''); }
+                function wcpField(id,label,unit,val,noteId,ph){
+                  const isMoney=String(unit||'').indexOf('원')>=0;
+                  const attrs=isMoney?' data-wcp-money="1" inputmode="numeric" autocomplete="off"':'';
+                  const shown=isMoney?wcpEsc(wcpCommaValue(val)):wcpEsc(val||'');
+                  const inlineNote = /^(wcp_my_bid_note|wcp_price_note|wcp_rent_note)$/.test(String(noteId||''));
+                  if(inlineNote){
+                    return '<div class="wcp-line wcp-line-note-right"><label>'+wcpEsc(label)+'</label><input id="'+id+'" class="wcp-inp"'+attrs+' value="'+shown+'" placeholder="'+wcpEsc(ph||'')+'"><span class="wcp-unit">'+wcpEsc(unit||'')+'</span><span class="wcp-inline-note" id="'+noteId+'">-</span></div>';
+                  }
+                  return '<div class="wcp-line"><label>'+wcpEsc(label)+'</label><input id="'+id+'" class="wcp-inp"'+attrs+' value="'+shown+'" placeholder="'+wcpEsc(ph||'')+'"><span class="wcp-unit">'+wcpEsc(unit||'')+'</span></div>'+(noteId?'<div class="wcp-note" id="'+noteId+'">-</div>':'');
+                }
                 function wcpRateField(rateId,amountId,label,rate,amount,noteId){ const amountIsPct=/corp_rate_over/i.test(amountId); const unit2=amountIsPct?'%':'원'; const attrs=amountIsPct?' inputmode="decimal" autocomplete="off"':' data-wcp-money="1" inputmode="numeric" autocomplete="off"'; const amountShown=amountIsPct?wcpEsc(amount||''):wcpEsc(wcpCommaValue(amount)); return '<div class="wcp-line rate wcp-rate-field"><label>'+wcpEsc(label)+'</label><input id="'+rateId+'" class="wcp-inp wcp-rate wcp-rate-input" inputmode="decimal" autocomplete="off" value="'+wcpEsc(rate||'')+'"><span class="wcp-unit">%</span><input id="'+amountId+'" class="wcp-inp wcp-money-cell"'+attrs+' value="'+amountShown+'"><span class="wcp-unit">'+unit2+'</span></div>'+(noteId?'<div class="wcp-note" id="'+noteId+'">-</div>':''); }
                 function wcpOutputRow(label,id,unit,cls){ return '<div class="wcp-line"><label>'+wcpEsc(label)+'</label><div id="'+id+'" class="wcp-out '+(cls||'')+'">-</div><span class="wcp-unit">'+wcpEsc(unit||'')+'</span></div>'; }
                 function wcpLoanRuleBox(){ return '<div class="wcp-loan-rule"><div class="title"><span>대출 가능금액 자동 계산 <small>(LTV 기준)</small></span><span>작은 금액 적용</span></div><div class="formula"><div class="chip"><span>감정가 × 60%</span><b id="wcp_loan_app_cap">-</b></div><div class="chip"><span id="wcp_loan_bid_label">낙찰가 × LTV(현재 85%)</span><b id="wcp_loan_bid_cap">-</b></div><div class="chip on"><span>적용 대출금</span><b id="wcp_loan_rule_applied">-</b></div></div><div class="help" id="wcp_loan_rule_text">기준값(%) 또는 대출금액을 바꾸면 서로 연동됩니다.</div></div>'; }
