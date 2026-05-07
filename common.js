@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260507-workroom-v55-stable-linked-layout-deposit';
+    window.__SK_BUILD = '20260507-workroom-v59-tenant-override-complete';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -5600,6 +5600,7 @@ var _safeLocalSet = function(key, value) {
                 function wr2SummarySeed(item){
                   item=item||{}; try{ if(typeof _ensureNormalizedItem==='function') _ensureNormalizedItem(item); }catch(e){}
                   const d=item.data||{}, n=item._norm||{};
+                  const isAuctionSeed = (typeof _isAuctionSavedItem === 'function') ? _isAuctionSavedItem(item, d) : !!(item.mode==='auction'||d['경매번호']||d['사건번호']||d['매각기일']||d['옥션원URL']);
                   const title=item.title||d['물건명']||d['매물명']||d['소재지']||d['주소']||'경매 물건';
                   const address=d['소재지']||d['주소']||d['도로명주소']||d['지번주소']||n.소재지||item.address||'';
                   const app=wr2SummaryMoneyWon(d['감정가']||item.appraisal||item.appraise||0,false,0)||wr2SummaryMoneyWon(d['감정가_만원']||n.감정가_만원||0,true,0);
@@ -5719,7 +5720,7 @@ var _safeLocalSet = function(key, value) {
                     + metricCell('월세 평단가', rentPerPy,'green')
                     + (yieldRate>0?metricCell('수익률', yieldRate.toFixed(2)+'%','yellow'):'')
                     + '</div></div></div>';
-                  return wr2BuildLinkedSummaryActionBar(room) + html;
+                  return html;
                 }
 
                 window.wr2InitLinkedCardScroller=function(root){
@@ -5747,14 +5748,33 @@ var _safeLocalSet = function(key, value) {
                     el.addEventListener('pointerup',end);
                     el.addEventListener('pointercancel',end);
                     el.addEventListener('click',function(e){ if(moved){ e.preventDefault(); e.stopPropagation(); moved=false; } }, true);
-                    el.addEventListener('wheel',function(e){
+                    function applyWheelScroll(e){
                       if(el.scrollWidth<=el.clientWidth+2) return;
-                      const delta=Math.abs(e.deltaX)>Math.abs(e.deltaY)?e.deltaX:e.deltaY;
+                      const dx = Number(e.deltaX || 0);
+                      const dy = Number(e.deltaY || 0);
+                      // 트랙패드는 deltaX, 일반 마우스/세로 스와이프는 deltaY가 주로 들어온다.
+                      // 둘 중 우세한 값을 가로 이동으로 변환한다.
+                      const delta = Math.abs(dx) >= Math.abs(dy) ? dx : dy;
                       if(!delta) return;
-                      const before=el.scrollLeft;
-                      el.scrollLeft += delta;
-                      if(el.scrollLeft!==before) e.preventDefault();
-                    },{passive:false});
+                      const max = Math.max(0, el.scrollWidth - el.clientWidth);
+                      const before = el.scrollLeft;
+                      let next = before + delta;
+                      if(next < 0) next = 0;
+                      if(next > max) next = max;
+                      if(next !== before){
+                        el.scrollLeft = next;
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }
+                    }
+                    el.addEventListener('wheel',applyWheelScroll,{passive:false,capture:true});
+                    el.addEventListener('mousewheel',applyWheelScroll,{passive:false,capture:true});
+                    const wrap = el.closest && el.closest('.wr2-linked-scroll-wrap');
+                    if(wrap && !wrap.__wr2WheelBound){
+                      wrap.__wr2WheelBound=true;
+                      wrap.addEventListener('wheel',applyWheelScroll,{passive:false,capture:true});
+                      wrap.addEventListener('mousewheel',applyWheelScroll,{passive:false,capture:true});
+                    }
                   });
                 };
 
@@ -7368,11 +7388,11 @@ window.wr2SummaryCancelEdit = function() {
                     .wr2-ml-top.clean b{font-size:18px!important;color:#f3f6ff!important;font-weight:950!important;letter-spacing:-.03em!important;white-space:nowrap!important;}
                     .wr2-ml-actions{display:flex!important;gap:7px!important;align-items:center!important;flex-wrap:wrap!important;justify-content:flex-end!important;}
                     .wr2-linked-scroll-wrap{position:relative!important;margin-top:4px!important;min-width:0!important;overflow:hidden!important;}
-                    .wr2-linked-cards{display:flex!important;gap:14px!important;overflow-x:auto!important;overflow-y:visible!important;scrollbar-color:rgba(79,142,255,.65) rgba(255,255,255,.06)!important;padding:0 0 10px 0!important;cursor:grab!important;scroll-snap-type:x proximity!important;overscroll-behavior-x:contain!important;max-width:100%!important;min-width:0!important;}
+                    .wr2-linked-cards{display:flex!important;gap:14px!important;overflow-x:auto!important;overflow-y:visible!important;scrollbar-color:rgba(79,142,255,.65) rgba(255,255,255,.06)!important;padding:0 0 10px 0!important;cursor:grab!important;scroll-snap-type:none!important;overscroll-behavior-x:contain!important;-webkit-overflow-scrolling:touch!important;touch-action:pan-x pan-y!important;max-width:100%!important;min-width:0!important;}
                     .wr2-linked-cards.dragging{cursor:grabbing!important;user-select:none!important;scroll-snap-type:none!important;}
                     .wr2-linked-cards.fit2{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;overflow-x:hidden!important;cursor:default!important;}
                     .wr2-linked-cards.fit2 .wr2-linked-card{min-width:0!important;width:100%!important;}
-                    .wr2-linked-cards.scroll .wr2-linked-card{flex:0 0 clamp(360px,calc((100% - 14px)/2),620px)!important;min-width:0!important;scroll-snap-align:start!important;}
+                    .wr2-linked-cards.scroll .wr2-linked-card{flex:0 0 max(360px,calc((100% - 14px)/2))!important;min-width:0!important;scroll-snap-align:none!important;}
                     .wr2-linked-scroll-cue{position:absolute!important;right:0!important;top:0!important;bottom:10px!important;width:30px!important;background:linear-gradient(90deg,rgba(13,19,32,0),rgba(13,19,32,.88))!important;display:flex!important;align-items:center!important;justify-content:flex-end!important;color:#8fbaff!important;font-size:14px!important;font-weight:900!important;pointer-events:none!important;opacity:.72!important;}
                     .wr2-linked-card{border:1px solid rgba(148,163,184,.18)!important;background:rgba(8,13,23,.38)!important;border-radius:14px!important;padding:13px!important;min-height:0!important;min-width:0!important;overflow:hidden!important;}
                     .wr2-lcard-head{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:8px!important;margin-bottom:8px!important;min-width:0!important;}
@@ -7391,15 +7411,15 @@ window.wr2SummaryCancelEdit = function() {
                     .wr2-lcard-menu-pop{position:absolute!important;right:0!important;top:36px!important;z-index:50!important;min-width:150px!important;padding:8px!important;border:1px solid rgba(148,163,184,.20)!important;background:#111827!important;border-radius:12px!important;box-shadow:0 12px 28px rgba(0,0,0,.35)!important;display:flex!important;flex-direction:column!important;gap:4px!important;}
                     .wr2-lcard-menu-pop a,.wr2-lcard-menu-pop button{border:0!important;background:transparent!important;color:#dbeafe!important;text-align:left!important;padding:8px 10px!important;border-radius:8px!important;font-size:12px!important;font-weight:850!important;cursor:pointer!important;text-decoration:none!important;}
                     .wr2-lcard-menu-pop a:hover,.wr2-lcard-menu-pop button:hover{background:rgba(79,142,255,.12)!important;}
-                    .wr2-aggregate-card{margin-top:12px!important;border:1px solid rgba(79,142,255,.28)!important;background:rgba(24,38,68,.34)!important;border-radius:14px!important;padding:12px!important;min-width:0!important;overflow:hidden!important;}
-                    .wr2-agg-head{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:10px!important;margin-bottom:10px!important;min-width:0!important;}
-                    .wr2-agg-head b{font-size:15px!important;font-weight:950!important;color:#f3f6ff!important;white-space:nowrap!important;}
-                    .wr2-agg-grid{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(118px,1fr))!important;gap:0!important;border:1px solid rgba(255,255,255,.08)!important;border-radius:12px!important;overflow:hidden!important;background:rgba(3,7,14,.13)!important;min-width:0!important;}
-                    .wr2-agg-cell{min-height:56px!important;padding:10px 8px!important;display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:center!important;gap:4px!important;border-right:1px solid rgba(255,255,255,.08)!important;border-bottom:1px solid rgba(255,255,255,.06)!important;min-width:0!important;text-align:center!important;}
-                    .wr2-agg-cell span{font-size:11px!important;color:#93a4ba!important;font-weight:900!important;white-space:nowrap!important;}
-                    .wr2-agg-val{font-size:clamp(12px,1.05vw,15px)!important;line-height:1.15!important;color:#e8eefb!important;font-weight:950!important;letter-spacing:-.035em!important;max-width:100%!important;white-space:normal!important;overflow-wrap:anywhere!important;word-break:keep-all!important;}
+                    .wr2-aggregate-card{margin-top:10px!important;border:1px solid rgba(79,142,255,.22)!important;background:rgba(24,38,68,.18)!important;border-radius:12px!important;padding:9px!important;min-width:0!important;overflow:hidden!important;}
+                    .wr2-agg-head{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:8px!important;margin-bottom:7px!important;min-width:0!important;}
+                    .wr2-agg-head b{font-size:13px!important;font-weight:950!important;color:#f3f6ff!important;white-space:nowrap!important;}
+                    .wr2-agg-grid{display:flex!important;flex-wrap:wrap!important;gap:6px!important;border:0!important;border-radius:0!important;overflow:visible!important;background:transparent!important;min-width:0!important;}
+                    .wr2-agg-cell{min-height:30px!important;padding:5px 8px!important;display:flex!important;flex-direction:row!important;align-items:center!important;justify-content:center!important;gap:5px!important;border:1px solid rgba(255,255,255,.08)!important;border-radius:9px!important;background:rgba(3,7,14,.18)!important;min-width:0!important;text-align:center!important;flex:0 1 auto!important;}
+                    .wr2-agg-cell span{font-size:10px!important;color:#93a4ba!important;font-weight:900!important;white-space:nowrap!important;}
+                    .wr2-agg-val{font-size:12px!important;line-height:1.1!important;color:#e8eefb!important;font-weight:900!important;letter-spacing:-.03em!important;max-width:100%!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;}
                     .wr2-agg-val.blue{color:#4f8eff!important}.wr2-agg-val.green{color:#4ade80!important}.wr2-agg-val.yellow{color:#ffd166!important}
-                    @media(max-width:760px){.wr2-ml-top.clean{align-items:flex-start!important;flex-direction:column!important}.wr2-lcard-actions .wr2-mini-btn{padding:5px 8px!important;font-size:11px!important}.wr2-linked-cards.scroll .wr2-linked-card{flex-basis:calc(100% - 8px)!important}.wr2-agg-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;}.wr2-agg-head{align-items:flex-start!important;flex-direction:column!important}.wr2-lcard-row{grid-template-columns:minmax(70px,86px) minmax(0,1fr)!important;}}
+                    @media(max-width:760px){.wr2-ml-top.clean{align-items:flex-start!important;flex-direction:column!important}.wr2-lcard-actions .wr2-mini-btn{padding:5px 8px!important;font-size:11px!important}.wr2-linked-cards.scroll .wr2-linked-card{flex-basis:calc(100% - 8px)!important}.wr2-agg-head{align-items:flex-start!important;flex-direction:column!important}.wr2-lcard-row{grid-template-columns:minmax(70px,86px) minmax(0,1fr)!important;}}
                     .wcp-linked-picker{display:flex;align-items:center;gap:6px;flex-wrap:wrap;border:1px solid rgba(249,115,22,.26);background:rgba(249,115,22,.06);border-radius:12px;padding:9px 10px;margin:8px 0 10px;}
                     .wcp-linked-picker>span{font-size:11px;color:#fed7aa;font-weight:950;margin-right:2px;}.wcp-link-choice{border:1px solid rgba(255,255,255,.13);background:rgba(255,255,255,.045);border-radius:999px;color:#d8e0ef;padding:5px 10px;font-size:11px;font-weight:850;cursor:pointer;}.wcp-link-choice.primary{background:#f97316;border-color:#f97316;color:#fff;}
                     @media(max-width:760px){.wr2-ml-table{min-width:680px}.wr2-multi-linked-summary{padding:9px}.wr2-ml-top{align-items:flex-start;flex-direction:column}.wcp-linked-picker{align-items:flex-start}.wr2-linked-item-compact{grid-template-columns:1fr}.wr2-lic-meta{text-align:left}.wr2-lic-actions{justify-content:flex-start}}
@@ -8288,12 +8308,13 @@ window.wr2SummaryCancelEdit = function() {
                   try {
                     const d = item.data || {};
                     const occ = window._getSavedOccupancySnapshot ? window._getSavedOccupancySnapshot(item, d) : null;
+                    const _isAuctionForSeed = occ ? occ.isAuction : (item.mode === 'auction');
                     const dep = occ && occ.leaseDepositWon
                       ? occ.leaseDepositWon
-                      : _wr2ParseNum(d['보증금'] || d['임차보증금'] || d['보증금(원)']);
+                      : (_isAuctionForSeed ? 0 : _wr2ParseNum(d['보증금'] || d['임차보증금'] || d['보증금(원)']));
                     const rent = occ && occ.monthlyRentWon
                       ? occ.monthlyRentWon
-                      : _wr2ParseNum(d['월세'] || d['임대료'] || d['월세(원)']);
+                      : (_isAuctionForSeed ? 0 : _wr2ParseNum(d['월세'] || d['임대료'] || d['월세(원)']));
                     const price = _wr2ParseNum(d['매매가'] || d['매매가(원)'] || d['낙찰가'] || d['최저가'] || d['감정가']);
 
                     const secs = (wr2State.sections || []).filter(s => s.roomId === room.id && s.phase === 'review' && s.type === 'metrics');
@@ -9380,6 +9401,32 @@ window.wr2SummaryCancelEdit = function() {
       }
     }
 
+
+
+    function _formatWonCommaInputValue(value) {
+      const raw = String(value == null ? '' : value).trim();
+      if (!raw) return '';
+      const n = _parseFlexibleWonValue(raw, false);
+      return n > 0 ? Math.round(n).toLocaleString('ko-KR') : raw;
+    }
+    function _formatPopupFiDisplayValue(key, type, value) {
+      const raw = String(value == null ? '' : value).trim();
+      if (!raw) return '-';
+      if (type === 'money_raw' || key === '임차인_보증금') {
+        const n = _parseFlexibleWonValue(raw, false);
+        return n > 0 ? fWC(n) : esc(raw);
+      }
+      if (type === 'money_m') {
+        const n = _parsePlainNumber(raw);
+        return n != null && n !== '' ? fM(n) : esc(raw);
+      }
+      if (type === 'money' || type === 'big') {
+        const n = _parseFlexibleWonValue(raw, false);
+        return n > 0 ? fW(n) : esc(raw);
+      }
+      return esc(raw);
+    }
+
     function _applySavedFieldMutation(item, key, rawValue, opts) {
       if (!item) return item;
       const options = opts || {};
@@ -9405,11 +9452,41 @@ window.wr2SummaryCancelEdit = function() {
       } else {
         const normalizedValue = _normalizeSavedFieldValue(key, rawValue);
         const isEmpty = normalizedValue == null || normalizedValue === '';
-        if (isEmpty) delete d[key];
-        else d[key] = normalizedValue;
+        const tenantKind = _tenantFieldKind(key);
+        if (tenantKind) {
+          if (isEmpty) {
+            d[key] = '';
+            if (tenantKind === 'deposit') {
+              d['임차인_보증금'] = '';
+              d['임차보증금'] = '';
+              d['임차인 보증금'] = '';
+            } else if (tenantKind === 'rent') {
+              d['임차인_월세'] = '';
+              d['임차월세'] = '';
+              d['임차인 월세'] = '';
+              d['차임'] = '';
+            }
+            _setTenantOverride(d, tenantKind, null, true);
+            _applyTenantOverrideMirrors(d, tenantKind);
+          } else {
+            d[key] = normalizedValue;
+            _setTenantOverride(d, tenantKind, normalizedValue, false);
+            _applyTenantOverrideMirrors(d, tenantKind);
+            if (tenantKind === 'deposit') {
+              d['임차인_보증금'] = normalizedValue;
+              d['임차보증금'] = normalizedValue;
+            } else if (tenantKind === 'rent') {
+              d['임차인_월세'] = normalizedValue;
+            }
+          }
+        } else {
+          if (isEmpty) delete d[key];
+          else d[key] = normalizedValue;
+        }
         _syncAuctionMoneyAliases(d, key, normalizedValue);
       }
       _recalcSavedUnitPriceFromArea(item, key);
+      item.updatedAt = Date.now();
       if (options.normalize !== false) _ensureNormalizedItem(item);
       return item;
     }
@@ -9531,6 +9608,138 @@ window.wr2SummaryCancelEdit = function() {
       return vals.length ? Math.max.apply(null, vals) : 0;
     }
 
+
+    // ── 임차 정보 공식 구조(v57-1) ─────────────────────────────
+    // 원본 임차인_목록은 raw 성격으로 보존하고, 사용자의 수정/삭제 의사만
+    // _tenantOverride에 저장한다. 이후 화면/합산/계산기는 이 resolver 결과만 사용한다.
+    function _tenantFieldKind(key) {
+      if (key === '임차인_보증금' || key === '임차보증금' || key === '임차인 보증금') return 'deposit';
+      if (key === '임차인_월세' || key === '임차월세' || key === '임차인 월세' || key === '차임') return 'rent';
+      return '';
+    }
+    function _tenantOverrideKey(kind) {
+      return kind === 'deposit' ? 'depositWon' : (kind === 'rent' ? 'rentWon' : '');
+    }
+    function _setTenantOverride(d, kind, value, blank) {
+      if (!d || !kind) return d;
+      const ovKey = _tenantOverrideKey(kind);
+      if (!ovKey) return d;
+      d._tenantOverride = d._tenantOverride && typeof d._tenantOverride === 'object' ? d._tenantOverride : {};
+      d._tenantOverride[ovKey] = {
+        state: blank ? 'blank' : 'value',
+        value: blank ? null : value,
+        updatedAt: Date.now()
+      };
+      d._tenantManualBlank = d._tenantManualBlank || {};
+      if (blank) {
+        if (kind === 'deposit') d._tenantManualBlank.임차인_보증금 = true;
+        if (kind === 'rent') d._tenantManualBlank.임차인_월세 = true;
+      } else {
+        if (kind === 'deposit') delete d._tenantManualBlank.임차인_보증금;
+        if (kind === 'rent') delete d._tenantManualBlank.임차인_월세;
+        if (!Object.keys(d._tenantManualBlank).length) delete d._tenantManualBlank;
+      }
+      return d;
+    }
+    function _applyTenantOverrideMirrors(d, kind) {
+      if (!d || !kind) return d;
+      const ov = _getTenantOverrideState(d, kind);
+      if (!ov.has) return d;
+      if (kind === 'deposit') {
+        if (ov.blank || !ov.value) {
+          d['임차인_보증금'] = '';
+          d['임차보증금'] = '';
+          d['임차인 보증금'] = '';
+          if (d._norm) {
+            d._norm.임차보증금_원 = null;
+            d._norm.보증금_만원 = null;
+          }
+        } else {
+          d['임차인_보증금'] = ov.value;
+          d['임차보증금'] = ov.value;
+          d['임차인 보증금'] = ov.value;
+        }
+      } else if (kind === 'rent') {
+        if (ov.blank || !ov.value) {
+          d['임차인_월세'] = '';
+          d['임차월세'] = '';
+          d['임차인 월세'] = '';
+          d['차임'] = '';
+          if (d._norm) {
+            d._norm.임차월세_원 = null;
+            d._norm.월세_만원 = null;
+          }
+        } else {
+          const man = Math.round((ov.value || 0) / 10000);
+          d['임차인_월세'] = man;
+          d['임차월세'] = man;
+          d['임차인 월세'] = man;
+          d['차임'] = man;
+        }
+      }
+      return d;
+    }
+    function _getTenantOverrideState(d, kind) {
+      d = d || {};
+      const ovKey = _tenantOverrideKey(kind);
+      const ov = ovKey && d._tenantOverride && d._tenantOverride[ovKey];
+      if (ov && ov.state === 'blank') return { has: true, blank: true, value: 0, source: 'override' };
+      if (ov && ov.state === 'value') {
+        const val = kind === 'deposit'
+          ? _parseFlexibleWonValue(ov.value, false)
+          : _parseFlexibleWonValue(ov.value, false);
+        return { has: true, blank: false, value: val, source: 'override' };
+      }
+      const manualBlank = d._tenantManualBlank || {};
+      if (kind === 'deposit' && manualBlank.임차인_보증금 === true) return { has: true, blank: true, value: 0, source: 'legacyBlank' };
+      if (kind === 'rent' && manualBlank.임차인_월세 === true) return { has: true, blank: true, value: 0, source: 'legacyBlank' };
+      return { has: false, blank: false, value: 0, source: '' };
+    }
+    function _resolveTenantMoneyWon(item, fallbackData, kind) {
+      const d = fallbackData || (item && item.data) || {};
+      const tenants = Array.isArray(d['임차인_목록']) ? d['임차인_목록'] : [];
+      const firstTenant = tenants[0] || {};
+      const isAuction = _isAuctionSavedItem(item, d);
+      const ov = _getTenantOverrideState(d, kind);
+      if (ov.has) return ov.value || 0;
+      if (kind === 'deposit') {
+        return _pickFirstWonValue(isAuction ? [
+          { value: d['임차인_보증금'], defaultManUnit: false },
+          { value: d['임차보증금'], defaultManUnit: false },
+          { value: d['임차인 보증금'], defaultManUnit: false },
+          { value: firstTenant['보증금_만원'], defaultManUnit: true },
+          { value: firstTenant['보증금'], defaultManUnit: false }
+        ] : [
+          { value: d['임차인_보증금'], defaultManUnit: false },
+          { value: d['임차보증금'], defaultManUnit: false },
+          { value: d['임차인 보증금'], defaultManUnit: false },
+          { value: firstTenant['보증금_만원'], defaultManUnit: true },
+          { value: firstTenant['보증금'], defaultManUnit: false },
+          { value: d['기보증금_만원'], defaultManUnit: true },
+          { value: d['전세가_만원'], defaultManUnit: true },
+          { value: d['보증금_만원'], defaultManUnit: true },
+          { value: d['보증금'], defaultManUnit: false }
+        ]);
+      }
+      return _pickFirstWonValue(isAuction ? [
+        { value: d['임차인_월세'], defaultManUnit: false },
+        { value: d['임차월세'], defaultManUnit: false },
+        { value: d['임차인 월세'], defaultManUnit: false },
+        { value: d['차임'], defaultManUnit: false },
+        { value: firstTenant['월세_만원'], defaultManUnit: true },
+        { value: firstTenant['월세'], defaultManUnit: false }
+      ] : [
+        { value: d['임차인_월세'], defaultManUnit: false },
+        { value: d['임차월세'], defaultManUnit: false },
+        { value: d['임차인 월세'], defaultManUnit: false },
+        { value: d['차임'], defaultManUnit: false },
+        { value: firstTenant['월세_만원'], defaultManUnit: true },
+        { value: firstTenant['월세'], defaultManUnit: false },
+        { value: d['월세_만원'], defaultManUnit: true },
+        { value: d['월세'], defaultManUnit: false }
+      ]);
+    }
+
     function _sanitizeOccupancyWon(won, refWon, kind) {
       let n = Math.round(Number(won) || 0);
       const ref = Math.round(Number(refWon) || 0);
@@ -9562,54 +9771,19 @@ window.wr2SummaryCancelEdit = function() {
       const isAuction = _isAuctionSavedItem(item, d);
       const priceRefWon = _getSavedPriceRefWon(item, d);
       const hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj || {}, key);
-      const explicitLeaseDepositBlank = isAuction && (
-        (hasOwn(d, '임차인_보증금') && String(d['임차인_보증금'] ?? '').trim() === '') ||
-        (hasOwn(d, '임차보증금') && String(d['임차보증금'] ?? '').trim() === '') ||
-        (hasOwn(d, '임차인 보증금') && String(d['임차인 보증금'] ?? '').trim() === '')
-      );
-      let leaseDepositWon = explicitLeaseDepositBlank ? 0 : _pickFirstWonValue(isAuction ? [
-        { value: d['임차인_보증금'], defaultManUnit: false },
-        { value: d['임차보증금'], defaultManUnit: false },
-        { value: d['임차인 보증금'], defaultManUnit: false },
-        { value: firstTenant['보증금_만원'], defaultManUnit: true },
-        { value: firstTenant['보증금'], defaultManUnit: false }
-      ] : [
-        { value: d['임차인_보증금'], defaultManUnit: false },
-        { value: d['임차보증금'], defaultManUnit: false },
-        { value: d['임차인 보증금'], defaultManUnit: false },
-        { value: firstTenant['보증금_만원'], defaultManUnit: true },
-        { value: firstTenant['보증금'], defaultManUnit: false },
-        { value: d['기보증금_만원'], defaultManUnit: true },
-        { value: d['전세가_만원'], defaultManUnit: true },
-        { value: d['보증금_만원'], defaultManUnit: true },
-        { value: d['보증금'], defaultManUnit: false }
-      ]);
-      let monthlyRentWon = _pickFirstWonValue(isAuction ? [
-        { value: d['임차인_월세'], defaultManUnit: false },
-        { value: d['임차월세'], defaultManUnit: false },
-        { value: d['임차인 월세'], defaultManUnit: false },
-        { value: d['차임'], defaultManUnit: false },
-        { value: firstTenant['월세_만원'], defaultManUnit: true },
-        { value: firstTenant['월세'], defaultManUnit: false },
-        { value: d['월세_만원'], defaultManUnit: true }
-      ] : [
-        { value: d['임차인_월세'], defaultManUnit: false },
-        { value: d['임차월세'], defaultManUnit: false },
-        { value: d['임차인 월세'], defaultManUnit: false },
-        { value: d['차임'], defaultManUnit: false },
-        { value: firstTenant['월세_만원'], defaultManUnit: true },
-        { value: firstTenant['월세'], defaultManUnit: false },
-        { value: d['월세_만원'], defaultManUnit: true },
-        { value: d['월세'], defaultManUnit: false }
-      ]);
+      const manualBlank = d._tenantManualBlank || {};
+      const depositOverride = _getTenantOverrideState(d, 'deposit');
+      const rentOverride = _getTenantOverrideState(d, 'rent');
+      let leaseDepositWon = depositOverride.has ? (depositOverride.value || 0) : _resolveTenantMoneyWon(item, d, 'deposit');
+      let monthlyRentWon = rentOverride.has ? (rentOverride.value || 0) : _resolveTenantMoneyWon(item, d, 'rent');
       let bidDepositWon = _pickFirstWonValue([
         { value: d['입찰보증금'], defaultManUnit: false },
         { value: d['입찰보증금_만원'], defaultManUnit: true },
         { value: isAuction ? d['보증금_만원'] : '', defaultManUnit: true },
         { value: isAuction ? d['보증금'] : '', defaultManUnit: false }
       ]);
-      leaseDepositWon = _sanitizeOccupancyWon(leaseDepositWon, priceRefWon, 'deposit');
-      monthlyRentWon = _sanitizeOccupancyWon(monthlyRentWon, priceRefWon, 'rent');
+      // v59: 임차보증금/월세는 배수 필터로 보정하지 않는다.
+      // 원본 임차 계열값 또는 사용자 override만 resolver로 확정하고, 입찰보증금과 분리한다.
       bidDepositWon = _sanitizeOccupancyWon(bidDepositWon, priceRefWon, 'deposit');
       const claimTotalWon = _pickFirstWonValue([
         { value: d['채권액합계'], defaultManUnit: false },
@@ -9633,6 +9807,8 @@ window.wr2SummaryCancelEdit = function() {
       };
     }
     window._getSavedOccupancySnapshot = _getSavedOccupancySnapshot;
+    window._resolveTenantMoneyWon = _resolveTenantMoneyWon;
+    window._getTenantOverrideState = _getTenantOverrideState;
 
     function _isMapCardTypeOpen(type) {
       return !window._cardTypeState || window._cardTypeState[type] !== false;
@@ -13984,9 +14160,11 @@ window.wr2SummaryCancelEdit = function() {
       const 실거래가_만원  = _isTxMode ? toMan(d.매매가 ?? d.실거래가 ?? d.거래가격) : null;
       const 감정가_만원    = isAuction ? wonToMan(d.감정가) : null;
       const 최저가_만원    = isAuction ? wonToMan(d.최저가) : null;
-      const 보증금_만원    = toMan(d.기보증금_만원 ?? d.보증금_만원 ?? d.보증금);
+      const _tenantDepositWonForNorm = isAuction ? _resolveTenantMoneyWon(item, d, 'deposit') : 0;
+      const _tenantRentWonForNorm = isAuction ? _resolveTenantMoneyWon(item, d, 'rent') : 0;
+      const 보증금_만원    = isAuction ? (_tenantDepositWonForNorm > 0 ? Math.round(_tenantDepositWonForNorm / 10000) : null) : toMan(d.기보증금_만원 ?? d.보증금_만원 ?? d.보증금);
       const 전세가_만원    = toMan(d.전세가_만원 ?? d.전세가);
-      const 월세_만원      = toMan(d.월세_만원 ?? d.임차인_월세 ?? d.월세);
+      const 월세_만원      = isAuction ? (_tenantRentWonForNorm > 0 ? Math.round(_tenantRentWonForNorm / 10000) : null) : toMan(d.월세_만원 ?? d.임차인_월세 ?? d.월세);
 
       // ── 표시가격기준 (카드/지도/정렬 대표가) ────────────────────
       let 표시가격기준 = null;
@@ -14051,6 +14229,8 @@ window.wr2SummaryCancelEdit = function() {
         보증금_만원,
         전세가_만원,
         월세_만원,
+        임차보증금_원: isAuction ? (_tenantDepositWonForNorm || 0) : null,
+        임차월세_원: isAuction ? (_tenantRentWonForNorm || 0) : null,
         표시가격기준,
         평당가_만원,
         수익률,
@@ -16164,12 +16344,17 @@ window.wr2SummaryCancelEdit = function() {
         if (!d.확정일자 && tenants[0].확정일자) d.확정일자 = tenants[0].확정일자;
         if (!d.배당요구 && tenants[0].배당요구) d.배당요구 = tenants[0].배당요구;
         if (!d.대항력 && tenants[0].대항력) d.대항력 = tenants[0].대항력;
-        // 사용자가 상세 패널에서 임차 보증금/월세를 빈값으로 지운 경우,
-        // 임차인_목록의 원본 추출값으로 다시 되살리지 않는다.
-        if (!Object.prototype.hasOwnProperty.call(d, '임차인_보증금') && tenants[0].보증금_만원 != null && tenants[0].보증금_만원 !== '') {
+        // v57: 사용자 override가 있으면 원본 임차인_목록으로 다시 복원하지 않는다.
+        const depOv = _getTenantOverrideState(d, 'deposit');
+        const rentOv = _getTenantOverrideState(d, 'rent');
+        if (depOv.has) {
+          _applyTenantOverrideMirrors(d, 'deposit');
+        } else if (!Object.prototype.hasOwnProperty.call(d, '임차인_보증금') && tenants[0].보증금_만원 != null && tenants[0].보증금_만원 !== '') {
           d.임차인_보증금 = _auctionManToWon(tenants[0].보증금_만원);
         }
-        if (!Object.prototype.hasOwnProperty.call(d, '임차인_월세') && tenants[0].월세_만원 != null && tenants[0].월세_만원 !== '') {
+        if (rentOv.has) {
+          _applyTenantOverrideMirrors(d, 'rent');
+        } else if (!Object.prototype.hasOwnProperty.call(d, '임차인_월세') && tenants[0].월세_만원 != null && tenants[0].월세_만원 !== '') {
           d.임차인_월세 = _auctionNum(tenants[0].월세_만원);
         }
       }
@@ -16435,7 +16620,8 @@ window.wr2SummaryCancelEdit = function() {
           감정가: _auctionManToWon(raw.감정가_만원 || raw.감정가),
           최저가: _auctionManToWon(raw.최저가_만원 || raw.최저가),
           청구액: _auctionManToWon(raw.청구액_만원 || raw.청구액),
-          보증금: raw.임차인_보증금 || '',
+          // 보증금은 경매에서 입찰보증금/임차보증금이 섞이기 쉬운 레거시 필드라 임차보증금 저장소로 쓰지 않는다.
+          보증금: raw.보증금 || '',
           입찰보증금: bidDepositWon,
           유찰횟수: parseInt(raw.유찰횟수, 10) || 0,
           매각기일: raw.매각기일 || raw.매각일 || '',
@@ -16463,8 +16649,8 @@ window.wr2SummaryCancelEdit = function() {
           AI추가분석: raw.AI추가분석 || '',
           채무자겸소유자: raw.채무자겸소유자 || '',
           임차인: raw.임차인 || tenants.map(t => t.임차인명).filter(Boolean).join(', '),
-          임차인_보증금: raw.임차인_보증금 || _auctionManToWon(firstTenant.보증금_만원),
-          임차인_월세: raw.임차인_월세 || _auctionNum(firstTenant.월세_만원),
+          임차인_보증금: Object.prototype.hasOwnProperty.call(raw, '임차인_보증금') ? raw.임차인_보증금 : _auctionManToWon(firstTenant.보증금_만원),
+          임차인_월세: Object.prototype.hasOwnProperty.call(raw, '임차인_월세') ? raw.임차인_월세 : _auctionNum(firstTenant.월세_만원),
           전입일자: raw.전입일자 || firstTenant.전입일 || '',
           사업자등록일: raw.사업자등록일 || firstTenant.사업자등록일 || '',
           확정일자: raw.확정일자 || firstTenant.확정일자 || '',
@@ -18844,6 +19030,7 @@ ${combinedText}
       }
       const d = item.data || {};
       if (typeof _auctionHydrateDataFields === 'function') _auctionHydrateDataFields(d);
+      const occForPrompt = window._getSavedOccupancySnapshot ? window._getSavedOccupancySnapshot(item, d) : null;
       const apiKey = gk();
       if (!apiKey) {
         showToast('Google API 키를 먼저 입력하세요', 'warn');
@@ -18877,8 +19064,8 @@ ${combinedText}
 - 해당층: ${d.해당층 ? d.해당층 + '층' : '-'}
 - 소유자: ${d.채무자겸소유자 || '-'}
 - 임차인: ${d.임차인 || '-'}
-- 임차인 보증금: ${fmtAuctionMoneyForPrompt(d.임차인_보증금)}
-- 임차인 월세: ${d.임차인_월세 ? Math.round(d.임차인_월세).toLocaleString() + '만원' : '-'}
+- 임차인 보증금: ${fmtAuctionMoneyForPrompt(occForPrompt && occForPrompt.leaseDepositWon)}
+- 임차인 월세: ${occForPrompt && occForPrompt.monthlyRentWon ? Math.round(occForPrompt.monthlyRentWon / 10000).toLocaleString() + '만원' : '-'}
 - 대항력: ${d.대항력 || '-'}
 - 전입일자: ${d.전입일자 || '-'}
 - 사업자등록일: ${d.사업자등록일 || '-'}
@@ -19036,6 +19223,7 @@ ${combinedText}
         e.stopPropagation();
         const key = sp.dataset.fiKey;
         const pid = sp.dataset.fiPid;
+        const type = sp.dataset.fiType || '';
         const rawVal = sp.dataset.fiRaw || '';
         if (!key || !pid) return;
         // 이미 편집 중이면 무시
@@ -19047,9 +19235,13 @@ ${combinedText}
         const inp = document.createElement('input');
         inp.type = 'text';
         inp.className = 'fv-in';
-        inp.value = rawVal;
+        inp.value = (type === 'money_raw' || key === '임차인_보증금') ? _formatWonCommaInputValue(rawVal) : rawVal;
         inp.style.cssText = 'width:100%;box-sizing:border-box;margin:0;';
         inp.addEventListener('click', function(ev) { ev.stopPropagation(); });
+        if (type === 'money_raw' || key === '임차인_보증금') {
+          inp.inputMode = 'numeric';
+          inp.addEventListener('input', function(){ if (typeof fmtComma === 'function') fmtComma(inp); });
+        }
         inp.addEventListener('keydown', function(ev) {
           if (ev.key === 'Enter') { ev.preventDefault(); inp.blur(); }
           if (ev.key === 'Escape') {
@@ -19061,8 +19253,8 @@ ${combinedText}
         inp.addEventListener('blur', function() {
           const v = inp.value;
           window._savedDraftCommit(pid, key, v);
-          // input → 텍스트 복원
-          sp.innerHTML = v || '-';
+          // input → 텍스트 복원. 금액 필드는 원 단위 콤마 기준으로 다시 표시한다.
+          sp.innerHTML = _formatPopupFiDisplayValue(key, type, v);
           sp.style.padding = '';
           sp.dataset.fiRaw = v;
         });
@@ -19123,6 +19315,7 @@ ${combinedText}
             ` data-fi-key="${esc(key)}"` +
             ` data-fi-pid="${esc(_pid)}"` +
             ` data-fi-raw="${esc(_rv)}"` +
+            ` data-fi-type="${esc(type || '')}"` +
             ` title="클릭하여 수정"` +
             ` style="cursor:text;border-bottom:1px dashed rgba(255,255,255,.1);min-height:20px;"` +
           `>${_dv}</div>` +
@@ -22200,8 +22393,8 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         <div class="rights-panel-hdr">👤 권리 정보</div>
         ${item.data.채무자겸소유자 ? `<div class="rights-panel-row"><span class="rights-panel-label">소유자</span><span class="rights-panel-value">${esc(String(item.data.채무자겸소유자))}</span></div>` : ''}
         ${item.data.임차인 ? `<div class="rights-panel-row"><span class="rights-panel-label">임차인</span><span class="rights-panel-value">${esc(String(item.data.임차인))}</span></div>` : ''}
-        ${item.data.임차인_보증금 ? `<div class="rights-panel-row"><span class="rights-panel-label">임차 보증금</span><span class="rights-panel-value" style="color:#ff4444;font-weight:600;">${fWC(item.data.임차인_보증금)}</span></div>` : ''}
-        ${item.data.임차인_월세 ? `<div class="rights-panel-row"><span class="rights-panel-label">임차 월세</span><span class="rights-panel-value" style="color:#ff4444;font-weight:600;">${fM(item.data.임차인_월세)}</span></div>` : ''}
+        ${(()=>{ const occ = window._getSavedOccupancySnapshot ? window._getSavedOccupancySnapshot(item, item.data || {}) : null; const v = occ && occ.leaseDepositWon; return v ? `<div class="rights-panel-row"><span class="rights-panel-label">임차 보증금</span><span class="rights-panel-value" style="color:#ff4444;font-weight:600;">${fWC(v)}</span></div>` : ''; })()}
+        ${(()=>{ const occ = window._getSavedOccupancySnapshot ? window._getSavedOccupancySnapshot(item, item.data || {}) : null; const v = occ && occ.monthlyRentWon; return v ? `<div class="rights-panel-row"><span class="rights-panel-label">임차 월세</span><span class="rights-panel-value" style="color:#ff4444;font-weight:600;">${fM(Math.round(v/10000))}</span></div>` : ''; })()}
         ${item.data.대항력 ? `<div class="rights-panel-row"><span class="rights-panel-label">대항력</span><span class="rights-panel-value" style="color:${String(item.data.대항력).includes('있음') ? 'var(--g)' : 'var(--auction-c)'};">${esc(String(item.data.대항력))}</span></div>` : ''}
         <div class="rights-panel-row"><span class="rights-panel-label">전입일자</span><span class="rights-panel-value">${esc(String(item.data.전입일자 || '-'))}</span></div>
         ${item.data.사업자등록일 ? `<div class="rights-panel-row"><span class="rights-panel-label">사업자등록</span><span class="rights-panel-value">${esc(String(item.data.사업자등록일))}</span></div>` : ''}
@@ -31953,7 +32146,8 @@ function _restoreMarkerToAnchorIfDrifted(ov){
       const 채권합계 = toWon(d.채권합계 || d.채권액합계 || 0);
       if (청구액 > 0) setCalcVal('npl_d1', 청구액);
       else if (채권합계 > 0) setCalcVal('npl_d1', 채권합계);
-      const 임차인보증금 = toWon(d.임차인_보증금 || d.임차보증금 || 0);
+      const _nplOcc = window._getSavedOccupancySnapshot ? window._getSavedOccupancySnapshot(item, d) : null;
+      const 임차인보증금 = _nplOcc && _nplOcc.leaseDepositWon ? _nplOcc.leaseDepositWon : 0;
       if (임차인보증금 > 0) setCalcVal('npl_tenant', 임차인보증금);
       if (lbl) {
         const badge = minBid ? `<span style="margin-left:8px;background:rgba(255,99,112,.15);color:#ff6370;border:1px solid rgba(255,99,112,.3);border-radius:5px;padding:1px 6px;font-size:10px;">최저 ${toWon(minBid).toLocaleString('ko-KR')}원</span>` : '';
@@ -46776,8 +46970,8 @@ window.addEventListener('DOMContentLoaded', () => {
     var bidDate = plSavedField(raw, ['매각기일','매각일','입찰기일'], '') || plSavedField(norm, ['입찰기일'], '') || src.bidDate || src.biddate || '';
     var appraisal = plSavedField(norm, ['감정가_만원'], '') || (plSavedField(raw, ['감정가'], '') ? String(Math.round(parseInt(String(plSavedField(raw,['감정가'],'')).replace(/[^0-9]/g,''),10)/10000)) : '') || src.appraisal || '';
     var minprice = plSavedField(norm, ['최저가_만원'], '') || (plSavedField(raw, ['최저가'], '') ? String(Math.round(parseInt(String(plSavedField(raw,['최저가'],'')).replace(/[^0-9]/g,''),10)/10000)) : '') || src.minprice || '';
-    var deposit = plSavedField(norm, ['보증금_만원'], '') || (plSavedField(raw, ['임차인_보증금'], '') ? String(Math.round(parseInt(String(plSavedField(raw,['임차인_보증금'],'')).replace(/[^0-9]/g,''),10)/10000)) : '') || src.deposit || '';
-    var monthly = plSavedField(norm, ['월세_만원'], '') || plSavedField(raw, ['임차인_월세'], '') || src.monthly || '';
+    var deposit = plSavedField(norm, ['보증금_만원'], '') || src.deposit || '';
+    var monthly = plSavedField(norm, ['월세_만원'], '') || src.monthly || '';
     var failCount = plSavedField(norm,['유찰횟수'],'') || plSavedField(raw,['유찰횟수'],'') || '';
     var estimateWonRaw = plSavedField(raw, ['예상입찰가','추천낙찰가','추천입찰가','입찰가'], '');
     var estimateManRaw = plSavedField(raw, ['예상입찰가_만원','추천낙찰가_만원','추천입찰가_만원'], '');
