@@ -8913,6 +8913,37 @@ window.wr2SummaryCancelEdit = function() {
                         justify-self:flex-end!important;
                       }
                     }
+
+
+                    /* v81: 입찰가 추정 결과 카드 완전 삭제 후 2칸 구조 고정 */
+                    .wcp-bench-panel .wcp-grid3{
+                      grid-template-columns:minmax(340px,.9fr) minmax(0,1fr)!important;
+                      grid-template-areas:'basis bid'!important;
+                      gap:12px!important;
+                      align-items:stretch!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(1){
+                      grid-area:basis!important;
+                      min-height:176px!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(2){
+                      grid-area:bid!important;
+                      min-height:176px!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(3){
+                      display:none!important;
+                    }
+                    @media(max-width:1180px){
+                      .wcp-bench-panel .wcp-grid3{
+                        grid-template-columns:1fr!important;
+                        grid-template-areas:none!important;
+                      }
+                      .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(1),
+                      .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(2){
+                        grid-area:auto!important;
+                        min-height:auto!important;
+                      }
+                    }
                   `;
 
                 }
@@ -9085,7 +9116,6 @@ window.wr2SummaryCancelEdit = function() {
                           <div class="wcp-grid3" style="margin-top:8px;">
                             <div class="wcp-section"><h4>기준면적</h4><div class="wcp-form">${wcpField('wc_area','전용면적','㎡',s.area,'','')}${wcpField('wc_area_py','전용평수','평',s.areaPy,'','')}</div></div>
                             <div class="wcp-section"><h4>나의 입찰가</h4><div class="wcp-form">${wcpField('wc_my_bid','입찰가','원',s.myBid,'','')}${wcpField('wc_extra_reserve','예비비','원',s.extraReserve,'','')}${wcpField('wc_target_profit','목표 순이익','원',s.targetProfit,'','예: 30,000,000')}<div class="wcp-bid-actions"><div class="wcp-note orange" id="wcp_my_bid_note">-</div><button class="wcp-btn primary" onclick="wr2CalcUseSuggestedBid()" title="추천 입찰가를 나의 입찰가에 반영">추가 적용</button></div></div></div>
-                            <div class="wcp-section"><h4>입찰가 추정 결과</h4><div class="wcp-resultbar"><span class="label">추천 입찰가</span><span class="value" id="wcp_suggested_bid">-</span></div></div>
                           </div>
                           <div class="wcp-grid4" style="margin-top:8px;">
                             ${wcpBenchCard(1,'네이버 매매 호가','현재 시장 상한선','wc_bench_max',s.benchMax,'MAX','wcp_bench_max_note')}
