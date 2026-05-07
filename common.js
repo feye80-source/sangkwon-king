@@ -8933,6 +8933,133 @@ window.wr2SummaryCancelEdit = function() {
                     .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(3){
                       display:none!important;
                     }
+
+                    /* v82: 나의입찰가 평단가를 입찰가 아래로 이동, KPI 요약 타이포 정돈 */
+                    .wcp-bench-panel .wcp-grid3{
+                      grid-template-columns:minmax(360px,.96fr) minmax(0,1.04fr)!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(1){
+                      min-height:172px!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(2){
+                      min-height:172px!important;
+                      padding:14px 16px 14px!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(2) .wcp-form{
+                      gap:7px!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(2) .wcp-line{
+                      grid-template-columns:104px minmax(0,1fr) 22px!important;
+                      min-height:34px!important;
+                      gap:8px!important;
+                    }
+                    .wcp-price-note-row{
+                      display:flex!important;
+                      justify-content:flex-end!important;
+                      margin:-2px 0 2px!important;
+                      min-height:16px!important;
+                    }
+                    #wcp_my_bid_note{
+                      display:inline-flex!important;
+                      align-items:center!important;
+                      justify-content:flex-end!important;
+                      min-height:auto!important;
+                      padding:0!important;
+                      margin:0!important;
+                      background:none!important;
+                      border:0!important;
+                      box-shadow:none!important;
+                      color:#f7a852!important;
+                      font-size:11.5px!important;
+                      font-weight:760!important;
+                      line-height:1.1!important;
+                      letter-spacing:-0.01em!important;
+                      white-space:nowrap!important;
+                    }
+                    .wcp-bid-actions{
+                      justify-content:flex-start!important;
+                      gap:10px!important;
+                      margin-top:4px!important;
+                    }
+                    .wcp-bid-actions .wcp-btn{
+                      padding:6px 16px!important;
+                    }
+                    .wcp-kpi-summary-panel h3{
+                      font-size:20px!important;
+                      font-weight:820!important;
+                      letter-spacing:-0.02em!important;
+                    }
+                    .wcp-kpi-summary-panel .wcp-kpi-lease-inputs{
+                      padding:10px 14px!important;
+                      gap:8px!important;
+                      border-radius:12px!important;
+                    }
+                    .wcp-kpi-summary-panel .wcp-kpi-lease-line{
+                      grid-template-columns:108px minmax(0,1fr) 22px auto!important;
+                      min-height:36px!important;
+                      gap:8px!important;
+                    }
+                    .wcp-kpi-summary-panel .wcp-kpi-lease-line label{
+                      font-size:12px!important;
+                      font-weight:760!important;
+                      color:#d5ddea!important;
+                    }
+                    .wcp-kpi-summary-panel .wcp-kpi-lease-line .wcp-inp{
+                      min-height:34px!important;
+                      padding:7px 12px!important;
+                      font-size:13px!important;
+                      font-weight:780!important;
+                    }
+                    .wcp-kpi-summary-panel .wcp-kpi-lease-line .wcp-unit,
+                    .wcp-kpi-summary-panel .wcp-form>.wcp-line .wcp-unit{
+                      font-size:11px!important;
+                      color:#aeb9cb!important;
+                    }
+                    .wcp-kpi-summary-panel .wcp-rent-py-inline{
+                      margin-left:10px!important;
+                      font-size:12px!important;
+                      font-weight:760!important;
+                      color:#f7a852!important;
+                    }
+                    .wcp-kpi-summary-panel .wcp-form>.wcp-line{
+                      grid-template-columns:minmax(0,1fr) minmax(92px,auto) 24px!important;
+                      min-height:30px!important;
+                      gap:8px!important;
+                    }
+                    .wcp-kpi-summary-panel .wcp-form>.wcp-line label{
+                      font-size:12.5px!important;
+                      font-weight:760!important;
+                      color:#d5ddea!important;
+                    }
+                    .wcp-kpi-summary-panel .wcp-form>.wcp-line label:before{
+                      margin-right:6px!important;
+                      font-size:11px!important;
+                    }
+                    .wcp-kpi-summary-panel .wcp-form>.wcp-line .wcp-out{
+                      font-size:clamp(13px,0.98vw,16px)!important;
+                      font-weight:820!important;
+                      letter-spacing:-0.01em!important;
+                    }
+                    .wcp-kpi-summary-panel .wcp-divider-invest{
+                      margin:8px 0 10px!important;
+                    }
+                    @media(max-width:1380px){
+                      .wcp-bench-panel .wcp-grid3{
+                        grid-template-columns:minmax(320px,.94fr) minmax(0,1.06fr)!important;
+                      }
+                    }
+                    @media(max-width:1180px){
+                      .wcp-price-note-row{
+                        justify-content:flex-start!important;
+                      }
+                      .wcp-kpi-summary-panel .wcp-kpi-lease-line{
+                        grid-template-columns:1fr!important;
+                      }
+                      .wcp-kpi-summary-panel .wcp-rent-py-inline{
+                        margin-left:0!important;
+                        justify-self:flex-end!important;
+                      }
+                    }
                     @media(max-width:1180px){
                       .wcp-bench-panel .wcp-grid3{
                         grid-template-columns:1fr!important;
@@ -9115,7 +9242,7 @@ window.wr2SummaryCancelEdit = function() {
                           <h3>손품 기반 입찰가 추정</h3>
                           <div class="wcp-grid3" style="margin-top:8px;">
                             <div class="wcp-section"><h4>기준면적</h4><div class="wcp-form">${wcpField('wc_area','전용면적','㎡',s.area,'','')}${wcpField('wc_area_py','전용평수','평',s.areaPy,'','')}</div></div>
-                            <div class="wcp-section"><h4>나의 입찰가</h4><div class="wcp-form">${wcpField('wc_my_bid','입찰가','원',s.myBid,'','')}${wcpField('wc_extra_reserve','예비비','원',s.extraReserve,'','')}${wcpField('wc_target_profit','목표 순이익','원',s.targetProfit,'','예: 30,000,000')}<div class="wcp-bid-actions"><div class="wcp-note orange" id="wcp_my_bid_note">-</div><button class="wcp-btn primary" onclick="wr2CalcUseSuggestedBid()" title="추천 입찰가를 나의 입찰가에 반영">추가 적용</button></div></div></div>
+                            <div class="wcp-section"><h4>나의 입찰가</h4><div class="wcp-form">${wcpField('wc_my_bid','입찰가','원',s.myBid,'','')}<div class="wcp-price-note-row"><div class="wcp-note orange" id="wcp_my_bid_note">-</div></div>${wcpField('wc_extra_reserve','예비비','원',s.extraReserve,'','')}${wcpField('wc_target_profit','목표 순이익','원',s.targetProfit,'','예: 30,000,000')}<div class="wcp-bid-actions"><button class="wcp-btn primary" onclick="wr2CalcUseSuggestedBid()" title="추천 입찰가를 나의 입찰가에 반영">추가 적용</button></div></div></div>
                           </div>
                           <div class="wcp-grid4" style="margin-top:8px;">
                             ${wcpBenchCard(1,'네이버 매매 호가','현재 시장 상한선','wc_bench_max',s.benchMax,'MAX','wcp_bench_max_note')}
@@ -9378,7 +9505,7 @@ window.wr2SummaryCancelEdit = function() {
                   const rentSummary=r.rentPyS.avg?(r.rentPyS.label+' · 월세 '+wcpFormatWon(r.rentMonthly)):'-';
                   setBenchNote('wcp_bench_rent_note',rentSummary,'');
 
-                  wcpSetText('wcp_my_bid_note',(r.price&&r.areaPy)?('@'+Math.round(r.price/r.areaPy/10000).toLocaleString('ko-KR')+'만원/평'):'');
+                  wcpSetText('wcp_my_bid_note',(r.price&&r.areaPy)?('@ '+Math.round(r.price/r.areaPy/10000).toLocaleString('ko-KR')+'만/평'):'');
                   wcpSetText('wcp_price_note',r.price&&r.areaPy?'@ '+Math.round(r.price/r.areaPy/10000).toLocaleString('ko-KR')+'만/평':'-');
                   wcpSetText('wcp_rent_note',r.rentPerPy?'월세 @ '+r.rentPerPy.toFixed(1)+'만/평':'-');
 
