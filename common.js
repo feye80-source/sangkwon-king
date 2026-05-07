@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260507-workroom-v62-rent-summary-filter-fix';
+    window.__SK_BUILD = '20260507-workroom-v63-price-roles-ui-filter';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -5729,6 +5729,25 @@ var _safeLocalSet = function(key, value) {
                   if(key==='perPy') return (seed.minWon&&seed.areaPy)?('@'+Math.round(seed.minWon/seed.areaPy/10000).toLocaleString('ko-KR')+'만/평'):'-';
                   return '-';
                 }
+                function wr2PricePerPyHtml(won, areaPy, cls){
+                  const n=Math.round(Number(won)||0), py=Number(areaPy)||0;
+                  if(!n||!py)return '<small class="wr2-pp muted">@-</small>';
+                  return '<small class="wr2-pp '+(cls||'')+'">@'+Math.round(n/py/10000).toLocaleString('ko-KR')+'만/평</small>';
+                }
+                function wr2MoneyWithPerPy(won, areaPy, cls){
+                  return '<span class="wr2-money-main">'+wr2SummaryFormatWon(won)+'</span>'+wr2PricePerPyHtml(won, areaPy, cls);
+                }
+                function wr2FormatWonInput(v){
+                  const n=wr2BidParseWon(v);
+                  return n?Math.round(n).toLocaleString('ko-KR'):'';
+                }
+                window.wr2FormatBidInput=function(el){
+                  if(!el) return;
+                  const raw=String(el.value||'').trim();
+                  if(!raw) return;
+                  const n=wr2BidParseWon(raw);
+                  if(n) el.value=Math.round(n).toLocaleString('ko-KR');
+                };
                 function wr2BuildMultiLinkedSummaryHtml(room, items){
                   const seeds=(items||[]).map(wr2SummarySeed).filter(Boolean);
                   seeds.forEach(function(s){ s.bidWon = wr2BidSeedBidWon(room, s); });
@@ -5741,7 +5760,8 @@ var _safeLocalSet = function(key, value) {
                   const totalBid=seeds.reduce((a,s)=>a+(s.bidWon||0),0);
                   const totalPerPy=(totalMin&&totalPy)?('@'+Math.round(totalMin/totalPy/10000).toLocaleString('ko-KR')+'만/평'):'-';
                   const rentPerPy=(totalRent&&totalPy)?('@'+Math.round(totalRent/totalPy/10000).toLocaleString('ko-KR')+'만/평'):'-';
-                  const bidPerPy=(totalBid&&totalPy)?('@'+Math.round(totalBid/totalPy/10000).toLocaleString('ko-KR')+'만/평'):'-';
+                  const effectiveBidForPy=totalBid||totalMin;
+                  const bidPerPy=(effectiveBidForPy&&totalPy)?('@'+Math.round(effectiveBidForPy/totalPy/10000).toLocaleString('ko-KR')+'만/평'):'-';
                   const netPrice=(totalBid||totalMin)-totalDeposit;
                   const yieldRate=(netPrice>0&&totalRent>0)?(totalRent*12/netPrice*100):0;
                   const rid=wr2SummaryJs(room&&room.id||'');
@@ -5762,8 +5782,8 @@ var _safeLocalSet = function(key, value) {
                       + row('경매번호',wr2LinkedVal(seed,'caseNo'))
                       + row('전용면적',wr2LinkedVal(seed,'area'))
                       + row('감정가',wr2LinkedVal(seed,'appraisal'))
-                      + row('최저가',wr2LinkedVal(seed,'min')+' <button type="button" class="wr2-apply-mini" onclick="event.stopPropagation();wr2BidSetItem(&quot;'+rid+'&quot;,&quot;'+sid+'&quot;,&quot;'+String(seed.minWon||0)+'&quot;)">적용</button>','blue')
-                      + row('입찰가','<input class="wr2-bid-input" value="'+(seed.bidWon?wr2SummaryEsc(Math.round(seed.bidWon).toLocaleString('ko-KR')):'')+'" placeholder="입찰가" onchange="wr2BidSetItem(&quot;'+rid+'&quot;,&quot;'+sid+'&quot;,this.value)" onclick="event.stopPropagation()">','bid')
+                      + row('최저가',wr2MoneyWithPerPy(seed.minWon,seed.areaPy,'min')+' <button type="button" class="wr2-apply-mini" onclick="event.stopPropagation();wr2BidSetItem(&quot;'+rid+'&quot;,&quot;'+sid+'&quot;,&quot;'+String(seed.minWon||0)+'&quot;)">적용</button>','blue minprice')
+                      + row('입찰가','<input class="wr2-bid-input" value="'+(seed.bidWon?wr2SummaryEsc(Math.round(seed.bidWon).toLocaleString('ko-KR')):'')+'" placeholder="입찰가" oninput="wr2FormatBidInput(this)" onchange="wr2BidSetItem(&quot;'+rid+'&quot;,&quot;'+sid+'&quot;,this.value)" onclick="event.stopPropagation()"> '+wr2PricePerPyHtml(seed.bidWon||0,seed.areaPy,'bid'),'bid bidprice')
                       + row('매각기일',wr2LinkedVal(seed,'biddate'))
                       + row('임차 보증금',wr2SummaryFormatWon(seed.depositWon))
                       + row('임차 월세',wr2SummaryFormatWon(seed.rentWon))
@@ -5780,12 +5800,11 @@ var _safeLocalSet = function(key, value) {
                   html += '<div class="wr2-agg-grid">'
                     + metricCell('전용면적', totalArea?(totalArea.toFixed(2)+'㎡ ('+totalPy.toFixed(1)+'평)'):'-')
                     + metricCell('감정가', wr2SummaryFormatWon(totalApp))
-                    + metricCell('최저가', wr2SummaryFormatWon(totalMin)+' <button type="button" class="wr2-apply-mini" onclick="event.stopPropagation();wr2BidApplyToCalc(&quot;'+rid+'&quot;,&quot;min&quot;)">적용</button>','blue')
-                    + metricCell('입찰가', '<input class="wr2-bid-total-input" value="'+(totalBid?wr2SummaryEsc(Math.round(totalBid).toLocaleString('ko-KR')):'')+'" placeholder="합산 입찰가" onchange="wr2BidSetTotal(&quot;'+rid+'&quot;,this.value)" onclick="event.stopPropagation()"> <button type="button" class="wr2-apply-mini" onclick="event.stopPropagation();wr2BidApplyToCalc(&quot;'+rid+'&quot;,&quot;bid&quot;)">적용</button>','orange')
+                    + metricCell('최저가', '<span class="wr2-money-main">'+wr2SummaryFormatWon(totalMin)+'</span> <small class="wr2-pp min">'+totalPerPy+'</small> <button type="button" class="wr2-apply-mini" onclick="event.stopPropagation();wr2BidApplyToCalc(&quot;'+rid+'&quot;,&quot;min&quot;)">적용</button>','blue minprice')
+                    + metricCell('입찰가', '<input class="wr2-bid-total-input" value="'+(totalBid?wr2SummaryEsc(Math.round(totalBid).toLocaleString('ko-KR')):'')+'" placeholder="합산 입찰가" oninput="wr2FormatBidInput(this)" onchange="wr2BidSetTotal(&quot;'+rid+'&quot;,this.value)" onclick="event.stopPropagation()"> <small class="wr2-pp bid">'+bidPerPy+'</small> <button type="button" class="wr2-apply-mini" onclick="event.stopPropagation();wr2BidApplyToCalc(&quot;'+rid+'&quot;,&quot;bid&quot;)">적용</button>','orange bidprice')
                     + metricCell('임차 보증금', wr2SummaryFormatWon(totalDeposit))
                     + metricCell('임차 월세', wr2SummaryFormatWon(totalRent))
                     + metricCell('매매 평단가', totalPerPy,'green')
-                    + metricCell('입찰 평단가', bidPerPy,'green')
                     + metricCell('월세 평단가', rentPerPy,'green')
                     + (yieldRate>0?metricCell('수익률', yieldRate.toFixed(2)+'%','yellow'):'')
                     + '</div></div></div>';
@@ -7474,9 +7493,14 @@ window.wr2SummaryCancelEdit = function() {
                     .wr2-lcard-row span{color:#8fa0b7!important;font-size:12px!important;font-weight:850!important;padding:7px 9px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;}
                     .wr2-lcard-row b{color:#dbe4f7!important;font-size:clamp(11px,1.05vw,13px)!important;font-weight:900!important;text-align:right!important;padding:7px 10px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;min-width:0!important;}
                     .wr2-lcard-row b.blue{color:#4f8eff!important;}
+                    .wr2-lcard-row b.minprice{color:#60a5fa!important;}
+                    .wr2-lcard-row b.bidprice{color:#fb923c!important;}
                     .wr2-lcard-row b.bid{overflow:visible!important;text-overflow:clip!important;}
+                    .wr2-money-main{font-weight:950!important;}
+                    .wr2-pp{display:inline-block;margin-left:6px;font-size:10px!important;font-weight:900!important;color:#8fa0b7!important;vertical-align:baseline;white-space:nowrap;}
+                    .wr2-pp.min{color:#93c5fd!important}.wr2-pp.bid{color:#fb923c!important}.wr2-pp.muted{color:#64748b!important}
                     .wr2-apply-mini{margin-left:5px;padding:2px 6px;border:1px solid rgba(96,165,250,.35);border-radius:999px;background:rgba(96,165,250,.08);color:#9cc4ff;font-size:10px;font-weight:850;cursor:pointer;vertical-align:middle;}
-                    .wr2-bid-input,.wr2-bid-total-input{width:118px;max-width:100%;padding:3px 7px;border:1px solid rgba(255,255,255,.12);border-radius:8px;background:rgba(0,0,0,.25);color:#f8fafc;font-weight:850;text-align:right;font-size:12px;outline:none;}
+                    .wr2-bid-input,.wr2-bid-total-input{width:118px;max-width:100%;padding:3px 7px;border:1px solid rgba(251,146,60,.34);border-radius:8px;background:rgba(251,146,60,.08);color:#fed7aa;font-weight:900;text-align:right;font-size:12px;outline:none;}
                     .wr2-bid-total-input{width:132px;}
                     .wr2-lcard-menu{position:relative!important;}
                     .wr2-lcard-menu summary{list-style:none!important;cursor:pointer!important;border:1px solid rgba(255,255,255,.14)!important;border-radius:999px!important;width:34px!important;height:30px!important;display:flex!important;align-items:center!important;justify-content:center!important;color:#dbeafe!important;background:rgba(255,255,255,.035)!important;font-weight:900!important;}
@@ -7484,11 +7508,11 @@ window.wr2SummaryCancelEdit = function() {
                     .wr2-lcard-menu-pop{position:absolute!important;right:0!important;top:36px!important;z-index:50!important;min-width:150px!important;padding:8px!important;border:1px solid rgba(148,163,184,.20)!important;background:#111827!important;border-radius:12px!important;box-shadow:0 12px 28px rgba(0,0,0,.35)!important;display:flex!important;flex-direction:column!important;gap:4px!important;}
                     .wr2-lcard-menu-pop a,.wr2-lcard-menu-pop button{border:0!important;background:transparent!important;color:#dbeafe!important;text-align:left!important;padding:8px 10px!important;border-radius:8px!important;font-size:12px!important;font-weight:850!important;cursor:pointer!important;text-decoration:none!important;}
                     .wr2-lcard-menu-pop a:hover,.wr2-lcard-menu-pop button:hover{background:rgba(79,142,255,.12)!important;}
-                    .wr2-aggregate-card{margin-top:10px!important;border:1px solid rgba(79,142,255,.22)!important;background:rgba(24,38,68,.18)!important;border-radius:12px!important;padding:9px!important;min-width:0!important;overflow:hidden!important;}
+                    .wr2-aggregate-card{margin-top:10px!important;border:1px solid rgba(79,142,255,.22)!important;background:rgba(24,38,68,.14)!important;border-radius:12px!important;padding:8px!important;min-width:0!important;overflow:hidden!important;}
                     .wr2-agg-head{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:8px!important;margin-bottom:7px!important;min-width:0!important;}
                     .wr2-agg-head b{font-size:13px!important;font-weight:950!important;color:#f3f6ff!important;white-space:nowrap!important;}
                     .wr2-agg-grid{display:flex!important;flex-wrap:wrap!important;gap:6px!important;border:0!important;border-radius:0!important;overflow:visible!important;background:transparent!important;min-width:0!important;}
-                    .wr2-agg-cell{min-height:30px!important;padding:5px 8px!important;display:flex!important;flex-direction:row!important;align-items:center!important;justify-content:center!important;gap:5px!important;border:1px solid rgba(255,255,255,.08)!important;border-radius:9px!important;background:rgba(3,7,14,.18)!important;min-width:0!important;text-align:center!important;flex:0 1 auto!important;}
+                    .wr2-agg-cell{min-height:28px!important;padding:4px 7px!important;display:flex!important;flex-direction:row!important;align-items:center!important;justify-content:center!important;gap:5px!important;border:1px solid rgba(255,255,255,.08)!important;border-radius:9px!important;background:rgba(3,7,14,.16)!important;min-width:0!important;text-align:center!important;flex:0 1 auto!important;}
                     .wr2-agg-cell span{font-size:10px!important;color:#93a4ba!important;font-weight:900!important;white-space:nowrap!important;}
                     .wr2-agg-val{font-size:12px!important;line-height:1.1!important;color:#e8eefb!important;font-weight:900!important;letter-spacing:-.03em!important;max-width:100%!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;}
                     .wr2-agg-val.blue{color:#4f8eff!important}.wr2-agg-val.green{color:#4ade80!important}.wr2-agg-val.yellow{color:#ffd166!important}
@@ -46052,6 +46076,15 @@ window.addEventListener('DOMContentLoaded', () => {
   function plVisibleItems(items, roomById) {
     var q = ((document.getElementById('pl-search')||{}).value||'').toLowerCase();
     var fs = (document.getElementById('pl-filter-status')||{}).value||'';
+    if (fs === '종료') fs = 'closed';
+    if (fs === '변경' || fs === '미진행') fs = 'changed';
+    if (fs === '활성' || fs === '진행') fs = 'active';
+    if (fs === '전체') fs = '';
+    var ft = (document.getElementById('pl-filter-type')||{}).value||'';
+    if (ft === '유형: 전체' || ft === '전체') ft = '';
+    var fi = (document.getElementById('pl-filter-intent')||{}).value||'';
+    if (fi === '의향: 전체' || fi === '전체') fi = '';
+    var sortMode = (document.getElementById('pl-sort')||{}).value || (document.getElementById('pl-filter-sort')||{}).value || '';
     var showArchived = !!((document.getElementById('pl-show-archived')||{}).checked);
     var showClosed = !!((document.getElementById('pl-show-closed')||{}).checked);
     var canonicalRoomBySaved = {};
@@ -46078,10 +46111,15 @@ window.addEventListener('DOMContentLoaded', () => {
       if (sid && canonicalRoomBySaved[sid] && String(it.roomId || '') !== String(canonicalRoomBySaved[sid])) return false;
       var isArchived = !!it.archived;
       var simple = plEffectiveSimpleStatus(it, roomById);
-      // 기본 목록에서는 종료 물건을 숨기되, 상단 상태 필터에서 '종료'를 선택하면 보여준다.
-      if (simple === 'closed' && fs !== 'closed') return false;
-      if (fs && simple !== fs) return false;
+      // 상태 필터가 명시되면 그 상태만, 전체일 때는 종료 포함 체크가 없으면 종료 제외.
+      if (fs) {
+        if (simple !== fs) return false;
+      } else if (simple === 'closed' && !showClosed) {
+        return false;
+      }
       if (!showArchived && isArchived) return false;
+      if (ft && String(it.type || '') !== String(ft)) return false;
+      if (fi && String(it.intent || '') !== String(fi)) return false;
       if (q) {
         var hay = [it.addr,it.casenum,it.region,it.feature,it.memo].join(' ').toLowerCase();
         if (hay.indexOf(q) < 0) return false;
@@ -46096,6 +46134,23 @@ window.addEventListener('DOMContentLoaded', () => {
       };
       var srA=statusRank(a), srB=statusRank(b);
       if (srA !== srB) return srA - srB;
+      var priceMan = function(it) {
+        var minp = Number(plParseAmountText(it.minprice || '')) || 0;
+        if (minp > 0) return minp;
+        var appr = Number(plParseAmountText(it.appraisal || '')) || 0;
+        if (appr > 0) return appr;
+        var won = Number(plParseWonText(it.result && it.result.won || '')) || 0;
+        if (won > 0) return Math.round(won / 10000);
+        return 0;
+      };
+      if (/최저가.*높|price.*desc/i.test(String(sortMode||''))) {
+        var hpA=priceMan(a), hpB=priceMan(b);
+        if (hpA !== hpB) return hpB - hpA;
+      }
+      if (/최저가.*낮|price.*asc/i.test(String(sortMode||''))) {
+        var lpA=priceMan(a), lpB=priceMan(b);
+        if (lpA !== lpB) return lpA - lpB;
+      }
       // 작업룸 정렬과 동일: D-1, D-2 ... → 지난기일(D+1...) → 미정
       var ad = daysDiff(a.biddate);
       var bd = daysDiff(b.biddate);
@@ -46110,15 +46165,6 @@ window.addEventListener('DOMContentLoaded', () => {
       if (ra === 0 && ad !== bd) return ad - bd;
       if (ra === 1 && ad !== bd) return bd - ad;
 
-      var priceMan = function(it) {
-        var minp = Number(plParseAmountText(it.minprice || '')) || 0;
-        if (minp > 0) return minp;
-        var appr = Number(plParseAmountText(it.appraisal || '')) || 0;
-        if (appr > 0) return appr;
-        var won = Number(plParseWonText(it.result && it.result.won || '')) || 0;
-        if (won > 0) return Math.round(won / 10000);
-        return 0;
-      };
       var ap = priceMan(a);
       var bp = priceMan(b);
       if (ap !== bp) return bp - ap;
