@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260507-workroom-v67-pc-reference-dashboard';
+    window.__SK_BUILD = '20260507-workroom-v68-pc-reference-compact';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -7785,6 +7785,103 @@ window.wr2SummaryCancelEdit = function() {
                     @media(max-width:1500px){.wcp-kpi-strip{gap:8px!important}.wcp-kpi{grid-template-columns:28px minmax(0,1fr)!important;min-height:82px!important;padding:11px 12px!important}.wcp-kpi .kicon{width:26px;height:26px;font-size:22px!important}.wcp-kpi .l{font-size:11.5px!important}.wcp-kpi .v{font-size:clamp(15px,1.12vw,22px)!important}.wcp-kpi .sub{font-size:10.5px!important}.wcp-basis-summary{grid-template-columns:repeat(5,minmax(0,1fr))!important}.wcp-main-grid{grid-template-columns:minmax(280px,.82fr) minmax(430px,1.12fr) minmax(250px,.68fr)!important}.wcp-card{padding:12px!important}.wcp-line{grid-template-columns:minmax(80px,106px) minmax(0,1fr) 18px!important}.wcp-line.rate,.wcp-line.rate.wcp-rate-field{grid-template-columns:minmax(80px,106px) 50px 14px minmax(0,1fr) 18px!important}.wcp-kpi-summary-panel .wcp-line{grid-template-columns:minmax(0,1fr) minmax(94px,auto) 28px!important}.wcp-kpi-summary-panel .wcp-line label{font-size:12px!important}}
                     @media(max-width:1180px){.wcp-kpi-strip{grid-template-columns:repeat(4,minmax(0,1fr))!important}.wcp-main-grid{grid-template-columns:1fr!important}.wcp-main-grid>.wcp-card{height:auto!important}.wcp-calc-combined-grid{grid-template-columns:1fr 1fr!important}.wcp-basis-summary{grid-template-columns:repeat(3,minmax(0,1fr))!important}.wcp-basis-toolbar{grid-template-columns:1fr!important}.wcp-hidden-picker{justify-self:stretch!important}.wcp-linked-picker{width:100%!important}.wcp-btnrow{justify-content:flex-start!important}}
                     @media(max-width:760px){.wcp-kpi-strip{grid-template-columns:repeat(2,minmax(0,1fr))!important}.wcp-basis-summary{grid-template-columns:repeat(2,minmax(0,1fr))!important}.wcp-calc-combined-grid{grid-template-columns:1fr!important}.wcp-bench-panel .wcp-grid3,.wcp-bench-panel .wcp-grid4{grid-template-columns:1fr!important}.wcp-line,.wcp-line.rate,.wcp-line.rate.wcp-rate-field{grid-template-columns:1fr!important}.wcp-unit{text-align:right!important}.wcp-kpi-summary-panel .wcp-line{grid-template-columns:1fr!important}.wcp-kpi-summary-panel .wcp-out{justify-content:flex-start!important}}
+
+
+                    /* v68: PC reference compact exact-pass — generated mockup proportions, smaller font, no clipping */
+                    .wr2-calc-pro-shell{font-size:12px!important;line-height:1.24!important;padding:0 0 4px!important;overflow-x:hidden!important;}
+                    .wcp-top{margin:0 0 8px!important;}
+                    .wcp-kpi-strip{grid-template-columns:repeat(7,minmax(0,1fr))!important;gap:8px!important;}
+                    .wcp-kpi{grid-template-columns:28px minmax(0,1fr)!important;gap:8px!important;min-height:74px!important;padding:10px 12px!important;border-radius:10px!important;}
+                    .wcp-kpi .kicon{width:26px!important;height:26px!important;font-size:22px!important;}
+                    .wcp-kpi .kmeta{gap:3px!important;}
+                    .wcp-kpi .l{font-size:10.5px!important;line-height:1.12!important;}
+                    .wcp-kpi .v{font-size:clamp(15px,1.02vw,20px)!important;line-height:1.04!important;letter-spacing:-.035em!important;}
+                    .wcp-kpi .sub{font-size:10.5px!important;line-height:1.05!important;}
+
+                    .wcp-basis-toolbar{grid-template-columns:auto minmax(160px,1fr) auto!important;gap:8px!important;padding:9px 12px!important;border-radius:10px 10px 0 0!important;}
+                    .wcp-basis-titlewrap{gap:8px!important;}
+                    .wcp-basis-titlewrap b{font-size:20px!important;line-height:1.05!important;}
+                    .wcp-linked-picker{padding:2px!important;}
+                    .wcp-linked-picker>span{display:none!important;}
+                    .wcp-link-choice{padding:5px 11px!important;font-size:11px!important;}
+                    .wcp-btn{padding:6px 11px!important;font-size:11px!important;}
+                    .wcp-btn.small{padding:5px 10px!important;font-size:11px!important;}
+                    .wcp-basis-summary{grid-template-columns:minmax(86px,.78fr) minmax(125px,1.08fr) minmax(125px,1.08fr) minmax(142px,1.25fr) minmax(96px,.82fr) minmax(102px,.86fr) minmax(124px,1.08fr) minmax(100px,.86fr) minmax(88px,.76fr)!important;gap:7px!important;margin:0 0 9px!important;padding:10px 12px!important;border-radius:0 0 10px 10px!important;}
+                    .wcp-basis-chip{min-height:64px!important;padding:10px 11px!important;border-radius:9px!important;gap:5px!important;}
+                    .wcp-basis-chip .l{font-size:10.5px!important;line-height:1.08!important;}
+                    .wcp-basis-chip .v{font-size:clamp(13px,.88vw,18px)!important;line-height:1.07!important;letter-spacing:-.035em!important;}
+                    .wcp-basis-chip .sub{font-size:10.5px!important;line-height:1.05!important;}
+
+                    .wcp-main-grid{grid-template-columns:minmax(410px,.92fr) minmax(560px,1.32fr) minmax(300px,.76fr)!important;gap:9px!important;align-items:stretch!important;}
+                    .wcp-card{padding:12px!important;border-radius:11px!important;}
+                    .wcp-card h3{font-size:18px!important;line-height:1.08!important;margin:0 0 9px!important;letter-spacing:-.025em!important;}
+                    .wcp-section{padding:9px!important;border-radius:9px!important;}
+                    .wcp-section+ .wcp-section{margin-top:7px!important;}
+                    .wcp-section h4,.wcp-calc-col>h4{font-size:12.5px!important;line-height:1.12!important;margin:0 0 7px!important;}
+                    .wcp-sub-inline{font-size:10.5px!important;}
+
+                    .wcp-bench-panel .wcp-grid3{grid-template-columns:minmax(112px,.85fr) minmax(172px,1.28fr) minmax(130px,.96fr)!important;gap:7px!important;}
+                    .wcp-bench-panel .wcp-grid3 .wcp-section{min-height:118px!important;padding:9px!important;}
+                    .wcp-bench-panel .wcp-grid3 .wcp-line{grid-template-columns:minmax(44px,62px) minmax(0,1fr) 16px!important;gap:4px!important;min-height:28px!important;}
+                    .wcp-bench-panel .wcp-grid3 .wcp-line label{font-size:10.5px!important;}
+                    .wcp-bench-panel .wcp-grid3 .wcp-inp{min-height:28px!important;font-size:11.5px!important;padding:5px 7px!important;}
+                    .wcp-resultbar{padding:10px 9px!important;gap:5px!important;border-radius:9px!important;}
+                    .wcp-resultbar .label{font-size:10.5px!important;}
+                    .wcp-resultbar .value{font-size:clamp(15px,1.02vw,19px)!important;}
+                    .wcp-bench-panel .wcp-grid4{gap:7px!important;margin-top:7px!important;}
+                    .wcp-bench-card{min-height:130px!important;padding:10px 11px!important;border-radius:9px!important;gap:5px!important;}
+                    .wcp-bench-card .num{width:20px!important;height:20px!important;font-size:11px!important;}
+                    .wcp-bench-card .top-left{gap:7px!important;}
+                    .wcp-bench-card .name{font-size:12px!important;line-height:1.08!important;}
+                    .wcp-bench-card .desc{font-size:10px!important;line-height:1.1!important;}
+                    .wcp-badge{font-size:9.5px!important;padding:2px 8px!important;}
+                    .wcp-bench-card .wcp-inp{min-height:31px!important;font-size:12.5px!important;padding:5px 8px!important;}
+                    .wcp-bench-note{min-height:27px!important;}
+                    .wcp-bench-note-py{font-size:10.5px!important;line-height:1.15!important;}
+                    .wcp-bench-note-amt{font-size:11.5px!important;line-height:1.15!important;padding-top:4px!important;}
+                    .wcp-bench-card.rent-yield .rent-yield-row{grid-template-columns:minmax(0,1fr) 66px 16px!important;gap:5px!important;}
+                    .wcp-bench-card.rent-yield .rent-yield-row span{font-size:10px!important;}
+
+                    .wcp-calc-combined-head{margin:0 0 9px!important;}
+                    .wcp-calc-combined-head h3{font-size:18px!important;}
+                    .wcp-status{font-size:10.5px!important;}
+                    .wcp-status:before{font-size:7px!important;margin-right:3px!important;}
+                    .wcp-calc-combined-grid{grid-template-columns:minmax(0,1fr) minmax(0,1.05fr)!important;gap:8px!important;}
+                    .wcp-calc-col{padding:10px!important;border-radius:9px!important;}
+                    .wcp-subsec{padding-top:7px!important;margin-top:7px!important;}
+                    .wcp-subsec h5{font-size:11.5px!important;line-height:1.12!important;margin:0 0 5px!important;}
+                    .wcp-form{gap:5px!important;}
+                    .wcp-line{grid-template-columns:minmax(78px,104px) minmax(0,1fr) 17px!important;gap:6px!important;min-height:28px!important;}
+                    .wcp-line.rate,.wcp-line.rate.wcp-rate-field{grid-template-columns:minmax(78px,104px) minmax(42px,52px) 13px minmax(0,1fr) 17px!important;gap:6px!important;}
+                    .wcp-line label{font-size:10.5px!important;line-height:1.12!important;}
+                    .wcp-inp,.wcp-out{min-height:28px!important;border-radius:6px!important;padding:4px 7px!important;font-size:11.5px!important;line-height:1.1!important;}
+                    .wcp-unit{font-size:9.5px!important;}
+                    .wcp-note{font-size:9.5px!important;line-height:1.1!important;}
+                    .wcp-loan-rule{margin-top:7px!important;padding:9px!important;border-radius:9px!important;}
+                    .wcp-loan-rule .title{font-size:11.5px!important;line-height:1.15!important;padding-bottom:6px!important;margin-bottom:7px!important;}
+                    .wcp-loan-rule .chip.on b{font-size:clamp(20px,1.35vw,27px)!important;}
+                    .wcp-loan-rule .help{font-size:10.5px!important;line-height:1.2!important;margin-top:4px!important;}
+
+                    .wcp-kpi-summary-panel h3{font-size:18px!important;margin-bottom:12px!important;}
+                    .wcp-kpi-summary-panel .wcp-form{gap:7px!important;}
+                    .wcp-kpi-summary-panel .wcp-line{grid-template-columns:minmax(0,1fr) minmax(96px,auto) 24px!important;min-height:32px!important;gap:7px!important;}
+                    .wcp-kpi-summary-panel .wcp-line label{font-size:11.5px!important;line-height:1.15!important;}
+                    .wcp-kpi-summary-panel .wcp-line label:before{font-size:10.5px!important;margin-right:7px!important;}
+                    .wcp-kpi-summary-panel .wcp-out{font-size:clamp(13px,.92vw,17px)!important;line-height:1.1!important;}
+                    .wcp-kpi-summary-panel .wcp-unit{font-size:10.5px!important;}
+                    .wcp-kpi-summary-panel .wcp-divider{margin:5px 0!important;}
+
+                    @media(max-width:1600px){
+                      .wcp-kpi{min-height:68px!important;padding:9px 10px!important;grid-template-columns:24px minmax(0,1fr)!important}.wcp-kpi .kicon{width:23px!important;height:23px!important;font-size:19px!important}.wcp-kpi .l{font-size:10px!important}.wcp-kpi .v{font-size:clamp(13.5px,.98vw,18px)!important}.wcp-kpi .sub{font-size:9.5px!important}
+                      .wcp-main-grid{grid-template-columns:minmax(380px,.94fr) minmax(510px,1.30fr) minmax(280px,.76fr)!important}.wcp-card{padding:10px!important}.wcp-basis-chip{padding:9px 10px!important}.wcp-basis-chip .v{font-size:clamp(12.5px,.84vw,16px)!important}
+                      .wcp-line{grid-template-columns:minmax(72px,96px) minmax(0,1fr) 16px!important}.wcp-line.rate,.wcp-line.rate.wcp-rate-field{grid-template-columns:minmax(72px,96px) 46px 12px minmax(0,1fr) 16px!important}
+                    }
+                    @media(max-width:1380px){
+                      .wcp-kpi-strip{grid-template-columns:repeat(4,minmax(0,1fr))!important}.wcp-basis-summary{grid-template-columns:repeat(3,minmax(0,1fr))!important}.wcp-main-grid{grid-template-columns:1fr!important}.wcp-main-grid>.wcp-card{height:auto!important}.wcp-calc-combined-grid{grid-template-columns:1fr 1fr!important}.wcp-bench-panel .wcp-grid3{grid-template-columns:repeat(3,minmax(0,1fr))!important}.wcp-bench-panel .wcp-grid4{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+                    }
+                    @media(max-width:860px){
+                      .wcp-kpi-strip{grid-template-columns:repeat(2,minmax(0,1fr))!important}.wcp-basis-toolbar{grid-template-columns:1fr!important}.wcp-basis-summary{grid-template-columns:repeat(2,minmax(0,1fr))!important}.wcp-calc-combined-grid,.wcp-bench-panel .wcp-grid3,.wcp-bench-panel .wcp-grid4{grid-template-columns:1fr!important}.wcp-line,.wcp-line.rate,.wcp-line.rate.wcp-rate-field{grid-template-columns:1fr!important}.wcp-unit{text-align:right!important}.wcp-kpi-summary-panel .wcp-line{grid-template-columns:1fr!important}.wcp-kpi-summary-panel .wcp-out{justify-content:flex-start!important}
+                    }
                   `;
 
                 }
@@ -7802,6 +7899,17 @@ window.wr2SummaryCancelEdit = function() {
                 function wcpCommaValue(v){ const raw=String(v==null?'':v).trim(); if(!raw) return ''; const n=wcpNum(raw); if(!n) return raw==='0'?'0':''; return Math.round(n).toLocaleString('ko-KR'); }
                 function wcpFormatMoneyInput(el){ if(!el) return; const raw=String(el.value||''); if(!raw || !/[0-9]/.test(raw)) return; const pos=el.selectionStart||raw.length; const digitBefore=raw.slice(0,pos).replace(/[^0-9]/g,'').length; const only=raw.replace(/[^0-9]/g,''); if(!only){ el.value=''; return; } const next=Number(only).toLocaleString('ko-KR'); el.value=next; try{ let seen=0, newPos=next.length; for(let i=0;i<next.length;i++){ if(/[0-9]/.test(next[i])) seen++; if(seen>=digitBefore){ newPos=i+1; break; } } el.setSelectionRange(newPos,newPos); }catch(e){} }
                 function wcpFormatMoneyInputs(){ document.querySelectorAll('.wr2-calc-pro-shell [data-wcp-money="1"]').forEach(function(el){ if(el.value) wcpSetWon(el.id,wcpReadWon(el.id)); }); }
+                function wcpFormatKrwMixed(n){
+                  n=Math.round(Number(n)||0);
+                  if(!n) return '-';
+                  if(n>=100000000){
+                    const eok=Math.floor(n/100000000);
+                    const man=Math.round((n%100000000)/10000);
+                    return eok.toLocaleString('ko-KR')+'억'+(man?(' '+man.toLocaleString('ko-KR')+'만원'):'원');
+                  }
+                  if(n>=10000) return Math.round(n/10000).toLocaleString('ko-KR')+'만원';
+                  return n.toLocaleString('ko-KR')+'원';
+                }
                 function wcpFormatShort(n){ n=Math.round(Number(n)||0); if(!n) return '-'; if(n>=100000000) return (n/100000000).toFixed(n%100000000?1:0).replace('.0','')+'억'; return Math.round(n/10000).toLocaleString('ko-KR')+'만'; }
                 function wcpNowText(ts){ const d=new Date(ts||Date.now()); const z=function(n){return String(n).padStart(2,'0')}; return d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate())+' '+z(d.getHours())+':'+z(d.getMinutes()); }
                 function wcpLocalKey(room){ return 'wr2_calc_pro_v6_'+(room&&room.id||'default'); }
@@ -7955,7 +8063,7 @@ window.wr2SummaryCancelEdit = function() {
                           <h3>손품 기반 입찰가 추정</h3>
                           <div class="wcp-grid3" style="margin-top:8px;">
                             <div class="wcp-section"><h4>기준면적</h4><div class="wcp-form">${wcpField('wc_area','전용면적','㎡',s.area,'','')}${wcpField('wc_area_py','전용평수','평',s.areaPy,'','')}</div></div>
-                            <div class="wcp-section"><h4>나의 입찰가</h4><div class="wcp-form">${wcpField('wc_my_bid','입찰가','원',s.myBid,'wcp_my_bid_note','')}${wcpField('wc_extra_reserve','예비비','원',s.extraReserve,'','')}${wcpField('wc_target_profit','목표 순이익','원',s.targetProfit,'','예: 30,000,000')}<button class="wcp-btn primary" onclick="wr2CalcUseSuggestedBid()" style="justify-self:start;" title="추천 입찰가를 나의 입찰가에 반영">추천가 적용</button></div></div>
+                            <div class="wcp-section"><h4>나의 입찰가</h4><div class="wcp-form">${wcpField('wc_my_bid','입찰가','원',s.myBid,'wcp_my_bid_note','')}${wcpField('wc_extra_reserve','예비비','원',s.extraReserve,'','')}${wcpField('wc_target_profit','목표 순이익','원',s.targetProfit,'','예: 30,000,000')}<button class="wcp-btn primary" onclick="wr2CalcUseSuggestedBid()" style="justify-self:start;" title="추천 입찰가를 나의 입찰가에 반영">추가 적용</button></div></div>
                             <div class="wcp-section"><h4>입찰가 추정 결과</h4><div class="wcp-resultbar"><span class="label">추천 입찰가</span><span class="value" id="wcp_suggested_bid">-</span></div><div class="wcp-note orange" id="wcp_bench_summary" style="text-align:left;margin-top:6px;">-</div></div>
                           </div>
                           <div class="wcp-grid4" style="margin-top:8px;">
@@ -8098,12 +8206,12 @@ window.wr2SummaryCancelEdit = function() {
                     const pp=function(w){ return (w&&py)?('@'+Math.round(w/py/10000).toLocaleString('ko-KR')+'만/평'):'-'; };
                     wcpSetText('wcp_basis_area',r.areaPy?(Number(wcpRead('wc_area')||0).toLocaleString('ko-KR')+'㎡'):'-');
                     wcpSetText('wcp_basis_area_sub',r.areaPy?'('+Number(r.areaPy).toFixed(1)+'평)':'-');
-                    wcpSetText('wcp_basis_appraisal',wcpFormatWon(app)); wcpSetText('wcp_basis_appraisal_py',pp(app));
-                    wcpSetText('wcp_basis_min',wcpFormatWon(min)); wcpSetText('wcp_basis_min_py',pp(min));
+                    wcpSetText('wcp_basis_appraisal',wcpFormatKrwMixed(app)); wcpSetText('wcp_basis_appraisal_py',pp(app));
+                    wcpSetText('wcp_basis_min',wcpFormatKrwMixed(min)); wcpSetText('wcp_basis_min_py',pp(min));
                     wcpSetText('wcp_basis_bid',wcpFormatWon(price)); wcpSetText('wcp_basis_bid_py',pp(price));
                     wcpSetText('wcp_basis_tenant_py',pp(price));
-                    wcpSetText('wcp_basis_deposit',wcpFormatWon(r.dep));
-                    wcpSetText('wcp_basis_rent',wcpFormatWon(r.rent));
+                    wcpSetText('wcp_basis_deposit',wcpFormatKrwMixed(r.dep));
+                    wcpSetText('wcp_basis_rent',wcpFormatKrwMixed(r.rent));
                     const rentPP=(r.rentPerPy?('@'+(Math.abs(r.rentPerPy-Math.round(r.rentPerPy))<0.05?Math.round(r.rentPerPy):r.rentPerPy.toFixed(1))+'만/평'):'-');
                     wcpSetText('wcp_basis_rent_py',rentPP); wcpSetText('wcp_basis_rent_py2',rentPP);
                     wcpSetText('wcp_basis_yield',(r.absYield||0).toFixed(2)+'%');
