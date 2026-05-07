@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260508-workroom-v73-notefix';
+    window.__SK_BUILD = '20260508-workroom-v74-clean-fix';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -8185,6 +8185,125 @@ window.wr2SummaryCancelEdit = function() {
                       .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(1),.wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(2),.wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(3){grid-area:auto!important;min-height:auto!important;}
                       .wcp-line-note-right{grid-template-columns:1fr!important;}
                       .wcp-inline-note{text-align:right!important;}
+                    }
+
+
+                    /* v74 FINAL FIX: layout repair only — no new visual gimmicks */
+                    .wr2-calc-pro-shell{
+                      font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Pretendard","Noto Sans KR",sans-serif!important;
+                      font-size:11px!important;line-height:1.22!important;
+                    }
+
+                    /* section titles: smaller, site-like */
+                    .wcp-bench-panel>h3,
+                    .wcp-calc-combined-head h3,
+                    .wcp-kpi-summary-panel h3{
+                      font-size:14px!important;line-height:1.1!important;font-weight:760!important;
+                      margin:0 0 8px!important;letter-spacing:-.025em!important;color:#f1f6ff!important;
+                    }
+                    .wcp-card{padding:10px!important;border-radius:11px!important;overflow:hidden!important;}
+                    .wcp-section{padding:9px!important;border-radius:10px!important;overflow:hidden!important;}
+                    .wcp-section h4,.wcp-calc-col>h4{font-size:11.4px!important;font-weight:720!important;margin:0 0 6px!important;color:#dfe8f5!important;}
+                    .wcp-calc-col .wcp-sub-inline{display:none!important;}
+
+                    /* 1) 손품 상단: 3개를 한 줄에 넣지 않음. 기준면적은 넉넉한 고정폭, 우측은 위/아래 배치 */
+                    .wcp-bench-panel .wcp-grid3{
+                      display:grid!important;
+                      grid-template-columns:270px minmax(360px,1fr)!important;
+                      grid-template-areas:'basis bid' 'basis result'!important;
+                      gap:10px!important;align-items:stretch!important;margin-top:6px!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(1){grid-area:basis!important;min-height:214px!important;}
+                    .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(2){grid-area:bid!important;min-height:112px!important;}
+                    .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(3){grid-area:result!important;min-height:112px!important;}
+                    .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(1) .wcp-form{gap:8px!important;}
+                    .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(1) .wcp-line{
+                      grid-template-columns:74px minmax(90px,1fr) 18px!important;
+                      gap:6px!important;min-height:30px!important;align-items:center!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(1) .wcp-line label{
+                      font-size:10.5px!important;font-weight:650!important;white-space:nowrap!important;overflow:visible!important;text-overflow:clip!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(1) .wcp-inp{
+                      min-width:0!important;max-width:none!important;width:100%!important;box-sizing:border-box!important;
+                      font-size:12px!important;font-weight:720!important;text-align:right!important;overflow:hidden!important;text-overflow:clip!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(1) .wcp-unit{
+                      display:block!important;min-width:18px!important;font-size:9.5px!important;white-space:nowrap!important;
+                    }
+
+                    /* 2) 나의 입찰가: @평단가는 겹치지 않는 작은 보조텍스트로만 표시 */
+                    #wcp_my_bid_note,#wcp_price_note,#wcp_rent_note{
+                      display:block!important;position:static!important;float:none!important;clear:both!important;
+                      width:fit-content!important;max-width:100%!important;margin:2px 0 0 auto!important;padding:0!important;
+                      background:none!important;border:0!important;border-radius:0!important;min-height:auto!important;
+                      color:#f2a45f!important;font-size:10px!important;font-weight:680!important;line-height:1.2!important;text-align:right!important;
+                      white-space:nowrap!important;transform:none!important;
+                    }
+                    .wcp-note[id*="bench"]{background:none!important;border:0!important;padding:0!important;}
+                    .wcp-line-note-right{grid-template-columns:minmax(82px,112px) minmax(0,1fr) 18px!important;}
+                    .wcp-inline-note{display:none!important;}
+                    .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(2) .wcp-form{gap:5px!important;}
+                    .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(2) .wcp-line{
+                      grid-template-columns:82px minmax(0,1fr) 18px!important;gap:6px!important;min-height:28px!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(2) .wcp-inp{min-height:28px!important;font-size:11.5px!important;}
+                    .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(2) .wcp-btn{margin-top:3px!important;}
+
+                    /* 3) 추정결과: 과한 높이 없이 자연스럽게 */
+                    .wcp-resultbar{min-height:76px!important;padding:10px!important;display:flex!important;flex-direction:column!important;justify-content:center!important;}
+                    .wcp-resultbar .label{font-size:10.3px!important;font-weight:650!important;color:#aebbd0!important;}
+                    .wcp-resultbar .value{font-size:18px!important;font-weight:760!important;line-height:1.12!important;white-space:nowrap!important;overflow:visible!important;text-overflow:clip!important;}
+                    #wcp_bench_summary{font-size:10px!important;line-height:1.2!important;margin-top:4px!important;}
+
+                    /* 4) 하단 4개 카드는 건드린 부분 복구: 2x2 유지, 쓸데없는 세로 공백 제거 */
+                    .wcp-bench-panel .wcp-grid4{
+                      display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;
+                      gap:8px!important;margin-top:8px!important;align-items:stretch!important;
+                    }
+                    .wcp-bench-card{
+                      min-height:124px!important;padding:9px 10px!important;border-radius:10px!important;
+                      display:flex!important;flex-direction:column!important;justify-content:flex-start!important;gap:5px!important;
+                    }
+                    .wcp-bench-card .top{margin:0!important;min-height:20px!important;align-items:center!important;}
+                    .wcp-bench-card .top-left{gap:6px!important;min-width:0!important;}
+                    .wcp-bench-card .num{width:18px!important;height:18px!important;font-size:10px!important;font-weight:760!important;flex:0 0 18px!important;}
+                    .wcp-bench-card .name{font-size:11.2px!important;font-weight:720!important;line-height:1.1!important;color:#eef5ff!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;}
+                    .wcp-bench-card .desc{font-size:9.7px!important;line-height:1.15!important;color:#93a3b9!important;margin:0!important;}
+                    .wcp-badge{font-size:9px!important;font-weight:740!important;padding:1px 7px!important;}
+                    .wcp-bench-card .wcp-inp{min-height:28px!important;font-size:12px!important;font-weight:720!important;margin:3px 0 0!important;}
+                    .wcp-bench-note{min-height:0!important;margin-top:4px!important;display:flex!important;flex-direction:column!important;gap:2px!important;}
+                    .wcp-bench-note-py{font-size:9.5px!important;line-height:1.15!important;text-align:right!important;color:#9aa9bd!important;font-weight:600!important;}
+                    .wcp-bench-note-amt{font-size:10.8px!important;line-height:1.15!important;text-align:right!important;font-weight:720!important;border-top:0!important;padding-top:0!important;}
+                    .wcp-bench-card.rent-yield .rent-yield-row{grid-template-columns:minmax(0,1fr) 54px 14px!important;gap:5px!important;margin-top:3px!important;}
+                    .wcp-bench-card.rent-yield .rent-yield-row span{font-size:9.5px!important;}
+
+                    /* 5) 수익률 계산기 내부는 헤더/행간 압축 */
+                    .wcp-calc-combined-head{margin:0 0 6px!important;}
+                    .wcp-status{font-size:10px!important;font-weight:650!important;}
+                    .wcp-calc-col{padding:8px!important;}
+                    .wcp-subsec{padding-top:6px!important;margin-top:6px!important;}
+                    .wcp-subsec h5{font-size:10.4px!important;font-weight:680!important;margin:0 0 5px!important;}
+                    .wcp-form{gap:5px!important;}
+                    .wcp-line{grid-template-columns:minmax(80px,104px) minmax(0,1fr) 17px!important;gap:6px!important;min-height:27px!important;align-items:center!important;}
+                    .wcp-line.rate,.wcp-line.rate.wcp-rate-field{grid-template-columns:minmax(80px,104px) 44px 12px minmax(0,1fr) 17px!important;gap:6px!important;}
+                    .wcp-line label{font-size:10.4px!important;font-weight:620!important;color:#aebbd0!important;}
+                    .wcp-inp,.wcp-out{min-height:27px!important;padding:4px 7px!important;font-size:11px!important;font-weight:680!important;}
+                    .wcp-unit{font-size:9.5px!important;color:#93a0b3!important;}
+
+                    /* 6) 대출 가능금액은 보조정보 — 강조 금지 */
+                    .wcp-loan-rule{margin-top:5px!important;padding:6px 8px!important;border-radius:8px!important;background:rgba(8,18,32,.52)!important;border:1px solid rgba(96,165,250,.14)!important;}
+                    .wcp-loan-rule .title{font-size:9.8px!important;font-weight:620!important;color:#90a8c7!important;border:0!important;padding:0!important;margin:0 0 3px!important;}
+                    .wcp-loan-rule .chip.on b{font-size:11.8px!important;font-weight:680!important;color:#9fc1ee!important;}
+                    .wcp-loan-rule .help{font-size:8.8px!important;color:#7f8fa5!important;margin-top:2px!important;}
+
+                    @media(max-width:1380px){
+                      .wcp-bench-panel .wcp-grid3{grid-template-columns:250px minmax(0,1fr)!important;grid-template-areas:'basis bid' 'basis result'!important;}
+                      .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(1){min-height:200px!important;}
+                    }
+                    @media(max-width:900px){
+                      .wcp-bench-panel .wcp-grid3{grid-template-columns:1fr!important;grid-template-areas:none!important;}
+                      .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(1),.wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(2),.wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(3){grid-area:auto!important;min-height:auto!important;}
                     }
                   `;
 
