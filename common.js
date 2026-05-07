@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260508-workroom-v76-bench-ratio-kpi-font';
+    window.__SK_BUILD = '20260508-workroom-v77-kpi-rent-first-height-fix';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -8452,6 +8452,112 @@ window.wr2SummaryCancelEdit = function() {
                       .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(2),
                       .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(3){grid-area:auto!important;min-height:auto!important;}
                     }
+
+
+                    /* v77: 월세 평단가 KPI 첫 항목 + 손품 상단 높이 재조정 */
+                    #wcp_rent_note{display:none!important;}
+
+                    .wcp-bench-panel .wcp-grid3{
+                      grid-template-columns:minmax(330px,.92fr) minmax(0,1fr)!important;
+                      grid-template-areas:'basis bid' 'basis result'!important;
+                      gap:10px!important;
+                      align-items:start!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(1){
+                      grid-area:basis!important;
+                      min-height:214px!important;
+                      padding:13px 14px!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(2){
+                      grid-area:bid!important;
+                      min-height:136px!important;
+                      padding:12px 14px!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(3){
+                      grid-area:result!important;
+                      min-height:92px!important;
+                      padding:12px 14px!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(2) .wcp-form{
+                      gap:5px!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(2) .wcp-line{
+                      grid-template-columns:86px minmax(0,1fr) 18px!important;
+                      min-height:29px!important;
+                      gap:7px!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(2) .wcp-inp{
+                      min-height:29px!important;
+                      font-size:11.5px!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(2) .wcp-btn{
+                      margin-top:4px!important;
+                      padding:6px 12px!important;
+                    }
+                    #wcp_my_bid_note{
+                      margin:2px 18px 0 0!important;
+                      text-align:right!important;
+                      font-size:10px!important;
+                      line-height:1.1!important;
+                    }
+
+                    .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(3) .wcp-resultbar{
+                      min-height:58px!important;
+                      padding:9px 11px!important;
+                      justify-content:center!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(3) .wcp-resultbar .label{
+                      font-size:10px!important;
+                      margin-bottom:4px!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(3) .wcp-resultbar .value{
+                      font-size:15px!important;
+                      line-height:1.1!important;
+                    }
+                    #wcp_bench_summary{
+                      margin-top:4px!important;
+                      font-size:10px!important;
+                      line-height:1.1!important;
+                      white-space:nowrap!important;
+                      overflow:hidden!important;
+                      text-overflow:ellipsis!important;
+                    }
+
+                    .wcp-kpi-summary-panel .wcp-line{
+                      min-height:27px!important;
+                      grid-template-columns:minmax(0,1fr) minmax(92px,auto) 22px!important;
+                    }
+                    .wcp-kpi-summary-panel .wcp-line label{
+                      font-size:10.2px!important;
+                      font-weight:660!important;
+                    }
+                    .wcp-kpi-summary-panel .wcp-out{
+                      font-size:clamp(11.5px,.86vw,14px)!important;
+                      font-weight:760!important;
+                    }
+                    #wcp_o_rent_per_py{
+                      color:#fb923c!important;
+                      font-size:13px!important;
+                      font-weight:780!important;
+                    }
+
+                    @media(max-width:1620px){
+                      .wcp-bench-panel .wcp-grid3{
+                        grid-template-columns:minmax(310px,.9fr) minmax(0,1fr)!important;
+                      }
+                    }
+                    @media(max-width:1180px){
+                      .wcp-bench-panel .wcp-grid3{
+                        grid-template-columns:1fr!important;
+                        grid-template-areas:none!important;
+                      }
+                      .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(1),
+                      .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(2),
+                      .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(3){
+                        grid-area:auto!important;
+                        min-height:auto!important;
+                      }
+                    }
                   `;
 
                 }
@@ -8655,11 +8761,11 @@ window.wr2SummaryCancelEdit = function() {
                         <div class="wcp-card wcp-kpi-summary-panel">
                           <h3>▥ 결과 / KPI 요약</h3>
                               <div class="wcp-form">
+                                ${wcpOutputRow('월세 평단가','wcp_o_rent_per_py','','orange')}
                                 ${wcpOutputRow('월 순수익','wcp_o_month_net_kpi','원','blue')}
                                 ${wcpOutputRow('연 순수익','wcp_o_year_net','원','orange')}
                                 ${wcpOutputRow('초기 필요자금','wcp_o_initial_need','원','orange')}
                                 ${wcpOutputRow('전용 평단가','wcp_o_per_py','원/평','')}
-                                ${wcpOutputRow('월세 평단가','wcp_o_rent_per_py','','orange')}
                                 <div class="wcp-divider wcp-divider-invest"></div>
                                 ${wcpOutputRow('총 투자금 (보증금 미포함)','wcp_p_total_no_deposit','원','')}
                                 ${wcpOutputRow('총 투자금 (보증금 포함)','wcp_p_total_with_deposit','원','green')}
