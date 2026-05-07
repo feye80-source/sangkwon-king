@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260507-workroom-v61-tenant-rent-unit-fix';
+    window.__SK_BUILD = '20260507-workroom-v62-rent-summary-filter-fix';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -5610,7 +5610,8 @@ var _safeLocalSet = function(key, value) {
                   // 임차보증금은 임차/점유 계열에서 명시적으로 얻은 값만 사용한다.
                   // 경매의 보증금/입찰보증금/매수신청보증금은 절대 임대보증금으로 fallback하지 않는다.
                   const safeDepositWon = (occ && occ.leaseDepositWon) ? occ.leaseDepositWon : (isAuctionSeed ? 0 : wr2SummaryMoneyWon(d['임대보증금']||d['기보증금_만원']||0,true,0));
-                  return {id:String(item.id||''), item, title, address, caseNo:d['사건번호']||d['경매번호']||item.caseNo||'', objectNo:d['물건번호']||item.objectNo||'', biddate:d['매각기일']||item.biddate||item.bidDate||'', appraisalWon:app, minWon:min, areaM2, areaPy, depositWon:safeDepositWon, rentWon:occ&&occ.monthlyRentWon?occ.monthlyRentWon:wr2SummaryMoneyWon(d['월세']||d['월세_만원']||0,true,0), url:d['상세URL']||d['옥션원URL']||d['온비드URL']||d['url']||item.url||''};
+                  const safeRentWon = (occ && occ.monthlyRentWon) ? occ.monthlyRentWon : (isAuctionSeed ? 0 : wr2SummaryMoneyWon(d['월세']||d['월세_만원']||0,true,0));
+                  return {id:String(item.id||''), item, title, address, caseNo:d['사건번호']||d['경매번호']||item.caseNo||'', objectNo:d['물건번호']||item.objectNo||'', biddate:d['매각기일']||item.biddate||item.bidDate||'', appraisalWon:app, minWon:min, areaM2, areaPy, depositWon:safeDepositWon, rentWon:safeRentWon, url:d['상세URL']||d['옥션원URL']||d['온비드URL']||d['url']||item.url||''};
                 }
                 function wr2NormalizeRoomLinkedItems(room){
                   if(!room)return [];
@@ -46077,9 +46078,8 @@ window.addEventListener('DOMContentLoaded', () => {
       if (sid && canonicalRoomBySaved[sid] && String(it.roomId || '') !== String(canonicalRoomBySaved[sid])) return false;
       var isArchived = !!it.archived;
       var simple = plEffectiveSimpleStatus(it, roomById);
-      // 물건리스트에서는 종료 물건을 기본/종료포함 여부와 무관하게 숨긴다.
-      // 종료 기록은 작업룸/파이프라인에서 확인한다.
-      if (simple === 'closed') return false;
+      // 기본 목록에서는 종료 물건을 숨기되, 상단 상태 필터에서 '종료'를 선택하면 보여준다.
+      if (simple === 'closed' && fs !== 'closed') return false;
       if (fs && simple !== fs) return false;
       if (!showArchived && isArchived) return false;
       if (q) {
