@@ -51599,3 +51599,146 @@ window.addEventListener('DOMContentLoaded', () => {
     console.warn('[lifecycle local override patch]', e);
   }
 })();
+
+/* ════════════════════════════════════════════════════════
+   v83: Local-first / Cloudflare-ready storage bridge
+   - Supabase 제한(egress quota) 상태에서도 앱 UI/로컬 저장은 계속 동작
+   - Supabase DB/Auth 자동 호출 차단
+   - 이미지 inline/base64 fallback 차단, R2 업로드만 허용
+   - Cloudflare Worker API 연결 준비
+════════════════════════════════════════════════════════ */
+(function(){
+  try {
+    window.__SK_BUILD = '20260508-workroom-v83-localfirst-cloudflare-ready';
+    const MODE_KEY = 'sk_cloud_mode_v1';
+    const UID_KEY = 'sk_local_user_id_v1';
+    const API_KEY = 'sk_cloud_api_base_v1';
+    const mode = localStorage.getItem(MODE_KEY) || 'local_first';
+    window.SK_CLOUD_MODE = mode;
+    window.SK_CLOUD_API_BASE = localStorage.getItem(API_KEY) || '';
+    window.skSetCloudMode = function(nextMode){
+      const m = String(nextMode || 'local_first');
+      localStorage.setItem(MODE_KEY, m);
+      window.SK_CLOUD_MODE = m;
+      try { if (typeof showToast === 'function') showToast('클라우드 모드: ' + m + ' / 새로고침 후 적용', 'ok'); } catch(e) {}
+      return m;
+    };
+    window.skSetCloudApiBase = function(url){
+      const clean = String(url || '').trim().replace(/\/+$/,'');
+      if (clean) localStorage.setItem(API_KEY, clean);
+      else localStorage.removeItem(API_KEY);
+      window.SK_CLOUD_API_BASE = clean;
+      try { if (typeof showToast === 'function') showToast(clean ? 'Cloudflare API 주소 저장됨' : 'Cloudflare API 주소 제거됨', 'ok'); } catch(e) {}
+      return clean;
+    };
+    function localUid(){
+      let uid = localStorage.getItem(UID_KEY);
+      if (!uid) {
+        uid = 'local_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,10);
+        localStorage.setItem(UID_KEY, uid);
+      }
+      return uid;
+    }
+    function status(msg, ok){
+      try { if (typeof window._sbSyncStatus === 'function') window._sbSyncStatus(msg, ok !== false); } catch(e) {}
+    }
+    function hideAuthOverlays(){
+      try {
+        const ids = ['_sbLoginOverlay','_sbRecoveryOverlay'];
+        ids.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
+      } catch(e) {}
+    }
+    function shouldBypassSupabase(){
+      return mode === 'local_first' || mode === 'cloudflare' || mode === 'cloudflare_ready';
+    }
+    async function cloudFetch(path, options){
+      const base = String(window.SK_CLOUD_API_BASE || '').replace(/\/+$/,'');
+      if (!base) throw new Error('Cloudflare API 주소가 설정되지 않았습니다. skSetCloudApiBase(url)로 설정하세요.');
+      const uid = localUid();
+      const headers = Object.assign({ 'content-type': 'application/json', 'x-sk-user': uid }, (options && options.headers) || {});
+      const res = await fetch(base + path, Object.assign({}, options || {}, { headers }));
+      if (!res.ok) throw new Error('Cloudflare API error: ' + res.status);
+      return await res.json().catch(() => ({}));
+    }
+    window.skCloudPull = async function(table, since){
+      return await cloudFetch('/api/sync/pull?table=' + encodeURIComponent(table || '') + '&since=' + encodeURIComponent(since || 0), { method:'GET' });
+    };
+    window.skCloudPush = async function(table, rows){
+      return await cloudFetch('/api/sync/push', { method:'POST', body: JSON.stringify({ table, rows: rows || [] }) });
+    };
+    window.skCloudHealth = async function(){
+      return await cloudFetch('/api/health', { method:'GET' });
+    };
+
+    if (shouldBypassSupabase()) {
+      hideAuthOverlays();
+      setTimeout(hideAuthOverlays, 0);
+      setTimeout(hideAuthOverlays, 500);
+      setTimeout(hideAuthOverlays, 1500);
+      try {
+        new MutationObserver(hideAuthOverlays).observe(document.documentElement, { childList:true, subtree:true, attributes:true, attributeFilter:['style','class'] });
+      } catch(e) {}
+
+      // Auth: Supabase 로그인 강제 팝업 금지, 로컬 사용자 ID 제공
+      window._sbShowLogin = function(){ hideAuthOverlays(); status('로컬 우선 모드: Supabase 로그인 생략', true); };
+      window._sbHideLogin = hideAuthOverlays;
+      window._sbShowRecovery = function(){ hideAuthOverlays(); status('로컬 우선 모드: 비밀번호 재설정 비활성', true); };
+      window._sbHideRecovery = hideAuthOverlays;
+      window._sbGetUserId = async function(){ return localUid(); };
+      window._sbGetSessionShared = async function(){ return { data: { session: { user: { id: localUid(), email: localStorage.getItem('_sb_saved_email') || '' } } }, error: null }; };
+      window._sbLogin = async function(){ hideAuthOverlays(); status('로컬 우선 모드로 진입했습니다', true); return { localOnly:true, userId: localUid() }; };
+      window._sbLogout = async function(){ hideAuthOverlays(); status('로컬 우선 모드: 로그아웃 없음', true); };
+      window._sbSendReset = async function(){ status('로컬 우선 모드: 비밀번호 재설정 비활성', false); };
+      window._sbApplyRecovery = async function(){ status('로컬 우선 모드: 비밀번호 변경 비활성', false); };
+      window._sbInitLoad = async function(){ hideAuthOverlays(); status('로컬 우선 모드: 기기 저장소 기준으로 실행', true); return { localOnly:true }; };
+      window._sbRunEntryRefresh = async function(){ return null; };
+
+      // Supabase 네트워크 저장/로드 차단: 현재 기기 IDB/localStorage가 기본 저장소
+      const noSave = async function(arr){ return { localOnly:true, count:Array.isArray(arr)?arr.length:0 }; };
+      const noLoad = async function(){ return null; };
+      ['_sbSaveSv','_sbSaveNtNotes','_sbSaveRooms','_sbSavePlItems','_sbSaveWorkScenes','_sbSaveKcards','_sbSaveSections','_sbSaveMapMemos','_sbSaveInvestVars','_sbSaveChecklist','_sbSaveKcat','_sbSaveSiteBookmarks','_sbSaveSiteCategories'].forEach(fn => { window[fn] = noSave; });
+      ['_sbLoadSv','_sbLoadNtNotes','_sbLoadRooms','_sbLoadPlItems','_sbLoadWorkScenes','_sbLoadKcards','_sbLoadMapMemos'].forEach(fn => { window[fn] = noLoad; });
+      window._sbKvGet = async function(key){
+        try { return JSON.parse(localStorage.getItem('sk_kv_' + key) || 'null'); } catch(e) { return null; }
+      };
+      window._sbKvSet = async function(key, value){
+        try { localStorage.setItem('sk_kv_' + key, JSON.stringify(value)); } catch(e) {}
+      };
+      window._sbSaveApiKeys = async function(){ return { localOnly:true }; };
+
+      // 이미지/첨부: inline/base64 fallback 금지. R2 Worker만 허용.
+      window._sbMakeInlineUpload = async function(){
+        throw new Error('inline/base64 저장은 차단되었습니다. R2 업로드가 실패했으므로 네트워크/R2 Worker를 확인하세요.');
+      };
+      window._sbUploadImage = async function(source, folder){
+        const uid = localUid();
+        if (typeof window._ensureInlineUploadHelpers === 'function') window._ensureInlineUploadHelpers();
+        if (typeof window._sbResolveUploadTarget !== 'function' || typeof window._sbMakeUploadPayload !== 'function') {
+          throw new Error('업로드 유틸이 준비되지 않았습니다.');
+        }
+        const target = window._sbResolveUploadTarget(uid, folder || 'uploads');
+        const payload = await window._sbMakeUploadPayload(source, target.folder);
+        const path = target.pathPrefix + payload.fileName;
+        const workerUrl = (window.R2_WORKER_URL || 'https://sangkwon-upload-worker.feye80.workers.dev').replace(/\/+$/,'');
+        const res = await fetch(workerUrl + '/' + path, {
+          method: 'PUT',
+          headers: { 'content-type': payload.mimeType, 'x-sk-user': uid },
+          body: payload.file
+        });
+        if (!res.ok) throw new Error('R2 업로드 실패: ' + res.status);
+        const json = await res.json().catch(() => ({}));
+        const url = json.url || json.publicUrl || '';
+        if (!url) throw new Error('R2 업로드 응답에 URL이 없습니다.');
+        return { url, path, bucket:'r2', mimeType: payload.mimeType };
+      };
+
+      window.addEventListener('DOMContentLoaded', function(){
+        hideAuthOverlays();
+        status('로컬 우선 모드 / Supabase 차단 우회', true);
+      });
+      console.log('[build] common.js ' + window.__SK_BUILD + ' / mode=' + mode);
+    }
+  } catch(e) {
+    console.warn('[v83 local-first bridge] init fail', e);
+  }
+})();
