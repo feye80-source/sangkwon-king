@@ -52516,3 +52516,252 @@ window.addEventListener('DOMContentLoaded', () => {
     console.warn('[v85 sync/image repair bridge] init fail', e);
   }
 })();
+
+
+/* ════════════════════════════════════════════════════════
+   v86: Cloudflare Sync Convergence / Attachment Union Fix
+   - 서버 v86의 첨부 병합과 짝을 이루는 클라이언트 보정 레이어
+   - 같은 노트/작업룸에 각 기기에서 올린 이미지를 덮어쓰기 대신 합집합 병합
+   - push 후 기준시간을 초기화하고 full pull을 수행하여 양쪽 기기 상태를 수렴
+   - 백그라운드 수신/저장 성공 토스트 반복 노출 차단
+════════════════════════════════════════════════════════ */
+(function(){
+  'use strict';
+  try {
+    window.__SK_BUILD = '20260508-workroom-v86-sync-converge-attachment-union';
+    const LS = window.localStorage;
+    const CFG_API = 'sk_cloud_api_base_v1';
+    const CFG_USER = 'sk_cloud_user_key_v1';
+    const LAST_PREFIX = 'sk_cf_last_sync_';
+    const TABLES = {
+      items:     { cache:'re_sv',        label:'저장목록' },
+      workrooms: { cache:'wr2_rooms',    label:'작업룸' },
+      notes:     { cache:'nt_notes',     label:'노트' },
+      kcards:    { cache:'ins_kcards',   label:'알짜카드' },
+      snapshots: { cache:'re_ws',        label:'스냅샷' },
+      sections:  { cache:'wr2_sections', label:'작업룸 섹션' },
+      map_memos: { cache:'map_memos',    label:'지도 메모' },
+      pl_items:  { cache:'pl_items_v3',  label:'파이프라인' }
+    };
+    const ATTACH_ARRAY_KEYS = /^(attachments|files|images|photos|docs|documents|additionalDocs|media|captures|screenshots)$/i;
+    const LEASE_KEYS = new Set(['deposit','rent','월세','보증금','임대보증금','임대월세','임차보증금','leaseDeposit','leaseRent','monthlyRent','rentDeposit','rentMonthly']);
+    const DANGEROUS_KEYS = /^(parent|element|target|window|document|ownerDocument)$/i;
+    function cleanBase(url){ return String(url || '').trim().replace(/\/+$/,''); }
+    function getApiBase(){ return cleanBase(window.SK_CLOUD_API_BASE || LS.getItem(CFG_API) || ''); }
+    function getUserKey(){ return String(window.SK_CLOUD_USER_KEY || LS.getItem(CFG_USER) || LS.getItem('_sb_saved_email') || 'monodot-main').replace(/[^a-zA-Z0-9_@.\-]/g,'').slice(0,80) || 'monodot-main'; }
+    function toast(msg,type){ try { if (typeof window.showToast === 'function') window.showToast(msg, type || 'ok'); } catch(e){} }
+    function warn(){ try { console.warn.apply(console, ['[SK-CF-v86]'].concat([].slice.call(arguments))); } catch(e){} }
+    function now(){ return Date.now(); }
+    function idOf(x){ return String(x && (x.id || x.item_id || x._id || x.uuid || x.noteId || x.roomId || x.title) || '').trim(); }
+    function updatedOf(x){ const v=x&&(x.updatedAt||x.updated_at||x.modifiedAt||x.timestamp||x.createdAt||x.created_at); if(!v) return 0; if(typeof v==='number') return v; const t=Date.parse(v); return isFinite(t)?t:0; }
+    function deletedOf(x){ const v=x&&(x.deletedAt||x.deleted_at||0); if(!v) return 0; if(typeof v==='number') return v; const t=Date.parse(v); return isFinite(t)?t:0; }
+    function nonEmpty(v){ if(v==null||v==='') return false; if(Array.isArray(v)) return v.length>0; if(typeof v==='object') return Object.keys(v).length>0; return true; }
+    function isObj(v){ return v && typeof v === 'object' && !Array.isArray(v); }
+    function cacheGet(key){ try { if (window._idbCache && Array.isArray(window._idbCache[key])) return window._idbCache[key].slice(); } catch(e){} try { const v=JSON.parse(LS.getItem(key)||'[]'); return Array.isArray(v)?v:[]; } catch(e){ return []; } }
+    function cacheSet(key, arr){ const list=Array.isArray(arr)?arr:[]; try{ if(window._idbCache) window._idbCache[key]=list; }catch(e){} try{ if(typeof window.idbSet==='function') window.idbSet(key,list).catch(function(){}); }catch(e){} try{ LS.setItem(key, JSON.stringify(list)); }catch(e){} return list; }
+    function attachmentKey(att){ return String(att && (att.storagePath || att.path || att.r2Path || att.url || att.src || att.id || att.uuid || att.name) || '').trim(); }
+    function looksLikeAttachmentArray(key, arr){ if(ATTACH_ARRAY_KEYS.test(String(key||''))) return true; return Array.isArray(arr) && arr.some(x=>x&&typeof x==='object'&&(x.url||x.src||x.storagePath||x.path||x.r2Path||x.mimeType||x.type||x.bucket==='r2')); }
+    function mergeAttachmentArrays(a,b){
+      const map=new Map(); let n=0;
+      function add(att){ if(!att||typeof att!=='object') return; const k=attachmentKey(att)||('__local_'+(++n)); map.set(k, map.has(k)?smartMerge(map.get(k),att):att); }
+      (Array.isArray(a)?a:[]).forEach(add); (Array.isArray(b)?b:[]).forEach(add);
+      return Array.from(map.values()).filter(Boolean);
+    }
+    function mergeArray(prev, inc, key){
+      if (looksLikeAttachmentArray(key, prev) || looksLikeAttachmentArray(key, inc)) return mergeAttachmentArrays(prev, inc);
+      const map=new Map(); let keyed=false;
+      (Array.isArray(prev)?prev:[]).forEach(x=>{ const id=idOf(x); if(id){ keyed=true; map.set(id,x); } });
+      (Array.isArray(inc)?inc:[]).forEach(x=>{ const id=idOf(x); if(id){ keyed=true; map.set(id, smartMerge(map.get(id),x)); } });
+      if (keyed) return Array.from(map.values());
+      return Array.isArray(inc)&&inc.length ? inc : (Array.isArray(prev)?prev:[]);
+    }
+    function smartMerge(prev, inc){
+      if(!prev) return inc; if(!inc) return prev; if(deletedOf(inc)) return inc;
+      if(!isObj(prev)||!isObj(inc)) return nonEmpty(inc)?inc:prev;
+      const out=Object.assign({}, prev);
+      Object.keys(inc).forEach(k=>{
+        if(DANGEROUS_KEYS.test(k)) return;
+        const a=prev[k], b=inc[k];
+        if(Array.isArray(a)||Array.isArray(b)){ out[k]=mergeArray(a,b,k); return; }
+        if(isObj(a)&&isObj(b)){ out[k]=smartMerge(a,b); return; }
+        if(!nonEmpty(b)&&nonEmpty(a)&&(LEASE_KEYS.has(k)||k==='attachments'||k==='files')) out[k]=a;
+        else if(nonEmpty(b)||!nonEmpty(a)) out[k]=b;
+      });
+      out.updatedAt=Math.max(updatedOf(prev), updatedOf(inc), 1);
+      return out;
+    }
+    function isDataUrl(v){ return /^data:(image|application|video|audio)\//i.test(String(v||'')); }
+    function isBlobUrl(v){ return /^(blob:|filesystem:)/i.test(String(v||'')); }
+    function stripHeavy(v, depth){
+      depth=depth||0; if(depth>10) return undefined; if(v==null) return v;
+      if(typeof v==='string'){ if(isDataUrl(v)||isBlobUrl(v)) return undefined; if(v.length>350000) return v.slice(0,2000)+'…[stripped:'+v.length+']'; return v; }
+      if(Array.isArray(v)) return v.map(x=>stripHeavy(x, depth+1)).filter(x=>x!==undefined);
+      if(typeof v==='object'){ const out={}; Object.keys(v).forEach(k=>{ if(DANGEROUS_KEYS.test(k)) return; if(/^(base64|dataUrl|dataURL|imageData|fileData|blob|rawHtml|rawText|pdfFullText|fullText)$/i.test(k)) return; const x=stripHeavy(v[k], depth+1); if(x!==undefined) out[k]=x; }); return out; }
+      return v;
+    }
+    async function api(path, opts){
+      const base=getApiBase(); if(!base) throw new Error('Cloudflare API 주소 미설정');
+      const headers=Object.assign({'content-type':'application/json','x-sk-user':getUserKey()}, (opts&&opts.headers)||{});
+      const res=await fetch(base+path, Object.assign({}, opts||{}, {headers}));
+      const txt=await res.text(); let data={}; try{ data=txt?JSON.parse(txt):{}; }catch(e){ data={raw:txt}; }
+      if(!res.ok || data.ok===false) throw new Error(data.error||data.message||('Cloudflare API '+res.status));
+      return data;
+    }
+    function rowsForPush(arr){ return (Array.isArray(arr)?arr:[]).filter(x=>x&&idOf(x)).map(x=>{ const data=stripHeavy(x,0)||{}; if(!data.id) data.id=idOf(x); if(!data.updatedAt) data.updatedAt=Math.max(updatedOf(x), now()); return { item_id:idOf(data), updated_at:updatedOf(data)||now(), deleted_at:deletedOf(data), data }; }); }
+    async function pushTable(table){
+      const meta=TABLES[table]; if(!meta) return null;
+      const rows=rowsForPush(cacheGet(meta.cache));
+      if(!rows.length) return {ok:true, table, saved:0};
+      return await api('/api/sync/push', {method:'POST', body:JSON.stringify({table, rows})});
+    }
+    async function pullTable(table, full){
+      const meta=TABLES[table]; if(!meta) return null;
+      const local=cacheGet(meta.cache);
+      const since=full ? 0 : (Number(LS.getItem(LAST_PREFIX+table)||0)||0);
+      const res=await api('/api/sync/pull?table='+encodeURIComponent(table)+'&since='+encodeURIComponent(since)+'&limit=5000', {method:'GET'});
+      const incoming=(res.rows||[]).map(r=>{ const d=r.data||{}; if(!d.id&&r.item_id)d.id=r.item_id; if(!d.updatedAt&&r.updated_at)d.updatedAt=r.updated_at; if(!d.deletedAt&&r.deleted_at)d.deletedAt=r.deleted_at; return d; });
+      const map=new Map();
+      local.forEach(x=>{ const id=idOf(x); if(id) map.set(id,x); });
+      incoming.forEach(x=>{ const id=idOf(x); if(id) map.set(id, smartMerge(map.get(id), x)); });
+      const merged=Array.from(map.values()).filter(x=>!deletedOf(x)||deletedOf(x)>now()-30*86400000);
+      cacheSet(meta.cache, merged);
+      LS.setItem(LAST_PREFIX+table, String(res.serverTime||now()));
+      return merged;
+    }
+    function resetSince(){ Object.keys(TABLES).forEach(t=>LS.removeItem(LAST_PREFIX+t)); }
+    async function pushAll(){ const out={}; for(const t of Object.keys(TABLES)){ try{ out[t]=await pushTable(t); }catch(e){ out[t]={error:e.message||String(e)}; warn('push fail',t,e.message||e); } } return out; }
+    async function pullAll(full){ const out={}; for(const t of Object.keys(TABLES)){ try{ out[t]=await pullTable(t, !!full); }catch(e){ out[t]=null; warn('pull fail',t,e.message||e); } } return out; }
+    window.skCloudPullTable = function(table, opts){ return pullTable(table, !!(opts&&opts.full)); };
+    window.skCloudPushTable = function(table){ return pushTable(table); };
+    window.skCloudPullAll = function(opts){ return pullAll(!!(opts&&opts.full)); };
+    window.skCloudResetSince = function(){ resetSince(); toast('Cloudflare 전체 수신 기준시간 초기화됨', 'ok'); };
+    window.skCloudConvergeNow = async function(){
+      const health=await api('/api/health', {method:'GET'});
+      if(!/v86/.test(String(health.version||''))) console.warn('[SK-CF-v86] Worker version is not v86:', health);
+      const result={ build:window.__SK_BUILD, health, firstPush:null, firstPull:null, secondPush:null, secondPull:null };
+      result.firstPush=await pushAll();
+      resetSince();
+      result.firstPull=await pullAll(true);
+      result.secondPush=await pushAll();
+      resetSince();
+      result.secondPull=await pullAll(true);
+      toast('Cloudflare 병합 동기화 완료', 'ok');
+      return result;
+    };
+    window.skCloudSyncNow = window.skCloudConvergeNow;
+    window.skCloudRepairImagesAndSync = window.skCloudConvergeNow;
+    window._sbLoadSv = async()=>pullTable('items', true);
+    window._sbLoadRooms = async()=>pullTable('workrooms', true);
+    window._sbLoadNtNotes = async()=>pullTable('notes', true);
+    window._sbLoadKcards = async()=>pullTable('kcards', true);
+    window._sbLoadWorkScenes = async()=>pullTable('snapshots', true);
+    window._sbLoadSections = async()=>pullTable('sections', true);
+    window._sbLoadMapMemos = async()=>pullTable('map_memos', true);
+    window._sbLoadPlItems = async()=>pullTable('pl_items', true);
+
+    // 성공 상태 알림 반복 차단: 경고/실패만 노출하고, 백그라운드 수신완료/저장완료는 콘솔로만 남긴다.
+    const prevStatus = window._sbSyncStatus;
+    let lastMsg='', lastAt=0;
+    window._sbSyncStatus = function(msg, ok){
+      const s=String(msg||'');
+      if(ok !== false && /(수신 완료|변경분 수신|저장\/첨부|동기화 완료|Cloudflare 전체 동기화 완료|Cloudflare 병합 동기화 완료)/.test(s)) {
+        try { console.debug('[SK-CF-v86 silent-status]', s); } catch(e){}
+        return;
+      }
+      const t=now(); if(s===lastMsg && t-lastAt<5000) return; lastMsg=s; lastAt=t;
+      if(typeof prevStatus==='function') return prevStatus.call(this,msg,ok);
+    };
+    console.log('[build] common.js', window.__SK_BUILD);
+  } catch(e) { console.warn('[v86 sync convergence patch] init fail', e); }
+})();
+
+
+/* ════════════════════════════════════════════════════════
+   v87: Cloudflare Sync Quiet / Manual-Only Guard
+   - 자동/백그라운드 pull 반복으로 성공 알림이 계속 뜨는 문제 차단
+   - 사용자가 직접 실행한 skCloudSyncNow/skCloudConvergeNow만 전체 동기화 허용
+   - 성공/수신완료 토스트는 완전 무음 처리, 오류만 표시
+   - 기존 v84/v85 레이어의 예약 auto pull이 뒤늦게 실행되어도 네트워크 호출 차단
+════════════════════════════════════════════════════════ */
+(function(){
+  'use strict';
+  try {
+    window.__SK_BUILD = '20260508-workroom-v87-cloudflare-manual-sync-quiet';
+    const LS = window.localStorage;
+    const AUTO_KEY = 'sk_cf_auto_sync_enabled';
+    const MANUAL_MS = 45000;
+    let manualUntil = 0;
+    function now(){ return Date.now(); }
+    function isManual(){ return now() < manualUntil || window.__SK_CF_MANUAL_SYNC === true; }
+    function beginManual(){ manualUntil = now() + MANUAL_MS; window.__SK_CF_MANUAL_SYNC = true; }
+    function endManualSoon(){ setTimeout(function(){ window.__SK_CF_MANUAL_SYNC = false; }, 1500); }
+    function isAutoAllowed(){ return LS.getItem(AUTO_KEY) === '1'; }
+    function shouldHide(msg){
+      const s = String(msg || '').replace(/\s+/g, '');
+      return /(수신완료|변경분수신|변경분확인완료|저장완료|동기화완료|Cloudflare.*완료|작업룸섹션.*수신|파이프라인.*수신|저장목록.*수신|노트.*수신|스냅샷.*수신|지도메모.*수신|알짜카드.*수신)/i.test(s);
+    }
+
+    // 1) 우측 하단 성공 알림 완전 차단. 오류/경고는 유지.
+    const prevShowToast = window.showToast;
+    if (typeof prevShowToast === 'function' && !prevShowToast.__skV87Quiet) {
+      const wrapped = function(msg, type){
+        const t = String(type || '').toLowerCase();
+        if ((t === 'ok' || t === 'success' || t === 'info' || !t) && shouldHide(msg)) {
+          try { console.debug('[SK-CF-v87 silent-toast]', msg); } catch(e){}
+          return;
+        }
+        return prevShowToast.apply(this, arguments);
+      };
+      wrapped.__skV87Quiet = true;
+      window.showToast = wrapped;
+    }
+    const prevStatus = window._sbSyncStatus;
+    if (typeof prevStatus === 'function' && !prevStatus.__skV87Quiet) {
+      const wrappedStatus = function(msg, ok){
+        if (ok !== false && shouldHide(msg)) {
+          try { console.debug('[SK-CF-v87 silent-status]', msg); } catch(e){}
+          return;
+        }
+        return prevStatus.apply(this, arguments);
+      };
+      wrappedStatus.__skV87Quiet = true;
+      window._sbSyncStatus = wrappedStatus;
+    }
+
+    // 2) 기존 v84/v85가 예약해 둔 자동 pull이 실행돼도 기본 차단.
+    const rawPullAll = window.skCloudPullAll;
+    if (typeof rawPullAll === 'function' && !rawPullAll.__skV87Guard) {
+      const guardedPullAll = function(opts){
+        opts = opts || {};
+        if (!isManual() && !opts.force && !opts.manual && !isAutoAllowed()) {
+          try { console.debug('[SK-CF-v87] auto pull blocked', opts); } catch(e){}
+          return Promise.resolve({ ok:true, skipped:true, reason:'manual-only' });
+        }
+        return rawPullAll.call(this, opts);
+      };
+      guardedPullAll.__skV87Guard = true;
+      window.skCloudPullAll = guardedPullAll;
+    }
+
+    // 3) 수동 동기화 함수는 명시적으로만 네트워크 사용.
+    const rawConverge = window.skCloudConvergeNow || window.skCloudSyncNow || window.skCloudRepairImagesAndSync;
+    if (typeof rawConverge === 'function' && !rawConverge.__skV87Manual) {
+      const manualSync = async function(){
+        beginManual();
+        try { return await rawConverge.apply(this, arguments); }
+        finally { endManualSoon(); }
+      };
+      manualSync.__skV87Manual = true;
+      window.skCloudConvergeNow = manualSync;
+      window.skCloudSyncNow = manualSync;
+      window.skCloudRepairImagesAndSync = manualSync;
+    }
+
+    // 4) 사용자가 원하면 나중에만 자동 동기화 켤 수 있게 함. 기본은 OFF.
+    window.skCloudDisableAutoSync = function(){ LS.setItem(AUTO_KEY, '0'); console.log('[SK-CF-v87] 자동 동기화 OFF'); return true; };
+    window.skCloudEnableAutoSync = function(){ LS.setItem(AUTO_KEY, '1'); console.log('[SK-CF-v87] 자동 동기화 ON'); return true; };
+    window.skCloudAutoSyncStatus = function(){ return { autoSync: isAutoAllowed(), build: window.__SK_BUILD }; };
+    if (!LS.getItem(AUTO_KEY)) LS.setItem(AUTO_KEY, '0');
+    console.log('[build] common.js', window.__SK_BUILD, 'autoSync=', LS.getItem(AUTO_KEY));
+  } catch(e) { console.warn('[v87 manual sync quiet patch] init fail', e); }
+})();
