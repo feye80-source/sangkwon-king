@@ -51742,3 +51742,357 @@ window.addEventListener('DOMContentLoaded', () => {
     console.warn('[v83 local-first bridge] init fail', e);
   }
 })();
+
+
+/* ════════════════════════════════════════════════════════
+   v84: Cloudflare D1/R2 long-term sync bridge
+   - Supabase 대신 Cloudflare Worker + D1로 items/workrooms/notes/kcards/snapshots 동기화
+   - 로컬 IndexedDB 우선 표시 + updated_at 이후 변경분만 pull
+   - R2 업로드 실패 시 inline/base64 저장 금지 유지
+   - 같은 기기/다른 기기 동기화를 위해 skSetCloudApiBase(url), skSetCloudUserKey(key) 필요
+════════════════════════════════════════════════════════ */
+(function(){
+  'use strict';
+  try {
+    window.__SK_BUILD = '20260508-workroom-v84-cloudflare-d1-sync';
+
+    const LS = window.localStorage;
+    const CFG_API = 'sk_cloud_api_base_v1';
+    const CFG_USER = 'sk_cloud_user_key_v1';
+    const CFG_MODE = 'sk_cloud_mode_v1';
+    const LOCAL_UID = 'sk_local_user_id_v1';
+    const LAST_PREFIX = 'sk_cf_last_sync_';
+    const PENDING_PREFIX = 'sk_cf_pending_';
+    const DEFAULT_R2 = 'https://sangkwon-upload-worker.feye80.workers.dev';
+
+    const TABLES = {
+      items:     { cache:'re_sv',       label:'저장목록' },
+      notes:     { cache:'nt_notes',    label:'노트' },
+      workrooms: { cache:'wr2_rooms',   label:'작업룸' },
+      kcards:    { cache:'ins_kcards',  label:'알짜카드' },
+      snapshots: { cache:'re_ws',       label:'스냅샷' },
+      sections:  { cache:'wr2_sections',label:'작업룸 섹션' },
+      map_memos: { cache:'map_memos',   label:'지도 메모' },
+      pl_items:  { cache:'pl_items_v3', label:'파이프라인' }
+    };
+
+    function log(){ try { console.log.apply(console, ['[SK-CF]'].concat([].slice.call(arguments))); } catch(e) {} }
+    function warn(){ try { console.warn.apply(console, ['[SK-CF]'].concat([].slice.call(arguments))); } catch(e) {} }
+    function status(msg, ok){ try { if (typeof window._sbSyncStatus === 'function') window._sbSyncStatus(msg, ok !== false); } catch(e) {} }
+    function toast(msg, type){ try { if (typeof window.showToast === 'function') window.showToast(msg, type || 'ok'); } catch(e) {} }
+    function cleanBase(url){ return String(url || '').trim().replace(/\/+$/,''); }
+    function getApiBase(){ return cleanBase(window.SK_CLOUD_API_BASE || LS.getItem(CFG_API) || ''); }
+    function setApiBase(url){
+      const clean = cleanBase(url);
+      if (clean) LS.setItem(CFG_API, clean); else LS.removeItem(CFG_API);
+      window.SK_CLOUD_API_BASE = clean;
+      if (clean && (!window.R2_WORKER_URL || window.R2_WORKER_URL === DEFAULT_R2)) window.R2_WORKER_URL = clean;
+      LS.setItem(CFG_MODE, clean ? 'cloudflare' : 'local_first');
+      window.SK_CLOUD_MODE = clean ? 'cloudflare' : 'local_first';
+      toast(clean ? 'Cloudflare API 주소 저장됨' : 'Cloudflare API 주소 제거됨', clean ? 'ok' : 'warn');
+      return clean;
+    }
+    function ensureLocalUid(){
+      let uid = LS.getItem(LOCAL_UID);
+      if (!uid) {
+        uid = 'local_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10);
+        LS.setItem(LOCAL_UID, uid);
+      }
+      return uid;
+    }
+    function normalizeUserKey(v){ return String(v || '').trim().replace(/[^a-zA-Z0-9_@.\-]/g, '').slice(0, 80); }
+    function getUserKey(){
+      return normalizeUserKey(window.SK_CLOUD_USER_KEY || LS.getItem(CFG_USER) || LS.getItem('_sb_saved_email') || ensureLocalUid());
+    }
+    function setUserKey(key){
+      const clean = normalizeUserKey(key);
+      if (!clean) throw new Error('동기화 사용자키가 비어 있습니다. 예: skSetCloudUserKey("monodot-main")');
+      LS.setItem(CFG_USER, clean);
+      window.SK_CLOUD_USER_KEY = clean;
+      toast('동기화 사용자키 저장됨: ' + clean, 'ok');
+      return clean;
+    }
+    function cloudReady(){ return !!getApiBase(); }
+    window.skSetCloudApiBase = setApiBase;
+    window.skSetCloudUserKey = setUserKey;
+    window.skCloudConfig = function(){
+      const cfg = { mode: LS.getItem(CFG_MODE) || window.SK_CLOUD_MODE || 'local_first', apiBase:getApiBase(), userKey:getUserKey(), build:window.__SK_BUILD };
+      console.table(cfg); return cfg;
+    };
+    window.skCloudHelp = function(){
+      console.log('1) Cloudflare Worker 배포 후 URL 설정: skSetCloudApiBase("https://...workers.dev")');
+      console.log('2) 모든 기기에서 같은 사용자키 설정: skSetCloudUserKey("monodot-main")');
+      console.log('3) 현재 기기 데이터를 클라우드로 업로드/동기화: skCloudSyncNow()');
+      console.log('4) 클라우드에서 변경분 받기: skCloudPullAll()');
+      return window.skCloudConfig();
+    };
+
+    // v83 local-first bridge가 만든 함수명과 호환
+    window.SK_CLOUD_API_BASE = getApiBase();
+    window.SK_CLOUD_USER_KEY = getUserKey();
+    window.SK_CLOUD_MODE = getApiBase() ? 'cloudflare' : (LS.getItem(CFG_MODE) || 'local_first');
+
+    function headers(extra){
+      return Object.assign({
+        'content-type':'application/json',
+        'x-sk-user': getUserKey()
+      }, extra || {});
+    }
+    async function api(path, opts){
+      const base = getApiBase();
+      if (!base) throw new Error('Cloudflare API 주소 미설정. skSetCloudApiBase(url) 먼저 실행하세요.');
+      const res = await fetch(base + path, Object.assign({}, opts || {}, { headers: headers((opts && opts.headers) || {}) }));
+      const txt = await res.text();
+      let data = null;
+      try { data = txt ? JSON.parse(txt) : {}; } catch(e) { data = { raw:txt }; }
+      if (!res.ok || (data && data.ok === false)) {
+        throw new Error((data && (data.error || data.message)) || ('Cloudflare API ' + res.status));
+      }
+      return data || {};
+    }
+    window.skCloudHealth = async function(){ return api('/api/health', { method:'GET' }); };
+
+    function getCached(cacheKey){
+      try {
+        const c = window._idbCache && window._idbCache[cacheKey];
+        if (Array.isArray(c)) return c.slice();
+      } catch(e) {}
+      try {
+        const raw = JSON.parse(LS.getItem(cacheKey) || '[]');
+        if (Array.isArray(raw)) return raw;
+      } catch(e) {}
+      return [];
+    }
+    function persist(cacheKey, arr){
+      const list = Array.isArray(arr) ? arr : [];
+      try { if (window._idbCache) window._idbCache[cacheKey] = list; } catch(e) {}
+      try { if (typeof window.idbSet === 'function') window.idbSet(cacheKey, list).catch(function(){}); } catch(e) {}
+      try { LS.setItem(cacheKey, JSON.stringify(list)); } catch(e) {}
+      return list;
+    }
+    function idOf(x){ return String(x && (x.id || x.item_id || x._id || x.uuid) || '').trim(); }
+    function updatedOf(x){
+      const v = x && (x.updatedAt || x.updated_at || x.modifiedAt || x.timestamp || x.createdAt || x.created_at);
+      if (!v) return Date.now();
+      if (typeof v === 'number') return v;
+      const t = Date.parse(v); return isFinite(t) ? t : Date.now();
+    }
+    function deletedOf(x){
+      const v = x && (x.deletedAt || x.deleted_at || 0);
+      if (!v) return 0;
+      if (typeof v === 'number') return v;
+      const t = Date.parse(v); return isFinite(t) ? t : 0;
+    }
+    function recentTombstone(x){
+      const d = deletedOf(x);
+      return !d || d > Date.now() - 30*24*60*60*1000;
+    }
+    function mergeRows(local, incoming){
+      const map = new Map();
+      (Array.isArray(local) ? local : []).forEach(function(x){ const id=idOf(x); if (id) map.set(id, x); });
+      (Array.isArray(incoming) ? incoming : []).forEach(function(x){
+        const id = idOf(x); if (!id) return;
+        const prev = map.get(id);
+        if (!prev || updatedOf(x) >= updatedOf(prev)) map.set(id, x);
+      });
+      return Array.from(map.values()).filter(recentTombstone);
+    }
+    function stripHeavy(value, depth){
+      if (depth > 7) return undefined;
+      if (value == null) return value;
+      if (typeof value === 'string') {
+        if (/^data:(image|application|video|audio)\//i.test(value)) return undefined;
+        if (value.length > 350000) return value.slice(0, 2000) + '…[stripped:' + value.length + ']';
+        return value;
+      }
+      if (Array.isArray(value)) return value.map(function(v){ return stripHeavy(v, depth+1); }).filter(function(v){ return v !== undefined; });
+      if (typeof value === 'object') {
+        const out = {};
+        Object.keys(value).forEach(function(k){
+          if (/^(pdfFullText|fullText|base64|dataUrl|dataURL|imageData|fileData|blob|rawHtml|rawText)$/i.test(k)) return;
+          const v = stripHeavy(value[k], depth+1);
+          if (v !== undefined) out[k] = v;
+        });
+        return out;
+      }
+      return value;
+    }
+    function sanitizeRow(row){
+      const data = stripHeavy(row || {}, 0) || {};
+      if (!data.id && row && row.item_id) data.id = row.item_id;
+      if (!data.updatedAt) data.updatedAt = updatedOf(data);
+      return data;
+    }
+    function rowsForPush(arr){
+      return (Array.isArray(arr) ? arr : [])
+        .filter(function(x){ return x && idOf(x); })
+        .map(function(x){ const data=sanitizeRow(x); return { item_id:idOf(data), updated_at:updatedOf(data), deleted_at:deletedOf(data), data:data }; });
+    }
+    async function pushTable(table, arr, opts){
+      const meta = TABLES[table] || { cache:table, label:table };
+      if (meta.cache) persist(meta.cache, Array.isArray(arr) ? arr : []);
+      if (!cloudReady()) return { localOnly:true, saved:0 };
+      const rows = rowsForPush(arr);
+      if (!rows.length) return { ok:true, saved:0 };
+      const res = await api('/api/sync/push', { method:'POST', body: JSON.stringify({ table:table, rows:rows }) });
+      LS.setItem(LAST_PREFIX + table, String(res.serverTime || Date.now()));
+      status('☁️ ' + meta.label + ' Cloudflare 동기화 완료', true);
+      return res;
+    }
+    async function pullTable(table, opts){
+      const meta = TABLES[table] || { cache:table, label:table };
+      const local = getCached(meta.cache);
+      if (!cloudReady()) return null;
+      const forceFull = opts && opts.full === true;
+      const since = forceFull ? 0 : Number(LS.getItem(LAST_PREFIX + table) || 0) || 0;
+      const res = await api('/api/sync/pull?table=' + encodeURIComponent(table) + '&since=' + encodeURIComponent(since), { method:'GET' });
+      const incoming = (res.rows || []).map(function(r){
+        const data = r.data || {};
+        if (!data.id && r.item_id) data.id = r.item_id;
+        if (!data.updatedAt && r.updated_at) data.updatedAt = r.updated_at;
+        if (!data.deletedAt && r.deleted_at) data.deletedAt = r.deleted_at;
+        return data;
+      });
+      const merged = mergeRows(local, incoming);
+      persist(meta.cache, merged);
+      LS.setItem(LAST_PREFIX + table, String(res.serverTime || Date.now()));
+      status('☁️ ' + meta.label + ' 변경분 수신 완료', true);
+      return merged;
+    }
+
+    window.skCloudPushTable = pushTable;
+    window.skCloudPullTable = pullTable;
+    window.skCloudPullAll = async function(opts){
+      const out = {};
+      for (const table of ['items','workrooms','notes','kcards','snapshots','sections','map_memos','pl_items']) {
+        try { out[table] = await pullTable(table, opts || {}); }
+        catch(e) { warn('pull fail', table, e.message || e); out[table] = null; }
+      }
+      return out;
+    };
+    window.skCloudSyncNow = async function(){
+      const jobs = [
+        ['items', getCached('re_sv')],
+        ['workrooms', getCached('wr2_rooms')],
+        ['notes', getCached('nt_notes')],
+        ['kcards', getCached('ins_kcards')],
+        ['snapshots', getCached('re_ws')],
+        ['sections', getCached('wr2_sections')],
+        ['map_memos', getCached('map_memos')],
+        ['pl_items', getCached('pl_items_v3')]
+      ];
+      const result = {};
+      for (const job of jobs) {
+        try { result[job[0]] = await pushTable(job[0], job[1]); }
+        catch(e) { warn('push fail', job[0], e.message || e); result[job[0]] = { error:e.message || String(e) }; }
+      }
+      await window.skCloudPullAll({ full:false });
+      toast('Cloudflare 동기화 실행 완료', 'ok');
+      return result;
+    };
+    window.skCloudResetSince = function(){
+      Object.keys(TABLES).forEach(function(t){ LS.removeItem(LAST_PREFIX + t); });
+      toast('Cloudflare pull 기준시간 초기화됨. 다음 pull은 전체 확인합니다.', 'ok');
+    };
+
+    // Supabase 이름을 그대로 쓰되 내부는 Cloudflare D1로 연결
+    window._sbGetUserId = async function(){ return getUserKey(); };
+    window._sbGetSessionShared = async function(){ return { data:{ session:{ user:{ id:getUserKey(), email:getUserKey() } } }, error:null }; };
+    window._sbLogin = async function(){ status('Cloudflare 동기화 모드: Supabase 로그인 사용 안 함', true); return { cloudflare:true, userId:getUserKey() }; };
+    window._sbLogout = async function(){ status('Cloudflare 동기화 모드: 로그아웃 없음', true); };
+    window._sbShowLogin = function(){ status('Cloudflare 동기화 모드: Supabase 로그인창 차단', true); };
+    window._sbRunEntryRefresh = async function(label, runner, opts){
+      try { if (typeof runner === 'function') return await runner(opts || {}); } catch(e) { warn('entry refresh runner fail', label, e); }
+      return null;
+    };
+    window._sbInitLoad = async function(){
+      if (!cloudReady()) { status('로컬 우선 모드: Cloudflare API 미설정', true); return { localOnly:true }; }
+      try { await window.skCloudPullAll({ full:false }); return { cloudflare:true }; }
+      catch(e) { warn('init pull fail', e.message || e); status('Cloudflare 수신 실패: 로컬 데이터로 실행', false); return { cloudflare:false, error:e.message || String(e) }; }
+    };
+
+    window._sbSaveSv = async function(arr){ return pushTable('items', arr || []); };
+    window._sbLoadSv = async function(){ return pullTable('items'); };
+    window._sbDeleteSvRows = async function(rows){
+      const now = Date.now();
+      const tombs = (rows || []).map(function(r){ return { id:idOf(r), deletedAt:now, updatedAt:now }; }).filter(function(r){ return r.id; });
+      return pushTable('items', tombs);
+    };
+    window._sbSaveNtNotes = async function(arr){ return pushTable('notes', arr || []); };
+    window._sbLoadNtNotes = async function(){ return pullTable('notes'); };
+    window._sbSaveRooms = async function(arr){ return pushTable('workrooms', arr || []); };
+    window._sbLoadRooms = async function(){ return pullTable('workrooms'); };
+    window._sbSaveKcards = async function(arr){ return pushTable('kcards', arr || []); };
+    window._sbLoadKcards = async function(){ return pullTable('kcards'); };
+    window._sbSaveWorkScenes = async function(arr){ return pushTable('snapshots', arr || []); };
+    window._sbLoadWorkScenes = async function(){ return pullTable('snapshots'); };
+    window._sbSaveSections = async function(arr){ return pushTable('sections', arr || []); };
+    window._sbLoadSections = async function(){ return pullTable('sections'); };
+    window._sbSaveMapMemos = async function(arr){ return pushTable('map_memos', arr || []); };
+    window._sbLoadMapMemos = async function(){ return pullTable('map_memos'); };
+    window._sbSavePlItems = async function(arr){ return pushTable('pl_items', arr || []); };
+    window._sbLoadPlItems = async function(){ return pullTable('pl_items'); };
+
+    // schedule 함수들도 Cloudflare 저장으로 연결
+    function schedule(key, arr, runner, delay){
+      clearTimeout(window['__sk_cf_timer_' + key]);
+      window['__sk_cf_timer_' + key] = setTimeout(function(){ Promise.resolve(runner(arr)).catch(function(e){ warn('schedule save fail', key, e.message || e); }); }, typeof delay === 'number' ? delay : 900);
+    }
+    window._sbScheduleSaveSv = function(arr, delay){ schedule('items', arr, window._sbSaveSv, delay); };
+    window._sbScheduleSaveRooms = function(arr, delay){ schedule('workrooms', arr, window._sbSaveRooms, delay); };
+    window._sbScheduleSavePlItems = function(arr, delay){ schedule('pl_items', arr, window._sbSavePlItems, delay); };
+
+    window._sbKvGet = async function(key){
+      if (!key) return null;
+      if (cloudReady()) {
+        try { const r = await api('/api/kv/get?key=' + encodeURIComponent(key), { method:'GET' }); return r.value == null ? null : r.value; }
+        catch(e) { warn('kv get cloud fail', key, e.message || e); }
+      }
+      try { return JSON.parse(LS.getItem('sk_kv_' + key) || 'null'); } catch(e) { return null; }
+    };
+    window._sbKvSet = async function(key, value){
+      if (!key) return;
+      try { LS.setItem('sk_kv_' + key, JSON.stringify(value)); } catch(e) {}
+      if (cloudReady()) {
+        try { await api('/api/kv/set', { method:'POST', body: JSON.stringify({ key:key, value:value }) }); }
+        catch(e) { warn('kv set cloud fail', key, e.message || e); }
+      }
+    };
+    window._sbSaveNotes = async function(key, arr){ return window._sbKvSet('notes_' + key, arr); };
+    window._sbSaveApiKeys = async function(){ return { localOnly:true, reason:'API keys are stored locally only' }; };
+
+    // 이미지: Cloudflare Worker/R2만 허용. API base가 있으면 R2 URL도 동일하게 사용.
+    const prevUpload = window._sbUploadImage;
+    window._sbUploadImage = async function(source, folder){
+      const uid = getUserKey();
+      if (typeof window._ensureInlineUploadHelpers === 'function') window._ensureInlineUploadHelpers();
+      if (typeof window._sbResolveUploadTarget !== 'function' || typeof window._sbMakeUploadPayload !== 'function') {
+        if (typeof prevUpload === 'function') return prevUpload(source, folder);
+        throw new Error('업로드 유틸이 준비되지 않았습니다.');
+      }
+      const target = window._sbResolveUploadTarget(uid, folder || 'uploads');
+      const payload = await window._sbMakeUploadPayload(source, target.folder);
+      const path = target.pathPrefix + payload.fileName;
+      const workerUrl = cleanBase(window.R2_WORKER_URL || getApiBase() || DEFAULT_R2);
+      const res = await fetch(workerUrl + '/' + path, {
+        method:'PUT',
+        headers:{ 'content-type':payload.mimeType, 'x-sk-user':uid },
+        body:payload.file
+      });
+      if (!res.ok) throw new Error('R2 업로드 실패: ' + res.status);
+      const json = await res.json().catch(function(){ return {}; });
+      const url = json.url || json.publicUrl || (workerUrl + '/' + encodeURIComponent(path).replace(/%2F/g,'/'));
+      return { url:url, path:path, bucket:'r2', mimeType:payload.mimeType };
+    };
+    window._sbMakeInlineUpload = async function(){ throw new Error('inline/base64 저장은 차단되었습니다. R2/Cloudflare 업로드를 확인하세요.'); };
+
+    // 페이지 진입 후 API가 설정되어 있으면 조용히 변경분 pull
+    window.addEventListener('DOMContentLoaded', function(){
+      if (cloudReady()) setTimeout(function(){ window.skCloudPullAll({ full:false }).catch(function(e){ warn('auto pull fail', e.message || e); }); }, 1200);
+      status(cloudReady() ? 'Cloudflare D1 동기화 모드' : '로컬 우선 모드: Cloudflare API 미설정', true);
+      log('build', window.__SK_BUILD, 'api=', getApiBase() || '(not set)', 'user=', getUserKey());
+    });
+  } catch(e) {
+    console.warn('[v84 Cloudflare sync bridge] init fail', e);
+  }
+})();
