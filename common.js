@@ -52765,3 +52765,292 @@ window.addEventListener('DOMContentLoaded', () => {
     console.log('[build] common.js', window.__SK_BUILD, 'autoSync=', LS.getItem(AUTO_KEY));
   } catch(e) { console.warn('[v87 manual sync quiet patch] init fail', e); }
 })();
+
+
+/* ════════════════════════════════════════════════════════
+   v88: Quiet Automatic Cloudflare Sync / Debounced Delta Engine
+   - 수동 실행 전제 제거: 평소에는 자동 동기화
+   - 무한/반복 pull 차단: pull 최소 간격 + 백오프
+   - 수정 직후 6~8초 debounce 후 변경 row만 push
+   - 성공/수신완료/동기화완료 알림 완전 무음, 오류만 표시
+   - 기존 v84/v85/v86/v87 예약 타이머/성공 토스트를 후단에서 재차 차단
+════════════════════════════════════════════════════════ */
+(function(){
+  'use strict';
+  try {
+    window.__SK_BUILD = '20260508-workroom-v88-quiet-auto-delta-sync';
+
+    const LS = window.localStorage;
+    const API_KEY = 'sk_cloud_api_base_v1';
+    const USER_KEY = 'sk_cloud_user_key_v1';
+    const AUTO_KEY = 'sk_cf_auto_sync_enabled';
+    const LAST_PULL_KEY = 'sk_cf_v88_last_pull_at';
+    const LAST_HEALTH_KEY = 'sk_cf_v88_last_health_at';
+    const ROW_FP_PREFIX = 'sk_cf_v88_rowfp:';
+    const BASELINE_KEY = 'sk_cf_v88_baseline_done';
+    const TABLES = {
+      items:     { cache:'re_sv',        label:'저장목록' },
+      workrooms: { cache:'wr2_rooms',    label:'작업룸' },
+      notes:     { cache:'nt_notes',     label:'노트' },
+      kcards:    { cache:'ins_kcards',   label:'알짜카드' },
+      snapshots: { cache:'re_ws',        label:'스냅샷' },
+      sections:  { cache:'wr2_sections', label:'작업룸 섹션' },
+      map_memos: { cache:'map_memos',    label:'지도 메모' },
+      pl_items:  { cache:'pl_items_v3',  label:'파이프라인' }
+    };
+    const TABLE_ORDER = Object.keys(TABLES);
+    const QUIET_OK = /(수신\s*완료|변경분\s*수신|변경분\s*확인\s*완료|저장\s*완료|동기화\s*완료|Cloudflare.*완료|작업룸\s*섹션.*수신|파이프라인.*수신|저장목록.*수신|노트.*수신|스냅샷.*수신|지도\s*메모.*수신|알짜.*수신|수신완료)/i;
+    const HEAVY_KEYS = /^(base64|dataUrl|dataURL|imageData|fileData|blob|blobUrl|rawHtml|rawText|pdfFullText|fullText)$/i;
+    const BAD_STRING = /^(data:(image|application|video|audio)\/|blob:|filesystem:)/i;
+    const DANGEROUS_KEYS = /^(parent|element|target|window|document|ownerDocument)$/i;
+
+    let inFlight = false;
+    let pushTimer = null;
+    let pullTimer = null;
+    let backoffUntil = 0;
+    let backoffMs = 0;
+    let lastUserActivity = 0;
+    let lastAutoPushAt = 0;
+    let pendingReason = '';
+
+    function now(){ return Date.now(); }
+    function cleanBase(url){ return String(url || '').trim().replace(/\/+$/,''); }
+    function getApiBase(){ return cleanBase(window.SK_CLOUD_API_BASE || LS.getItem(API_KEY) || ''); }
+    function getUserKey(){ return String(window.SK_CLOUD_USER_KEY || LS.getItem(USER_KEY) || LS.getItem('_sb_saved_email') || 'monodot-main').replace(/[^a-zA-Z0-9_@.\-]/g,'').slice(0,80) || 'monodot-main'; }
+    function cloudReady(){ return !!getApiBase(); }
+    function autoEnabled(){ return LS.getItem(AUTO_KEY) !== '0'; }
+    function isBackoff(){ return now() < backoffUntil; }
+    function log(){ try { console.log.apply(console, ['[SK-CF-v88]'].concat([].slice.call(arguments))); } catch(e){} }
+    function warn(){ try { console.warn.apply(console, ['[SK-CF-v88]'].concat([].slice.call(arguments))); } catch(e){} }
+    function isQuietMessage(msg, type, ok){
+      const s = String(msg || '');
+      const compact = s.replace(/\s+/g,'');
+      const t = String(type || '').toLowerCase();
+      const successLike = ok !== false && (t === '' || t === 'ok' || t === 'success' || t === 'info' || t === 'done');
+      return successLike && (QUIET_OK.test(s) || QUIET_OK.test(compact));
+    }
+
+    // 성공 알림은 어떤 레이어에서 올라오든 최종적으로 차단한다. 오류/경고는 유지.
+    (function hardMuteSuccessToasts(){
+      const prevToast = window.showToast;
+      if (typeof prevToast === 'function' && !prevToast.__skV88Quiet) {
+        const wrapped = function(msg, type){
+          if (isQuietMessage(msg, type, true)) { try { console.debug('[SK-CF-v88 silent-toast]', msg); } catch(e){} return; }
+          return prevToast.apply(this, arguments);
+        };
+        wrapped.__skV88Quiet = true;
+        window.showToast = wrapped;
+      }
+      const prevStatus = window._sbSyncStatus;
+      if (typeof prevStatus === 'function' && !prevStatus.__skV88Quiet) {
+        const wrappedStatus = function(msg, ok){
+          if (isQuietMessage(msg, 'ok', ok !== false)) { try { console.debug('[SK-CF-v88 silent-status]', msg); } catch(e){} return; }
+          return prevStatus.apply(this, arguments);
+        };
+        wrappedStatus.__skV88Quiet = true;
+        window._sbSyncStatus = wrappedStatus;
+      }
+    })();
+
+    async function api(path, opts){
+      const base = getApiBase();
+      if (!base) throw new Error('Cloudflare API 주소 미설정');
+      const headers = Object.assign({'content-type':'application/json', 'x-sk-user':getUserKey()}, (opts && opts.headers) || {});
+      const res = await fetch(base + path, Object.assign({}, opts || {}, { headers }));
+      const text = await res.text();
+      let data = {}; try { data = text ? JSON.parse(text) : {}; } catch(e){ data = { raw:text }; }
+      if (!res.ok || data.ok === false) throw new Error(data.error || data.message || ('Cloudflare API ' + res.status));
+      return data;
+    }
+    function cacheGet(cacheKey){
+      try { if (window._idbCache && Array.isArray(window._idbCache[cacheKey])) return window._idbCache[cacheKey].slice(); } catch(e){}
+      try { const v = JSON.parse(LS.getItem(cacheKey) || '[]'); return Array.isArray(v) ? v : []; } catch(e){ return []; }
+    }
+    function idOf(x){ return String(x && (x.id || x.item_id || x._id || x.uuid || x.noteId || x.roomId || x.title) || '').trim(); }
+    function updatedOf(x){
+      const v = x && (x.updatedAt || x.updated_at || x.modifiedAt || x.timestamp || x.createdAt || x.created_at);
+      if (!v) return 0;
+      if (typeof v === 'number') return isFinite(v) ? v : 0;
+      const t = Date.parse(v); return isFinite(t) ? t : 0;
+    }
+    function deletedOf(x){
+      const v = x && (x.deletedAt || x.deleted_at || 0);
+      if (!v) return 0;
+      if (typeof v === 'number') return isFinite(v) ? v : 0;
+      const t = Date.parse(v); return isFinite(t) ? t : 0;
+    }
+    function stripHeavy(v, depth){
+      depth = depth || 0;
+      if (depth > 12) return undefined;
+      if (v == null) return v;
+      if (typeof v === 'string') {
+        if (BAD_STRING.test(v)) return undefined;
+        if (v.length > 350000) return v.slice(0, 2000) + '…[stripped:' + v.length + ']';
+        return v;
+      }
+      if (Array.isArray(v)) return v.map(x => stripHeavy(x, depth + 1)).filter(x => x !== undefined);
+      if (typeof v === 'object') {
+        const out = {};
+        Object.keys(v).forEach(k => {
+          if (DANGEROUS_KEYS.test(k) || HEAVY_KEYS.test(k)) return;
+          const x = stripHeavy(v[k], depth + 1);
+          if (x !== undefined) out[k] = x;
+        });
+        return out;
+      }
+      return v;
+    }
+    function stableStringify(v){
+      if (v == null || typeof v !== 'object') return JSON.stringify(v);
+      if (Array.isArray(v)) return '[' + v.map(stableStringify).join(',') + ']';
+      return '{' + Object.keys(v).sort().map(k => JSON.stringify(k) + ':' + stableStringify(v[k])).join(',') + '}';
+    }
+    function hash32(str){
+      let h = 2166136261;
+      for (let i=0; i<str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+      return (h >>> 0).toString(36) + ':' + str.length;
+    }
+    function rowFingerprint(row){
+      const clean = stripHeavy(row, 0) || {};
+      return hash32(stableStringify(clean));
+    }
+    function rowFpKey(table, id){ return ROW_FP_PREFIX + table + ':' + encodeURIComponent(id); }
+    function tableRows(table){
+      const meta = TABLES[table]; if (!meta) return [];
+      return cacheGet(meta.cache).filter(Boolean);
+    }
+    function markRowsAsSynced(table){
+      tableRows(table).forEach(row => { const id = idOf(row); if (!id) return; try { LS.setItem(rowFpKey(table, id), rowFingerprint(row)); } catch(e){} });
+    }
+    function changedRowsForTable(table, opts){
+      opts = opts || {};
+      const rows = [];
+      tableRows(table).forEach(row => {
+        const id = idOf(row); if (!id) return;
+        const fp = rowFingerprint(row);
+        if (!opts.full && LS.getItem(rowFpKey(table, id)) === fp) return;
+        const data = stripHeavy(row, 0) || {};
+        if (!data.id) data.id = id;
+        const updated = updatedOf(data) || updatedOf(row) || now();
+        rows.push({ item_id:id, updated_at:updated, deleted_at:deletedOf(data) || deletedOf(row), data:data, __fp:fp });
+      });
+      return rows;
+    }
+    async function pushDeltaTable(table, opts){
+      opts = opts || {};
+      const changed = changedRowsForTable(table, opts);
+      if (!changed.length) return { ok:true, table, saved:0, changed:0 };
+      let saved = 0;
+      for (let i=0; i<changed.length; i+=250) {
+        const chunk = changed.slice(i, i+250).map(r => ({ item_id:r.item_id, updated_at:r.updated_at, deleted_at:r.deleted_at, data:r.data }));
+        const res = await api('/api/sync/push', { method:'POST', body:JSON.stringify({ table, rows:chunk }) });
+        saved += Number(res.saved || chunk.length || 0);
+      }
+      changed.forEach(r => { try { LS.setItem(rowFpKey(table, r.item_id), r.__fp); } catch(e){} });
+      return { ok:true, table, saved, changed:changed.length };
+    }
+    async function pushDeltas(opts){
+      opts = opts || {};
+      const out = {};
+      for (const table of TABLE_ORDER) {
+        try { out[table] = await pushDeltaTable(table, opts); }
+        catch(e) { out[table] = { ok:false, error:e.message || String(e) }; throw e; }
+      }
+      lastAutoPushAt = now();
+      return out;
+    }
+    async function pullChanges(opts){
+      opts = opts || {};
+      const minGap = opts.force ? 0 : Math.max(30000, Number(LS.getItem('sk_cf_v88_pull_min_gap_ms') || 120000));
+      const lastPull = Number(LS.getItem(LAST_PULL_KEY) || 0) || 0;
+      if (!opts.full && !opts.force && now() - lastPull < minGap) return { ok:true, skipped:true, reason:'pull-throttled', lastPull };
+      if (typeof window.skCloudPullAll !== 'function') return { ok:false, error:'skCloudPullAll missing' };
+      const res = await window.skCloudPullAll({ full:!!opts.full, force:true, silent:true, v88:true });
+      LS.setItem(LAST_PULL_KEY, String(now()));
+      TABLE_ORDER.forEach(markRowsAsSynced);
+      return res;
+    }
+    function resetBackoff(){ backoffMs = 0; backoffUntil = 0; }
+    function applyBackoff(e){
+      backoffMs = Math.min(300000, backoffMs ? Math.round(backoffMs * 1.8) : 30000);
+      backoffUntil = now() + backoffMs;
+      warn('sync backoff', backoffMs + 'ms', e && (e.message || e));
+    }
+    async function autoCycle(reason, opts){
+      opts = opts || {};
+      if (inFlight) return { ok:true, skipped:true, reason:'in-flight' };
+      if (!autoEnabled() && !opts.manual) return { ok:true, skipped:true, reason:'auto-disabled' };
+      if (!cloudReady()) return { ok:true, skipped:true, reason:'api-not-set' };
+      if (isBackoff() && !opts.manual) return { ok:true, skipped:true, reason:'backoff', until:backoffUntil };
+      inFlight = true;
+      try {
+        const result = { ok:true, build:window.__SK_BUILD, reason, pushed:null, pulled:null, at:now() };
+        result.pushed = await pushDeltas({ full:!!opts.fullPush });
+        result.pulled = await pullChanges({ full:!!opts.fullPull, force:!!opts.forcePull || !!opts.manual });
+        resetBackoff();
+        return result;
+      } catch(e) {
+        applyBackoff(e);
+        if (opts.manual && typeof window.showToast === 'function') window.showToast('Cloudflare 동기화 실패: ' + (e.message || e), 'warn');
+        return { ok:false, error:e.message || String(e), reason };
+      } finally {
+        inFlight = false;
+      }
+    }
+    function schedulePush(reason, delay){
+      if (!autoEnabled() || !cloudReady()) return;
+      pendingReason = reason || pendingReason || 'change';
+      clearTimeout(pushTimer);
+      const minSinceLast = Math.max(0, 15000 - (now() - lastAutoPushAt));
+      pushTimer = setTimeout(function(){ autoCycle(pendingReason || 'debounced-change', { forcePull:false }).catch(e => warn(e)); pendingReason=''; }, Math.max(delay || 7000, minSinceLast));
+    }
+    function schedulePull(reason, delay){
+      if (!autoEnabled() || !cloudReady()) return;
+      clearTimeout(pullTimer);
+      pullTimer = setTimeout(function(){ autoCycle(reason || 'scheduled-pull', { forcePull:false }).catch(e => warn(e)); }, delay || 1500);
+    }
+    function baselineIfFirstRun(){
+      if (LS.getItem(BASELINE_KEY) === '1') return;
+      TABLE_ORDER.forEach(markRowsAsSynced);
+      LS.setItem(BASELINE_KEY, '1');
+      log('baseline fingerprints initialized. Existing local rows will not be bulk-pushed automatically. Use skCloudInitialFullSync() once if needed.');
+    }
+    function bindAutoEvents(){
+      if (window.__SK_CF_V88_EVENTS_BOUND) return;
+      window.__SK_CF_V88_EVENTS_BOUND = true;
+      ['input','change','paste','drop'].forEach(ev => {
+        document.addEventListener(ev, function(){ lastUserActivity = now(); schedulePush(ev, 8000); }, true);
+      });
+      // 버튼 클릭 뒤 실제 저장 함수가 조금 늦게 실행되는 경우가 많아 약간 늦춰서 확인한다.
+      document.addEventListener('click', function(){ lastUserActivity = now(); schedulePush('click', 10000); }, true);
+      window.addEventListener('focus', function(){ schedulePull('focus', 1200); }, true);
+      document.addEventListener('visibilitychange', function(){ if (!document.hidden) schedulePull('visible', 1500); }, true);
+      window.addEventListener('online', function(){ schedulePull('online', 2000); }, true);
+      setInterval(function(){ if (!document.hidden) schedulePull('interval', 1000); }, Math.max(180000, Number(LS.getItem('sk_cf_v88_interval_ms') || 300000)));
+    }
+
+    // v87 manual-only guard를 운영 모드로 되돌린다. 자동은 켜되, 이 v88 스케줄러만 절제해서 호출한다.
+    LS.setItem(AUTO_KEY, '1');
+    baselineIfFirstRun();
+    bindAutoEvents();
+
+    window.skCloudDisableAutoSync = function(){ LS.setItem(AUTO_KEY, '0'); clearTimeout(pushTimer); clearTimeout(pullTimer); log('자동 동기화 OFF'); return true; };
+    window.skCloudEnableAutoSync = function(){ LS.setItem(AUTO_KEY, '1'); schedulePull('enable', 1000); log('자동 동기화 ON'); return true; };
+    window.skCloudAutoSyncStatus = function(){
+      return { build:window.__SK_BUILD, autoSync:autoEnabled(), apiBase:getApiBase(), userKey:getUserKey(), inFlight, backoffUntil, lastPull:Number(LS.getItem(LAST_PULL_KEY)||0)||0, lastAutoPushAt, baseline:LS.getItem(BASELINE_KEY)==='1' };
+    };
+    window.skCloudSyncNow = async function(){ return await autoCycle('manual-sync', { manual:true, forcePull:true }); };
+    window.skCloudConvergeNow = async function(){ return await autoCycle('manual-converge', { manual:true, forcePull:true, fullPull:true, fullPush:true }); };
+    window.skCloudRepairImagesAndSync = window.skCloudConvergeNow;
+    window.skCloudInitialFullSync = async function(){ return await autoCycle('initial-full-sync', { manual:true, forcePull:true, fullPull:true, fullPush:true }); };
+
+    // 초기 진입 시에는 한 번만 조용히 변경분 확인. 성공 알림 없음.
+    setTimeout(function(){ schedulePull('initial', 100); }, 2500);
+    // 너무 잦은 health 체크도 막는다.
+    if (cloudReady() && now() - (Number(LS.getItem(LAST_HEALTH_KEY)||0)||0) > 300000) {
+      LS.setItem(LAST_HEALTH_KEY, String(now()));
+      api('/api/health', { method:'GET' }).then(h => log('health', h)).catch(e => warn('health fail', e.message || e));
+    }
+    console.log('[build] common.js', window.__SK_BUILD, 'quiet-auto-sync enabled');
+  } catch(e) { console.warn('[v88 quiet auto delta sync patch] init fail', e); }
+})();
