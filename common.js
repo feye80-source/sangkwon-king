@@ -52096,3 +52096,423 @@ window.addEventListener('DOMContentLoaded', () => {
     console.warn('[v84 Cloudflare sync bridge] init fail', e);
   }
 })();
+
+
+/* ════════════════════════════════════════════════════════
+   v85: Cloudflare 저장/이미지 동기화 검증·복구 브리지
+   - v84 위에 덮어쓰는 안전 보정 레이어
+   - R2 URL/path가 없는 첨부 진단
+   - inline/base64 첨부는 R2로 업로드 후 URL/path로 교체
+   - 저장 전 첨부 메타데이터를 정규화하고 D1에 push
+   - skCloudDiagnose(), skCloudRepairImagesAndSync() 제공
+════════════════════════════════════════════════════════ */
+(function(){
+  'use strict';
+  try {
+    window.__SK_BUILD = '20260508-workroom-v85-sync-image-repair';
+
+    const LS = window.localStorage;
+    const CFG_API = 'sk_cloud_api_base_v1';
+    const CFG_USER = 'sk_cloud_user_key_v1';
+    const LOCAL_UID = 'sk_local_user_id_v1';
+    const LAST_PREFIX = 'sk_cf_last_sync_';
+    const DEFAULT_R2 = 'https://sangkwon-upload-worker.feye80.workers.dev';
+    const TABLES = {
+      items:     { cache:'re_sv',        label:'저장목록' },
+      workrooms: { cache:'wr2_rooms',    label:'작업룸' },
+      notes:     { cache:'nt_notes',     label:'노트' },
+      kcards:    { cache:'ins_kcards',   label:'알짜카드' },
+      snapshots: { cache:'re_ws',        label:'스냅샷' },
+      sections:  { cache:'wr2_sections', label:'작업룸 섹션' },
+      map_memos: { cache:'map_memos',    label:'지도 메모' },
+      pl_items:  { cache:'pl_items_v3',  label:'파이프라인' }
+    };
+
+    function cleanBase(url){ return String(url || '').trim().replace(/\/+$/,''); }
+    function getApiBase(){ return cleanBase(window.SK_CLOUD_API_BASE || LS.getItem(CFG_API) || ''); }
+    function ensureLocalUid(){
+      let uid = LS.getItem(LOCAL_UID);
+      if (!uid) { uid = 'local_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,10); LS.setItem(LOCAL_UID, uid); }
+      return uid;
+    }
+    function cleanUser(v){ return String(v || '').trim().replace(/[^a-zA-Z0-9_@.\-]/g,'').slice(0,80); }
+    function getUserKey(){ return cleanUser(window.SK_CLOUD_USER_KEY || LS.getItem(CFG_USER) || LS.getItem('_sb_saved_email') || ensureLocalUid()); }
+    function cloudReady(){ return !!getApiBase(); }
+    function log(){ try { console.log.apply(console, ['[SK-CF-v85]'].concat([].slice.call(arguments))); } catch(e){} }
+    function warn(){ try { console.warn.apply(console, ['[SK-CF-v85]'].concat([].slice.call(arguments))); } catch(e){} }
+    function toast(msg,type){ try { if (typeof window.showToast === 'function') window.showToast(msg, type || 'ok'); } catch(e){} }
+    function status(msg, ok){ try { if (typeof window._sbSyncStatus === 'function') window._sbSyncStatus(msg, ok !== false); } catch(e){} }
+    function now(){ return Date.now(); }
+
+    window.skSetCloudApiBase = function(url){
+      const clean = cleanBase(url);
+      if (clean) LS.setItem(CFG_API, clean); else LS.removeItem(CFG_API);
+      window.SK_CLOUD_API_BASE = clean;
+      if (clean) window.R2_WORKER_URL = clean;
+      toast(clean ? 'Cloudflare API 주소 저장됨' : 'Cloudflare API 주소 제거됨', clean ? 'ok' : 'warn');
+      return clean;
+    };
+    window.skSetCloudUserKey = function(key){
+      const clean = cleanUser(key);
+      if (!clean) throw new Error('동기화 사용자키가 비어 있습니다. 예: skSetCloudUserKey("monodot-main")');
+      LS.setItem(CFG_USER, clean);
+      window.SK_CLOUD_USER_KEY = clean;
+      toast('동기화 사용자키 저장됨: ' + clean, 'ok');
+      return clean;
+    };
+    window.SK_CLOUD_API_BASE = getApiBase();
+    window.SK_CLOUD_USER_KEY = getUserKey();
+
+    async function api(path, opts){
+      const base = getApiBase();
+      if (!base) throw new Error('Cloudflare API 주소 미설정. skSetCloudApiBase(url) 먼저 실행하세요.');
+      const headers = Object.assign({ 'content-type':'application/json', 'x-sk-user': getUserKey() }, (opts && opts.headers) || {});
+      const res = await fetch(base + path, Object.assign({}, opts || {}, { headers }));
+      const txt = await res.text();
+      let data = {};
+      try { data = txt ? JSON.parse(txt) : {}; } catch(e){ data = { raw:txt }; }
+      if (!res.ok || data.ok === false) throw new Error(data.error || data.message || ('Cloudflare API ' + res.status));
+      return data;
+    }
+
+    function idOf(x){ return String(x && (x.id || x.item_id || x._id || x.uuid) || '').trim(); }
+    function updatedOf(x){
+      const v = x && (x.updatedAt || x.updated_at || x.modifiedAt || x.timestamp || x.createdAt || x.created_at);
+      if (!v) return now();
+      if (typeof v === 'number') return v;
+      const t = Date.parse(v); return isFinite(t) ? t : now();
+    }
+    function deletedOf(x){
+      const v = x && (x.deletedAt || x.deleted_at || 0);
+      if (!v) return 0;
+      if (typeof v === 'number') return v;
+      const t = Date.parse(v); return isFinite(t) ? t : 0;
+    }
+    function cacheGet(key){
+      try { if (window._idbCache && Array.isArray(window._idbCache[key])) return window._idbCache[key].slice(); } catch(e){}
+      try { const v = JSON.parse(LS.getItem(key) || '[]'); return Array.isArray(v) ? v : []; } catch(e){ return []; }
+    }
+    function cacheSet(key, arr){
+      const list = Array.isArray(arr) ? arr : [];
+      try { if (window._idbCache) window._idbCache[key] = list; } catch(e){}
+      try { if (typeof window.idbSet === 'function') window.idbSet(key, list).catch(function(){}); } catch(e){}
+      try { LS.setItem(key, JSON.stringify(list)); } catch(e){}
+      return list;
+    }
+    function isDataUrl(v){ return /^data:(image|application|video|audio)\//i.test(String(v || '')); }
+    function isBlobUrl(v){ return /^(blob:|filesystem:)/i.test(String(v || '')); }
+    function isR2Url(v){ return /^https?:\/\//i.test(String(v || '')) && /(workers\.dev|r2\.dev|cloudflare|sangkwon-upload-worker)/i.test(String(v || '')); }
+    function isImageLike(att){
+      const s = String((att && (att.type || att.mimeType || att.name || att.url || att.src || att.data)) || '').toLowerCase();
+      return /image\//.test(s) || /\.(png|jpe?g|webp|gif|bmp|svg)(\?|$)/.test(s) || isDataUrl(att && (att.url || att.src || att.data));
+    }
+    function normalizeUrlFromPath(path){
+      const p = String(path || '').replace(/^\/+/, '');
+      if (!p) return '';
+      const base = getApiBase() || cleanBase(window.R2_WORKER_URL || DEFAULT_R2);
+      return base ? (base + '/' + encodeURIComponent(p).replace(/%2F/g,'/')) : '';
+    }
+    function normalizeAttachment(att, stats){
+      if (!att || typeof att !== 'object') return att;
+      stats.total++;
+      const url = att.url || att.src || '';
+      const data = att.data || att.base64 || att.dataUrl || att.dataURL || '';
+      const path = att.storagePath || att.path || att.r2Path || '';
+      if (url && !att.src) att.src = url;
+      if (!att.url && att.src) att.url = att.src;
+      if (!att.url && path) { const u = normalizeUrlFromPath(path); if (u) { att.url = u; att.src = u; stats.fixedUrlFromPath++; } }
+      if (att.path && !att.storagePath) att.storagePath = att.path;
+      if (isDataUrl(url) || isDataUrl(data)) stats.inline++;
+      else if (isBlobUrl(url) || isBlobUrl(data)) stats.blob++;
+      else if (att.url && (isR2Url(att.url) || att.storagePath || att.bucket === 'r2')) stats.r2++;
+      else if (!att.url && !att.src && !att.data && !att.storagePath) stats.missing++;
+      return att;
+    }
+    async function uploadDataUrl(dataUrl, folder){
+      if (!dataUrl || !isDataUrl(dataUrl)) return null;
+      if (typeof window._sbUploadImage !== 'function') throw new Error('업로드 함수가 없습니다.');
+      return await window._sbUploadImage(dataUrl, folder || 'attachments');
+    }
+    async function repairAttachment(att, stats, folder){
+      if (!att || typeof att !== 'object') return att;
+      normalizeAttachment(att, stats);
+      const url = att.url || att.src || '';
+      const data = att.data || att.base64 || att.dataUrl || att.dataURL || '';
+      const source = isDataUrl(url) ? url : (isDataUrl(data) ? data : '');
+      if (source) {
+        try {
+          const uploaded = await uploadDataUrl(source, folder || 'attachments');
+          if (uploaded && uploaded.url) {
+            att.url = uploaded.url; att.src = uploaded.url;
+            att.storagePath = uploaded.path || uploaded.storagePath || att.storagePath || '';
+            att.path = att.storagePath || att.path || '';
+            att.bucket = 'r2';
+            delete att.data; delete att.base64; delete att.dataUrl; delete att.dataURL;
+            stats.uploaded++;
+          }
+        } catch(e) {
+          stats.uploadFailed++;
+          att._syncWarning = 'R2 업로드 실패: ' + (e.message || e);
+        }
+      }
+      if ((att.url || att.src || att.storagePath) && !att.updatedAt) att.updatedAt = now();
+      return att;
+    }
+    function visitAttachments(obj, cb, path, seen){
+      if (!obj || typeof obj !== 'object') return;
+      seen = seen || new WeakSet();
+      if (seen.has(obj)) return;
+      seen.add(obj);
+      if (Array.isArray(obj)) { obj.forEach(function(v,i){ visitAttachments(v, cb, (path || '') + '['+i+']', seen); }); return; }
+      if (Array.isArray(obj.attachments)) {
+        obj.attachments = obj.attachments.map(function(att, i){ return cb(att, (path || '') + '.attachments['+i+']'); }).filter(Boolean);
+      }
+      if (Array.isArray(obj.files)) {
+        obj.files = obj.files.map(function(att, i){ return cb(att, (path || '') + '.files['+i+']'); }).filter(Boolean);
+      }
+      Object.keys(obj).forEach(function(k){
+        if (/^(parent|element|target|window|document)$/i.test(k)) return;
+        const v = obj[k];
+        if (v && typeof v === 'object') visitAttachments(v, cb, (path || '') + '.' + k, seen);
+      });
+    }
+    function scanOne(row){
+      const stats = { total:0, r2:0, inline:0, blob:0, missing:0, fixedUrlFromPath:0, uploaded:0, uploadFailed:0 };
+      visitAttachments(row, function(att){ return normalizeAttachment(att, stats); });
+      return stats;
+    }
+    async function repairOne(row, table){
+      const stats = { total:0, r2:0, inline:0, blob:0, missing:0, fixedUrlFromPath:0, uploaded:0, uploadFailed:0 };
+      let changed = false;
+      const before = JSON.stringify(row || {});
+      const folder = table === 'kcards' ? 'kcard-images' : 'attachments';
+      async function walk(obj, seen){
+        if (!obj || typeof obj !== 'object') return;
+        seen = seen || new WeakSet(); if (seen.has(obj)) return; seen.add(obj);
+        if (Array.isArray(obj)) { for (const v of obj) await walk(v, seen); return; }
+        if (Array.isArray(obj.attachments)) {
+          for (let i=0;i<obj.attachments.length;i++) obj.attachments[i] = await repairAttachment(obj.attachments[i], stats, folder);
+        }
+        if (Array.isArray(obj.files)) {
+          for (let i=0;i<obj.files.length;i++) obj.files[i] = await repairAttachment(obj.files[i], stats, folder);
+        }
+        for (const k of Object.keys(obj)) {
+          if (/^(parent|element|target|window|document)$/i.test(k)) continue;
+          const v = obj[k]; if (v && typeof v === 'object') await walk(v, seen);
+        }
+      }
+      await walk(row);
+      changed = before !== JSON.stringify(row || {});
+      if (changed && row && typeof row === 'object') row.updatedAt = now();
+      return { row, stats, changed };
+    }
+    function addStats(a,b){ Object.keys(b || {}).forEach(k => { a[k] = (a[k] || 0) + (Number(b[k]) || 0); }); return a; }
+
+    function stripHeavy(v, depth){
+      if (depth > 8) return undefined;
+      if (v == null) return v;
+      if (typeof v === 'string') {
+        if (isDataUrl(v)) return undefined;
+        if (v.length > 350000) return v.slice(0, 2000) + '…[stripped:' + v.length + ']';
+        return v;
+      }
+      if (Array.isArray(v)) return v.map(x => stripHeavy(x, depth+1)).filter(x => x !== undefined);
+      if (typeof v === 'object') {
+        const out = {};
+        Object.keys(v).forEach(k => {
+          if (/^(base64|dataUrl|dataURL|imageData|fileData|blob|rawHtml|rawText|pdfFullText|fullText)$/i.test(k)) return;
+          const x = stripHeavy(v[k], depth+1); if (x !== undefined) out[k] = x;
+        });
+        return out;
+      }
+      return v;
+    }
+    function rowsForPush(arr){
+      return (Array.isArray(arr) ? arr : []).filter(x => x && idOf(x)).map(x => {
+        const data = stripHeavy(x, 0) || {};
+        if (!data.id) data.id = idOf(x);
+        if (!data.updatedAt) data.updatedAt = updatedOf(x);
+        return { item_id:idOf(data), updated_at:updatedOf(data), deleted_at:deletedOf(data), data };
+      });
+    }
+    async function pushTable(table, arr, opts){
+      const meta = TABLES[table] || { cache:table, label:table };
+      let list = Array.isArray(arr) ? arr : [];
+      const totalStats = { total:0, r2:0, inline:0, blob:0, missing:0, fixedUrlFromPath:0, uploaded:0, uploadFailed:0 };
+      const repaired = [];
+      for (const row of list) {
+        try { const r = await repairOne(row, table); repaired.push(r.row); addStats(totalStats, r.stats); }
+        catch(e) { warn('repair row fail', table, idOf(row), e.message || e); repaired.push(row); }
+      }
+      list = repaired;
+      if (meta.cache) cacheSet(meta.cache, list);
+      if (!cloudReady()) return { localOnly:true, saved:0, attachmentStats:totalStats };
+      const rows = rowsForPush(list);
+      if (!rows.length) return { ok:true, saved:0, attachmentStats:totalStats };
+      const res = await api('/api/sync/push', { method:'POST', body:JSON.stringify({ table, rows }) });
+      LS.setItem(LAST_PREFIX + table, String(res.serverTime || now()));
+      if (res.skipped) warn('push skipped', table, res.skipped, res.warnings || '');
+      status('☁️ ' + meta.label + ' 저장/첨부 동기화 완료', true);
+      return Object.assign({}, res, { attachmentStats:totalStats });
+    }
+    function nonEmpty(v){
+      if (v == null || v === '') return false;
+      if (Array.isArray(v)) return v.length > 0;
+      if (typeof v === 'object') return Object.keys(v).length > 0;
+      return true;
+    }
+    function mergeAttachmentArrays(a,b){
+      const map = new Map();
+      function key(att){ return String((att && (att.storagePath || att.path || att.url || att.src || att.name)) || Math.random()); }
+      (Array.isArray(a)?a:[]).forEach(att => { if(att) map.set(key(att), att); });
+      (Array.isArray(b)?b:[]).forEach(att => { if(att) map.set(key(att), att); });
+      return Array.from(map.values());
+    }
+    function smartMerge(prev, inc){
+      if (!prev) return inc;
+      if (!inc) return prev;
+      if (deletedOf(inc)) return inc;
+      const out = Object.assign({}, prev, inc);
+      const leaseKeys = ['deposit','rent','월세','보증금','임대보증금','임대월세','임차보증금','leaseDeposit','leaseRent','monthlyRent'];
+      leaseKeys.forEach(k => { if (!nonEmpty(out[k]) && nonEmpty(prev[k])) out[k] = prev[k]; });
+      ['attachments','files'].forEach(k => {
+        if (Array.isArray(prev[k]) || Array.isArray(inc[k])) out[k] = mergeAttachmentArrays(prev[k], inc[k]);
+      });
+      // notes 안의 attachments도 병합 보정
+      if (Array.isArray(prev.notes) && Array.isArray(inc.notes)) {
+        const byId = new Map(); prev.notes.forEach(n => { if(n) byId.set(String(n.id || n.title || Math.random()), n); });
+        inc.notes.forEach(n => {
+          if(!n) return; const id=String(n.id || n.title || Math.random());
+          const p=byId.get(id); byId.set(id, smartMerge(p, n));
+        });
+        out.notes = Array.from(byId.values());
+      }
+      if (updatedOf(inc) >= updatedOf(prev)) out.updatedAt = updatedOf(inc); else out.updatedAt = updatedOf(prev);
+      return out;
+    }
+    async function pullTable(table, opts){
+      const meta = TABLES[table] || { cache:table, label:table };
+      const local = cacheGet(meta.cache);
+      if (!cloudReady()) return null;
+      const since = opts && opts.full ? 0 : (Number(LS.getItem(LAST_PREFIX + table) || 0) || 0);
+      const res = await api('/api/sync/pull?table=' + encodeURIComponent(table) + '&since=' + encodeURIComponent(since) + '&limit=5000', { method:'GET' });
+      const incoming = (res.rows || []).map(r => {
+        const data = r.data || {}; if (!data.id && r.item_id) data.id = r.item_id;
+        if (!data.updatedAt && r.updated_at) data.updatedAt = r.updated_at;
+        if (!data.deletedAt && r.deleted_at) data.deletedAt = r.deleted_at;
+        return data;
+      });
+      const map = new Map();
+      local.forEach(x => { const id=idOf(x); if(id) map.set(id, x); });
+      incoming.forEach(x => { const id=idOf(x); if(!id) return; map.set(id, smartMerge(map.get(id), x)); });
+      const merged = Array.from(map.values()).filter(x => !deletedOf(x) || deletedOf(x) > now() - 30*86400000);
+      cacheSet(meta.cache, merged);
+      LS.setItem(LAST_PREFIX + table, String(res.serverTime || now()));
+      status('☁️ ' + meta.label + ' 변경분 수신 완료', true);
+      return merged;
+    }
+
+    window.skCloudPushTable = pushTable;
+    window.skCloudPullTable = pullTable;
+    window.skCloudPullAll = async function(opts){
+      const out = {};
+      for (const t of Object.keys(TABLES)) {
+        try { out[t] = await pullTable(t, opts || {}); }
+        catch(e){ warn('pull fail', t, e.message || e); out[t] = null; }
+      }
+      return out;
+    };
+    window.skCloudScanAttachments = function(){
+      const out = { build:window.__SK_BUILD, apiBase:getApiBase() || '', userKey:getUserKey(), tables:{} };
+      Object.keys(TABLES).forEach(t => {
+        const meta = TABLES[t]; const list = cacheGet(meta.cache); const stats = { rows:list.length, total:0, r2:0, inline:0, blob:0, missing:0, fixedUrlFromPath:0, uploaded:0, uploadFailed:0 };
+        list.forEach(row => addStats(stats, scanOne(row)));
+        out.tables[t] = stats;
+      });
+      console.table(Object.keys(out.tables).map(k => Object.assign({ table:k }, out.tables[k])));
+      return out;
+    };
+    window.skCloudDiagnose = async function(){
+      const report = window.skCloudScanAttachments();
+      try { report.health = cloudReady() ? await api('/api/health', { method:'GET' }) : { ok:false, error:'apiBase not set' }; }
+      catch(e){ report.health = { ok:false, error:e.message || String(e) }; }
+      console.log('[SK-CF-v85 diagnose]', report);
+      if (!cloudReady()) toast('Cloudflare API 주소가 없어 기기 간 동기화는 아직 안 됩니다', 'warn');
+      else if (!report.health.ok) toast('Cloudflare Worker 연결 실패: ' + report.health.error, 'warn');
+      else toast('Cloudflare 진단 완료: 콘솔 확인', 'ok');
+      return report;
+    };
+    window.skCloudRepairImagesAndSync = async function(){
+      const result = { push:{}, pull:null };
+      if (!cloudReady()) throw new Error('Cloudflare API 주소 미설정. skSetCloudApiBase(url) 먼저 실행하세요.');
+      for (const t of Object.keys(TABLES)) {
+        const list = cacheGet(TABLES[t].cache);
+        try { result.push[t] = await pushTable(t, list); }
+        catch(e){ result.push[t] = { error:e.message || String(e) }; warn('repair push fail', t, e.message || e); }
+      }
+      result.pull = await window.skCloudPullAll({ full:false });
+      toast('이미지/첨부 복구 동기화 완료', 'ok');
+      return result;
+    };
+    window.skCloudSyncNow = async function(){
+      const r = await window.skCloudRepairImagesAndSync();
+      status('☁️ Cloudflare 전체 동기화 완료', true);
+      return r;
+    };
+    window.skCloudResetSince = function(){ Object.keys(TABLES).forEach(t => LS.removeItem(LAST_PREFIX+t)); toast('Cloudflare pull 기준시간 초기화됨', 'ok'); };
+
+    // Supabase 호환 함수명은 v85 엔진으로 다시 연결
+    window._sbGetUserId = async function(){ return getUserKey(); };
+    window._sbGetSessionShared = async function(){ return { data:{ session:{ user:{ id:getUserKey(), email:getUserKey() } } }, error:null }; };
+    window._sbSaveSv = async arr => pushTable('items', arr || []);
+    window._sbLoadSv = async () => pullTable('items');
+    window._sbSaveRooms = async arr => pushTable('workrooms', arr || []);
+    window._sbLoadRooms = async () => pullTable('workrooms');
+    window._sbSaveNtNotes = async arr => pushTable('notes', arr || []);
+    window._sbLoadNtNotes = async () => pullTable('notes');
+    window._sbSaveKcards = async arr => pushTable('kcards', arr || []);
+    window._sbLoadKcards = async () => pullTable('kcards');
+    window._sbSaveWorkScenes = async arr => pushTable('snapshots', arr || []);
+    window._sbLoadWorkScenes = async () => pullTable('snapshots');
+    window._sbSaveSections = async arr => pushTable('sections', arr || []);
+    window._sbLoadSections = async () => pullTable('sections');
+    window._sbSaveMapMemos = async arr => pushTable('map_memos', arr || []);
+    window._sbLoadMapMemos = async () => pullTable('map_memos');
+    window._sbSavePlItems = async arr => pushTable('pl_items', arr || []);
+    window._sbLoadPlItems = async () => pullTable('pl_items');
+    window._sbScheduleSaveSv = function(arr, delay){ clearTimeout(window.__sk_v85_items_timer); window.__sk_v85_items_timer=setTimeout(()=>pushTable('items', arr||[]).catch(e=>warn('items schedule fail',e.message||e)), delay||800); };
+    window._sbScheduleSaveRooms = function(arr, delay){ clearTimeout(window.__sk_v85_rooms_timer); window.__sk_v85_rooms_timer=setTimeout(()=>pushTable('workrooms', arr||[]).catch(e=>warn('rooms schedule fail',e.message||e)), delay||800); };
+    window._sbScheduleSavePlItems = function(arr, delay){ clearTimeout(window.__sk_v85_pl_timer); window.__sk_v85_pl_timer=setTimeout(()=>pushTable('pl_items', arr||[]).catch(e=>warn('pl schedule fail',e.message||e)), delay||800); };
+
+    const prevUpload = window._sbUploadImage;
+    window._sbUploadImage = async function(source, folder){
+      const uid = getUserKey();
+      if (typeof window._ensureInlineUploadHelpers === 'function') window._ensureInlineUploadHelpers();
+      if (typeof window._sbResolveUploadTarget !== 'function' || typeof window._sbMakeUploadPayload !== 'function') {
+        if (typeof prevUpload === 'function') return await prevUpload(source, folder);
+        throw new Error('업로드 유틸이 준비되지 않았습니다.');
+      }
+      const target = window._sbResolveUploadTarget(uid, folder || 'attachments');
+      const payload = await window._sbMakeUploadPayload(source, target.folder);
+      const path = target.pathPrefix + payload.fileName;
+      const workerUrl = cleanBase(window.R2_WORKER_URL || getApiBase() || DEFAULT_R2);
+      if (!workerUrl) throw new Error('R2/Worker URL이 없습니다.');
+      const res = await fetch(workerUrl + '/' + path, { method:'PUT', headers:{ 'content-type':payload.mimeType, 'x-sk-user':uid }, body:payload.file });
+      if (!res.ok) throw new Error('R2 업로드 실패: ' + res.status);
+      const json = await res.json().catch(()=>({}));
+      const url = json.url || json.publicUrl || (workerUrl + '/' + encodeURIComponent(path).replace(/%2F/g,'/'));
+      if (!url) throw new Error('R2 업로드 응답 URL 없음');
+      return { url, src:url, path, storagePath:path, bucket:'r2', mimeType:payload.mimeType, type:payload.mimeType, updatedAt:now() };
+    };
+    window._sbMakeInlineUpload = async function(){ throw new Error('inline/base64 저장은 금지되었습니다. Cloudflare R2 업로드 상태를 확인하세요.'); };
+
+    window.addEventListener('DOMContentLoaded', function(){
+      setTimeout(function(){ window.skCloudDiagnose().catch(e=>warn('diagnose fail', e.message||e)); }, 2000);
+      if (cloudReady()) setTimeout(function(){ window.skCloudPullAll({ full:false }).catch(e=>warn('auto pull fail', e.message||e)); }, 2800);
+      status(cloudReady() ? 'Cloudflare v85 저장/이미지 동기화 모드' : '로컬 모드: Cloudflare API 미설정', true);
+      log('build', window.__SK_BUILD, 'api=', getApiBase() || '(not set)', 'user=', getUserKey());
+    });
+  } catch(e) {
+    console.warn('[v85 sync/image repair bridge] init fail', e);
+  }
+})();
