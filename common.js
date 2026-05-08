@@ -52098,1017 +52098,137 @@ window.addEventListener('DOMContentLoaded', () => {
 })();
 
 
+
 /* ════════════════════════════════════════════════════════
-   v85: Cloudflare 저장/이미지 동기화 검증·복구 브리지
-   - v84 위에 덮어쓰는 안전 보정 레이어
-   - R2 URL/path가 없는 첨부 진단
-   - inline/base64 첨부는 R2로 업로드 후 URL/path로 교체
-   - 저장 전 첨부 메타데이터를 정규화하고 D1에 push
-   - skCloudDiagnose(), skCloudRepairImagesAndSync() 제공
+   v92: Cloudflare CPU-safe sync governor
+   - v85~v91 appended sync engines removed from this build
+   - no automatic since=0 / limit=5000 pull
+   - no full-array push on page load
+   - row fingerprint baseline first, then changed rows only
+   - worker v92 hard-caps pull/push so old clients cannot overload it
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
   try {
-    window.__SK_BUILD = '20260508-workroom-v85-sync-image-repair';
-
+    window.__SK_BUILD = '20260509-workroom-v92-cpu-safe-delta-sync';
     const LS = window.localStorage;
     const CFG_API = 'sk_cloud_api_base_v1';
     const CFG_USER = 'sk_cloud_user_key_v1';
-    const LOCAL_UID = 'sk_local_user_id_v1';
-    const LAST_PREFIX = 'sk_cf_last_sync_';
-    const DEFAULT_R2 = 'https://sangkwon-upload-worker.feye80.workers.dev';
+    const AUTO_KEY = 'sk_cf_v92_auto_sync_enabled';
+    const BACKOFF_UNTIL = 'sk_cf_v92_backoff_until';
+    const LAST_PULL_AT = 'sk_cf_v92_last_pull_at';
+    const LAST_PREFIX = 'sk_cf_v92_last_sync:';
+    const FP_PREFIX = 'sk_cf_v92_fp:';
     const TABLES = {
-      items:     { cache:'re_sv',        label:'저장목록' },
-      workrooms: { cache:'wr2_rooms',    label:'작업룸' },
-      notes:     { cache:'nt_notes',     label:'노트' },
-      kcards:    { cache:'ins_kcards',   label:'알짜카드' },
-      snapshots: { cache:'re_ws',        label:'스냅샷' },
-      sections:  { cache:'wr2_sections', label:'작업룸 섹션' },
-      map_memos: { cache:'map_memos',    label:'지도 메모' },
-      pl_items:  { cache:'pl_items_v3',  label:'파이프라인' }
+      items:     { cache:'re_sv',        label:'저장목록', auto:false },
+      workrooms: { cache:'wr2_rooms',    label:'작업룸',   auto:true  },
+      notes:     { cache:'nt_notes',     label:'노트',     auto:true  },
+      kcards:    { cache:'ins_kcards',   label:'알짜카드', auto:false },
+      snapshots: { cache:'re_ws',        label:'스냅샷',   auto:false },
+      sections:  { cache:'wr2_sections', label:'작업룸 섹션', auto:true },
+      map_memos: { cache:'map_memos',    label:'지도 메모', auto:false },
+      pl_items:  { cache:'pl_items_v3',  label:'파이프라인', auto:true }
     };
-
-    function cleanBase(url){ return String(url || '').trim().replace(/\/+$/,''); }
-    function getApiBase(){ return cleanBase(window.SK_CLOUD_API_BASE || LS.getItem(CFG_API) || ''); }
-    function ensureLocalUid(){
-      let uid = LS.getItem(LOCAL_UID);
-      if (!uid) { uid = 'local_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,10); LS.setItem(LOCAL_UID, uid); }
-      return uid;
-    }
-    function cleanUser(v){ return String(v || '').trim().replace(/[^a-zA-Z0-9_@.\-]/g,'').slice(0,80); }
-    function getUserKey(){ return cleanUser(window.SK_CLOUD_USER_KEY || LS.getItem(CFG_USER) || LS.getItem('_sb_saved_email') || ensureLocalUid()); }
-    function cloudReady(){ return !!getApiBase(); }
-    function log(){ try { console.log.apply(console, ['[SK-CF-v85]'].concat([].slice.call(arguments))); } catch(e){} }
-    function warn(){ try { console.warn.apply(console, ['[SK-CF-v85]'].concat([].slice.call(arguments))); } catch(e){} }
-    function toast(msg,type){ try { if (typeof window.showToast === 'function') window.showToast(msg, type || 'ok'); } catch(e){} }
-    function status(msg, ok){ try { if (typeof window._sbSyncStatus === 'function') window._sbSyncStatus(msg, ok !== false); } catch(e){} }
-    function now(){ return Date.now(); }
-
-    window.skSetCloudApiBase = function(url){
-      const clean = cleanBase(url);
-      if (clean) LS.setItem(CFG_API, clean); else LS.removeItem(CFG_API);
-      window.SK_CLOUD_API_BASE = clean;
-      if (clean) window.R2_WORKER_URL = clean;
-      toast(clean ? 'Cloudflare API 주소 저장됨' : 'Cloudflare API 주소 제거됨', clean ? 'ok' : 'warn');
-      return clean;
-    };
-    window.skSetCloudUserKey = function(key){
-      const clean = cleanUser(key);
-      if (!clean) throw new Error('동기화 사용자키가 비어 있습니다. 예: skSetCloudUserKey("monodot-main")');
-      LS.setItem(CFG_USER, clean);
-      window.SK_CLOUD_USER_KEY = clean;
-      toast('동기화 사용자키 저장됨: ' + clean, 'ok');
-      return clean;
-    };
-    window.SK_CLOUD_API_BASE = getApiBase();
-    window.SK_CLOUD_USER_KEY = getUserKey();
-
-    async function api(path, opts){
-      const base = getApiBase();
-      if (!base) throw new Error('Cloudflare API 주소 미설정. skSetCloudApiBase(url) 먼저 실행하세요.');
-      const headers = Object.assign({ 'content-type':'application/json', 'x-sk-user': getUserKey() }, (opts && opts.headers) || {});
-      const res = await fetch(base + path, Object.assign({}, opts || {}, { headers }));
-      const txt = await res.text();
-      let data = {};
-      try { data = txt ? JSON.parse(txt) : {}; } catch(e){ data = { raw:txt }; }
-      if (!res.ok || data.ok === false) throw new Error(data.error || data.message || ('Cloudflare API ' + res.status));
-      return data;
-    }
-
-    function idOf(x){ return String(x && (x.id || x.item_id || x._id || x.uuid) || '').trim(); }
-    function updatedOf(x){
-      const v = x && (x.updatedAt || x.updated_at || x.modifiedAt || x.timestamp || x.createdAt || x.created_at);
-      if (!v) return now();
-      if (typeof v === 'number') return v;
-      const t = Date.parse(v); return isFinite(t) ? t : now();
-    }
-    function deletedOf(x){
-      const v = x && (x.deletedAt || x.deleted_at || 0);
-      if (!v) return 0;
-      if (typeof v === 'number') return v;
-      const t = Date.parse(v); return isFinite(t) ? t : 0;
-    }
-    function cacheGet(key){
-      try { if (window._idbCache && Array.isArray(window._idbCache[key])) return window._idbCache[key].slice(); } catch(e){}
-      try { const v = JSON.parse(LS.getItem(key) || '[]'); return Array.isArray(v) ? v : []; } catch(e){ return []; }
-    }
-    function cacheSet(key, arr){
-      const list = Array.isArray(arr) ? arr : [];
-      try { if (window._idbCache) window._idbCache[key] = list; } catch(e){}
-      try { if (typeof window.idbSet === 'function') window.idbSet(key, list).catch(function(){}); } catch(e){}
-      try { LS.setItem(key, JSON.stringify(list)); } catch(e){}
-      return list;
-    }
-    function isDataUrl(v){ return /^data:(image|application|video|audio)\//i.test(String(v || '')); }
-    function isBlobUrl(v){ return /^(blob:|filesystem:)/i.test(String(v || '')); }
-    function isR2Url(v){ return /^https?:\/\//i.test(String(v || '')) && /(workers\.dev|r2\.dev|cloudflare|sangkwon-upload-worker)/i.test(String(v || '')); }
-    function isImageLike(att){
-      const s = String((att && (att.type || att.mimeType || att.name || att.url || att.src || att.data)) || '').toLowerCase();
-      return /image\//.test(s) || /\.(png|jpe?g|webp|gif|bmp|svg)(\?|$)/.test(s) || isDataUrl(att && (att.url || att.src || att.data));
-    }
-    function normalizeUrlFromPath(path){
-      const p = String(path || '').replace(/^\/+/, '');
-      if (!p) return '';
-      const base = getApiBase() || cleanBase(window.R2_WORKER_URL || DEFAULT_R2);
-      return base ? (base + '/' + encodeURIComponent(p).replace(/%2F/g,'/')) : '';
-    }
-    function normalizeAttachment(att, stats){
-      if (!att || typeof att !== 'object') return att;
-      stats.total++;
-      const url = att.url || att.src || '';
-      const data = att.data || att.base64 || att.dataUrl || att.dataURL || '';
-      const path = att.storagePath || att.path || att.r2Path || '';
-      if (url && !att.src) att.src = url;
-      if (!att.url && att.src) att.url = att.src;
-      if (!att.url && path) { const u = normalizeUrlFromPath(path); if (u) { att.url = u; att.src = u; stats.fixedUrlFromPath++; } }
-      if (att.path && !att.storagePath) att.storagePath = att.path;
-      if (isDataUrl(url) || isDataUrl(data)) stats.inline++;
-      else if (isBlobUrl(url) || isBlobUrl(data)) stats.blob++;
-      else if (att.url && (isR2Url(att.url) || att.storagePath || att.bucket === 'r2')) stats.r2++;
-      else if (!att.url && !att.src && !att.data && !att.storagePath) stats.missing++;
-      return att;
-    }
-    async function uploadDataUrl(dataUrl, folder){
-      if (!dataUrl || !isDataUrl(dataUrl)) return null;
-      if (typeof window._sbUploadImage !== 'function') throw new Error('업로드 함수가 없습니다.');
-      return await window._sbUploadImage(dataUrl, folder || 'attachments');
-    }
-    async function repairAttachment(att, stats, folder){
-      if (!att || typeof att !== 'object') return att;
-      normalizeAttachment(att, stats);
-      const url = att.url || att.src || '';
-      const data = att.data || att.base64 || att.dataUrl || att.dataURL || '';
-      const source = isDataUrl(url) ? url : (isDataUrl(data) ? data : '');
-      if (source) {
-        try {
-          const uploaded = await uploadDataUrl(source, folder || 'attachments');
-          if (uploaded && uploaded.url) {
-            att.url = uploaded.url; att.src = uploaded.url;
-            att.storagePath = uploaded.path || uploaded.storagePath || att.storagePath || '';
-            att.path = att.storagePath || att.path || '';
-            att.bucket = 'r2';
-            delete att.data; delete att.base64; delete att.dataUrl; delete att.dataURL;
-            stats.uploaded++;
-          }
-        } catch(e) {
-          stats.uploadFailed++;
-          att._syncWarning = 'R2 업로드 실패: ' + (e.message || e);
-        }
-      }
-      if ((att.url || att.src || att.storagePath) && !att.updatedAt) att.updatedAt = now();
-      return att;
-    }
-    function visitAttachments(obj, cb, path, seen){
-      if (!obj || typeof obj !== 'object') return;
-      seen = seen || new WeakSet();
-      if (seen.has(obj)) return;
-      seen.add(obj);
-      if (Array.isArray(obj)) { obj.forEach(function(v,i){ visitAttachments(v, cb, (path || '') + '['+i+']', seen); }); return; }
-      if (Array.isArray(obj.attachments)) {
-        obj.attachments = obj.attachments.map(function(att, i){ return cb(att, (path || '') + '.attachments['+i+']'); }).filter(Boolean);
-      }
-      if (Array.isArray(obj.files)) {
-        obj.files = obj.files.map(function(att, i){ return cb(att, (path || '') + '.files['+i+']'); }).filter(Boolean);
-      }
-      Object.keys(obj).forEach(function(k){
-        if (/^(parent|element|target|window|document)$/i.test(k)) return;
-        const v = obj[k];
-        if (v && typeof v === 'object') visitAttachments(v, cb, (path || '') + '.' + k, seen);
-      });
-    }
-    function scanOne(row){
-      const stats = { total:0, r2:0, inline:0, blob:0, missing:0, fixedUrlFromPath:0, uploaded:0, uploadFailed:0 };
-      visitAttachments(row, function(att){ return normalizeAttachment(att, stats); });
-      return stats;
-    }
-    async function repairOne(row, table){
-      const stats = { total:0, r2:0, inline:0, blob:0, missing:0, fixedUrlFromPath:0, uploaded:0, uploadFailed:0 };
-      let changed = false;
-      const before = JSON.stringify(row || {});
-      const folder = table === 'kcards' ? 'kcard-images' : 'attachments';
-      async function walk(obj, seen){
-        if (!obj || typeof obj !== 'object') return;
-        seen = seen || new WeakSet(); if (seen.has(obj)) return; seen.add(obj);
-        if (Array.isArray(obj)) { for (const v of obj) await walk(v, seen); return; }
-        if (Array.isArray(obj.attachments)) {
-          for (let i=0;i<obj.attachments.length;i++) obj.attachments[i] = await repairAttachment(obj.attachments[i], stats, folder);
-        }
-        if (Array.isArray(obj.files)) {
-          for (let i=0;i<obj.files.length;i++) obj.files[i] = await repairAttachment(obj.files[i], stats, folder);
-        }
-        for (const k of Object.keys(obj)) {
-          if (/^(parent|element|target|window|document)$/i.test(k)) continue;
-          const v = obj[k]; if (v && typeof v === 'object') await walk(v, seen);
-        }
-      }
-      await walk(row);
-      changed = before !== JSON.stringify(row || {});
-      if (changed && row && typeof row === 'object') row.updatedAt = now();
-      return { row, stats, changed };
-    }
-    function addStats(a,b){ Object.keys(b || {}).forEach(k => { a[k] = (a[k] || 0) + (Number(b[k]) || 0); }); return a; }
-
-    function stripHeavy(v, depth){
-      if (depth > 8) return undefined;
-      if (v == null) return v;
-      if (typeof v === 'string') {
-        if (isDataUrl(v)) return undefined;
-        if (v.length > 350000) return v.slice(0, 2000) + '…[stripped:' + v.length + ']';
-        return v;
-      }
-      if (Array.isArray(v)) return v.map(x => stripHeavy(x, depth+1)).filter(x => x !== undefined);
-      if (typeof v === 'object') {
-        const out = {};
-        Object.keys(v).forEach(k => {
-          if (/^(base64|dataUrl|dataURL|imageData|fileData|blob|rawHtml|rawText|pdfFullText|fullText)$/i.test(k)) return;
-          const x = stripHeavy(v[k], depth+1); if (x !== undefined) out[k] = x;
-        });
-        return out;
-      }
-      return v;
-    }
-    function rowsForPush(arr){
-      return (Array.isArray(arr) ? arr : []).filter(x => x && idOf(x)).map(x => {
-        const data = stripHeavy(x, 0) || {};
-        if (!data.id) data.id = idOf(x);
-        if (!data.updatedAt) data.updatedAt = updatedOf(x);
-        return { item_id:idOf(data), updated_at:updatedOf(data), deleted_at:deletedOf(data), data };
-      });
-    }
-    async function pushTable(table, arr, opts){
-      const meta = TABLES[table] || { cache:table, label:table };
-      let list = Array.isArray(arr) ? arr : [];
-      const totalStats = { total:0, r2:0, inline:0, blob:0, missing:0, fixedUrlFromPath:0, uploaded:0, uploadFailed:0 };
-      const repaired = [];
-      for (const row of list) {
-        try { const r = await repairOne(row, table); repaired.push(r.row); addStats(totalStats, r.stats); }
-        catch(e) { warn('repair row fail', table, idOf(row), e.message || e); repaired.push(row); }
-      }
-      list = repaired;
-      if (meta.cache) cacheSet(meta.cache, list);
-      if (!cloudReady()) return { localOnly:true, saved:0, attachmentStats:totalStats };
-      const rows = rowsForPush(list);
-      if (!rows.length) return { ok:true, saved:0, attachmentStats:totalStats };
-      const res = await api('/api/sync/push', { method:'POST', body:JSON.stringify({ table, rows }) });
-      LS.setItem(LAST_PREFIX + table, String(res.serverTime || now()));
-      if (res.skipped) warn('push skipped', table, res.skipped, res.warnings || '');
-      status('☁️ ' + meta.label + ' 저장/첨부 동기화 완료', true);
-      return Object.assign({}, res, { attachmentStats:totalStats });
-    }
-    function nonEmpty(v){
-      if (v == null || v === '') return false;
-      if (Array.isArray(v)) return v.length > 0;
-      if (typeof v === 'object') return Object.keys(v).length > 0;
-      return true;
-    }
-    function mergeAttachmentArrays(a,b){
-      const map = new Map();
-      function key(att){ return String((att && (att.storagePath || att.path || att.url || att.src || att.name)) || Math.random()); }
-      (Array.isArray(a)?a:[]).forEach(att => { if(att) map.set(key(att), att); });
-      (Array.isArray(b)?b:[]).forEach(att => { if(att) map.set(key(att), att); });
-      return Array.from(map.values());
-    }
-    function smartMerge(prev, inc){
-      if (!prev) return inc;
-      if (!inc) return prev;
-      if (deletedOf(inc)) return inc;
-      const out = Object.assign({}, prev, inc);
-      const leaseKeys = ['deposit','rent','월세','보증금','임대보증금','임대월세','임차보증금','leaseDeposit','leaseRent','monthlyRent'];
-      leaseKeys.forEach(k => { if (!nonEmpty(out[k]) && nonEmpty(prev[k])) out[k] = prev[k]; });
-      ['attachments','files'].forEach(k => {
-        if (Array.isArray(prev[k]) || Array.isArray(inc[k])) out[k] = mergeAttachmentArrays(prev[k], inc[k]);
-      });
-      // notes 안의 attachments도 병합 보정
-      if (Array.isArray(prev.notes) && Array.isArray(inc.notes)) {
-        const byId = new Map(); prev.notes.forEach(n => { if(n) byId.set(String(n.id || n.title || Math.random()), n); });
-        inc.notes.forEach(n => {
-          if(!n) return; const id=String(n.id || n.title || Math.random());
-          const p=byId.get(id); byId.set(id, smartMerge(p, n));
-        });
-        out.notes = Array.from(byId.values());
-      }
-      if (updatedOf(inc) >= updatedOf(prev)) out.updatedAt = updatedOf(inc); else out.updatedAt = updatedOf(prev);
-      return out;
-    }
-    async function pullTable(table, opts){
-      const meta = TABLES[table] || { cache:table, label:table };
-      const local = cacheGet(meta.cache);
-      if (!cloudReady()) return null;
-      const since = opts && opts.full ? 0 : (Number(LS.getItem(LAST_PREFIX + table) || 0) || 0);
-      const res = await api('/api/sync/pull?table=' + encodeURIComponent(table) + '&since=' + encodeURIComponent(since) + '&limit=5000', { method:'GET' });
-      const incoming = (res.rows || []).map(r => {
-        const data = r.data || {}; if (!data.id && r.item_id) data.id = r.item_id;
-        if (!data.updatedAt && r.updated_at) data.updatedAt = r.updated_at;
-        if (!data.deletedAt && r.deleted_at) data.deletedAt = r.deleted_at;
-        return data;
-      });
-      const map = new Map();
-      local.forEach(x => { const id=idOf(x); if(id) map.set(id, x); });
-      incoming.forEach(x => { const id=idOf(x); if(!id) return; map.set(id, smartMerge(map.get(id), x)); });
-      const merged = Array.from(map.values()).filter(x => !deletedOf(x) || deletedOf(x) > now() - 30*86400000);
-      cacheSet(meta.cache, merged);
-      LS.setItem(LAST_PREFIX + table, String(res.serverTime || now()));
-      status('☁️ ' + meta.label + ' 변경분 수신 완료', true);
-      return merged;
-    }
-
-    window.skCloudPushTable = pushTable;
-    window.skCloudPullTable = pullTable;
-    window.skCloudPullAll = async function(opts){
-      const out = {};
-      for (const t of Object.keys(TABLES)) {
-        try { out[t] = await pullTable(t, opts || {}); }
-        catch(e){ warn('pull fail', t, e.message || e); out[t] = null; }
-      }
-      return out;
-    };
-    window.skCloudScanAttachments = function(){
-      const out = { build:window.__SK_BUILD, apiBase:getApiBase() || '', userKey:getUserKey(), tables:{} };
-      Object.keys(TABLES).forEach(t => {
-        const meta = TABLES[t]; const list = cacheGet(meta.cache); const stats = { rows:list.length, total:0, r2:0, inline:0, blob:0, missing:0, fixedUrlFromPath:0, uploaded:0, uploadFailed:0 };
-        list.forEach(row => addStats(stats, scanOne(row)));
-        out.tables[t] = stats;
-      });
-      console.table(Object.keys(out.tables).map(k => Object.assign({ table:k }, out.tables[k])));
-      return out;
-    };
-    window.skCloudDiagnose = async function(){
-      const report = window.skCloudScanAttachments();
-      try { report.health = cloudReady() ? await api('/api/health', { method:'GET' }) : { ok:false, error:'apiBase not set' }; }
-      catch(e){ report.health = { ok:false, error:e.message || String(e) }; }
-      console.log('[SK-CF-v85 diagnose]', report);
-      if (!cloudReady()) toast('Cloudflare API 주소가 없어 기기 간 동기화는 아직 안 됩니다', 'warn');
-      else if (!report.health.ok) toast('Cloudflare Worker 연결 실패: ' + report.health.error, 'warn');
-      else toast('Cloudflare 진단 완료: 콘솔 확인', 'ok');
-      return report;
-    };
-    window.skCloudRepairImagesAndSync = async function(){
-      const result = { push:{}, pull:null };
-      if (!cloudReady()) throw new Error('Cloudflare API 주소 미설정. skSetCloudApiBase(url) 먼저 실행하세요.');
-      for (const t of Object.keys(TABLES)) {
-        const list = cacheGet(TABLES[t].cache);
-        try { result.push[t] = await pushTable(t, list); }
-        catch(e){ result.push[t] = { error:e.message || String(e) }; warn('repair push fail', t, e.message || e); }
-      }
-      result.pull = await window.skCloudPullAll({ full:false });
-      toast('이미지/첨부 복구 동기화 완료', 'ok');
-      return result;
-    };
-    window.skCloudSyncNow = async function(){
-      const r = await window.skCloudRepairImagesAndSync();
-      status('☁️ Cloudflare 전체 동기화 완료', true);
-      return r;
-    };
-    window.skCloudResetSince = function(){ Object.keys(TABLES).forEach(t => LS.removeItem(LAST_PREFIX+t)); toast('Cloudflare pull 기준시간 초기화됨', 'ok'); };
-
-    // Supabase 호환 함수명은 v85 엔진으로 다시 연결
-    window._sbGetUserId = async function(){ return getUserKey(); };
-    window._sbGetSessionShared = async function(){ return { data:{ session:{ user:{ id:getUserKey(), email:getUserKey() } } }, error:null }; };
-    window._sbSaveSv = async arr => pushTable('items', arr || []);
-    window._sbLoadSv = async () => pullTable('items');
-    window._sbSaveRooms = async arr => pushTable('workrooms', arr || []);
-    window._sbLoadRooms = async () => pullTable('workrooms');
-    window._sbSaveNtNotes = async arr => pushTable('notes', arr || []);
-    window._sbLoadNtNotes = async () => pullTable('notes');
-    window._sbSaveKcards = async arr => pushTable('kcards', arr || []);
-    window._sbLoadKcards = async () => pullTable('kcards');
-    window._sbSaveWorkScenes = async arr => pushTable('snapshots', arr || []);
-    window._sbLoadWorkScenes = async () => pullTable('snapshots');
-    window._sbSaveSections = async arr => pushTable('sections', arr || []);
-    window._sbLoadSections = async () => pullTable('sections');
-    window._sbSaveMapMemos = async arr => pushTable('map_memos', arr || []);
-    window._sbLoadMapMemos = async () => pullTable('map_memos');
-    window._sbSavePlItems = async arr => pushTable('pl_items', arr || []);
-    window._sbLoadPlItems = async () => pullTable('pl_items');
-    window._sbScheduleSaveSv = function(arr, delay){ clearTimeout(window.__sk_v85_items_timer); window.__sk_v85_items_timer=setTimeout(()=>pushTable('items', arr||[]).catch(e=>warn('items schedule fail',e.message||e)), delay||800); };
-    window._sbScheduleSaveRooms = function(arr, delay){ clearTimeout(window.__sk_v85_rooms_timer); window.__sk_v85_rooms_timer=setTimeout(()=>pushTable('workrooms', arr||[]).catch(e=>warn('rooms schedule fail',e.message||e)), delay||800); };
-    window._sbScheduleSavePlItems = function(arr, delay){ clearTimeout(window.__sk_v85_pl_timer); window.__sk_v85_pl_timer=setTimeout(()=>pushTable('pl_items', arr||[]).catch(e=>warn('pl schedule fail',e.message||e)), delay||800); };
-
-    const prevUpload = window._sbUploadImage;
-    window._sbUploadImage = async function(source, folder){
-      const uid = getUserKey();
-      if (typeof window._ensureInlineUploadHelpers === 'function') window._ensureInlineUploadHelpers();
-      if (typeof window._sbResolveUploadTarget !== 'function' || typeof window._sbMakeUploadPayload !== 'function') {
-        if (typeof prevUpload === 'function') return await prevUpload(source, folder);
-        throw new Error('업로드 유틸이 준비되지 않았습니다.');
-      }
-      const target = window._sbResolveUploadTarget(uid, folder || 'attachments');
-      const payload = await window._sbMakeUploadPayload(source, target.folder);
-      const path = target.pathPrefix + payload.fileName;
-      const workerUrl = cleanBase(window.R2_WORKER_URL || getApiBase() || DEFAULT_R2);
-      if (!workerUrl) throw new Error('R2/Worker URL이 없습니다.');
-      const res = await fetch(workerUrl + '/' + path, { method:'PUT', headers:{ 'content-type':payload.mimeType, 'x-sk-user':uid }, body:payload.file });
-      if (!res.ok) throw new Error('R2 업로드 실패: ' + res.status);
-      const json = await res.json().catch(()=>({}));
-      const url = json.url || json.publicUrl || (workerUrl + '/' + encodeURIComponent(path).replace(/%2F/g,'/'));
-      if (!url) throw new Error('R2 업로드 응답 URL 없음');
-      return { url, src:url, path, storagePath:path, bucket:'r2', mimeType:payload.mimeType, type:payload.mimeType, updatedAt:now() };
-    };
-    window._sbMakeInlineUpload = async function(){ throw new Error('inline/base64 저장은 금지되었습니다. Cloudflare R2 업로드 상태를 확인하세요.'); };
-
-    window.addEventListener('DOMContentLoaded', function(){
-      setTimeout(function(){ window.skCloudDiagnose().catch(e=>warn('diagnose fail', e.message||e)); }, 2000);
-      if (cloudReady()) setTimeout(function(){ window.skCloudPullAll({ full:false }).catch(e=>warn('auto pull fail', e.message||e)); }, 2800);
-      status(cloudReady() ? 'Cloudflare v85 저장/이미지 동기화 모드' : '로컬 모드: Cloudflare API 미설정', true);
-      log('build', window.__SK_BUILD, 'api=', getApiBase() || '(not set)', 'user=', getUserKey());
-    });
-  } catch(e) {
-    console.warn('[v85 sync/image repair bridge] init fail', e);
-  }
-})();
-
-
-/* ════════════════════════════════════════════════════════
-   v86: Cloudflare Sync Convergence / Attachment Union Fix
-   - 서버 v86의 첨부 병합과 짝을 이루는 클라이언트 보정 레이어
-   - 같은 노트/작업룸에 각 기기에서 올린 이미지를 덮어쓰기 대신 합집합 병합
-   - push 후 기준시간을 초기화하고 full pull을 수행하여 양쪽 기기 상태를 수렴
-   - 백그라운드 수신/저장 성공 토스트 반복 노출 차단
-════════════════════════════════════════════════════════ */
-(function(){
-  'use strict';
-  try {
-    window.__SK_BUILD = '20260508-workroom-v86-sync-converge-attachment-union';
-    const LS = window.localStorage;
-    const CFG_API = 'sk_cloud_api_base_v1';
-    const CFG_USER = 'sk_cloud_user_key_v1';
-    const LAST_PREFIX = 'sk_cf_last_sync_';
-    const TABLES = {
-      items:     { cache:'re_sv',        label:'저장목록' },
-      workrooms: { cache:'wr2_rooms',    label:'작업룸' },
-      notes:     { cache:'nt_notes',     label:'노트' },
-      kcards:    { cache:'ins_kcards',   label:'알짜카드' },
-      snapshots: { cache:'re_ws',        label:'스냅샷' },
-      sections:  { cache:'wr2_sections', label:'작업룸 섹션' },
-      map_memos: { cache:'map_memos',    label:'지도 메모' },
-      pl_items:  { cache:'pl_items_v3',  label:'파이프라인' }
-    };
-    const ATTACH_ARRAY_KEYS = /^(attachments|files|images|photos|docs|documents|additionalDocs|media|captures|screenshots)$/i;
-    const LEASE_KEYS = new Set(['deposit','rent','월세','보증금','임대보증금','임대월세','임차보증금','leaseDeposit','leaseRent','monthlyRent','rentDeposit','rentMonthly']);
+    const AUTO_TABLES = Object.keys(TABLES).filter(t => TABLES[t].auto);
+    const ATTACH_KEYS = /^(attachments|files|images|photos|docs|documents|additionalDocs|media|captures|screenshots)$/i;
     const DANGEROUS_KEYS = /^(parent|element|target|window|document|ownerDocument)$/i;
+    const MAX_PULL_LIMIT = 80;
+    const MAX_PUSH_ROWS = 20;
+    const MIN_PULL_GAP = 5 * 60 * 1000;
+    let pushTimer = 0, pullTimer = 0, inFlight = false;
+    const queue = new Map();
+
+    // stop older appended engines from thinking they own autosync
+    ['sk_cf_auto_sync_enabled','sk_cf_v90_auto_sync_enabled','sk_cf_v91_auto_sync_enabled'].forEach(k => { try { LS.setItem(k, '0'); } catch(e){} });
+    if (LS.getItem(AUTO_KEY) == null) LS.setItem(AUTO_KEY, '1');
+
+    function now(){ return Date.now(); }
     function cleanBase(url){ return String(url || '').trim().replace(/\/+$/,''); }
     function getApiBase(){ return cleanBase(window.SK_CLOUD_API_BASE || LS.getItem(CFG_API) || ''); }
     function getUserKey(){ return String(window.SK_CLOUD_USER_KEY || LS.getItem(CFG_USER) || LS.getItem('_sb_saved_email') || 'monodot-main').replace(/[^a-zA-Z0-9_@.\-]/g,'').slice(0,80) || 'monodot-main'; }
-    function toast(msg,type){ try { if (typeof window.showToast === 'function') window.showToast(msg, type || 'ok'); } catch(e){} }
-    function warn(){ try { console.warn.apply(console, ['[SK-CF-v86]'].concat([].slice.call(arguments))); } catch(e){} }
-    function now(){ return Date.now(); }
+    function cloudReady(){ return !!getApiBase(); }
+    function autoEnabled(){ return LS.getItem(AUTO_KEY) !== '0'; }
+    function backoffActive(){ return now() < (Number(LS.getItem(BACKOFF_UNTIL)||0)||0); }
+    function setBackoff(ms, reason){ const until = now() + Math.max(ms||300000, 300000); LS.setItem(BACKOFF_UNTIL, String(until)); console.warn('[SK-CF-v92] sync paused', Math.round((until-now())/1000)+'s', reason||''); }
+    function warn(){ try { console.warn.apply(console, ['[SK-CF-v92]'].concat([].slice.call(arguments))); } catch(e){} }
+    function log(){ try { console.log.apply(console, ['[SK-CF-v92]'].concat([].slice.call(arguments))); } catch(e){} }
     function idOf(x){ return String(x && (x.id || x.item_id || x._id || x.uuid || x.noteId || x.roomId || x.title) || '').trim(); }
     function updatedOf(x){ const v=x&&(x.updatedAt||x.updated_at||x.modifiedAt||x.timestamp||x.createdAt||x.created_at); if(!v) return 0; if(typeof v==='number') return v; const t=Date.parse(v); return isFinite(t)?t:0; }
     function deletedOf(x){ const v=x&&(x.deletedAt||x.deleted_at||0); if(!v) return 0; if(typeof v==='number') return v; const t=Date.parse(v); return isFinite(t)?t:0; }
-    function nonEmpty(v){ if(v==null||v==='') return false; if(Array.isArray(v)) return v.length>0; if(typeof v==='object') return Object.keys(v).length>0; return true; }
-    function isObj(v){ return v && typeof v === 'object' && !Array.isArray(v); }
-    function cacheGet(key){ try { if (window._idbCache && Array.isArray(window._idbCache[key])) return window._idbCache[key].slice(); } catch(e){} try { const v=JSON.parse(LS.getItem(key)||'[]'); return Array.isArray(v)?v:[]; } catch(e){ return []; } }
-    function cacheSet(key, arr){ const list=Array.isArray(arr)?arr:[]; try{ if(window._idbCache) window._idbCache[key]=list; }catch(e){} try{ if(typeof window.idbSet==='function') window.idbSet(key,list).catch(function(){}); }catch(e){} try{ LS.setItem(key, JSON.stringify(list)); }catch(e){} return list; }
-    function attachmentKey(att){ return String(att && (att.storagePath || att.path || att.r2Path || att.url || att.src || att.id || att.uuid || att.name) || '').trim(); }
-    function looksLikeAttachmentArray(key, arr){ if(ATTACH_ARRAY_KEYS.test(String(key||''))) return true; return Array.isArray(arr) && arr.some(x=>x&&typeof x==='object'&&(x.url||x.src||x.storagePath||x.path||x.r2Path||x.mimeType||x.type||x.bucket==='r2')); }
-    function mergeAttachmentArrays(a,b){
-      const map=new Map(); let n=0;
-      function add(att){ if(!att||typeof att!=='object') return; const k=attachmentKey(att)||('__local_'+(++n)); map.set(k, map.has(k)?smartMerge(map.get(k),att):att); }
-      (Array.isArray(a)?a:[]).forEach(add); (Array.isArray(b)?b:[]).forEach(add);
-      return Array.from(map.values()).filter(Boolean);
-    }
-    function mergeArray(prev, inc, key){
-      if (looksLikeAttachmentArray(key, prev) || looksLikeAttachmentArray(key, inc)) return mergeAttachmentArrays(prev, inc);
-      const map=new Map(); let keyed=false;
-      (Array.isArray(prev)?prev:[]).forEach(x=>{ const id=idOf(x); if(id){ keyed=true; map.set(id,x); } });
-      (Array.isArray(inc)?inc:[]).forEach(x=>{ const id=idOf(x); if(id){ keyed=true; map.set(id, smartMerge(map.get(id),x)); } });
-      if (keyed) return Array.from(map.values());
-      return Array.isArray(inc)&&inc.length ? inc : (Array.isArray(prev)?prev:[]);
-    }
-    function smartMerge(prev, inc){
-      if(!prev) return inc; if(!inc) return prev; if(deletedOf(inc)) return inc;
-      if(!isObj(prev)||!isObj(inc)) return nonEmpty(inc)?inc:prev;
-      const out=Object.assign({}, prev);
-      Object.keys(inc).forEach(k=>{
-        if(DANGEROUS_KEYS.test(k)) return;
-        const a=prev[k], b=inc[k];
-        if(Array.isArray(a)||Array.isArray(b)){ out[k]=mergeArray(a,b,k); return; }
-        if(isObj(a)&&isObj(b)){ out[k]=smartMerge(a,b); return; }
-        if(!nonEmpty(b)&&nonEmpty(a)&&(LEASE_KEYS.has(k)||k==='attachments'||k==='files')) out[k]=a;
-        else if(nonEmpty(b)||!nonEmpty(a)) out[k]=b;
-      });
-      out.updatedAt=Math.max(updatedOf(prev), updatedOf(inc), 1);
-      return out;
-    }
-    function isDataUrl(v){ return /^data:(image|application|video|audio)\//i.test(String(v||'')); }
-    function isBlobUrl(v){ return /^(blob:|filesystem:)/i.test(String(v||'')); }
-    function stripHeavy(v, depth){
-      depth=depth||0; if(depth>10) return undefined; if(v==null) return v;
-      if(typeof v==='string'){ if(isDataUrl(v)||isBlobUrl(v)) return undefined; if(v.length>350000) return v.slice(0,2000)+'…[stripped:'+v.length+']'; return v; }
-      if(Array.isArray(v)) return v.map(x=>stripHeavy(x, depth+1)).filter(x=>x!==undefined);
-      if(typeof v==='object'){ const out={}; Object.keys(v).forEach(k=>{ if(DANGEROUS_KEYS.test(k)) return; if(/^(base64|dataUrl|dataURL|imageData|fileData|blob|rawHtml|rawText|pdfFullText|fullText)$/i.test(k)) return; const x=stripHeavy(v[k], depth+1); if(x!==undefined) out[k]=x; }); return out; }
-      return v;
-    }
-    async function api(path, opts){
-      const base=getApiBase(); if(!base) throw new Error('Cloudflare API 주소 미설정');
-      const headers=Object.assign({'content-type':'application/json','x-sk-user':getUserKey()}, (opts&&opts.headers)||{});
-      const res=await fetch(base+path, Object.assign({}, opts||{}, {headers}));
-      const txt=await res.text(); let data={}; try{ data=txt?JSON.parse(txt):{}; }catch(e){ data={raw:txt}; }
-      if(!res.ok || data.ok===false) throw new Error(data.error||data.message||('Cloudflare API '+res.status));
-      return data;
-    }
-    function rowsForPush(arr){ return (Array.isArray(arr)?arr:[]).filter(x=>x&&idOf(x)).map(x=>{ const data=stripHeavy(x,0)||{}; if(!data.id) data.id=idOf(x); if(!data.updatedAt) data.updatedAt=Math.max(updatedOf(x), now()); return { item_id:idOf(data), updated_at:updatedOf(data)||now(), deleted_at:deletedOf(data), data }; }); }
-    async function pushTable(table){
-      const meta=TABLES[table]; if(!meta) return null;
-      const rows=rowsForPush(cacheGet(meta.cache));
-      if(!rows.length) return {ok:true, table, saved:0};
-      return await api('/api/sync/push', {method:'POST', body:JSON.stringify({table, rows})});
-    }
-    async function pullTable(table, full){
-      const meta=TABLES[table]; if(!meta) return null;
-      const local=cacheGet(meta.cache);
-      const since=full ? 0 : (Number(LS.getItem(LAST_PREFIX+table)||0)||0);
-      const res=await api('/api/sync/pull?table='+encodeURIComponent(table)+'&since='+encodeURIComponent(since)+'&limit=5000', {method:'GET'});
-      const incoming=(res.rows||[]).map(r=>{ const d=r.data||{}; if(!d.id&&r.item_id)d.id=r.item_id; if(!d.updatedAt&&r.updated_at)d.updatedAt=r.updated_at; if(!d.deletedAt&&r.deleted_at)d.deletedAt=r.deleted_at; return d; });
-      const map=new Map();
-      local.forEach(x=>{ const id=idOf(x); if(id) map.set(id,x); });
-      incoming.forEach(x=>{ const id=idOf(x); if(id) map.set(id, smartMerge(map.get(id), x)); });
-      const merged=Array.from(map.values()).filter(x=>!deletedOf(x)||deletedOf(x)>now()-30*86400000);
-      cacheSet(meta.cache, merged);
-      LS.setItem(LAST_PREFIX+table, String(res.serverTime||now()));
-      return merged;
-    }
-    function resetSince(){ Object.keys(TABLES).forEach(t=>LS.removeItem(LAST_PREFIX+t)); }
-    async function pushAll(){ const out={}; for(const t of Object.keys(TABLES)){ try{ out[t]=await pushTable(t); }catch(e){ out[t]={error:e.message||String(e)}; warn('push fail',t,e.message||e); } } return out; }
-    async function pullAll(full){ const out={}; for(const t of Object.keys(TABLES)){ try{ out[t]=await pullTable(t, !!full); }catch(e){ out[t]=null; warn('pull fail',t,e.message||e); } } return out; }
-    window.skCloudPullTable = function(table, opts){ return pullTable(table, !!(opts&&opts.full)); };
-    window.skCloudPushTable = function(table){ return pushTable(table); };
-    window.skCloudPullAll = function(opts){ return pullAll(!!(opts&&opts.full)); };
-    window.skCloudResetSince = function(){ resetSince(); toast('Cloudflare 전체 수신 기준시간 초기화됨', 'ok'); };
-    window.skCloudConvergeNow = async function(){
-      const health=await api('/api/health', {method:'GET'});
-      if(!/v86/.test(String(health.version||''))) console.warn('[SK-CF-v86] Worker version is not v86:', health);
-      const result={ build:window.__SK_BUILD, health, firstPush:null, firstPull:null, secondPush:null, secondPull:null };
-      result.firstPush=await pushAll();
-      resetSince();
-      result.firstPull=await pullAll(true);
-      result.secondPush=await pushAll();
-      resetSince();
-      result.secondPull=await pullAll(true);
-      toast('Cloudflare 병합 동기화 완료', 'ok');
-      return result;
-    };
-    window.skCloudSyncNow = window.skCloudConvergeNow;
-    window.skCloudRepairImagesAndSync = window.skCloudConvergeNow;
-    window._sbLoadSv = async()=>pullTable('items', true);
-    window._sbLoadRooms = async()=>pullTable('workrooms', true);
-    window._sbLoadNtNotes = async()=>pullTable('notes', true);
-    window._sbLoadKcards = async()=>pullTable('kcards', true);
-    window._sbLoadWorkScenes = async()=>pullTable('snapshots', true);
-    window._sbLoadSections = async()=>pullTable('sections', true);
-    window._sbLoadMapMemos = async()=>pullTable('map_memos', true);
-    window._sbLoadPlItems = async()=>pullTable('pl_items', true);
+    function cacheGet(key){ try { if(window._idbCache && Array.isArray(window._idbCache[key])) return window._idbCache[key].slice(); } catch(e){} try { const v=JSON.parse(LS.getItem(key)||'[]'); return Array.isArray(v)?v:[]; } catch(e){ return []; } }
+    function cacheSet(key, arr){ const list=Array.isArray(arr)?arr:[]; try{ if(window._idbCache) window._idbCache[key]=list; }catch(e){} try{ LS.setItem(key, JSON.stringify(list)); }catch(e){} try{ if(typeof window.idbSet==='function') window.idbSet(key,list).catch(function(){}); }catch(e){} return list; }
+    function stable(v){ const seen = new WeakSet(); return JSON.stringify(v, function(k,val){ if(DANGEROUS_KEYS.test(k)) return undefined; if(typeof val==='string' && val.length>200000) return val.slice(0,2000)+'…'; if(val&&typeof val==='object'){ if(seen.has(val)) return undefined; seen.add(val); if(!Array.isArray(val)){ const o={}; Object.keys(val).sort().forEach(key=>{ if(!DANGEROUS_KEYS.test(key)) o[key]=val[key]; }); return o; } } return val; }); }
+    function hash(s){ let h=2166136261>>>0; s=String(s||''); for(let i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,16777619); } return (h>>>0).toString(36)+':'+s.length; }
+    function fp(row){ try { return hash(stable(stripHeavy(row,0))); } catch(e){ return String(now()); } }
+    function fpKey(table,id){ return FP_PREFIX + table + ':' + id; }
+    function stripHeavy(v, depth){ depth=depth||0; if(depth>10) return undefined; if(v==null) return v; if(typeof v==='string'){ if(/^data:(image|application|video|audio)\//i.test(v)) return undefined; if(/^(blob:|filesystem:)/i.test(v)) return undefined; if(v.length>350000) return v.slice(0,2000)+'…[stripped:'+v.length+']'; return v; } if(Array.isArray(v)) return v.map(x=>stripHeavy(x,depth+1)).filter(x=>x!==undefined); if(typeof v==='object'){ const o={}; Object.keys(v).forEach(k=>{ if(DANGEROUS_KEYS.test(k)) return; if(/^(base64|dataUrl|dataURL|imageData|fileData|blob|rawHtml|rawText|pdfFullText|fullText)$/i.test(k)) return; const x=stripHeavy(v[k],depth+1); if(x!==undefined) o[k]=x; }); return o; } return v; }
+    function attKey(att){ if(!att||typeof att!=='object') return ''; let raw=String(att.storagePath||att.path||att.r2Path||att.url||att.src||att._skKey||att.id||att.uuid||att.name||'').trim(); try{ if(/^https?:\/\//i.test(raw)) raw=decodeURIComponent(new URL(raw).pathname.replace(/^\/+/,'')); }catch(e){} return raw.replace(/^\/+/, '').replace(/\?.*$/,'').trim(); }
+    function isDeletedAtt(att){ return !!(att&&typeof att==='object'&&(att.deletedAt||att.deleted_at||att._deleted||att.__deleted||att.deleted===true)); }
+    function collectTombs(obj,set){ set=set||new Set(); if(!obj||typeof obj!=='object') return set; ['_deletedAttachmentKeys','deletedAttachmentKeys','_attachmentDeletedKeys','attachmentTombstones','_skDeletedAttachments'].forEach(k=>{ const a=obj[k]; if(Array.isArray(a)) a.forEach(v=>{ const key=attKey({path:String(v||'')}); if(key) set.add(key); }); }); Object.keys(obj).forEach(k=>{ const v=obj[k]; if(Array.isArray(v) && ATTACH_KEYS.test(k)) v.forEach(a=>{ if(isDeletedAtt(a)){ const key=attKey(a); if(key) set.add(key); } }); }); return set; }
+    function addTomb(obj,key){ if(!obj||!key) return; const set=collectTombs(obj,new Set()); set.add(key); obj._deletedAttachmentKeys=Array.from(set).slice(0,2000); obj.updatedAt=now(); }
+    function mergeAttachmentArrays(a,b,tombs){ const deleted=tombs||new Set(); const m=new Map(); let n=0; function add(att){ if(!att||typeof att!=='object') return; const k=attKey(att)||('__local_'+(++n)); if(isDeletedAtt(att)){ deleted.add(k); return; } if(deleted.has(k)) return; m.set(k, Object.assign({}, m.get(k)||{}, att, k?{_skKey:k}:{})); } (Array.isArray(a)?a:[]).forEach(add); (Array.isArray(b)?b:[]).forEach(add); return Array.from(m.entries()).filter(([k])=>!deleted.has(k)).map(([,v])=>v); }
+    function looksAttach(key,arr){ if(ATTACH_KEYS.test(String(key||''))) return true; return Array.isArray(arr)&&arr.some(x=>x&&typeof x==='object'&&(x.url||x.src||x.storagePath||x.path||x.r2Path||x.mimeType||x.type||x.bucket==='r2')); }
+    function mergeRows(local, inc){ if(!local) return inc; if(!inc) return local; if(deletedOf(inc)) return inc; const tombs=collectTombs(local, collectTombs(inc,new Set())); const out=Object.assign({}, local, inc); Object.keys(Object.assign({}, local, inc)).forEach(k=>{ const a=local[k], b=inc[k]; if(Array.isArray(a)||Array.isArray(b)){ if(looksAttach(k,a)||looksAttach(k,b)) out[k]=mergeAttachmentArrays(a,b,tombs); else out[k]=Array.isArray(b)?b:(Array.isArray(a)?a:[]); } }); if(tombs.size){ out._deletedAttachmentKeys=Array.from(tombs).slice(0,2000); Object.keys(out).forEach(k=>{ if(Array.isArray(out[k])&&looksAttach(k,out[k])) out[k]=mergeAttachmentArrays(out[k],[],tombs); }); } out.updatedAt=Math.max(updatedOf(local),updatedOf(inc),1); return out; }
+    async function api(path, opt){ const base=getApiBase(); if(!base) throw new Error('Cloudflare API base is not set'); const headers=Object.assign({'content-type':'application/json','x-sk-user':getUserKey()}, (opt&&opt.headers)||{}); const res=await fetch(base+path, Object.assign({},opt||{}, {headers})); let data=null; try{ data=await res.json(); }catch(e){} if(!res.ok || (data&&data.ok===false)){ const msg=(data&&(data.error||data.message))||('HTTP '+res.status); throw new Error(msg); } return data||{ok:true}; }
 
-    // 성공 상태 알림 반복 차단: 경고/실패만 노출하고, 백그라운드 수신완료/저장완료는 콘솔로만 남긴다.
-    const prevStatus = window._sbSyncStatus;
-    let lastMsg='', lastAt=0;
-    window._sbSyncStatus = function(msg, ok){
-      const s=String(msg||'');
-      if(ok !== false && /(수신 완료|변경분 수신|저장\/첨부|동기화 완료|Cloudflare 전체 동기화 완료|Cloudflare 병합 동기화 완료)/.test(s)) {
-        try { console.debug('[SK-CF-v86 silent-status]', s); } catch(e){}
-        return;
-      }
-      const t=now(); if(s===lastMsg && t-lastAt<5000) return; lastMsg=s; lastAt=t;
-      if(typeof prevStatus==='function') return prevStatus.call(this,msg,ok);
-    };
+    function baselineTable(table){ const meta=TABLES[table]; if(!meta) return 0; let n=0; cacheGet(meta.cache).forEach(row=>{ const id=idOf(row); if(id){ LS.setItem(fpKey(table,id), fp(row)); n++; } }); return n; }
+    function baselineAll(){ const out={}; Object.keys(TABLES).forEach(t=>out[t]=baselineTable(t)); log('baseline fingerprints', out); return out; }
+    function changedRows(table, arr, opts){ opts=opts||{}; const rows=[]; (Array.isArray(arr)?arr:[]).forEach(row=>{ const id=idOf(row); if(!id) return; const f=fp(row); const k=fpKey(table,id); const old=LS.getItem(k); if(!old && !opts.force){ LS.setItem(k,f); return; } if(opts.force || old!==f){ LS.setItem(k,f); const data=stripHeavy(row,0)||{}; if(!data.id) data.id=id; if(!data.updatedAt) data.updatedAt=updatedOf(row)||now(); rows.push({item_id:id, updated_at:updatedOf(data)||now(), deleted_at:deletedOf(data)||0, data}); } }); return rows; }
+    function enqueue(table, rows){ if(!rows||!rows.length) return; const m=queue.get(table)||new Map(); rows.forEach(r=>m.set(r.item_id,r)); queue.set(table,m); scheduleFlush('enqueue'); }
+    function scheduleFlush(reason, delay){ if(!autoEnabled()||!cloudReady()||backoffActive()) return; clearTimeout(pushTimer); pushTimer=setTimeout(()=>flushQueue(reason||'flush').catch(e=>{ warn('flush fail', e.message||e); setBackoff(5*60*1000,e.message||e); }), delay||12000); }
+    async function flushQueue(reason){ if(inFlight||backoffActive()||!cloudReady()) return {ok:false, skipped:true}; inFlight=true; try{ const result={ok:true, reason, pushed:{}}; for(const [table,map] of Array.from(queue.entries())){ const batch=Array.from(map.values()).slice(0,MAX_PUSH_ROWS); if(!batch.length){ queue.delete(table); continue; } batch.forEach(r=>map.delete(r.item_id)); if(!map.size) queue.delete(table); const res=await api('/api/sync/push',{method:'POST', body:JSON.stringify({table, rows:batch})}); result.pushed[table]=res.saved||0; if(map.size) setTimeout(()=>scheduleFlush('more-'+table, 15000), 0); } return result; } finally { inFlight=false; } }
+    async function pushTable(table, arr, opts){ const rows=changedRows(table, Array.isArray(arr)?arr:cacheGet(TABLES[table]?.cache), opts||{}); enqueue(table, rows); if((opts&&opts.immediate)||rows.length<=2) return flushQueue('push-'+table); return {ok:true, queued:rows.length}; }
+
+    async function pullTable(table, opts){ opts=opts||{}; if(!cloudReady()||backoffActive()) return null; const meta=TABLES[table]; if(!meta) return null; const since=opts.full ? Math.max(0, Number(opts.since||0)||0) : (Number(LS.getItem(LAST_PREFIX+table)||0)||0); const res=await api('/api/sync/pull?table='+encodeURIComponent(table)+'&since='+encodeURIComponent(since)+'&limit='+MAX_PULL_LIMIT,{method:'GET'}); const incoming=(res.rows||[]).map(r=>{ const d=r.data||{}; if(!d.id&&r.item_id) d.id=r.item_id; if(!d.updatedAt&&r.updated_at) d.updatedAt=r.updated_at; if(!d.deletedAt&&r.deleted_at) d.deletedAt=r.deleted_at; return d; }); if(incoming.length){ const map=new Map(); cacheGet(meta.cache).forEach(x=>{ const id=idOf(x); if(id) map.set(id,x); }); incoming.forEach(x=>{ const id=idOf(x); if(id) map.set(id, mergeRows(map.get(id),x)); }); const merged=Array.from(map.values()).filter(x=>!deletedOf(x)||deletedOf(x)>now()-30*86400000); cacheSet(meta.cache, merged); merged.forEach(row=>{ const id=idOf(row); if(id) LS.setItem(fpKey(table,id), fp(row)); }); try{ if(table==='workrooms' && typeof window.wr2Render==='function') window.wr2Render(); if(table==='notes' && typeof window.ntRender==='function') window.ntRender(); }catch(e){} } LS.setItem(LAST_PREFIX+table, String(res.serverTime||now())); return {ok:true, table, count:incoming.length, more:!!res.more}; }
+    async function pullAll(opts){ opts=opts||{}; if(inFlight||backoffActive()||!cloudReady()) return {ok:false, skipped:true}; inFlight=true; try{ const tables=opts.tables||AUTO_TABLES; const out={}; for(const t of tables){ try{ out[t]=await pullTable(t,{full:false}); }catch(e){ out[t]={error:e.message||String(e)}; warn('pull fail',t,e.message||e); } } LS.setItem(LAST_PULL_AT,String(now())); return out; } finally{ inFlight=false;} }
+    function schedulePull(reason, delay){ if(!autoEnabled()||!cloudReady()||backoffActive()) return; const last=Number(LS.getItem(LAST_PULL_AT)||0)||0; if(now()-last<MIN_PULL_GAP && reason!=='manual') return; clearTimeout(pullTimer); pullTimer=setTimeout(()=>pullAll({reason}).catch(e=>{ warn('pullAll fail',e.message||e); setBackoff(5*60*1000,e.message||e); }), delay||20000); }
+
+    function activeRoom(){ const st=window.wr2State; const arr=(st&&Array.isArray(st.rooms))?st.rooms:cacheGet('wr2_rooms'); const id=st&&st.activeRoomId; return arr.find(r=>r&&idOf(r)===String(id||''))||null; }
+    function activeWrNote(room){ const id=window.__skActiveWr2NoteId; const notes=(room&&Array.isArray(room.notes))?room.notes:[]; return (id&&notes.find(n=>n&&idOf(n)===String(id)))||notes[0]||null; }
+    const rawWr2Select=window.wr2NoteSelect; if(typeof rawWr2Select==='function'&&!rawWr2Select.__skV92Track){ const w=function(noteId){ window.__skActiveWr2NoteId=noteId; return rawWr2Select.apply(this,arguments); }; w.__skV92Track=true; window.wr2NoteSelect=w; }
+    const rawWr2Del=window.wr2DelAttach; if(typeof rawWr2Del==='function'&&!rawWr2Del.__skV92Tomb){ const w=async function(idx){ const room=activeRoom(); const note=activeWrNote(room); const target=note&&note.attachments&&note.attachments[idx]; const key=attKey(target); if(key){ addTomb(note,key); addTomb(room,key); } const old=window._sbDeleteImages; window._sbDeleteImages=async()=>({ok:true,skipped:true,reason:'metadata-first-delete'}); try{return await rawWr2Del.apply(this,arguments);} finally{ window._sbDeleteImages=old; try{ const arr=cacheGet('wr2_rooms'); const rid=idOf(room); const i=arr.findIndex(x=>idOf(x)===rid); if(i>=0) arr[i]=room; cacheSet('wr2_rooms',arr); enqueue('workrooms',changedRows('workrooms',arr,{force:false})); }catch(e){} scheduleFlush('attachment-delete',1500); } }; w.__skV92Tomb=true; window.wr2DelAttach=w; }
+    const rawNtDel=window.ntUtRemoveAtt; if(typeof rawNtDel==='function'&&!rawNtDel.__skV92Tomb){ const w=async function(id,atti){ let note=null,key=''; try{ const list=Array.isArray(window.ntNotes)?window.ntNotes:cacheGet('nt_notes'); note=list.find(n=>idOf(n)===String(id)); key=attKey(note&&note.attachments&&note.attachments[atti]); if(key) addTomb(note,key); }catch(e){} const old=window._sbDeleteImages; window._sbDeleteImages=async()=>({ok:true,skipped:true,reason:'metadata-first-delete'}); try{return await rawNtDel.apply(this,arguments);} finally{ window._sbDeleteImages=old; try{ const list=Array.isArray(window.ntNotes)?window.ntNotes:cacheGet('nt_notes'); const i=list.findIndex(n=>idOf(n)===idOf(note)); if(i>=0) list[i]=note; cacheSet('nt_notes',list); enqueue('notes',changedRows('notes',list,{force:false})); }catch(e){} scheduleFlush('note-attachment-delete',1500); } }; w.__skV92Tomb=true; window.ntUtRemoveAtt=w; }
+
+    const mapSave={items:'re_sv',workrooms:'wr2_rooms',notes:'nt_notes',kcards:'ins_kcards',snapshots:'re_ws',sections:'wr2_sections',map_memos:'map_memos',pl_items:'pl_items_v3'};
+    window.skCloudPullTable=(table,opts)=>pullTable(table,opts||{});
+    window.skCloudPushTable=(table,arr,opts)=>pushTable(table,arr,opts||{});
+    window.skCloudPullAll=(opts)=>pullAll(opts||{});
+    window.skCloudSyncNow=()=>pullAll({reason:'manual',tables:AUTO_TABLES});
+    window.skCloudConvergeNow=()=>pullAll({reason:'manual',tables:AUTO_TABLES});
+    window.skCloudRepairImagesAndSync=window.skCloudSyncNow;
+    window.skCloudResetSince=function(){ AUTO_TABLES.forEach(t=>LS.removeItem(LAST_PREFIX+t)); return true; };
+    window.skCloudEnableAutoSync=function(){ LS.setItem(AUTO_KEY,'1'); schedulePull('enable',3000); return true; };
+    window.skCloudDisableAutoSync=function(){ LS.setItem(AUTO_KEY,'0'); clearTimeout(pushTimer); clearTimeout(pullTimer); queue.clear(); return true; };
+    window.skCloudAutoSyncStatus=function(){ return {build:window.__SK_BUILD, autoSync:autoEnabled(), apiBase:getApiBase(), userKey:getUserKey(), inFlight, queued:Array.from(queue.entries()).reduce((a,[k,v])=>(a[k]=v.size,a),{}), backoffUntil:Number(LS.getItem(BACKOFF_UNTIL)||0)||0, lastPull:Number(LS.getItem(LAST_PULL_AT)||0)||0, autoTables:AUTO_TABLES}; };
+    window.skCloudHealth=()=>api('/api/health',{method:'GET'});
+    window.skCloudDiagnose=async function(){ const h=cloudReady()?await window.skCloudHealth().catch(e=>({ok:false,error:e.message||String(e)})):{ok:false,error:'apiBase missing'}; const r={build:window.__SK_BUILD, health:h, status:window.skCloudAutoSyncStatus()}; console.log('[SK-CF-v92 diagnose]',r); return r; };
+    window.skCloudBaseline=baselineAll;
+
+    window._sbSaveSv=arr=>pushTable('items',arr||[]);
+    window._sbLoadSv=()=>pullTable('items',{full:false});
+    window._sbSaveRooms=arr=>pushTable('workrooms',arr||[]);
+    window._sbLoadRooms=()=>pullTable('workrooms',{full:false});
+    window._sbSaveNtNotes=arr=>pushTable('notes',arr||[]);
+    window._sbLoadNtNotes=()=>pullTable('notes',{full:false});
+    window._sbSaveKcards=arr=>pushTable('kcards',arr||[]);
+    window._sbLoadKcards=()=>pullTable('kcards',{full:false});
+    window._sbSaveWorkScenes=arr=>pushTable('snapshots',arr||[]);
+    window._sbLoadWorkScenes=()=>pullTable('snapshots',{full:false});
+    window._sbSaveSections=arr=>pushTable('sections',arr||[]);
+    window._sbLoadSections=()=>pullTable('sections',{full:false});
+    window._sbSaveMapMemos=arr=>pushTable('map_memos',arr||[]);
+    window._sbLoadMapMemos=()=>pullTable('map_memos',{full:false});
+    window._sbSavePlItems=arr=>pushTable('pl_items',arr||[]);
+    window._sbLoadPlItems=()=>pullTable('pl_items',{full:false});
+    window._sbScheduleSaveSv=(arr,delay)=>setTimeout(()=>pushTable('items',arr||[]).catch(warn),Math.max(delay||12000,12000));
+    window._sbScheduleSaveRooms=(arr,delay)=>setTimeout(()=>pushTable('workrooms',arr||[]).catch(warn),Math.max(delay||12000,12000));
+    window._sbScheduleSavePlItems=(arr,delay)=>setTimeout(()=>pushTable('pl_items',arr||[]).catch(warn),Math.max(delay||12000,12000));
+
+    ['input','change','paste','drop'].forEach(ev=>document.addEventListener(ev,()=>scheduleFlush(ev,15000),true));
+    window.addEventListener('focus',()=>schedulePull('focus',5000),true);
+    document.addEventListener('visibilitychange',()=>{ if(!document.hidden) schedulePull('visible',5000); },true);
+    window.addEventListener('online',()=>schedulePull('online',10000),true);
+    window.addEventListener('DOMContentLoaded',function(){ setTimeout(baselineAll,2000); setTimeout(()=>schedulePull('initial',25000),25000); log('ready', window.skCloudAutoSyncStatus()); });
     console.log('[build] common.js', window.__SK_BUILD);
-  } catch(e) { console.warn('[v86 sync convergence patch] init fail', e); }
-})();
-
-
-/* ════════════════════════════════════════════════════════
-   v87: Cloudflare Sync Quiet / Manual-Only Guard
-   - 자동/백그라운드 pull 반복으로 성공 알림이 계속 뜨는 문제 차단
-   - 사용자가 직접 실행한 skCloudSyncNow/skCloudConvergeNow만 전체 동기화 허용
-   - 성공/수신완료 토스트는 완전 무음 처리, 오류만 표시
-   - 기존 v84/v85 레이어의 예약 auto pull이 뒤늦게 실행되어도 네트워크 호출 차단
-════════════════════════════════════════════════════════ */
-(function(){
-  'use strict';
-  try {
-    window.__SK_BUILD = '20260508-workroom-v87-cloudflare-manual-sync-quiet';
-    const LS = window.localStorage;
-    const AUTO_KEY = 'sk_cf_auto_sync_enabled';
-    const MANUAL_MS = 45000;
-    let manualUntil = 0;
-    function now(){ return Date.now(); }
-    function isManual(){ return now() < manualUntil || window.__SK_CF_MANUAL_SYNC === true; }
-    function beginManual(){ manualUntil = now() + MANUAL_MS; window.__SK_CF_MANUAL_SYNC = true; }
-    function endManualSoon(){ setTimeout(function(){ window.__SK_CF_MANUAL_SYNC = false; }, 1500); }
-    function isAutoAllowed(){ return LS.getItem(AUTO_KEY) === '1'; }
-    function shouldHide(msg){
-      const s = String(msg || '').replace(/\s+/g, '');
-      return /(수신완료|변경분수신|변경분확인완료|저장완료|동기화완료|Cloudflare.*완료|작업룸섹션.*수신|파이프라인.*수신|저장목록.*수신|노트.*수신|스냅샷.*수신|지도메모.*수신|알짜카드.*수신)/i.test(s);
-    }
-
-    // 1) 우측 하단 성공 알림 완전 차단. 오류/경고는 유지.
-    const prevShowToast = window.showToast;
-    if (typeof prevShowToast === 'function' && !prevShowToast.__skV87Quiet) {
-      const wrapped = function(msg, type){
-        const t = String(type || '').toLowerCase();
-        if ((t === 'ok' || t === 'success' || t === 'info' || !t) && shouldHide(msg)) {
-          try { console.debug('[SK-CF-v87 silent-toast]', msg); } catch(e){}
-          return;
-        }
-        return prevShowToast.apply(this, arguments);
-      };
-      wrapped.__skV87Quiet = true;
-      window.showToast = wrapped;
-    }
-    const prevStatus = window._sbSyncStatus;
-    if (typeof prevStatus === 'function' && !prevStatus.__skV87Quiet) {
-      const wrappedStatus = function(msg, ok){
-        if (ok !== false && shouldHide(msg)) {
-          try { console.debug('[SK-CF-v87 silent-status]', msg); } catch(e){}
-          return;
-        }
-        return prevStatus.apply(this, arguments);
-      };
-      wrappedStatus.__skV87Quiet = true;
-      window._sbSyncStatus = wrappedStatus;
-    }
-
-    // 2) 기존 v84/v85가 예약해 둔 자동 pull이 실행돼도 기본 차단.
-    const rawPullAll = window.skCloudPullAll;
-    if (typeof rawPullAll === 'function' && !rawPullAll.__skV87Guard) {
-      const guardedPullAll = function(opts){
-        opts = opts || {};
-        if (!isManual() && !opts.force && !opts.manual && !isAutoAllowed()) {
-          try { console.debug('[SK-CF-v87] auto pull blocked', opts); } catch(e){}
-          return Promise.resolve({ ok:true, skipped:true, reason:'manual-only' });
-        }
-        return rawPullAll.call(this, opts);
-      };
-      guardedPullAll.__skV87Guard = true;
-      window.skCloudPullAll = guardedPullAll;
-    }
-
-    // 3) 수동 동기화 함수는 명시적으로만 네트워크 사용.
-    const rawConverge = window.skCloudConvergeNow || window.skCloudSyncNow || window.skCloudRepairImagesAndSync;
-    if (typeof rawConverge === 'function' && !rawConverge.__skV87Manual) {
-      const manualSync = async function(){
-        beginManual();
-        try { return await rawConverge.apply(this, arguments); }
-        finally { endManualSoon(); }
-      };
-      manualSync.__skV87Manual = true;
-      window.skCloudConvergeNow = manualSync;
-      window.skCloudSyncNow = manualSync;
-      window.skCloudRepairImagesAndSync = manualSync;
-    }
-
-    // 4) 사용자가 원하면 나중에만 자동 동기화 켤 수 있게 함. 기본은 OFF.
-    window.skCloudDisableAutoSync = function(){ LS.setItem(AUTO_KEY, '0'); console.log('[SK-CF-v87] 자동 동기화 OFF'); return true; };
-    window.skCloudEnableAutoSync = function(){ LS.setItem(AUTO_KEY, '1'); console.log('[SK-CF-v87] 자동 동기화 ON'); return true; };
-    window.skCloudAutoSyncStatus = function(){ return { autoSync: isAutoAllowed(), build: window.__SK_BUILD }; };
-    if (!LS.getItem(AUTO_KEY)) LS.setItem(AUTO_KEY, '0');
-    console.log('[build] common.js', window.__SK_BUILD, 'autoSync=', LS.getItem(AUTO_KEY));
-  } catch(e) { console.warn('[v87 manual sync quiet patch] init fail', e); }
-})();
-
-
-/* ════════════════════════════════════════════════════════
-   v90: Attachment Tombstone Sync / No-Revive Delete Engine
-   - 첨부 삭제를 단순 배열 제거가 아니라 attachment key tombstone으로 저장
-   - R2 파일은 즉시 물리 삭제하지 않음: 다른 기기 메타데이터가 늦게 오면서 깨진 이미지/404가 부활하는 문제 방지
-   - pull/push 병합 시 tombstone 우선: 삭제한 이미지는 다른 기기의 오래된 첨부 배열이 다시 살리지 못함
-   - v87/v88 기존 자동 타이머는 차단하고 v89 절제형 자동 동기화만 사용
-════════════════════════════════════════════════════════ */
-(function(){
-  'use strict';
-  try {
-    window.__SK_BUILD = '20260509-workroom-v90-attachment-delete-converge';
-    const LS = window.localStorage;
-    const OLD_AUTO_KEY = 'sk_cf_auto_sync_enabled';
-    const AUTO_KEY = 'sk_cf_v90_auto_sync_enabled';
-    const API_KEY = 'sk_cloud_api_base_v1';
-    const USER_KEY = 'sk_cloud_user_key_v1';
-    const FP_PREFIX = 'sk_cf_v90_rowfp:';
-    const LAST_PULL_PREFIX = 'sk_cf_v90_last_pull:';
-    const LAST_PULL_AT = 'sk_cf_v90_last_pull_at';
-    const QUIET_OK = /(수신\s*완료|변경분\s*수신|변경분\s*확인\s*완료|저장\s*완료|동기화\s*완료|Cloudflare.*완료|작업룸\s*섹션.*수신|파이프라인.*수신|저장목록.*수신|노트.*수신|스냅샷.*수신|지도\s*메모.*수신|알짜.*수신|첨부\s*동기화|저장\/첨부\s*동기화|수신완료)/i;
-    const TABLES = {
-      items:     { cache:'re_sv',        label:'저장목록' },
-      workrooms: { cache:'wr2_rooms',    label:'작업룸' },
-      notes:     { cache:'nt_notes',     label:'노트' },
-      kcards:    { cache:'ins_kcards',   label:'알짜카드' },
-      snapshots: { cache:'re_ws',        label:'스냅샷' },
-      sections:  { cache:'wr2_sections', label:'작업룸 섹션' },
-      map_memos: { cache:'map_memos',    label:'지도 메모' },
-      pl_items:  { cache:'pl_items_v3',  label:'파이프라인' }
-    };
-    const TABLE_ORDER = Object.keys(TABLES);
-    const ATTACH_ARRAY_KEYS = /^(attachments|files|images|photos|docs|documents|additionalDocs|media|captures|screenshots)$/i;
-    const DANGEROUS_KEYS = /^(parent|element|target|window|document|ownerDocument)$/i;
-    const HEAVY_KEYS = /^(base64|dataUrl|dataURL|imageData|fileData|blob|blobUrl|rawHtml|rawText|pdfFullText|fullText)$/i;
-    const BAD_STRING = /^(data:(image|application|video|audio)\/|blob:|filesystem:)/i;
-    const LEASE_KEYS = new Set(['deposit','rent','월세','보증금','임대보증금','임대월세','임차보증금','leaseDeposit','leaseRent','monthlyRent','rentDeposit','rentMonthly']);
-
-    let inFlight = false;
-    let pushTimer = null;
-    let pullTimer = null;
-    let backoffUntil = 0;
-    let lastAutoPushAt = 0;
-
-    // 기존 v87/v88 자동 타이머는 같은 키를 보므로 OFF로 막고, v89는 별도 키로만 운영한다.
-    LS.setItem(OLD_AUTO_KEY, '0');
-    if (!LS.getItem(AUTO_KEY)) LS.setItem(AUTO_KEY, '1');
-
-    function now(){ return Date.now(); }
-    function cleanBase(url){ return String(url || '').trim().replace(/\/+$/,''); }
-    function getApiBase(){ return cleanBase(window.SK_CLOUD_API_BASE || LS.getItem(API_KEY) || ''); }
-    function getUserKey(){ return String(window.SK_CLOUD_USER_KEY || LS.getItem(USER_KEY) || LS.getItem('_sb_saved_email') || 'monodot-main').replace(/[^a-zA-Z0-9_@.\-]/g,'').slice(0,80) || 'monodot-main'; }
-    function autoEnabled(){ return LS.getItem(AUTO_KEY) !== '0'; }
-    function cloudReady(){ return !!getApiBase(); }
-    function log(){ try { console.log.apply(console, ['[SK-CF-v90]'].concat([].slice.call(arguments))); } catch(e){} }
-    function warn(){ try { console.warn.apply(console, ['[SK-CF-v90]'].concat([].slice.call(arguments))); } catch(e){} }
-    function isQuiet(msg, type, ok){
-      const s = String(msg || '');
-      const t = String(type || '').toLowerCase();
-      const successLike = ok !== false && (t === '' || t === 'ok' || t === 'success' || t === 'info' || t === 'done');
-      return successLike && (QUIET_OK.test(s) || QUIET_OK.test(s.replace(/\s+/g,'')));
-    }
-    (function muteSuccess(){
-      const prevToast = window.showToast;
-      if (typeof prevToast === 'function' && !prevToast.__skV90Quiet) {
-        const wrapped = function(msg, type){ if (isQuiet(msg, type, true)) return; return prevToast.apply(this, arguments); };
-        wrapped.__skV90Quiet = true; window.showToast = wrapped;
-      }
-      const prevStatus = window._sbSyncStatus;
-      if (typeof prevStatus === 'function' && !prevStatus.__skV90Quiet) {
-        const wrappedStatus = function(msg, ok){ if (isQuiet(msg, 'ok', ok !== false)) return; return prevStatus.apply(this, arguments); };
-        wrappedStatus.__skV90Quiet = true; window._sbSyncStatus = wrappedStatus;
-      }
-    })();
-
-    async function api(path, opts){
-      const base = getApiBase();
-      if (!base) throw new Error('Cloudflare API 주소 미설정');
-      const headers = Object.assign({'content-type':'application/json', 'x-sk-user':getUserKey()}, (opts && opts.headers) || {});
-      const res = await fetch(base + path, Object.assign({}, opts || {}, { headers }));
-      const text = await res.text();
-      let data = {}; try { data = text ? JSON.parse(text) : {}; } catch(e){ data = { raw:text }; }
-      if (!res.ok || data.ok === false) throw new Error(data.error || data.message || ('Cloudflare API ' + res.status));
-      return data;
-    }
-    function cacheGet(key){
-      try { if (window._idbCache && Array.isArray(window._idbCache[key])) return window._idbCache[key].slice(); } catch(e){}
-      try { const v = JSON.parse(LS.getItem(key) || '[]'); return Array.isArray(v) ? v : []; } catch(e){ return []; }
-    }
-    function cacheSet(key, arr){
-      const list = Array.isArray(arr) ? arr : [];
-      try { if (window._idbCache) window._idbCache[key] = list; } catch(e){}
-      try { if (typeof window.idbSet === 'function') window.idbSet(key, list).catch(function(){}); } catch(e){}
-      try { LS.setItem(key, JSON.stringify(list)); } catch(e){}
-      return list;
-    }
-    function idOf(x){ return String(x && (x.id || x.item_id || x._id || x.uuid || x.noteId || x.roomId || x.title) || '').trim(); }
-    function updatedOf(x){ const v=x&&(x.updatedAt||x.updated_at||x.modifiedAt||x.timestamp||x.createdAt||x.created_at); if(!v) return 0; if(typeof v==='number') return isFinite(v)?v:0; const t=Date.parse(v); return isFinite(t)?t:0; }
-    function deletedOf(x){ const v=x&&(x.deletedAt||x.deleted_at||0); if(!v) return 0; if(typeof v==='number') return isFinite(v)?v:0; const t=Date.parse(v); return isFinite(t)?t:0; }
-    function isObj(v){ return v && typeof v === 'object' && !Array.isArray(v); }
-    function nonEmpty(v){ if(v==null||v==='') return false; if(Array.isArray(v)) return v.length>0; if(typeof v==='object') return Object.keys(v).length>0; return true; }
-    function attKey(att){
-      if (!att || typeof att !== 'object') return '';
-      let raw = String(att.storagePath || att.path || att.r2Path || att.url || att.src || att._skKey || att.id || att.uuid || att.name || '').trim();
-      if (!raw) return '';
-      try { if (/^https?:\/\//i.test(raw)) raw = decodeURIComponent(new URL(raw).pathname.replace(/^\/+/, '')); } catch(e) {}
-      return raw.replace(/^\/+/, '').replace(/\?.*$/, '').trim();
-    }
-    function isAttachmentArray(key, arr){
-      if (ATTACH_ARRAY_KEYS.test(String(key || ''))) return true;
-      return Array.isArray(arr) && arr.some(x => x && typeof x === 'object' && (x.url || x.src || x.storagePath || x.path || x.r2Path || x.mimeType || x.type || x.bucket === 'r2'));
-    }
-    function collectTombstones(obj, set){
-      set = set || new Set();
-      if (!obj || typeof obj !== 'object') return set;
-      ['_deletedAttachmentKeys','deletedAttachmentKeys','_attachmentDeletedKeys','attachmentTombstones','_skDeletedAttachments'].forEach(k => {
-        const arr = obj[k];
-        if (Array.isArray(arr)) arr.forEach(v => { const key = attKey({ path:String(v || '') }); if (key) set.add(key); });
-      });
-      return set;
-    }
-    function collectTombstonesDeep(obj, set, depth){
-      set = collectTombstones(obj, set || new Set());
-      depth = depth || 0;
-      if (!obj || typeof obj !== 'object' || depth > 10) return set;
-      if (Array.isArray(obj)) { obj.forEach(v => collectTombstonesDeep(v, set, depth + 1)); return set; }
-      Object.keys(obj).forEach(k => {
-        if (DANGEROUS_KEYS.test(k) || HEAVY_KEYS.test(k)) return;
-        const v = obj[k];
-        if (v && typeof v === 'object') collectTombstonesDeep(v, set, depth + 1);
-      });
-      return set;
-    }
-    function pruneDeletedAttachmentsDeep(v, tombs, key, depth){
-      depth = depth || 0; key = key || '';
-      if (!tombs || !tombs.size || v == null || depth > 12) return v;
-      if (Array.isArray(v)) {
-        const looks = isAttachmentArray(key, v);
-        const arr = v.map(x => pruneDeletedAttachmentsDeep(x, tombs, key, depth + 1)).filter(Boolean);
-        return looks ? arr.filter(att => { const k = attKey(att); return !k || !tombs.has(k); }) : arr;
-      }
-      if (typeof v === 'object') {
-        const out = Object.assign({}, v);
-        Object.keys(out).forEach(k => { out[k] = pruneDeletedAttachmentsDeep(out[k], tombs, k, depth + 1); });
-        return out;
-      }
-      return v;
-    }
-    function tombstone(obj, key){
-      if (!obj || !key) return;
-      const k = attKey({ path:key }); if (!k) return;
-      const arr = Array.isArray(obj._deletedAttachmentKeys) ? obj._deletedAttachmentKeys : [];
-      if (!arr.includes(k)) arr.push(k);
-      obj._deletedAttachmentKeys = arr.slice(-2000);
-      obj.updatedAt = now();
-    }
-    function isAttDeleted(att){ return !!(att && typeof att === 'object' && (att.deletedAt || att.deleted_at || att._deleted || att.__deleted || att.deleted === true)); }
-    function mergeAttArrays(prev, inc, tombs){
-      const deleted = tombs || new Set();
-      const map = new Map(); let n = 0;
-      function add(att){
-        if (!att || typeof att !== 'object') return;
-        const key = attKey(att) || ('__local_' + (++n));
-        if (isAttDeleted(att)) { if (key) deleted.add(key); return; }
-        if (key && deleted.has(key)) return;
-        const copy = Object.assign({}, att); if (key && !copy._skKey) copy._skKey = key;
-        map.set(key, map.has(key) ? smartMerge(map.get(key), copy) : copy);
-      }
-      (Array.isArray(prev)?prev:[]).forEach(add); (Array.isArray(inc)?inc:[]).forEach(add);
-      return Array.from(map.entries()).filter(([k]) => !deleted.has(k)).map(([,v]) => v).filter(Boolean);
-    }
-    function mergeArray(prev, inc, key, tombs){
-      if (isAttachmentArray(key, prev) || isAttachmentArray(key, inc)) return mergeAttArrays(prev, inc, tombs || new Set());
-      const map = new Map(); let keyed = false;
-      (Array.isArray(prev)?prev:[]).forEach(x => { const id = idOf(x); if (id) { keyed = true; map.set(id, x); } });
-      (Array.isArray(inc)?inc:[]).forEach(x => { const id = idOf(x); if (id) { keyed = true; map.set(id, smartMerge(map.get(id), x)); } });
-      if (keyed) return Array.from(map.values());
-      return (Array.isArray(inc) && inc.length) ? inc : (Array.isArray(prev) ? prev : []);
-    }
-    function smartMerge(prev, inc){
-      if (!prev) return inc; if (!inc) return prev; if (deletedOf(inc)) return inc;
-      if (!isObj(prev) || !isObj(inc)) return nonEmpty(inc) ? inc : prev;
-      const tombs = collectTombstonesDeep(prev, collectTombstonesDeep(inc, new Set()));
-      const out = Object.assign({}, prev);
-      Object.keys(inc).forEach(k => {
-        if (DANGEROUS_KEYS.test(k)) return;
-        const a = prev[k], b = inc[k];
-        if (Array.isArray(a) || Array.isArray(b)) { out[k] = mergeArray(a, b, k, tombs); return; }
-        if (isObj(a) && isObj(b)) { out[k] = smartMerge(a, b); return; }
-        if (!nonEmpty(b) && nonEmpty(a) && (LEASE_KEYS.has(k) || k === 'attachments' || k === 'files')) out[k] = a;
-        else if (nonEmpty(b) || !nonEmpty(a)) out[k] = b;
-      });
-      if (tombs.size) {
-        out._deletedAttachmentKeys = Array.from(tombs).slice(-2000);
-        Object.keys(out).forEach(k => { if (Array.isArray(out[k]) && isAttachmentArray(k, out[k])) out[k] = mergeAttArrays(out[k], [], tombs); });
-      }
-      out.updatedAt = Math.max(updatedOf(prev), updatedOf(inc), 1);
-      return pruneDeletedAttachmentsDeep(out, tombs);
-    }
-    function stripHeavy(v, depth){
-      depth = depth || 0; if (depth > 12) return undefined;
-      if (v == null) return v;
-      if (typeof v === 'string') { if (BAD_STRING.test(v)) return undefined; if (v.length > 350000) return v.slice(0,2000) + '…[stripped:' + v.length + ']'; return v; }
-      if (Array.isArray(v)) return v.map(x => stripHeavy(x, depth + 1)).filter(x => x !== undefined);
-      if (typeof v === 'object') { const out={}; Object.keys(v).forEach(k => { if (DANGEROUS_KEYS.test(k) || HEAVY_KEYS.test(k)) return; const x=stripHeavy(v[k], depth+1); if (x !== undefined) out[k]=x; }); return out; }
-      return v;
-    }
-    function stable(v){ if (v == null || typeof v !== 'object') return JSON.stringify(v); if (Array.isArray(v)) return '[' + v.map(stable).join(',') + ']'; return '{' + Object.keys(v).sort().map(k => JSON.stringify(k)+':'+stable(v[k])).join(',') + '}'; }
-    function hash32(str){ let h=2166136261; for(let i=0;i<str.length;i++){ h^=str.charCodeAt(i); h=Math.imul(h,16777619); } return (h>>>0).toString(36)+':'+str.length; }
-    function fp(row){ return hash32(stable(stripHeavy(row,0) || {})); }
-    function fpKey(table,id){ return FP_PREFIX + table + ':' + encodeURIComponent(id); }
-    function rows(table){ const meta=TABLES[table]; return meta ? cacheGet(meta.cache).filter(Boolean) : []; }
-    function changedRows(table, opts){
-      opts = opts || {}; const out=[];
-      rows(table).forEach(r => {
-        const id=idOf(r); if(!id) return;
-        const tombs = collectTombstonesDeep(r, new Set());
-        const cleaned = pruneDeletedAttachmentsDeep(stripHeavy(r,0)||{}, tombs);
-        const f=fp(cleaned);
-        if(!opts.full && LS.getItem(fpKey(table,id))===f) return;
-        const data=cleaned||{}; if(!data.id)data.id=id; if(!data.updatedAt)data.updatedAt=Math.max(updatedOf(r), now());
-        out.push({item_id:id, updated_at:updatedOf(data)||now(), deleted_at:deletedOf(data), data, __fp:f});
-      });
-      return out;
-    }
-    async function pushTable(table, opts){
-      const list = changedRows(table, opts); if (!list.length) return {ok:true, table, saved:0, changed:0};
-      let saved=0;
-      for(let i=0;i<list.length;i+=200){ const chunk=list.slice(i,i+200).map(r=>({item_id:r.item_id, updated_at:r.updated_at, deleted_at:r.deleted_at, data:r.data})); const res=await api('/api/sync/push',{method:'POST', body:JSON.stringify({table, rows:chunk})}); saved += Number(res.saved || chunk.length || 0); }
-      list.forEach(r => { try { LS.setItem(fpKey(table,r.item_id), r.__fp); } catch(e){} });
-      return {ok:true, table, saved, changed:list.length};
-    }
-    async function pullTable(table, opts){
-      opts = opts || {}; const meta=TABLES[table]; if(!meta) return null;
-      const since = opts.full ? 0 : (Number(LS.getItem(LAST_PULL_PREFIX+table) || 0) || 0);
-      const res = await api('/api/sync/pull?table='+encodeURIComponent(table)+'&since='+encodeURIComponent(since)+'&limit=5000', {method:'GET'});
-      const local = cacheGet(meta.cache); const map = new Map();
-      local.forEach(x => { const id=idOf(x); if(id) map.set(id,x); });
-      (res.rows || []).forEach(r => { const d=r.data || {}; if(!d.id && r.item_id)d.id=r.item_id; if(!d.updatedAt && r.updated_at)d.updatedAt=r.updated_at; if(!d.deletedAt && r.deleted_at)d.deletedAt=r.deleted_at; const id=idOf(d); if(id) map.set(id, smartMerge(map.get(id), d)); });
-      const merged = Array.from(map.values())
-        .map(x => pruneDeletedAttachmentsDeep(x, collectTombstonesDeep(x, new Set())))
-        .filter(x => !deletedOf(x) || deletedOf(x) > now() - 30*86400000);
-      cacheSet(meta.cache, merged);
-      if (table === 'workrooms') { try { if (window.wr2State && Array.isArray(window.wr2State.rooms)) window.wr2State.rooms = merged.slice(); } catch(e){} }
-      if (table === 'notes') { try { if (Array.isArray(window.ntNotes)) window.ntNotes = merged.slice(); } catch(e){} }
-      merged.forEach(x => { const id=idOf(x); if(id) try { LS.setItem(fpKey(table,id), fp(x)); } catch(e){} });
-      LS.setItem(LAST_PULL_PREFIX+table, String(res.serverTime || now()));
-      if ((res.rows || []).length) {
-        try { if (table === 'workrooms' && typeof window.wr2Render === 'function') window.wr2Render(); } catch(e){}
-        try { if (table === 'notes' && typeof window.ntRender === 'function') window.ntRender(); } catch(e){}
-        try { window.dispatchEvent(new CustomEvent('sk:cloud-sync-applied', { detail:{ table, count:(res.rows||[]).length } })); } catch(e){}
-      }
-      return {ok:true, table, count:(res.rows||[]).length, rows:merged.length};
-    }
-    async function pushAll(opts){ const out={}; for(const t of TABLE_ORDER){ out[t]=await pushTable(t, opts); } return out; }
-    async function pullAll(opts){ const out={}; for(const t of TABLE_ORDER){ out[t]=await pullTable(t, opts); } LS.setItem(LAST_PULL_AT, String(now())); return out; }
-    function resetSince(){ TABLE_ORDER.forEach(t => LS.removeItem(LAST_PULL_PREFIX+t)); }
-    async function cycle(reason, opts){
-      opts = opts || {}; if(inFlight) return {ok:true, skipped:true, reason:'in-flight'}; if(!opts.manual && !autoEnabled()) return {ok:true, skipped:true, reason:'auto-off'}; if(!cloudReady()) return {ok:true, skipped:true, reason:'api-not-set'}; if(!opts.manual && now()<backoffUntil) return {ok:true, skipped:true, reason:'backoff'};
-      inFlight = true;
-      try { const health = opts.health ? await api('/api/health',{method:'GET'}) : null; const pushed=await pushAll({full:!!opts.fullPush}); const pulled=await pullAll({full:!!opts.fullPull}); backoffUntil=0; lastAutoPushAt=now(); return {ok:true, build:window.__SK_BUILD, reason, health, pushed, pulled}; }
-      catch(e){ backoffUntil = now() + 60000; warn('sync failed', e.message || e); if(opts.manual && typeof window.showToast==='function') window.showToast('Cloudflare 동기화 실패: '+(e.message||e),'warn'); return {ok:false, error:e.message||String(e), reason}; }
-      finally { inFlight = false; }
-    }
-    function schedulePush(reason, delay){ if(!autoEnabled()||!cloudReady()) return; clearTimeout(pushTimer); const minGap = Math.max(0, 12000 - (now()-lastAutoPushAt)); pushTimer=setTimeout(()=>cycle(reason||'change').catch(warn), Math.max(delay||8000, minGap)); }
-    function schedulePull(reason, delay){ if(!autoEnabled()||!cloudReady()) return; clearTimeout(pullTimer); const last = Number(LS.getItem(LAST_PULL_AT)||0)||0; if(now()-last < 45000 && reason!=='manual') return; pullTimer=setTimeout(()=>cycle(reason||'pull').catch(warn), delay||1500); }
-    function bindEvents(){
-      if(window.__SK_CF_V90_EVENTS_BOUND) return; window.__SK_CF_V90_EVENTS_BOUND = true;
-      ['input','change','paste','drop'].forEach(ev => document.addEventListener(ev, () => schedulePush(ev, 9000), true));
-      document.addEventListener('click', () => schedulePush('click', 11000), true);
-      window.addEventListener('focus', () => schedulePull('focus', 1200), true);
-      document.addEventListener('visibilitychange', () => { if(!document.hidden) schedulePull('visible', 1500); }, true);
-      window.addEventListener('online', () => schedulePull('online', 2000), true);
-      setInterval(() => { if(!document.hidden) schedulePull('interval', 1500); }, 120000);
-    }
-
-    // 작업룸-노트 삭제: 첨부 tombstone을 먼저 기록하고, R2 물리 삭제는 즉시 하지 않는다.
-    function activeRoom(){ const st=window.wr2State; const arr=(st&&Array.isArray(st.rooms))?st.rooms:cacheGet('wr2_rooms'); const id=st&&st.activeRoomId; return arr.find(r=>r&&r.id===id)||null; }
-    function activeWrNote(room){ const id=window.__skActiveWr2NoteId; const notes=(room&&Array.isArray(room.notes))?room.notes:[]; return (id&&notes.find(n=>n&&n.id===id))||notes[0]||null; }
-    const rawWr2Select = window.wr2NoteSelect;
-    if (typeof rawWr2Select === 'function' && !rawWr2Select.__skV90Track) {
-      const wrapped = function(noteId){ window.__skActiveWr2NoteId = noteId; return rawWr2Select.apply(this, arguments); };
-      wrapped.__skV90Track = true; window.wr2NoteSelect = wrapped;
-    }
-    const rawWr2Del = window.wr2DelAttach;
-    if (typeof rawWr2Del === 'function' && !rawWr2Del.__skV90Tombstone) {
-      const wrappedDel = async function(idx){
-        const room = activeRoom(); const note = activeWrNote(room); const target = note && note.attachments && note.attachments[idx]; const key=attKey(target);
-        if(note&&key) tombstone(note,key);
-        if(room&&key) { tombstone(room,key); room.updatedAt=now(); }
-        const old = window._sbDeleteImages; window._sbDeleteImages = async function(){ return {ok:true, skipped:true, reason:'metadata-first-delete'}; };
-        try { return await rawWr2Del.apply(this, arguments); }
-        finally {
-          window._sbDeleteImages = old;
-          try { const r=activeRoom(); if(r){ r.updatedAt=now(); const arr=cacheGet('wr2_rooms'); const id=idOf(r); const i=arr.findIndex(x=>idOf(x)===id); if(i>=0) arr[i]=r; else arr.unshift(r); cacheSet('wr2_rooms', arr); } } catch(e){}
-          setTimeout(function(){ cycle('wr2-attachment-delete-immediate', {manual:true}).catch(warn); }, 300);
-        }
-      };
-      wrappedDel.__skV90Tombstone = true; window.wr2DelAttach = wrappedDel;
-    }
-    const rawNtRemoveAtt = window.ntUtRemoveAtt;
-    if (typeof rawNtRemoveAtt === 'function' && !rawNtRemoveAtt.__skV90Tombstone) {
-      const wrappedNtDel = async function(id, atti){
-        let note=null, key='';
-        try { const list = Array.isArray(window.ntNotes) ? window.ntNotes : cacheGet('nt_notes'); note=list.find(n=>n&&n.id===id); const target=note&&note.attachments&&note.attachments[atti]; key=attKey(target); if(note&&key) tombstone(note,key); } catch(e){}
-        const old = window._sbDeleteImages; window._sbDeleteImages = async function(){ return {ok:true, skipped:true, reason:'metadata-first-delete'}; };
-        try { return await rawNtRemoveAtt.apply(this, arguments); }
-        finally {
-          window._sbDeleteImages = old;
-          try { if(note){ note.updatedAt=now(); const list=Array.isArray(window.ntNotes)?window.ntNotes:cacheGet('nt_notes'); const i=list.findIndex(n=>idOf(n)===idOf(note)); if(i>=0) list[i]=note; cacheSet('nt_notes', list); } } catch(e){}
-          setTimeout(function(){ cycle('note-attachment-delete-immediate', {manual:true}).catch(warn); }, 300);
-        }
-      };
-      wrappedNtDel.__skV90Tombstone = true; window.ntUtRemoveAtt = wrappedNtDel;
-    }
-
-    function removeBrokenOrDeletedAttachmentsLocal(){
-      let changed = 0;
-      TABLE_ORDER.forEach(table => {
-        const meta = TABLES[table]; if(!meta) return;
-        const arr = cacheGet(meta.cache);
-        const next = arr.map(x => pruneDeletedAttachmentsDeep(x, collectTombstonesDeep(x, new Set())));
-        if (stable(arr) !== stable(next)) { cacheSet(meta.cache, next); changed++; }
-      });
-      try { if (typeof window.wr2Render === 'function') window.wr2Render(); } catch(e){}
-      return {ok:true, changed};
-    }
-
-    bindEvents();
-    window.skCloudPullTable = (table, opts) => pullTable(table, opts||{});
-    window.skCloudPushTable = (table, opts) => pushTable(table, opts||{});
-    window.skCloudPullAll = (opts) => pullAll(opts||{});
-    window.skCloudResetSince = function(){ resetSince(); console.log('[SK-CF-v90] pull 기준시간 초기화'); return true; };
-    window.skCloudSyncNow = function(){ return cycle('manual-sync', {manual:true, fullPull:false, health:true}); };
-    window.skCloudConvergeNow = async function(){ resetSince(); return cycle('manual-converge', {manual:true, fullPull:true, fullPush:true, health:true}); };
-    window.skCloudRepairImagesAndSync = window.skCloudConvergeNow;
-    window.skCloudEnableAutoSync = function(){ LS.setItem(AUTO_KEY,'1'); schedulePull('enable',1000); return true; };
-    window.skCloudDisableAutoSync = function(){ LS.setItem(AUTO_KEY,'0'); clearTimeout(pushTimer); clearTimeout(pullTimer); return true; };
-    window.skCloudAutoSyncStatus = function(){ return { build:window.__SK_BUILD, autoSync:autoEnabled(), apiBase:getApiBase(), userKey:getUserKey(), inFlight, backoffUntil, lastPull:Number(LS.getItem(LAST_PULL_AT)||0)||0, oldAutoDisabled:LS.getItem(OLD_AUTO_KEY)==='0' }; };
-    window.skCloudHealth = function(){ return api('/api/health',{method:'GET'}); };
-
-    setTimeout(() => schedulePull('initial', 100), 2500);
-    if (cloudReady()) api('/api/health',{method:'GET'}).then(h=>log('health',h)).catch(e=>warn('health fail', e.message||e));
-    console.log('[build] common.js', window.__SK_BUILD, 'attachment delete converge enabled');
-  } catch(e) { console.warn('[v90 attachment delete converge patch] init fail', e); }
+  } catch(e){ console.warn('[v92 cpu-safe sync governor] init fail', e); }
 })();
