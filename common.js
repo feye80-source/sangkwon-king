@@ -52232,3 +52232,307 @@ window.addEventListener('DOMContentLoaded', () => {
     console.log('[build] common.js', window.__SK_BUILD);
   } catch(e){ console.warn('[v92 cpu-safe sync governor] init fail', e); }
 })();
+
+/* ════════════════════════════════════════════════════════
+   v93: attachment delete force-converge patch (common only)
+   - Worker remains v92
+   - Force-push the single changed row immediately after attachment deletion
+   - Prevent deletion tombstones from being missed when no fingerprint baseline exists
+════════════════════════════════════════════════════════ */
+(function(){
+  'use strict';
+  try {
+    window.__SK_BUILD = '20260509-workroom-v93-attachment-delete-force-push';
+
+    function now(){ return Date.now(); }
+    function idOf(x){ return String(x && (x.id || x.item_id || x._id || x.uuid || x.noteId || x.roomId || x.title) || '').trim(); }
+    function attKey(att){
+      if(!att || typeof att !== 'object') return '';
+      let raw = String(att.storagePath || att.path || att.r2Path || att.url || att.src || att._skKey || att.id || att.uuid || att.name || '').trim();
+      try { if(/^https?:\/\//i.test(raw)) raw = decodeURIComponent(new URL(raw).pathname.replace(/^\/+/,'')); } catch(e){}
+      return raw.replace(/^\/+/, '').replace(/\?.*$/,'').trim();
+    }
+    function collectTombs(obj,set){
+      set = set || new Set();
+      if(!obj || typeof obj !== 'object') return set;
+      ['_deletedAttachmentKeys','deletedAttachmentKeys','_attachmentDeletedKeys','attachmentTombstones','_skDeletedAttachments'].forEach(function(k){
+        const a = obj[k];
+        if(Array.isArray(a)) a.forEach(function(v){ const key = attKey({path:String(v||'')}); if(key) set.add(key); });
+      });
+      return set;
+    }
+    function addTomb(obj,key){
+      if(!obj || !key) return;
+      const set = collectTombs(obj,new Set());
+      set.add(key);
+      obj._deletedAttachmentKeys = Array.from(set).slice(0,2000);
+      obj.updatedAt = now();
+    }
+    function cacheGet(key){
+      try { if(window._idbCache && Array.isArray(window._idbCache[key])) return window._idbCache[key].slice(); } catch(e){}
+      try { const v = JSON.parse(localStorage.getItem(key)||'[]'); return Array.isArray(v) ? v : []; } catch(e){ return []; }
+    }
+    function cacheSet(key, arr){
+      const list = Array.isArray(arr) ? arr : [];
+      try { if(window._idbCache) window._idbCache[key] = list; } catch(e){}
+      try { localStorage.setItem(key, JSON.stringify(list)); } catch(e){}
+      try { if(typeof window.idbSet === 'function') window.idbSet(key, list).catch(function(){}); } catch(e){}
+      return list;
+    }
+    function getActiveRoom(){
+      const st = window.wr2State || {};
+      const arr = (Array.isArray(st.rooms) && st.rooms.length) ? st.rooms : cacheGet('wr2_rooms');
+      const activeId = String(st.activeRoomId || '');
+      return arr.find(function(r){ return idOf(r) === activeId; }) || null;
+    }
+    function getActiveWrNote(room){
+      const notes = room && Array.isArray(room.notes) ? room.notes : [];
+      const activeNoteId = String(window.__skActiveWr2NoteId || '');
+      return (activeNoteId && notes.find(function(n){ return idOf(n) === activeNoteId; })) || notes[0] || null;
+    }
+    async function forcePushWorkroom(room){
+      if(!room) return;
+      room.updatedAt = now();
+      const rid = idOf(room);
+      const arr = cacheGet('wr2_rooms');
+      const i = arr.findIndex(function(r){ return idOf(r) === rid; });
+      if(i >= 0) arr[i] = room; else arr.push(room);
+      cacheSet('wr2_rooms', arr);
+      if(typeof window.skCloudPushTable === 'function') {
+        try { await window.skCloudPushTable('workrooms', [room], { force:true, immediate:true }); } catch(e) { console.warn('[SK-CF-v93] force workroom delete push failed', e); }
+      }
+      try { if(typeof window.wr2Render === 'function') window.wr2Render(); } catch(e){}
+    }
+    async function forcePushNote(note){
+      if(!note) return;
+      note.updatedAt = now();
+      const nid = idOf(note);
+      const list = Array.isArray(window.ntNotes) ? window.ntNotes : cacheGet('nt_notes');
+      const i = list.findIndex(function(n){ return idOf(n) === nid; });
+      if(i >= 0) list[i] = note; else list.push(note);
+      if(Array.isArray(window.ntNotes)) window.ntNotes = list;
+      cacheSet('nt_notes', list);
+      if(typeof window.skCloudPushTable === 'function') {
+        try { await window.skCloudPushTable('notes', [note], { force:true, immediate:true }); } catch(e) { console.warn('[SK-CF-v93] force note delete push failed', e); }
+      }
+      try { if(typeof window.ntRender === 'function') window.ntRender(); } catch(e){}
+    }
+
+    const prevSelect = window.wr2NoteSelect;
+    if(typeof prevSelect === 'function' && !prevSelect.__skV93Track){
+      const w = function(noteId){ window.__skActiveWr2NoteId = noteId; return prevSelect.apply(this, arguments); };
+      w.__skV93Track = true;
+      window.wr2NoteSelect = w;
+    }
+
+    const prevWrDel = window.wr2DelAttach;
+    if(typeof prevWrDel === 'function' && !prevWrDel.__skV93Force){
+      const w = async function(idx){
+        const room = getActiveRoom();
+        const note = getActiveWrNote(room);
+        const target = note && Array.isArray(note.attachments) ? note.attachments[idx] : null;
+        const key = attKey(target);
+        if(key){ addTomb(note, key); addTomb(room, key); }
+        const oldDeleteImages = window._sbDeleteImages;
+        window._sbDeleteImages = async function(){ return { ok:true, skipped:true, reason:'v93-metadata-first-delete' }; };
+        try { await prevWrDel.apply(this, arguments); }
+        finally { window._sbDeleteImages = oldDeleteImages; }
+        if(room) await forcePushWorkroom(room);
+      };
+      w.__skV93Force = true;
+      window.wr2DelAttach = w;
+    }
+
+    const prevNtDel = window.ntUtRemoveAtt;
+    if(typeof prevNtDel === 'function' && !prevNtDel.__skV93Force){
+      const w = async function(id, atti){
+        const list = Array.isArray(window.ntNotes) ? window.ntNotes : cacheGet('nt_notes');
+        const note = list.find(function(n){ return idOf(n) === String(id); });
+        const target = note && Array.isArray(note.attachments) ? note.attachments[atti] : null;
+        const key = attKey(target);
+        if(key) addTomb(note, key);
+        const oldDeleteImages = window._sbDeleteImages;
+        window._sbDeleteImages = async function(){ return { ok:true, skipped:true, reason:'v93-metadata-first-delete' }; };
+        try { await prevNtDel.apply(this, arguments); }
+        finally { window._sbDeleteImages = oldDeleteImages; }
+        if(note) await forcePushNote(note);
+      };
+      w.__skV93Force = true;
+      window.ntUtRemoveAtt = w;
+    }
+
+    console.log('[build] common.js', window.__SK_BUILD, '(Worker v92 unchanged)');
+  } catch(e) {
+    console.warn('[v93 attachment delete force patch] init fail', e);
+  }
+})();
+
+
+/* ════════════════════════════════════════════════════════
+   v94: event-driven sync mode (common only)
+   - Worker remains v92
+   - No periodic pull / no polling loop
+   - Push only when app save functions are called by a real edit/delete/upload
+   - Pull only on first open, explicit manual sync, or throttled load calls
+   - Keep v93 attachment delete force-push behavior
+════════════════════════════════════════════════════════ */
+(function(){
+  'use strict';
+  try {
+    window.__SK_BUILD = '20260509-workroom-v94-event-driven-sync';
+
+    const LS = window.localStorage;
+    const CFG_API = 'sk_cloud_api_base_v1';
+    const EVENT_KEY = 'sk_cf_v94_event_driven_enabled';
+    const AUTO_KEYS_TO_DISABLE = [
+      'sk_cf_auto_sync_enabled',
+      'sk_cf_v88_auto_sync_enabled',
+      'sk_cf_v89_auto_sync_enabled',
+      'sk_cf_v90_auto_sync_enabled',
+      'sk_cf_v91_auto_sync_enabled',
+      'sk_cf_v92_auto_sync_enabled'
+    ];
+    const LAST_OPEN_PULL = 'sk_cf_v94_last_open_pull_at';
+    const LAST_LOAD_PREFIX = 'sk_cf_v94_last_load:';
+    const TABLES = ['workrooms','notes','sections','pl_items'];
+    const LOAD_THROTTLE_MS = 10 * 60 * 1000;
+    const OPEN_PULL_THROTTLE_MS = 10 * 60 * 1000;
+
+    AUTO_KEYS_TO_DISABLE.forEach(function(k){ try { LS.setItem(k, '0'); } catch(e){} });
+    if (LS.getItem(EVENT_KEY) == null) LS.setItem(EVENT_KEY, '1');
+
+    function now(){ return Date.now(); }
+    function apiReady(){ return !!String(window.SK_CLOUD_API_BASE || LS.getItem(CFG_API) || '').trim(); }
+    function enabled(){ return LS.getItem(EVENT_KEY) !== '0'; }
+    function log(){ try { console.log.apply(console, ['[SK-CF-v94]'].concat([].slice.call(arguments))); } catch(e){} }
+    function warn(){ try { console.warn.apply(console, ['[SK-CF-v94]'].concat([].slice.call(arguments))); } catch(e){} }
+
+    async function safeBaseline(){
+      try { if (typeof window.skCloudBaseline === 'function') return window.skCloudBaseline(); } catch(e){}
+      return null;
+    }
+
+    async function pullOnce(reason, opts){
+      opts = opts || {};
+      if (!enabled() || !apiReady() || typeof window.skCloudPullAll !== 'function') return { ok:false, skipped:true, reason:'not-ready' };
+      const last = Number(LS.getItem(LAST_OPEN_PULL) || 0) || 0;
+      if (!opts.force && now() - last < OPEN_PULL_THROTTLE_MS) return { ok:true, skipped:true, reason:'recent-open-pull' };
+      LS.setItem(LAST_OPEN_PULL, String(now()));
+      try {
+        return await window.skCloudPullAll({ reason: reason || 'v94-open', tables: TABLES });
+      } catch(e) {
+        warn('pullOnce failed', e && (e.message || e));
+        return { ok:false, error:e && (e.message || String(e)) };
+      }
+    }
+
+    function wrapSave(table, previous){
+      return async function(arr){
+        // Local save/caches are handled by the app itself. This wrapper only sends changed rows to Cloudflare.
+        if (!enabled()) return { ok:true, skipped:true, mode:'event-driven-disabled' };
+        if (!apiReady() || typeof window.skCloudPushTable !== 'function') return { ok:true, skipped:true, mode:'local-only' };
+        try {
+          const list = Array.isArray(arr) ? arr : [];
+          return await window.skCloudPushTable(table, list, { immediate:true });
+        } catch(e) {
+          warn('save push failed', table, e && (e.message || e));
+          return { ok:false, table:table, error:e && (e.message || String(e)) };
+        }
+      };
+    }
+
+    function wrapLoad(table, previous){
+      return async function(opts){
+        opts = opts || {};
+        if (!enabled() || !apiReady()) return null;
+        const k = LAST_LOAD_PREFIX + table;
+        const last = Number(LS.getItem(k) || 0) || 0;
+        if (!opts.force && now() - last < LOAD_THROTTLE_MS) return null;
+        LS.setItem(k, String(now()));
+        try {
+          if (typeof window.skCloudPullTable === 'function') return await window.skCloudPullTable(table, { full:false });
+          if (typeof previous === 'function') return await previous.apply(this, arguments);
+        } catch(e) {
+          warn('load pull failed', table, e && (e.message || e));
+        }
+        return null;
+      };
+    }
+
+    function scheduleSave(table, arr, delay){
+      const ms = Math.max(Number(delay || 0) || 0, 2500);
+      return setTimeout(function(){
+        try { window.skCloudPushTable && window.skCloudPushTable(table, Array.isArray(arr) ? arr : [], { immediate:true }).catch(function(e){ warn('scheduled save failed', table, e && (e.message || e)); }); }
+        catch(e){ warn('scheduled save failed', table, e && (e.message || e)); }
+      }, ms);
+    }
+
+    const prevStatus = window.skCloudAutoSyncStatus;
+    window.skCloudAutoSyncStatus = function(){
+      let base = {};
+      try { base = typeof prevStatus === 'function' ? (prevStatus() || {}) : {}; } catch(e) { base = {}; }
+      base.build = window.__SK_BUILD;
+      base.autoSync = false;
+      base.eventDrivenSync = enabled();
+      base.periodicPull = false;
+      base.periodicPush = false;
+      base.mode = 'edit-open-manual-only';
+      base.autoTables = TABLES;
+      base.lastOpenPull = Number(LS.getItem(LAST_OPEN_PULL) || 0) || 0;
+      return base;
+    };
+
+    window.skCloudEnableAutoSync = function(){
+      // Keep the old polling engines disabled. This enables v94 edit-driven sync only.
+      LS.setItem(EVENT_KEY, '1');
+      AUTO_KEYS_TO_DISABLE.forEach(function(k){ try { LS.setItem(k, '0'); } catch(e){} });
+      return window.skCloudAutoSyncStatus();
+    };
+    window.skCloudDisableAutoSync = function(){
+      LS.setItem(EVENT_KEY, '0');
+      AUTO_KEYS_TO_DISABLE.forEach(function(k){ try { LS.setItem(k, '0'); } catch(e){} });
+      return window.skCloudAutoSyncStatus();
+    };
+    window.skCloudSyncNow = function(){ return pullOnce('manual-v94', { force:true }); };
+    window.skCloudConvergeNow = window.skCloudSyncNow;
+    window.skCloudRepairImagesAndSync = window.skCloudSyncNow;
+
+    // Event-driven save wrappers: these fire only when the app explicitly saves after an edit/upload/delete.
+    window._sbSaveSv         = wrapSave('items',     window._sbSaveSv);
+    window._sbSaveRooms      = wrapSave('workrooms', window._sbSaveRooms);
+    window._sbSaveNtNotes    = wrapSave('notes',     window._sbSaveNtNotes);
+    window._sbSaveSections   = wrapSave('sections',  window._sbSaveSections);
+    window._sbSavePlItems    = wrapSave('pl_items',  window._sbSavePlItems);
+    window._sbSaveKcards     = wrapSave('kcards',    window._sbSaveKcards);
+    window._sbSaveWorkScenes = wrapSave('snapshots', window._sbSaveWorkScenes);
+    window._sbSaveMapMemos   = wrapSave('map_memos', window._sbSaveMapMemos);
+
+    // Throttled load wrappers: not periodic. At most once per table per 10 minutes unless manually forced.
+    window._sbLoadRooms    = wrapLoad('workrooms', window._sbLoadRooms);
+    window._sbLoadNtNotes  = wrapLoad('notes',     window._sbLoadNtNotes);
+    window._sbLoadSections = wrapLoad('sections',  window._sbLoadSections);
+    window._sbLoadPlItems  = wrapLoad('pl_items',  window._sbLoadPlItems);
+    window._sbLoadSv       = wrapLoad('items',     window._sbLoadSv);
+
+    window._sbScheduleSaveSv      = function(arr, delay){ return scheduleSave('items', arr, delay); };
+    window._sbScheduleSaveRooms   = function(arr, delay){ return scheduleSave('workrooms', arr, delay); };
+    window._sbScheduleSavePlItems = function(arr, delay){ return scheduleSave('pl_items', arr, delay); };
+
+    window.addEventListener('DOMContentLoaded', function(){
+      setTimeout(safeBaseline, 1500);
+      setTimeout(function(){ pullOnce('open-v94').then(function(res){ log('open pull', res); }); }, 3500);
+      log('ready', window.skCloudAutoSyncStatus());
+    }, { once:true });
+
+    // If script loads after DOMContentLoaded, still set a baseline without starting a polling loop.
+    if (document.readyState !== 'loading') {
+      setTimeout(safeBaseline, 800);
+      setTimeout(function(){ pullOnce('late-open-v94').then(function(res){ log('open pull', res); }); }, 2500);
+      log('ready', window.skCloudAutoSyncStatus());
+    }
+
+    console.log('[build] common.js', window.__SK_BUILD, '(Worker v92 unchanged / event-driven sync)');
+  } catch(e) {
+    console.warn('[v94 event-driven sync patch] init fail', e);
+  }
+})();
