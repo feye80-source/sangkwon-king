@@ -52768,295 +52768,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
 
 /* ════════════════════════════════════════════════════════
-   v88: Quiet Automatic Cloudflare Sync / Debounced Delta Engine
-   - 수동 실행 전제 제거: 평소에는 자동 동기화
-   - 무한/반복 pull 차단: pull 최소 간격 + 백오프
-   - 수정 직후 6~8초 debounce 후 변경 row만 push
-   - 성공/수신완료/동기화완료 알림 완전 무음, 오류만 표시
-   - 기존 v84/v85/v86/v87 예약 타이머/성공 토스트를 후단에서 재차 차단
-════════════════════════════════════════════════════════ */
-(function(){
-  'use strict';
-  try {
-    window.__SK_BUILD = '20260508-workroom-v88-quiet-auto-delta-sync';
-
-    const LS = window.localStorage;
-    const API_KEY = 'sk_cloud_api_base_v1';
-    const USER_KEY = 'sk_cloud_user_key_v1';
-    const AUTO_KEY = 'sk_cf_auto_sync_enabled';
-    const LAST_PULL_KEY = 'sk_cf_v88_last_pull_at';
-    const LAST_HEALTH_KEY = 'sk_cf_v88_last_health_at';
-    const ROW_FP_PREFIX = 'sk_cf_v88_rowfp:';
-    const BASELINE_KEY = 'sk_cf_v88_baseline_done';
-    const TABLES = {
-      items:     { cache:'re_sv',        label:'저장목록' },
-      workrooms: { cache:'wr2_rooms',    label:'작업룸' },
-      notes:     { cache:'nt_notes',     label:'노트' },
-      kcards:    { cache:'ins_kcards',   label:'알짜카드' },
-      snapshots: { cache:'re_ws',        label:'스냅샷' },
-      sections:  { cache:'wr2_sections', label:'작업룸 섹션' },
-      map_memos: { cache:'map_memos',    label:'지도 메모' },
-      pl_items:  { cache:'pl_items_v3',  label:'파이프라인' }
-    };
-    const TABLE_ORDER = Object.keys(TABLES);
-    const QUIET_OK = /(수신\s*완료|변경분\s*수신|변경분\s*확인\s*완료|저장\s*완료|동기화\s*완료|Cloudflare.*완료|작업룸\s*섹션.*수신|파이프라인.*수신|저장목록.*수신|노트.*수신|스냅샷.*수신|지도\s*메모.*수신|알짜.*수신|수신완료)/i;
-    const HEAVY_KEYS = /^(base64|dataUrl|dataURL|imageData|fileData|blob|blobUrl|rawHtml|rawText|pdfFullText|fullText)$/i;
-    const BAD_STRING = /^(data:(image|application|video|audio)\/|blob:|filesystem:)/i;
-    const DANGEROUS_KEYS = /^(parent|element|target|window|document|ownerDocument)$/i;
-
-    let inFlight = false;
-    let pushTimer = null;
-    let pullTimer = null;
-    let backoffUntil = 0;
-    let backoffMs = 0;
-    let lastUserActivity = 0;
-    let lastAutoPushAt = 0;
-    let pendingReason = '';
-
-    function now(){ return Date.now(); }
-    function cleanBase(url){ return String(url || '').trim().replace(/\/+$/,''); }
-    function getApiBase(){ return cleanBase(window.SK_CLOUD_API_BASE || LS.getItem(API_KEY) || ''); }
-    function getUserKey(){ return String(window.SK_CLOUD_USER_KEY || LS.getItem(USER_KEY) || LS.getItem('_sb_saved_email') || 'monodot-main').replace(/[^a-zA-Z0-9_@.\-]/g,'').slice(0,80) || 'monodot-main'; }
-    function cloudReady(){ return !!getApiBase(); }
-    function autoEnabled(){ return LS.getItem(AUTO_KEY) !== '0'; }
-    function isBackoff(){ return now() < backoffUntil; }
-    function log(){ try { console.log.apply(console, ['[SK-CF-v88]'].concat([].slice.call(arguments))); } catch(e){} }
-    function warn(){ try { console.warn.apply(console, ['[SK-CF-v88]'].concat([].slice.call(arguments))); } catch(e){} }
-    function isQuietMessage(msg, type, ok){
-      const s = String(msg || '');
-      const compact = s.replace(/\s+/g,'');
-      const t = String(type || '').toLowerCase();
-      const successLike = ok !== false && (t === '' || t === 'ok' || t === 'success' || t === 'info' || t === 'done');
-      return successLike && (QUIET_OK.test(s) || QUIET_OK.test(compact));
-    }
-
-    // 성공 알림은 어떤 레이어에서 올라오든 최종적으로 차단한다. 오류/경고는 유지.
-    (function hardMuteSuccessToasts(){
-      const prevToast = window.showToast;
-      if (typeof prevToast === 'function' && !prevToast.__skV88Quiet) {
-        const wrapped = function(msg, type){
-          if (isQuietMessage(msg, type, true)) { try { console.debug('[SK-CF-v88 silent-toast]', msg); } catch(e){} return; }
-          return prevToast.apply(this, arguments);
-        };
-        wrapped.__skV88Quiet = true;
-        window.showToast = wrapped;
-      }
-      const prevStatus = window._sbSyncStatus;
-      if (typeof prevStatus === 'function' && !prevStatus.__skV88Quiet) {
-        const wrappedStatus = function(msg, ok){
-          if (isQuietMessage(msg, 'ok', ok !== false)) { try { console.debug('[SK-CF-v88 silent-status]', msg); } catch(e){} return; }
-          return prevStatus.apply(this, arguments);
-        };
-        wrappedStatus.__skV88Quiet = true;
-        window._sbSyncStatus = wrappedStatus;
-      }
-    })();
-
-    async function api(path, opts){
-      const base = getApiBase();
-      if (!base) throw new Error('Cloudflare API 주소 미설정');
-      const headers = Object.assign({'content-type':'application/json', 'x-sk-user':getUserKey()}, (opts && opts.headers) || {});
-      const res = await fetch(base + path, Object.assign({}, opts || {}, { headers }));
-      const text = await res.text();
-      let data = {}; try { data = text ? JSON.parse(text) : {}; } catch(e){ data = { raw:text }; }
-      if (!res.ok || data.ok === false) throw new Error(data.error || data.message || ('Cloudflare API ' + res.status));
-      return data;
-    }
-    function cacheGet(cacheKey){
-      try { if (window._idbCache && Array.isArray(window._idbCache[cacheKey])) return window._idbCache[cacheKey].slice(); } catch(e){}
-      try { const v = JSON.parse(LS.getItem(cacheKey) || '[]'); return Array.isArray(v) ? v : []; } catch(e){ return []; }
-    }
-    function idOf(x){ return String(x && (x.id || x.item_id || x._id || x.uuid || x.noteId || x.roomId || x.title) || '').trim(); }
-    function updatedOf(x){
-      const v = x && (x.updatedAt || x.updated_at || x.modifiedAt || x.timestamp || x.createdAt || x.created_at);
-      if (!v) return 0;
-      if (typeof v === 'number') return isFinite(v) ? v : 0;
-      const t = Date.parse(v); return isFinite(t) ? t : 0;
-    }
-    function deletedOf(x){
-      const v = x && (x.deletedAt || x.deleted_at || 0);
-      if (!v) return 0;
-      if (typeof v === 'number') return isFinite(v) ? v : 0;
-      const t = Date.parse(v); return isFinite(t) ? t : 0;
-    }
-    function stripHeavy(v, depth){
-      depth = depth || 0;
-      if (depth > 12) return undefined;
-      if (v == null) return v;
-      if (typeof v === 'string') {
-        if (BAD_STRING.test(v)) return undefined;
-        if (v.length > 350000) return v.slice(0, 2000) + '…[stripped:' + v.length + ']';
-        return v;
-      }
-      if (Array.isArray(v)) return v.map(x => stripHeavy(x, depth + 1)).filter(x => x !== undefined);
-      if (typeof v === 'object') {
-        const out = {};
-        Object.keys(v).forEach(k => {
-          if (DANGEROUS_KEYS.test(k) || HEAVY_KEYS.test(k)) return;
-          const x = stripHeavy(v[k], depth + 1);
-          if (x !== undefined) out[k] = x;
-        });
-        return out;
-      }
-      return v;
-    }
-    function stableStringify(v){
-      if (v == null || typeof v !== 'object') return JSON.stringify(v);
-      if (Array.isArray(v)) return '[' + v.map(stableStringify).join(',') + ']';
-      return '{' + Object.keys(v).sort().map(k => JSON.stringify(k) + ':' + stableStringify(v[k])).join(',') + '}';
-    }
-    function hash32(str){
-      let h = 2166136261;
-      for (let i=0; i<str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
-      return (h >>> 0).toString(36) + ':' + str.length;
-    }
-    function rowFingerprint(row){
-      const clean = stripHeavy(row, 0) || {};
-      return hash32(stableStringify(clean));
-    }
-    function rowFpKey(table, id){ return ROW_FP_PREFIX + table + ':' + encodeURIComponent(id); }
-    function tableRows(table){
-      const meta = TABLES[table]; if (!meta) return [];
-      return cacheGet(meta.cache).filter(Boolean);
-    }
-    function markRowsAsSynced(table){
-      tableRows(table).forEach(row => { const id = idOf(row); if (!id) return; try { LS.setItem(rowFpKey(table, id), rowFingerprint(row)); } catch(e){} });
-    }
-    function changedRowsForTable(table, opts){
-      opts = opts || {};
-      const rows = [];
-      tableRows(table).forEach(row => {
-        const id = idOf(row); if (!id) return;
-        const fp = rowFingerprint(row);
-        if (!opts.full && LS.getItem(rowFpKey(table, id)) === fp) return;
-        const data = stripHeavy(row, 0) || {};
-        if (!data.id) data.id = id;
-        const updated = updatedOf(data) || updatedOf(row) || now();
-        rows.push({ item_id:id, updated_at:updated, deleted_at:deletedOf(data) || deletedOf(row), data:data, __fp:fp });
-      });
-      return rows;
-    }
-    async function pushDeltaTable(table, opts){
-      opts = opts || {};
-      const changed = changedRowsForTable(table, opts);
-      if (!changed.length) return { ok:true, table, saved:0, changed:0 };
-      let saved = 0;
-      for (let i=0; i<changed.length; i+=250) {
-        const chunk = changed.slice(i, i+250).map(r => ({ item_id:r.item_id, updated_at:r.updated_at, deleted_at:r.deleted_at, data:r.data }));
-        const res = await api('/api/sync/push', { method:'POST', body:JSON.stringify({ table, rows:chunk }) });
-        saved += Number(res.saved || chunk.length || 0);
-      }
-      changed.forEach(r => { try { LS.setItem(rowFpKey(table, r.item_id), r.__fp); } catch(e){} });
-      return { ok:true, table, saved, changed:changed.length };
-    }
-    async function pushDeltas(opts){
-      opts = opts || {};
-      const out = {};
-      for (const table of TABLE_ORDER) {
-        try { out[table] = await pushDeltaTable(table, opts); }
-        catch(e) { out[table] = { ok:false, error:e.message || String(e) }; throw e; }
-      }
-      lastAutoPushAt = now();
-      return out;
-    }
-    async function pullChanges(opts){
-      opts = opts || {};
-      const minGap = opts.force ? 0 : Math.max(30000, Number(LS.getItem('sk_cf_v88_pull_min_gap_ms') || 120000));
-      const lastPull = Number(LS.getItem(LAST_PULL_KEY) || 0) || 0;
-      if (!opts.full && !opts.force && now() - lastPull < minGap) return { ok:true, skipped:true, reason:'pull-throttled', lastPull };
-      if (typeof window.skCloudPullAll !== 'function') return { ok:false, error:'skCloudPullAll missing' };
-      const res = await window.skCloudPullAll({ full:!!opts.full, force:true, silent:true, v88:true });
-      LS.setItem(LAST_PULL_KEY, String(now()));
-      TABLE_ORDER.forEach(markRowsAsSynced);
-      return res;
-    }
-    function resetBackoff(){ backoffMs = 0; backoffUntil = 0; }
-    function applyBackoff(e){
-      backoffMs = Math.min(300000, backoffMs ? Math.round(backoffMs * 1.8) : 30000);
-      backoffUntil = now() + backoffMs;
-      warn('sync backoff', backoffMs + 'ms', e && (e.message || e));
-    }
-    async function autoCycle(reason, opts){
-      opts = opts || {};
-      if (inFlight) return { ok:true, skipped:true, reason:'in-flight' };
-      if (!autoEnabled() && !opts.manual) return { ok:true, skipped:true, reason:'auto-disabled' };
-      if (!cloudReady()) return { ok:true, skipped:true, reason:'api-not-set' };
-      if (isBackoff() && !opts.manual) return { ok:true, skipped:true, reason:'backoff', until:backoffUntil };
-      inFlight = true;
-      try {
-        const result = { ok:true, build:window.__SK_BUILD, reason, pushed:null, pulled:null, at:now() };
-        result.pushed = await pushDeltas({ full:!!opts.fullPush });
-        result.pulled = await pullChanges({ full:!!opts.fullPull, force:!!opts.forcePull || !!opts.manual });
-        resetBackoff();
-        return result;
-      } catch(e) {
-        applyBackoff(e);
-        if (opts.manual && typeof window.showToast === 'function') window.showToast('Cloudflare 동기화 실패: ' + (e.message || e), 'warn');
-        return { ok:false, error:e.message || String(e), reason };
-      } finally {
-        inFlight = false;
-      }
-    }
-    function schedulePush(reason, delay){
-      if (!autoEnabled() || !cloudReady()) return;
-      pendingReason = reason || pendingReason || 'change';
-      clearTimeout(pushTimer);
-      const minSinceLast = Math.max(0, 15000 - (now() - lastAutoPushAt));
-      pushTimer = setTimeout(function(){ autoCycle(pendingReason || 'debounced-change', { forcePull:false }).catch(e => warn(e)); pendingReason=''; }, Math.max(delay || 7000, minSinceLast));
-    }
-    function schedulePull(reason, delay){
-      if (!autoEnabled() || !cloudReady()) return;
-      clearTimeout(pullTimer);
-      pullTimer = setTimeout(function(){ autoCycle(reason || 'scheduled-pull', { forcePull:false }).catch(e => warn(e)); }, delay || 1500);
-    }
-    function baselineIfFirstRun(){
-      if (LS.getItem(BASELINE_KEY) === '1') return;
-      TABLE_ORDER.forEach(markRowsAsSynced);
-      LS.setItem(BASELINE_KEY, '1');
-      log('baseline fingerprints initialized. Existing local rows will not be bulk-pushed automatically. Use skCloudInitialFullSync() once if needed.');
-    }
-    function bindAutoEvents(){
-      if (window.__SK_CF_V88_EVENTS_BOUND) return;
-      window.__SK_CF_V88_EVENTS_BOUND = true;
-      ['input','change','paste','drop'].forEach(ev => {
-        document.addEventListener(ev, function(){ lastUserActivity = now(); schedulePush(ev, 8000); }, true);
-      });
-      // 버튼 클릭 뒤 실제 저장 함수가 조금 늦게 실행되는 경우가 많아 약간 늦춰서 확인한다.
-      document.addEventListener('click', function(){ lastUserActivity = now(); schedulePush('click', 10000); }, true);
-      window.addEventListener('focus', function(){ schedulePull('focus', 1200); }, true);
-      document.addEventListener('visibilitychange', function(){ if (!document.hidden) schedulePull('visible', 1500); }, true);
-      window.addEventListener('online', function(){ schedulePull('online', 2000); }, true);
-      setInterval(function(){ if (!document.hidden) schedulePull('interval', 1000); }, Math.max(180000, Number(LS.getItem('sk_cf_v88_interval_ms') || 300000)));
-    }
-
-    // v87 manual-only guard를 운영 모드로 되돌린다. 자동은 켜되, 이 v88 스케줄러만 절제해서 호출한다.
-    LS.setItem(AUTO_KEY, '1');
-    baselineIfFirstRun();
-    bindAutoEvents();
-
-    window.skCloudDisableAutoSync = function(){ LS.setItem(AUTO_KEY, '0'); clearTimeout(pushTimer); clearTimeout(pullTimer); log('자동 동기화 OFF'); return true; };
-    window.skCloudEnableAutoSync = function(){ LS.setItem(AUTO_KEY, '1'); schedulePull('enable', 1000); log('자동 동기화 ON'); return true; };
-    window.skCloudAutoSyncStatus = function(){
-      return { build:window.__SK_BUILD, autoSync:autoEnabled(), apiBase:getApiBase(), userKey:getUserKey(), inFlight, backoffUntil, lastPull:Number(LS.getItem(LAST_PULL_KEY)||0)||0, lastAutoPushAt, baseline:LS.getItem(BASELINE_KEY)==='1' };
-    };
-    window.skCloudSyncNow = async function(){ return await autoCycle('manual-sync', { manual:true, forcePull:true }); };
-    window.skCloudConvergeNow = async function(){ return await autoCycle('manual-converge', { manual:true, forcePull:true, fullPull:true, fullPush:true }); };
-    window.skCloudRepairImagesAndSync = window.skCloudConvergeNow;
-    window.skCloudInitialFullSync = async function(){ return await autoCycle('initial-full-sync', { manual:true, forcePull:true, fullPull:true, fullPush:true }); };
-
-    // 초기 진입 시에는 한 번만 조용히 변경분 확인. 성공 알림 없음.
-    setTimeout(function(){ schedulePull('initial', 100); }, 2500);
-    // 너무 잦은 health 체크도 막는다.
-    if (cloudReady() && now() - (Number(LS.getItem(LAST_HEALTH_KEY)||0)||0) > 300000) {
-      LS.setItem(LAST_HEALTH_KEY, String(now()));
-      api('/api/health', { method:'GET' }).then(h => log('health', h)).catch(e => warn('health fail', e.message || e));
-    }
-    console.log('[build] common.js', window.__SK_BUILD, 'quiet-auto-sync enabled');
-  } catch(e) { console.warn('[v88 quiet auto delta sync patch] init fail', e); }
-})();
-
-/* ════════════════════════════════════════════════════════
-   v89: Attachment Tombstone Sync / No-Revive Delete Engine
+   v90: Attachment Tombstone Sync / No-Revive Delete Engine
    - 첨부 삭제를 단순 배열 제거가 아니라 attachment key tombstone으로 저장
    - R2 파일은 즉시 물리 삭제하지 않음: 다른 기기 메타데이터가 늦게 오면서 깨진 이미지/404가 부활하는 문제 방지
    - pull/push 병합 시 tombstone 우선: 삭제한 이미지는 다른 기기의 오래된 첨부 배열이 다시 살리지 못함
@@ -53065,15 +52777,15 @@ window.addEventListener('DOMContentLoaded', () => {
 (function(){
   'use strict';
   try {
-    window.__SK_BUILD = '20260508-workroom-v89-attachment-tombstone-sync';
+    window.__SK_BUILD = '20260509-workroom-v90-attachment-delete-converge';
     const LS = window.localStorage;
     const OLD_AUTO_KEY = 'sk_cf_auto_sync_enabled';
-    const AUTO_KEY = 'sk_cf_v89_auto_sync_enabled';
+    const AUTO_KEY = 'sk_cf_v90_auto_sync_enabled';
     const API_KEY = 'sk_cloud_api_base_v1';
     const USER_KEY = 'sk_cloud_user_key_v1';
-    const FP_PREFIX = 'sk_cf_v89_rowfp:';
-    const LAST_PULL_PREFIX = 'sk_cf_v89_last_pull:';
-    const LAST_PULL_AT = 'sk_cf_v89_last_pull_at';
+    const FP_PREFIX = 'sk_cf_v90_rowfp:';
+    const LAST_PULL_PREFIX = 'sk_cf_v90_last_pull:';
+    const LAST_PULL_AT = 'sk_cf_v90_last_pull_at';
     const QUIET_OK = /(수신\s*완료|변경분\s*수신|변경분\s*확인\s*완료|저장\s*완료|동기화\s*완료|Cloudflare.*완료|작업룸\s*섹션.*수신|파이프라인.*수신|저장목록.*수신|노트.*수신|스냅샷.*수신|지도\s*메모.*수신|알짜.*수신|첨부\s*동기화|저장\/첨부\s*동기화|수신완료)/i;
     const TABLES = {
       items:     { cache:'re_sv',        label:'저장목록' },
@@ -53108,8 +52820,8 @@ window.addEventListener('DOMContentLoaded', () => {
     function getUserKey(){ return String(window.SK_CLOUD_USER_KEY || LS.getItem(USER_KEY) || LS.getItem('_sb_saved_email') || 'monodot-main').replace(/[^a-zA-Z0-9_@.\-]/g,'').slice(0,80) || 'monodot-main'; }
     function autoEnabled(){ return LS.getItem(AUTO_KEY) !== '0'; }
     function cloudReady(){ return !!getApiBase(); }
-    function log(){ try { console.log.apply(console, ['[SK-CF-v89]'].concat([].slice.call(arguments))); } catch(e){} }
-    function warn(){ try { console.warn.apply(console, ['[SK-CF-v89]'].concat([].slice.call(arguments))); } catch(e){} }
+    function log(){ try { console.log.apply(console, ['[SK-CF-v90]'].concat([].slice.call(arguments))); } catch(e){} }
+    function warn(){ try { console.warn.apply(console, ['[SK-CF-v90]'].concat([].slice.call(arguments))); } catch(e){} }
     function isQuiet(msg, type, ok){
       const s = String(msg || '');
       const t = String(type || '').toLowerCase();
@@ -53118,14 +52830,14 @@ window.addEventListener('DOMContentLoaded', () => {
     }
     (function muteSuccess(){
       const prevToast = window.showToast;
-      if (typeof prevToast === 'function' && !prevToast.__skV89Quiet) {
+      if (typeof prevToast === 'function' && !prevToast.__skV90Quiet) {
         const wrapped = function(msg, type){ if (isQuiet(msg, type, true)) return; return prevToast.apply(this, arguments); };
-        wrapped.__skV89Quiet = true; window.showToast = wrapped;
+        wrapped.__skV90Quiet = true; window.showToast = wrapped;
       }
       const prevStatus = window._sbSyncStatus;
-      if (typeof prevStatus === 'function' && !prevStatus.__skV89Quiet) {
+      if (typeof prevStatus === 'function' && !prevStatus.__skV90Quiet) {
         const wrappedStatus = function(msg, ok){ if (isQuiet(msg, 'ok', ok !== false)) return; return prevStatus.apply(this, arguments); };
-        wrappedStatus.__skV89Quiet = true; window._sbSyncStatus = wrappedStatus;
+        wrappedStatus.__skV90Quiet = true; window._sbSyncStatus = wrappedStatus;
       }
     })();
 
@@ -53175,6 +52887,33 @@ window.addEventListener('DOMContentLoaded', () => {
       });
       return set;
     }
+    function collectTombstonesDeep(obj, set, depth){
+      set = collectTombstones(obj, set || new Set());
+      depth = depth || 0;
+      if (!obj || typeof obj !== 'object' || depth > 10) return set;
+      if (Array.isArray(obj)) { obj.forEach(v => collectTombstonesDeep(v, set, depth + 1)); return set; }
+      Object.keys(obj).forEach(k => {
+        if (DANGEROUS_KEYS.test(k) || HEAVY_KEYS.test(k)) return;
+        const v = obj[k];
+        if (v && typeof v === 'object') collectTombstonesDeep(v, set, depth + 1);
+      });
+      return set;
+    }
+    function pruneDeletedAttachmentsDeep(v, tombs, key, depth){
+      depth = depth || 0; key = key || '';
+      if (!tombs || !tombs.size || v == null || depth > 12) return v;
+      if (Array.isArray(v)) {
+        const looks = isAttachmentArray(key, v);
+        const arr = v.map(x => pruneDeletedAttachmentsDeep(x, tombs, key, depth + 1)).filter(Boolean);
+        return looks ? arr.filter(att => { const k = attKey(att); return !k || !tombs.has(k); }) : arr;
+      }
+      if (typeof v === 'object') {
+        const out = Object.assign({}, v);
+        Object.keys(out).forEach(k => { out[k] = pruneDeletedAttachmentsDeep(out[k], tombs, k, depth + 1); });
+        return out;
+      }
+      return v;
+    }
     function tombstone(obj, key){
       if (!obj || !key) return;
       const k = attKey({ path:key }); if (!k) return;
@@ -53209,7 +52948,7 @@ window.addEventListener('DOMContentLoaded', () => {
     function smartMerge(prev, inc){
       if (!prev) return inc; if (!inc) return prev; if (deletedOf(inc)) return inc;
       if (!isObj(prev) || !isObj(inc)) return nonEmpty(inc) ? inc : prev;
-      const tombs = collectTombstones(prev, collectTombstones(inc, new Set()));
+      const tombs = collectTombstonesDeep(prev, collectTombstonesDeep(inc, new Set()));
       const out = Object.assign({}, prev);
       Object.keys(inc).forEach(k => {
         if (DANGEROUS_KEYS.test(k)) return;
@@ -53224,7 +52963,7 @@ window.addEventListener('DOMContentLoaded', () => {
         Object.keys(out).forEach(k => { if (Array.isArray(out[k]) && isAttachmentArray(k, out[k])) out[k] = mergeAttArrays(out[k], [], tombs); });
       }
       out.updatedAt = Math.max(updatedOf(prev), updatedOf(inc), 1);
-      return out;
+      return pruneDeletedAttachmentsDeep(out, tombs);
     }
     function stripHeavy(v, depth){
       depth = depth || 0; if (depth > 12) return undefined;
@@ -53241,7 +52980,15 @@ window.addEventListener('DOMContentLoaded', () => {
     function rows(table){ const meta=TABLES[table]; return meta ? cacheGet(meta.cache).filter(Boolean) : []; }
     function changedRows(table, opts){
       opts = opts || {}; const out=[];
-      rows(table).forEach(r => { const id=idOf(r); if(!id) return; const f=fp(r); if(!opts.full && LS.getItem(fpKey(table,id))===f) return; const data=stripHeavy(r,0)||{}; if(!data.id)data.id=id; if(!data.updatedAt)data.updatedAt=Math.max(updatedOf(r), now()); out.push({item_id:id, updated_at:updatedOf(data)||now(), deleted_at:deletedOf(data), data, __fp:f}); });
+      rows(table).forEach(r => {
+        const id=idOf(r); if(!id) return;
+        const tombs = collectTombstonesDeep(r, new Set());
+        const cleaned = pruneDeletedAttachmentsDeep(stripHeavy(r,0)||{}, tombs);
+        const f=fp(cleaned);
+        if(!opts.full && LS.getItem(fpKey(table,id))===f) return;
+        const data=cleaned||{}; if(!data.id)data.id=id; if(!data.updatedAt)data.updatedAt=Math.max(updatedOf(r), now());
+        out.push({item_id:id, updated_at:updatedOf(data)||now(), deleted_at:deletedOf(data), data, __fp:f});
+      });
       return out;
     }
     async function pushTable(table, opts){
@@ -53258,10 +53005,19 @@ window.addEventListener('DOMContentLoaded', () => {
       const local = cacheGet(meta.cache); const map = new Map();
       local.forEach(x => { const id=idOf(x); if(id) map.set(id,x); });
       (res.rows || []).forEach(r => { const d=r.data || {}; if(!d.id && r.item_id)d.id=r.item_id; if(!d.updatedAt && r.updated_at)d.updatedAt=r.updated_at; if(!d.deletedAt && r.deleted_at)d.deletedAt=r.deleted_at; const id=idOf(d); if(id) map.set(id, smartMerge(map.get(id), d)); });
-      const merged = Array.from(map.values()).filter(x => !deletedOf(x) || deletedOf(x) > now() - 30*86400000);
+      const merged = Array.from(map.values())
+        .map(x => pruneDeletedAttachmentsDeep(x, collectTombstonesDeep(x, new Set())))
+        .filter(x => !deletedOf(x) || deletedOf(x) > now() - 30*86400000);
       cacheSet(meta.cache, merged);
+      if (table === 'workrooms') { try { if (window.wr2State && Array.isArray(window.wr2State.rooms)) window.wr2State.rooms = merged.slice(); } catch(e){} }
+      if (table === 'notes') { try { if (Array.isArray(window.ntNotes)) window.ntNotes = merged.slice(); } catch(e){} }
       merged.forEach(x => { const id=idOf(x); if(id) try { LS.setItem(fpKey(table,id), fp(x)); } catch(e){} });
       LS.setItem(LAST_PULL_PREFIX+table, String(res.serverTime || now()));
+      if ((res.rows || []).length) {
+        try { if (table === 'workrooms' && typeof window.wr2Render === 'function') window.wr2Render(); } catch(e){}
+        try { if (table === 'notes' && typeof window.ntRender === 'function') window.ntRender(); } catch(e){}
+        try { window.dispatchEvent(new CustomEvent('sk:cloud-sync-applied', { detail:{ table, count:(res.rows||[]).length } })); } catch(e){}
+      }
       return {ok:true, table, count:(res.rows||[]).length, rows:merged.length};
     }
     async function pushAll(opts){ const out={}; for(const t of TABLE_ORDER){ out[t]=await pushTable(t, opts); } return out; }
@@ -53275,52 +53031,74 @@ window.addEventListener('DOMContentLoaded', () => {
       finally { inFlight = false; }
     }
     function schedulePush(reason, delay){ if(!autoEnabled()||!cloudReady()) return; clearTimeout(pushTimer); const minGap = Math.max(0, 12000 - (now()-lastAutoPushAt)); pushTimer=setTimeout(()=>cycle(reason||'change').catch(warn), Math.max(delay||8000, minGap)); }
-    function schedulePull(reason, delay){ if(!autoEnabled()||!cloudReady()) return; clearTimeout(pullTimer); const last = Number(LS.getItem(LAST_PULL_AT)||0)||0; if(now()-last < 90000 && reason!=='manual') return; pullTimer=setTimeout(()=>cycle(reason||'pull').catch(warn), delay||1500); }
+    function schedulePull(reason, delay){ if(!autoEnabled()||!cloudReady()) return; clearTimeout(pullTimer); const last = Number(LS.getItem(LAST_PULL_AT)||0)||0; if(now()-last < 45000 && reason!=='manual') return; pullTimer=setTimeout(()=>cycle(reason||'pull').catch(warn), delay||1500); }
     function bindEvents(){
-      if(window.__SK_CF_V89_EVENTS_BOUND) return; window.__SK_CF_V89_EVENTS_BOUND = true;
+      if(window.__SK_CF_V90_EVENTS_BOUND) return; window.__SK_CF_V90_EVENTS_BOUND = true;
       ['input','change','paste','drop'].forEach(ev => document.addEventListener(ev, () => schedulePush(ev, 9000), true));
       document.addEventListener('click', () => schedulePush('click', 11000), true);
       window.addEventListener('focus', () => schedulePull('focus', 1200), true);
       document.addEventListener('visibilitychange', () => { if(!document.hidden) schedulePull('visible', 1500); }, true);
       window.addEventListener('online', () => schedulePull('online', 2000), true);
-      setInterval(() => { if(!document.hidden) schedulePull('interval', 1500); }, 300000);
+      setInterval(() => { if(!document.hidden) schedulePull('interval', 1500); }, 120000);
     }
 
     // 작업룸-노트 삭제: 첨부 tombstone을 먼저 기록하고, R2 물리 삭제는 즉시 하지 않는다.
     function activeRoom(){ const st=window.wr2State; const arr=(st&&Array.isArray(st.rooms))?st.rooms:cacheGet('wr2_rooms'); const id=st&&st.activeRoomId; return arr.find(r=>r&&r.id===id)||null; }
     function activeWrNote(room){ const id=window.__skActiveWr2NoteId; const notes=(room&&Array.isArray(room.notes))?room.notes:[]; return (id&&notes.find(n=>n&&n.id===id))||notes[0]||null; }
     const rawWr2Select = window.wr2NoteSelect;
-    if (typeof rawWr2Select === 'function' && !rawWr2Select.__skV89Track) {
+    if (typeof rawWr2Select === 'function' && !rawWr2Select.__skV90Track) {
       const wrapped = function(noteId){ window.__skActiveWr2NoteId = noteId; return rawWr2Select.apply(this, arguments); };
-      wrapped.__skV89Track = true; window.wr2NoteSelect = wrapped;
+      wrapped.__skV90Track = true; window.wr2NoteSelect = wrapped;
     }
     const rawWr2Del = window.wr2DelAttach;
-    if (typeof rawWr2Del === 'function' && !rawWr2Del.__skV89Tombstone) {
+    if (typeof rawWr2Del === 'function' && !rawWr2Del.__skV90Tombstone) {
       const wrappedDel = async function(idx){
         const room = activeRoom(); const note = activeWrNote(room); const target = note && note.attachments && note.attachments[idx]; const key=attKey(target);
-        if(note&&key) tombstone(note,key); if(room) room.updatedAt=now();
+        if(note&&key) tombstone(note,key);
+        if(room&&key) { tombstone(room,key); room.updatedAt=now(); }
         const old = window._sbDeleteImages; window._sbDeleteImages = async function(){ return {ok:true, skipped:true, reason:'metadata-first-delete'}; };
         try { return await rawWr2Del.apply(this, arguments); }
-        finally { window._sbDeleteImages = old; schedulePush('wr2-attachment-delete', 1000); }
+        finally {
+          window._sbDeleteImages = old;
+          try { const r=activeRoom(); if(r){ r.updatedAt=now(); const arr=cacheGet('wr2_rooms'); const id=idOf(r); const i=arr.findIndex(x=>idOf(x)===id); if(i>=0) arr[i]=r; else arr.unshift(r); cacheSet('wr2_rooms', arr); } } catch(e){}
+          setTimeout(function(){ cycle('wr2-attachment-delete-immediate', {manual:true}).catch(warn); }, 300);
+        }
       };
-      wrappedDel.__skV89Tombstone = true; window.wr2DelAttach = wrappedDel;
+      wrappedDel.__skV90Tombstone = true; window.wr2DelAttach = wrappedDel;
     }
     const rawNtRemoveAtt = window.ntUtRemoveAtt;
-    if (typeof rawNtRemoveAtt === 'function' && !rawNtRemoveAtt.__skV89Tombstone) {
+    if (typeof rawNtRemoveAtt === 'function' && !rawNtRemoveAtt.__skV90Tombstone) {
       const wrappedNtDel = async function(id, atti){
-        try { const list = Array.isArray(window.ntNotes) ? window.ntNotes : cacheGet('nt_notes'); const note=list.find(n=>n&&n.id===id); const target=note&&note.attachments&&note.attachments[atti]; const key=attKey(target); if(note&&key) tombstone(note,key); } catch(e){}
+        let note=null, key='';
+        try { const list = Array.isArray(window.ntNotes) ? window.ntNotes : cacheGet('nt_notes'); note=list.find(n=>n&&n.id===id); const target=note&&note.attachments&&note.attachments[atti]; key=attKey(target); if(note&&key) tombstone(note,key); } catch(e){}
         const old = window._sbDeleteImages; window._sbDeleteImages = async function(){ return {ok:true, skipped:true, reason:'metadata-first-delete'}; };
         try { return await rawNtRemoveAtt.apply(this, arguments); }
-        finally { window._sbDeleteImages = old; schedulePush('note-attachment-delete', 1000); }
+        finally {
+          window._sbDeleteImages = old;
+          try { if(note){ note.updatedAt=now(); const list=Array.isArray(window.ntNotes)?window.ntNotes:cacheGet('nt_notes'); const i=list.findIndex(n=>idOf(n)===idOf(note)); if(i>=0) list[i]=note; cacheSet('nt_notes', list); } } catch(e){}
+          setTimeout(function(){ cycle('note-attachment-delete-immediate', {manual:true}).catch(warn); }, 300);
+        }
       };
-      wrappedNtDel.__skV89Tombstone = true; window.ntUtRemoveAtt = wrappedNtDel;
+      wrappedNtDel.__skV90Tombstone = true; window.ntUtRemoveAtt = wrappedNtDel;
+    }
+
+    function removeBrokenOrDeletedAttachmentsLocal(){
+      let changed = 0;
+      TABLE_ORDER.forEach(table => {
+        const meta = TABLES[table]; if(!meta) return;
+        const arr = cacheGet(meta.cache);
+        const next = arr.map(x => pruneDeletedAttachmentsDeep(x, collectTombstonesDeep(x, new Set())));
+        if (stable(arr) !== stable(next)) { cacheSet(meta.cache, next); changed++; }
+      });
+      try { if (typeof window.wr2Render === 'function') window.wr2Render(); } catch(e){}
+      return {ok:true, changed};
     }
 
     bindEvents();
     window.skCloudPullTable = (table, opts) => pullTable(table, opts||{});
     window.skCloudPushTable = (table, opts) => pushTable(table, opts||{});
     window.skCloudPullAll = (opts) => pullAll(opts||{});
-    window.skCloudResetSince = function(){ resetSince(); console.log('[SK-CF-v89] pull 기준시간 초기화'); return true; };
+    window.skCloudResetSince = function(){ resetSince(); console.log('[SK-CF-v90] pull 기준시간 초기화'); return true; };
     window.skCloudSyncNow = function(){ return cycle('manual-sync', {manual:true, fullPull:false, health:true}); };
     window.skCloudConvergeNow = async function(){ resetSince(); return cycle('manual-converge', {manual:true, fullPull:true, fullPush:true, health:true}); };
     window.skCloudRepairImagesAndSync = window.skCloudConvergeNow;
@@ -53331,6 +53109,6 @@ window.addEventListener('DOMContentLoaded', () => {
 
     setTimeout(() => schedulePull('initial', 100), 2500);
     if (cloudReady()) api('/api/health',{method:'GET'}).then(h=>log('health',h)).catch(e=>warn('health fail', e.message||e));
-    console.log('[build] common.js', window.__SK_BUILD, 'attachment tombstone sync enabled');
-  } catch(e) { console.warn('[v89 attachment tombstone sync patch] init fail', e); }
+    console.log('[build] common.js', window.__SK_BUILD, 'attachment delete converge enabled');
+  } catch(e) { console.warn('[v90 attachment delete converge patch] init fail', e); }
 })();
