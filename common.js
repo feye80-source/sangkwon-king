@@ -52414,6 +52414,9 @@ window.addEventListener('DOMContentLoaded', () => {
 
     async function pullOnce(reason, opts){
       opts = opts || {};
+      if ((reason === 'open-v94' || reason === 'late-open-v94') && window.__skV110CloudRowWinsPull) {
+        return { ok:true, skipped:true, reason:'delegated-to-v110-open-pull' };
+      }
       if (!enabled() || !apiReady() || typeof window.skCloudPullAll !== 'function') return { ok:false, skipped:true, reason:'not-ready' };
       const last = Number(LS.getItem(LAST_OPEN_PULL) || 0) || 0;
       if (!opts.force && now() - last < OPEN_PULL_THROTTLE_MS) return { ok:true, skipped:true, reason:'recent-open-pull' };
@@ -54049,7 +54052,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260509-workroom-v113-room-full-converge-hotfix4';
+  var BUILD='20260509-workroom-v113-room-full-converge-hotfix5';
   var LAST_KEY='sk_cf_v113_last_full_rooms_pull';
   var MIN_GAP=12*60*60*1000;
   var AUTO_RETRY_MAX=6;
