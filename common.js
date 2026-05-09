@@ -53800,6 +53800,9 @@ window.addEventListener('DOMContentLoaded', () => {
   function activeId(){return String(window.wr2State && window.wr2State.activeRoomId || '');}
   function imgCount(r){return Array.isArray(r && r.captureImages) ? r.captureImages.length : 0;}
   function updatedOf(r){return Number(r && (r.updatedAt || r.updated_at || r.timestamp || 0)) || 0;}
+  function rowSig(room){
+    return [idOf(room), updatedOf(room), imgCount(room), Number(room && (room.deletedAt || room.deleted_at || 0)) || 0].join('|');
+  }
   function findActiveFrom(args, result){
     var rid=activeId();
     if(!rid) return null;
@@ -53846,6 +53849,8 @@ window.addEventListener('DOMContentLoaded', () => {
     var original=window[name];
     if(typeof original!=='function' || original.__skV111Wrapped) return false;
     var wrapped=function(){
+      var before=findActiveFrom(null, null);
+      var beforeSig=rowSig(before);
       var args=arguments;
       var result=original.apply(this,args);
       try{
@@ -53853,6 +53858,8 @@ window.addEventListener('DOMContentLoaded', () => {
         if(opts && opts.sync===false) return result;
         var room=findActiveFrom(args,result);
         if(room) {
+          var afterSig=rowSig(room);
+          if(afterSig===beforeSig) return result;
           // microtask + short delay: ensure IDB/cache write and FileReader/upload callback have settled.
           Promise.resolve().then(function(){ return pushSnapshot(room, name); });
           setTimeout(function(){
@@ -54042,35 +54049,106 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260509-workroom-v113-room-full-converge';
+  var BUILD='20260509-workroom-v113-room-full-converge-hotfix4';
   var LAST_KEY='sk_cf_v113_last_full_rooms_pull';
   var MIN_GAP=12*60*60*1000;
+  var AUTO_RETRY_MAX=6;
+  var AUTO_RETRY_BASE_MS=1200;
   function log(){try{console.log.apply(console,['[SK-CF-v113]'].concat([].slice.call(arguments)));}catch(e){}}
   function warn(){try{console.warn.apply(console,['[SK-CF-v113]'].concat([].slice.call(arguments)));}catch(e){}}
   function lsGet(k){try{return localStorage.getItem(k);}catch(e){return null;}}
   function lsSet(k,v){try{localStorage.setItem(k,v);}catch(e){}}
-  function isIOS(){try{var ua=String(navigator.userAgent||'');return /iPhone|iPad|iPod/i.test(ua);}catch(e){return false;}}
+  function isIOS(){
+    try{
+      var ua=String(navigator.userAgent||'');
+      var pf=String(navigator.platform||'');
+      var tp=Number(navigator.maxTouchPoints||0)||0;
+      if(/iPhone|iPad|iPod/i.test(ua) || /iPhone|iPad|iPod/i.test(pf)) return true;
+      // iPadOS Safari often reports desktop-like UA (Macintosh/MacIntel).
+      if((/Macintosh/i.test(ua) || /MacIntel/i.test(pf)) && tp>1) return true;
+      return false;
+    }catch(e){
+      return false;
+    }
+  }
   function hasPull(){return typeof window.skCloudPullTable==='function';}
   function hasRehydrate(){return typeof window.skCloudRehydrateWorkroomUi==='function';}
-  function fullPullRooms(reason){
-    if(!hasPull()) return Promise.resolve({ok:false, skipped:true, reason:'pull-missing'});
+  function waitForPullReady(timeoutMs){
+    var timeout=Math.max(0, Number(timeoutMs||0)||0);
+    if(hasPull()) return Promise.resolve(true);
+    if(!timeout) return Promise.resolve(false);
+    return new Promise(function(resolve){
+      var done=false;
+      var started=Date.now();
+      var timer=setInterval(function(){
+        if(done) return;
+        if(hasPull()){
+          done=true;
+          clearInterval(timer);
+          resolve(true);
+          return;
+        }
+        if(Date.now()-started>=timeout){
+          done=true;
+          clearInterval(timer);
+          resolve(false);
+        }
+      }, 200);
+    });
+  }
+  function fullPullRooms(reason, opts){
+    opts=opts||{};
+    var waitMs=Math.max(0, Number(opts.waitMs||0)||0);
     return Promise.resolve()
-      .then(function(){ return window.skCloudPullTable('workrooms',{since:0,limit:30,maxPages:80}); })
-      .then(function(a){
-        return Promise.resolve()
-          .then(function(){ return window.skCloudPullTable('sections',{since:0,limit:30,maxPages:80}); })
-          .then(function(b){
-            if(hasRehydrate()) { try{ window.skCloudRehydrateWorkroomUi(); }catch(e){} }
-            lsSet(LAST_KEY, String(Date.now()));
-            var out={ok:true, reason:reason||'manual', workrooms:a&&a.pulled, sections:b&&b.pulled, build:BUILD};
-            log('full converge done', out);
-            return out;
+      .then(function(){ return waitForPullReady(waitMs); })
+      .then(function(ready){
+        if(!ready) return {ok:false, skipped:true, reason:'pull-missing'};
+        return window.skCloudPullTable('workrooms',{since:0,limit:30,maxPages:80})
+          .then(function(a){
+            return Promise.resolve()
+              .then(function(){ return window.skCloudPullTable('sections',{since:0,limit:30,maxPages:80}); })
+              .then(function(b){
+                if(hasRehydrate()) { try{ window.skCloudRehydrateWorkroomUi(); }catch(e){} }
+                lsSet(LAST_KEY, String(Date.now()));
+                var out={ok:true, reason:reason||'manual', workrooms:a&&a.pulled, sections:b&&b.pulled, build:BUILD};
+                log('full converge done', out);
+                return out;
+              });
           });
       })
       .catch(function(e){
         warn('full converge failed', reason, e && (e.message||e));
         return {ok:false, reason:reason||'manual', error:String(e && (e.message||e)), build:BUILD};
       });
+  }
+  function scheduleAutoConverge(reason){
+    var tries=0;
+    function attempt(delay){
+      setTimeout(function(){
+        tries+=1;
+        fullPullRooms(reason + ':try' + tries, { waitMs: 3500 })
+          .then(function(res){
+            if(res && res.ok) return;
+            var why=String((res && (res.reason || res.error)) || '');
+            var retryable=!!(res && res.skipped) || /pull-missing|not-ready|network|fetch|Cloudflare API/i.test(why);
+            if(retryable && tries < AUTO_RETRY_MAX){
+              var nextDelay=Math.min(8000, AUTO_RETRY_BASE_MS * tries);
+              attempt(nextDelay);
+            } else if(!res || !res.ok) {
+              warn('auto converge skipped', {tries:tries, reason:why || 'unknown'});
+            }
+          })
+          .catch(function(e){
+            if(tries < AUTO_RETRY_MAX){
+              var nextDelay=Math.min(8000, AUTO_RETRY_BASE_MS * tries);
+              attempt(nextDelay);
+            } else {
+              warn('auto converge failed', e && (e.message||e));
+            }
+          });
+      }, Math.max(0, Number(delay||0)||0));
+    }
+    attempt(1500);
   }
   function install(){
     window.skCloudHardConvergeRooms=function(reason){ return fullPullRooms(reason||'manual-hard-converge'); };
@@ -54093,7 +54171,7 @@ window.addEventListener('DOMContentLoaded', () => {
     };
     var last=Number(lsGet(LAST_KEY)||0)||0;
     if(isIOS() && Date.now()-last>MIN_GAP){
-      setTimeout(function(){ fullPullRooms('ios-auto-converge'); }, 1500);
+      scheduleAutoConverge('ios-auto-converge');
     }
     log('installed', {ios:isIOS(), lastFullConvergeAt:last});
   }
