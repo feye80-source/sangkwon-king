@@ -52729,3 +52729,137 @@ window.addEventListener('DOMContentLoaded', () => {
     console.warn('[v95 strict edit-only sync patch] init fail', e);
   }
 })();
+
+/* ════════════════════════════════════════════════════════
+   v96: refresh/open pull once + edit-only push (common only)
+   - Worker remains v92
+   - No periodic/focus/visibility/online polling
+   - One lightweight pull only when the page is newly loaded/refreshed
+   - Push only when an edit/delete/upload save happens
+   - Manual pull via skCloudSyncNow()
+════════════════════════════════════════════════════════ */
+(function(){
+  'use strict';
+  try {
+    window.__SK_BUILD = '20260509-workroom-v96-refresh-pull-once-edit-push';
+
+    const LS = window.localStorage;
+    const CFG_API = 'sk_cloud_api_base_v1';
+    const OPEN_PULL_MARK = 'sk_cf_v96_open_pull_mark';
+    const MANUAL_PULL_MARK = 'sk_cf_v96_manual_pull_mark';
+    const EVENT_KEY = 'sk_cf_v95_edit_only_enabled';
+    const TABLES = ['workrooms','notes','sections','pl_items'];
+    const DISABLE_KEYS = [
+      'sk_cf_auto_sync_enabled',
+      'sk_cf_v88_auto_sync_enabled',
+      'sk_cf_v89_auto_sync_enabled',
+      'sk_cf_v90_auto_sync_enabled',
+      'sk_cf_v91_auto_sync_enabled',
+      'sk_cf_v92_auto_sync_enabled',
+      'sk_cf_v94_event_driven_enabled'
+    ];
+
+    DISABLE_KEYS.forEach(function(k){ try { LS.setItem(k, '0'); } catch(e){} });
+    if (LS.getItem(EVENT_KEY) == null) LS.setItem(EVENT_KEY, '1');
+
+    function now(){ return Date.now(); }
+    function apiReady(){ return !!String(window.SK_CLOUD_API_BASE || LS.getItem(CFG_API) || '').trim(); }
+    function enabled(){ return LS.getItem(EVENT_KEY) !== '0'; }
+    function log(){ try { console.log.apply(console, ['[SK-CF-v96]'].concat([].slice.call(arguments))); } catch(e){} }
+    function warn(){ try { console.warn.apply(console, ['[SK-CF-v96]'].concat([].slice.call(arguments))); } catch(e){} }
+
+    // Preserve the underlying bounded v92 pull functions. v95 may already have saved them.
+    if (!window.__skV96RawPullAll) {
+      window.__skV96RawPullAll = window.__skV95RawPullAll || window.__skV94RawPullAll || window.skCloudPullAll;
+    }
+    if (!window.__skV96RawPullTable) {
+      window.__skV96RawPullTable = window.__skV95RawPullTable || window.__skV94RawPullTable || window.skCloudPullTable;
+    }
+    const rawPullAll = window.__skV96RawPullAll;
+    const rawPullTable = window.__skV96RawPullTable;
+
+    function isManualOrOpenPull(opts){
+      opts = opts || {};
+      if (opts.manual === true || opts.force === true || opts.openOnce === true) return true;
+      const r = String(opts.reason || '');
+      return /manual|user|button|syncnow|open-v96|refresh-v96|v96/i.test(r);
+    }
+
+    window.skCloudPullAll = function(opts){
+      opts = opts || {};
+      if (!isManualOrOpenPull(opts)) {
+        return Promise.resolve({ ok:true, skipped:true, mode:'v96-edit-push-open-pull-once', reason:'auto-pull-blocked' });
+      }
+      if (!enabled() || !apiReady() || typeof rawPullAll !== 'function') {
+        return Promise.resolve({ ok:false, skipped:true, reason:'not-ready' });
+      }
+      const markKey = opts.openOnce ? OPEN_PULL_MARK : MANUAL_PULL_MARK;
+      try { LS.setItem(markKey, String(now())); } catch(e){}
+      return rawPullAll(Object.assign({}, opts, { reason: opts.reason || (opts.openOnce ? 'open-v96' : 'manual-v96'), tables: opts.tables || TABLES, force:true, manual:true }));
+    };
+
+    window.skCloudPullTable = function(table, opts){
+      opts = opts || {};
+      if (!isManualOrOpenPull(opts)) {
+        return Promise.resolve({ ok:true, skipped:true, table:table, mode:'v96-edit-push-open-pull-once', reason:'auto-table-pull-blocked' });
+      }
+      if (!enabled() || !apiReady() || typeof rawPullTable !== 'function') {
+        return Promise.resolve({ ok:false, skipped:true, table:table, reason:'not-ready' });
+      }
+      try { LS.setItem(opts.openOnce ? OPEN_PULL_MARK : MANUAL_PULL_MARK, String(now())); } catch(e){}
+      return rawPullTable(table, Object.assign({}, opts, { force:true, manual:true }));
+    };
+
+    const prevStatus = window.skCloudAutoSyncStatus;
+    window.skCloudAutoSyncStatus = function(){
+      let base = {};
+      try { base = typeof prevStatus === 'function' ? (prevStatus() || {}) : {}; } catch(e) { base = {}; }
+      base.build = window.__SK_BUILD;
+      base.autoSync = false;
+      base.eventDrivenSync = true;
+      base.strictEditOnlySync = true;
+      base.periodicPull = false;
+      base.periodicPush = false;
+      base.openPull = true;
+      base.openPullOncePerPageLoad = true;
+      base.refreshPull = true;
+      base.focusPull = false;
+      base.visibilityPull = false;
+      base.onlinePull = false;
+      base.implicitLoadPull = false;
+      base.mode = 'edit-push-open-refresh-pull-once-manual-pull';
+      base.manualSync = 'skCloudSyncNow()';
+      base.pullTables = TABLES;
+      base.lastOpenPull = Number(LS.getItem(OPEN_PULL_MARK) || 0) || 0;
+      base.lastManualPull = Number(LS.getItem(MANUAL_PULL_MARK) || 0) || 0;
+      return base;
+    };
+
+    window.skCloudSyncNow = function(){
+      return window.skCloudPullAll({ reason:'manual-v96', manual:true, force:true, tables:TABLES });
+    };
+    window.skCloudConvergeNow = window.skCloudSyncNow;
+    window.skCloudRepairImagesAndSync = window.skCloudSyncNow;
+
+    // Run exactly one bounded pull for this page load/refresh. This is not polling.
+    if (!window.__skV96OpenPullStarted) {
+      window.__skV96OpenPullStarted = true;
+      setTimeout(function(){
+        try {
+          if (!enabled() || !apiReady()) return;
+          window.skCloudPullAll({ reason:'open-v96-refresh-pull-once', openOnce:true, manual:true, force:true, tables:TABLES })
+            .then(function(res){ log('open refresh pull once done', res); })
+            .catch(function(e){ warn('open refresh pull once failed', e && (e.message || e)); });
+        } catch(e){ warn('open refresh pull once failed', e && (e.message || e)); }
+      }, 1800);
+    }
+
+    setTimeout(function(){ DISABLE_KEYS.forEach(function(k){ try { LS.setItem(k, '0'); } catch(e){} }); }, 1200);
+    setTimeout(function(){ DISABLE_KEYS.forEach(function(k){ try { LS.setItem(k, '0'); } catch(e){} }); }, 5000);
+
+    log('ready', window.skCloudAutoSyncStatus());
+    console.log('[build] common.js', window.__SK_BUILD, '(Worker v92 unchanged / refresh pull once + edit push)');
+  } catch(e) {
+    console.warn('[v96 refresh pull once patch] init fail', e);
+  }
+})();
