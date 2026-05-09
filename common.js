@@ -1051,6 +1051,24 @@
       const parsed = new Date(value).getTime();
       return Number.isFinite(parsed) ? parsed : 0;
     }
+    function _sbTimeMs(value) {
+      if (!value) return 0;
+      if (typeof value === 'number') return value;
+      const parsed = new Date(value).getTime();
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+    function _sbEntitySyncTs(item) {
+      if (!item || typeof item !== 'object') return 0;
+      return Math.max(
+        _sbTimeMs(item.updatedAt),
+        _sbTimeMs(item.updated_at),
+        _sbTimeMs(item.timestamp),
+        _sbTimeMs(item.savedAt),
+        _sbTimeMs(item.createdAt),
+        _sbTimeMs(item.deletedAt),
+        _sbTimeMs(item.deleted_at)
+      );
+    }
     function _sbMarkChangedIds(table, prevArr, nextArr) {
       const prevMap = new Map();
       const nextMap = new Map();
@@ -1103,8 +1121,18 @@
     }
     function _sbKeepTombstones(prevArr, nextArr) {
       const next = (Array.isArray(nextArr) ? nextArr : []).filter(item => item && item.id);
+      const prev = (Array.isArray(prevArr) ? prevArr : []).filter(item => item && item.id);
       const nextMap = new Map(next.map(item => [item.id, item]));
-      (Array.isArray(prevArr) ? prevArr : []).forEach(item => {
+      const prevMap = new Map(prev.map(item => [item.id, item]));
+      // stale overwrite guard: keep newer row by updated/deleted timestamp.
+      next.forEach(item => {
+        const old = prevMap.get(item.id);
+        if (!old) return;
+        const oldTs = _sbEntitySyncTs(old);
+        const newTs = _sbEntitySyncTs(item);
+        if (oldTs > newTs) nextMap.set(item.id, old);
+      });
+      prev.forEach(item => {
         if (!item || !item.id || !item.deletedAt) return;
         const nextItem = nextMap.get(item.id);
         if (!nextItem || !nextItem.deletedAt) nextMap.set(item.id, item);
@@ -54064,9 +54092,11 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260509-workroom-v113-room-full-converge-hotfix8';
+  var BUILD='20260509-workroom-v113-room-full-converge-hotfix9';
   var LAST_KEY='sk_cf_v113_last_full_rooms_pull';
+  var LAST_FG_KEY='sk_cf_v113_last_fg_pull_at';
   var MIN_GAP=12*60*60*1000;
+  var FG_GAP=25*1000;
   var AUTO_RETRY_MAX=6;
   var AUTO_RETRY_BASE_MS=1200;
   function log(){try{console.log.apply(console,['[SK-CF-v113]'].concat([].slice.call(arguments)));}catch(e){}}
@@ -54165,6 +54195,19 @@ window.addEventListener('DOMContentLoaded', () => {
     }
     attempt(1500);
   }
+  function scheduleForegroundConverge(tag){
+    if(!isIOS()) return;
+    var last=Number(lsGet(LAST_FG_KEY)||0)||0;
+    if(Date.now()-last<FG_GAP) return;
+    lsSet(LAST_FG_KEY, String(Date.now()));
+    fullPullRooms(tag||'ios-foreground-converge', { waitMs: 3500 })
+      .then(function(res){
+        if(!res || !res.ok) warn('foreground converge skipped', res && (res.reason||res.error||res));
+      })
+      .catch(function(e){
+        warn('foreground converge failed', e && (e.message||e));
+      });
+  }
   function install(){
     window.skCloudHardConvergeRooms=function(reason){ return fullPullRooms(reason||'manual-hard-converge'); };
     var prevCfg=window.skCloudConfig;
@@ -54187,6 +54230,13 @@ window.addEventListener('DOMContentLoaded', () => {
     var last=Number(lsGet(LAST_KEY)||0)||0;
     if(isIOS() && Date.now()-last>MIN_GAP){
       scheduleAutoConverge('ios-auto-converge');
+    }
+    if(isIOS()){
+      window.addEventListener('focus', function(){ scheduleForegroundConverge('ios-focus'); }, true);
+      window.addEventListener('pageshow', function(){ scheduleForegroundConverge('ios-pageshow'); }, true);
+      document.addEventListener('visibilitychange', function(){
+        if(!document.hidden) scheduleForegroundConverge('ios-visible');
+      }, true);
     }
     log('installed', {ios:isIOS(), lastFullConvergeAt:last});
   }
