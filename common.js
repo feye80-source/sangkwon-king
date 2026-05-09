@@ -54337,10 +54337,13 @@ window.addEventListener('DOMContentLoaded', () => {
       });
     });
   }
-  function isApiUrl(url){
+  function isSyncApiUrl(url){
     try{
       var u=String(url||'');
-      return !!u && u.indexOf(apiBase())===0;
+      var base=apiBase();
+      if(!u || u.indexOf(base)!==0) return false;
+      var path=u.slice(base.length);
+      return path.indexOf('/api/sync/')===0 || path==='/api/sync';
     }catch(e){
       return false;
     }
@@ -54361,7 +54364,7 @@ window.addEventListener('DOMContentLoaded', () => {
       if(typeof raw!=='function' || raw.__skV114FetchGate) return false;
       var wrapped=function(input, init){
         var url=(typeof input==='string') ? input : (input && input.url) || '';
-        if(isApiUrl(url) && now() < netBlockUntil){
+        if(isSyncApiUrl(url) && now() < netBlockUntil){
           return Promise.resolve(new Response(
             JSON.stringify({ok:false,error:'client-backoff',retryAfterMs:Math.max(0, netBlockUntil-now())}),
             { status:429, headers:{'content-type':'application/json; charset=utf-8'} }
@@ -54369,14 +54372,14 @@ window.addEventListener('DOMContentLoaded', () => {
         }
         return Promise.resolve(raw.apply(this, arguments))
           .then(function(res){
-            if(isApiUrl(url)){
+            if(isSyncApiUrl(url)){
               if(res && Number(res.status)===429) markNetFail('http-429');
               else if(res && res.ok) markNetOk();
             }
             return res;
           })
           .catch(function(e){
-            if(isApiUrl(url)) markNetFail('fetch-failed');
+            if(isSyncApiUrl(url)) markNetFail('fetch-failed');
             throw e;
           });
       };
