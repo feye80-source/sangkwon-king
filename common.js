@@ -52536,3 +52536,196 @@ window.addEventListener('DOMContentLoaded', () => {
     console.warn('[v94 event-driven sync patch] init fail', e);
   }
 })();
+
+
+/* ════════════════════════════════════════════════════════
+   v95: strict edit-only Cloudflare sync mode (common only)
+   - Worker remains v92
+   - No periodic pull
+   - No open/focus/visibility/online automatic pull
+   - No implicit _sbLoad* cloud pull unless explicitly forced
+   - Push only when app save functions are called after edit/delete/upload
+   - Manual pull only via skCloudSyncNow() / skCloudConvergeNow()
+════════════════════════════════════════════════════════ */
+(function(){
+  'use strict';
+  try {
+    window.__SK_BUILD = '20260509-workroom-v95-strict-edit-only-sync';
+
+    const LS = window.localStorage;
+    const CFG_API = 'sk_cloud_api_base_v1';
+    const EVENT_KEY = 'sk_cf_v95_edit_only_enabled';
+    const MANUAL_PULL_MARK = 'sk_cf_v95_manual_pull_mark';
+    const DISABLE_KEYS = [
+      'sk_cf_auto_sync_enabled',
+      'sk_cf_v88_auto_sync_enabled',
+      'sk_cf_v89_auto_sync_enabled',
+      'sk_cf_v90_auto_sync_enabled',
+      'sk_cf_v91_auto_sync_enabled',
+      'sk_cf_v92_auto_sync_enabled',
+      'sk_cf_v94_event_driven_enabled'
+    ];
+    const TABLES = ['workrooms','notes','sections','pl_items'];
+    const PUSH_TABLES = {
+      items:'items', workrooms:'workrooms', notes:'notes', sections:'sections', pl_items:'pl_items',
+      kcards:'kcards', snapshots:'snapshots', map_memos:'map_memos'
+    };
+
+    DISABLE_KEYS.forEach(function(k){ try { LS.setItem(k, '0'); } catch(e){} });
+    if (LS.getItem(EVENT_KEY) == null) LS.setItem(EVENT_KEY, '1');
+
+    function now(){ return Date.now(); }
+    function apiReady(){ return !!String(window.SK_CLOUD_API_BASE || LS.getItem(CFG_API) || '').trim(); }
+    function enabled(){ return LS.getItem(EVENT_KEY) !== '0'; }
+    function log(){ try { console.log.apply(console, ['[SK-CF-v95]'].concat([].slice.call(arguments))); } catch(e){} }
+    function warn(){ try { console.warn.apply(console, ['[SK-CF-v95]'].concat([].slice.call(arguments))); } catch(e){} }
+
+    // Keep raw v92 functions for explicit manual sync only.
+    if (!window.__skV95RawPullAll && typeof window.skCloudPullAll === 'function') window.__skV95RawPullAll = window.skCloudPullAll;
+    if (!window.__skV95RawPullTable && typeof window.skCloudPullTable === 'function') window.__skV95RawPullTable = window.skCloudPullTable;
+
+    const rawPullAll = window.__skV95RawPullAll;
+    const rawPullTable = window.__skV95RawPullTable;
+
+    function isManualPull(opts){
+      opts = opts || {};
+      if (opts.manual === true || opts.force === true) return true;
+      const r = String(opts.reason || '');
+      return /manual|user|button|syncnow|v95/i.test(r);
+    }
+
+    window.skCloudPullAll = function(opts){
+      opts = opts || {};
+      if (!isManualPull(opts)) {
+        return Promise.resolve({ ok:true, skipped:true, mode:'v95-edit-only', reason:'auto-pull-blocked' });
+      }
+      if (!enabled() || !apiReady() || typeof rawPullAll !== 'function') {
+        return Promise.resolve({ ok:false, skipped:true, reason:'not-ready' });
+      }
+      LS.setItem(MANUAL_PULL_MARK, String(now()));
+      return rawPullAll(Object.assign({}, opts, { reason: opts.reason || 'manual-v95', tables: opts.tables || TABLES }));
+    };
+
+    window.skCloudPullTable = function(table, opts){
+      opts = opts || {};
+      if (!isManualPull(opts)) {
+        return Promise.resolve({ ok:true, skipped:true, table:table, mode:'v95-edit-only', reason:'auto-table-pull-blocked' });
+      }
+      if (!enabled() || !apiReady() || typeof rawPullTable !== 'function') {
+        return Promise.resolve({ ok:false, skipped:true, table:table, reason:'not-ready' });
+      }
+      LS.setItem(MANUAL_PULL_MARK, String(now()));
+      return rawPullTable(table, Object.assign({}, opts, { force:true }));
+    };
+
+    function wrapSave(table){
+      return async function(arr){
+        if (!enabled()) return { ok:true, skipped:true, mode:'edit-only-disabled' };
+        if (!apiReady() || typeof window.skCloudPushTable !== 'function') return { ok:true, skipped:true, mode:'local-only' };
+        try {
+          const list = Array.isArray(arr) ? arr : [];
+          return await window.skCloudPushTable(table, list, { immediate:true, reason:'edit-save-v95' });
+        } catch(e) {
+          warn('edit push failed', table, e && (e.message || e));
+          return { ok:false, table:table, error:e && (e.message || String(e)) };
+        }
+      };
+    }
+
+    function noAutoLoad(table){
+      return async function(opts){
+        opts = opts || {};
+        // Explicit forced/manual load is allowed. Normal app/background load must stay local-only.
+        if (opts.force === true || opts.manual === true) {
+          return window.skCloudPullTable(table, Object.assign({}, opts, { force:true, manual:true, reason: opts.reason || 'manual-load-v95' }));
+        }
+        return null;
+      };
+    }
+
+    function scheduleSave(table, arr, delay){
+      const ms = Math.max(Number(delay || 0) || 0, 1800);
+      return setTimeout(function(){
+        try {
+          if (enabled() && apiReady() && typeof window.skCloudPushTable === 'function') {
+            window.skCloudPushTable(table, Array.isArray(arr) ? arr : [], { immediate:true, reason:'scheduled-edit-save-v95' })
+              .catch(function(e){ warn('scheduled edit push failed', table, e && (e.message || e)); });
+          }
+        } catch(e){ warn('scheduled edit push failed', table, e && (e.message || e)); }
+      }, ms);
+    }
+
+    // Save wrappers: push only when the app explicitly saves after an edit/upload/delete.
+    window._sbSaveSv         = wrapSave('items');
+    window._sbSaveRooms      = wrapSave('workrooms');
+    window._sbSaveNtNotes    = wrapSave('notes');
+    window._sbSaveSections   = wrapSave('sections');
+    window._sbSavePlItems    = wrapSave('pl_items');
+    window._sbSaveKcards     = wrapSave('kcards');
+    window._sbSaveWorkScenes = wrapSave('snapshots');
+    window._sbSaveMapMemos   = wrapSave('map_memos');
+
+    // Load wrappers: no automatic cloud pull. Manual/forced only.
+    window._sbLoadRooms      = noAutoLoad('workrooms');
+    window._sbLoadNtNotes    = noAutoLoad('notes');
+    window._sbLoadSections   = noAutoLoad('sections');
+    window._sbLoadPlItems    = noAutoLoad('pl_items');
+    window._sbLoadSv         = noAutoLoad('items');
+    window._sbLoadKcards     = noAutoLoad('kcards');
+    window._sbLoadWorkScenes = noAutoLoad('snapshots');
+    window._sbLoadMapMemos   = noAutoLoad('map_memos');
+
+    window._sbScheduleSaveSv      = function(arr, delay){ return scheduleSave('items', arr, delay); };
+    window._sbScheduleSaveRooms   = function(arr, delay){ return scheduleSave('workrooms', arr, delay); };
+    window._sbScheduleSavePlItems = function(arr, delay){ return scheduleSave('pl_items', arr, delay); };
+
+    const prevStatus = window.skCloudAutoSyncStatus;
+    window.skCloudAutoSyncStatus = function(){
+      let base = {};
+      try { base = typeof prevStatus === 'function' ? (prevStatus() || {}) : {}; } catch(e) { base = {}; }
+      base.build = window.__SK_BUILD;
+      base.autoSync = false;
+      base.eventDrivenSync = true;
+      base.strictEditOnlySync = enabled();
+      base.periodicPull = false;
+      base.periodicPush = false;
+      base.openPull = false;
+      base.focusPull = false;
+      base.visibilityPull = false;
+      base.onlinePull = false;
+      base.implicitLoadPull = false;
+      base.mode = 'edit-push-manual-pull-only';
+      base.manualSync = 'skCloudSyncNow()';
+      base.autoTables = [];
+      base.pullTables = TABLES;
+      base.lastManualPull = Number(LS.getItem(MANUAL_PULL_MARK) || 0) || 0;
+      return base;
+    };
+
+    window.skCloudEnableAutoSync = function(){
+      // Compatibility name only: it enables edit-triggered push, never polling.
+      LS.setItem(EVENT_KEY, '1');
+      DISABLE_KEYS.forEach(function(k){ try { LS.setItem(k, '0'); } catch(e){} });
+      return window.skCloudAutoSyncStatus();
+    };
+    window.skCloudDisableAutoSync = function(){
+      LS.setItem(EVENT_KEY, '0');
+      DISABLE_KEYS.forEach(function(k){ try { LS.setItem(k, '0'); } catch(e){} });
+      return window.skCloudAutoSyncStatus();
+    };
+    window.skCloudSyncNow = function(){
+      return window.skCloudPullAll({ reason:'manual-v95', manual:true, force:true, tables:TABLES });
+    };
+    window.skCloudConvergeNow = window.skCloudSyncNow;
+    window.skCloudRepairImagesAndSync = window.skCloudSyncNow;
+
+    // Re-disable older engines once more after delayed v94/open handlers may have initialized.
+    setTimeout(function(){ DISABLE_KEYS.forEach(function(k){ try { LS.setItem(k, '0'); } catch(e){} }); }, 1200);
+    setTimeout(function(){ DISABLE_KEYS.forEach(function(k){ try { LS.setItem(k, '0'); } catch(e){} }); }, 5000);
+
+    log('ready', window.skCloudAutoSyncStatus());
+    console.log('[build] common.js', window.__SK_BUILD, '(Worker v92 unchanged / strict edit-only sync)');
+  } catch(e) {
+    console.warn('[v95 strict edit-only sync patch] init fail', e);
+  }
+})();
