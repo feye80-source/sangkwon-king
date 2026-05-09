@@ -53335,23 +53335,23 @@ window.addEventListener('DOMContentLoaded', () => {
 })();
 
 /* ════════════════════════════════════════════════════════
-   v105: hard manual/open pull override
-   - fixes old v94 skCloudSyncNow() returning {reason:'not-ready'}
-   - uses the confirmed direct pull path for workrooms/sections
-   - does not use Supabase session or legacy pending queues
-   - non-blocking open pull once; no periodic pull/push
+   v107: pull rehydrate fix
+   - confirmed issue: pull writes cache, but current workroom UI only updates after full reload
+   - skCloudSyncNow() now always pulls, even if active-room push fails
+   - after pull, wr2State is rehydrated from IDB cache and __wr2RenderNow() is called
+   - page reload/open pull is pull-only, once; no periodic sync, no retry loop
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
   try {
-    var BUILD = '20260509-workroom-v105-hard-pull-override';
+    var BUILD = '20260509-workroom-v107-pull-rehydrate-fix';
     window.__SK_BUILD = BUILD;
 
     var LS = window.localStorage;
-    var API_KEY = 'sk_cloud_api_base_v1';
-    var USER_KEY = 'sk_cloud_user_key_v1';
     var DEFAULT_API = 'https://sangkwon-upload-worker.feye80.workers.dev';
     var DEFAULT_USER = 'monodot-main';
+    var API_KEY = 'sk_cloud_api_base_v1';
+    var USER_KEY = 'sk_cloud_user_key_v1';
     var CACHE = {
       items:'re_sv',
       workrooms:'wr2_rooms',
@@ -53362,264 +53362,249 @@ window.addEventListener('DOMContentLoaded', () => {
       snapshots:'re_ws',
       map_memos:'map_memos'
     };
-    var OPEN_PULL_DONE = false;
-    var installSeq = 0;
+    var openPullDone = false;
 
-    function log(){ try { console.log.apply(console, ['[SK-CF-v105]'].concat([].slice.call(arguments))); } catch(e){} }
-    function warn(){ try { console.warn.apply(console, ['[SK-CF-v105]'].concat([].slice.call(arguments))); } catch(e){} }
+    function log(){ try { console.log.apply(console, ['[SK-CF-v107]'].concat([].slice.call(arguments))); } catch(e){} }
+    function warn(){ try { console.warn.apply(console, ['[SK-CF-v107]'].concat([].slice.call(arguments))); } catch(e){} }
     function now(){ return Date.now(); }
-    function safeGet(key){ try { return LS.getItem(key); } catch(e){ return null; } }
-    function safeSet(key, val){ try { LS.setItem(key, val); return true; } catch(e){ return false; } }
-    function safeRemove(key){ try { LS.removeItem(key); return true; } catch(e){ return false; } }
-    function getApiBase(){ return String(window.SK_CLOUD_API_BASE || safeGet(API_KEY) || DEFAULT_API).trim().replace(/\/+$/, ''); }
-    function getUserKey(){ return String(window.SK_CLOUD_USER_KEY || safeGet(USER_KEY) || DEFAULT_USER).trim() || DEFAULT_USER; }
-    function setApiBase(v){ v = String(v || DEFAULT_API).trim().replace(/\/+$/, ''); window.SK_CLOUD_API_BASE = v; safeSet(API_KEY, v); return v; }
-    function setUserKey(v){ v = String(v || DEFAULT_USER).trim() || DEFAULT_USER; window.SK_CLOUD_USER_KEY = v; safeSet(USER_KEY, v); return v; }
-    function clone(o){ try { return JSON.parse(JSON.stringify(o)); } catch(e){ return o; } }
-    function idOf(r){ return String(r && (r.id || r.item_id || r.roomId || r._id || r.key) || ''); }
-    function timeOf(v){ if (!v) return 0; if (typeof v === 'number') return v; var t = new Date(v).getTime(); return Number.isFinite(t) ? t : 0; }
-    function updatedOf(r){ return Math.max(timeOf(r && r.updatedAt), timeOf(r && r.timestamp), timeOf(r && r.savedAt), timeOf(r && r.createdAt)); }
-    function deletedOf(r){ return timeOf(r && r.deletedAt); }
-    function activeRows(rows){ return (Array.isArray(rows) ? rows : []).filter(function(r){ return r && idOf(r) && !r.deletedAt; }); }
+    function getLS(k){ try { return LS.getItem(k); } catch(e){ return null; } }
+    function setLS(k,v){ try { LS.setItem(k,v); } catch(e){} }
+    function rmLS(k){ try { LS.removeItem(k); } catch(e){} }
+    function apiBase(){ var v=String(window.SK_CLOUD_API_BASE || getLS(API_KEY) || DEFAULT_API).trim().replace(/\/+$/,''); window.SK_CLOUD_API_BASE=v; setLS(API_KEY,v); return v; }
+    function userKey(){ var v=String(window.SK_CLOUD_USER_KEY || getLS(USER_KEY) || DEFAULT_USER).trim() || DEFAULT_USER; window.SK_CLOUD_USER_KEY=v; setLS(USER_KEY,v); return v; }
+    function idOf(x){ return String(x && (x.id || x.item_id || x.roomId || x._id || x.key) || ''); }
+    function timeOf(v){ if(!v) return 0; if(typeof v==='number') return v; var t=new Date(v).getTime(); return Number.isFinite(t)?t:0; }
+    function updatedOf(x){ return Math.max(timeOf(x&&x.updatedAt), timeOf(x&&x.timestamp), timeOf(x&&x.savedAt), timeOf(x&&x.createdAt)); }
+    function deletedOf(x){ return timeOf(x&&x.deletedAt); }
+    function activeRows(arr){ return (Array.isArray(arr)?arr:[]).filter(function(x){ return x && idOf(x) && !x.deletedAt; }); }
     function ensureCache(){ window._idbCache = window._idbCache || {}; return window._idbCache; }
     function readCache(table){
-      var key = CACHE[table];
-      if (!key) return [];
-      var c = ensureCache();
-      if (Array.isArray(c[key])) return c[key].filter(function(r){ return r && idOf(r); });
-      try { var raw = JSON.parse(safeGet(key) || '[]'); return Array.isArray(raw) ? raw.filter(function(r){ return r && idOf(r); }) : []; } catch(e) { return []; }
+      var key=CACHE[table]; if(!key) return [];
+      var c=ensureCache();
+      if(Array.isArray(c[key])) return c[key].filter(function(x){ return x && idOf(x); });
+      try { var raw=JSON.parse(getLS(key)||'[]'); return Array.isArray(raw)?raw.filter(function(x){ return x && idOf(x); }):[]; } catch(e){ return []; }
     }
     function writeCache(table, rows){
-      var key = CACHE[table];
-      if (!key) return Promise.resolve(rows || []);
-      var clean = (Array.isArray(rows) ? rows : []).filter(function(r){ return r && idOf(r); });
-      ensureCache()[key] = clean;
-      try { if (typeof window.idbSet === 'function') return Promise.resolve(window.idbSet(key, clean)).then(function(){ return clean; }).catch(function(){ return clean; }); } catch(e){}
+      var key=CACHE[table];
+      var clean=(Array.isArray(rows)?rows:[]).filter(function(x){ return x && idOf(x); });
+      if(!key) return Promise.resolve(clean);
+      ensureCache()[key]=clean;
+      try {
+        if(typeof window.idbSet==='function') {
+          return Promise.resolve(window.idbSet(key, clean)).then(function(){ return clean; }).catch(function(){ return clean; });
+        }
+      } catch(e){}
       return Promise.resolve(clean);
     }
     function mergeRows(local, incoming){
-      var m = {};
-      (Array.isArray(local) ? local : []).forEach(function(r){ if (r && idOf(r)) m[idOf(r)] = r; });
-      (Array.isArray(incoming) ? incoming : []).forEach(function(r){
-        if (!r || !idOf(r)) return;
-        var id = idOf(r), old = m[id];
-        if (!old) { m[id] = r; return; }
-        var nt = Math.max(updatedOf(r), deletedOf(r));
-        var ot = Math.max(updatedOf(old), deletedOf(old));
-        if (nt >= ot) m[id] = r;
+      var m={};
+      (Array.isArray(local)?local:[]).forEach(function(x){ var id=idOf(x); if(id) m[id]=x; });
+      (Array.isArray(incoming)?incoming:[]).forEach(function(x){
+        var id=idOf(x); if(!id) return;
+        var old=m[id];
+        if(!old){ m[id]=x; return; }
+        var nt=Math.max(updatedOf(x), deletedOf(x));
+        var ot=Math.max(updatedOf(old), deletedOf(old));
+        if(nt>=ot) m[id]=x;
       });
       return Object.keys(m).map(function(k){ return m[k]; });
     }
     function stripHeavy(v, depth){
-      if (v == null) return v;
-      depth = depth || 0;
-      if (depth > 8) return undefined;
-      var t = typeof v;
-      if (t === 'string') {
-        if (/^data:/i.test(v) && v.length > 2000) return v.slice(0, 2000) + '...[stripped:' + v.length + ']';
-        if (v.length > 300000) return v.slice(0, 2000) + '...[stripped:' + v.length + ']';
+      if(v==null) return v;
+      depth=depth||0;
+      if(depth>8) return undefined;
+      var t=typeof v;
+      if(t==='string') {
+        if(/^data:/i.test(v) && v.length>2000) return v.slice(0,2000)+'...[stripped:'+v.length+']';
+        if(v.length>300000) return v.slice(0,2000)+'...[stripped:'+v.length+']';
         return v;
       }
-      if (t === 'number' || t === 'boolean') return v;
-      if (Array.isArray(v)) {
-        var a = [];
-        for (var i=0;i<v.length;i++){ var av = stripHeavy(v[i], depth+1); if (av !== undefined) a.push(av); }
-        return a;
-      }
-      if (t === 'object') {
-        var out = {};
+      if(t==='number' || t==='boolean') return v;
+      if(Array.isArray(v)) return v.map(function(x){ return stripHeavy(x, depth+1); }).filter(function(x){ return x!==undefined; });
+      if(t==='object') {
+        var out={};
         Object.keys(v).forEach(function(k){
-          if (/^(parent|element|target|window|document|ownerDocument|__proto__|constructor|prototype)$/i.test(k)) return;
-          if (/^(base64|dataUrl|dataURL|imageData|fileData|blob|rawHtml|rawText|pdfFullText|fullText)$/i.test(k)) return;
-          var nv = stripHeavy(v[k], depth+1);
-          if (nv !== undefined) out[k] = nv;
+          if(/^(parent|element|target|window|document|ownerDocument|__proto__|constructor|prototype)$/i.test(k)) return;
+          if(/^(base64|dataUrl|dataURL|imageData|fileData|blob|rawHtml|rawText|pdfFullText|fullText)$/i.test(k)) return;
+          var nv=stripHeavy(v[k], depth+1);
+          if(nv!==undefined) out[k]=nv;
         });
         return out;
       }
       return undefined;
     }
     function rowPayload(row){
-      var data = stripHeavy(clone(row), 0) || {};
-      var id = idOf(data) || idOf(row);
-      if (!id) return null;
-      if (!data.id) data.id = id;
-      if (!updatedOf(data)) data.updatedAt = now();
-      return { item_id:id, updated_at:updatedOf(data) || now(), deleted_at:deletedOf(data) || null, data:data };
+      var data=stripHeavy(row,0)||{};
+      var id=idOf(data)||idOf(row); if(!id) return null;
+      if(!data.id) data.id=id;
+      if(!updatedOf(data)) data.updatedAt=now();
+      return { item_id:id, updated_at:updatedOf(data)||now(), deleted_at:deletedOf(data)||null, data:data };
     }
-    function apiFetch(path, opts){
-      opts = opts || {};
-      opts.headers = Object.assign({ 'content-type':'application/json', 'x-sk-user':getUserKey() }, opts.headers || {});
-      return fetch(getApiBase() + path, opts).then(function(res){
+    function api(path, opts){
+      opts=opts||{};
+      opts.headers=Object.assign({'content-type':'application/json','x-sk-user':userKey()}, opts.headers||{});
+      return fetch(apiBase()+path, opts).then(function(res){
         return res.text().then(function(txt){
-          var data = {};
-          try { data = txt ? JSON.parse(txt) : {}; } catch(e) { data = { raw:txt }; }
-          if (!res.ok || data.ok === false) throw new Error((data && (data.error || data.message)) || ('Cloudflare API ' + res.status));
+          var data={};
+          try { data=txt?JSON.parse(txt):{}; } catch(e){ data={raw:txt}; }
+          if(!res.ok || data.ok===false) throw new Error((data&&(data.error||data.message)) || ('Cloudflare API '+res.status));
           return data;
         });
       });
     }
     function extractRows(json){
-      var raw = (json && (json.rows || json.items || json.data)) || [];
-      if (!Array.isArray(raw)) raw = [];
-      return raw.map(function(r){ return (r && (r.data || r.value)) || r; }).filter(function(x){ return x && idOf(x); });
+      var raw=(json&&(json.rows||json.items||json.data))||[];
+      if(!Array.isArray(raw)) raw=[];
+      return raw.map(function(r){ return (r&&(r.data||r.value)) || r; }).filter(function(x){ return x && idOf(x); });
+    }
+    function rehydrateWorkroomUi(){
+      try {
+        var rooms=activeRows(readCache('workrooms'));
+        var sections=activeRows(readCache('sections'));
+        if(window.wr2State) {
+          var activeId=String(window.wr2State.activeRoomId || '');
+          window.wr2State.rooms=rooms;
+          if(sections.length) window.wr2State.sections=sections;
+          if(activeId) window.wr2State.activeRoomId=activeId;
+        }
+        if(typeof window.__wr2RenderNow==='function') window.__wr2RenderNow();
+        else if(typeof window.wr2Render==='function') window.wr2Render();
+        return { rooms:rooms.length, sections:sections.length, activeRoomId:window.wr2State && window.wr2State.activeRoomId || null };
+      } catch(e) {
+        warn('rehydrate failed', e && (e.message||e));
+        return { error:String(e && (e.message||e)) };
+      }
     }
     function refreshTable(table){
-      var rows = activeRows(readCache(table));
       try {
-        if (table === 'workrooms') {
-          if (window.wr2State) {
-            window.wr2State.rooms = rows;
-          }
-          if (typeof window.wr2Render === 'function') window.wr2Render();
-          if (typeof window.mbRoomRefreshSel === 'function') window.mbRoomRefreshSel();
-        } else if (table === 'sections') {
-          if (window.wr2State) window.wr2State.sections = rows.filter(function(s){ return s && s.type !== 'free_table'; });
-          if (typeof window.wr2Render === 'function') window.wr2Render();
-        } else if (table === 'notes') {
-          if (typeof window._ntSetNotes === 'function') window._ntSetNotes(rows); else window.ntNotes = rows;
-          if (typeof window.ntRender === 'function') window.ntRender();
-        } else if (table === 'pl_items') {
-          if (typeof window.renderPropertyList === 'function') window.renderPropertyList();
-          if (typeof window.renderWatchBoard === 'function') window.renderWatchBoard();
-        } else if (table === 'items') {
-          if (typeof window._svBuildIndex === 'function') window._svBuildIndex(rows);
-          if (typeof window.renderSaved === 'function') window.renderSaved();
-          if (typeof window.mbRenderSaved === 'function') window.mbRenderSaved();
-          if (typeof window.updSvCnt === 'function') window.updSvCnt();
-        } else if (table === 'kcards') {
-          if (typeof window._kcardsSyncFromCache === 'function') window._kcardsSyncFromCache();
-          if (typeof window.renderKcatTabs === 'function') window.renderKcatTabs();
-          if (typeof window.renderKcards === 'function') window.renderKcards();
-        }
-      } catch(e) { warn('refresh failed', table, e && (e.message || e)); }
+        var rows=activeRows(readCache(table));
+        if(table==='workrooms' || table==='sections') return rehydrateWorkroomUi();
+        if(table==='notes') { if(typeof window._ntSetNotes==='function') window._ntSetNotes(rows); else window.ntNotes=rows; if(typeof window.ntRender==='function') window.ntRender(); }
+        if(table==='pl_items') { if(typeof window.renderPropertyList==='function') window.renderPropertyList(); if(typeof window.renderWatchBoard==='function') window.renderWatchBoard(); }
+        if(table==='items') { if(typeof window._svBuildIndex==='function') window._svBuildIndex(rows); if(typeof window.renderSaved==='function') window.renderSaved(); if(typeof window.mbRenderSaved==='function') window.mbRenderSaved(); if(typeof window.updSvCnt==='function') window.updSvCnt(); }
+      } catch(e){ warn('refresh failed', table, e && (e.message||e)); }
+      return null;
     }
     function pullTable(table, opts){
-      opts = opts || {};
-      var limit = Number(opts.limit || 2000) || 2000;
-      return apiFetch('/api/sync/pull?table=' + encodeURIComponent(table) + '&since=0&limit=' + encodeURIComponent(limit), { method:'GET' })
+      opts=opts||{};
+      var limit=Number(opts.limit||2000)||2000;
+      return api('/api/sync/pull?table='+encodeURIComponent(table)+'&since=0&limit='+encodeURIComponent(limit), {method:'GET'})
         .then(function(json){
-          var rows = extractRows(json);
-          var merged = mergeRows(readCache(table), rows);
-          return writeCache(table, merged).then(function(){ refreshTable(table); return { table:table, pulled:rows.length, total:merged.length, rows:merged }; });
+          var incoming=extractRows(json);
+          var merged=mergeRows(readCache(table), incoming);
+          return writeCache(table, merged).then(function(){
+            var rehydrated=refreshTable(table);
+            return { ok:true, table:table, pulled:incoming.length, total:merged.length, rehydrated:rehydrated, rows:merged };
+          });
         });
     }
     function pullAll(opts){
-      opts = opts || {};
-      var tables = opts.tables && opts.tables.length ? opts.tables : ['workrooms','sections','notes','pl_items'];
-      var out = {};
-      var chain = Promise.resolve();
+      opts=opts||{};
+      var tables=(opts.tables&&opts.tables.length)?opts.tables:['workrooms','sections','notes','pl_items'];
+      var out={};
+      var chain=Promise.resolve();
       tables.forEach(function(t){
-        chain = chain.then(function(){
-          return pullTable(t, opts).then(function(r){ out[t] = { pulled:r.pulled, total:r.total }; }).catch(function(e){ out[t] = { ok:false, error:String(e && (e.message || e)) }; warn('pull failed', t, e && (e.message || e)); });
+        chain=chain.then(function(){
+          return pullTable(t, opts).then(function(r){ out[t]={ ok:true, pulled:r.pulled, total:r.total }; })
+            .catch(function(e){ out[t]={ ok:false, error:String(e && (e.message||e)) }; warn('pull failed', t, e && (e.message||e)); });
         });
       });
-      return chain.then(function(){ return { ok:true, build:BUILD, pulled:out }; });
+      return chain.then(function(){
+        rehydrateWorkroomUi();
+        return { ok:true, build:BUILD, pulled:out };
+      });
     }
     function activeRoom(){
-      var st = window.wr2State || {};
-      var rid = String(st.activeRoomId || '');
-      var rooms = Array.isArray(st.rooms) ? st.rooms : readCache('workrooms');
-      return rooms.find(function(r){ return idOf(r) === rid; }) || null;
+      var st=window.wr2State||{};
+      var rid=String(st.activeRoomId||'');
+      var rooms=Array.isArray(st.rooms)?st.rooms:readCache('workrooms');
+      return rooms.find(function(r){ return idOf(r)===rid; }) || null;
     }
     function pushRows(table, rows){
-      rows = (Array.isArray(rows) ? rows : []).filter(function(r){ return r && idOf(r); });
-      if (!rows.length) return Promise.resolve({ ok:true, table:table, saved:0 });
-      var payload = rows.map(rowPayload).filter(Boolean);
-      if (!payload.length) return Promise.resolve({ ok:true, table:table, saved:0 });
-      return apiFetch('/api/sync/push', { method:'POST', body:JSON.stringify({ table:table, rows:payload }) })
-        .then(function(res){ return Object.assign({ ok:true, table:table, saved:payload.length }, res || {}); });
+      rows=(Array.isArray(rows)?rows:[]).filter(function(r){ return r && idOf(r); });
+      if(!rows.length) return Promise.resolve({ ok:true, table:table, saved:0 });
+      var payload=rows.map(rowPayload).filter(Boolean);
+      if(!payload.length) return Promise.resolve({ ok:true, table:table, saved:0 });
+      return api('/api/sync/push', {method:'POST', body:JSON.stringify({ table:table, rows:payload })})
+        .then(function(res){ return Object.assign({ ok:true, table:table, saved:payload.length }, res||{}); });
     }
     function saveFacade(table){
       return function(arr){
-        var rows = (Array.isArray(arr) ? arr : []).filter(function(r){ return r && idOf(r); });
-        if (table === 'workrooms') {
-          var ar = activeRoom();
-          if (ar) rows = rows.filter(function(r){ return idOf(r) === idOf(ar) || deletedOf(r); });
-          if (!rows.length && ar) rows = [ar];
+        var rows=(Array.isArray(arr)?arr:[]).filter(function(r){ return r && idOf(r); });
+        if(table==='workrooms') {
+          var ar=activeRoom();
+          if(ar) rows=rows.filter(function(r){ return idOf(r)===idOf(ar) || deletedOf(r); });
+          if(!rows.length && ar) rows=[ar];
         }
-        return writeCache(table, mergeRows(readCache(table), rows)).then(function(){ return pushRows(table, rows); }).catch(function(e){ warn('save failed', table, e && (e.message || e)); return { ok:false, table:table, error:String(e && (e.message || e)) }; });
+        return writeCache(table, mergeRows(readCache(table), rows)).then(function(){
+          refreshTable(table);
+          return pushRows(table, rows);
+        }).catch(function(e){ warn('save failed', table, e && (e.message||e)); return { ok:false, table:table, error:String(e && (e.message||e)) }; });
       };
     }
-    function loadFacade(table){ return function(){ return pullTable(table).then(function(r){ return activeRows(r.rows || readCache(table)); }); }; }
-    function scheduleFacade(table){ return function(arr, delay){ return setTimeout(function(){ saveFacade(table)(arr || readCache(table)); }, typeof delay === 'number' ? delay : 700); }; }
-    function cleanLegacyPending(){
-      ['sk_cf_v100_pending_mutations','sk_cf_v101_pending_mutations','sk_cf_v102_pending_mutations','sk_cf_v103_pending_mutations','sk_cf_v104_pending_mutations','sk_cf_v105_pending_mutations'].forEach(safeRemove);
-    }
-    function pendingSummary(){
-      var keys = ['sk_cf_v100_pending_mutations','sk_cf_v101_pending_mutations','sk_cf_v102_pending_mutations','sk_cf_v103_pending_mutations','sk_cf_v104_pending_mutations','sk_cf_v105_pending_mutations'];
-      var byKey = {}, total = 0;
-      keys.forEach(function(k){
-        var raw = safeGet(k), n = 0;
-        try { var p = raw ? JSON.parse(raw) : {}; Object.keys(p || {}).forEach(function(t){ n += Object.keys(p[t] || {}).length; }); } catch(e){}
-        byKey[k] = n; total += n;
-      });
-      return { total:total, byKey:byKey };
-    }
-    function hardInstall(label){
-      installSeq++;
-      cleanLegacyPending();
-      window.__SK_BUILD = BUILD;
-      window.SK_CLOUD_MODE = 'cloudflare';
-      setApiBase(getApiBase());
-      setUserKey(getUserKey());
-      window.__plAutoCloudPull = false;
-      window.__skV105HardPullOverride = true;
+    function loadFacade(table){ return function(){ return pullTable(table).then(function(r){ return activeRows(r.rows||readCache(table)); }); }; }
+    function scheduleFacade(table){ return function(arr, delay){ return setTimeout(function(){ saveFacade(table)(arr||readCache(table)); }, typeof delay==='number'?delay:700); }; }
+    function cleanPending(){ ['sk_cf_v100_pending_mutations','sk_cf_v101_pending_mutations','sk_cf_v102_pending_mutations','sk_cf_v103_pending_mutations','sk_cf_v104_pending_mutations','sk_cf_v105_pending_mutations','sk_cf_v106_pending_mutations','sk_cf_v107_pending_mutations'].forEach(rmLS); }
+    function pendingSummary(){ return { total:0, byKey:{} }; }
 
-      window._sbGetUserId = function(){ return Promise.resolve(getUserKey()); };
-      window._sbGetSessionShared = function(){ return Promise.resolve({ data:{ session:{ user:{ id:getUserKey(), email:getUserKey() } } }, error:null }); };
-      window._sbSaveSv = saveFacade('items');
-      window._sbLoadSv = loadFacade('items');
-      window._sbSaveRooms = saveFacade('workrooms');
-      window._sbLoadRooms = loadFacade('workrooms');
-      window._sbSaveNtNotes = saveFacade('notes');
-      window._sbLoadNtNotes = loadFacade('notes');
-      window._sbSaveSections = saveFacade('sections');
-      window._sbLoadSections = loadFacade('sections');
-      window._sbSavePlItems = saveFacade('pl_items');
-      window._sbLoadPlItems = loadFacade('pl_items');
-      window._sbScheduleSavePlItems = scheduleFacade('pl_items');
-      window._sbScheduleSaveRooms = scheduleFacade('workrooms');
-      window._sbScheduleSaveSv = scheduleFacade('items');
-
-      window.skCloudPushTable = function(table, rows){ return pushRows(table, rows); };
-      window.skCloudPullTable = function(table, opts){ return pullTable(table, opts); };
-      window.skCloudPullAll = function(opts){ return pullAll(opts); };
-      window.skCloudPushActiveRoomNow = function(){
-        var room = activeRoom();
-        if (!room) return Promise.resolve({ ok:false, reason:'active-room-not-found' });
-        room.updatedAt = now();
+    function install(){
+      cleanPending();
+      window.__SK_BUILD=BUILD;
+      window.SK_CLOUD_MODE='cloudflare';
+      apiBase(); userKey();
+      window.__plAutoCloudPull=false;
+      window.__skV107PullRehydrateFix=true;
+      window._sbGetUserId=function(){ return Promise.resolve(userKey()); };
+      window._sbGetSessionShared=function(){ return Promise.resolve({ data:{ session:{ user:{ id:userKey(), email:userKey() } } }, error:null }); };
+      window._sbSaveSv=saveFacade('items'); window._sbLoadSv=loadFacade('items'); window._sbScheduleSaveSv=scheduleFacade('items');
+      window._sbSaveRooms=saveFacade('workrooms'); window._sbLoadRooms=loadFacade('workrooms'); window._sbScheduleSaveRooms=scheduleFacade('workrooms');
+      window._sbSaveSections=saveFacade('sections'); window._sbLoadSections=loadFacade('sections');
+      window._sbSaveNtNotes=saveFacade('notes'); window._sbLoadNtNotes=loadFacade('notes');
+      window._sbSavePlItems=saveFacade('pl_items'); window._sbLoadPlItems=loadFacade('pl_items'); window._sbScheduleSavePlItems=scheduleFacade('pl_items');
+      window.skCloudPullTable=function(table, opts){ return pullTable(table, opts); };
+      window.skCloudPullAll=function(opts){ return pullAll(opts); };
+      window.skCloudPushTable=function(table, rows){ return pushRows(table, rows); };
+      window.skCloudPushActiveRoomNow=function(){
+        var room=activeRoom();
+        if(!room) return Promise.resolve({ ok:false, reason:'active-room-not-found' });
+        room.updatedAt=now();
         return writeCache('workrooms', mergeRows(readCache('workrooms'), [room]))
-          .then(function(){ return pushRows('workrooms', [room]); })
-          .then(function(res){ return Object.assign({ activeRoomId:idOf(room), pushed:1 }, res || {}); });
+          .then(function(){ refreshTable('workrooms'); return pushRows('workrooms', [room]); })
+          .then(function(res){ return Object.assign({ activeRoomId:idOf(room), pushed:1 }, res||{}); });
       };
-      window.skCloudSyncNow = function(){
-        var room = activeRoom();
-        var pre = room ? window.skCloudPushActiveRoomNow() : Promise.resolve({ ok:true, skipped:true });
-        return pre.then(function(){ return pullAll({ tables:['workrooms','sections','notes','pl_items'] }); })
-          .then(function(res){ log('manual sync', res); return res; });
+      window.skCloudSyncNow=function(){
+        var pushResult=null;
+        var room=activeRoom();
+        var pushPromise=room ? window.skCloudPushActiveRoomNow().then(function(r){ pushResult=r; }).catch(function(e){ pushResult={ ok:false, error:String(e && (e.message||e)) }; }) : Promise.resolve();
+        return pushPromise.then(function(){ return pullAll({ tables:['workrooms','sections','notes','pl_items'] }); })
+          .then(function(pullResult){ var ui=rehydrateWorkroomUi(); var result={ ok:true, build:BUILD, push:pushResult, pulled:pullResult.pulled, rehydrated:ui }; log('manual sync', result); return result; });
       };
-      window.skCloudConvergeNow = window.skCloudSyncNow;
-      window.skCloudRepairImagesAndSync = window.skCloudSyncNow;
-      window.skCloudOpenPullOnce = function(){
-        if (OPEN_PULL_DONE) return Promise.resolve({ ok:true, skipped:true, reason:'already-open-pulled' });
-        OPEN_PULL_DONE = true;
+      window.skCloudConvergeNow=window.skCloudSyncNow;
+      window.skCloudRepairImagesAndSync=window.skCloudSyncNow;
+      window.skCloudRehydrateWorkroomUi=rehydrateWorkroomUi;
+      window.skCloudOpenPullOnce=function(){
+        if(openPullDone) return Promise.resolve({ ok:true, skipped:true, reason:'already-open-pulled' });
+        openPullDone=true;
         return pullAll({ tables:['workrooms','sections'] }).then(function(res){ log('open pull', res); return res; });
       };
-      window.skCloudConfig = function(){
-        var cfg = { build:BUILD, apiBase:getApiBase(), userKey:getUserKey(), enabled:true, pending:pendingSummary(), hasSyncNow:typeof window.skCloudSyncNow, hasPushActiveRoom:typeof window.skCloudPushActiveRoomNow, hardV105:true, installSeq:installSeq };
-        try { console.table(cfg); } catch(e) { console.log(cfg); }
+      window.skCloudConfig=function(){
+        var cfg={ build:BUILD, apiBase:apiBase(), userKey:userKey(), enabled:true, pending:pendingSummary(), hasSyncNow:typeof window.skCloudSyncNow, hasPushActiveRoom:typeof window.skCloudPushActiveRoomNow, hardV107:true, rehydrateFix:true };
+        try { console.table(cfg); } catch(e){ console.log(cfg); }
         return cfg;
       };
-      window.skCloudAutoSyncStatus = function(){
-        return { build:BUILD, apiBase:getApiBase(), userKey:getUserKey(), autoSync:false, periodicPull:false, periodicPush:false, focusPull:false, visibilityPull:false, onlinePull:false, tabEntryPull:false, legacyPlAutoCloudPull:false, hardV105:true, pending:pendingSummary().total, pendingSummary:pendingSummary(), activeRoomId:window.wr2State && window.wr2State.activeRoomId || null };
+      window.skCloudAutoSyncStatus=function(){
+        return { build:BUILD, apiBase:apiBase(), userKey:userKey(), autoSync:false, periodicPull:false, periodicPush:false, focusPull:false, visibilityPull:false, onlinePull:false, tabEntryPull:false, legacyPlAutoCloudPull:false, hardV107:true, rehydrateFix:true, pending:0, pendingSummary:pendingSummary(), activeRoomId:window.wr2State && window.wr2State.activeRoomId || null };
       };
-      log('installed', label || '', window.skCloudAutoSyncStatus());
+      log('installed', window.skCloudAutoSyncStatus());
     }
 
-    hardInstall('initial');
-    [0, 500, 1500, 3500, 7000].forEach(function(ms){ setTimeout(function(){ hardInstall('reinstall-' + ms); }, ms); });
-    setTimeout(function(){ try { window.skCloudOpenPullOnce(); } catch(e){ warn('open pull failed', e && (e.message || e)); } }, 1800);
+    install();
+    if(document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', function(){ try { window.skCloudOpenPullOnce(); } catch(e){} }, { once:true });
+    } else {
+      Promise.resolve().then(function(){ try { window.skCloudOpenPullOnce(); } catch(e){} });
+    }
   } catch(e) {
-    console.warn('[SK-CF-v105] init failed', e);
+    console.warn('[SK-CF-v107] init failed', e);
   }
 })();
