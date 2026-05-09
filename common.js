@@ -54264,6 +54264,8 @@ window.addEventListener('DOMContentLoaded', () => {
   var fgPullTimer=0;
   var pushTimer=0;
   var lastPushSig='';
+  var pullFailCount=0;
+  var pullCooldownUntil=0;
 
   function log(){ try{ console.log.apply(console, ['[SK-CF-v114]'].concat([].slice.call(arguments))); }catch(e){} }
   function warn(){ try{ console.warn.apply(console, ['[SK-CF-v114]'].concat([].slice.call(arguments))); }catch(e){} }
@@ -54443,6 +54445,14 @@ window.addEventListener('DOMContentLoaded', () => {
 
   function pullAll(opts){
     opts=opts||{};
+    if(!opts.force && now() < pullCooldownUntil){
+      return Promise.resolve({
+        ok:false,
+        skipped:true,
+        reason:'pull-cooldown',
+        retryAfterMs: Math.max(0, pullCooldownUntil - now())
+      });
+    }
     if(inFlightPull && !opts.force) return Promise.resolve({ ok:true, skipped:true, reason:'in-flight' });
     inFlightPull=true;
     var tables=(opts.tables && opts.tables.length) ? opts.tables : ['workrooms','sections','items','notes','pl_items'];
@@ -54489,10 +54499,25 @@ window.addEventListener('DOMContentLoaded', () => {
     });
     return chain.then(function(){
       lsSet(LAST_PULL_KEY, String(now()));
+      pullFailCount=0;
+      pullCooldownUntil=0;
       refreshTable('workrooms');
       refreshTable('sections');
       refreshTable('items');
       return { ok:true, build:BUILD, pulled:out, prePush:prePushResult, at:now() };
+    }).catch(function(e){
+      pullFailCount += 1;
+      var backoff = Math.min(60000, 2000 * Math.max(1, pullFailCount));
+      pullCooldownUntil = now() + backoff;
+      warn('pullAll failed -> cooldown', {failCount:pullFailCount, backoffMs:backoff, error:String(e && (e.message||e))});
+      return {
+        ok:false,
+        build:BUILD,
+        error:String(e && (e.message||e)),
+        failCount:pullFailCount,
+        cooldownMs:backoff,
+        prePush:prePushResult
+      };
     }).finally(function(){ inFlightPull=false; });
   }
 
@@ -54684,6 +54709,8 @@ window.addEventListener('DOMContentLoaded', () => {
       cfg.hasSyncNow=typeof window.skCloudSyncNow;
       cfg.hasPushActiveRoom=typeof window.skCloudPushActiveRoomNow;
       cfg.lastPullAt=Number(lsGet(LAST_PULL_KEY)||0)||0;
+      cfg.pullFailCount=pullFailCount;
+      cfg.pullCooldownUntil=pullCooldownUntil;
       try{ console.table(cfg); }catch(e){ console.log(cfg); }
       return cfg;
     };
@@ -54695,6 +54722,8 @@ window.addEventListener('DOMContentLoaded', () => {
       s.stableSyncV114=true;
       s.activeRoomId=window.wr2State && window.wr2State.activeRoomId || null;
       s.lastPullAt=Number(lsGet(LAST_PULL_KEY)||0)||0;
+      s.pullFailCount=pullFailCount;
+      s.pullCooldownUntil=pullCooldownUntil;
       return s;
     };
 
