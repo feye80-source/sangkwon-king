@@ -53681,7 +53681,10 @@ window.addEventListener('DOMContentLoaded', () => {
     clearTimeout(pushTimer);
     pushTimer=setTimeout(function(){
       var rid=roomId();
-      if(!rid){warn('skip auto push: no active room', lastReason);return;}
+      if(!rid){
+        // No active room can happen in non-edit persistence paths. Skip quietly.
+        return;
+      }
       if(typeof window.skCloudPushActiveRoomNow!=='function'){
         warn('skip auto push: skCloudPushActiveRoomNow missing', lastReason);
         return;
@@ -53857,7 +53860,8 @@ window.addEventListener('DOMContentLoaded', () => {
             if(latest && stableKey(latest,name)!==lastKey) pushSnapshot(latest, name + ':settled');
           }, 900);
         } else {
-          warn('skip persist snapshot push: active room not found', name, activeId());
+          // No active room is expected in several non-edit persistence paths.
+          // Skip quietly to avoid warning flood in console.
         }
       }catch(e){warn('wrap failed', name, e && (e.message||e));}
       return result;
