@@ -1231,7 +1231,7 @@
     window._svRefreshFromCloud = async function(opts) {
       if (!window._sbLoadSv) return null;
       const options = opts || {};
-      const cloudItems = await window._sbLoadSv();
+      const cloudItems = await window._sbLoadSv(options);
       if (cloudItems === null) return null;
       const localItems = window._svGetItemsCache ? window._svGetItemsCache() : ((window._idbCache && window._idbCache['re_sv']) || []);
       const merged = _sbMergeTrackedById('items', cloudItems, localItems);
@@ -1444,7 +1444,7 @@
     window._ntRefreshFromCloud = async function(opts) {
       if (!window._sbLoadNtNotes) return null;
       const options = opts || {};
-      const cloudNotes = await window._sbLoadNtNotes();
+      const cloudNotes = await window._sbLoadNtNotes(options);
       if (cloudNotes === null) return null;
       const localNotes = window._ntGetNotesCache ? window._ntGetNotesCache() : ((window._idbCache && window._idbCache['nt_notes']) || []);
       const merged = _sbMergeTrackedById('notes', cloudNotes, localNotes);
@@ -1717,7 +1717,7 @@
           console.warn('[SB] section flush before refresh', e);
         }
       }
-      const cloudRooms = window._sbLoadRooms ? await window._sbLoadRooms() : null;
+      const cloudRooms = window._sbLoadRooms ? await window._sbLoadRooms(options) : null;
       if (cloudRooms !== null) {
         const localRooms = window._wrGetRoomsCache ? window._wrGetRoomsCache() : ((window._idbCache && window._idbCache['wr2_rooms']) || []);
         const hasRoomDirty = !!(_dirtyItems.workrooms && _dirtyItems.workrooms.size);
@@ -1731,7 +1731,7 @@
           roomPayload = { full: mergedRooms, active: activeRooms };
         }
       }
-      const cloudSections = window._sbLoadSections ? await window._sbLoadSections() : null;
+      const cloudSections = window._sbLoadSections ? await window._sbLoadSections(options) : null;
       if (cloudSections !== null) {
         const localSections = window._wrGetSectionsCache ? window._wrGetSectionsCache() : ((window._idbCache && window._idbCache['wr2_sections']) || []);
         const mergedSections = _sbTakeCloudArray(cloudSections);
@@ -1966,7 +1966,7 @@
       // 로컬 dirty가 남아있으면 강제 클라우드 우선은 금지한다.
       // (최근 로컬 변경이 네트워크 지연으로 덮어써지는 저장 손실 방지)
       if (_hasKvDirty('pl_items_v3')) forceCloud = false;
-      const cloudItems = window._sbLoadPlItems ? await window._sbLoadPlItems() : [];
+      const cloudItems = window._sbLoadPlItems ? await window._sbLoadPlItems(options) : [];
       const localItems = _sbGetCachedArray('pl_items_v3');
       let merged = _sbMergeById(cloudItems, localItems).filter(it => it && it.id);
       // 최근 로컬 라이프사이클 변경 직후에만 로컬 상태를 우선한다.
@@ -2603,7 +2603,7 @@
     window._kcRefreshFromCloud = async function(opts) {
       if (!window._sbLoadKcards) return null;
       const options = opts || {};
-      const cloudCards = await window._sbLoadKcards();
+      const cloudCards = await window._sbLoadKcards(options);
       if (cloudCards === null) return null;
       const cloudCats = window._sbLoadKcat ? await window._sbLoadKcat() : null;
       const localCards = window._kcGetKcardsCache ? window._kcGetKcardsCache() : ((window._idbCache && window._idbCache['ins_kcards']) || []);
@@ -2665,7 +2665,7 @@
     window._wsRefreshFromCloud = async function(opts) {
       if (!window._sbLoadWorkScenes) return null;
       const options = opts || {};
-      const cloudScenes = await window._sbLoadWorkScenes();
+      const cloudScenes = await window._sbLoadWorkScenes(options);
       if (cloudScenes === null) return null;
       const localScenes = window._wsGetScenesCache ? window._wsGetScenesCache() : ((window._idbCache && window._idbCache['re_ws']) || []);
       const merged = _sbMergeTrackedById('snapshots', cloudScenes, localScenes);
@@ -2712,7 +2712,7 @@
     window._mapRefreshFromCloud = async function(opts) {
       if (!window._sbLoadMapMemos) return null;
       const options = opts || {};
-      const cloudMemos = await window._sbLoadMapMemos();
+      const cloudMemos = await window._sbLoadMapMemos(options);
       if (cloudMemos === null) return null;
       const localMemos = window._mapGetMemoCache ? window._mapGetMemoCache() : ((window._idbCache && window._idbCache['map_memos']) || []);
       const merged = _sbTakeCloudArray(cloudMemos);
@@ -52173,14 +52173,110 @@ window.addEventListener('DOMContentLoaded', () => {
 
     function baselineTable(table){ const meta=TABLES[table]; if(!meta) return 0; let n=0; cacheGet(meta.cache).forEach(row=>{ const id=idOf(row); if(id){ LS.setItem(fpKey(table,id), fp(row)); n++; } }); return n; }
     function baselineAll(){ const out={}; Object.keys(TABLES).forEach(t=>out[t]=baselineTable(t)); log('baseline fingerprints', out); return out; }
-    function changedRows(table, arr, opts){ opts=opts||{}; const rows=[]; (Array.isArray(arr)?arr:[]).forEach(row=>{ const id=idOf(row); if(!id) return; const f=fp(row); const k=fpKey(table,id); const old=LS.getItem(k); if(!old && !opts.force){ LS.setItem(k,f); return; } if(opts.force || old!==f){ LS.setItem(k,f); const data=stripHeavy(row,0)||{}; if(!data.id) data.id=id; if(!data.updatedAt) data.updatedAt=updatedOf(row)||now(); rows.push({item_id:id, updated_at:updatedOf(data)||now(), deleted_at:deletedOf(data)||0, data}); } }); return rows; }
+    function changedRows(table, arr, opts){
+      opts = opts || {};
+      const rows = [];
+      (Array.isArray(arr) ? arr : []).forEach(row => {
+        const id = idOf(row);
+        if (!id) return;
+        const data = stripHeavy(row, 0) || {};
+        if (!data.id) data.id = id;
+        if (!data.updatedAt) data.updatedAt = updatedOf(row) || now();
+        const f = fp(data);
+        const k = fpKey(table, id);
+        const old = LS.getItem(k);
+        // 핵심 수정: old fingerprint가 없다는 이유로 새 행을 "기준값만 저장"하고 push를 생략하지 않는다.
+        // 기준값 초기화는 baselineTable/baselineAll의 책임이고, 실제 저장 함수는 신규/변경/삭제 행을 반드시 전송한다.
+        if (opts.force || !old || old !== f) {
+          LS.setItem(k, f);
+          rows.push({ item_id:id, updated_at:updatedOf(data) || now(), deleted_at:deletedOf(data) || 0, data });
+        }
+      });
+      return rows;
+    }
     function enqueue(table, rows){ if(!rows||!rows.length) return; const m=queue.get(table)||new Map(); rows.forEach(r=>m.set(r.item_id,r)); queue.set(table,m); scheduleFlush('enqueue'); }
     function scheduleFlush(reason, delay){ if(!autoEnabled()||!cloudReady()||backoffActive()) return; clearTimeout(pushTimer); pushTimer=setTimeout(()=>flushQueue(reason||'flush').catch(e=>{ warn('flush fail', e.message||e); setBackoff(5*60*1000,e.message||e); }), delay||12000); }
     async function flushQueue(reason){ if(inFlight||backoffActive()||!cloudReady()) return {ok:false, skipped:true}; inFlight=true; try{ const result={ok:true, reason, pushed:{}}; for(const [table,map] of Array.from(queue.entries())){ const batch=Array.from(map.values()).slice(0,MAX_PUSH_ROWS); if(!batch.length){ queue.delete(table); continue; } batch.forEach(r=>map.delete(r.item_id)); if(!map.size) queue.delete(table); const res=await api('/api/sync/push',{method:'POST', body:JSON.stringify({table, rows:batch})}); result.pushed[table]=res.saved||0; if(map.size) setTimeout(()=>scheduleFlush('more-'+table, 15000), 0); } return result; } finally { inFlight=false; } }
     async function pushTable(table, arr, opts){ const rows=changedRows(table, Array.isArray(arr)?arr:cacheGet(TABLES[table]?.cache), opts||{}); enqueue(table, rows); if((opts&&opts.immediate)||rows.length<=2) return flushQueue('push-'+table); return {ok:true, queued:rows.length}; }
 
-    async function pullTable(table, opts){ opts=opts||{}; if(!cloudReady()||backoffActive()) return null; const meta=TABLES[table]; if(!meta) return null; const since=opts.full ? Math.max(0, Number(opts.since||0)||0) : (Number(LS.getItem(LAST_PREFIX+table)||0)||0); const res=await api('/api/sync/pull?table='+encodeURIComponent(table)+'&since='+encodeURIComponent(since)+'&limit='+MAX_PULL_LIMIT,{method:'GET'}); const incoming=(res.rows||[]).map(r=>{ const d=r.data||{}; if(!d.id&&r.item_id) d.id=r.item_id; if(!d.updatedAt&&r.updated_at) d.updatedAt=r.updated_at; if(!d.deletedAt&&r.deleted_at) d.deletedAt=r.deleted_at; return d; }); if(incoming.length){ const map=new Map(); cacheGet(meta.cache).forEach(x=>{ const id=idOf(x); if(id) map.set(id,x); }); incoming.forEach(x=>{ const id=idOf(x); if(id) map.set(id, mergeRows(map.get(id),x)); }); const merged=Array.from(map.values()).filter(x=>!deletedOf(x)||deletedOf(x)>now()-30*86400000); cacheSet(meta.cache, merged); merged.forEach(row=>{ const id=idOf(row); if(id) LS.setItem(fpKey(table,id), fp(row)); }); try{ if(table==='workrooms' && typeof window.wr2Render==='function') window.wr2Render(); if(table==='notes' && typeof window.ntRender==='function') window.ntRender(); }catch(e){} } LS.setItem(LAST_PREFIX+table, String(res.serverTime||now())); return {ok:true, table, count:incoming.length, more:!!res.more}; }
-    async function pullAll(opts){ opts=opts||{}; if(inFlight||backoffActive()||!cloudReady()) return {ok:false, skipped:true}; inFlight=true; try{ const tables=opts.tables||AUTO_TABLES; const out={}; for(const t of tables){ try{ out[t]=await pullTable(t,{full:false}); }catch(e){ out[t]={error:e.message||String(e)}; warn('pull fail',t,e.message||e); } } LS.setItem(LAST_PULL_AT,String(now())); return out; } finally{ inFlight=false;} }
+    function refreshPulledTable(table, merged){
+      const active = (Array.isArray(merged) ? merged : []).filter(x => x && !deletedOf(x));
+      try {
+        if (table === 'items') {
+          if (typeof window._svBuildIndex === 'function') window._svBuildIndex(active);
+          if (typeof window.renderSaved === 'function') window.renderSaved();
+          if (typeof window.mbRenderSaved === 'function') window.mbRenderSaved();
+          if (typeof window.updSvCnt === 'function') window.updSvCnt();
+          if (typeof window.refreshMapView === 'function') window.refreshMapView();
+          if (typeof window.renderPropertyList === 'function') window.renderPropertyList();
+          if (typeof window.renderWatchBoard === 'function') window.renderWatchBoard();
+        } else if (table === 'workrooms') {
+          if (window.wr2State) {
+            window.wr2State.rooms = active;
+            if (window.wr2State.activeRoomId && !active.find(r => r && idOf(r) === String(window.wr2State.activeRoomId))) window.wr2State.activeRoomId = null;
+          }
+          if (typeof window.wr2Render === 'function') window.wr2Render();
+          if (typeof window.mbRoomRefreshSel === 'function') window.mbRoomRefreshSel();
+        } else if (table === 'sections') {
+          if (window.wr2State) window.wr2State.sections = active;
+          if (typeof window.wr2Render === 'function') window.wr2Render();
+        } else if (table === 'notes') {
+          if (typeof window._ntSetNotes === 'function') window._ntSetNotes(active);
+          else window.ntNotes = active;
+          if (typeof window.ntRender === 'function') window.ntRender();
+        } else if (table === 'pl_items') {
+          if (typeof window.renderPropertyList === 'function') window.renderPropertyList();
+          if (typeof window.renderWatchBoard === 'function') window.renderWatchBoard();
+        } else if (table === 'kcards') {
+          if (typeof window._kcardsSyncFromCache === 'function') window._kcardsSyncFromCache();
+          if (typeof window.renderKcatTabs === 'function') window.renderKcatTabs();
+          if (typeof window.renderKcards === 'function') window.renderKcards();
+        } else if (table === 'snapshots') {
+          if (typeof window.swRenderSnapTree === 'function') window.swRenderSnapTree();
+        } else if (table === 'map_memos') {
+          if (typeof window.refreshMapView === 'function') window.refreshMapView();
+          if (typeof window.updateStackedCards === 'function') window.updateStackedCards();
+        }
+      } catch(e) { warn('refresh pulled table failed', table, e && (e.message || e)); }
+    }
+
+    async function pullTable(table, opts){
+      opts = opts || {};
+      if(!cloudReady()||backoffActive()) return null;
+      const meta=TABLES[table]; if(!meta) return null;
+      const forceFull = opts.full === true || opts.force === true;
+      const since = forceFull ? Math.max(0, Number(opts.since||0)||0) : (Number(LS.getItem(LAST_PREFIX+table)||0)||0);
+      const res=await api('/api/sync/pull?table='+encodeURIComponent(table)+'&since='+encodeURIComponent(since)+'&limit='+MAX_PULL_LIMIT,{method:'GET'});
+      const incoming=(res.rows||[]).map(r=>{ const d=r.data||{}; if(!d.id&&r.item_id) d.id=r.item_id; if(!d.updatedAt&&r.updated_at) d.updatedAt=r.updated_at; if(!d.deletedAt&&r.deleted_at) d.deletedAt=r.deleted_at; return d; });
+      let merged = cacheGet(meta.cache);
+      if(incoming.length){
+        const map=new Map();
+        merged.forEach(x=>{ const id=idOf(x); if(id) map.set(id,x); });
+        incoming.forEach(x=>{ const id=idOf(x); if(id) map.set(id, mergeRows(map.get(id),x)); });
+        merged=Array.from(map.values()).filter(x=>!deletedOf(x)||deletedOf(x)>now()-30*86400000);
+        cacheSet(meta.cache, merged);
+        merged.forEach(row=>{ const id=idOf(row); if(id) LS.setItem(fpKey(table,id), fp(row)); });
+        refreshPulledTable(table, merged);
+      }
+      LS.setItem(LAST_PREFIX+table, String(res.serverTime||now()));
+      return {ok:true, table, count:incoming.length, more:!!res.more, data:merged};
+    }
+    async function pullAll(opts){
+      opts=opts||{};
+      if(inFlight||backoffActive()||!cloudReady()) return {ok:false, skipped:true};
+      inFlight=true;
+      try{
+        const tables=opts.tables||AUTO_TABLES;
+        const out={};
+        const pullOpts={ full: opts.full === true || opts.force === true, force: opts.force === true, manual: opts.manual === true };
+        for(const t of tables){
+          try{ out[t]=await pullTable(t,pullOpts); }
+          catch(e){ out[t]={error:e.message||String(e)}; warn('pull fail',t,e.message||e); }
+        }
+        LS.setItem(LAST_PULL_AT,String(now()));
+        return out;
+      } finally{ inFlight=false;}
+    }
     function schedulePull(reason, delay){ if(!autoEnabled()||!cloudReady()||backoffActive()) return; const last=Number(LS.getItem(LAST_PULL_AT)||0)||0; if(now()-last<MIN_PULL_GAP && reason!=='manual') return; clearTimeout(pullTimer); pullTimer=setTimeout(()=>pullAll({reason}).catch(e=>{ warn('pullAll fail',e.message||e); setBackoff(5*60*1000,e.message||e); }), delay||20000); }
 
     function activeRoom(){ const st=window.wr2State; const arr=(st&&Array.isArray(st.rooms))?st.rooms:cacheGet('wr2_rooms'); const id=st&&st.activeRoomId; return arr.find(r=>r&&idOf(r)===String(id||''))||null; }
@@ -52394,7 +52490,7 @@ window.addEventListener('DOMContentLoaded', () => {
     ];
     const LAST_OPEN_PULL = 'sk_cf_v94_last_open_pull_at';
     const LAST_LOAD_PREFIX = 'sk_cf_v94_last_load:';
-    const TABLES = ['workrooms','notes','sections','pl_items'];
+    const TABLES = ['items','workrooms','notes','sections','pl_items','kcards','snapshots','map_memos'];
     const LOAD_THROTTLE_MS = 10 * 60 * 1000;
     const OPEN_PULL_THROTTLE_MS = 10 * 60 * 1000;
 
@@ -52565,7 +52661,7 @@ window.addEventListener('DOMContentLoaded', () => {
       'sk_cf_v92_auto_sync_enabled',
       'sk_cf_v94_event_driven_enabled'
     ];
-    const TABLES = ['workrooms','notes','sections','pl_items'];
+    const TABLES = ['items','workrooms','notes','sections','pl_items','kcards','snapshots','map_memos'];
     const PUSH_TABLES = {
       items:'items', workrooms:'workrooms', notes:'notes', sections:'sections', pl_items:'pl_items',
       kcards:'kcards', snapshots:'snapshots', map_memos:'map_memos'
@@ -52632,14 +52728,23 @@ window.addEventListener('DOMContentLoaded', () => {
       };
     }
 
+    const CACHE_BY_TABLE = {
+      items:'re_sv', workrooms:'wr2_rooms', notes:'nt_notes', sections:'wr2_sections', pl_items:'pl_items_v3',
+      kcards:'ins_kcards', snapshots:'re_ws', map_memos:'map_memos'
+    };
+    function readCachedTable(table){
+      const key = CACHE_BY_TABLE[table] || table;
+      try { const c = window._idbCache && window._idbCache[key]; if (Array.isArray(c)) return c.slice(); } catch(e) {}
+      try { const raw = JSON.parse(LS.getItem(key) || '[]'); return Array.isArray(raw) ? raw : []; } catch(e) { return []; }
+    }
     function noAutoLoad(table){
       return async function(opts){
         opts = opts || {};
-        // Explicit forced/manual load is allowed. Normal app/background load must stay local-only.
+        // 기본 호출은 네트워크를 때리지 않고 캐시 배열을 반환한다. force/manual 호출만 실제 pull을 수행한다.
         if (opts.force === true || opts.manual === true) {
-          return window.skCloudPullTable(table, Object.assign({}, opts, { force:true, manual:true, reason: opts.reason || 'manual-load-v95' }));
+          await window.skCloudPullTable(table, Object.assign({}, opts, { force:true, manual:true, reason: opts.reason || 'manual-load-v95' }));
         }
-        return null;
+        return readCachedTable(table);
       };
     }
 
@@ -52731,24 +52836,24 @@ window.addEventListener('DOMContentLoaded', () => {
 })();
 
 /* ════════════════════════════════════════════════════════
-   v96: refresh/open pull once + edit-only push (common only)
+   v97: sync core fix — refresh/open pull once + edit push (common only)
    - Worker remains v92
    - No periodic/focus/visibility/online polling
-   - One lightweight pull only when the page is newly loaded/refreshed
+   - One bounded full pull on page load/refresh for all core tables
    - Push only when an edit/delete/upload save happens
-   - Manual pull via skCloudSyncNow()
+   - Manual pull via skCloudSyncNow(); no periodic polling
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
   try {
-    window.__SK_BUILD = '20260509-workroom-v96-refresh-pull-once-edit-push';
+    window.__SK_BUILD = '20260509-workroom-v97-sync-core-fix';
 
     const LS = window.localStorage;
     const CFG_API = 'sk_cloud_api_base_v1';
     const OPEN_PULL_MARK = 'sk_cf_v96_open_pull_mark';
     const MANUAL_PULL_MARK = 'sk_cf_v96_manual_pull_mark';
     const EVENT_KEY = 'sk_cf_v95_edit_only_enabled';
-    const TABLES = ['workrooms','notes','sections','pl_items'];
+    const TABLES = ['items','workrooms','notes','sections','pl_items','kcards','snapshots','map_memos'];
     const DISABLE_KEYS = [
       'sk_cf_auto_sync_enabled',
       'sk_cf_v88_auto_sync_enabled',
@@ -52827,7 +52932,7 @@ window.addEventListener('DOMContentLoaded', () => {
       base.visibilityPull = false;
       base.onlinePull = false;
       base.implicitLoadPull = false;
-      base.mode = 'edit-push-open-refresh-pull-once-manual-pull';
+      base.mode = 'edit-push-open-refresh-pull-once-all-core-tables';
       base.manualSync = 'skCloudSyncNow()';
       base.pullTables = TABLES;
       base.lastOpenPull = Number(LS.getItem(OPEN_PULL_MARK) || 0) || 0;
@@ -52840,6 +52945,10 @@ window.addEventListener('DOMContentLoaded', () => {
     };
     window.skCloudConvergeNow = window.skCloudSyncNow;
     window.skCloudRepairImagesAndSync = window.skCloudSyncNow;
+    window._sbInitLoad = async function(){
+      if (!enabled() || !apiReady()) return { ok:false, skipped:true, reason:'not-ready' };
+      return window.skCloudPullAll({ reason:'init-v97', openOnce:true, manual:true, force:true, tables:TABLES });
+    };
 
     // Run exactly one bounded pull for this page load/refresh. This is not polling.
     if (!window.__skV96OpenPullStarted) {
@@ -52858,7 +52967,7 @@ window.addEventListener('DOMContentLoaded', () => {
     setTimeout(function(){ DISABLE_KEYS.forEach(function(k){ try { LS.setItem(k, '0'); } catch(e){} }); }, 5000);
 
     log('ready', window.skCloudAutoSyncStatus());
-    console.log('[build] common.js', window.__SK_BUILD, '(Worker v92 unchanged / refresh pull once + edit push)');
+    console.log('[build] common.js', window.__SK_BUILD, '(Worker v92 unchanged / sync core fixed)');
   } catch(e) {
     console.warn('[v96 refresh pull once patch] init fail', e);
   }
