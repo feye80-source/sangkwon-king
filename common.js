@@ -53779,3 +53779,121 @@ window.addEventListener('DOMContentLoaded', () => {
   function install(){window.__SK_BUILD=BUILD;window.__skV110CloudRowWinsPull=true;window.skCloudPullTable=function(table,opts){return pullTable(table,opts);};window.skCloudPullAll=function(opts){return pullAll(opts);};window.skCloudSyncNow=function(){return pullAll({tables:['workrooms','sections','notes','pl_items']}).then(function(r){log('manual sync',r);return r;});};window.skCloudOpenPullOnce=function(){return pullAll({tables:['workrooms','sections']}).then(function(r){log('open pull',r);return r;});};window.skCloudRehydrateWorkroomUi=rehydrateWorkroomUi;window.skCloudPushTable=function(table,rows){return pushRows(table,rows);};window.skCloudPushActiveRoomNow=function(){var room=activeRoom();if(!room)return Promise.resolve({ok:false,reason:'active-room-not-found'});room.updatedAt=Date.now();return writeCache('workrooms',mergeCloudWins('workrooms',readCache('workrooms'),[room])).then(function(){refreshTable('workrooms');return pushRows('workrooms',[room]);}).then(function(res){return Object.assign({activeRoomId:idOf(room),pushed:1},res||{});});};var prevCfg=window.skCloudConfig;window.skCloudConfig=function(){var cfg=typeof prevCfg==='function'?prevCfg():{};cfg.build=BUILD;cfg.cloudRowWinsPull=true;cfg.hasSyncNow=typeof window.skCloudSyncNow;cfg.hasPushActiveRoom=typeof window.skCloudPushActiveRoomNow;try{console.table(cfg);}catch(e){console.log(cfg);}return cfg;};var prevStatus=window.skCloudAutoSyncStatus;window.skCloudAutoSyncStatus=function(){var s=typeof prevStatus==='function'?prevStatus():{};s.build=BUILD;s.cloudRowWinsPull=true;s.activeRoomId=window.wr2State&&window.wr2State.activeRoomId||null;return s;};log('installed',{build:BUILD,activeRoomId:window.wr2State&&window.wr2State.activeRoomId||null});}
   try{install();if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',function(){try{window.skCloudOpenPullOnce();}catch(e){}},{once:true});}else{Promise.resolve().then(function(){try{window.skCloudOpenPullOnce();}catch(e){}});}}catch(e){console.warn('[SK-CF-v110] init failed',e);}
 })();
+
+/* ════════════════════════════════════════════════════════
+   SK-CF v111: persist-snapshot push for workroom uploads
+   - fixes: manual skCloudPushActiveRoomNow works, but automatic upload push can miss latest snapshot
+   - pushes the exact active-room row from _wrPersistRooms/_wrPersistAndSyncRooms result
+════════════════════════════════════════════════════════ */
+(function(){
+  'use strict';
+  var BUILD='20260509-workroom-v111-persist-snapshot-push';
+  var lastKey='';
+  var lastAt=0;
+  var pushSeq=0;
+  function log(){try{console.log.apply(console,['[SK-CF-v111]'].concat([].slice.call(arguments)));}catch(e){}}
+  function warn(){try{console.warn.apply(console,['[SK-CF-v111]'].concat([].slice.call(arguments)));}catch(e){}}
+  function idOf(r){return String(r && (r.id || r.item_id || r.roomId || r._id || '') || '');}
+  function activeId(){return String(window.wr2State && window.wr2State.activeRoomId || '');}
+  function imgCount(r){return Array.isArray(r && r.captureImages) ? r.captureImages.length : 0;}
+  function updatedOf(r){return Number(r && (r.updatedAt || r.updated_at || r.timestamp || 0)) || 0;}
+  function findActiveFrom(args, result){
+    var rid=activeId();
+    if(!rid) return null;
+    var pools=[];
+    if(result && Array.isArray(result.full)) pools.push(result.full);
+    if(result && Array.isArray(result.active)) pools.push(result.active);
+    if(args && Array.isArray(args[0])) pools.push(args[0]);
+    if(window.wr2State && Array.isArray(window.wr2State.rooms)) pools.push(window.wr2State.rooms);
+    if(window._idbCache && Array.isArray(window._idbCache.wr2_rooms)) pools.push(window._idbCache.wr2_rooms);
+    for(var p=0;p<pools.length;p++){
+      var arr=pools[p]||[];
+      for(var i=0;i<arr.length;i++){
+        if(idOf(arr[i])===rid) return arr[i];
+      }
+    }
+    return null;
+  }
+  function stableKey(room, reason){
+    return [idOf(room), updatedOf(room), imgCount(room), reason || ''].join('|');
+  }
+  function pushSnapshot(room, reason){
+    if(!room || !idOf(room)) return Promise.resolve({ok:false, reason:'no-room'});
+    if(typeof window.skCloudPushTable !== 'function') return Promise.resolve({ok:false, reason:'skCloudPushTable-missing'});
+    var key=stableKey(room, reason);
+    var now=Date.now();
+    if(key===lastKey && now-lastAt<1200){
+      return Promise.resolve({ok:true, skipped:true, reason:'dedup', activeRoomId:idOf(room), images:imgCount(room)});
+    }
+    lastKey=key; lastAt=now;
+    var row=Object.assign({}, room, { updatedAt: Math.max(updatedOf(room), Date.now()) });
+    var seq=++pushSeq;
+    return Promise.resolve()
+      .then(function(){ return window.skCloudPushTable('workrooms', [row]); })
+      .then(function(res){
+        log('persist snapshot pushed', {seq:seq, reason:reason, activeRoomId:idOf(row), images:imgCount(row), result:res});
+        return Object.assign({activeRoomId:idOf(row), images:imgCount(row), seq:seq}, res || {});
+      })
+      .catch(function(e){
+        warn('persist snapshot push failed', {seq:seq, reason:reason, activeRoomId:idOf(row), error:String(e && (e.message||e))});
+        return {ok:false, activeRoomId:idOf(row), images:imgCount(row), seq:seq, error:String(e && (e.message||e))};
+      });
+  }
+  function wrap(name){
+    var original=window[name];
+    if(typeof original!=='function' || original.__skV111Wrapped) return false;
+    var wrapped=function(){
+      var args=arguments;
+      var result=original.apply(this,args);
+      try{
+        var opts=args && args[1] || {};
+        if(opts && opts.sync===false) return result;
+        var room=findActiveFrom(args,result);
+        if(room) {
+          // microtask + short delay: ensure IDB/cache write and FileReader/upload callback have settled.
+          Promise.resolve().then(function(){ return pushSnapshot(room, name); });
+          setTimeout(function(){
+            var latest=findActiveFrom(args,result) || room;
+            if(latest && stableKey(latest,name)!==lastKey) pushSnapshot(latest, name + ':settled');
+          }, 900);
+        } else {
+          warn('skip persist snapshot push: active room not found', name, activeId());
+        }
+      }catch(e){warn('wrap failed', name, e && (e.message||e));}
+      return result;
+    };
+    wrapped.__skV111Wrapped=true;
+    wrapped.__skOriginal=original;
+    window[name]=wrapped;
+    return true;
+  }
+  function install(){
+    window.__SK_BUILD=BUILD;
+    window.__skV111PersistSnapshotPush=true;
+    var a=wrap('_wrPersistRooms');
+    var b=wrap('_wrPersistAndSyncRooms');
+    window.skCloudPushPersistedActiveRoomSnapshot=function(reason){
+      var room=findActiveFrom(null,null);
+      return pushSnapshot(room, reason || 'manual-persist-snapshot');
+    };
+    var prevCfg=window.skCloudConfig;
+    window.skCloudConfig=function(){
+      var cfg=typeof prevCfg==='function'?prevCfg():{};
+      cfg.build=BUILD;
+      cfg.persistSnapshotPush=true;
+      cfg.v111Wrapped={_wrPersistRooms:a,_wrPersistAndSyncRooms:b};
+      cfg.lastPersistSnapshotPush={key:lastKey, at:lastAt, seq:pushSeq};
+      try{console.table(cfg);}catch(e){console.log(cfg);}return cfg;
+    };
+    var prevStatus=window.skCloudAutoSyncStatus;
+    window.skCloudAutoSyncStatus=function(){
+      var s=typeof prevStatus==='function'?prevStatus():{};
+      s.build=BUILD;
+      s.persistSnapshotPush=true;
+      s.lastPersistSnapshotPush={key:lastKey, at:lastAt, seq:pushSeq};
+      return s;
+    };
+    log('installed', {wrapped:{_wrPersistRooms:a,_wrPersistAndSyncRooms:b}, activeRoomId:activeId()});
+  }
+  try{install();}catch(e){console.warn('[SK-CF-v111] init failed',e);}
+})();
