@@ -51555,7 +51555,7 @@ window.addEventListener('DOMContentLoaded', () => {
 (function(){
   'use strict';
   try {
-    window.__SK_BUILD = '20260509-workroom-v101-hard-auto-pull-off';
+    window.__SK_BUILD = '20260509-workroom-v102-inplace-mutation-push-fix';
 
     const LS = window.localStorage;
     const CFG_API = 'sk_cloud_api_base_v1';
@@ -52336,5 +52336,123 @@ window.addEventListener('DOMContentLoaded', () => {
     console.log('[build] common.js', window.__SK_BUILD, '(single sync core / hard auto-pull off)');
   } catch(e) {
     console.warn('[v101 single sync core] init fail', e);
+  }
+})();
+
+/* ════════════════════════════════════════════════════════
+   v102: in-place mutation push fix
+   - Root fix for workroom image upload/delete not appearing on other devices.
+   - Legacy workroom handlers mutate wr2State/cache objects in place before calling
+     _wrPersistRooms(). The old diff could see "no change" because prev already
+     pointed at the mutated object, so no cloud push was scheduled.
+   - Persisting rooms now always routes through the single Cloudflare save facade
+     when sync !== false. The facade still fingerprints rows, so unchanged rows
+     do not create duplicate cloud writes.
+════════════════════════════════════════════════════════ */
+(function(){
+  'use strict';
+  try {
+    window.__SK_BUILD = '20260509-workroom-v102-inplace-mutation-push-fix';
+
+    var _v102PushSeq = 0;
+    window.__skV102PersistPushLog = window.__skV102PersistPushLog || [];
+
+    function idOf(row) {
+      return String(row && (row.id || row.item_id || row._id || row.uuid || row.noteId || row.roomId) || '').trim();
+    }
+    function cloneRows(arr) {
+      return (Array.isArray(arr) ? arr : []).filter(function(r){ return r && idOf(r); }).map(function(r){
+        try { return JSON.parse(JSON.stringify(r)); } catch(e) { return Object.assign({}, r); }
+      });
+    }
+    function roomRowsFromResult(result, fallback) {
+      var rows = result && Array.isArray(result.full) ? result.full : fallback;
+      return cloneRows(rows);
+    }
+    function remember(label, rows) {
+      try {
+        window.__skV102PersistPushLog.push({
+          at: Date.now(),
+          seq: ++_v102PushSeq,
+          label: label,
+          count: rows.length,
+          ids: rows.slice(0, 20).map(idOf)
+        });
+        if (window.__skV102PersistPushLog.length > 30) window.__skV102PersistPushLog.shift();
+      } catch(e) {}
+    }
+    function pushRoomsNow(rows, label) {
+      rows = cloneRows(rows);
+      if (!rows.length || typeof window._sbSaveRooms !== 'function') return;
+      remember(label || 'rooms', rows);
+      Promise.resolve()
+        .then(function(){ return window._sbSaveRooms(rows); })
+        .catch(function(e){ console.warn('[SK-CF-v102] workroom persist push failed', e); });
+    }
+
+    var _origWrPersistRooms = window._wrPersistRooms;
+    if (typeof _origWrPersistRooms === 'function' && !_origWrPersistRooms.__skV102InplacePushFix) {
+      var wrappedWrPersistRooms = function(arr, opts) {
+        var options = opts || {};
+        var result = _origWrPersistRooms.apply(this, arguments);
+        if (options.sync !== false) {
+          var rows = roomRowsFromResult(result, arr);
+          pushRoomsNow(rows, '_wrPersistRooms');
+        }
+        return result;
+      };
+      wrappedWrPersistRooms.__skV102InplacePushFix = true;
+      window._wrPersistRooms = wrappedWrPersistRooms;
+    }
+
+    var _origWrPersistAndSyncRooms = window._wrPersistAndSyncRooms;
+    if (typeof _origWrPersistAndSyncRooms === 'function' && !_origWrPersistAndSyncRooms.__skV102InplacePushFix) {
+      var wrappedWrPersistAndSyncRooms = function(arr, opts) {
+        var options = opts || {};
+        var result = _origWrPersistAndSyncRooms.apply(this, arguments);
+        if (options.sync !== false) {
+          var rows = roomRowsFromResult(result, arr);
+          pushRoomsNow(rows, '_wrPersistAndSyncRooms');
+        }
+        return result;
+      };
+      wrappedWrPersistAndSyncRooms.__skV102InplacePushFix = true;
+      window._wrPersistAndSyncRooms = wrappedWrPersistAndSyncRooms;
+    }
+
+    // Direct active-room push helper for field testing after an upload.
+    window.skCloudPushActiveRoomNow = async function() {
+      var st = window.wr2State || {};
+      var rid = String(st.activeRoomId || '');
+      var rooms = Array.isArray(st.rooms) ? st.rooms : [];
+      var room = rooms.find(function(r){ return idOf(r) === rid; }) || null;
+      if (!room && window._idbCache && Array.isArray(window._idbCache.wr2_rooms)) {
+        room = window._idbCache.wr2_rooms.find(function(r){ return idOf(r) === rid; }) || null;
+      }
+      if (!room) {
+        console.warn('[SK-CF-v102] active room not found');
+        return { ok:false, reason:'active-room-not-found' };
+      }
+      room.updatedAt = Date.now();
+      if (typeof window._sbSaveRooms === 'function') {
+        var res = await window._sbSaveRooms([JSON.parse(JSON.stringify(room))]);
+        return { ok:true, pushed:1, result:res };
+      }
+      return { ok:false, reason:'_sbSaveRooms-missing' };
+    };
+
+    var _prevStatus = window.skCloudAutoSyncStatus;
+    window.skCloudAutoSyncStatus = function() {
+      var base = (typeof _prevStatus === 'function') ? _prevStatus() : {};
+      base.build = window.__SK_BUILD;
+      base.inplaceMutationPushFix = true;
+      base.workroomPersistAlwaysRoutesToCloudSave = true;
+      base.lastV102PersistPushes = window.__skV102PersistPushLog || [];
+      return base;
+    };
+
+    console.log('[SK-CF-v102] in-place mutation push fix active');
+  } catch (e) {
+    console.warn('[SK-CF-v102] patch init failed', e);
   }
 })();
