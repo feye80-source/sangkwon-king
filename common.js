@@ -53662,3 +53662,77 @@ window.addEventListener('DOMContentLoaded', () => {
   function install(){cleanPending();window.__SK_BUILD=BUILD;window.SK_CLOUD_MODE='cloudflare';apiBase();userKey();window.__plAutoCloudPull=false;window.__skV108WorkerPagedSync=true;window._sbGetUserId=function(){return Promise.resolve(userKey());};window._sbGetSessionShared=function(){return Promise.resolve({data:{session:{user:{id:userKey(),email:userKey()}}},error:null});};window._sbSaveSv=saveFacade('items');window._sbLoadSv=loadFacade('items');window._sbScheduleSaveSv=scheduleFacade('items');window._sbSaveRooms=saveFacade('workrooms');window._sbLoadRooms=loadFacade('workrooms');window._sbScheduleSaveRooms=scheduleFacade('workrooms');window._sbSaveSections=saveFacade('sections');window._sbLoadSections=loadFacade('sections');window._sbSaveNtNotes=saveFacade('notes');window._sbLoadNtNotes=loadFacade('notes');window._sbSavePlItems=saveFacade('pl_items');window._sbLoadPlItems=loadFacade('pl_items');window._sbScheduleSavePlItems=scheduleFacade('pl_items');window.skCloudPullTable=function(table,opts){return pullTable(table,opts);};window.skCloudPullAll=function(opts){return pullAll(opts);};window.skCloudPushTable=function(table,rows){return pushRows(table,rows);};window.skCloudPushActiveRoomNow=function(){var room=activeRoom();if(!room)return Promise.resolve({ok:false,reason:'active-room-not-found'});room.updatedAt=now();return writeCache('workrooms',mergeRows(readCache('workrooms'),[room])).then(function(){refreshTable('workrooms');return pushRows('workrooms',[room]);}).then(function(res){return Object.assign({activeRoomId:idOf(room),pushed:1},res||{});});};window.skCloudSyncNow=function(){return pullAll({tables:['workrooms','sections','notes','pl_items']}).then(function(pullResult){var ui=rehydrateWorkroomUi();var result={ok:true,build:BUILD,pulled:pullResult.pulled,rehydrated:ui};log('manual pull sync',result);return result;});};window.skCloudConvergeNow=window.skCloudSyncNow;window.skCloudRepairImagesAndSync=window.skCloudSyncNow;window.skCloudRehydrateWorkroomUi=rehydrateWorkroomUi;window.skCloudOpenPullOnce=function(){if(openPullDone)return Promise.resolve({ok:true,skipped:true,reason:'already-open-pulled'});openPullDone=true;return pullAll({tables:['workrooms','sections']}).then(function(res){log('open pull',res);return res;});};window.skCloudConfig=function(){var cfg={build:BUILD,apiBase:apiBase(),userKey:userKey(),enabled:true,pending:{total:0,byKey:{}},hasSyncNow:typeof window.skCloudSyncNow,hasPushActiveRoom:typeof window.skCloudPushActiveRoomNow,workerPagedSync:true};try{console.table(cfg);}catch(e){console.log(cfg);}return cfg;};window.skCloudAutoSyncStatus=function(){return{build:BUILD,apiBase:apiBase(),userKey:userKey(),autoSync:false,periodicPull:false,periodicPush:false,focusPull:false,visibilityPull:false,onlinePull:false,tabEntryPull:false,legacyPlAutoCloudPull:false,workerPagedSync:true,pending:0,pendingSummary:{total:0,byKey:{}},activeRoomId:window.wr2State&&window.wr2State.activeRoomId||null};};log('installed',window.skCloudAutoSyncStatus());}
   try{install();if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',function(){try{window.skCloudOpenPullOnce();}catch(e){}},{once:true});}else{Promise.resolve().then(function(){try{window.skCloudOpenPullOnce();}catch(e){}});}}catch(e){console.warn('[SK-CF-v108] init failed',e);}
 })();
+
+/* ════════════════════════════════════════════════════════
+   SK-CF v109: workroom mutation auto-push hook
+   - fixes: image upload saved locally but not pushed until manual console push
+   - saveRooms/_wrPersistRooms now schedules targeted active-room push only
+════════════════════════════════════════════════════════ */
+(function(){
+  'use strict';
+  var BUILD='20260509-workroom-v109-auto-push-active-room';
+  var pushTimer=null;
+  var lastReason='';
+  function log(){try{console.log.apply(console,['[SK-CF-v109]'].concat([].slice.call(arguments)));}catch(e){}}
+  function warn(){try{console.warn.apply(console,['[SK-CF-v109]'].concat([].slice.call(arguments)));}catch(e){}}
+  function roomId(){try{return String(window.wr2State&&window.wr2State.activeRoomId||'');}catch(e){return '';}}
+  function scheduleActiveRoomPush(reason, delay){
+    lastReason=reason||'workroom-mutation';
+    clearTimeout(pushTimer);
+    pushTimer=setTimeout(function(){
+      var rid=roomId();
+      if(!rid){warn('skip auto push: no active room', lastReason);return;}
+      if(typeof window.skCloudPushActiveRoomNow!=='function'){
+        warn('skip auto push: skCloudPushActiveRoomNow missing', lastReason);
+        return;
+      }
+      Promise.resolve()
+        .then(function(){return window.skCloudPushActiveRoomNow();})
+        .then(function(res){log('auto pushed active room', {reason:lastReason, activeRoomId:rid, result:res});})
+        .catch(function(e){warn('auto push failed', lastReason, e&&(e.message||e));});
+    }, typeof delay==='number'?delay:650);
+  }
+  function wrapPersist(name){
+    var original=window[name];
+    if(typeof original!=='function' || original.__skV109Wrapped) return false;
+    var wrapped=function(arr, opts){
+      var result=original.apply(this, arguments);
+      try{
+        var options=opts||{};
+        if(options.sync!==false) scheduleActiveRoomPush(name, 650);
+      }catch(e){warn('schedule after '+name+' failed', e&&(e.message||e));}
+      return result;
+    };
+    wrapped.__skV109Wrapped=true;
+    wrapped.__skOriginal=original;
+    window[name]=wrapped;
+    return true;
+  }
+  function install(){
+    window.__SK_BUILD=BUILD;
+    window.__skV109AutoPushActiveRoom=true;
+    var a=wrapPersist('_wrPersistRooms');
+    var b=wrapPersist('_wrPersistAndSyncRooms');
+    window.skCloudScheduleActiveRoomPush=function(reason){scheduleActiveRoomPush(reason||'manual-schedule', 120);};
+    var prevCfg=window.skCloudConfig;
+    window.skCloudConfig=function(){
+      var cfg=typeof prevCfg==='function'?prevCfg():{};
+      cfg.build=BUILD;
+      cfg.autoPushActiveRoom=true;
+      cfg.v109Wrapped={_wrPersistRooms:a,_wrPersistAndSyncRooms:b};
+      cfg.lastAutoPushReason=lastReason;
+      try{console.table(cfg);}catch(e){console.log(cfg);}return cfg;
+    };
+    var prevStatus=window.skCloudAutoSyncStatus;
+    window.skCloudAutoSyncStatus=function(){
+      var s=typeof prevStatus==='function'?prevStatus():{};
+      s.build=BUILD;
+      s.autoPushActiveRoom=true;
+      s.v109Wrapped={_wrPersistRooms:a,_wrPersistAndSyncRooms:b};
+      s.lastAutoPushReason=lastReason;
+      return s;
+    };
+    log('installed', {wrapped:{_wrPersistRooms:a,_wrPersistAndSyncRooms:b}, activeRoomId:roomId()});
+  }
+  try{install();}catch(e){console.warn('[SK-CF-v109] init failed',e);}
+})();
