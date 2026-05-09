@@ -52259,11 +52259,9 @@ window.addEventListener('DOMContentLoaded', () => {
     window._sbScheduleSaveRooms=(arr,delay)=>setTimeout(()=>pushTable('workrooms',arr||[]).catch(warn),Math.max(delay||12000,12000));
     window._sbScheduleSavePlItems=(arr,delay)=>setTimeout(()=>pushTable('pl_items',arr||[]).catch(warn),Math.max(delay||12000,12000));
 
-    ['input','change','paste','drop'].forEach(ev=>document.addEventListener(ev,()=>scheduleFlush(ev,15000),true));
-    window.addEventListener('focus',()=>schedulePull('focus',5000),true);
-    document.addEventListener('visibilitychange',()=>{ if(!document.hidden) schedulePull('visible',5000); },true);
-    window.addEventListener('online',()=>schedulePull('online',10000),true);
-    window.addEventListener('DOMContentLoaded',function(){ setTimeout(baselineAll,2000); setTimeout(()=>schedulePull('initial',25000),25000); log('ready', window.skCloudAutoSyncStatus()); });
+    // v92 legacy auto hooks were causing bursty retries/noisy traffic in multi-patch builds.
+    // Keep only baseline fingerprinting; save/pull are driven by newer wrappers (v94+/v110+/v113+).
+    window.addEventListener('DOMContentLoaded',function(){ setTimeout(baselineAll,2000); log('ready', window.skCloudAutoSyncStatus()); });
     console.log('[build] common.js', window.__SK_BUILD);
   } catch(e){ console.warn('[v92 cpu-safe sync governor] init fail', e); }
 })();
@@ -54093,7 +54091,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260510-workroom-v113-room-full-converge-hotfix10';
+  var BUILD='20260510-workroom-v113-room-full-converge-hotfix11';
   var LAST_KEY='sk_cf_v113_last_full_rooms_pull';
   var LAST_FG_KEY='sk_cf_v113_last_fg_pull_at';
   var MIN_GAP=12*60*60*1000;
