@@ -52259,11 +52259,9 @@ window.addEventListener('DOMContentLoaded', () => {
     window._sbScheduleSaveRooms=(arr,delay)=>setTimeout(()=>pushTable('workrooms',arr||[]).catch(warn),Math.max(delay||12000,12000));
     window._sbScheduleSavePlItems=(arr,delay)=>setTimeout(()=>pushTable('pl_items',arr||[]).catch(warn),Math.max(delay||12000,12000));
 
-    ['input','change','paste','drop'].forEach(ev=>document.addEventListener(ev,()=>scheduleFlush(ev,15000),true));
-    window.addEventListener('focus',()=>schedulePull('focus',5000),true);
-    document.addEventListener('visibilitychange',()=>{ if(!document.hidden) schedulePull('visible',5000); },true);
-    window.addEventListener('online',()=>schedulePull('online',10000),true);
-    window.addEventListener('DOMContentLoaded',function(){ setTimeout(baselineAll,2000); setTimeout(()=>schedulePull('initial',25000),25000); log('ready', window.skCloudAutoSyncStatus()); });
+    // v92 legacy auto hooks were causing bursty retries/noisy traffic in multi-patch builds.
+    // Keep only baseline fingerprinting; save/pull are driven by newer wrappers (v94+/v110+/v113+).
+    window.addEventListener('DOMContentLoaded',function(){ setTimeout(baselineAll,2000); log('ready', window.skCloudAutoSyncStatus()); });
     console.log('[build] common.js', window.__SK_BUILD);
   } catch(e){ console.warn('[v92 cpu-safe sync governor] init fail', e); }
 })();
@@ -53697,7 +53695,7 @@ window.addEventListener('DOMContentLoaded', () => {
   function loadFacade(table){return function(){return pullTable(table).then(function(r){return activeRows(r.rows||readCache(table));});};}
   function scheduleFacade(table){return function(arr,delay){return setTimeout(function(){saveFacade(table)(arr||readCache(table));},typeof delay==='number'?delay:700);};}
   function cleanPending(){['sk_cf_v100_pending_mutations','sk_cf_v101_pending_mutations','sk_cf_v102_pending_mutations','sk_cf_v103_pending_mutations','sk_cf_v104_pending_mutations','sk_cf_v105_pending_mutations','sk_cf_v106_pending_mutations','sk_cf_v107_pending_mutations','sk_cf_v108_pending_mutations'].forEach(rmLS);}
-  function install(){cleanPending();window.__SK_BUILD=BUILD;window.SK_CLOUD_MODE='cloudflare';apiBase();userKey();window.__plAutoCloudPull=false;window.__skV108WorkerPagedSync=true;window._sbGetUserId=function(){return Promise.resolve(userKey());};window._sbGetSessionShared=function(){return Promise.resolve({data:{session:{user:{id:userKey(),email:userKey()}}},error:null});};window._sbSaveSv=saveFacade('items');window._sbLoadSv=loadFacade('items');window._sbScheduleSaveSv=scheduleFacade('items');window._sbSaveRooms=saveFacade('workrooms');window._sbLoadRooms=loadFacade('workrooms');window._sbScheduleSaveRooms=scheduleFacade('workrooms');window._sbSaveSections=saveFacade('sections');window._sbLoadSections=loadFacade('sections');window._sbSaveNtNotes=saveFacade('notes');window._sbLoadNtNotes=loadFacade('notes');window._sbSavePlItems=saveFacade('pl_items');window._sbLoadPlItems=loadFacade('pl_items');window._sbScheduleSavePlItems=scheduleFacade('pl_items');window.skCloudPullTable=function(table,opts){return pullTable(table,opts);};window.skCloudPullAll=function(opts){return pullAll(opts);};window.skCloudPushTable=function(table,rows){return pushRows(table,rows);};window.skCloudPushActiveRoomNow=function(){var room=activeRoom();if(!room)return Promise.resolve({ok:false,reason:'active-room-not-found'});room.updatedAt=now();return writeCache('workrooms',mergeRows(readCache('workrooms'),[room])).then(function(){refreshTable('workrooms');return pushRows('workrooms',[room]);}).then(function(res){return Object.assign({activeRoomId:idOf(room),pushed:1},res||{});});};window.skCloudSyncNow=function(){return pullAll({tables:['workrooms','sections','notes','pl_items']}).then(function(pullResult){var ui=rehydrateWorkroomUi();var result={ok:true,build:BUILD,pulled:pullResult.pulled,rehydrated:ui};log('manual pull sync',result);return result;});};window.skCloudConvergeNow=window.skCloudSyncNow;window.skCloudRepairImagesAndSync=window.skCloudSyncNow;window.skCloudRehydrateWorkroomUi=rehydrateWorkroomUi;window.skCloudOpenPullOnce=function(){if(openPullDone)return Promise.resolve({ok:true,skipped:true,reason:'already-open-pulled'});openPullDone=true;return pullAll({tables:['workrooms','sections']}).then(function(res){log('open pull',res);return res;});};window.skCloudConfig=function(){var cfg={build:BUILD,apiBase:apiBase(),userKey:userKey(),enabled:true,pending:{total:0,byKey:{}},hasSyncNow:typeof window.skCloudSyncNow,hasPushActiveRoom:typeof window.skCloudPushActiveRoomNow,workerPagedSync:true};try{console.table(cfg);}catch(e){console.log(cfg);}return cfg;};window.skCloudAutoSyncStatus=function(){return{build:BUILD,apiBase:apiBase(),userKey:userKey(),autoSync:false,periodicPull:false,periodicPush:false,focusPull:false,visibilityPull:false,onlinePull:false,tabEntryPull:false,legacyPlAutoCloudPull:false,workerPagedSync:true,pending:0,pendingSummary:{total:0,byKey:{}},activeRoomId:window.wr2State&&window.wr2State.activeRoomId||null};};log('installed',window.skCloudAutoSyncStatus());}
+  function install(){cleanPending();window.__SK_BUILD=BUILD;window.SK_CLOUD_MODE='cloudflare';apiBase();userKey();window.__plAutoCloudPull=false;window.__skV108WorkerPagedSync=true;window._sbGetUserId=function(){return Promise.resolve(userKey());};window._sbGetSessionShared=function(){return Promise.resolve({data:{session:{user:{id:userKey(),email:userKey()}}},error:null});};window._sbSaveSv=saveFacade('items');window._sbLoadSv=loadFacade('items');window._sbScheduleSaveSv=scheduleFacade('items');window._sbSaveRooms=saveFacade('workrooms');window._sbLoadRooms=loadFacade('workrooms');window._sbScheduleSaveRooms=scheduleFacade('workrooms');window._sbSaveSections=saveFacade('sections');window._sbLoadSections=loadFacade('sections');window._sbSaveNtNotes=saveFacade('notes');window._sbLoadNtNotes=loadFacade('notes');window._sbSavePlItems=saveFacade('pl_items');window._sbLoadPlItems=loadFacade('pl_items');window._sbScheduleSavePlItems=scheduleFacade('pl_items');window.skCloudPullTable=function(table,opts){return pullTable(table,opts);};window.skCloudPullAll=function(opts){return pullAll(opts);};window.skCloudPushTable=function(table,rows){return pushRows(table,rows);};window.skCloudPushActiveRoomNow=function(){var room=activeRoom();if(!room)return Promise.resolve({ok:false,reason:'active-room-not-found'});if(!updatedOf(room))room.updatedAt=now();return writeCache('workrooms',mergeRows(readCache('workrooms'),[room])).then(function(){refreshTable('workrooms');return pushRows('workrooms',[room]);}).then(function(res){return Object.assign({activeRoomId:idOf(room),pushed:1},res||{});});};window.skCloudSyncNow=function(){return pullAll({tables:['workrooms','sections','notes','pl_items']}).then(function(pullResult){var ui=rehydrateWorkroomUi();var result={ok:true,build:BUILD,pulled:pullResult.pulled,rehydrated:ui};log('manual pull sync',result);return result;});};window.skCloudConvergeNow=window.skCloudSyncNow;window.skCloudRepairImagesAndSync=window.skCloudSyncNow;window.skCloudRehydrateWorkroomUi=rehydrateWorkroomUi;window.skCloudOpenPullOnce=function(){if(openPullDone)return Promise.resolve({ok:true,skipped:true,reason:'already-open-pulled'});openPullDone=true;return pullAll({tables:['workrooms','sections']}).then(function(res){log('open pull',res);return res;});};window.skCloudConfig=function(){var cfg={build:BUILD,apiBase:apiBase(),userKey:userKey(),enabled:true,pending:{total:0,byKey:{}},hasSyncNow:typeof window.skCloudSyncNow,hasPushActiveRoom:typeof window.skCloudPushActiveRoomNow,workerPagedSync:true};try{console.table(cfg);}catch(e){console.log(cfg);}return cfg;};window.skCloudAutoSyncStatus=function(){return{build:BUILD,apiBase:apiBase(),userKey:userKey(),autoSync:false,periodicPull:false,periodicPush:false,focusPull:false,visibilityPull:false,onlinePull:false,tabEntryPull:false,legacyPlAutoCloudPull:false,workerPagedSync:true,pending:0,pendingSummary:{total:0,byKey:{}},activeRoomId:window.wr2State&&window.wr2State.activeRoomId||null};};log('installed',window.skCloudAutoSyncStatus());}
   try{install();if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',function(){try{window.skCloudOpenPullOnce();}catch(e){}},{once:true});}else{Promise.resolve().then(function(){try{window.skCloudOpenPullOnce();}catch(e){}});}}catch(e){console.warn('[SK-CF-v108] init failed',e);}
 })();
 
@@ -53817,7 +53815,7 @@ window.addEventListener('DOMContentLoaded', () => {
   function activeRoom(){var st=window.wr2State||{};var rid=String(st.activeRoomId||'');return (Array.isArray(st.rooms)?st.rooms:readCache('workrooms')).find(function(r){return idOf(r)===rid;})||null;}
   function rowPayload(row){var data=JSON.parse(JSON.stringify(row||{}));var id=idOf(data)||idOf(row);if(!id)return null;if(!data.id)data.id=id;if(!data.updatedAt)data.updatedAt=Date.now();return{item_id:id,updated_at:tOf(data.updatedAt)||Date.now(),deleted_at:deletedOf(data)||null,data:data};}
   function pushRows(table,rows){rows=(Array.isArray(rows)?rows:[]).filter(function(r){return r&&idOf(r);});if(!rows.length)return Promise.resolve({ok:true,table:table,requested:0,saved:0,skipped:0,hasMore:false});var payload=rows.map(rowPayload).filter(Boolean);if(!payload.length)return Promise.resolve({ok:true,table:table,requested:0,saved:0,skipped:0,hasMore:false});var CHUNK=12;var saved=0;var skipped=0;var hasMore=false;var warnings=[];var chain=Promise.resolve();for(var i=0;i<payload.length;i+=CHUNK){(function(chunk){chain=chain.then(function(){return api('/api/sync/push',{method:'POST',body:JSON.stringify({table:table,rows:chunk})}).then(function(res){var r=res||{};var s=Number(r.saved);if(!Number.isFinite(s))s=0;var k=Number(r.skipped);if(!Number.isFinite(k))k=0;saved+=s;skipped+=k;hasMore=hasMore||!!r.hasMore;if(r.warnings&&r.warnings.length)warnings=warnings.concat(r.warnings);return r;});});})(payload.slice(i,i+CHUNK));}return chain.then(function(){return{ok:true,table:table,requested:payload.length,saved:saved,skipped:skipped,hasMore:hasMore,warnings:warnings.slice(0,30)};});}
-  function install(){window.__SK_BUILD=BUILD;window.__skV110CloudRowWinsPull=true;window.skCloudPullTable=function(table,opts){return pullTable(table,opts);};window.skCloudPullAll=function(opts){return pullAll(opts);};window.skCloudSyncNow=function(){return pullAll({tables:['workrooms','sections','items','pl_items','notes']}).then(function(r){log('manual sync',r);return r;});};window.skCloudOpenPullOnce=function(){return pullAll({tables:['workrooms','sections','items','pl_items']}).then(function(r){log('open pull',r);return r;});};window.skCloudRehydrateWorkroomUi=rehydrateWorkroomUi;window.skCloudPushTable=function(table,rows){return pushRows(table,rows);};window.skCloudPushActiveRoomNow=function(){var room=activeRoom();if(!room)return Promise.resolve({ok:false,reason:'active-room-not-found'});room.updatedAt=Date.now();return writeCache('workrooms',mergeCloudWins('workrooms',readCache('workrooms'),[room])).then(function(){refreshTable('workrooms');return pushRows('workrooms',[room]);}).then(function(res){return Object.assign({activeRoomId:idOf(room),pushed:1},res||{});});};var prevCfg=window.skCloudConfig;window.skCloudConfig=function(){var cfg=typeof prevCfg==='function'?prevCfg():{};cfg.build=BUILD;cfg.cloudRowWinsPull=true;cfg.hasSyncNow=typeof window.skCloudSyncNow;cfg.hasPushActiveRoom=typeof window.skCloudPushActiveRoomNow;try{console.table(cfg);}catch(e){console.log(cfg);}return cfg;};var prevStatus=window.skCloudAutoSyncStatus;window.skCloudAutoSyncStatus=function(){var s=typeof prevStatus==='function'?prevStatus():{};s.build=BUILD;s.cloudRowWinsPull=true;s.activeRoomId=window.wr2State&&window.wr2State.activeRoomId||null;return s;};log('installed',{build:BUILD,activeRoomId:window.wr2State&&window.wr2State.activeRoomId||null});}
+  function install(){window.__SK_BUILD=BUILD;window.__skV110CloudRowWinsPull=true;window.skCloudPullTable=function(table,opts){return pullTable(table,opts);};window.skCloudPullAll=function(opts){return pullAll(opts);};window.skCloudSyncNow=function(){return pullAll({tables:['workrooms','sections','items','pl_items','notes']}).then(function(r){log('manual sync',r);return r;});};window.skCloudOpenPullOnce=function(){return pullAll({tables:['workrooms','sections','items','pl_items']}).then(function(r){log('open pull',r);return r;});};window.skCloudRehydrateWorkroomUi=rehydrateWorkroomUi;window.skCloudPushTable=function(table,rows){return pushRows(table,rows);};window.skCloudPushActiveRoomNow=function(){var room=activeRoom();if(!room)return Promise.resolve({ok:false,reason:'active-room-not-found'});if(!tOf(room.updatedAt))room.updatedAt=Date.now();return writeCache('workrooms',mergeCloudWins('workrooms',readCache('workrooms'),[room])).then(function(){refreshTable('workrooms');return pushRows('workrooms',[room]);}).then(function(res){return Object.assign({activeRoomId:idOf(room),pushed:1},res||{});});};var prevCfg=window.skCloudConfig;window.skCloudConfig=function(){var cfg=typeof prevCfg==='function'?prevCfg():{};cfg.build=BUILD;cfg.cloudRowWinsPull=true;cfg.hasSyncNow=typeof window.skCloudSyncNow;cfg.hasPushActiveRoom=typeof window.skCloudPushActiveRoomNow;try{console.table(cfg);}catch(e){console.log(cfg);}return cfg;};var prevStatus=window.skCloudAutoSyncStatus;window.skCloudAutoSyncStatus=function(){var s=typeof prevStatus==='function'?prevStatus():{};s.build=BUILD;s.cloudRowWinsPull=true;s.activeRoomId=window.wr2State&&window.wr2State.activeRoomId||null;return s;};log('installed',{build:BUILD,activeRoomId:window.wr2State&&window.wr2State.activeRoomId||null});}
   try{install();if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',function(){try{window.skCloudOpenPullOnce();}catch(e){}},{once:true});}else{Promise.resolve().then(function(){try{window.skCloudOpenPullOnce();}catch(e){}});}}catch(e){console.warn('[SK-CF-v110] init failed',e);}
 })();
 
@@ -53870,7 +53868,8 @@ window.addEventListener('DOMContentLoaded', () => {
       return Promise.resolve({ok:true, skipped:true, reason:'dedup', activeRoomId:idOf(room), images:imgCount(room)});
     }
     lastKey=key; lastAt=now;
-    var row=Object.assign({}, room, { updatedAt: Math.max(updatedOf(room), Date.now()) });
+    var row=Object.assign({}, room);
+    if(!updatedOf(row)) row.updatedAt=Date.now();
     var seq=++pushSeq;
     return Promise.resolve()
       .then(function(){ return window.skCloudPushTable('workrooms', [row]); })
@@ -54092,7 +54091,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260509-workroom-v113-room-full-converge-hotfix9';
+  var BUILD='20260510-workroom-v113-room-full-converge-hotfix11';
   var LAST_KEY='sk_cf_v113_last_full_rooms_pull';
   var LAST_FG_KEY='sk_cf_v113_last_fg_pull_at';
   var MIN_GAP=12*60*60*1000;
@@ -54241,4 +54240,432 @@ window.addEventListener('DOMContentLoaded', () => {
     log('installed', {ios:isIOS(), lastFullConvergeAt:last});
   }
   try{install();}catch(e){console.warn('[SK-CF-v113] init failed',e);}
+})();
+
+/* ════════════════════════════════════════════════════════
+   SK-CF v114: stable multi-device sync baseline
+   - unifies active sync path across devices
+   - stale-row guard by per-row sync timestamp
+   - full converge pulls workrooms/sections/items together
+════════════════════════════════════════════════════════ */
+(function(){
+  'use strict';
+  var BUILD='20260510-workroom-v114-stable-multi-device';
+  var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
+  var DEFAULT_USER='monodot-main';
+  var API_KEY='sk_cloud_api_base_v1';
+  var USER_KEY='sk_cloud_user_key_v1';
+  var LAST_PULL_KEY='sk_cf_v114_last_pull_at';
+  var LAST_OPEN_PULL_KEY='sk_cf_v114_last_open_pull_at';
+  var CACHE={items:'re_sv',workrooms:'wr2_rooms',sections:'wr2_sections',notes:'nt_notes',pl_items:'pl_items_v3',kcards:'ins_kcards',snapshots:'re_ws',map_memos:'map_memos'};
+  var LIMIT={workrooms:30,sections:30,items:30,notes:30,pl_items:30,kcards:30,snapshots:30,map_memos:30};
+  var MAX_PAGES={workrooms:80,sections:80,items:80,notes:40,pl_items:40,kcards:40,snapshots:40,map_memos:40};
+  var inFlightPull=false;
+  var fgPullTimer=0;
+  var pushTimer=0;
+  var lastPushSig='';
+
+  function log(){ try{ console.log.apply(console, ['[SK-CF-v114]'].concat([].slice.call(arguments))); }catch(e){} }
+  function warn(){ try{ console.warn.apply(console, ['[SK-CF-v114]'].concat([].slice.call(arguments))); }catch(e){} }
+  function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+  function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
+  function now(){ return Date.now(); }
+  function tOf(v){ if(!v) return 0; if(typeof v==='number') return v; var t=new Date(v).getTime(); return Number.isFinite(t)?t:0; }
+  function idOf(x){ return String(x && (x.id || x.item_id || x.roomId || x._id || x.uuid || x.key) || ''); }
+  function updatedOf(x){ return tOf(x && (x.updatedAt || x.updated_at || x.modifiedAt || x.timestamp || x.createdAt || x.created_at)); }
+  function deletedOf(x){ return tOf(x && (x.deletedAt || x.deleted_at)); }
+  function syncTs(x){ return Math.max(updatedOf(x), deletedOf(x), tOf(x && x._skServerUpdatedAt)); }
+  function isIOS(){
+    try{
+      var ua=String(navigator.userAgent||'');
+      var pf=String(navigator.platform||'');
+      var tp=Number(navigator.maxTouchPoints||0)||0;
+      return /iPhone|iPad|iPod/i.test(ua) || /iPhone|iPad|iPod/i.test(pf) || ((/Macintosh/i.test(ua) || /MacIntel/i.test(pf)) && tp>1);
+    }catch(e){ return false; }
+  }
+
+  function apiBase(){
+    var v=String(window.SK_CLOUD_API_BASE || lsGet(API_KEY) || DEFAULT_API).trim().replace(/\/+$/,'');
+    window.SK_CLOUD_API_BASE=v;
+    lsSet(API_KEY,v);
+    return v;
+  }
+  function userKey(){
+    var v=String(window.SK_CLOUD_USER_KEY || lsGet(USER_KEY) || DEFAULT_USER).trim() || DEFAULT_USER;
+    window.SK_CLOUD_USER_KEY=v;
+    lsSet(USER_KEY,v);
+    return v;
+  }
+  function ensureCache(){ window._idbCache=window._idbCache||{}; return window._idbCache; }
+  function readCache(table){
+    var key=CACHE[table];
+    if(!key) return [];
+    var c=ensureCache();
+    var fromMem=Array.isArray(c[key]) ? c[key] : null;
+    if(fromMem) return fromMem.filter(function(x){ return x && idOf(x); });
+    try{
+      var raw=JSON.parse(lsGet(key)||'[]');
+      return Array.isArray(raw) ? raw.filter(function(x){ return x && idOf(x); }) : [];
+    }catch(e){ return []; }
+  }
+  function writeCache(table, rows){
+    var key=CACHE[table];
+    var clean=(Array.isArray(rows)?rows:[]).filter(function(x){ return x && idOf(x); });
+    if(!key) return Promise.resolve(clean);
+    ensureCache()[key]=clean;
+    if(typeof window.idbSet==='function'){
+      try{
+        return Promise.resolve(window.idbSet(key, clean)).then(function(){ return clean; }).catch(function(){ return clean; });
+      }catch(e){}
+    }
+    return Promise.resolve(clean);
+  }
+
+  function api(path, opts){
+    opts=opts||{};
+    opts.headers=Object.assign({'content-type':'application/json','x-sk-user':userKey()}, opts.headers||{});
+    return fetch(apiBase()+path, opts).then(function(res){
+      return res.text().then(function(txt){
+        var data={};
+        try{ data=txt?JSON.parse(txt):{}; }catch(e){ data={raw:txt}; }
+        if(!res.ok || data.ok===false) throw new Error((data && (data.error||data.message)) || ('Cloudflare API '+res.status));
+        return data;
+      });
+    });
+  }
+
+  function activeRows(rows){ return (Array.isArray(rows)?rows:[]).filter(function(r){ return r && idOf(r) && !deletedOf(r); }); }
+
+  function mergeByFresh(localRows, incomingRows){
+    var map=new Map();
+    (Array.isArray(localRows)?localRows:[]).forEach(function(r){ var id=idOf(r); if(id) map.set(id, r); });
+    (Array.isArray(incomingRows)?incomingRows:[]).forEach(function(r){
+      var id=idOf(r); if(!id) return;
+      var prev=map.get(id);
+      if(!prev){ map.set(id, r); return; }
+      var prevTs=syncTs(prev);
+      var nextTs=syncTs(r);
+      if(nextTs >= prevTs) map.set(id, r);
+    });
+    return Array.from(map.values());
+  }
+
+  function cloudRows(res){
+    var raw=(res && (res.rows || res.items || res.data)) || [];
+    if(!Array.isArray(raw)) raw=[];
+    return raw.map(function(row){
+      var d=(row && (row.data || row.value)) || row;
+      if(!d || typeof d!=='object') return null;
+      var id=String(d.id || d.item_id || d.roomId || row.item_id || '');
+      if(!id) return null;
+      if(!d.id) d.id=id;
+      var sUpdated=tOf(row && (row.updated_at || row.updatedAt));
+      if(sUpdated){
+        d._skServerUpdatedAt=sUpdated;
+        if(updatedOf(d) < sUpdated) d.updatedAt=sUpdated;
+      }
+      var sDeleted=tOf(row && row.deleted_at);
+      if(sDeleted && !deletedOf(d)) d.deletedAt=sDeleted;
+      return d;
+    }).filter(function(x){ return x && idOf(x); });
+  }
+
+  function refreshTable(table){
+    try{
+      var rows=activeRows(readCache(table));
+      if(table==='workrooms'){
+        if(window.wr2State){
+          var prevActive=String(window.wr2State.activeRoomId||'');
+          window.wr2State.rooms=rows;
+          if(prevActive && !rows.some(function(r){ return idOf(r)===prevActive; })) window.wr2State.activeRoomId='';
+        }
+        if(typeof window.__wr2RenderNow==='function') window.__wr2RenderNow();
+        else if(typeof window.wr2Render==='function') window.wr2Render();
+        if(typeof window.mbRoomRefreshSel==='function') window.mbRoomRefreshSel();
+        return;
+      }
+      if(table==='sections'){
+        if(window.wr2State) window.wr2State.sections=rows.filter(function(s){ return s && s.type!=='free_table'; });
+        if(typeof window.__wr2RenderNow==='function') window.__wr2RenderNow();
+        else if(typeof window.wr2Render==='function') window.wr2Render();
+        return;
+      }
+      if(table==='items'){
+        if(window._idbCache) window._idbCache.re_sv=rows;
+        if(typeof window._svBuildIndex==='function') window._svBuildIndex(rows);
+        if(typeof window.renderSaved==='function') window.renderSaved();
+        if(typeof window.mbRenderSaved==='function') window.mbRenderSaved();
+        if(typeof window.updSvCnt==='function') window.updSvCnt();
+        return;
+      }
+      if(table==='notes'){
+        if(typeof window._ntSetNotes==='function') window._ntSetNotes(rows); else window.ntNotes=rows;
+        if(typeof window.ntRender==='function') window.ntRender();
+        return;
+      }
+      if(table==='pl_items'){
+        if(typeof window.renderPropertyList==='function') window.renderPropertyList();
+        if(typeof window.renderWatchBoard==='function') window.renderWatchBoard();
+      }
+    }catch(e){ warn('refresh failed', table, e && (e.message||e)); }
+  }
+
+  function pullTable(table, opts){
+    opts=opts||{};
+    var limit=Math.min(30, Number(opts.limit || LIMIT[table] || 30) || 30);
+    var maxPages=Math.max(1, Number(opts.maxPages || MAX_PAGES[table] || 40) || 40);
+    var since=(opts.full===false) ? (Number(lsGet('sk_cf_v114_since_'+table)||0)||0) : 0;
+    var pages=0;
+    var all=[];
+    function step(){
+      if(pages >= maxPages) return Promise.resolve();
+      pages += 1;
+      return api('/api/sync/pull?table='+encodeURIComponent(table)+'&since='+encodeURIComponent(since)+'&limit='+encodeURIComponent(limit), { method:'GET' })
+        .then(function(res){
+          var rows=cloudRows(res);
+          all=all.concat(rows);
+          var nextSince=Number(res.nextSince || res.cursor || 0) || 0;
+          if(nextSince > since) since=nextSince;
+          var more=!!res.more;
+          if(!more || !rows.length) return;
+          return step();
+        });
+    }
+    return step().then(function(){
+      if(since>0) lsSet('sk_cf_v114_since_'+table, String(since));
+      var merged=mergeByFresh(readCache(table), all);
+      return writeCache(table, merged).then(function(){
+        refreshTable(table);
+        return { ok:true, table:table, pulled:all.length, total:merged.length, pages:pages, since:since };
+      });
+    });
+  }
+
+  function pullAll(opts){
+    opts=opts||{};
+    if(inFlightPull && !opts.force) return Promise.resolve({ ok:true, skipped:true, reason:'in-flight' });
+    inFlightPull=true;
+    var tables=(opts.tables && opts.tables.length) ? opts.tables : ['workrooms','sections','items','notes','pl_items'];
+    var out={};
+    var chain=Promise.resolve();
+    tables.forEach(function(t){
+      chain=chain.then(function(){
+        return pullTable(t, { full: opts.full!==false, maxPages: opts.maxPages || MAX_PAGES[t] })
+          .then(function(r){ out[t]={ok:true,pulled:r.pulled,total:r.total,pages:r.pages}; })
+          .catch(function(e){ out[t]={ok:false,error:String(e && (e.message||e))}; warn('pull failed', t, e && (e.message||e)); });
+      });
+    });
+    return chain.then(function(){
+      lsSet(LAST_PULL_KEY, String(now()));
+      refreshTable('workrooms');
+      refreshTable('sections');
+      refreshTable('items');
+      return { ok:true, build:BUILD, pulled:out, at:now() };
+    }).finally(function(){ inFlightPull=false; });
+  }
+
+  function dedupeRows(rows){
+    var map=new Map();
+    (Array.isArray(rows)?rows:[]).forEach(function(r){
+      var id=idOf(r); if(!id) return;
+      var prev=map.get(id);
+      if(!prev){ map.set(id, r); return; }
+      if(syncTs(r) >= syncTs(prev)) map.set(id, r);
+    });
+    return Array.from(map.values());
+  }
+
+  function rowPayload(row){
+    var data=JSON.parse(JSON.stringify(row||{}));
+    var id=idOf(data)||idOf(row);
+    if(!id) return null;
+    if(!data.id) data.id=id;
+    if(!updatedOf(data) && !deletedOf(data)) data.updatedAt=now();
+    return {
+      item_id:id,
+      updated_at:Math.max(updatedOf(data), 1),
+      deleted_at:deletedOf(data) || 0,
+      data:data
+    };
+  }
+
+  function pushRows(table, rows){
+    rows=dedupeRows(rows).filter(function(r){ return r && idOf(r); });
+    if(!rows.length) return Promise.resolve({ok:true, table:table, requested:0, saved:0, skipped:0, hasMore:false});
+    var payload=rows.map(rowPayload).filter(Boolean);
+    if(!payload.length) return Promise.resolve({ok:true, table:table, requested:0, saved:0, skipped:0, hasMore:false});
+    var CHUNK=12;
+    var saved=0, skipped=0, hasMore=false;
+    var warnings=[];
+    var chain=Promise.resolve();
+    for(var i=0;i<payload.length;i+=CHUNK){
+      (function(chunk){
+        chain=chain.then(function(){
+          return api('/api/sync/push', { method:'POST', body:JSON.stringify({ table:table, rows:chunk }) })
+            .then(function(res){
+              var s=Number(res && res.saved); if(!Number.isFinite(s)) s=0;
+              var k=Number(res && res.skipped); if(!Number.isFinite(k)) k=0;
+              saved += s;
+              skipped += k;
+              hasMore = hasMore || !!(res && res.hasMore);
+              if(res && Array.isArray(res.warnings) && res.warnings.length) warnings = warnings.concat(res.warnings);
+              return res;
+            });
+        });
+      })(payload.slice(i, i+CHUNK));
+    }
+    return chain.then(function(){
+      return { ok:true, table:table, requested:payload.length, saved:saved, skipped:skipped, hasMore:hasMore, warnings:warnings.slice(0,50) };
+    });
+  }
+
+  function activeRoom(){
+    var st=window.wr2State||{};
+    var rid=String(st.activeRoomId||'');
+    var rooms=Array.isArray(st.rooms) ? st.rooms : readCache('workrooms');
+    return rooms.find(function(r){ return idOf(r)===rid; }) || null;
+  }
+
+  function persistSig(room){
+    if(!room) return '';
+    var imgs=Array.isArray(room.captureImages) ? room.captureImages.length : 0;
+    return [idOf(room), syncTs(room), imgs].join('|');
+  }
+
+  function scheduleActiveRoomPush(reason, delay){
+    clearTimeout(pushTimer);
+    pushTimer=setTimeout(function(){
+      var room=activeRoom();
+      if(!room || !idOf(room)) return;
+      var sig=persistSig(room);
+      if(!sig || sig===lastPushSig) return;
+      lastPushSig=sig;
+      pushRows('workrooms', [room])
+        .then(function(res){ log('active room push', {reason:reason||'persist', activeRoomId:idOf(room), result:res}); })
+        .catch(function(e){ warn('active room push failed', reason, e && (e.message||e)); });
+    }, Math.max(120, Number(delay||500)||500));
+  }
+
+  function unwrap(name){
+    var fn=window[name];
+    var hop=0;
+    while(fn && fn.__skOriginal && hop<12){ fn=fn.__skOriginal; hop+=1; }
+    return fn;
+  }
+
+  function installPersistWrap(name){
+    var base=unwrap(name);
+    if(typeof base!=='function') return false;
+    if(base.__skV114Wrapped) return true;
+    var wrapped=function(arr, opts){
+      var ret=base.apply(this, arguments);
+      try{
+        var o=opts||{};
+        if(o.sync!==false) scheduleActiveRoomPush(name, 450);
+      }catch(e){}
+      return ret;
+    };
+    wrapped.__skV114Wrapped=true;
+    wrapped.__skOriginal=base;
+    window[name]=wrapped;
+    return true;
+  }
+
+  function attachForegroundPull(){
+    function schedule(reason){
+      clearTimeout(fgPullTimer);
+      fgPullTimer=setTimeout(function(){
+        var last=Number(lsGet(LAST_PULL_KEY)||0)||0;
+        var gap=isIOS()?12000:18000;
+        if(now()-last<gap) return;
+        pullAll({ full:true }).then(function(res){ log('foreground pull', reason, res && res.ok); }).catch(function(e){ warn('foreground pull failed', reason, e && (e.message||e)); });
+      }, 350);
+    }
+    window.addEventListener('focus', function(){ schedule('focus'); }, true);
+    window.addEventListener('pageshow', function(){ schedule('pageshow'); }, true);
+    document.addEventListener('visibilitychange', function(){ if(!document.hidden) schedule('visible'); }, true);
+  }
+
+  function install(){
+    window.__SK_BUILD=BUILD;
+    window.__skV114StableSync=true;
+
+    window.SK_CLOUD_MODE='cloudflare';
+    apiBase();
+    userKey();
+
+    installPersistWrap('_wrPersistRooms');
+    installPersistWrap('_wrPersistAndSyncRooms');
+
+    window.skCloudPushTable=function(table, rows){ return pushRows(table, rows); };
+    window.skCloudPullTable=function(table, opts){ return pullTable(table, opts||{full:true}); };
+    window.skCloudPullAll=function(opts){ return pullAll(opts||{full:true}); };
+    window.skCloudPushActiveRoomNow=function(){
+      var room=activeRoom();
+      if(!room) return Promise.resolve({ok:false, reason:'active-room-not-found'});
+      return pushRows('workrooms', [room]).then(function(res){
+        return Object.assign({activeRoomId:idOf(room), pushed:1}, res||{});
+      });
+    };
+    window.skCloudSyncNow=function(){
+      return pullAll({ full:true, force:true, tables:['workrooms','sections','items','notes','pl_items'] }).then(function(res){
+        log('manual sync', res);
+        return res;
+      });
+    };
+    window.skCloudConvergeNow=window.skCloudSyncNow;
+    window.skCloudRepairImagesAndSync=window.skCloudSyncNow;
+    window.skCloudHardConvergeRooms=function(reason){
+      return pullAll({ full:true, force:true, tables:['workrooms','sections','items','notes','pl_items'] }).then(function(res){
+        return Object.assign({ok:true, reason:reason||'manual-hard-converge', build:BUILD}, res||{});
+      });
+    };
+
+    window.skCloudOpenPullOnce=function(){
+      var last=Number(lsGet(LAST_OPEN_PULL_KEY)||0)||0;
+      if(now()-last < 20000) return Promise.resolve({ok:true, skipped:true, reason:'recent-open-pull'});
+      lsSet(LAST_OPEN_PULL_KEY, String(now()));
+      return pullAll({ full:true, force:true, tables:['workrooms','sections','items','notes','pl_items'] }).then(function(r){ log('open pull', r); return r; });
+    };
+
+    var prevCfg=window.skCloudConfig;
+    window.skCloudConfig=function(){
+      var cfg=typeof prevCfg==='function'?prevCfg():{};
+      cfg.build=BUILD;
+      cfg.apiBase=apiBase();
+      cfg.userKey=userKey();
+      cfg.stableSyncV114=true;
+      cfg.roomFullConverge=true;
+      cfg.workerPagedSync=true;
+      cfg.hasSyncNow=typeof window.skCloudSyncNow;
+      cfg.hasPushActiveRoom=typeof window.skCloudPushActiveRoomNow;
+      cfg.lastPullAt=Number(lsGet(LAST_PULL_KEY)||0)||0;
+      try{ console.table(cfg); }catch(e){ console.log(cfg); }
+      return cfg;
+    };
+
+    var prevStatus=window.skCloudAutoSyncStatus;
+    window.skCloudAutoSyncStatus=function(){
+      var s=typeof prevStatus==='function'?prevStatus():{};
+      s.build=BUILD;
+      s.stableSyncV114=true;
+      s.activeRoomId=window.wr2State && window.wr2State.activeRoomId || null;
+      s.lastPullAt=Number(lsGet(LAST_PULL_KEY)||0)||0;
+      return s;
+    };
+
+    attachForegroundPull();
+
+    try{
+      if(document.readyState==='loading'){
+        document.addEventListener('DOMContentLoaded', function(){ window.skCloudOpenPullOnce().catch(function(){}); }, {once:true});
+      }else{
+        setTimeout(function(){ window.skCloudOpenPullOnce().catch(function(){}); }, 300);
+      }
+    }catch(e){}
+
+    log('installed', {build:BUILD, ios:isIOS(), activeRoomId:window.wr2State && window.wr2State.activeRoomId || null});
+  }
+
+  try{ install(); }catch(e){ console.warn('[SK-CF-v114] init failed', e); }
 })();
