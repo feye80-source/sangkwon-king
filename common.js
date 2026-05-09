@@ -54266,6 +54266,8 @@ window.addEventListener('DOMContentLoaded', () => {
   var lastPushSig='';
   var pullFailCount=0;
   var pullCooldownUntil=0;
+  var netFailCount=0;
+  var netBlockUntil=0;
 
   function log(){ try{ console.log.apply(console, ['[SK-CF-v114]'].concat([].slice.call(arguments))); }catch(e){} }
   function warn(){ try{ console.warn.apply(console, ['[SK-CF-v114]'].concat([].slice.call(arguments))); }catch(e){} }
@@ -54334,6 +54336,58 @@ window.addEventListener('DOMContentLoaded', () => {
         return data;
       });
     });
+  }
+  function isApiUrl(url){
+    try{
+      var u=String(url||'');
+      return !!u && u.indexOf(apiBase())===0;
+    }catch(e){
+      return false;
+    }
+  }
+  function markNetFail(reason){
+    netFailCount += 1;
+    var backoff = Math.min(5 * 60 * 1000, 5000 * Math.max(1, netFailCount));
+    netBlockUntil = now() + backoff;
+    warn('network backoff', {reason:reason||'unknown', failCount:netFailCount, blockMs:backoff});
+  }
+  function markNetOk(){
+    netFailCount = 0;
+    netBlockUntil = 0;
+  }
+  function installFetchGate(){
+    try{
+      var raw=window.fetch;
+      if(typeof raw!=='function' || raw.__skV114FetchGate) return false;
+      var wrapped=function(input, init){
+        var url=(typeof input==='string') ? input : (input && input.url) || '';
+        if(isApiUrl(url) && now() < netBlockUntil){
+          return Promise.resolve(new Response(
+            JSON.stringify({ok:false,error:'client-backoff',retryAfterMs:Math.max(0, netBlockUntil-now())}),
+            { status:429, headers:{'content-type':'application/json; charset=utf-8'} }
+          ));
+        }
+        return Promise.resolve(raw.apply(this, arguments))
+          .then(function(res){
+            if(isApiUrl(url)){
+              if(res && Number(res.status)===429) markNetFail('http-429');
+              else if(res && res.ok) markNetOk();
+            }
+            return res;
+          })
+          .catch(function(e){
+            if(isApiUrl(url)) markNetFail('fetch-failed');
+            throw e;
+          });
+      };
+      wrapped.__skV114FetchGate=true;
+      wrapped.__skRawFetch=raw;
+      window.fetch=wrapped;
+      return true;
+    }catch(e){
+      warn('installFetchGate failed', e && (e.message||e));
+      return false;
+    }
   }
 
   function activeRows(rows){ return (Array.isArray(rows)?rows:[]).filter(function(r){ return r && idOf(r) && !deletedOf(r); }); }
@@ -54615,9 +54669,14 @@ window.addEventListener('DOMContentLoaded', () => {
     if(typeof base!=='function') return false;
     if(base.__skV114Wrapped) return true;
     var wrapped=function(arr, opts){
-      var ret=base.apply(this, arguments);
+      var args=Array.prototype.slice.call(arguments);
+      var rawOpts=(opts && typeof opts==='object') ? opts : {};
+      var mergedOpts=Object.assign({}, rawOpts, { sync:false });
+      if(args.length>=2) args[1]=mergedOpts;
+      else args.push(mergedOpts);
+      var ret=base.apply(this, args);
       try{
-        var o=opts||{};
+        var o=rawOpts||{};
         if(o.sync!==false) scheduleActiveRoomPush(name, 450);
       }catch(e){}
       return ret;
@@ -54632,6 +54691,7 @@ window.addEventListener('DOMContentLoaded', () => {
     function schedule(reason){
       clearTimeout(fgPullTimer);
       fgPullTimer=setTimeout(function(){
+        if(now() < netBlockUntil) return;
         var last=Number(lsGet(LAST_PULL_KEY)||0)||0;
         var gap=isIOS()?12000:18000;
         if(now()-last<gap) return;
@@ -54657,6 +54717,7 @@ window.addEventListener('DOMContentLoaded', () => {
     apiBase();
     userKey();
 
+    var fetchGateInstalled=installFetchGate();
     installPersistWrap('_wrPersistRooms');
     installPersistWrap('_wrPersistAndSyncRooms');
 
@@ -54711,6 +54772,9 @@ window.addEventListener('DOMContentLoaded', () => {
       cfg.lastPullAt=Number(lsGet(LAST_PULL_KEY)||0)||0;
       cfg.pullFailCount=pullFailCount;
       cfg.pullCooldownUntil=pullCooldownUntil;
+      cfg.netFailCount=netFailCount;
+      cfg.netBlockUntil=netBlockUntil;
+      cfg.fetchGateInstalled=!!fetchGateInstalled;
       try{ console.table(cfg); }catch(e){ console.log(cfg); }
       return cfg;
     };
@@ -54724,6 +54788,8 @@ window.addEventListener('DOMContentLoaded', () => {
       s.lastPullAt=Number(lsGet(LAST_PULL_KEY)||0)||0;
       s.pullFailCount=pullFailCount;
       s.pullCooldownUntil=pullCooldownUntil;
+      s.netFailCount=netFailCount;
+      s.netBlockUntil=netBlockUntil;
       return s;
     };
 
