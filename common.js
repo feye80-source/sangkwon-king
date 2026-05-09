@@ -53333,3 +53333,293 @@ window.addEventListener('DOMContentLoaded', () => {
     console.warn('[SK-CF-v104] init failed', e);
   }
 })();
+
+/* ════════════════════════════════════════════════════════
+   v105: hard manual/open pull override
+   - fixes old v94 skCloudSyncNow() returning {reason:'not-ready'}
+   - uses the confirmed direct pull path for workrooms/sections
+   - does not use Supabase session or legacy pending queues
+   - non-blocking open pull once; no periodic pull/push
+════════════════════════════════════════════════════════ */
+(function(){
+  'use strict';
+  try {
+    var BUILD = '20260509-workroom-v105-hard-pull-override';
+    window.__SK_BUILD = BUILD;
+
+    var LS = window.localStorage;
+    var API_KEY = 'sk_cloud_api_base_v1';
+    var USER_KEY = 'sk_cloud_user_key_v1';
+    var DEFAULT_API = 'https://sangkwon-upload-worker.feye80.workers.dev';
+    var DEFAULT_USER = 'monodot-main';
+    var CACHE = {
+      items:'re_sv',
+      workrooms:'wr2_rooms',
+      sections:'wr2_sections',
+      notes:'nt_notes',
+      pl_items:'pl_items_v3',
+      kcards:'ins_kcards',
+      snapshots:'re_ws',
+      map_memos:'map_memos'
+    };
+    var OPEN_PULL_DONE = false;
+    var installSeq = 0;
+
+    function log(){ try { console.log.apply(console, ['[SK-CF-v105]'].concat([].slice.call(arguments))); } catch(e){} }
+    function warn(){ try { console.warn.apply(console, ['[SK-CF-v105]'].concat([].slice.call(arguments))); } catch(e){} }
+    function now(){ return Date.now(); }
+    function safeGet(key){ try { return LS.getItem(key); } catch(e){ return null; } }
+    function safeSet(key, val){ try { LS.setItem(key, val); return true; } catch(e){ return false; } }
+    function safeRemove(key){ try { LS.removeItem(key); return true; } catch(e){ return false; } }
+    function getApiBase(){ return String(window.SK_CLOUD_API_BASE || safeGet(API_KEY) || DEFAULT_API).trim().replace(/\/+$/, ''); }
+    function getUserKey(){ return String(window.SK_CLOUD_USER_KEY || safeGet(USER_KEY) || DEFAULT_USER).trim() || DEFAULT_USER; }
+    function setApiBase(v){ v = String(v || DEFAULT_API).trim().replace(/\/+$/, ''); window.SK_CLOUD_API_BASE = v; safeSet(API_KEY, v); return v; }
+    function setUserKey(v){ v = String(v || DEFAULT_USER).trim() || DEFAULT_USER; window.SK_CLOUD_USER_KEY = v; safeSet(USER_KEY, v); return v; }
+    function clone(o){ try { return JSON.parse(JSON.stringify(o)); } catch(e){ return o; } }
+    function idOf(r){ return String(r && (r.id || r.item_id || r.roomId || r._id || r.key) || ''); }
+    function timeOf(v){ if (!v) return 0; if (typeof v === 'number') return v; var t = new Date(v).getTime(); return Number.isFinite(t) ? t : 0; }
+    function updatedOf(r){ return Math.max(timeOf(r && r.updatedAt), timeOf(r && r.timestamp), timeOf(r && r.savedAt), timeOf(r && r.createdAt)); }
+    function deletedOf(r){ return timeOf(r && r.deletedAt); }
+    function activeRows(rows){ return (Array.isArray(rows) ? rows : []).filter(function(r){ return r && idOf(r) && !r.deletedAt; }); }
+    function ensureCache(){ window._idbCache = window._idbCache || {}; return window._idbCache; }
+    function readCache(table){
+      var key = CACHE[table];
+      if (!key) return [];
+      var c = ensureCache();
+      if (Array.isArray(c[key])) return c[key].filter(function(r){ return r && idOf(r); });
+      try { var raw = JSON.parse(safeGet(key) || '[]'); return Array.isArray(raw) ? raw.filter(function(r){ return r && idOf(r); }) : []; } catch(e) { return []; }
+    }
+    function writeCache(table, rows){
+      var key = CACHE[table];
+      if (!key) return Promise.resolve(rows || []);
+      var clean = (Array.isArray(rows) ? rows : []).filter(function(r){ return r && idOf(r); });
+      ensureCache()[key] = clean;
+      try { if (typeof window.idbSet === 'function') return Promise.resolve(window.idbSet(key, clean)).then(function(){ return clean; }).catch(function(){ return clean; }); } catch(e){}
+      return Promise.resolve(clean);
+    }
+    function mergeRows(local, incoming){
+      var m = {};
+      (Array.isArray(local) ? local : []).forEach(function(r){ if (r && idOf(r)) m[idOf(r)] = r; });
+      (Array.isArray(incoming) ? incoming : []).forEach(function(r){
+        if (!r || !idOf(r)) return;
+        var id = idOf(r), old = m[id];
+        if (!old) { m[id] = r; return; }
+        var nt = Math.max(updatedOf(r), deletedOf(r));
+        var ot = Math.max(updatedOf(old), deletedOf(old));
+        if (nt >= ot) m[id] = r;
+      });
+      return Object.keys(m).map(function(k){ return m[k]; });
+    }
+    function stripHeavy(v, depth){
+      if (v == null) return v;
+      depth = depth || 0;
+      if (depth > 8) return undefined;
+      var t = typeof v;
+      if (t === 'string') {
+        if (/^data:/i.test(v) && v.length > 2000) return v.slice(0, 2000) + '...[stripped:' + v.length + ']';
+        if (v.length > 300000) return v.slice(0, 2000) + '...[stripped:' + v.length + ']';
+        return v;
+      }
+      if (t === 'number' || t === 'boolean') return v;
+      if (Array.isArray(v)) {
+        var a = [];
+        for (var i=0;i<v.length;i++){ var av = stripHeavy(v[i], depth+1); if (av !== undefined) a.push(av); }
+        return a;
+      }
+      if (t === 'object') {
+        var out = {};
+        Object.keys(v).forEach(function(k){
+          if (/^(parent|element|target|window|document|ownerDocument|__proto__|constructor|prototype)$/i.test(k)) return;
+          if (/^(base64|dataUrl|dataURL|imageData|fileData|blob|rawHtml|rawText|pdfFullText|fullText)$/i.test(k)) return;
+          var nv = stripHeavy(v[k], depth+1);
+          if (nv !== undefined) out[k] = nv;
+        });
+        return out;
+      }
+      return undefined;
+    }
+    function rowPayload(row){
+      var data = stripHeavy(clone(row), 0) || {};
+      var id = idOf(data) || idOf(row);
+      if (!id) return null;
+      if (!data.id) data.id = id;
+      if (!updatedOf(data)) data.updatedAt = now();
+      return { item_id:id, updated_at:updatedOf(data) || now(), deleted_at:deletedOf(data) || null, data:data };
+    }
+    function apiFetch(path, opts){
+      opts = opts || {};
+      opts.headers = Object.assign({ 'content-type':'application/json', 'x-sk-user':getUserKey() }, opts.headers || {});
+      return fetch(getApiBase() + path, opts).then(function(res){
+        return res.text().then(function(txt){
+          var data = {};
+          try { data = txt ? JSON.parse(txt) : {}; } catch(e) { data = { raw:txt }; }
+          if (!res.ok || data.ok === false) throw new Error((data && (data.error || data.message)) || ('Cloudflare API ' + res.status));
+          return data;
+        });
+      });
+    }
+    function extractRows(json){
+      var raw = (json && (json.rows || json.items || json.data)) || [];
+      if (!Array.isArray(raw)) raw = [];
+      return raw.map(function(r){ return (r && (r.data || r.value)) || r; }).filter(function(x){ return x && idOf(x); });
+    }
+    function refreshTable(table){
+      var rows = activeRows(readCache(table));
+      try {
+        if (table === 'workrooms') {
+          if (window.wr2State) {
+            window.wr2State.rooms = rows;
+          }
+          if (typeof window.wr2Render === 'function') window.wr2Render();
+          if (typeof window.mbRoomRefreshSel === 'function') window.mbRoomRefreshSel();
+        } else if (table === 'sections') {
+          if (window.wr2State) window.wr2State.sections = rows.filter(function(s){ return s && s.type !== 'free_table'; });
+          if (typeof window.wr2Render === 'function') window.wr2Render();
+        } else if (table === 'notes') {
+          if (typeof window._ntSetNotes === 'function') window._ntSetNotes(rows); else window.ntNotes = rows;
+          if (typeof window.ntRender === 'function') window.ntRender();
+        } else if (table === 'pl_items') {
+          if (typeof window.renderPropertyList === 'function') window.renderPropertyList();
+          if (typeof window.renderWatchBoard === 'function') window.renderWatchBoard();
+        } else if (table === 'items') {
+          if (typeof window._svBuildIndex === 'function') window._svBuildIndex(rows);
+          if (typeof window.renderSaved === 'function') window.renderSaved();
+          if (typeof window.mbRenderSaved === 'function') window.mbRenderSaved();
+          if (typeof window.updSvCnt === 'function') window.updSvCnt();
+        } else if (table === 'kcards') {
+          if (typeof window._kcardsSyncFromCache === 'function') window._kcardsSyncFromCache();
+          if (typeof window.renderKcatTabs === 'function') window.renderKcatTabs();
+          if (typeof window.renderKcards === 'function') window.renderKcards();
+        }
+      } catch(e) { warn('refresh failed', table, e && (e.message || e)); }
+    }
+    function pullTable(table, opts){
+      opts = opts || {};
+      var limit = Number(opts.limit || 2000) || 2000;
+      return apiFetch('/api/sync/pull?table=' + encodeURIComponent(table) + '&since=0&limit=' + encodeURIComponent(limit), { method:'GET' })
+        .then(function(json){
+          var rows = extractRows(json);
+          var merged = mergeRows(readCache(table), rows);
+          return writeCache(table, merged).then(function(){ refreshTable(table); return { table:table, pulled:rows.length, total:merged.length, rows:merged }; });
+        });
+    }
+    function pullAll(opts){
+      opts = opts || {};
+      var tables = opts.tables && opts.tables.length ? opts.tables : ['workrooms','sections','notes','pl_items'];
+      var out = {};
+      var chain = Promise.resolve();
+      tables.forEach(function(t){
+        chain = chain.then(function(){
+          return pullTable(t, opts).then(function(r){ out[t] = { pulled:r.pulled, total:r.total }; }).catch(function(e){ out[t] = { ok:false, error:String(e && (e.message || e)) }; warn('pull failed', t, e && (e.message || e)); });
+        });
+      });
+      return chain.then(function(){ return { ok:true, build:BUILD, pulled:out }; });
+    }
+    function activeRoom(){
+      var st = window.wr2State || {};
+      var rid = String(st.activeRoomId || '');
+      var rooms = Array.isArray(st.rooms) ? st.rooms : readCache('workrooms');
+      return rooms.find(function(r){ return idOf(r) === rid; }) || null;
+    }
+    function pushRows(table, rows){
+      rows = (Array.isArray(rows) ? rows : []).filter(function(r){ return r && idOf(r); });
+      if (!rows.length) return Promise.resolve({ ok:true, table:table, saved:0 });
+      var payload = rows.map(rowPayload).filter(Boolean);
+      if (!payload.length) return Promise.resolve({ ok:true, table:table, saved:0 });
+      return apiFetch('/api/sync/push', { method:'POST', body:JSON.stringify({ table:table, rows:payload }) })
+        .then(function(res){ return Object.assign({ ok:true, table:table, saved:payload.length }, res || {}); });
+    }
+    function saveFacade(table){
+      return function(arr){
+        var rows = (Array.isArray(arr) ? arr : []).filter(function(r){ return r && idOf(r); });
+        if (table === 'workrooms') {
+          var ar = activeRoom();
+          if (ar) rows = rows.filter(function(r){ return idOf(r) === idOf(ar) || deletedOf(r); });
+          if (!rows.length && ar) rows = [ar];
+        }
+        return writeCache(table, mergeRows(readCache(table), rows)).then(function(){ return pushRows(table, rows); }).catch(function(e){ warn('save failed', table, e && (e.message || e)); return { ok:false, table:table, error:String(e && (e.message || e)) }; });
+      };
+    }
+    function loadFacade(table){ return function(){ return pullTable(table).then(function(r){ return activeRows(r.rows || readCache(table)); }); }; }
+    function scheduleFacade(table){ return function(arr, delay){ return setTimeout(function(){ saveFacade(table)(arr || readCache(table)); }, typeof delay === 'number' ? delay : 700); }; }
+    function cleanLegacyPending(){
+      ['sk_cf_v100_pending_mutations','sk_cf_v101_pending_mutations','sk_cf_v102_pending_mutations','sk_cf_v103_pending_mutations','sk_cf_v104_pending_mutations','sk_cf_v105_pending_mutations'].forEach(safeRemove);
+    }
+    function pendingSummary(){
+      var keys = ['sk_cf_v100_pending_mutations','sk_cf_v101_pending_mutations','sk_cf_v102_pending_mutations','sk_cf_v103_pending_mutations','sk_cf_v104_pending_mutations','sk_cf_v105_pending_mutations'];
+      var byKey = {}, total = 0;
+      keys.forEach(function(k){
+        var raw = safeGet(k), n = 0;
+        try { var p = raw ? JSON.parse(raw) : {}; Object.keys(p || {}).forEach(function(t){ n += Object.keys(p[t] || {}).length; }); } catch(e){}
+        byKey[k] = n; total += n;
+      });
+      return { total:total, byKey:byKey };
+    }
+    function hardInstall(label){
+      installSeq++;
+      cleanLegacyPending();
+      window.__SK_BUILD = BUILD;
+      window.SK_CLOUD_MODE = 'cloudflare';
+      setApiBase(getApiBase());
+      setUserKey(getUserKey());
+      window.__plAutoCloudPull = false;
+      window.__skV105HardPullOverride = true;
+
+      window._sbGetUserId = function(){ return Promise.resolve(getUserKey()); };
+      window._sbGetSessionShared = function(){ return Promise.resolve({ data:{ session:{ user:{ id:getUserKey(), email:getUserKey() } } }, error:null }); };
+      window._sbSaveSv = saveFacade('items');
+      window._sbLoadSv = loadFacade('items');
+      window._sbSaveRooms = saveFacade('workrooms');
+      window._sbLoadRooms = loadFacade('workrooms');
+      window._sbSaveNtNotes = saveFacade('notes');
+      window._sbLoadNtNotes = loadFacade('notes');
+      window._sbSaveSections = saveFacade('sections');
+      window._sbLoadSections = loadFacade('sections');
+      window._sbSavePlItems = saveFacade('pl_items');
+      window._sbLoadPlItems = loadFacade('pl_items');
+      window._sbScheduleSavePlItems = scheduleFacade('pl_items');
+      window._sbScheduleSaveRooms = scheduleFacade('workrooms');
+      window._sbScheduleSaveSv = scheduleFacade('items');
+
+      window.skCloudPushTable = function(table, rows){ return pushRows(table, rows); };
+      window.skCloudPullTable = function(table, opts){ return pullTable(table, opts); };
+      window.skCloudPullAll = function(opts){ return pullAll(opts); };
+      window.skCloudPushActiveRoomNow = function(){
+        var room = activeRoom();
+        if (!room) return Promise.resolve({ ok:false, reason:'active-room-not-found' });
+        room.updatedAt = now();
+        return writeCache('workrooms', mergeRows(readCache('workrooms'), [room]))
+          .then(function(){ return pushRows('workrooms', [room]); })
+          .then(function(res){ return Object.assign({ activeRoomId:idOf(room), pushed:1 }, res || {}); });
+      };
+      window.skCloudSyncNow = function(){
+        var room = activeRoom();
+        var pre = room ? window.skCloudPushActiveRoomNow() : Promise.resolve({ ok:true, skipped:true });
+        return pre.then(function(){ return pullAll({ tables:['workrooms','sections','notes','pl_items'] }); })
+          .then(function(res){ log('manual sync', res); return res; });
+      };
+      window.skCloudConvergeNow = window.skCloudSyncNow;
+      window.skCloudRepairImagesAndSync = window.skCloudSyncNow;
+      window.skCloudOpenPullOnce = function(){
+        if (OPEN_PULL_DONE) return Promise.resolve({ ok:true, skipped:true, reason:'already-open-pulled' });
+        OPEN_PULL_DONE = true;
+        return pullAll({ tables:['workrooms','sections'] }).then(function(res){ log('open pull', res); return res; });
+      };
+      window.skCloudConfig = function(){
+        var cfg = { build:BUILD, apiBase:getApiBase(), userKey:getUserKey(), enabled:true, pending:pendingSummary(), hasSyncNow:typeof window.skCloudSyncNow, hasPushActiveRoom:typeof window.skCloudPushActiveRoomNow, hardV105:true, installSeq:installSeq };
+        try { console.table(cfg); } catch(e) { console.log(cfg); }
+        return cfg;
+      };
+      window.skCloudAutoSyncStatus = function(){
+        return { build:BUILD, apiBase:getApiBase(), userKey:getUserKey(), autoSync:false, periodicPull:false, periodicPush:false, focusPull:false, visibilityPull:false, onlinePull:false, tabEntryPull:false, legacyPlAutoCloudPull:false, hardV105:true, pending:pendingSummary().total, pendingSummary:pendingSummary(), activeRoomId:window.wr2State && window.wr2State.activeRoomId || null };
+      };
+      log('installed', label || '', window.skCloudAutoSyncStatus());
+    }
+
+    hardInstall('initial');
+    [0, 500, 1500, 3500, 7000].forEach(function(ms){ setTimeout(function(){ hardInstall('reinstall-' + ms); }, ms); });
+    setTimeout(function(){ try { window.skCloudOpenPullOnce(); } catch(e){ warn('open pull failed', e && (e.message || e)); } }, 1800);
+  } catch(e) {
+    console.warn('[SK-CF-v105] init failed', e);
+  }
+})();
