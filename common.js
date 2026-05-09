@@ -54064,9 +54064,11 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260509-workroom-v113-room-full-converge-hotfix8';
+  var BUILD='20260509-workroom-v113-room-full-converge-hotfix9';
   var LAST_KEY='sk_cf_v113_last_full_rooms_pull';
+  var LAST_FG_KEY='sk_cf_v113_last_fg_pull_at';
   var MIN_GAP=12*60*60*1000;
+  var FG_GAP=25*1000;
   var AUTO_RETRY_MAX=6;
   var AUTO_RETRY_BASE_MS=1200;
   function log(){try{console.log.apply(console,['[SK-CF-v113]'].concat([].slice.call(arguments)));}catch(e){}}
@@ -54165,6 +54167,19 @@ window.addEventListener('DOMContentLoaded', () => {
     }
     attempt(1500);
   }
+  function scheduleForegroundConverge(tag){
+    if(!isIOS()) return;
+    var last=Number(lsGet(LAST_FG_KEY)||0)||0;
+    if(Date.now()-last<FG_GAP) return;
+    lsSet(LAST_FG_KEY, String(Date.now()));
+    fullPullRooms(tag||'ios-foreground-converge', { waitMs: 3500 })
+      .then(function(res){
+        if(!res || !res.ok) warn('foreground converge skipped', res && (res.reason||res.error||res));
+      })
+      .catch(function(e){
+        warn('foreground converge failed', e && (e.message||e));
+      });
+  }
   function install(){
     window.skCloudHardConvergeRooms=function(reason){ return fullPullRooms(reason||'manual-hard-converge'); };
     var prevCfg=window.skCloudConfig;
@@ -54187,6 +54202,13 @@ window.addEventListener('DOMContentLoaded', () => {
     var last=Number(lsGet(LAST_KEY)||0)||0;
     if(isIOS() && Date.now()-last>MIN_GAP){
       scheduleAutoConverge('ios-auto-converge');
+    }
+    if(isIOS()){
+      window.addEventListener('focus', function(){ scheduleForegroundConverge('ios-focus'); }, true);
+      window.addEventListener('pageshow', function(){ scheduleForegroundConverge('ios-pageshow'); }, true);
+      document.addEventListener('visibilitychange', function(){
+        if(!document.hidden) scheduleForegroundConverge('ios-visible');
+      }, true);
     }
     log('installed', {ios:isIOS(), lastFullConvergeAt:last});
   }
