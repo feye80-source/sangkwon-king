@@ -54035,3 +54035,67 @@ window.addEventListener('DOMContentLoaded', () => {
   }
   try{install();}catch(e){console.warn('[SK-CF-v112] init failed',e);}
 })();
+
+/* ════════════════════════════════════════════════════════
+   SK-CF v113: room full-converge helper (iOS-safe)
+   - force full pull for workrooms/sections to recover stale device cache
+════════════════════════════════════════════════════════ */
+(function(){
+  'use strict';
+  var BUILD='20260509-workroom-v113-room-full-converge';
+  var LAST_KEY='sk_cf_v113_last_full_rooms_pull';
+  var MIN_GAP=12*60*60*1000;
+  function log(){try{console.log.apply(console,['[SK-CF-v113]'].concat([].slice.call(arguments)));}catch(e){}}
+  function warn(){try{console.warn.apply(console,['[SK-CF-v113]'].concat([].slice.call(arguments)));}catch(e){}}
+  function lsGet(k){try{return localStorage.getItem(k);}catch(e){return null;}}
+  function lsSet(k,v){try{localStorage.setItem(k,v);}catch(e){}}
+  function isIOS(){try{var ua=String(navigator.userAgent||'');return /iPhone|iPad|iPod/i.test(ua);}catch(e){return false;}}
+  function hasPull(){return typeof window.skCloudPullTable==='function';}
+  function hasRehydrate(){return typeof window.skCloudRehydrateWorkroomUi==='function';}
+  function fullPullRooms(reason){
+    if(!hasPull()) return Promise.resolve({ok:false, skipped:true, reason:'pull-missing'});
+    return Promise.resolve()
+      .then(function(){ return window.skCloudPullTable('workrooms',{since:0,limit:30,maxPages:80}); })
+      .then(function(a){
+        return Promise.resolve()
+          .then(function(){ return window.skCloudPullTable('sections',{since:0,limit:30,maxPages:80}); })
+          .then(function(b){
+            if(hasRehydrate()) { try{ window.skCloudRehydrateWorkroomUi(); }catch(e){} }
+            lsSet(LAST_KEY, String(Date.now()));
+            var out={ok:true, reason:reason||'manual', workrooms:a&&a.pulled, sections:b&&b.pulled, build:BUILD};
+            log('full converge done', out);
+            return out;
+          });
+      })
+      .catch(function(e){
+        warn('full converge failed', reason, e && (e.message||e));
+        return {ok:false, reason:reason||'manual', error:String(e && (e.message||e)), build:BUILD};
+      });
+  }
+  function install(){
+    window.skCloudHardConvergeRooms=function(reason){ return fullPullRooms(reason||'manual-hard-converge'); };
+    var prevCfg=window.skCloudConfig;
+    window.skCloudConfig=function(){
+      var cfg=typeof prevCfg==='function'?prevCfg():{};
+      cfg.build=BUILD;
+      cfg.roomFullConverge=true;
+      cfg.lastRoomFullConvergeAt=Number(lsGet(LAST_KEY)||0)||0;
+      try{console.table(cfg);}catch(e){console.log(cfg);}
+      return cfg;
+    };
+    var prevStatus=window.skCloudAutoSyncStatus;
+    window.skCloudAutoSyncStatus=function(){
+      var s=typeof prevStatus==='function'?prevStatus():{};
+      s.build=BUILD;
+      s.roomFullConverge=true;
+      s.lastRoomFullConvergeAt=Number(lsGet(LAST_KEY)||0)||0;
+      return s;
+    };
+    var last=Number(lsGet(LAST_KEY)||0)||0;
+    if(isIOS() && Date.now()-last>MIN_GAP){
+      setTimeout(function(){ fullPullRooms('ios-auto-converge'); }, 1500);
+    }
+    log('installed', {ios:isIOS(), lastFullConvergeAt:last});
+  }
+  try{install();}catch(e){console.warn('[SK-CF-v113] init failed',e);}
+})();
