@@ -54448,6 +54448,38 @@ window.addEventListener('DOMContentLoaded', () => {
     var tables=(opts.tables && opts.tables.length) ? opts.tables : ['workrooms','sections','items','notes','pl_items'];
     var out={};
     var chain=Promise.resolve();
+    var prePushResult={ ok:true, skipped:true, reason:'prepush-off' };
+    function prePullFlush(reason){
+      var report={ reason:reason||'pre-pull', pending:null, flush:null, activeRoomPush:null };
+      var c=Promise.resolve();
+      c=c.then(function(){
+        if(typeof window.skCloudPendingSummary==='function'){
+          try{ report.pending=window.skCloudPendingSummary(); }catch(e){}
+        }
+      });
+      c=c.then(function(){
+        if(opts.prePush===false) return { ok:true, skipped:true, reason:'prepush-disabled' };
+        if(typeof window.skCloudFlushPendingSafe!=='function') return { ok:true, skipped:true, reason:'flush-missing' };
+        return Promise.resolve(window.skCloudFlushPendingSafe({ maxRows:120 })).catch(function(e){
+          return { ok:false, error:String(e && (e.message||e)) };
+        });
+      }).then(function(r){ report.flush=r; });
+      c=c.then(function(){
+        if(opts.prePush===false) return { ok:true, skipped:true, reason:'prepush-disabled' };
+        var room=activeRoom();
+        if(!room || !idOf(room)) return { ok:true, skipped:true, reason:'active-room-not-found' };
+        return pushRows('workrooms', [room]).catch(function(e){
+          return { ok:false, error:String(e && (e.message||e)) };
+        });
+      }).then(function(r){ report.activeRoomPush=r; });
+      return c.then(function(){ return report; });
+    }
+    chain=chain.then(function(){
+      return prePullFlush(opts.reason || 'pull-all').then(function(r){
+        prePushResult=r;
+        return r;
+      });
+    });
     tables.forEach(function(t){
       chain=chain.then(function(){
         return pullTable(t, { full: opts.full!==false, maxPages: opts.maxPages || MAX_PAGES[t] })
@@ -54460,7 +54492,7 @@ window.addEventListener('DOMContentLoaded', () => {
       refreshTable('workrooms');
       refreshTable('sections');
       refreshTable('items');
-      return { ok:true, build:BUILD, pulled:out, at:now() };
+      return { ok:true, build:BUILD, pulled:out, prePush:prePushResult, at:now() };
     }).finally(function(){ inFlightPull=false; });
   }
 
@@ -54578,12 +54610,18 @@ window.addEventListener('DOMContentLoaded', () => {
         var last=Number(lsGet(LAST_PULL_KEY)||0)||0;
         var gap=isIOS()?12000:18000;
         if(now()-last<gap) return;
-        pullAll({ full:true }).then(function(res){ log('foreground pull', reason, res && res.ok); }).catch(function(e){ warn('foreground pull failed', reason, e && (e.message||e)); });
+        pullAll({ full:true, reason:'foreground:'+reason }).then(function(res){ log('foreground pull', reason, res && res.ok, res && res.prePush); }).catch(function(e){ warn('foreground pull failed', reason, e && (e.message||e)); });
       }, 350);
     }
     window.addEventListener('focus', function(){ schedule('focus'); }, true);
     window.addEventListener('pageshow', function(){ schedule('pageshow'); }, true);
-    document.addEventListener('visibilitychange', function(){ if(!document.hidden) schedule('visible'); }, true);
+    document.addEventListener('visibilitychange', function(){
+      if(document.hidden){
+        scheduleActiveRoomPush('visibility-hidden', 80);
+      }else{
+        schedule('visible');
+      }
+    }, true);
   }
 
   function install(){
@@ -54608,7 +54646,7 @@ window.addEventListener('DOMContentLoaded', () => {
       });
     };
     window.skCloudSyncNow=function(){
-      return pullAll({ full:true, force:true, tables:['workrooms','sections','items','notes','pl_items'] }).then(function(res){
+      return pullAll({ full:true, force:true, reason:'manual-sync', tables:['workrooms','sections','items','notes','pl_items'] }).then(function(res){
         log('manual sync', res);
         return res;
       });
@@ -54616,7 +54654,7 @@ window.addEventListener('DOMContentLoaded', () => {
     window.skCloudConvergeNow=window.skCloudSyncNow;
     window.skCloudRepairImagesAndSync=window.skCloudSyncNow;
     window.skCloudHardConvergeRooms=function(reason){
-      return pullAll({ full:true, force:true, tables:['workrooms','sections','items','notes','pl_items'] }).then(function(res){
+      return pullAll({ full:true, force:true, reason:reason||'manual-hard-converge', tables:['workrooms','sections','items','notes','pl_items'] }).then(function(res){
         return Object.assign({ok:true, reason:reason||'manual-hard-converge', build:BUILD}, res||{});
       });
     };
@@ -54625,7 +54663,13 @@ window.addEventListener('DOMContentLoaded', () => {
       var last=Number(lsGet(LAST_OPEN_PULL_KEY)||0)||0;
       if(now()-last < 20000) return Promise.resolve({ok:true, skipped:true, reason:'recent-open-pull'});
       lsSet(LAST_OPEN_PULL_KEY, String(now()));
-      return pullAll({ full:true, force:true, tables:['workrooms','sections','items','notes','pl_items'] }).then(function(r){ log('open pull', r); return r; });
+      return pullAll({ full:true, force:true, reason:'open-pull', tables:['workrooms','sections','items','notes','pl_items'] }).then(function(r){ log('open pull', r); return r; });
+    };
+    window.skCloudFlushNow=function(reason){
+      var why=reason||'manual-flush';
+      return pullAll({ full:false, force:true, prePush:true, reason:'flush-only:'+why, tables:[] }).then(function(r){
+        return { ok:true, reason:why, prePush:r && r.prePush, build:BUILD };
+      });
     };
 
     var prevCfg=window.skCloudConfig;
