@@ -53869,13 +53869,15 @@ window.addEventListener('DOMContentLoaded', () => {
         var room=findActiveFrom(args,result);
         if(room) {
           var afterSig=rowSig(room);
-          if(afterSig===beforeSig) return result;
-          // microtask + short delay: ensure IDB/cache write and FileReader/upload callback have settled.
-          Promise.resolve().then(function(){ return pushSnapshot(room, name); });
+          if(afterSig!==beforeSig){
+            // immediate push when same-tick data changed
+            Promise.resolve().then(function(){ return pushSnapshot(room, name); });
+          }
+          // delayed push is always checked because upload/file callbacks may mutate room later.
           setTimeout(function(){
             var latest=findActiveFrom(args,result) || room;
             if(latest && stableKey(latest,name)!==lastKey) pushSnapshot(latest, name + ':settled');
-          }, 900);
+          }, 1200);
         } else {
           // No active room is expected in several non-edit persistence paths.
           // Skip quietly to avoid warning flood in console.
@@ -54059,7 +54061,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260509-workroom-v113-room-full-converge-hotfix6';
+  var BUILD='20260509-workroom-v113-room-full-converge-hotfix7';
   var LAST_KEY='sk_cf_v113_last_full_rooms_pull';
   var MIN_GAP=12*60*60*1000;
   var AUTO_RETRY_MAX=6;
