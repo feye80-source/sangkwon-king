@@ -53901,3 +53901,137 @@ window.addEventListener('DOMContentLoaded', () => {
   }
   try{install();}catch(e){console.warn('[SK-CF-v111] init failed',e);}
 })();
+
+/* ════════════════════════════════════════════════════════
+   SK-CF v112: iOS quota guard (device cache trimmer)
+   - keep cloud sync stable when Safari local storage is full
+   - trims non-critical heavy caches and retries once
+════════════════════════════════════════════════════════ */
+(function(){
+  'use strict';
+  var BUILD='20260509-workroom-v112-device-quota-guard';
+  var HEAVY_KEYS=['re_ws','ins_kcards','ins_kcat','csv_transaction_raw'];
+  function warn(){try{console.warn.apply(console,['[SK-CF-v112]'].concat([].slice.call(arguments)));}catch(e){}}
+  function isQuotaError(err){
+    if(!err) return false;
+    var name=String(err.name||'');
+    var msg=String(err.message||'');
+    var code=Number(err.code||0)||0;
+    return code===22 || code===1014 || name==='QuotaExceededError' || name==='NS_ERROR_DOM_QUOTA_REACHED' || /quota/i.test(msg);
+  }
+  function clearLocalHeavy(reason){
+    var removed=[];
+    for(var i=0;i<HEAVY_KEYS.length;i++){
+      var key=HEAVY_KEYS[i];
+      try{
+        if(localStorage.getItem(key)!=null){
+          localStorage.removeItem(key);
+          removed.push(key);
+        }
+      }catch(e){}
+      try{
+        if(window._idbCache && Object.prototype.hasOwnProperty.call(window._idbCache,key)){
+          window._idbCache[key]=[];
+        }
+      }catch(e2){}
+    }
+    if(removed.length) warn('trimmed device cache', {reason:reason||'quota', keys:removed.join(',')});
+    return removed;
+  }
+  function clearIdbHeavy(){
+    if(typeof window.idbSet!=='function') return Promise.resolve([]);
+    var jobs=HEAVY_KEYS.map(function(key){
+      try{
+        return Promise.resolve(window.idbSet(key,[])).catch(function(){ return null; });
+      }catch(e){
+        return Promise.resolve(null);
+      }
+    });
+    return Promise.all(jobs).then(function(){ return HEAVY_KEYS.slice(); });
+  }
+  function installStorageGuard(){
+    try{
+      var proto=window.Storage && window.Storage.prototype;
+      if(!proto || typeof proto.setItem!=='function' || proto.setItem.__skV112QuotaGuard) return false;
+      var raw=proto.setItem;
+      var patched=function(key,value){
+        try{
+          return raw.apply(this, arguments);
+        }catch(e){
+          if(!isQuotaError(e) || this!==window.localStorage) throw e;
+          clearLocalHeavy('localStorage.setItem:' + String(key||''));
+          try{
+            return raw.apply(this, arguments);
+          }catch(e2){
+            warn('localStorage write skipped after trim', String(key||''), e2 && (e2.message||e2));
+            return;
+          }
+        }
+      };
+      patched.__skV112QuotaGuard=true;
+      patched.__skRawSetItem=raw;
+      proto.setItem=patched;
+      return true;
+    }catch(e){
+      warn('installStorageGuard failed', e && (e.message||e));
+      return false;
+    }
+  }
+  function installIdbGuard(){
+    try{
+      var raw=window.idbSet;
+      if(typeof raw!=='function' || raw.__skV112QuotaGuard) return false;
+      var wrapped=function(key,value){
+        var self=this;
+        var args=arguments;
+        return Promise.resolve()
+          .then(function(){ return raw.apply(self, args); })
+          .catch(function(e){
+            if(!isQuotaError(e)) throw e;
+            clearLocalHeavy('idbSet:' + String(key||''));
+            return clearIdbHeavy()
+              .then(function(){ return raw.apply(self, [key, value]); })
+              .catch(function(e2){
+                warn('idbSet write skipped after trim', String(key||''), e2 && (e2.message||e2));
+                return value;
+              });
+          });
+      };
+      wrapped.__skV112QuotaGuard=true;
+      wrapped.__skRawIdbSet=raw;
+      window.idbSet=wrapped;
+      return true;
+    }catch(e){
+      warn('installIdbGuard failed', e && (e.message||e));
+      return false;
+    }
+  }
+  function install(){
+    var lsPatched=installStorageGuard();
+    var idbPatched=installIdbGuard();
+    window.skCloudTrimDeviceCache=function(){
+      var local=clearLocalHeavy('manual');
+      return clearIdbHeavy().then(function(){ return {ok:true, localRemoved:local, idbCleared:HEAVY_KEYS.slice()}; });
+    };
+    var prevCfg=window.skCloudConfig;
+    window.skCloudConfig=function(){
+      var cfg=typeof prevCfg==='function'?prevCfg():{};
+      cfg.build=BUILD;
+      cfg.deviceQuotaGuard=true;
+      cfg.deviceQuotaGuardPatched={localStorage:!!lsPatched, idbSet:!!idbPatched};
+      cfg.deviceTrimKeys=HEAVY_KEYS.slice();
+      try{console.table(cfg);}catch(e){console.log(cfg);}
+      return cfg;
+    };
+    var prevStatus=window.skCloudAutoSyncStatus;
+    window.skCloudAutoSyncStatus=function(){
+      var s=typeof prevStatus==='function'?prevStatus():{};
+      s.build=BUILD;
+      s.deviceQuotaGuard=true;
+      s.deviceTrimKeys=HEAVY_KEYS.slice();
+      return s;
+    };
+    warn('installed', {localStorageGuard:lsPatched, idbGuard:idbPatched});
+  }
+  try{install();}catch(e){console.warn('[SK-CF-v112] init failed',e);}
+})();
