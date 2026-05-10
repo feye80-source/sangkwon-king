@@ -51690,7 +51690,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260510-workroom-v114-stable-multi-device';
+  var BUILD='20260510-workroom-v114-stable-multi-device-clean25';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
@@ -51918,6 +51918,27 @@ window.addEventListener('DOMContentLoaded', () => {
     return Array.from(map.values());
   }
 
+  function mergeRemoteAuthoritative(table, localRows, incomingRows){
+    var map=new Map();
+    (Array.isArray(incomingRows)?incomingRows:[]).forEach(function(r){
+      var id=idOf(r);
+      if(id) map.set(id, r);
+    });
+    var pending=readPending();
+    var byTable=(pending && pending[table]) || {};
+    Object.keys(byTable).forEach(function(id){
+      var row=byTable[id];
+      if(!row || !idOf(row)) return;
+      var remote=map.get(id);
+      if(!remote){
+        map.set(id, row);
+        return;
+      }
+      if(syncTs(row) >= syncTs(remote)) map.set(id, row);
+    });
+    return Array.from(map.values());
+  }
+
   function cloudRows(res){
     var raw=(res && (res.rows || res.items || res.data)) || [];
     if(!Array.isArray(raw)) raw=[];
@@ -51985,8 +52006,12 @@ window.addEventListener('DOMContentLoaded', () => {
     var since=(opts.full===false) ? (Number(lsGet('sk_cf_v114_since_'+table)||0)||0) : 0;
     var pages=0;
     var all=[];
+    var reachedPageCap=false;
     function step(){
-      if(pages >= maxPages) return Promise.resolve();
+      if(pages >= maxPages){
+        reachedPageCap=true;
+        return Promise.resolve();
+      }
       pages += 1;
       return api('/api/sync/pull?table='+encodeURIComponent(table)+'&since='+encodeURIComponent(since)+'&limit='+encodeURIComponent(limit), { method:'GET' })
         .then(function(res){
@@ -52001,10 +52026,15 @@ window.addEventListener('DOMContentLoaded', () => {
     }
     return step().then(function(){
       if(since>0) lsSet('sk_cf_v114_since_'+table, String(since));
-      var merged=mergeByFresh(readCache(table), all);
+      var merged;
+      if(opts.full!==false && !reachedPageCap){
+        merged=mergeRemoteAuthoritative(table, readCache(table), all);
+      }else{
+        merged=mergeByFresh(readCache(table), all);
+      }
       return writeCache(table, merged).then(function(){
         refreshTable(table);
-        return { ok:true, table:table, pulled:all.length, total:merged.length, pages:pages, since:since };
+        return { ok:true, table:table, pulled:all.length, total:merged.length, pages:pages, since:since, reachedPageCap:reachedPageCap };
       });
     });
   }
