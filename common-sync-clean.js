@@ -5338,6 +5338,7 @@ var _safeLocalSet = function(key, value) {
                 };
 
                 window.__wr2CaptureErrCounts = window.__wr2CaptureErrCounts || {};
+                window.__wr2CaptureAutoPruneNotified = window.__wr2CaptureAutoPruneNotified || {};
                 window.wr2CaptureImgError = function(el, idx) {
                   try {
                     var room = getActiveRoom(); if (!room) return;
@@ -5346,6 +5347,9 @@ var _safeLocalSet = function(key, value) {
                     if (!current) return;
                     var src = String((current && (current.src || current.url)) || '');
                     if (!src) return;
+                    if (typeof window.__skRememberBrokenCaptureUrl === 'function') {
+                      try { window.__skRememberBrokenCaptureUrl(src); } catch (_e) {}
+                    }
 
                     if (el && el.style) {
                       el.style.opacity = '0.35';
@@ -5380,7 +5384,11 @@ var _safeLocalSet = function(key, value) {
                     room.updatedAt = Date.now();
                     saveRooms();
                     renderCaptureWidget(room);
-                    if (typeof showToast === 'function') showToast('손상된 이미지 링크 1건 자동 정리됨', 'warn');
+                    var nKey = String(src);
+                    if (!window.__wr2CaptureAutoPruneNotified[nKey]) {
+                      window.__wr2CaptureAutoPruneNotified[nKey] = Date.now();
+                      if (typeof showToast === 'function') showToast('손상된 이미지 링크 자동 정리됨', 'warn');
+                    }
                   } catch (e) {
                     console.warn('[wr2CaptureImgError]', e);
                   }
@@ -51690,7 +51698,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260510-workroom-v114-stable-multi-device-clean27';
+  var BUILD='20260510-workroom-v114-stable-multi-device-clean29';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
@@ -51710,6 +51718,7 @@ window.addEventListener('DOMContentLoaded', () => {
   var netFailCount=0;
   var netBlockUntil=0;
   var PENDING_TTL_MS=10 * 60 * 1000;
+  var BROKEN_CAPTURE_KEY='sk_cf_v114_broken_capture_urls';
 
   function log(){ try{ console.log.apply(console, ['[SK-CF-v114]'].concat([].slice.call(arguments))); }catch(e){} }
   function warn(){ try{ console.warn.apply(console, ['[SK-CF-v114]'].concat([].slice.call(arguments))); }catch(e){} }
@@ -51817,6 +51826,44 @@ window.addEventListener('DOMContentLoaded', () => {
   function writePending(p){
     try{ lsSet('sk_cf_v114_pending_rows', JSON.stringify(p||{})); }catch(e){}
   }
+  function normUrl(u){
+    try{
+      var s=String(u||'').trim();
+      if(!s) return '';
+      return s.split('#')[0].split('?')[0];
+    }catch(e){ return ''; }
+  }
+  function isCaptureAssetUrl(u){
+    var s=normUrl(u);
+    if(!s) return false;
+    return /sangkwon-upload-worker\.feye80\.workers\.dev\/[^?#]*\/captures\//i.test(s);
+  }
+  function readBrokenCaptureUrls(){
+    try{
+      var raw=JSON.parse(lsGet(BROKEN_CAPTURE_KEY)||'[]');
+      if(!Array.isArray(raw)) return [];
+      return raw.map(normUrl).filter(Boolean);
+    }catch(e){ return []; }
+  }
+  function writeBrokenCaptureUrls(arr){
+    try{
+      var dedupe={};
+      (Array.isArray(arr)?arr:[]).forEach(function(u){
+        var n=normUrl(u);
+        if(n) dedupe[n]=1;
+      });
+      lsSet(BROKEN_CAPTURE_KEY, JSON.stringify(Object.keys(dedupe)));
+    }catch(e){}
+  }
+  function rememberBrokenCaptureUrl(url){
+    var n=normUrl(url);
+    if(!isCaptureAssetUrl(n)) return false;
+    var list=readBrokenCaptureUrls();
+    if(list.indexOf(n)>=0) return false;
+    list.push(n);
+    writeBrokenCaptureUrls(list);
+    return true;
+  }
   function pendingSummary(){
     var p=readPending();
     var byTable={};
@@ -51827,6 +51874,96 @@ window.addEventListener('DOMContentLoaded', () => {
       total += n;
     });
     return { total:total, byTable:byTable };
+  }
+  function installBrokenCaptureTracker(){
+    try{
+      if(window.__skBrokenCaptureTrackerInstalled) return;
+      window.__skBrokenCaptureTrackerInstalled=true;
+      window.addEventListener('error', function(ev){
+        try{
+          var t=ev && ev.target;
+          if(!t) return;
+          var tag=String(t.tagName||'').toUpperCase();
+          if(tag!=='IMG') return;
+          var src=String((t.currentSrc || t.src || '')).trim();
+          if(!src) return;
+          if(rememberBrokenCaptureUrl(src)){
+            log('capture url marked broken', normUrl(src));
+          }
+        }catch(_e){}
+      }, true);
+    }catch(e){}
+  }
+  function pruneRoomBrokenCaptureRefs(room, brokenMap){
+    if(!room || typeof room!=='object') return { changed:false, removed:0 };
+    var removed=0;
+    var changed=false;
+    if(Array.isArray(room.captureImages)){
+      var next=room.captureImages.filter(function(img){
+        var src=normUrl(img && (img.src || img.url));
+        if(src && brokenMap[src]){
+          removed += 1;
+          changed=true;
+          return false;
+        }
+        return true;
+      });
+      if(next.length!==room.captureImages.length) room.captureImages=next;
+    }
+    if(Array.isArray(room.notes)){
+      room.notes.forEach(function(note){
+        if(!note || !Array.isArray(note.attachments)) return;
+        var next=note.attachments.filter(function(att){
+          var src=normUrl(att && (att.url || att.data || att.src));
+          if(src && brokenMap[src]){
+            removed += 1;
+            changed=true;
+            return false;
+          }
+          return true;
+        });
+        if(next.length!==note.attachments.length) note.attachments=next;
+      });
+    }
+    if(changed) room.updatedAt=now();
+    return { changed:changed, removed:removed };
+  }
+  function pruneBrokenCaptureRefs(opts){
+    opts=opts||{};
+    var explicit=(Array.isArray(opts.urls)?opts.urls:[]).map(normUrl).filter(Boolean);
+    if(explicit.length){
+      var merged=readBrokenCaptureUrls().concat(explicit);
+      writeBrokenCaptureUrls(merged);
+    }
+    var broken=readBrokenCaptureUrls().filter(isCaptureAssetUrl);
+    if(!broken.length){
+      return Promise.resolve({ok:true, changedRooms:0, removedRefs:0, brokenUrlCount:0, reason:'no-broken-capture-urls'});
+    }
+    var brokenMap={};
+    broken.forEach(function(u){ brokenMap[u]=1; });
+    var local=readCache('workrooms');
+    var nextRows=[];
+    var changedRows=[];
+    var removedRefs=0;
+    local.forEach(function(row){
+      var room=JSON.parse(JSON.stringify(row||{}));
+      var r=pruneRoomBrokenCaptureRefs(room, brokenMap);
+      removedRefs += r.removed;
+      if(r.changed) changedRows.push(room);
+      nextRows.push(r.changed ? room : row);
+    });
+    if(!changedRows.length){
+      return Promise.resolve({ok:true, changedRooms:0, removedRefs:0, brokenUrlCount:broken.length, reason:'no-matching-refs'});
+    }
+    return writeCache('workrooms', nextRows).then(function(){
+      refreshTable('workrooms');
+      return pushRows('workrooms', changedRows).then(function(pushRes){
+        return {ok:true, changedRooms:changedRows.length, removedRefs:removedRefs, brokenUrlCount:broken.length, push:pushRes};
+      }).catch(function(e){
+        var queued=enqueuePending('workrooms', changedRows);
+        return {ok:false, changedRooms:changedRows.length, removedRefs:removedRefs, brokenUrlCount:broken.length, queued:queued, error:String(e && (e.message||e))};
+      });
+    });
   }
   function enqueuePending(table, rows){
     var clean=(Array.isArray(rows)?rows:[]).filter(function(r){ return r && idOf(r); });
@@ -52404,6 +52541,7 @@ window.addEventListener('DOMContentLoaded', () => {
     window._sbUploadImage=function(source, folder){ return strictUploadToR2(source, folder); };
 
     var fetchGateInstalled=installFetchGate();
+    installBrokenCaptureTracker();
     installPersistWrap('_wrPersistRooms');
     installPersistWrap('_wrPersistAndSyncRooms');
 
@@ -52417,11 +52555,21 @@ window.addEventListener('DOMContentLoaded', () => {
         return Object.assign({activeRoomId:idOf(room), pushed:1}, res||{});
       });
     };
-    window.skCloudSyncNow=function(){
-      return pullAll({ full:true, force:true, reason:'manual-sync', tables:['workrooms','sections','items','notes','pl_items'] }).then(function(res){
-        log('manual sync', res);
-        return res;
+    window.skCloudRepairBrokenCaptureRefs=function(urls){
+      return pruneBrokenCaptureRefs({ urls:Array.isArray(urls)?urls:[] }).then(function(rep){
+        log('repair broken capture refs', rep);
+        return rep;
       });
+    };
+    window.skCloudSyncNow=function(){
+      return pullAll({ full:true, force:true, reason:'manual-sync', tables:['workrooms','sections','items','notes','pl_items'] })
+        .then(function(res){
+          return pruneBrokenCaptureRefs({}).then(function(rep){
+            res.repair=rep;
+            log('manual sync', res);
+            return res;
+          });
+        });
     };
     window.skCloudConvergeNow=window.skCloudSyncNow;
     window.skCloudRepairImagesAndSync=window.skCloudSyncNow;
@@ -52435,7 +52583,14 @@ window.addEventListener('DOMContentLoaded', () => {
       var last=Number(lsGet(LAST_OPEN_PULL_KEY)||0)||0;
       if(now()-last < 20000) return Promise.resolve({ok:true, skipped:true, reason:'recent-open-pull'});
       lsSet(LAST_OPEN_PULL_KEY, String(now()));
-      return pullAll({ full:true, force:true, reason:'open-pull', tables:['workrooms','sections','items','notes','pl_items'] }).then(function(r){ log('open pull', r); return r; });
+      return pullAll({ full:true, force:true, reason:'open-pull', tables:['workrooms','sections','items','notes','pl_items'] })
+        .then(function(r){
+          return pruneBrokenCaptureRefs({}).then(function(rep){
+            r.repair=rep;
+            log('open pull', r);
+            return r;
+          });
+        });
     };
     window.skCloudFlushNow=function(reason){
       var why=reason||'manual-flush';
@@ -52445,6 +52600,8 @@ window.addEventListener('DOMContentLoaded', () => {
     };
     window.skCloudPendingSummary=function(){ return pendingSummary(); };
     window.skCloudFlushPendingSafe=function(opts){ return flushPendingSafe(opts||{}); };
+    window.__skRememberBrokenCaptureUrl=function(url){ return rememberBrokenCaptureUrl(url); };
+    window.skCloudGetBrokenCaptureUrls=function(){ return readBrokenCaptureUrls(); };
 
     window._sbGetUserId=function(){ return Promise.resolve(userKey()); };
     window._sbGetSessionShared=function(){ return Promise.resolve({data:{session:{user:{id:userKey(),email:userKey()}}},error:null}); };
@@ -52519,6 +52676,7 @@ window.addEventListener('DOMContentLoaded', () => {
       cfg.pullCooldownUntil=pullCooldownUntil;
       cfg.netFailCount=netFailCount;
       cfg.netBlockUntil=netBlockUntil;
+      cfg.brokenCaptureUrlCount=readBrokenCaptureUrls().length;
       cfg.fetchGateInstalled=!!fetchGateInstalled;
       try{ console.table(cfg); }catch(e){ console.log(cfg); }
       return cfg;
