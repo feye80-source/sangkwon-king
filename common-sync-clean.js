@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260508-workroom-v77-kpi-rent-first-height-fix';
+    window.__SK_BUILD = '20260510-workroom-v116-hard-open-pull-nostore';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -51712,14 +51712,14 @@ window.addEventListener('DOMContentLoaded', () => {
 })();
 
 /* ════════════════════════════════════════════════════════
-   SK-CF v115: download-first + durable outbox multi-device sync
+   SK-CF v116: hard open-pull + no-store sync pull
    - unifies active sync path across devices
    - stale-row guard by per-row sync timestamp
    - full converge pulls workrooms/sections/items together
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260510-workroom-v115-download-first-outbox-sync';
+  var BUILD='20260510-workroom-v116-hard-open-pull-nostore';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
@@ -51741,8 +51741,8 @@ window.addEventListener('DOMContentLoaded', () => {
   var PENDING_TTL_MS=7 * 24 * 60 * 60 * 1000;
   var BROKEN_CAPTURE_KEY='sk_cf_v115_broken_capture_urls';
 
-  function log(){ try{ console.log.apply(console, ['[SK-CF-v115]'].concat([].slice.call(arguments))); }catch(e){} }
-  function warn(){ try{ console.warn.apply(console, ['[SK-CF-v115]'].concat([].slice.call(arguments))); }catch(e){} }
+  function log(){ try{ console.log.apply(console, ['[SK-CF-v116]'].concat([].slice.call(arguments))); }catch(e){} }
+  function warn(){ try{ console.warn.apply(console, ['[SK-CF-v116]'].concat([].slice.call(arguments))); }catch(e){} }
   function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
   function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
   function now(){ return Date.now(); }
@@ -51771,6 +51771,46 @@ window.addEventListener('DOMContentLoaded', () => {
     window.SK_CLOUD_USER_KEY=v;
     lsSet(USER_KEY,v);
     return v;
+  }
+  function cacheBustPath(path, reason){
+    var raw=String(path||'');
+    var sep=raw.indexOf('?')>=0 ? '&' : '?';
+    var nonce=String(now()) + '_' + Math.random().toString(36).slice(2);
+    return raw + sep + '_skts=' + encodeURIComponent(now()) + '&_skrid=' + encodeURIComponent(nonce) + '&_skwhy=' + encodeURIComponent(reason||'pull');
+  }
+  function syncPullPath(table, since, limit, reason){
+    return cacheBustPath('/api/sync/pull?table='+encodeURIComponent(table)+'&since='+encodeURIComponent(since)+'&limit='+encodeURIComponent(limit), reason||('pull:'+table));
+  }
+  function waitIdbReady(maxMs){
+    var started=now();
+    return new Promise(function(resolve){
+      (function tick(){
+        if(window._idbPreloadDone){ resolve({ready:true, waitedMs:now()-started}); return; }
+        if(now()-started >= Math.max(0, Number(maxMs||0)||0)){ resolve({ready:false, waitedMs:now()-started}); return; }
+        setTimeout(tick, 50);
+      })();
+    });
+  }
+  var openPullBootPromise=null;
+  function runOpenPullAfterLocalReady(reason){
+    if(openPullBootPromise) return openPullBootPromise;
+    openPullBootPromise=waitIdbReady(8000).then(function(state){
+      return window.skCloudOpenPullOnce(String(reason||'boot') + (state.ready?':idb-ready':':idb-timeout')).then(function(res){
+        res.idbReadyAtOpen=!!state.ready;
+        res.idbWaitMs=state.waitedMs;
+        if(!state.ready){
+          waitIdbReady(20000).then(function(late){
+            if(late && late.ready){
+              window.skCloudOpenPullOnce(String(reason||'boot') + ':post-idb-ready').catch(function(e){ warn('post-idb open pull failed', e && (e.message||e)); });
+            }
+          });
+        }
+        return res;
+      });
+    }).finally(function(){
+      setTimeout(function(){ openPullBootPromise=null; }, 1500);
+    });
+    return openPullBootPromise;
   }
   function setApiBase(url){
     var clean=String(url||'').trim().replace(/\/+$/,'');
@@ -52037,8 +52077,17 @@ window.addEventListener('DOMContentLoaded', () => {
 
   function api(path, opts){
     opts=opts||{};
-    opts.headers=Object.assign({'content-type':'application/json','x-sk-user':userKey()}, opts.headers||{});
-    return fetch(apiBase()+path, opts).then(function(res){
+    var method=String(opts.method || 'GET').toUpperCase();
+    var isGet=(method==='GET');
+    var isSyncPull=String(path||'').indexOf('/api/sync/pull')===0;
+    var nextOpts=Object.assign({}, opts);
+    if(isGet || isSyncPull){
+      // 동기화 API는 브라우저/아이패드 Safari 캐시를 타면 안 된다.
+      // URL nonce + fetch no-store로 서버 최신값만 읽도록 고정한다.
+      nextOpts.cache='no-store';
+    }
+    nextOpts.headers=Object.assign({'content-type':'application/json','x-sk-user':userKey()}, opts.headers||{});
+    return fetch(apiBase()+path, nextOpts).then(function(res){
       return res.text().then(function(txt){
         var data={};
         try{ data=txt?JSON.parse(txt):{}; }catch(e){ data={raw:txt}; }
@@ -52231,7 +52280,7 @@ window.addEventListener('DOMContentLoaded', () => {
         return Promise.resolve();
       }
       pages += 1;
-      return api('/api/sync/pull?table='+encodeURIComponent(table)+'&since='+encodeURIComponent(since)+'&limit='+encodeURIComponent(limit), { method:'GET' })
+      return api(syncPullPath(table, since, limit, opts.reason || ('pull-table:'+table)), { method:'GET' })
         .then(function(res){
           var rows=cloudRows(res);
           all=all.concat(rows);
@@ -52300,7 +52349,7 @@ window.addEventListener('DOMContentLoaded', () => {
     });
     tables.forEach(function(t){
       chain=chain.then(function(){
-        return pullTable(t, { full: opts.full!==false, maxPages: opts.maxPages || MAX_PAGES[t] })
+        return pullTable(t, { full: opts.full!==false, maxPages: opts.maxPages || MAX_PAGES[t], reason: opts.reason || 'pull-all' })
           .then(function(r){ out[t]={ok:true,pulled:r.pulled,total:r.total,pages:r.pages}; })
           .catch(function(e){ out[t]={ok:false,error:String(e && (e.message||e))}; warn('pull failed', t, e && (e.message||e)); });
       });
@@ -52622,7 +52671,7 @@ window.addEventListener('DOMContentLoaded', () => {
       var t=String(table||'').trim();
       var s=Number(since||0)||0;
       var l=Math.max(1, Math.min(200, Number(limit||LIMIT[t]||30)||30));
-      return api('/api/sync/pull?table='+encodeURIComponent(t)+'&since='+encodeURIComponent(s)+'&limit='+encodeURIComponent(l), { method:'GET' });
+      return api(syncPullPath(t, s, l, 'manual-table-pull'), { method:'GET' });
     };
     window.skCloudPush=function(table, rows){ return pushRows(String(table||''), Array.isArray(rows)?rows:[]); };
 
@@ -52671,11 +52720,13 @@ window.addEventListener('DOMContentLoaded', () => {
       });
     };
 
-    window.skCloudOpenPullOnce=function(){
-      // v115: 새로고침/재진입 때마다 서버를 먼저 읽는다.
-      // localStorage 쿨다운으로 pull을 건너뛰면 기기별 사진/수정값이 달라진다.
+    window.skCloudOpenPullOnce=function(reason){
+      // v116: 앱 진입/새로고침의 open-pull은 foreground 쿨다운과 분리된 hard pull이다.
+      // 단, IDB 프리로드가 끝난 뒤 실행해 오래된 로컬 IndexedDB가 서버 최신값을 되덮지 못하게 한다.
+      var why=reason||'open-pull';
       lsSet(LAST_OPEN_PULL_KEY, String(now()));
-      return pullAll({ full:true, reason:'open-pull', tables:['workrooms','sections','items','notes','pl_items'] })
+      lsSet(LAST_PULL_ATTEMPT_KEY, String(now()));
+      return pullAll({ full:true, force:true, reason:why, tables:['workrooms','sections','items','notes','pl_items'] })
         .then(function(r){
           return pruneBrokenCaptureRefs({}).then(function(rep){
             r.repair=rep;
@@ -52732,7 +52783,7 @@ window.addEventListener('DOMContentLoaded', () => {
     window._sbApplyRecovery=function(){ hideLegacyAuthUi(); return Promise.resolve({ok:true, cloudflare:true, skipped:true, reason:'supabase-recovery-disabled'}); };
     window._sbInitLoad=function(){
       hideLegacyAuthUi();
-      return window.skCloudOpenPullOnce().then(function(){ return {cloudflare:true}; }).catch(function(e){
+      return runOpenPullAfterLocalReady('sb-init-load').then(function(res){ return {cloudflare:true, openPull:res}; }).catch(function(e){
         return {cloudflare:false, error:String(e && (e.message||e))};
       });
     };
@@ -52764,6 +52815,9 @@ window.addEventListener('DOMContentLoaded', () => {
       cfg.apiBase=apiBase();
       cfg.userKey=userKey();
       cfg.stableSyncV115=true;
+      cfg.stableSyncV116=true;
+      cfg.hardOpenPullNoStore=true;
+      cfg.idbPreloadDone=!!window._idbPreloadDone;
       cfg.roomFullConverge=true;
       cfg.workerPagedSync=true;
       cfg.hasSyncNow=typeof window.skCloudSyncNow;
@@ -52784,6 +52838,8 @@ window.addEventListener('DOMContentLoaded', () => {
       var s=typeof prevStatus==='function'?prevStatus():{};
       s.build=BUILD;
       s.stableSyncV115=true;
+      s.stableSyncV116=true;
+      s.idbPreloadDone=!!window._idbPreloadDone;
       s.activeRoomId=window.wr2State && window.wr2State.activeRoomId || null;
       s.lastPullAt=Number(lsGet(LAST_PULL_KEY)||0)||0;
       s.pullFailCount=pullFailCount;
@@ -52797,14 +52853,14 @@ window.addEventListener('DOMContentLoaded', () => {
 
     try{
       if(document.readyState==='loading'){
-        document.addEventListener('DOMContentLoaded', function(){ window.skCloudOpenPullOnce().catch(function(){}); }, {once:true});
+        document.addEventListener('DOMContentLoaded', function(){ runOpenPullAfterLocalReady('dom-open').catch(function(){}); }, {once:true});
       }else{
-        setTimeout(function(){ window.skCloudOpenPullOnce().catch(function(){}); }, 300);
+        setTimeout(function(){ runOpenPullAfterLocalReady('dom-open').catch(function(){}); }, 300);
       }
     }catch(e){}
 
     log('installed', {build:BUILD, ios:isIOS(), activeRoomId:window.wr2State && window.wr2State.activeRoomId || null});
   }
 
-  try{ install(); }catch(e){ console.warn('[SK-CF-v115] init failed', e); }
+  try{ install(); }catch(e){ console.warn('[SK-CF-v116] init failed', e); }
 })();
