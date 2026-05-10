@@ -5354,7 +5354,17 @@ var _safeLocalSet = function(key, value) {
 
                     var cnt = Number(window.__wr2CaptureErrCounts[src] || 0) + 1;
                     window.__wr2CaptureErrCounts[src] = cnt;
-                    if (cnt < 2) return; // 일시 오류 오탐 방지
+                    if (cnt === 1) {
+                      // 한 번 더 렌더해서 재시도 후에도 실패하면 정리
+                      setTimeout(function(){
+                        try {
+                          var cur = getActiveRoom();
+                          if (cur && idOf(cur) === idOf(room)) renderCaptureWidget(cur);
+                        } catch (_e) {}
+                      }, 900);
+                      return;
+                    }
+                    if (cnt < 2) return;
 
                     var targetIdx = idx;
                     var byIdx = room.captureImages[targetIdx];
