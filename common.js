@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260510-workroom-v116-hard-open-pull-nostore';
+    window.__SK_BUILD = '20260510-workroom-v118-diagnose-no-write';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -51757,7 +51757,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260510-workroom-v117-capture-tombstone-delete-sync';
+  var BUILD='20260510-workroom-v118-diagnose-no-write';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
@@ -51779,8 +51779,8 @@ window.addEventListener('DOMContentLoaded', () => {
   var PENDING_TTL_MS=7 * 24 * 60 * 60 * 1000;
   var BROKEN_CAPTURE_KEY='sk_cf_v115_broken_capture_urls';
 
-  function log(){ try{ console.log.apply(console, ['[SK-CF-v117]'].concat([].slice.call(arguments))); }catch(e){} }
-  function warn(){ try{ console.warn.apply(console, ['[SK-CF-v117]'].concat([].slice.call(arguments))); }catch(e){} }
+  function log(){ try{ console.log.apply(console, ['[SK-CF-v118D]'].concat([].slice.call(arguments))); }catch(e){} }
+  function warn(){ try{ console.warn.apply(console, ['[SK-CF-v118D]'].concat([].slice.call(arguments))); }catch(e){} }
   function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
   function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
   function now(){ return Date.now(); }
@@ -52593,6 +52593,216 @@ window.addEventListener('DOMContentLoaded', () => {
     }).finally(function(){ inFlightPull=false; });
   }
 
+
+  /* ───────────────────────────────────────────────────────
+     v118-diagnose: read-only sync diagnostics
+     - 동기화 저장/삭제/병합 로직은 건드리지 않는다.
+     - 서버 확인은 /api/sync/pull GET만 사용하고, 로컬 cache/IDB/writeCache를 절대 수정하지 않는다.
+  ─────────────────────────────────────────────────────── */
+  function diagHash(value){
+    var s=String(value||'');
+    var h=2166136261;
+    for(var i=0;i<s.length;i+=1){ h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return ('00000000' + (h>>>0).toString(16)).slice(-8);
+  }
+  function diagCaptureKeys(room){
+    var out={};
+    try{
+      (Array.isArray(room && room.captureImages) ? room.captureImages : []).forEach(function(img){
+        var key=captureKeyFromImage(img);
+        if(key) out[key]=1;
+      });
+      if(room && room.captureImage){
+        var singleKey=captureDeleteKey(room.captureImage, '');
+        if(singleKey) out[singleKey]=1;
+      }
+    }catch(e){}
+    return Object.keys(out).sort();
+  }
+  function diagDeleteKeys(room){
+    try{ return Object.keys(normalizeCaptureDeleteMap(room)||{}).sort(); }catch(e){ return []; }
+  }
+  function diagRoomMeta(room){
+    var keys=diagCaptureKeys(room);
+    var delKeys=diagDeleteKeys(room);
+    return {
+      id:idOf(room),
+      title:String((room && (room.title || room.name || room.addr || room.address)) || '').slice(0, 60),
+      imageCount:keys.length,
+      imageHashes:keys.map(diagHash),
+      deleteCount:delKeys.length,
+      deleteHashes:delKeys.map(diagHash),
+      updatedAt:updatedOf(room)||0,
+      serverUpdatedAt:tOf(room && room._skServerUpdatedAt)||0,
+      deletedAt:deletedOf(room)||0,
+      syncTs:syncTs(room)||0
+    };
+  }
+  function diagRowsSummary(rows){
+    var list=(Array.isArray(rows)?rows:[]).filter(function(r){ return r && idOf(r); });
+    var active=list.filter(function(r){ return !deletedOf(r); });
+    var totalImages=0;
+    var totalDeletes=0;
+    var roomsWithImages=0;
+    var roomsWithDeletes=0;
+    var maxSyncTs=0;
+    var roomDetails=[];
+    active.forEach(function(r){
+      var meta=diagRoomMeta(r);
+      totalImages += meta.imageCount;
+      totalDeletes += meta.deleteCount;
+      maxSyncTs=Math.max(maxSyncTs, meta.syncTs||0);
+      if(meta.imageCount) roomsWithImages += 1;
+      if(meta.deleteCount) roomsWithDeletes += 1;
+      if(meta.imageCount || meta.deleteCount) roomDetails.push(meta);
+    });
+    roomDetails.sort(function(a,b){ return (b.syncTs||0)-(a.syncTs||0); });
+    return {
+      total:list.length,
+      active:active.length,
+      deleted:list.length-active.length,
+      roomsWithImages:roomsWithImages,
+      totalImages:totalImages,
+      roomsWithDeletes:roomsWithDeletes,
+      totalDeleteTombstones:totalDeletes,
+      maxSyncTs:maxSyncTs,
+      maxSyncIso:maxSyncTs ? new Date(maxSyncTs).toISOString() : '',
+      imageRooms:roomDetails.slice(0, 80)
+    };
+  }
+  function diagPendingCounts(){
+    var p={};
+    try{ p=readPending() || {}; }catch(e){ p={}; }
+    var out={};
+    Object.keys(p||{}).forEach(function(table){
+      out[table]=Object.keys(p[table]||{}).length;
+    });
+    return out;
+  }
+  function diagLocalSnapshot(reason){
+    var workrooms=readCache('workrooms');
+    var sections=readCache('sections');
+    var items=readCache('items');
+    var notes=readCache('notes');
+    var pl=readCache('pl_items');
+    var activeId='';
+    try{ activeId=String((window.wr2State && window.wr2State.activeRoomId) || ''); }catch(e){}
+    return {
+      ok:true,
+      kind:'local-only',
+      reason:String(reason||'local-diagnose'),
+      build:BUILD,
+      at:now(),
+      atIso:new Date().toISOString(),
+      isIOS:isIOS(),
+      idbPreloadDone:!!window._idbPreloadDone,
+      visibility:(typeof document!=='undefined' ? document.visibilityState : ''),
+      online:(typeof navigator!=='undefined' ? navigator.onLine : null),
+      userKey:userKey(),
+      apiBase:apiBase(),
+      lastPullAt:Number(lsGet(LAST_PULL_KEY)||0)||0,
+      lastPullAttemptAt:Number(lsGet(LAST_PULL_ATTEMPT_KEY)||0)||0,
+      lastOpenPullAt:Number(lsGet(LAST_OPEN_PULL_KEY)||0)||0,
+      netBlockRemainingMs:Math.max(0, netBlockUntil-now()),
+      pullCooldownRemainingMs:Math.max(0, pullCooldownUntil-now()),
+      pending:diagPendingCounts(),
+      brokenCaptureUrlCount:readBrokenCaptureUrls().length,
+      activeRoomId:activeId,
+      localCounts:{
+        workrooms:workrooms.length,
+        sections:sections.length,
+        items:items.length,
+        notes:notes.length,
+        pl_items:pl.length
+      },
+      workrooms:diagRowsSummary(workrooms)
+    };
+  }
+  function diagProbeWorkroomsReadOnly(reason, opts){
+    opts=opts||{};
+    var limit=Math.min(30, Number(opts.limit || LIMIT.workrooms || 30) || 30);
+    var maxPages=Math.max(1, Math.min(120, Number(opts.maxPages || MAX_PAGES.workrooms || 80) || 80));
+    var since=0;
+    var pages=0;
+    var all=[];
+    var reachedPageCap=false;
+    function step(){
+      if(pages >= maxPages){ reachedPageCap=true; return Promise.resolve(); }
+      pages += 1;
+      return api(syncPullPath('workrooms', since, limit, 'diag-readonly:'+String(reason||'')), { method:'GET' })
+        .then(function(res){
+          var rows=cloudRows(res);
+          all=all.concat(rows);
+          var nextSince=Number(res && (res.nextSince || res.cursor) || 0) || 0;
+          if(nextSince > since) since=nextSince;
+          if(res && res.more && rows.length) return step();
+        });
+    }
+    return step().then(function(){
+      return {
+        ok:true,
+        kind:'remote-readonly',
+        reason:String(reason||'remote-diagnose'),
+        table:'workrooms',
+        pages:pages,
+        pulled:all.length,
+        reachedPageCap:reachedPageCap,
+        nextSince:since,
+        workrooms:diagRowsSummary(all),
+        _rows:all
+      };
+    });
+  }
+  function diagCompareRooms(localRows, remoteRows){
+    var localMap={};
+    var remoteMap={};
+    (Array.isArray(localRows)?localRows:[]).forEach(function(r){ var id=idOf(r); if(id) localMap[id]=diagRoomMeta(r); });
+    (Array.isArray(remoteRows)?remoteRows:[]).forEach(function(r){ var id=idOf(r); if(id) remoteMap[id]=diagRoomMeta(r); });
+    var ids={};
+    Object.keys(localMap).forEach(function(id){ ids[id]=1; });
+    Object.keys(remoteMap).forEach(function(id){ ids[id]=1; });
+    var diffs=[];
+    Object.keys(ids).forEach(function(id){
+      var l=localMap[id] || null;
+      var r=remoteMap[id] || null;
+      if(!l || !r){
+        diffs.push({id:id, title:(l&&l.title)||(r&&r.title)||'', type:(!l?'remote-only':'local-only'), localImages:l?l.imageCount:null, remoteImages:r?r.imageCount:null, localTs:l?l.syncTs:null, remoteTs:r?r.syncTs:null});
+        return;
+      }
+      var imgDiff=(l.imageHashes.join(',') !== r.imageHashes.join(','));
+      var delDiff=(l.deleteHashes.join(',') !== r.deleteHashes.join(','));
+      var tsGap=(r.syncTs||0)-(l.syncTs||0);
+      if(imgDiff || delDiff || Math.abs(tsGap)>1000){
+        diffs.push({
+          id:id,
+          title:l.title || r.title || '',
+          type:'different',
+          localImages:l.imageCount,
+          remoteImages:r.imageCount,
+          localDeletes:l.deleteCount,
+          remoteDeletes:r.deleteCount,
+          localTs:l.syncTs,
+          remoteTs:r.syncTs,
+          remoteMinusLocalMs:tsGap,
+          imageDiff:imgDiff,
+          deleteDiff:delDiff
+        });
+      }
+    });
+    diffs.sort(function(a,b){ return Math.abs(b.remoteMinusLocalMs||0)-Math.abs(a.remoteMinusLocalMs||0); });
+    return {diffCount:diffs.length, diffs:diffs.slice(0, 80)};
+  }
+  function diagConsole(result){
+    try{
+      console.group('[SK-CF-DIAG] ' + (result && result.reason || 'diagnose'));
+      console.log('summary', result);
+      if(result && result.compare && result.compare.diffs && result.compare.diffs.length){
+        console.table(result.compare.diffs.slice(0, 30));
+      }
+      console.groupEnd();
+    }catch(e){}
+  }
+
   function dedupeRows(rows){
     var map=new Map();
     (Array.isArray(rows)?rows:[]).forEach(function(r){
@@ -52999,6 +53209,61 @@ window.addEventListener('DOMContentLoaded', () => {
     };
     window.skCloudGetBrokenCaptureUrls=function(){ return readBrokenCaptureUrls(); };
 
+    window.skCloudDiagLocal=function(reason){
+      var res=diagLocalSnapshot(reason||'manual-local');
+      window.__SK_LAST_DIAG_LOCAL=res;
+      diagConsole(res);
+      return res;
+    };
+    window.skCloudDiagNow=function(reason, opts){
+      var why=reason||'manual-diagnose';
+      var local=diagLocalSnapshot(why);
+      return diagProbeWorkroomsReadOnly(why, opts||{}).then(function(remote){
+        var compare=diagCompareRooms(readCache('workrooms'), remote._rows||[]);
+        var result={
+          ok:true,
+          kind:'local-vs-remote-readonly',
+          reason:String(why),
+          build:BUILD,
+          at:now(),
+          atIso:new Date().toISOString(),
+          local:local,
+          remote:{
+            ok:remote.ok,
+            table:remote.table,
+            pages:remote.pages,
+            pulled:remote.pulled,
+            reachedPageCap:remote.reachedPageCap,
+            nextSince:remote.nextSince,
+            workrooms:remote.workrooms
+          },
+          compare:compare,
+          note:'READ ONLY: 서버 GET 조회만 수행했고, 로컬/서버 데이터는 쓰지 않았습니다.'
+        };
+        window.__SK_LAST_DIAG=result;
+        diagConsole(result);
+        return result;
+      }).catch(function(e){
+        var result={ok:false, kind:'local-vs-remote-readonly', reason:String(why), build:BUILD, local:local, error:String(e && (e.message||e))};
+        window.__SK_LAST_DIAG=result;
+        diagConsole(result);
+        return result;
+      });
+    };
+    window.skCloudDiagExplain=function(){
+      return {
+        build:BUILD,
+        safe:true,
+        writes:false,
+        description:'skCloudDiagNow는 서버 /api/sync/pull을 read-only로 조회하고, 로컬 IndexedDB/cache와 비교만 합니다. writeCache/idbSet/pushRows/삭제 처리를 호출하지 않습니다.',
+        commands:[
+          "await skCloudDiagNow('after-upload-missing')",
+          "skCloudDiagLocal('local-only')",
+          "copy(JSON.stringify(window.__SK_LAST_DIAG, null, 2))"
+        ]
+      };
+    };
+
     window._sbGetUserId=function(){ return Promise.resolve(userKey()); };
     window._sbGetSessionShared=function(){ return Promise.resolve({data:{session:{user:{id:userKey(),email:userKey()}}},error:null}); };
     function hideLegacyAuthUi(){
@@ -53113,5 +53378,5 @@ window.addEventListener('DOMContentLoaded', () => {
     log('installed', {build:BUILD, ios:isIOS(), activeRoomId:window.wr2State && window.wr2State.activeRoomId || null});
   }
 
-  try{ install(); }catch(e){ console.warn('[SK-CF-v117] init failed', e); }
+  try{ install(); }catch(e){ console.warn('[SK-CF-v118D] init failed', e); }
 })();
