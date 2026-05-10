@@ -5272,7 +5272,7 @@ var _safeLocalSet = function(key, value) {
                     }
                     imgs.forEach(function(img, i) {
                       gridHtml += '<div class="wr2-img-thumb" onclick="wr2Lightbox(' + i + ')">'
-                        + '<img src="' + (window._sbImgUrl ? window._sbImgUrl(img.src, 400) : img.src) + '" alt="캡처 ' + (i+1) + '">'
+                        + '<img src="' + (window._sbImgUrl ? window._sbImgUrl(img.src, 400) : img.src) + '" alt="캡처 ' + (i+1) + '" onerror="wr2CaptureImgError(this,' + i + ')">'
                         + '<div class="wr2-img-overlay"><span class="wr2-img-zoom">🔍</span></div>'
                         + '<button class="wr2-img-del" onclick="event.stopPropagation();wr2DeleteCaptureAt(' + i + ')">✕</button>'
                         + '</div>';
@@ -5335,6 +5335,45 @@ var _safeLocalSet = function(key, value) {
 
                 window.wr2Lightbox = function(startIdx) {
                   window.wr2OpenRoomGallery(startIdx || 0);
+                };
+
+                window.__wr2CaptureErrCounts = window.__wr2CaptureErrCounts || {};
+                window.wr2CaptureImgError = function(el, idx) {
+                  try {
+                    var room = getActiveRoom(); if (!room) return;
+                    migrateCaptures(room);
+                    var current = room.captureImages && room.captureImages[idx];
+                    if (!current) return;
+                    var src = String((current && (current.src || current.url)) || '');
+                    if (!src) return;
+
+                    if (el && el.style) {
+                      el.style.opacity = '0.35';
+                      el.style.filter = 'grayscale(100%)';
+                    }
+
+                    var cnt = Number(window.__wr2CaptureErrCounts[src] || 0) + 1;
+                    window.__wr2CaptureErrCounts[src] = cnt;
+                    if (cnt < 2) return; // 일시 오류 오탐 방지
+
+                    var targetIdx = idx;
+                    var byIdx = room.captureImages[targetIdx];
+                    var byIdxSrc = String((byIdx && (byIdx.src || byIdx.url)) || '');
+                    if (byIdxSrc !== src) {
+                      targetIdx = room.captureImages.findIndex(function(it) {
+                        return String((it && (it.src || it.url)) || '') === src;
+                      });
+                    }
+                    if (targetIdx < 0) return;
+
+                    room.captureImages.splice(targetIdx, 1);
+                    room.updatedAt = Date.now();
+                    saveRooms();
+                    renderCaptureWidget(room);
+                    if (typeof showToast === 'function') showToast('손상된 이미지 링크 1건 자동 정리됨', 'warn');
+                  } catch (e) {
+                    console.warn('[wr2CaptureImgError]', e);
+                  }
                 };
 
                 window.wr2DeleteCaptureAt = async function(idx) {
@@ -49178,6 +49217,7 @@ window.addEventListener('DOMContentLoaded', () => {
   // 기기간 불일치 완화: page4에서 주기적으로 물건리스트를 클라우드 기준으로 동기화
   setInterval(function() {
     try {
+      if (window.__skV114StableSync === true) return;
       if (typeof currentPage === 'undefined' || currentPage !== 4) return;
       if (window.__pmActiveTab !== 'list' && window.__pmActiveTab !== 'work' && window.__pmActiveTab !== 'pipeline') return;
       if (window.__plAutoCloudPull !== true) return;
@@ -49208,6 +49248,7 @@ window.addEventListener('DOMContentLoaded', () => {
   }, 20000);
   function _plQuickCloudPull() {
     try {
+      if (window.__skV114StableSync === true) return;
       if (typeof currentPage === 'undefined' || currentPage !== 4) return;
       if (window.__plAutoCloudPull !== true) return;
       var now = Date.now();
@@ -51645,6 +51686,7 @@ window.addEventListener('DOMContentLoaded', () => {
   var API_KEY='sk_cloud_api_base_v1';
   var USER_KEY='sk_cloud_user_key_v1';
   var LAST_PULL_KEY='sk_cf_v114_last_pull_at';
+  var LAST_PULL_ATTEMPT_KEY='sk_cf_v114_last_pull_attempt_at';
   var LAST_OPEN_PULL_KEY='sk_cf_v114_last_open_pull_at';
   var CACHE={items:'re_sv',workrooms:'wr2_rooms',sections:'wr2_sections',notes:'nt_notes',pl_items:'pl_items_v3',kcards:'ins_kcards',snapshots:'re_ws',map_memos:'map_memos'};
   var LIMIT={workrooms:30,sections:30,items:30,notes:30,pl_items:30,kcards:30,snapshots:30,map_memos:30};
@@ -52235,7 +52277,8 @@ window.addEventListener('DOMContentLoaded', () => {
       var ret=base.apply(this, args);
       try{
         var o=rawOpts||{};
-        if(o.sync!==false) scheduleActiveRoomPush(name, 450);
+        var shouldSync = (o.sync === true) || (o.sync !== false && o.syncState !== false && !o.keepDeletedInState);
+        if(shouldSync) scheduleActiveRoomPush(name, 450);
       }catch(e){}
       return ret;
     };
@@ -52251,8 +52294,11 @@ window.addEventListener('DOMContentLoaded', () => {
       fgPullTimer=setTimeout(function(){
         if(now() < netBlockUntil) return;
         var last=Number(lsGet(LAST_PULL_KEY)||0)||0;
-        var gap=isIOS()?12000:18000;
-        if(now()-last<gap) return;
+        var lastAttempt=Number(lsGet(LAST_PULL_ATTEMPT_KEY)||0)||0;
+        var gap=isIOS()?30000:60000;
+        var recent=Math.max(last, lastAttempt);
+        if(now()-recent<gap) return;
+        lsSet(LAST_PULL_ATTEMPT_KEY, String(now()));
         pullAll({ full:true, reason:'foreground:'+reason }).then(function(res){ log('foreground pull', reason, res && res.ok, res && res.prePush); }).catch(function(e){ warn('foreground pull failed', reason, e && (e.message||e)); });
       }, 350);
     }
