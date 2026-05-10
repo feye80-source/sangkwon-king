@@ -51690,7 +51690,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260510-workroom-v114-stable-multi-device-clean25';
+  var BUILD='20260510-workroom-v114-stable-multi-device-clean26';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
@@ -51709,6 +51709,7 @@ window.addEventListener('DOMContentLoaded', () => {
   var pullCooldownUntil=0;
   var netFailCount=0;
   var netBlockUntil=0;
+  var PENDING_TTL_MS=10 * 60 * 1000;
 
   function log(){ try{ console.log.apply(console, ['[SK-CF-v114]'].concat([].slice.call(arguments))); }catch(e){} }
   function warn(){ try{ console.warn.apply(console, ['[SK-CF-v114]'].concat([].slice.call(arguments))); }catch(e){} }
@@ -51832,9 +51833,13 @@ window.addEventListener('DOMContentLoaded', () => {
     if(!clean.length) return 0;
     var p=readPending();
     if(!p[table]) p[table]={};
+    var stampedAt=now();
     clean.forEach(function(r){
       var id=idOf(r);
-      if(id) p[table][id]=r;
+      if(!id) return;
+      var copy=JSON.parse(JSON.stringify(r));
+      copy._skPendingQueuedAt=stampedAt;
+      p[table][id]=copy;
     });
     writePending(p);
     return clean.length;
@@ -51929,6 +51934,8 @@ window.addEventListener('DOMContentLoaded', () => {
     Object.keys(byTable).forEach(function(id){
       var row=byTable[id];
       if(!row || !idOf(row)) return;
+      var queuedAt=Number(row && row._skPendingQueuedAt || 0) || 0;
+      if(!queuedAt || (now()-queuedAt) > PENDING_TTL_MS) return;
       var remote=map.get(id);
       if(!remote){
         map.set(id, row);
