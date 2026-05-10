@@ -51690,7 +51690,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260510-workroom-v114-stable-multi-device-clean26';
+  var BUILD='20260510-workroom-v114-stable-multi-device-clean27';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
@@ -52184,6 +52184,7 @@ window.addEventListener('DOMContentLoaded', () => {
     var pending=readPending();
     var picked={};
     var pickedCount=0;
+    var pruned=0;
     Object.keys(pending).forEach(function(table){
       if(pickedCount>=maxRows) return;
       var ids=Object.keys(pending[table]||{});
@@ -52191,12 +52192,22 @@ window.addEventListener('DOMContentLoaded', () => {
         var id=ids[i];
         var row=pending[table][id];
         if(!row || !idOf(row)) continue;
+        var queuedAt=Number(row && row._skPendingQueuedAt || 0) || 0;
+        if(!queuedAt || (now()-queuedAt) > PENDING_TTL_MS){
+          delete pending[table][id];
+          pruned += 1;
+          continue;
+        }
         if(!picked[table]) picked[table]=[];
         picked[table].push(row);
         pickedCount += 1;
       }
+      if(pending[table] && !Object.keys(pending[table]).length) delete pending[table];
     });
-    if(!pickedCount) return Promise.resolve({ok:true, tried:0, done:0, failed:0, pending:pendingSummary()});
+    if(!pickedCount){
+      writePending(pending);
+      return Promise.resolve({ok:true, tried:0, done:0, failed:0, pruned:pruned, pending:pendingSummary()});
+    }
     var done=0;
     var failed=0;
     var chain=Promise.resolve();
@@ -52219,7 +52230,7 @@ window.addEventListener('DOMContentLoaded', () => {
     });
     return chain.then(function(){
       writePending(pending);
-      return {ok:failed===0, tried:pickedCount, done:done, failed:failed, pending:pendingSummary()};
+      return {ok:failed===0, tried:pickedCount, done:done, failed:failed, pruned:pruned, pending:pendingSummary()};
     });
   }
   function saveRowsDelta(table, rows){
