@@ -5259,7 +5259,17 @@ var _safeLocalSet = function(key, value) {
                   migrateCaptures(room);
                   var body = document.getElementById('wr2CaptureBody');
                   if (!body) return;
-                  var imgs = room.captureImages || [];
+                  var rawImgs = room.captureImages || [];
+                  var imgs = [];
+                  rawImgs.forEach(function(img, idx) {
+                    if (!img || !(img.src || img.url)) return;
+                    var src = String(img.src || img.url || '');
+                    var broken = false;
+                    try {
+                      broken = !!(src && typeof window.__skIsBrokenCaptureUrl === 'function' && window.__skIsBrokenCaptureUrl(src));
+                    } catch (_e) {}
+                    if (!broken) imgs.push({ img: img, idx: idx });
+                  });
                   var galleryItems = wr2CollectRoomGalleryItems(room);
                   if (imgs.length) {
                     var headerHtml = '';
@@ -5270,11 +5280,14 @@ var _safeLocalSet = function(key, value) {
                         + '<button type="button" onclick="wr2OpenRoomGallery(0)" style="padding:5px 10px;border-radius:8px;border:1px solid rgba(79,142,255,.3);background:rgba(79,142,255,.1);color:#4f8eff;font-size:11px;cursor:pointer;">전체 보기</button>'
                         + '</div>';
                     }
-                    imgs.forEach(function(img, i) {
-                      gridHtml += '<div class="wr2-img-thumb" onclick="wr2Lightbox(' + i + ')">'
-                        + '<img src="' + (window._sbImgUrl ? window._sbImgUrl(img.src, 400) : img.src) + '" alt="캡처 ' + (i+1) + '" onerror="wr2CaptureImgError(this,' + i + ')">'
+                    imgs.forEach(function(entry, i) {
+                      var img = entry.img;
+                      var src = img.src || img.url || '';
+                      var realIdx = entry.idx;
+                      gridHtml += '<div class="wr2-img-thumb" onclick="wr2Lightbox(' + realIdx + ')">'
+                        + '<img src="' + (window._sbImgUrl ? window._sbImgUrl(src, 400) : src) + '" alt="캡처 ' + (i+1) + '" onerror="wr2CaptureImgError(this,' + realIdx + ')">'
                         + '<div class="wr2-img-overlay"><span class="wr2-img-zoom">🔍</span></div>'
-                        + '<button class="wr2-img-del" onclick="event.stopPropagation();wr2DeleteCaptureAt(' + i + ')">✕</button>'
+                        + '<button class="wr2-img-del" onclick="event.stopPropagation();wr2DeleteCaptureAt(' + realIdx + ')">✕</button>'
                         + '</div>';
                     });
                     gridHtml += '<div class="wr2-img-add wr2-img-upload-drop" id="wr2CaptureDropInline" title="이미지를 끌어놓거나 눌러서 업로드">📎<br><span style="font-size:9px;">드래그/업로드</span></div>';
@@ -5303,8 +5316,12 @@ var _safeLocalSet = function(key, value) {
                   migrateRoomNote(room);
                   (room.captureImages || []).forEach(function(img, idx) {
                     if (!img || !(img.src || img.url)) return;
+                    var src = String(img.src || img.url || '');
+                    try {
+                      if (src && typeof window.__skIsBrokenCaptureUrl === 'function' && window.__skIsBrokenCaptureUrl(src)) return;
+                    } catch (_e) {}
                     list.push({
-                      src: img.src || img.url || '',
+                      src: src,
                       title: img.snapName ? '작업 이미지 · ' + img.snapName : '작업 이미지 ' + (idx + 1)
                     });
                   });
@@ -5339,6 +5356,7 @@ var _safeLocalSet = function(key, value) {
 
                 window.__wr2CaptureErrCounts = window.__wr2CaptureErrCounts || {};
                 window.__wr2CaptureAutoPruneNotified = window.__wr2CaptureAutoPruneNotified || {};
+                window.__wr2CaptureAutoPruneSessionNotified = window.__wr2CaptureAutoPruneSessionNotified || false;
                 window.wr2CaptureImgError = function(el, idx) {
                   try {
                     var room = getActiveRoom(); if (!room) return;
@@ -5384,10 +5402,13 @@ var _safeLocalSet = function(key, value) {
                     room.updatedAt = Date.now();
                     saveRooms();
                     renderCaptureWidget(room);
-                    var nKey = String(src);
+                    var nKey = String(src || '').split('#')[0].split('?')[0];
                     if (!window.__wr2CaptureAutoPruneNotified[nKey]) {
                       window.__wr2CaptureAutoPruneNotified[nKey] = Date.now();
-                      if (typeof showToast === 'function') showToast('손상된 이미지 링크 자동 정리됨', 'warn');
+                      if (!window.__wr2CaptureAutoPruneSessionNotified && typeof showToast === 'function') {
+                        window.__wr2CaptureAutoPruneSessionNotified = true;
+                        showToast('손상된 이미지 링크 자동 정리됨', 'warn');
+                      }
                     }
                   } catch (e) {
                     console.warn('[wr2CaptureImgError]', e);
@@ -49235,7 +49256,7 @@ window.addEventListener('DOMContentLoaded', () => {
   // 기기간 불일치 완화: page4에서 주기적으로 물건리스트를 클라우드 기준으로 동기화
   setInterval(function() {
     try {
-      if (window.__skV114StableSync === true) return;
+      if (window.__skV115StableSync === true) return;
       if (typeof currentPage === 'undefined' || currentPage !== 4) return;
       if (window.__pmActiveTab !== 'list' && window.__pmActiveTab !== 'work' && window.__pmActiveTab !== 'pipeline') return;
       if (window.__plAutoCloudPull !== true) return;
@@ -49266,7 +49287,7 @@ window.addEventListener('DOMContentLoaded', () => {
   }, 20000);
   function _plQuickCloudPull() {
     try {
-      if (window.__skV114StableSync === true) return;
+      if (window.__skV115StableSync === true) return;
       if (typeof currentPage === 'undefined' || currentPage !== 4) return;
       if (window.__plAutoCloudPull !== true) return;
       var now = Date.now();
@@ -51691,21 +51712,21 @@ window.addEventListener('DOMContentLoaded', () => {
 })();
 
 /* ════════════════════════════════════════════════════════
-   SK-CF v114: stable multi-device sync baseline
+   SK-CF v115: download-first + durable outbox multi-device sync
    - unifies active sync path across devices
    - stale-row guard by per-row sync timestamp
    - full converge pulls workrooms/sections/items together
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260510-workroom-v114-stable-multi-device-clean29';
+  var BUILD='20260510-workroom-v115-download-first-outbox-sync';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
   var USER_KEY='sk_cloud_user_key_v1';
-  var LAST_PULL_KEY='sk_cf_v114_last_pull_at';
-  var LAST_PULL_ATTEMPT_KEY='sk_cf_v114_last_pull_attempt_at';
-  var LAST_OPEN_PULL_KEY='sk_cf_v114_last_open_pull_at';
+  var LAST_PULL_KEY='sk_cf_v115_last_pull_at';
+  var LAST_PULL_ATTEMPT_KEY='sk_cf_v115_last_pull_attempt_at';
+  var LAST_OPEN_PULL_KEY='sk_cf_v115_last_open_pull_at';
   var CACHE={items:'re_sv',workrooms:'wr2_rooms',sections:'wr2_sections',notes:'nt_notes',pl_items:'pl_items_v3',kcards:'ins_kcards',snapshots:'re_ws',map_memos:'map_memos'};
   var LIMIT={workrooms:30,sections:30,items:30,notes:30,pl_items:30,kcards:30,snapshots:30,map_memos:30};
   var MAX_PAGES={workrooms:80,sections:80,items:80,notes:40,pl_items:40,kcards:40,snapshots:40,map_memos:40};
@@ -51717,11 +51738,11 @@ window.addEventListener('DOMContentLoaded', () => {
   var pullCooldownUntil=0;
   var netFailCount=0;
   var netBlockUntil=0;
-  var PENDING_TTL_MS=10 * 60 * 1000;
-  var BROKEN_CAPTURE_KEY='sk_cf_v114_broken_capture_urls';
+  var PENDING_TTL_MS=7 * 24 * 60 * 60 * 1000;
+  var BROKEN_CAPTURE_KEY='sk_cf_v115_broken_capture_urls';
 
-  function log(){ try{ console.log.apply(console, ['[SK-CF-v114]'].concat([].slice.call(arguments))); }catch(e){} }
-  function warn(){ try{ console.warn.apply(console, ['[SK-CF-v114]'].concat([].slice.call(arguments))); }catch(e){} }
+  function log(){ try{ console.log.apply(console, ['[SK-CF-v115]'].concat([].slice.call(arguments))); }catch(e){} }
+  function warn(){ try{ console.warn.apply(console, ['[SK-CF-v115]'].concat([].slice.call(arguments))); }catch(e){} }
   function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
   function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
   function now(){ return Date.now(); }
@@ -51815,16 +51836,31 @@ window.addEventListener('DOMContentLoaded', () => {
     }
     return Promise.resolve(clean);
   }
-  function readPending(){
+  function _parsePendingKey(key){
     try{
-      var raw=JSON.parse(lsGet('sk_cf_v114_pending_rows')||'{}');
+      var raw=JSON.parse(lsGet(key)||'{}');
       return raw && typeof raw==='object' ? raw : {};
-    }catch(e){
-      return {};
+    }catch(e){ return {}; }
+  }
+  function readPending(){
+    var cur=_parsePendingKey('sk_cf_v115_pending_rows');
+    var legacy=_parsePendingKey('sk_cf_v114_pending_rows');
+    var touched=false;
+    Object.keys(legacy).forEach(function(table){
+      var rows=legacy[table]||{};
+      if(!cur[table]) cur[table]={};
+      Object.keys(rows).forEach(function(id){
+        if(!cur[table][id]){ cur[table][id]=rows[id]; touched=true; }
+      });
+      if(cur[table] && !Object.keys(cur[table]).length) delete cur[table];
+    });
+    if(touched){
+      try{ lsSet('sk_cf_v115_pending_rows', JSON.stringify(cur||{})); localStorage.removeItem('sk_cf_v114_pending_rows'); }catch(e){}
     }
+    return cur;
   }
   function writePending(p){
-    try{ lsSet('sk_cf_v114_pending_rows', JSON.stringify(p||{})); }catch(e){}
+    try{ lsSet('sk_cf_v115_pending_rows', JSON.stringify(p||{})); }catch(e){}
   }
   function normUrl(u){
     try{
@@ -51982,6 +52018,23 @@ window.addEventListener('DOMContentLoaded', () => {
     return clean.length;
   }
 
+  function clearPendingRows(table, rows){
+    try{
+      var clean=(Array.isArray(rows)?rows:[]).filter(function(r){ return r && idOf(r); });
+      if(!clean.length) return 0;
+      var p=readPending();
+      if(!p[table]) return 0;
+      var n=0;
+      clean.forEach(function(r){
+        var id=idOf(r);
+        if(id && p[table] && p[table][id]){ delete p[table][id]; n+=1; }
+      });
+      if(p[table] && !Object.keys(p[table]).length) delete p[table];
+      writePending(p);
+      return n;
+    }catch(e){ return 0; }
+  }
+
   function api(path, opts){
     opts=opts||{};
     opts.headers=Object.assign({'content-type':'application/json','x-sk-user':userKey()}, opts.headers||{});
@@ -52018,7 +52071,7 @@ window.addEventListener('DOMContentLoaded', () => {
   function installFetchGate(){
     try{
       var raw=window.fetch;
-      if(typeof raw!=='function' || raw.__skV114FetchGate) return false;
+      if(typeof raw!=='function' || raw.__skV115FetchGate) return false;
       var wrapped=function(input, init){
         var url=(typeof input==='string') ? input : (input && input.url) || '';
         return Promise.resolve(raw.apply(this, arguments))
@@ -52034,7 +52087,7 @@ window.addEventListener('DOMContentLoaded', () => {
             throw e;
           });
       };
-      wrapped.__skV114FetchGate=true;
+      wrapped.__skV115FetchGate=true;
       wrapped.__skRawFetch=raw;
       window.fetch=wrapped;
       return true;
@@ -52068,9 +52121,29 @@ window.addEventListener('DOMContentLoaded', () => {
     });
     var pending=readPending();
     var byTable=(pending && pending[table]) || {};
+    var pendingTouched=false;
+    var brokenMap=null;
+    if(table==='workrooms'){
+      var brokenList=readBrokenCaptureUrls().filter(isCaptureAssetUrl);
+      if(brokenList.length){
+        brokenMap={};
+        brokenList.forEach(function(u){ brokenMap[u]=1; });
+      }
+    }
     Object.keys(byTable).forEach(function(id){
       var row=byTable[id];
       if(!row || !idOf(row)) return;
+      if(brokenMap){
+        try{
+          var patched=JSON.parse(JSON.stringify(row));
+          var repaired=pruneRoomBrokenCaptureRefs(patched, brokenMap);
+          if(repaired && repaired.changed){
+            row=patched;
+            byTable[id]=row;
+            pendingTouched=true;
+          }
+        }catch(e){}
+      }
       var queuedAt=Number(row && row._skPendingQueuedAt || 0) || 0;
       if(!queuedAt || (now()-queuedAt) > PENDING_TTL_MS) return;
       var remote=map.get(id);
@@ -52080,6 +52153,7 @@ window.addEventListener('DOMContentLoaded', () => {
       }
       if(syncTs(row) >= syncTs(remote)) map.set(id, row);
     });
+    if(pendingTouched) writePending(pending);
     return Array.from(map.values());
   }
 
@@ -52147,7 +52221,7 @@ window.addEventListener('DOMContentLoaded', () => {
     opts=opts||{};
     var limit=Math.min(30, Number(opts.limit || LIMIT[table] || 30) || 30);
     var maxPages=Math.max(1, Number(opts.maxPages || MAX_PAGES[table] || 40) || 40);
-    var since=(opts.full===false) ? (Number(lsGet('sk_cf_v114_since_'+table)||0)||0) : 0;
+    var since=(opts.full===false) ? (Number(lsGet('sk_cf_v115_since_'+table)||0)||0) : 0;
     var pages=0;
     var all=[];
     var reachedPageCap=false;
@@ -52169,7 +52243,7 @@ window.addEventListener('DOMContentLoaded', () => {
         });
     }
     return step().then(function(){
-      if(since>0) lsSet('sk_cf_v114_since_'+table, String(since));
+      if(since>0) lsSet('sk_cf_v115_since_'+table, String(since));
       var merged;
       if(opts.full!==false && !reachedPageCap){
         merged=mergeRemoteAuthoritative(table, readCache(table), all);
@@ -52200,7 +52274,7 @@ window.addEventListener('DOMContentLoaded', () => {
     var chain=Promise.resolve();
     var prePushResult={ ok:true, skipped:true, reason:'prepush-off' };
     function prePullFlush(reason){
-      var report={ reason:reason||'pre-pull', pending:null, flush:null, activeRoomPush:null };
+      var report={ reason:reason||'pre-pull', pending:null, flush:null, activeRoomPush:{ok:true, skipped:true, reason:'removed-download-first'} };
       var c=Promise.resolve();
       c=c.then(function(){
         if(typeof window.skCloudPendingSummary==='function'){
@@ -52208,20 +52282,14 @@ window.addEventListener('DOMContentLoaded', () => {
         }
       });
       c=c.then(function(){
-        if(opts.prePush===false) return { ok:true, skipped:true, reason:'prepush-disabled' };
+        // v115 원칙: pull 직전에는 '현재 화면의 activeRoom'을 임의로 서버에 밀지 않는다.
+        // 오직 명시적으로 outbox에 적재된 로컬 변경분만 먼저 flush한다.
+        if(opts.flushPending===false) return { ok:true, skipped:true, reason:'pending-flush-disabled' };
         if(typeof window.skCloudFlushPendingSafe!=='function') return { ok:true, skipped:true, reason:'flush-missing' };
         return Promise.resolve(window.skCloudFlushPendingSafe({ maxRows:120 })).catch(function(e){
           return { ok:false, error:String(e && (e.message||e)) };
         });
       }).then(function(r){ report.flush=r; });
-      c=c.then(function(){
-        if(opts.prePush===false) return { ok:true, skipped:true, reason:'prepush-disabled' };
-        var room=activeRoom();
-        if(!room || !idOf(room)) return { ok:true, skipped:true, reason:'active-room-not-found' };
-        return pushRows('workrooms', [room]).catch(function(e){
-          return { ok:false, error:String(e && (e.message||e)) };
-        });
-      }).then(function(r){ report.activeRoomPush=r; });
       return c.then(function(){ return report; });
     }
     chain=chain.then(function(){
@@ -52277,6 +52345,8 @@ window.addEventListener('DOMContentLoaded', () => {
     var id=idOf(data)||idOf(row);
     if(!id) return null;
     if(!data.id) data.id=id;
+    // _skPendingQueuedAt은 기기 내부 outbox 메타데이터이므로 서버 데이터에는 저장하지 않는다.
+    if(Object.prototype.hasOwnProperty.call(data, '_skPendingQueuedAt')) delete data._skPendingQueuedAt;
     if(!updatedOf(data) && !deletedOf(data)) data.updatedAt=now();
     return {
       item_id:id,
@@ -52396,9 +52466,14 @@ window.addEventListener('DOMContentLoaded', () => {
         refreshTable(table);
         if(opts.sync===false) return {ok:true, table:table, localOnly:true, saved:0};
         if(!plan.delta.length) return {ok:true, table:table, saved:0, skipped:true, reason:'no-changes'};
-        return pushRows(table, plan.delta).catch(function(e){
-          var queued=enqueuePending(table, plan.delta);
-          warn('save push failed; queued', table, queued, e && (e.message||e));
+        // 먼저 durable outbox에 적재한 뒤 네트워크 전송한다.
+        // 새로고침/탭 종료가 끼어도 다음 진입 때 outbox가 먼저 flush되어 로컬 수정이 유실되지 않는다.
+        var queued=enqueuePending(table, plan.delta);
+        return pushRows(table, plan.delta).then(function(res){
+          clearPendingRows(table, plan.delta);
+          return Object.assign({queued:queued}, res||{});
+        }).catch(function(e){
+          warn('save push failed; kept queued', table, queued, e && (e.message||e));
           return {ok:false, table:table, queued:queued, error:String(e && (e.message||e))};
         });
       });
@@ -52438,18 +52513,30 @@ window.addEventListener('DOMContentLoaded', () => {
     return [idOf(room), syncTs(room), imgs].join('|');
   }
 
-  function scheduleActiveRoomPush(reason, delay){
+  function scheduleRowsPush(table, rows, reason, delay){
+    var clean=dedupeRows((Array.isArray(rows)?rows:[]).filter(function(r){ return r && idOf(r); }));
+    if(!clean.length) return;
+    enqueuePending(table, clean);
     clearTimeout(pushTimer);
     pushTimer=setTimeout(function(){
-      var room=activeRoom();
-      if(!room || !idOf(room)) return;
-      var sig=persistSig(room);
-      if(!sig || sig===lastPushSig) return;
-      lastPushSig=sig;
-      pushRows('workrooms', [room])
-        .then(function(res){ log('active room push', {reason:reason||'persist', activeRoomId:idOf(room), result:res}); })
-        .catch(function(e){ warn('active room push failed', reason, e && (e.message||e)); });
+      pushRows(table, clean)
+        .then(function(res){
+          clearPendingRows(table, clean);
+          log('rows push', {reason:reason||'persist', table:table, rows:clean.length, result:res});
+        })
+        .catch(function(e){
+          warn('rows push failed; kept queued', table, reason, e && (e.message||e), 'queued', clean.length);
+        });
     }, Math.max(120, Number(delay||500)||500));
+  }
+
+  function scheduleActiveRoomPush(reason, delay){
+    var room=activeRoom();
+    if(!room || !idOf(room)) return;
+    var sig=persistSig(room);
+    if(!sig || sig===lastPushSig) return;
+    lastPushSig=sig;
+    scheduleRowsPush('workrooms', [room], reason||'active-room', delay);
   }
 
   function unwrap(name){
@@ -52462,7 +52549,7 @@ window.addEventListener('DOMContentLoaded', () => {
   function installPersistWrap(name){
     var base=unwrap(name);
     if(typeof base!=='function') return false;
-    if(base.__skV114Wrapped) return true;
+    if(base.__skV115Wrapped) return true;
     var wrapped=function(arr, opts){
       var args=Array.prototype.slice.call(arguments);
       var rawOpts=(opts && typeof opts==='object') ? opts : {};
@@ -52472,12 +52559,17 @@ window.addEventListener('DOMContentLoaded', () => {
       var ret=base.apply(this, args);
       try{
         var o=rawOpts||{};
-        var shouldSync = (o.sync !== false);
-        if(shouldSync) scheduleActiveRoomPush(name, 450);
+        // syncState:false 는 UI 상태 갱신 억제일 뿐, 클라우드 저장 억제가 아니다.
+        // 클라우드 저장을 막는 유일한 신호는 opts.sync === false 로 통일한다.
+        var shouldSync=(o.sync!==false);
+        if(shouldSync){
+          var rows=(ret && Array.isArray(ret.full)) ? ret.full : (Array.isArray(arr) ? arr : []);
+          scheduleRowsPush('workrooms', rows, name, 450);
+        }
       }catch(e){}
       return ret;
     };
-    wrapped.__skV114Wrapped=true;
+    wrapped.__skV115Wrapped=true;
     wrapped.__skOriginal=base;
     window[name]=wrapped;
     return true;
@@ -52510,7 +52602,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
   function install(){
     window.__SK_BUILD=BUILD;
-    window.__skV114StableSync=true;
+    window.__skV115StableSync=true;
 
     window.SK_CLOUD_MODE='cloudflare';
     apiBase();
@@ -52580,10 +52672,10 @@ window.addEventListener('DOMContentLoaded', () => {
     };
 
     window.skCloudOpenPullOnce=function(){
-      var last=Number(lsGet(LAST_OPEN_PULL_KEY)||0)||0;
-      if(now()-last < 20000) return Promise.resolve({ok:true, skipped:true, reason:'recent-open-pull'});
+      // v115: 새로고침/재진입 때마다 서버를 먼저 읽는다.
+      // localStorage 쿨다운으로 pull을 건너뛰면 기기별 사진/수정값이 달라진다.
       lsSet(LAST_OPEN_PULL_KEY, String(now()));
-      return pullAll({ full:true, force:true, reason:'open-pull', tables:['workrooms','sections','items','notes','pl_items'] })
+      return pullAll({ full:true, reason:'open-pull', tables:['workrooms','sections','items','notes','pl_items'] })
         .then(function(r){
           return pruneBrokenCaptureRefs({}).then(function(rep){
             r.repair=rep;
@@ -52601,6 +52693,11 @@ window.addEventListener('DOMContentLoaded', () => {
     window.skCloudPendingSummary=function(){ return pendingSummary(); };
     window.skCloudFlushPendingSafe=function(opts){ return flushPendingSafe(opts||{}); };
     window.__skRememberBrokenCaptureUrl=function(url){ return rememberBrokenCaptureUrl(url); };
+    window.__skIsBrokenCaptureUrl=function(url){
+      var n=normUrl(url);
+      if(!n) return false;
+      return readBrokenCaptureUrls().indexOf(n)>=0;
+    };
     window.skCloudGetBrokenCaptureUrls=function(){ return readBrokenCaptureUrls(); };
 
     window._sbGetUserId=function(){ return Promise.resolve(userKey()); };
@@ -52666,7 +52763,7 @@ window.addEventListener('DOMContentLoaded', () => {
       cfg.build=BUILD;
       cfg.apiBase=apiBase();
       cfg.userKey=userKey();
-      cfg.stableSyncV114=true;
+      cfg.stableSyncV115=true;
       cfg.roomFullConverge=true;
       cfg.workerPagedSync=true;
       cfg.hasSyncNow=typeof window.skCloudSyncNow;
@@ -52686,7 +52783,7 @@ window.addEventListener('DOMContentLoaded', () => {
     window.skCloudAutoSyncStatus=function(){
       var s=typeof prevStatus==='function'?prevStatus():{};
       s.build=BUILD;
-      s.stableSyncV114=true;
+      s.stableSyncV115=true;
       s.activeRoomId=window.wr2State && window.wr2State.activeRoomId || null;
       s.lastPullAt=Number(lsGet(LAST_PULL_KEY)||0)||0;
       s.pullFailCount=pullFailCount;
@@ -52709,5 +52806,5 @@ window.addEventListener('DOMContentLoaded', () => {
     log('installed', {build:BUILD, ios:isIOS(), activeRoomId:window.wr2State && window.wr2State.activeRoomId || null});
   }
 
-  try{ install(); }catch(e){ console.warn('[SK-CF-v114] init failed', e); }
+  try{ install(); }catch(e){ console.warn('[SK-CF-v115] init failed', e); }
 })();
