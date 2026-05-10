@@ -5257,6 +5257,7 @@ var _safeLocalSet = function(key, value) {
 
                 function renderCaptureWidget(room) {
                   migrateCaptures(room);
+                  try { if (typeof window.__skApplyRoomCaptureDeletes === 'function') window.__skApplyRoomCaptureDeletes(room); } catch (_e) {}
                   var body = document.getElementById('wr2CaptureBody');
                   if (!body) return;
                   var rawImgs = room.captureImages || [];
@@ -5313,6 +5314,7 @@ var _safeLocalSet = function(key, value) {
                   var list = [];
                   if (!room) return list;
                   migrateCaptures(room);
+                  try { if (typeof window.__skApplyRoomCaptureDeletes === 'function') window.__skApplyRoomCaptureDeletes(room); } catch (_e) {}
                   migrateRoomNote(room);
                   (room.captureImages || []).forEach(function(img, idx) {
                     if (!img || !(img.src || img.url)) return;
@@ -5398,9 +5400,15 @@ var _safeLocalSet = function(key, value) {
                     }
                     if (targetIdx < 0) return;
 
-                    room.captureImages.splice(targetIdx, 1);
+                    if (typeof window.__skMarkRoomCaptureDeleted === 'function') {
+                      try { window.__skMarkRoomCaptureDeleted(room, byIdx || { src: src }); } catch (_e) {}
+                    } else {
+                      room.captureImages.splice(targetIdx, 1);
+                    }
                     room.updatedAt = Date.now();
                     saveRooms();
+                    try { if (typeof window.__wr2FlushSaveRooms === 'function') window.__wr2FlushSaveRooms(); } catch (_e) {}
+                    try { if (typeof window.skCloudPushRoomNow === 'function') window.skCloudPushRoomNow(room, 'capture-auto-prune'); } catch (_e) {}
                     renderCaptureWidget(room);
                     var nKey = String(src || '').split('#')[0].split('?')[0];
                     if (!window.__wr2CaptureAutoPruneNotified[nKey]) {
@@ -5420,13 +5428,32 @@ var _safeLocalSet = function(key, value) {
                   migrateCaptures(room);
                   if (!confirm('이 캡처 이미지를 삭제할까요?')) return;
                   const img = room.captureImages[idx];
-                  // Storage에 업로드된 이미지면 실제 파일도 삭제
-                  if (img && img.storagePath) {
-                    window._sbDeleteImages([img.storagePath]).catch(()=>{});
+                  const deletePaths = (img && img.storagePath) ? [img.storagePath] : [];
+
+                  // v117: 사진 삭제는 단순 배열 제거가 아니라 메타데이터 tombstone으로 먼저 남긴다.
+                  // 그래야 다른 기기의 오래된 작업룸이 다시 push되어도 지운 사진이 되살아나지 않는다.
+                  if (typeof window.__skMarkRoomCaptureDeleted === 'function') {
+                    try { window.__skMarkRoomCaptureDeleted(room, img); } catch (_e) { room.captureImages.splice(idx, 1); }
+                  } else {
+                    room.captureImages.splice(idx, 1);
                   }
-                  room.captureImages.splice(idx, 1);
                   room.updatedAt = Date.now();
-                  saveRooms(); renderCaptureWidget(room);
+                  saveRooms();
+                  try { if (typeof window.__wr2FlushSaveRooms === 'function') window.__wr2FlushSaveRooms(); } catch (_e) {}
+                  renderCaptureWidget(room);
+
+                  // 실제 파일 삭제는 row/tombstone push 요청을 먼저 보낸 뒤에 실행한다.
+                  // 파일을 먼저 지우면 다른 기기에는 메타데이터 반영 전까지 엑박이 보인다.
+                  var pushed = (typeof window.skCloudPushRoomNow === 'function')
+                    ? window.skCloudPushRoomNow(room, 'capture-delete')
+                    : Promise.resolve(null);
+                  Promise.resolve(pushed).then(function(res){
+                    // row 삭제 메타데이터가 서버에 저장된 것이 확인될 때만 실제 파일을 지운다.
+                    // 실패/대기 상태에서 파일부터 지우면 다른 기기에는 엑박이 먼저 보인다.
+                    if (res && res.ok !== false && Number(res.saved || 0) > 0 && deletePaths.length && window._sbDeleteImages) {
+                      window._sbDeleteImages(deletePaths).catch(()=>{});
+                    }
+                  }).catch(function(){ /* 파일 삭제는 보류 */ });
                 };
 
                 window.wr2GoToSnap = function(snapName, parentSnapName) {
@@ -5609,12 +5636,23 @@ var _safeLocalSet = function(key, value) {
                 window.wr2DeleteCapture = async function () {
                   const room = getActiveRoom(); if (!room) return;
                   if (!confirm('모든 캡처 이미지를 삭제할까요?')) return;
-                  // Storage에서 실제 파일 삭제
                   const paths = (room.captureImages || []).filter(i => i.storagePath).map(i => i.storagePath);
-                  if (paths.length) window._sbDeleteImages(paths).catch(()=>{});
+                  (room.captureImages || []).forEach(function(img){
+                    try { if (typeof window.__skMarkRoomCaptureDeleted === 'function') window.__skMarkRoomCaptureDeleted(room, img); } catch (_e) {}
+                  });
                   room.captureImages = []; delete room.captureImage;
                   room.updatedAt = Date.now();
-                  saveRooms(); renderCaptureWidget(room);
+                  saveRooms();
+                  try { if (typeof window.__wr2FlushSaveRooms === 'function') window.__wr2FlushSaveRooms(); } catch (_e) {}
+                  renderCaptureWidget(room);
+                  var pushed = (typeof window.skCloudPushRoomNow === 'function')
+                    ? window.skCloudPushRoomNow(room, 'capture-delete-all')
+                    : Promise.resolve(null);
+                  Promise.resolve(pushed).then(function(res){
+                    if (res && res.ok !== false && Number(res.saved || 0) > 0 && paths.length && window._sbDeleteImages) {
+                      window._sbDeleteImages(paths).catch(()=>{});
+                    }
+                  }).catch(function(){});
                 };
                 window.wr2CaptureMap = async function () {
                   const mapEl = document.getElementById('map');
@@ -51712,14 +51750,14 @@ window.addEventListener('DOMContentLoaded', () => {
 })();
 
 /* ════════════════════════════════════════════════════════
-   SK-CF v116: hard open-pull + no-store sync pull
+   SK-CF v117: capture tombstone delete sync
    - unifies active sync path across devices
    - stale-row guard by per-row sync timestamp
    - full converge pulls workrooms/sections/items together
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260510-workroom-v116-hard-open-pull-nostore';
+  var BUILD='20260510-workroom-v117-capture-tombstone-delete-sync';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
@@ -51741,8 +51779,8 @@ window.addEventListener('DOMContentLoaded', () => {
   var PENDING_TTL_MS=7 * 24 * 60 * 60 * 1000;
   var BROKEN_CAPTURE_KEY='sk_cf_v115_broken_capture_urls';
 
-  function log(){ try{ console.log.apply(console, ['[SK-CF-v116]'].concat([].slice.call(arguments))); }catch(e){} }
-  function warn(){ try{ console.warn.apply(console, ['[SK-CF-v116]'].concat([].slice.call(arguments))); }catch(e){} }
+  function log(){ try{ console.log.apply(console, ['[SK-CF-v117]'].concat([].slice.call(arguments))); }catch(e){} }
+  function warn(){ try{ console.warn.apply(console, ['[SK-CF-v117]'].concat([].slice.call(arguments))); }catch(e){} }
   function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
   function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
   function now(){ return Date.now(); }
@@ -51940,6 +51978,169 @@ window.addEventListener('DOMContentLoaded', () => {
     writeBrokenCaptureUrls(list);
     return true;
   }
+
+  var CAPTURE_DELETE_TTL_MS = 60 * 24 * 60 * 60 * 1000;
+  var cfDirtyRoomIds = {};
+
+  function captureDeleteKey(src, storagePath){
+    var p=String(storagePath||'').trim();
+    if(p) return 'path:' + p;
+    var n=normUrl(src);
+    return n ? ('url:' + n) : '';
+  }
+  function captureKeyFromImage(img){
+    if(!img) return '';
+    return captureDeleteKey(img.src || img.url || img.data || '', img.storagePath || img.path || '');
+  }
+  function normalizeCaptureDeleteMap(room){
+    var out={};
+    if(!room || typeof room!=='object') return out;
+    var raw=room.captureImageDeletes || room._captureImageDeletes || room.captureDeletes || null;
+    function add(key, rec){
+      if(!key) return;
+      rec=rec || {};
+      var deletedAt=Number(rec.deletedAt || rec.at || rec.time || 0) || 0;
+      if(!deletedAt) deletedAt=now();
+      if((now()-deletedAt) > CAPTURE_DELETE_TTL_MS) return;
+      var prev=out[key];
+      if(!prev || deletedAt >= Number(prev.deletedAt||0)){
+        out[key]={
+          deletedAt: deletedAt,
+          src: String(rec.src || rec.url || ''),
+          storagePath: String(rec.storagePath || rec.path || '')
+        };
+      }
+    }
+    if(Array.isArray(raw)){
+      raw.forEach(function(rec){
+        if(!rec) return;
+        if(typeof rec==='string') add(captureDeleteKey(rec, ''), {src:rec, deletedAt:now()});
+        else add(captureDeleteKey(rec.src || rec.url || '', rec.storagePath || rec.path || ''), rec);
+      });
+    }else if(raw && typeof raw==='object'){
+      Object.keys(raw).forEach(function(key){
+        var rec=raw[key];
+        if(rec && typeof rec==='object') add(key, rec);
+        else add(key, {deletedAt:Number(rec)||now()});
+      });
+    }
+    return out;
+  }
+  function writeCaptureDeleteMap(room, map){
+    if(!room || typeof room!=='object') return;
+    var clean={};
+    Object.keys(map||{}).forEach(function(key){
+      var rec=map[key] || {};
+      var deletedAt=Number(rec.deletedAt||0)||0;
+      if(!key || !deletedAt || (now()-deletedAt) > CAPTURE_DELETE_TTL_MS) return;
+      clean[key]={deletedAt:deletedAt};
+      if(rec.src) clean[key].src=String(rec.src);
+      if(rec.storagePath) clean[key].storagePath=String(rec.storagePath);
+    });
+    if(Object.keys(clean).length) room.captureImageDeletes=clean;
+    else delete room.captureImageDeletes;
+    delete room._captureImageDeletes;
+    delete room.captureDeletes;
+  }
+  function mergeCaptureDeleteMaps(a, b){
+    var out={};
+    [a||{}, b||{}].forEach(function(map){
+      Object.keys(map).forEach(function(key){
+        var rec=map[key] || {};
+        var deletedAt=Number(rec.deletedAt||0)||0;
+        if(!key || !deletedAt) return;
+        var prev=out[key];
+        if(!prev || deletedAt >= Number(prev.deletedAt||0)) out[key]=Object.assign({}, rec, {deletedAt:deletedAt});
+      });
+    });
+    return out;
+  }
+  function markRoomCaptureDeleted(room, img){
+    if(!room || typeof room!=='object' || !img) return {ok:false, reason:'invalid'};
+    var src=String((img && (img.src || img.url || img.data)) || '');
+    var storagePath=String((img && (img.storagePath || img.path)) || '');
+    var key=captureDeleteKey(src, storagePath);
+    if(!key) return {ok:false, reason:'empty-key'};
+    var map=normalizeCaptureDeleteMap(room);
+    map[key]={deletedAt:now(), src:src, storagePath:storagePath};
+    writeCaptureDeleteMap(room, map);
+    var rid=idOf(room);
+    if(rid) cfDirtyRoomIds[rid]=now();
+    return {ok:true, key:key, deletedAt:map[key].deletedAt};
+  }
+  function captureMatchesDelete(img, map){
+    if(!img || !map) return false;
+    var keys=[];
+    var p=String(img.storagePath || img.path || '').trim();
+    var u=normUrl(img.src || img.url || img.data || '');
+    if(p) keys.push('path:' + p);
+    if(u) keys.push('url:' + u);
+    for(var i=0;i<keys.length;i+=1){ if(map[keys[i]]) return true; }
+    return false;
+  }
+  function applyRoomCaptureDeletes(room, extraMap){
+    if(!room || typeof room!=='object') return {changed:false, removed:0, tombstones:0};
+    var map=mergeCaptureDeleteMaps(normalizeCaptureDeleteMap(room), extraMap || {});
+    var removed=0;
+    var changed=false;
+    if(Array.isArray(room.captureImages)){
+      var next=room.captureImages.filter(function(img){
+        if(captureMatchesDelete(img, map)){ removed+=1; changed=true; return false; }
+        return true;
+      });
+      if(next.length !== room.captureImages.length) room.captureImages=next;
+    }
+    if(room.captureImage){
+      var single={src:room.captureImage};
+      if(captureMatchesDelete(single, map)){ delete room.captureImage; changed=true; removed+=1; }
+    }
+    writeCaptureDeleteMap(room, map);
+    if(changed){
+      var maxDel=0;
+      Object.keys(map).forEach(function(k){ maxDel=Math.max(maxDel, Number(map[k] && map[k].deletedAt || 0) || 0); });
+      room.updatedAt=Math.max(updatedOf(room), maxDel || now());
+      var rid=idOf(room);
+      if(rid) cfDirtyRoomIds[rid]=now();
+    }
+    return {changed:changed, removed:removed, tombstones:Object.keys(map).length};
+  }
+  function mergeRoomCaptureDeletes(baseRoom, extraRoom){
+    if(!baseRoom || typeof baseRoom!=='object') return baseRoom;
+    var map=mergeCaptureDeleteMaps(normalizeCaptureDeleteMap(baseRoom), normalizeCaptureDeleteMap(extraRoom));
+    writeCaptureDeleteMap(baseRoom, map);
+    applyRoomCaptureDeletes(baseRoom, map);
+    return baseRoom;
+  }
+  function prepareWorkroomRowsForSync(rows){
+    var cacheById={};
+    readCache('workrooms').forEach(function(r){ var id=idOf(r); if(id) cacheById[id]=r; });
+    var pending=readPending();
+    var pend=(pending && pending.workrooms) || {};
+    return (Array.isArray(rows)?rows:[]).map(function(row){
+      var copy=JSON.parse(JSON.stringify(row||{}));
+      var id=idOf(copy);
+      if(id && cacheById[id]) mergeRoomCaptureDeletes(copy, cacheById[id]);
+      if(id && pend[id]) mergeRoomCaptureDeletes(copy, pend[id]);
+      applyRoomCaptureDeletes(copy);
+      return copy;
+    });
+  }
+  function selectWorkroomRowsForPersistPush(rows){
+    var activeId=String(window.wr2State && window.wr2State.activeRoomId || '');
+    var picked=[];
+    (Array.isArray(rows)?rows:[]).forEach(function(r){
+      var id=idOf(r); if(!id) return;
+      var hasDelete=Object.keys(normalizeCaptureDeleteMap(r)).length>0;
+      if(cfDirtyRoomIds[id] || (activeId && id===activeId) || deletedOf(r) || hasDelete) picked.push(r);
+    });
+    return picked;
+  }
+  function clearCfDirtyRows(rows){
+    (Array.isArray(rows)?rows:[]).forEach(function(r){ var id=idOf(r); if(id) delete cfDirtyRoomIds[id]; });
+  }
+
+  window.__skMarkRoomCaptureDeleted=function(room, img){ return markRoomCaptureDeleted(room, img); };
+  window.__skApplyRoomCaptureDeletes=function(room){ return applyRoomCaptureDeletes(room); };
   function pendingSummary(){
     var p=readPending();
     var byTable={};
@@ -51978,6 +52179,7 @@ window.addEventListener('DOMContentLoaded', () => {
       var next=room.captureImages.filter(function(img){
         var src=normUrl(img && (img.src || img.url));
         if(src && brokenMap[src]){
+          try{ markRoomCaptureDeleted(room, img); }catch(_e){}
           removed += 1;
           changed=true;
           return false;
@@ -52166,8 +52368,18 @@ window.addEventListener('DOMContentLoaded', () => {
     var map=new Map();
     (Array.isArray(incomingRows)?incomingRows:[]).forEach(function(r){
       var id=idOf(r);
-      if(id) map.set(id, r);
+      if(id) map.set(id, table==='workrooms' ? mergeRoomCaptureDeletes(r, null) : r);
     });
+    if(table==='workrooms'){
+      var localById={};
+      (Array.isArray(localRows)?localRows:[]).forEach(function(local){
+        var id=idOf(local);
+        if(!id) return;
+        localById[id]=local;
+        var remote=map.get(id);
+        if(remote) map.set(id, mergeRoomCaptureDeletes(remote, local));
+      });
+    }
     var pending=readPending();
     var byTable=(pending && pending[table]) || {};
     var pendingTouched=false;
@@ -52200,7 +52412,9 @@ window.addEventListener('DOMContentLoaded', () => {
         map.set(id, row);
         return;
       }
+      if(table==='workrooms') row=mergeRoomCaptureDeletes(row, remote);
       if(syncTs(row) >= syncTs(remote)) map.set(id, row);
+      else if(table==='workrooms') map.set(id, mergeRoomCaptureDeletes(remote, row));
     });
     if(pendingTouched) writePending(pending);
     return Array.from(map.values());
@@ -52283,6 +52497,7 @@ window.addEventListener('DOMContentLoaded', () => {
       return api(syncPullPath(table, since, limit, opts.reason || ('pull-table:'+table)), { method:'GET' })
         .then(function(res){
           var rows=cloudRows(res);
+          if(table==='workrooms') rows=rows.map(function(r){ return mergeRoomCaptureDeletes(r, null); });
           all=all.concat(rows);
           var nextSince=Number(res.nextSince || res.cursor || 0) || 0;
           if(nextSince > since) since=nextSince;
@@ -52406,6 +52621,7 @@ window.addEventListener('DOMContentLoaded', () => {
   }
 
   function pushRows(table, rows){
+    if(String(table||'')==='workrooms') rows=prepareWorkroomRowsForSync(rows);
     rows=dedupeRows(rows).filter(function(r){ return r && idOf(r); });
     if(!rows.length) return Promise.resolve({ok:true, table:table, requested:0, saved:0, skipped:0, hasMore:false});
     var payload=rows.map(rowPayload).filter(Boolean);
@@ -52520,6 +52736,7 @@ window.addEventListener('DOMContentLoaded', () => {
         var queued=enqueuePending(table, plan.delta);
         return pushRows(table, plan.delta).then(function(res){
           clearPendingRows(table, plan.delta);
+          if(String(table||'')==='workrooms') clearCfDirtyRows(plan.delta);
           return Object.assign({queued:queued}, res||{});
         }).catch(function(e){
           warn('save push failed; kept queued', table, queued, e && (e.message||e));
@@ -52571,6 +52788,7 @@ window.addEventListener('DOMContentLoaded', () => {
       pushRows(table, clean)
         .then(function(res){
           clearPendingRows(table, clean);
+          if(String(table||'')==='workrooms') clearCfDirtyRows(clean);
           log('rows push', {reason:reason||'persist', table:table, rows:clean.length, result:res});
         })
         .catch(function(e){
@@ -52613,7 +52831,10 @@ window.addEventListener('DOMContentLoaded', () => {
         var shouldSync=(o.sync!==false);
         if(shouldSync){
           var rows=(ret && Array.isArray(ret.full)) ? ret.full : (Array.isArray(arr) ? arr : []);
-          scheduleRowsPush('workrooms', rows, name, 450);
+          // 한 방 저장 시 전체 작업룸을 다시 밀어넣으면 다른 기기의 사진 삭제가 되살아날 수 있다.
+          // 실제 dirty/active/tombstone이 있는 작업룸만 push한다.
+          var picked=selectWorkroomRowsForPersistPush(rows);
+          if(picked.length) scheduleRowsPush('workrooms', picked, name, 450);
         }
       }catch(e){}
       return ret;
@@ -52683,17 +52904,44 @@ window.addEventListener('DOMContentLoaded', () => {
 
     var fetchGateInstalled=installFetchGate();
     installBrokenCaptureTracker();
+    try{
+      var prevMarkRoomDirty=window._sbMarkRoomDirty;
+      if(typeof prevMarkRoomDirty==='function' && !prevMarkRoomDirty.__skCfV117Wrapped){
+        var markWrapped=function(roomId){
+          var id=String(roomId||'');
+          if(id) cfDirtyRoomIds[id]=now();
+          return prevMarkRoomDirty.apply(this, arguments);
+        };
+        markWrapped.__skCfV117Wrapped=true;
+        markWrapped.__skOriginal=prevMarkRoomDirty;
+        window._sbMarkRoomDirty=markWrapped;
+      }
+    }catch(e){}
     installPersistWrap('_wrPersistRooms');
     installPersistWrap('_wrPersistAndSyncRooms');
 
     window.skCloudPushTable=function(table, rows){ return pushRows(table, rows); };
     window.skCloudPullTable=function(table, opts){ return pullTable(table, opts||{full:true}); };
     window.skCloudPullAll=function(opts){ return pullAll(opts||{full:true}); };
+    window.skCloudPushRoomNow=function(room, reason){
+      if(!room || !idOf(room)) return Promise.resolve({ok:false, reason:'room-not-found'});
+      var rid=idOf(room);
+      cfDirtyRoomIds[rid]=now();
+      enqueuePending('workrooms', [room]);
+      return pushRows('workrooms', [room]).then(function(res){
+        clearPendingRows('workrooms', [room]);
+        clearCfDirtyRows([room]);
+        return Object.assign({roomId:rid, pushed:1, reason:reason||'room-push'}, res||{});
+      }).catch(function(e){
+        warn('room push failed; kept queued', rid, e && (e.message||e));
+        return {ok:false, roomId:rid, queued:1, reason:reason||'room-push', error:String(e && (e.message||e))};
+      });
+    };
     window.skCloudPushActiveRoomNow=function(){
       var room=activeRoom();
       if(!room) return Promise.resolve({ok:false, reason:'active-room-not-found'});
-      return pushRows('workrooms', [room]).then(function(res){
-        return Object.assign({activeRoomId:idOf(room), pushed:1}, res||{});
+      return window.skCloudPushRoomNow(room, 'active-room-now').then(function(res){
+        return Object.assign({activeRoomId:idOf(room)}, res||{});
       });
     };
     window.skCloudRepairBrokenCaptureRefs=function(urls){
@@ -52816,7 +53064,9 @@ window.addEventListener('DOMContentLoaded', () => {
       cfg.userKey=userKey();
       cfg.stableSyncV115=true;
       cfg.stableSyncV116=true;
+      cfg.stableSyncV117=true;
       cfg.hardOpenPullNoStore=true;
+      cfg.captureDeleteTombstone=true;
       cfg.idbPreloadDone=!!window._idbPreloadDone;
       cfg.roomFullConverge=true;
       cfg.workerPagedSync=true;
@@ -52839,6 +53089,7 @@ window.addEventListener('DOMContentLoaded', () => {
       s.build=BUILD;
       s.stableSyncV115=true;
       s.stableSyncV116=true;
+      s.stableSyncV117=true;
       s.idbPreloadDone=!!window._idbPreloadDone;
       s.activeRoomId=window.wr2State && window.wr2State.activeRoomId || null;
       s.lastPullAt=Number(lsGet(LAST_PULL_KEY)||0)||0;
@@ -52862,5 +53113,5 @@ window.addEventListener('DOMContentLoaded', () => {
     log('installed', {build:BUILD, ios:isIOS(), activeRoomId:window.wr2State && window.wr2State.activeRoomId || null});
   }
 
-  try{ install(); }catch(e){ console.warn('[SK-CF-v116] init failed', e); }
+  try{ install(); }catch(e){ console.warn('[SK-CF-v117] init failed', e); }
 })();
