@@ -52287,7 +52287,7 @@ window.addEventListener('DOMContentLoaded', () => {
       var ret=base.apply(this, args);
       try{
         var o=rawOpts||{};
-        var shouldSync = (o.sync === true) || (o.sync !== false && o.syncState !== false && !o.keepDeletedInState);
+        var shouldSync = (o.sync !== false);
         if(shouldSync) scheduleActiveRoomPush(name, 450);
       }catch(e){}
       return ret;
@@ -52400,7 +52400,36 @@ window.addEventListener('DOMContentLoaded', () => {
 
     window._sbGetUserId=function(){ return Promise.resolve(userKey()); };
     window._sbGetSessionShared=function(){ return Promise.resolve({data:{session:{user:{id:userKey(),email:userKey()}}},error:null}); };
+    function hideLegacyAuthUi(){
+      try{
+        ['_sbLoginOverlay','_sbRecoveryOverlay'].forEach(function(id){
+          var el=document.getElementById(id);
+          if(!el) return;
+          el.style.display='none';
+          el.classList.remove('show','open','active');
+          el.setAttribute('aria-hidden', 'true');
+        });
+        var err=document.getElementById('_sbLoginErr');
+        if(err) err.textContent='';
+      }catch(e){}
+    }
+    window.__skHideLegacyAuthUi=hideLegacyAuthUi;
+    hideLegacyAuthUi();
+    if(document.readyState==='loading'){
+      document.addEventListener('DOMContentLoaded', hideLegacyAuthUi, {once:true});
+    }else{
+      setTimeout(hideLegacyAuthUi, 0);
+    }
+    window._sbShowLogin=function(){ hideLegacyAuthUi(); return Promise.resolve({ok:true, cloudflare:true, skipped:true, reason:'login-ui-disabled'}); };
+    window._sbHideLogin=function(){ hideLegacyAuthUi(); return Promise.resolve({ok:true, cloudflare:true}); };
+    window._sbShowRecovery=function(){ hideLegacyAuthUi(); return Promise.resolve({ok:true, cloudflare:true, skipped:true, reason:'recovery-ui-disabled'}); };
+    window._sbHideRecovery=function(){ hideLegacyAuthUi(); return Promise.resolve({ok:true, cloudflare:true}); };
+    window._sbLogin=function(){ hideLegacyAuthUi(); return Promise.resolve({ok:true, cloudflare:true, skipped:true, reason:'supabase-login-disabled'}); };
+    window._sbLogout=function(){ hideLegacyAuthUi(); return Promise.resolve({ok:true, cloudflare:true, skipped:true, reason:'supabase-logout-disabled'}); };
+    window._sbSendReset=function(){ hideLegacyAuthUi(); return Promise.resolve({ok:true, cloudflare:true, skipped:true, reason:'supabase-reset-disabled'}); };
+    window._sbApplyRecovery=function(){ hideLegacyAuthUi(); return Promise.resolve({ok:true, cloudflare:true, skipped:true, reason:'supabase-recovery-disabled'}); };
     window._sbInitLoad=function(){
+      hideLegacyAuthUi();
       return window.skCloudOpenPullOnce().then(function(){ return {cloudflare:true}; }).catch(function(e){
         return {cloudflare:false, error:String(e && (e.message||e))};
       });
