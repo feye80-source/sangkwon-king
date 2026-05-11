@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260511-workroom-v121-unsold-date-save-fix';
+    window.__SK_BUILD = '20260511-workroom-v123-auction-detail-naver-link-split';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -17744,7 +17744,7 @@ window.wr2SummaryCancelEdit = function() {
 
       const ts = item.timestamp ? new Date(item.timestamp).toLocaleDateString('ko-KR') : '날짜 없음';
       const originalUrl = String(d.상세URL || '').trim();
-      const auctionSiteUrl = String(
+      const auctionSiteUrl = (typeof window._skAuctionDetailUrl === 'function') ? window._skAuctionDetailUrl(item) : String(
         d.상세URL ||
         d.옥션원URL ||
         d.온비드URL ||
@@ -17830,7 +17830,7 @@ window.wr2SummaryCancelEdit = function() {
                 : `<button onclick="event.stopPropagation();promptSavedOriginalUrl('${item.id}')" class="sc-btn sc-btn-detail" style="background:rgba(255,255,255,.05);color:var(--di);border-style:dashed;">🔗 원본없음</button>`)}
           <button onclick="event.stopPropagation();openPopupAndEdit('${itemIdJs}')" class="sc-btn" style="background:rgba(79,142,255,.12);color:#8ab8ff;border-color:rgba(79,142,255,.38);" title="상세 페이지에서 수정">✏️ 상세수정</button>
           ${src === '점포라인' ? `<a href="https://map.jumpoline.com/main" target="_blank" onclick="event.stopPropagation()" class="sc-btn sc-btn-map">🗺️ 지도</a>` : ''}
-          ${(src === '네이버부동산' || src === '네이버' || src === 'naver') ? `<a href="${(() => { const lat = d.lat || item.lat; const lng = d.lng || item.lng; return (lat && lng) ? `https://new.land.naver.com/offices?ms=${lat},${lng},17&a=SG:SMS:APTHGJ&e=RETAIL` : `https://new.land.naver.com/`; })()}" target="_blank" onclick="event.stopPropagation()" class="sc-btn sc-btn-map">🗺️ 지도</a>` : ''}
+          ${(src === '네이버부동산' || src === '네이버' || src === 'naver') && typeof window._skNaverLandUrl === 'function' && window._skNaverLandUrl(item) ? `<a href="${esc(window._skNaverLandUrl(item))}" target="_blank" onclick="event.stopPropagation()" class="sc-btn sc-btn-map" style="background:rgba(4,222,91,.12);color:#04de5b;border-color:rgba(4,222,91,.4);">🏠 부동산</a>` : ''}
           ${_isAssaSource(src) ? `<a href="https://xn--v69ap5so3hsnb81e1wfh6z.com/map" target="_blank" onclick="event.stopPropagation()" class="sc-btn sc-btn-map">🗺️ 지도</a>` : ''}
           ${src === '부동산플래닛' ? `<button onclick="event.stopPropagation();(()=>{const _a=(item.data&&item.data.소재지)||d.소재지||'';if(_a){try{navigator.clipboard.writeText(_a);}catch(e){}const ta=document.createElement('textarea');ta.value=_a;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.focus();ta.select();try{document.execCommand('copy');}catch(e){}document.body.removeChild(ta);}window.open('https://www.bdsplanet.com/map/realprice_map.ytp','_blank');})()" class="sc-btn sc-btn-map" style="background:rgba(17,157,237,.12);color:#119ded;border-color:rgba(17,157,237,.4);" title="${esc(String((item.data && item.data.소재지) || d.소재지 || ''))}">🌍 플래닛</button>` : ''}
           ${(ia && d.소재지 && d.소재지.trim().length >= 3) ? `<a href="https://map.naver.com/v5/search/${encodeURIComponent(d.소재지.trim())}" target="_blank" onclick="event.stopPropagation()" class="sc-btn" style="background:rgba(4,222,91,.12);color:#04de5b;border-color:rgba(4,222,91,.4);">🗺️ 지도</a>` : ''}
@@ -19958,15 +19958,15 @@ ${inputDesc.substring(0, 3000)}
                     : _isAssa ? '아싸점포'
                       : _isNaver ? '네이버'
                         : (src || '매물');
-        // 상세URL
-        const _detailURL = d.상세URL || (_isNaver && d.매물번호 ? `https://new.land.naver.com/offices?articleNo=${d.매물번호}` : '');
-        const _addrQ = String(d.소재지 || d.address || item.address || item.title || '').trim();
-        const _naverMapQ = _addrQ ? ('https://map.naver.com/v5/search/' + encodeURIComponent(_addrQ)) : '';
-        const _naverLandQ = _addrQ ? ('https://new.land.naver.com/offices?query=' + encodeURIComponent(_addrQ) + '&a=SG:SMS:APTHGJ&e=RETAIL') : '';
+        // 경매/공매 상세 URL과 네이버 링크는 역할을 분리한다.
+        const _auctionDetailURL = (typeof window._skAuctionDetailUrl === 'function') ? window._skAuctionDetailUrl(item) : '';
+        const _addrQ = (typeof window._skItemAddressForLink === 'function') ? window._skItemAddressForLink(item) : String(d.소재지 || d.address || item.address || item.title || '').trim();
+        const _naverMapQ = (typeof window._skNaverMapUrl === 'function') ? window._skNaverMapUrl(item) : (_addrQ ? ('https://map.naver.com/v5/search/' + encodeURIComponent(_addrQ)) : '');
+        const _naverLandQ = (typeof window._skNaverLandUrl === 'function') ? window._skNaverLandUrl(item) : (_addrQ ? ('https://new.land.naver.com/offices?query=' + encodeURIComponent(_addrQ) + '&a=SG:SMS:APTHGJ&e=RETAIL') : '');
         // 사이트 지도 URL
         const _siteMapURL = _isJumpo ? 'https://map.jumpoline.com/main'
           : _isAssa ? 'https://xn--v69ap5so3hsnb81e1wfh6z.com/map'
-            : _isNaver ? (() => { const lat = d.lat || item.lat; const lng = d.lng || item.lng; return (lat && lng) ? `https://new.land.naver.com/offices?ms=${lat},${lng},17&a=SG:SMS:APTHGJ&e=RETAIL` : `https://new.land.naver.com/`; })()
+            : _isNaver ? ''
               : _isDisco ? (() => { const lat = d.lat || item.lat; const lng = d.lng || item.lng; return (lat && lng) ? `https://www.disco.re/map?lat=${lat}&lng=${lng}&zoom=15` : `https://www.disco.re`; })()
                 : _isBds ? 'copy_planet'
                   : '';
@@ -19982,11 +19982,12 @@ ${inputDesc.substring(0, 3000)}
 
         var extBtns = [];
         var appBtns = [];
-        if (_detailURL) {
-          if (_isAssa) extBtns.push(`<button class="popup-src-btn" style="${bStyle}" onclick="assaOpenDetail('${esc(_detailURL)}')">🔗 상세</button>`);
-          else extBtns.push(`<a href="${esc(_detailURL)}" target="_blank" class="popup-src-btn" style="${bStyle}">🔗 상세</a>`);
+        if (_auctionDetailURL) {
+          extBtns.push(`<a href="${esc(_auctionDetailURL)}" target="_blank" class="popup-src-btn" style="${bStyle}">🔗 상세</a>`);
         }
-        extBtns.push(`<button class="popup-src-btn" id="popEditUrlBtn" style="background:rgba(255,255,255,.06);color:#aab4cc;border-color:rgba(255,255,255,.24);" onclick="showPopupUrlInput('${id}')">${_detailURL ? '✏️ URL수정' : '🔗 URL추가'}</button>`);
+        if (typeof window._skIsAuctionPublicItem === 'function' ? window._skIsAuctionPublicItem(item) : a) {
+          extBtns.push(`<button type="button" class="popup-src-btn" id="popEditUrlBtn" data-pop-url-edit-id="${esc(id)}" style="background:rgba(255,255,255,.06);color:#aab4cc;border-color:rgba(255,255,255,.24);" onclick="event.preventDefault();event.stopPropagation();window.showPopupUrlInput && window.showPopupUrlInput(this.getAttribute('data-pop-url-edit-id'))">${_auctionDetailURL ? '✏️ 상세URL수정' : '🔗 상세URL추가'}</button>`);
+        }
         if (_siteMapURL === 'copy_planet') {
           extBtns.push(`<button class="popup-src-btn" style="background:rgba(100,180,100,.12);color:#7ecf7e;border-color:rgba(100,180,100,.35);" onclick="(()=>{const addr='${esc(_addrQ)}';if(addr){navigator.clipboard.writeText(addr).catch(()=>{});const ta=document.createElement('textarea');ta.value=addr;document.body.appendChild(ta);ta.select();try{document.execCommand('copy');}catch(e){}document.body.removeChild(ta);}window.open('https://www.bdsplanet.com/map/realprice_map.ytp','_blank');})()">🌍 플래닛</button>`);
         } else if (_siteMapURL) {
@@ -20482,52 +20483,212 @@ ${inputDesc.substring(0, 3000)}
   </div>`;
     }
 
-    // URL 추가 팝업 함수
+    // URL 역할 분리(v123)
+    // - "상세"는 경매/공매 원본(옥션원/온비드) 전용
+    // - 네이버지도/네이버부동산은 item의 현재 주소/좌표 기준으로 별도 생성
+    // - 네이버부동산 링크가 이전에 보던 지역으로 열리지 않도록 전역 검색 입력/지도 중심값을 참조하지 않는다.
+    window._skIsAuctionPublicItem = window._skIsAuctionPublicItem || function(item, fallbackData) {
+      const d = fallbackData || (item && item.data) || {};
+      if (typeof _isAuctionSavedItem === 'function') {
+        try { if (_isAuctionSavedItem(item, d)) return true; } catch(e) {}
+      }
+      const mode = String((item && item.mode) || '').toLowerCase();
+      const src = String((item && item.source) || d.출처 || d.source || '');
+      const rawUrl = String(d.옥션원URL || d.온비드URL || d.상세URL || item?.url || item?.originalUrl || '');
+      return mode === 'auction'
+        || /옥션원|온비드|경매|공매/i.test(src)
+        || /auction1\.co\.kr|onbid\.co\.kr/i.test(rawUrl)
+        || !!(d.경매번호 || d.사건번호 || d.매각기일 || d.매각일 || d.product_id || d.물건관리번호);
+    };
+    window._skItemAddressForLink = window._skItemAddressForLink || function(item) {
+      const d = (item && item.data) || {};
+      const candidates = [
+        d.소재지, d.주소, d.address, d.도로명주소, d.지번주소,
+        item && item.address, item && item.addr, item && item.title
+      ];
+      for (const v of candidates) {
+        const s = String(v || '').replace(/\s+/g, ' ').trim();
+        if (s && s.length >= 2 && !/^[-–—]$/.test(s)) return s;
+      }
+      return '';
+    };
+    window._skItemLatLngForLink = window._skItemLatLngForLink || function(item) {
+      const d = (item && item.data) || {};
+      const lat = Number(d.lat ?? d.위도 ?? item?.lat ?? item?.latitude);
+      const lng = Number(d.lng ?? d.lon ?? d.경도 ?? item?.lng ?? item?.lon ?? item?.longitude);
+      if (isFinite(lat) && isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180) return { lat, lng };
+      return null;
+    };
+    window._skAuctionDetailUrl = window._skAuctionDetailUrl || function(item) {
+      if (!item) return '';
+      const d = item.data || {};
+      if (!window._skIsAuctionPublicItem(item, d)) return '';
+      const candidates = [
+        d.옥션원URL, d.온비드URL, d.상세URL, d.원본URL, d.원본링크,
+        d.originalUrl, d.original_url, d.url, d.link,
+        item.url, item.originalUrl, item.original_url, item.link
+      ];
+      for (const v of candidates) {
+        const u = String(v || '').trim();
+        if (!u) continue;
+        // 네이버/일반매물 링크는 경매 상세로 쓰지 않는다.
+        if (/new\.land\.naver\.com|map\.naver\.com/i.test(u)) continue;
+        return u;
+      }
+      if (d.product_id || d._pid) {
+        return 'https://www.auction1.co.kr/auction/ca_view.php?product_id=' + encodeURIComponent(d.product_id || d._pid);
+      }
+      return '';
+    };
+    window._skApplyAuctionDetailUrl = window._skApplyAuctionDetailUrl || function(item, url) {
+      if (!item) return false;
+      const d = item.data || (item.data = {});
+      const next = String(url || '').trim();
+      if (next) {
+        d.상세URL = next;
+        d.원본URL = next;
+        d.originalUrl = next;
+        item.url = next;
+        item.originalUrl = next;
+        if (/onbid\.co\.kr/i.test(next) || d.온비드URL || /온비드|공매/i.test(String(item.source || d.출처 || ''))) {
+          d.온비드URL = next;
+          try { delete d.옥션원URL; } catch(e) { d.옥션원URL = ''; }
+        } else {
+          d.옥션원URL = next;
+          if (/auction1\.co\.kr/i.test(next)) { try { delete d.온비드URL; } catch(e) { d.온비드URL = ''; } }
+        }
+      } else {
+        ['상세URL','원본URL','원본링크','originalUrl','original_url','url','link','옥션원URL','온비드URL'].forEach(function(k){ try { delete d[k]; } catch(e) { d[k] = ''; } });
+        try { delete item.url; } catch(e) { item.url = ''; }
+        try { delete item.originalUrl; } catch(e) { item.originalUrl = ''; }
+      }
+      item.updatedAt = Date.now();
+      return true;
+    };
+    // 하위 호환: 기존 호출명은 경매/공매 상세 URL만 반환하도록 유지한다.
+    window._skSavedItemDetailUrl = window._skSavedItemDetailUrl || function(item) { return window._skAuctionDetailUrl(item); };
+    window._skApplySavedItemDetailUrl = window._skApplySavedItemDetailUrl || function(item, url) { return window._skApplyAuctionDetailUrl(item, url); };
+    window._skNaverMapUrl = window._skNaverMapUrl || function(item) {
+      const addr = window._skItemAddressForLink(item);
+      if (addr) return 'https://map.naver.com/v5/search/' + encodeURIComponent(addr);
+      const ll = window._skItemLatLngForLink(item);
+      if (ll) return 'https://map.naver.com/p/?c=' + ll.lng + ',' + ll.lat + ',17,0,0,0,dh';
+      return '';
+    };
+    window._skNaverLandUrl = window._skNaverLandUrl || function(item) {
+      const d = (item && item.data) || {};
+      const articleNo = String(d.매물번호 || d.articleNo || d.atclNo || '').trim();
+      if (articleNo) return 'https://new.land.naver.com/offices?articleNo=' + encodeURIComponent(articleNo);
+      const addr = window._skItemAddressForLink(item);
+      if (addr) return 'https://new.land.naver.com/offices?query=' + encodeURIComponent(addr) + '&a=SG:SMS:APTHGJ&e=RETAIL';
+      const ll = window._skItemLatLngForLink(item);
+      if (ll) return 'https://new.land.naver.com/offices?ms=' + ll.lat + ',' + ll.lng + ',17&a=SG:SMS:APTHGJ&e=RETAIL';
+      return '';
+    };
+    function _skFindSavedItemById(id) {
+      const sid = String(id || '');
+      const sv = getSv();
+      return { sv, item: sv.find(function(s){ return s && String(s.id) === sid; }) || null };
+    }
+
+    // URL 추가/수정 팝업 함수 — v122 안정화
     window.showPopupUrlInput = function (id) {
+      const sid = String(id || (window.popupId || '') || '');
+      if (!sid) {
+        if (typeof showToast === 'function') showToast('URL을 수정할 물건을 찾지 못했습니다.', 'warn');
+        return;
+      }
       let wrap = document.getElementById('popUrlInputWrap');
+      const tabs = document.getElementById('popSrcTabs');
       if (!wrap) {
         wrap = document.createElement('div');
         wrap.id = 'popUrlInputWrap';
-        const sv = getSv(); const item = sv.find(s => s.id === id);
-        const existUrl = (item && item.data && item.data.상세URL) || '';
-        wrap.innerHTML = `<div style="display:flex;gap:6px;align-items:center;margin-top:6px;">
-      <input id="popUrlInput" type="text" value="${existUrl}" placeholder="https://new.land.naver.com/..."
-        style="flex:1;padding:6px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.2);border-radius:6px;color:#e0e6ff;font-size:11px;outline:none;"
-        onkeydown="if(event.key==='Enter')window.savePopupUrl('${id}')">
-      <button onclick="window.savePopupUrl('${id}')" style="padding:5px 12px;background:rgba(79,142,255,.2);color:#7aa8ff;border:1px solid rgba(79,142,255,.4);border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;">저장</button>
-      <button onclick="document.getElementById('popUrlInputWrap').remove()" style="padding:5px 10px;background:none;color:#6b7590;border:1px solid rgba(255,255,255,.15);border-radius:6px;font-size:11px;cursor:pointer;">취소</button>
-    </div>`;
-        document.getElementById('popSrcTabs').appendChild(wrap);
-      } else {
-        wrap.style.display = wrap.style.display === 'none' ? '' : 'none';
+        if (tabs) tabs.appendChild(wrap);
       }
-      setTimeout(() => { const inp = document.getElementById('popUrlInput'); if (inp) inp.focus(); }, 50);
+      const found = _skFindSavedItemById(sid);
+      const existUrl = found.item ? ((typeof window._skAuctionDetailUrl === 'function') ? window._skAuctionDetailUrl(found.item) : window._skSavedItemDetailUrl(found.item)) : '';
+      wrap.dataset.itemId = sid;
+      wrap.style.cssText = 'display:block;flex:0 0 100%;width:100%;margin-top:8px;padding:8px;border:1px solid rgba(79,142,255,.28);border-radius:10px;background:rgba(79,142,255,.07);box-sizing:border-box;';
+      wrap.innerHTML = '<div style="display:flex;gap:7px;align-items:center;width:100%;">'
+        + '<input id="popUrlInput" type="text" placeholder="옥션원/온비드 상세 URL" style="flex:1;min-width:180px;padding:8px 10px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.24);border-radius:7px;color:#e0e6ff;font-size:12px;outline:none;box-sizing:border-box;">'
+        + '<button type="button" id="popUrlSaveBtn" data-pop-url-save-id="' + String(sid).replace(/&/g,'&amp;').replace(/"/g,'&quot;') + '" style="padding:7px 13px;background:rgba(79,142,255,.22);color:#8ab8ff;border:1px solid rgba(79,142,255,.45);border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">저장</button>'
+        + '<button type="button" id="popUrlCancelBtn" style="padding:7px 10px;background:none;color:#8b96ad;border:1px solid rgba(255,255,255,.18);border-radius:7px;font-size:12px;cursor:pointer;white-space:nowrap;">취소</button>'
+        + '</div>';
+      const inp = document.getElementById('popUrlInput');
+      if (inp) {
+        inp.value = existUrl || '';
+        inp.onkeydown = function(ev) {
+          if (ev.key === 'Enter') {
+            ev.preventDefault();
+            window.savePopupUrl(sid);
+          }
+          if (ev.key === 'Escape') {
+            ev.preventDefault();
+            if (wrap) wrap.style.display = 'none';
+          }
+        };
+        setTimeout(function(){ try { inp.focus(); inp.select(); } catch(e) {} }, 30);
+      }
+      const cancel = document.getElementById('popUrlCancelBtn');
+      if (cancel) cancel.onclick = function(ev){ if (ev) ev.stopPropagation(); wrap.style.display = 'none'; };
+      const saveBtn = document.getElementById('popUrlSaveBtn');
+      if (saveBtn) saveBtn.onclick = function(ev){ if (ev) { ev.preventDefault(); ev.stopPropagation(); } window.savePopupUrl(sid); };
     };
 
     window.savePopupUrl = function (id) {
+      const sid = String(id || (document.getElementById('popUrlInputWrap') && document.getElementById('popUrlInputWrap').dataset.itemId) || window.popupId || '');
       const inp = document.getElementById('popUrlInput');
-      if (!inp) return;
-      const url = inp.value.trim();
-      const sv = getSv(); const item = sv.find(s => s.id === id);
-      if (!item) return;
-      item.data = item.data || {};
-      item.data.상세URL = url;
+      if (!inp || !sid) return;
+      const url = String(inp.value || '').trim();
+      const found = _skFindSavedItemById(sid);
+      const sv = found.sv;
+      const item = found.item;
+      if (!item) {
+        if (typeof showToast === 'function') showToast('URL을 저장할 물건을 찾지 못했습니다.', 'warn');
+        return;
+      }
+      if (typeof window._skApplyAuctionDetailUrl === 'function') window._skApplyAuctionDetailUrl(item, url);
+      else window._skApplySavedItemDetailUrl(item, url);
+      try { if (typeof _ensureNormalizedItem === 'function') _ensureNormalizedItem(item); } catch(e) {}
       setSv(sv);
-      showToast('🔗 URL 저장됨', 'ok');
-      // 팝업 다시 열기
-      openPopup(id);
+      try { if (typeof _syncAfterSavedMutation === 'function') _syncAfterSavedMutation(sid, sv, { skipMapRefresh: false }); } catch(e) { console.warn('[url save sync]', e); }
+      try { if (typeof renderSaved === 'function') renderSaved(); } catch(e) {}
+      try { if (typeof refreshMapCardData === 'function') refreshMapCardData(sid); } catch(e) {}
+      if (typeof showToast === 'function') showToast(url ? '🔗 URL 저장됨' : '원본 URL을 비웠습니다', 'ok');
+      // 팝업 topbar를 서버/로컬 동일 원본 기준으로 다시 그린다.
+      if (typeof openPopup === 'function') openPopup(sid);
     };
+
+    if (!window.__skPopUrlDelegatedV122) {
+      window.__skPopUrlDelegatedV122 = true;
+      document.addEventListener('click', function(ev) {
+        const editBtn = ev.target && ev.target.closest && ev.target.closest('[data-pop-url-edit-id]');
+        if (editBtn) {
+          ev.preventDefault(); ev.stopPropagation();
+          window.showPopupUrlInput(editBtn.getAttribute('data-pop-url-edit-id'));
+          return;
+        }
+        const saveBtn = ev.target && ev.target.closest && ev.target.closest('[data-pop-url-save-id]');
+        if (saveBtn) {
+          ev.preventDefault(); ev.stopPropagation();
+          window.savePopupUrl(saveBtn.getAttribute('data-pop-url-save-id'));
+        }
+      }, true);
+    }
+
     window.promptSavedOriginalUrl = function(id) {
       const sv = getSv();
       const item = sv.find(s => String(s.id) === String(id));
       if (!item) return;
-      const cur = String((item.data && item.data.상세URL) || '').trim();
-      const next = prompt('원본 사이트 URL을 입력하세요', cur || 'https://');
+      const cur = (typeof window._skAuctionDetailUrl === 'function') ? window._skAuctionDetailUrl(item) : ((typeof window._skSavedItemDetailUrl === 'function') ? window._skSavedItemDetailUrl(item) : String((item.data && item.data.상세URL) || '').trim());
+      const next = prompt('옥션원/온비드 상세 URL을 입력하세요', cur || 'https://');
       if (next == null) return;
       const url = String(next || '').trim();
-      item.data = item.data || {};
-      item.data.상세URL = url;
+      if (typeof window._skApplyAuctionDetailUrl === 'function') window._skApplyAuctionDetailUrl(item, url);
+      else if (typeof window._skApplySavedItemDetailUrl === 'function') window._skApplySavedItemDetailUrl(item, url);
+      else { item.data = item.data || {}; item.data.상세URL = url; item.url = url; }
       setSv(sv);
+      try { if (typeof _syncAfterSavedMutation === 'function') _syncAfterSavedMutation(id, sv, { skipMapRefresh: false }); } catch(e) {}
       renderSaved();
       showToast(url ? '🔗 원본 링크 저장됨' : '원본 링크를 비웠습니다', 'ok');
     };
@@ -21678,13 +21839,13 @@ ${fi(d.기타사항, '기타사항', 'text', idx, '기타사항', isPopup)}
       const _srcRgb = getSrcRgb(_srcLabel, '79,142,255');
       const srcBadge = `<span style="font-size:10px;padding:1px 7px;border-radius:10px;background:rgba(${_srcRgb},.15);color:${_srcColor};border:1px solid rgba(${_srcRgb},.45);font-weight:600;">${esc(_srcLabel)}</span>`;
       // 액션 버튼들
-      const _detailURL = d.상세URL || (_isNaver && d.매물번호 ? `https://new.land.naver.com/offices?articleNo=${d.매물번호}` : '');
-      const detailBtn = _detailURL
-        ? `<a href="${esc(_detailURL)}" target="_blank" style="font-size:10px;padding:2px 8px;background:rgba(${_srcRgb},.12);color:${_srcColor};border:1px solid rgba(${_srcRgb},.4);border-radius:5px;text-decoration:none;font-weight:600;">🔗 상세</a>`
+      const _auctionDetailURL = (typeof window._skAuctionDetailUrl === 'function') ? window._skAuctionDetailUrl(item) : '';
+      const detailBtn = _auctionDetailURL
+        ? `<a href="${esc(_auctionDetailURL)}" target="_blank" style="font-size:10px;padding:2px 8px;background:rgba(${_srcRgb},.12);color:${_srcColor};border:1px solid rgba(${_srcRgb},.4);border-radius:5px;text-decoration:none;font-weight:600;">🔗 상세</a>`
         : '';
       const siteMapURL = _isJumpo ? 'https://map.jumpoline.com/main'
         : _isAssa ? 'https://xn--v69ap5so3hsnb81e1wfh6z.com/map'
-          : _isNaver ? (() => { const lat = d.lat || item?.lat; const lng = d.lng || item?.lng; return (lat && lng) ? `https://new.land.naver.com/offices?ms=${lat},${lng},17&a=SG:SMS:APTHGJ&e=RETAIL` : `https://new.land.naver.com/`; })()
+          : _isNaver ? ''
             : _isDisco ? (() => { const lat = d.lat || item?.lat; const lng = d.lng || item?.lng; return (lat && lng) ? `https://www.disco.re/map?lat=${lat}&lng=${lng}&zoom=15` : `https://www.disco.re`; })()
               : _isBds ? 'copy_planet'
                 : '';
@@ -21694,6 +21855,12 @@ ${fi(d.기타사항, '기타사항', 'text', idx, '기타사항', isPopup)}
         : siteMapURL
           ? `<a href="${siteMapURL}" target="_blank" style="font-size:10px;padding:2px 8px;background:rgba(100,180,100,.1);color:#7ecf7e;border:1px solid rgba(100,180,100,.3);border-radius:5px;text-decoration:none;font-weight:600;">🗺️ 지도</a>`
           : '';
+      const naverMapBtn = (typeof window._skNaverMapUrl === 'function' && window._skNaverMapUrl(item))
+        ? `<a href="${esc(window._skNaverMapUrl(item))}" target="_blank" style="font-size:10px;padding:2px 8px;background:rgba(56,189,248,.12);color:#a5d8ff;border:1px solid rgba(125,211,252,.4);border-radius:5px;text-decoration:none;font-weight:600;">🧭 네이버지도</a>`
+        : '';
+      const naverLandBtn = (typeof window._skNaverLandUrl === 'function' && window._skNaverLandUrl(item))
+        ? `<a href="${esc(window._skNaverLandUrl(item))}" target="_blank" style="font-size:10px;padding:2px 8px;background:rgba(4,222,91,.12);color:#04de5b;border:1px solid rgba(4,222,91,.4);border-radius:5px;text-decoration:none;font-weight:600;">🏠 네이버부동산</a>`
+        : '';
       const mapBtn = isPopup && popupId
         ? `<button onclick="goToMapFromCard('${popupId}')" style="font-size:10px;padding:2px 8px;background:rgba(255,209,102,.12);color:#ffd166;border:1px solid rgba(255,209,102,.4);border-radius:5px;cursor:pointer;font-weight:600;font-family:'Noto Sans KR',sans-serif;">📍 내 지도</button>`
         : '';
@@ -21761,6 +21928,8 @@ ${fi(d.기타사항, '기타사항', 'text', idx, '기타사항', isPopup)}
       ${srcBadge}
       ${detailBtn}
       ${siteMapBtn}
+      ${naverMapBtn}
+      ${naverLandBtn}
       ${mapBtn}
     </div>
     ${_rowType}
@@ -51898,7 +52067,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260511-workroom-v121-unsold-date-save-fix';
+  var BUILD='20260511-workroom-v123-auction-detail-naver-link-split';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
