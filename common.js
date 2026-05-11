@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260511-workroom-v137-tooltip-bid-recommend-layout';
+    window.__SK_BUILD = '20260511-workroom-v139-kpi-fit-resizable-layout';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -9280,6 +9280,243 @@ window.wr2SummaryCancelEdit = function() {
                       .wcp-calc-combined .wcp-line,.wcp-calc-combined .wcp-line.rate.wcp-rate-field{grid-template-columns:1fr!important;}
                       .wcp-kpi-summary-panel .wcp-kpi-lease-line,.wcp-kpi-summary-panel .wcp-kpi-lease-line.is-rent{grid-template-columns:1fr!important;}
                     }
+
+                    /* v139: commercial one-screen calculator layout + compact KPI + width drag */
+                    .wr2-calc-pro-mount,
+                    .wr2-calc-pro-mount .wr2-section-body,
+                    .wr2-calc-pro-shell,
+                    #wcp_pane_input,
+                    #wcp_pane_input .wcp-main-grid{
+                      min-width:0!important;
+                      max-width:100%!important;
+                      overflow-x:hidden!important;
+                      box-sizing:border-box!important;
+                    }
+                    .wr2-calc-pro-shell{
+                      width:100%!important;
+                      max-width:none!important;
+                      margin:0!important;
+                      padding:0 8px 10px!important;
+                    }
+                    #wcp_pane_input .wcp-main-grid{
+                      position:relative!important;
+                      display:grid!important;
+                      grid-template-columns:minmax(390px,44fr) minmax(455px,42fr) minmax(178px,14fr)!important;
+                      gap:8px!important;
+                      align-items:start!important;
+                    }
+                    #wcp_pane_input .wcp-main-grid>.wcp-card{
+                      min-width:0!important;
+                      max-width:100%!important;
+                      overflow:hidden!important;
+                      padding:9px!important;
+                      margin:0!important;
+                      border-radius:12px!important;
+                    }
+                    .wcp-main-grid.wcp-resized{
+                      grid-template-columns:var(--wcp-user-cols)!important;
+                    }
+                    .wcp-col-resizer{
+                      position:absolute!important;
+                      top:0!important;
+                      bottom:0!important;
+                      width:10px!important;
+                      margin-left:-5px!important;
+                      z-index:50!important;
+                      cursor:col-resize!important;
+                      border-radius:999px!important;
+                      background:linear-gradient(180deg,transparent,rgba(96,165,250,.16),transparent)!important;
+                      opacity:.32!important;
+                      touch-action:none!important;
+                    }
+                    .wcp-col-resizer:hover,
+                    .wcp-col-resizer.dragging{
+                      opacity:1!important;
+                      background:linear-gradient(180deg,transparent,rgba(96,165,250,.38),transparent)!important;
+                      box-shadow:0 0 0 1px rgba(96,165,250,.25)!important;
+                    }
+                    .wcp-col-resizer::after{
+                      content:'↔'!important;
+                      position:absolute!important;
+                      top:50%!important;
+                      left:50%!important;
+                      transform:translate(-50%,-50%)!important;
+                      color:#8bb8ff!important;
+                      font-size:13px!important;
+                      line-height:1!important;
+                      text-shadow:0 1px 4px rgba(0,0,0,.65)!important;
+                    }
+
+                    /* left hand-check panel: keep 2x2 cards but reduce excess width */
+                    .wcp-bench-panel h3,
+                    .wcp-calc-combined-head h3,
+                    .wcp-kpi-summary-panel h3{
+                      font-size:clamp(13px,.95vw,16px)!important;
+                      line-height:1.1!important;
+                      margin-bottom:8px!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3{
+                      grid-template-columns:minmax(260px,.9fr) minmax(0,1.1fr)!important;
+                      gap:8px!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(1),
+                    .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(2){
+                      min-height:150px!important;
+                      padding:10px!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3 .wcp-section:first-child .wcp-line,
+                    .wcp-bench-panel .wcp-grid3 .wcp-section:nth-child(2) .wcp-line{
+                      grid-template-columns:minmax(72px,92px) minmax(0,1fr) 18px!important;
+                      min-height:30px!important;
+                      gap:6px!important;
+                    }
+                    .wcp-bench-panel .wcp-grid4{
+                      grid-template-columns:repeat(2,minmax(0,1fr))!important;
+                      gap:7px!important;
+                    }
+                    .wcp-bench-card{
+                      min-height:116px!important;
+                      padding:8px!important;
+                    }
+                    .wcp-quick-reco{
+                      margin-top:7px!important;
+                      padding:8px 10px!important;
+                    }
+
+                    /* middle calculator: remove hard minimums that caused right clipping */
+                    .wcp-calc-combined .wcp-calc-combined-grid{
+                      display:grid!important;
+                      grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;
+                      gap:8px!important;
+                    }
+                    .wcp-calc-combined .wcp-section,
+                    .wcp-calc-combined .wcp-calc-col{
+                      min-width:0!important;
+                      padding:8px!important;
+                    }
+                    .wcp-calc-combined .wcp-line{
+                      grid-template-columns:minmax(74px,100px) minmax(0,1fr) 16px!important;
+                      gap:5px!important;
+                      min-height:27px!important;
+                    }
+                    .wcp-calc-combined .wcp-line.rate.wcp-rate-field{
+                      grid-template-columns:minmax(74px,100px) minmax(42px,52px) 12px minmax(0,1fr) 15px!important;
+                      gap:5px!important;
+                    }
+                    .wcp-calc-combined .wcp-line label{
+                      font-size:10px!important;
+                      line-height:1.1!important;
+                    }
+                    .wcp-calc-combined .wcp-inp,
+                    .wcp-calc-combined .wcp-out{
+                      min-width:0!important;
+                      width:100%!important;
+                      min-height:26px!important;
+                      padding:4px 6px!important;
+                      font-size:10.8px!important;
+                      letter-spacing:-.025em!important;
+                    }
+                    .wcp-calc-combined .wcp-unit{font-size:9px!important;}
+                    .wcp-loan-rule{padding:6px!important;margin-top:5px!important;}
+                    .wcp-loan-rule .formula{grid-template-columns:1fr!important;gap:4px!important;}
+
+                    /* right KPI: compact professional list, not a wide card */
+                    .wcp-kpi-summary-panel{
+                      padding:8px!important;
+                      background:linear-gradient(180deg,rgba(12,22,34,.88),rgba(7,12,19,.96))!important;
+                    }
+                    .wcp-kpi-summary-panel h3{
+                      font-size:14px!important;
+                      margin:0 0 7px!important;
+                      white-space:nowrap!important;
+                      overflow:hidden!important;
+                      text-overflow:ellipsis!important;
+                    }
+                    .wcp-kpi-summary-panel .wcp-kpi-lease-inputs{
+                      padding:6px!important;
+                      margin:0 0 7px!important;
+                      gap:5px!important;
+                      border-radius:9px!important;
+                    }
+                    .wcp-kpi-summary-panel .wcp-kpi-lease-line,
+                    .wcp-kpi-summary-panel .wcp-kpi-lease-line.is-rent{
+                      grid-template-columns:1fr!important;
+                      gap:3px!important;
+                      min-height:0!important;
+                    }
+                    .wcp-kpi-summary-panel .wcp-kpi-lease-line label{
+                      font-size:10px!important;
+                      line-height:1.1!important;
+                      font-weight:720!important;
+                    }
+                    .wcp-kpi-summary-panel .wcp-kpi-lease-line .wcp-inp{
+                      min-height:26px!important;
+                      padding:4px 7px!important;
+                      font-size:11px!important;
+                    }
+                    .wcp-kpi-summary-panel .wcp-kpi-lease-line .wcp-unit{display:none!important;}
+                    .wcp-kpi-summary-panel .wcp-rent-py-inline{
+                      justify-self:end!important;
+                      margin:0!important;
+                      font-size:10px!important;
+                      line-height:1.1!important;
+                    }
+                    .wcp-kpi-summary-panel .wcp-form{gap:3px!important;}
+                    .wcp-kpi-summary-panel .wcp-form>.wcp-line{
+                      grid-template-columns:minmax(0,1fr) minmax(72px,auto)!important;
+                      gap:5px!important;
+                      min-height:24px!important;
+                      padding:1px 0!important;
+                    }
+                    .wcp-kpi-summary-panel .wcp-form>.wcp-line label{
+                      font-size:10px!important;
+                      line-height:1.1!important;
+                      font-weight:690!important;
+                      color:#b9c7da!important;
+                      white-space:nowrap!important;
+                      overflow:hidden!important;
+                      text-overflow:ellipsis!important;
+                    }
+                    .wcp-kpi-summary-panel .wcp-form>.wcp-line label:before{
+                      font-size:9px!important;
+                      margin-right:4px!important;
+                    }
+                    .wcp-kpi-summary-panel .wcp-form>.wcp-line .wcp-out{
+                      min-height:23px!important;
+                      padding:2px 0!important;
+                      border:0!important;
+                      background:transparent!important;
+                      font-size:clamp(10.5px,.72vw,12.5px)!important;
+                      font-weight:780!important;
+                      justify-content:flex-end!important;
+                      text-align:right!important;
+                      overflow:hidden!important;
+                      text-overflow:ellipsis!important;
+                      white-space:nowrap!important;
+                    }
+                    .wcp-kpi-summary-panel .wcp-form>.wcp-line .wcp-unit{display:none!important;}
+                    .wcp-kpi-summary-panel .wcp-divider{margin:4px 0!important;}
+
+                    @media(max-width:1500px){
+                      .wr2-calc-pro-shell{padding-left:6px!important;padding-right:6px!important;}
+                      #wcp_pane_input .wcp-main-grid{grid-template-columns:minmax(350px,44fr) minmax(420px,42fr) minmax(168px,14fr)!important;gap:7px!important;}
+                      .wcp-bench-panel .wcp-grid3{grid-template-columns:minmax(230px,.86fr) minmax(0,1.14fr)!important;}
+                    }
+                    @media(max-width:1240px){
+                      #wcp_pane_input .wcp-main-grid{grid-template-columns:minmax(0,44fr) minmax(0,42fr) minmax(150px,14fr)!important;gap:6px!important;}
+                      .wcp-calc-combined .wcp-line,
+                      .wcp-calc-combined .wcp-line.rate.wcp-rate-field{grid-template-columns:1fr!important;}
+                      .wcp-calc-combined .wcp-unit{text-align:right!important;}
+                      .wcp-bench-panel .wcp-grid3{grid-template-columns:1fr!important;grid-template-areas:none!important;}
+                      .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(1),
+                      .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(2){grid-area:auto!important;min-height:auto!important;}
+                    }
+                    @media(max-width:980px){
+                      #wcp_pane_input .wcp-main-grid{grid-template-columns:1fr!important;}
+                      .wcp-col-resizer{display:none!important;}
+                      .wcp-calc-combined .wcp-calc-combined-grid{grid-template-columns:1fr!important;}
+                    }
+
                   `;
 
                 }
@@ -9818,6 +10055,89 @@ window.wr2SummaryCancelEdit = function() {
                   if(__wcpInputRaf) cancelAnimationFrame(__wcpInputRaf);
                   __wcpInputRaf=requestAnimationFrame(function(){ __wcpInputRaf=0; wcpRenderOutputs(triggerId||''); wcpPersistCurrent({immediate:false}); });
                 }
+
+                function wcpInstallMainGridResizers(){
+                  try{
+                    const grid=document.querySelector('#wcp_pane_input .wcp-main-grid');
+                    if(!grid) return;
+                    const cards=Array.from(grid.children).filter(function(el){return el && el.classList && el.classList.contains('wcp-card');}).slice(0,3);
+                    if(cards.length<3) return;
+                    grid.querySelectorAll('.wcp-col-resizer').forEach(function(el){el.remove();});
+                    const key='wcp_main_grid_cols_v139';
+                    const defaults=[44,42,14];
+                    const min=[28,32,10];
+                    function read(){
+                      try{
+                        const raw=JSON.parse(localStorage.getItem(key)||'null');
+                        if(Array.isArray(raw)&&raw.length===3&&raw.every(function(n){return isFinite(Number(n));})) return raw.map(Number);
+                      }catch(e){}
+                      return defaults.slice();
+                    }
+                    function norm(a){
+                      a=a.map(function(n,i){return Math.max(min[i],Number(n)||defaults[i]);});
+                      const sum=a[0]+a[1]+a[2]||100;
+                      a=a.map(function(n){return n*100/sum;});
+                      for(let i=0;i<3;i++) if(a[i]<min[i]) a[i]=min[i];
+                      const sum2=a[0]+a[1]+a[2]||100;
+                      return a.map(function(n){return +(n*100/sum2).toFixed(3);});
+                    }
+                    function apply(a,save){
+                      a=norm(a);
+                      grid.classList.add('wcp-resized');
+                      grid.style.setProperty('--wcp-user-cols','minmax(0,'+a[0]+'fr) minmax(0,'+a[1]+'fr) minmax(150px,'+a[2]+'fr)');
+                      if(save){ try{localStorage.setItem(key,JSON.stringify(a));}catch(e){} }
+                      window.requestAnimationFrame(place);
+                      return a;
+                    }
+                    let weights=apply(read(),false);
+                    function place(){
+                      try{
+                        const gr=grid.getBoundingClientRect();
+                        const c0=cards[0].getBoundingClientRect();
+                        const c1=cards[1].getBoundingClientRect();
+                        const h0=grid.querySelector('.wcp-col-resizer[data-idx="0"]');
+                        const h1=grid.querySelector('.wcp-col-resizer[data-idx="1"]');
+                        if(h0) h0.style.left=(c0.right-gr.left+4)+'px';
+                        if(h1) h1.style.left=(c1.right-gr.left+4)+'px';
+                      }catch(e){}
+                    }
+                    function make(idx){
+                      const h=document.createElement('div');
+                      h.className='wcp-col-resizer'; h.dataset.idx=String(idx); h.title='섹션 폭 조절 (더블클릭: 기본값)';
+                      let sx=0, start=null;
+                      h.addEventListener('dblclick',function(ev){ev.preventDefault();weights=apply(defaults,true);});
+                      h.addEventListener('pointerdown',function(ev){
+                        ev.preventDefault(); ev.stopPropagation();
+                        sx=ev.clientX; start=weights.slice(); h.classList.add('dragging');
+                        try{h.setPointerCapture(ev.pointerId);}catch(e){}
+                      });
+                      h.addEventListener('pointermove',function(ev){
+                        if(!start) return;
+                        const width=Math.max(1,grid.getBoundingClientRect().width);
+                        const delta=(ev.clientX-sx)/width*100;
+                        let next=start.slice();
+                        if(idx===0){ next[0]=start[0]+delta; next[1]=start[1]-delta; }
+                        else { next[1]=start[1]+delta; next[2]=start[2]-delta; }
+                        weights=apply(next,false);
+                      });
+                      function end(ev){
+                        if(!start) return;
+                        start=null; h.classList.remove('dragging'); apply(weights,true);
+                        try{h.releasePointerCapture(ev.pointerId);}catch(e){}
+                      }
+                      h.addEventListener('pointerup',end); h.addEventListener('pointercancel',end);
+                      return h;
+                    }
+                    grid.appendChild(make(0));
+                    grid.appendChild(make(1));
+                    place();
+                    if(!window.__wcpResizeBoundV139){
+                      window.__wcpResizeBoundV139=true;
+                      window.addEventListener('resize',function(){try{wcpInstallMainGridResizers();}catch(e){}},{passive:true});
+                    }
+                  }catch(e){ console.warn('[WCP] resize handles fail',e); }
+                }
+
                 function wcpBind(){ document.querySelectorAll('.wr2-calc-pro-shell .wcp-inp').forEach(function(el){ if(el.getAttribute('data-wcp-output')==='1') return; el.addEventListener('input',function(){ if(el.id==='wc_cf_loan_rate') wcpSet('wc_loan_manual_mode','rate'); if(el.id==='wc_cf_loan') wcpSet('wc_loan_manual_mode','amount'); wcpScheduleInputUpdate(el.id); }); el.addEventListener('blur',function(){ if(el.getAttribute('data-wcp-money')==='1') wcpSetWon(el.id,wcpReadWon(el.id)); wcpRenderOutputs(el.id); wcpPersistCurrent({immediate:false}); }); }); document.querySelectorAll('.wcp-tab').forEach(function(btn){ btn.addEventListener('click',function(){ document.querySelectorAll('.wcp-tab').forEach(function(b){b.classList.remove('active')}); document.querySelectorAll('.wcp-pane').forEach(function(p){p.classList.remove('active')}); btn.classList.add('active'); const pane=document.getElementById('wcp_pane_'+btn.getAttribute('data-pane')); if(pane) pane.classList.add('active'); }); }); }
                 function wcpResolveMount(){ const p=document.getElementById('wc_price')||document.getElementById('wr2CalcTabBar')||document.getElementById('wc_result'); if(!p) return null; return p.closest('.wr2-section-card,.wr2-card,.wr2-widget,.wr2-dash-card,.card')||p.parentElement; }
 
@@ -9825,7 +10145,7 @@ window.wr2SummaryCancelEdit = function() {
                 function wcpAggregateSeeds(seeds){ return wcpAggregateSeedForCalc(seeds||[]); }
                 window.wr2CalcLoadLinkedItem=function(roomId,itemId){ const room=(wr2State.rooms||[]).find(r=>String(r.id)===String(roomId))||wcpActiveRoom(); const sv=(typeof getSv==='function')?getSv():[]; const item=(sv||[]).find(x=>String(x&&x.id)===String(itemId)); if(!room||!item)return; const _seed=wr2SummarySeed(item); _seed.bidWon=wr2BidSeedBidWon(room,_seed); wcpLoadSeedIntoForm(_seed,'single:'+itemId); try{ if(typeof showToast==='function')showToast('단일 물건 기준 계산값을 불러왔습니다','ok'); }catch(e){} };
                 window.wr2CalcLoadLinkedTotal=function(roomId){ const room=(wr2State.rooms||[]).find(r=>String(r.id)===String(roomId))||wcpActiveRoom(); if(!room)return; const sv=(typeof getSv==='function')?getSv():[]; const items=(typeof wr2ResolveLinkedSavedItems==='function')?wr2ResolveLinkedSavedItems(room,sv,typeof wr2BuildPlLinkedMap==='function'?wr2BuildPlLinkedMap():{}):[]; if(!items.length)return; const _seeds=items.map(wr2SummarySeed); _seeds.forEach(function(s){s.bidWon=wr2BidSeedBidWon(room,s);}); const _agg=wcpAggregateSeeds(_seeds); wcpLoadSeedIntoForm(_agg,'total'); wcpSet('wc_seed_signature',wcpSeedSignature(_seeds)); try{ if(typeof showToast==='function')showToast('연결 물건 합산 계산값을 불러왔습니다','ok'); }catch(e){} };
-                window.wr2RenderProCalc=function(room){ const mount=wcpResolveMount(); if(!mount||!room) return false; wcpGetStore(room); mount.classList.add('wr2-calc-pro-mount'); mount.innerHTML=wcpBuildHtml(room); wcpApplyState(wcpDefaultState(room)); wcpFormatMoneyInputs(); wcpBind(); wcpRenderOutputs(''); wcpRenderScenarioTable(); wcpRenderSnapshots(); return true; };
+                window.wr2RenderProCalc=function(room){ const mount=wcpResolveMount(); if(!mount||!room) return false; wcpGetStore(room); mount.classList.add('wr2-calc-pro-mount'); mount.innerHTML=wcpBuildHtml(room); wcpApplyState(wcpDefaultState(room)); wcpFormatMoneyInputs(); wcpBind(); try{ wcpInstallMainGridResizers(); }catch(e){} wcpRenderOutputs(''); wcpRenderScenarioTable(); wcpRenderSnapshots(); try{ setTimeout(wcpInstallMainGridResizers,60); }catch(e){} return true; };
                 window.wr2CalcProRun=function(){ wcpRenderOutputs(''); wcpPersistCurrent({immediate:true}); try{ if(typeof showToast==='function') showToast('계산 완료·자동저장됨','ok'); }catch(e){} };
                 window.wr2CalcProClear=function(){ if(!confirm('현재 계산 입력값을 초기화할까요? 저장된 시나리오는 유지됩니다.')) return; document.querySelectorAll('.wr2-calc-pro-shell .wcp-inp').forEach(function(el){el.value='';}); [['wc_loan_manual_mode',''],['wc_acq_tax_rate','4.60'],['wc_legal_rate','1.00'],['wc_rent_broker_rate','0.90'],['wc_sale_broker_rate','0.90'],['wc_cf_rate','5.00'],['wc_cf_loan_rate','85.00'],['wc_corp_rate_under','9'],['wc_corp_rate_over','19'],['wc_target_yield_1','8.0'],['wc_target_yield_2','6.0'],['wc_target_yield_3','7.0'],['wc_bench_yield_rate','8.0'],['wc_management_monthly','5000']].forEach(function(p){wcpSet(p[0],p[1]);}); wcpRenderOutputs(''); wcpPersistCurrent({immediate:true}); };
                 window.wr2CalcUseSuggestedBid=function(){ const r=wcpCalc(''); if(r.suggested){ wcpSetWon('wc_my_bid',r.suggested); wcpSetWon('wc_price',r.suggested); try{ const room=wcpActiveRoom(); const seeds=wcpGetLinkedSeeds(room); if(room&&seeds&&seeds.length>1){ wr2BidDistributeByArea(room,r.suggested); } }catch(e){} wcpRenderOutputs('wc_my_bid'); wcpPersistCurrent({immediate:true}); } };
@@ -52864,7 +53184,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260511-workroom-v137-tooltip-bid-recommend-layout';
+  var BUILD='20260511-workroom-v138-calculator-responsive-fit';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
@@ -54603,4 +54923,40 @@ window.addEventListener('DOMContentLoaded', () => {
       },true);
     }
   }catch(e){console.warn('[v137 ui fixes]',e);}
+})();
+
+
+/* v138 UI fix: workroom calculator must fit inside the visible content width, not viewport media width. */
+(function(){
+  try{
+    function inject(){
+      var old=document.getElementById('sk-v138-workroom-fit-style');
+      if(old) old.remove();
+      var st=document.createElement('style');
+      st.id='sk-v138-workroom-fit-style';
+      st.textContent='\
+        .wr2-calc-pro-shell,.wcp-wrap,.wcp-pane,.wcp-main-grid,.wcp-card,.wcp-section,.wcp-calc-combined-grid,.wcp-calc-col,.wcp-form,.wcp-line{box-sizing:border-box!important;min-width:0!important;max-width:100%!important;}\
+        .wr2-calc-pro-shell,.wcp-wrap,.wcp-pane{width:100%!important;overflow-x:hidden!important;}\
+        .wcp-main-grid{grid-template-columns:1fr!important;width:100%!important;gap:10px!important;align-items:start!important;}\
+        .wcp-main-grid>.wcp-card{height:auto!important;width:100%!important;min-width:0!important;overflow:visible!important;}\
+        .wcp-kpi-summary-panel{max-width:100%!important;width:100%!important;}\
+        .wcp-card,.wcp-section,.wcp-calc-col{overflow:visible!important;}\
+        .wcp-calc-combined-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;width:100%!important;gap:10px!important;}\
+        .wcp-line{grid-template-columns:minmax(96px,150px) minmax(0,1fr) 24px!important;gap:8px!important;width:100%!important;}\
+        .wcp-line.rate,.wcp-line.rate.wcp-rate-field,.wcp-line.double{grid-template-columns:minmax(96px,150px) minmax(64px,.62fr) 18px minmax(90px,1fr) 24px!important;gap:8px!important;width:100%!important;}\
+        .wcp-inp,.wcp-out{min-width:0!important;max-width:100%!important;box-sizing:border-box!important;}\
+        .wcp-unit{min-width:0!important;white-space:nowrap!important;}\
+        .wcp-basis-summary{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))!important;}\
+        .wcp-kpi-strip{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))!important;}\
+        .wcp-bench-panel .wcp-grid3{grid-template-columns:minmax(0,.72fr) minmax(0,1fr)!important;grid-template-areas:"basis bid" "basis result"!important;}\
+        .wcp-bench-panel .wcp-grid4{grid-template-columns:repeat(2,minmax(0,1fr))!important;}\
+        .wcp-quick-reco{max-width:100%!important;}\
+        @media(max-width:1280px){.wcp-calc-combined-grid{grid-template-columns:1fr!important}.wcp-bench-panel .wcp-grid3,.wcp-bench-panel .wcp-grid4{grid-template-columns:1fr!important;grid-template-areas:none!important}.wcp-bench-panel .wcp-grid3>.wcp-section{grid-area:auto!important}.wcp-line,.wcp-line.rate,.wcp-line.rate.wcp-rate-field,.wcp-line.double{grid-template-columns:minmax(86px,130px) minmax(0,1fr) 22px!important}.wcp-line.rate .wcp-inp:nth-of-type(2),.wcp-line.rate.wcp-rate-field .wcp-inp:nth-of-type(2),.wcp-line.double .wcp-inp:nth-of-type(2){grid-column:2/3!important}.wcp-line.rate .wcp-unit:last-child,.wcp-line.rate.wcp-rate-field .wcp-unit:last-child,.wcp-line.double .wcp-unit:last-child{grid-column:3/4!important}}\
+        @media(max-width:760px){.wcp-line,.wcp-line.rate,.wcp-line.rate.wcp-rate-field,.wcp-line.double{grid-template-columns:1fr!important}.wcp-unit{display:none!important}}\
+      ';
+      (document.head||document.documentElement).appendChild(st);
+    }
+    inject();
+    if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',inject,{once:true});
+  }catch(e){console.warn('[v138 workroom fit]',e);}
 })();
