@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260511-workroom-v133-separate-naver-land-url';
+    window.__SK_BUILD = '20260511-workroom-v135-url-raw-preserve-safe-open';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -16244,8 +16244,18 @@ window.wr2SummaryCancelEdit = function() {
     };
 
     // 경매 링크 버튼: URL 있으면 열고, 없으면 원본 PDF 열기
+    // v135: 저장값은 사용자가 입력한 URL(raw)을 보존하고, 열 때만 안전 URL로 변환한다.
+    // - m.auction1 ca_view_sns(auth 포함) 공유 링크는 그대로 열어야 한다.
+    // - www.auction1 ca_view.php의 user_ssid/line_num 계열 세션 파라미터만 제거한다.
     window.openAuctionLinkOrPdf = function(savedId, url) {
-      const u = _a1NormalizeDetailUrl(String(url || '').trim());
+      let raw = String(url || '').trim();
+      try {
+        if (!raw && savedId && typeof getSv === 'function') {
+          const found = (getSv() || []).find(function(x){ return String(x && x.id || '') === String(savedId); });
+          if (found && typeof window._skAuctionDetailUrl === 'function') raw = window._skAuctionDetailUrl(found);
+        }
+      } catch(e) {}
+      const u = (typeof window._skAuctionOpenUrl === 'function') ? window._skAuctionOpenUrl(raw) : ((typeof _a1NormalizeDetailUrl === 'function') ? _a1NormalizeDetailUrl(raw) : raw);
       if (u && u !== '#' && /^https?:\/\//i.test(u)) {
         try { window.open(u, '_blank'); } catch (e) { window.location.href = u; }
         return;
@@ -18664,22 +18674,20 @@ window.wr2SummaryCancelEdit = function() {
       const src = String(rawUrl || '').trim();
       if (!src) return '';
       try {
-        const u = new URL(src);
+        const u = new URL(src, window.location && window.location.href ? window.location.href : undefined);
         const host = String(u.hostname || '').toLowerCase();
         if (host.indexOf('auction1.co.kr') >= 0) {
           const pid = String(u.searchParams.get('product_id') || '').trim();
           if (pid) {
+            // v134: 옥션원 세션성 파라미터(user_ssid/line_num/line_tnum 등)를 저장·오픈 URL에서 제거한다.
+            // 이 값들이 남아 있으면 새 탭에서 "같은 ID로 동시 접속" 경고가 뜨고, URL 수정값도 예전 세션 링크처럼 보인다.
             const out = new URL('https://www.auction1.co.kr/auction/ca_view.php');
             out.searchParams.set('product_id', pid);
-            u.searchParams.forEach(function(v, k) {
-              if (k === 'product_id') return;
-              if (v == null || String(v).trim() === '') return;
-              out.searchParams.set(k, String(v));
-            });
             return out.toString();
           }
           u.protocol = 'https:';
           u.hostname = 'www.auction1.co.kr';
+          ['user_ssid','line_num','line_tnum','p_num','pageno','page','PHPSESSID'].forEach(function(k){ u.searchParams.delete(k); });
           return u.toString();
         }
       } catch (e) {}
@@ -20059,7 +20067,7 @@ ${inputDesc.substring(0, 3000)}
         var extBtns = [];
         var appBtns = [];
         if (_auctionDetailURL) {
-          extBtns.push(`<a href="${esc(_auctionDetailURL)}" target="_blank" class="popup-src-btn" style="${bStyle}">🔗 상세</a>`);
+          extBtns.push(`<button type="button" class="popup-src-btn" data-auction-open-id="${esc(id)}" data-auction-open-url="${esc(_auctionDetailURL)}" style="${bStyle}" onclick="event.preventDefault();event.stopPropagation();window.openAuctionLinkOrPdf && window.openAuctionLinkOrPdf(this.getAttribute('data-auction-open-id'), this.getAttribute('data-auction-open-url'))">🔗 상세</button>`);
         }
         if (typeof window._skIsAuctionPublicItem === 'function' ? window._skIsAuctionPublicItem(item) : a) {
           extBtns.push(`<button type="button" class="popup-src-btn" id="popEditUrlBtn" data-pop-url-edit-id="${esc(id)}" style="background:rgba(255,255,255,.06);color:#aab4cc;border-color:rgba(255,255,255,.24);" onclick="event.preventDefault();event.stopPropagation();window.showPopupUrlInput && window.showPopupUrlInput(this.getAttribute('data-pop-url-edit-id'))">${_auctionDetailURL ? '✏️ 상세URL수정' : '🔗 상세URL추가'}</button>`);
@@ -20071,10 +20079,6 @@ ${inputDesc.substring(0, 3000)}
         }
         if (_naverMapQ) extBtns.push(`<a href="${esc(_naverMapQ)}" target="_blank" class="popup-src-btn" style="${extBtnStyle}">🧭 네이버지도</a>`);
         if (_naverLandQ || _addrQ) extBtns.push(`<button type="button" class="popup-src-btn" style="${extBtnStyle}" onclick="event.preventDefault();event.stopPropagation();window.skOpenNaverLandForSaved && window.skOpenNaverLandForSaved('${id}', event)">🏠 네이버부동산</button>`);
-        if (typeof window._skIsAuctionPublicItem === 'function' ? window._skIsAuctionPublicItem(item) : a) {
-          extBtns.push(`<button type="button" class="popup-src-btn" style="background:rgba(4,222,91,.10);color:#7ee787;border-color:rgba(4,222,91,.34);" onclick="event.preventDefault();event.stopPropagation();window.promptSavedNaverLandUrl && window.promptSavedNaverLandUrl('${id}')">🏠 네이버URL수정</button>`);
-        }
-
         if (_hasPos) appBtns.push(`<button class="popup-src-btn" style="background:rgba(255,209,102,.12);color:#ffd166;border-color:rgba(255,209,102,.4);" onclick="goToMapFromCard('${id}')">📍 내 지도</button>`);
         // ★ 경매 아이템: AI 분석 버튼 추가
         if (a) {
@@ -20253,7 +20257,8 @@ ${inputDesc.substring(0, 3000)}
 
       // ── 요약 헤더 ───────────────────────────────────────────────
       const srcBadge = `<span style="font-size:10px;padding:1px 7px;border-radius:10px;background:rgba(${colorRgb},.15);color:${color};border:1px solid rgba(${colorRgb},.45);font-weight:600;">${esc(src || '정보')}</span>`;
-      const srcLinkBtn = d.상세URL ? `<a href="${esc(d.상세URL)}" target="_blank" style="font-size:10px;padding:2px 8px;background:rgba(79,142,255,.12);color:var(--ac);border:1px solid rgba(79,142,255,.4);border-radius:5px;text-decoration:none;font-weight:600;">🔗 원본</a>` : '';
+      const _srcAuctionUrlForBtn = (typeof window._skAuctionDetailUrl === 'function') ? window._skAuctionDetailUrl(item) : String(d.상세URL || '').trim();
+      const srcLinkBtn = _srcAuctionUrlForBtn ? `<button type="button" onclick="event.preventDefault();event.stopPropagation();window.openAuctionLinkOrPdf && window.openAuctionLinkOrPdf('${item.id}', '${esc(_srcAuctionUrlForBtn)}')" style="font-size:10px;padding:2px 8px;background:rgba(79,142,255,.12);color:var(--ac);border:1px solid rgba(79,142,255,.4);border-radius:5px;text-decoration:none;font-weight:600;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">🔗 원본</button>` : '';
       const primaryAddr = d.소재지 || d['도로명주소'] || d['지번주소'] || d['주소'] || '';
       const roadAddr = d['도로명주소'] || '';
       const jibunAddr = d['지번주소'] || '';
@@ -20677,7 +20682,7 @@ ${inputDesc.substring(0, 3000)}
         if (!u) continue;
         // 네이버/일반매물 링크는 경매 상세로 쓰지 않는다.
         if (/new\.land\.naver\.com|map\.naver\.com/i.test(u)) continue;
-        return u;
+        return (typeof _a1NormalizeDetailUrl === 'function') ? _a1NormalizeDetailUrl(u) : u;
       }
       if (d.product_id || d._pid) {
         return 'https://www.auction1.co.kr/auction/ca_view.php?product_id=' + encodeURIComponent(d.product_id || d._pid);
@@ -20752,7 +20757,7 @@ ${inputDesc.substring(0, 3000)}
         if (!u) continue;
         // 네이버/지도 URL은 경공매 상세 링크로 쓰지 않는다.
         if (/new\.land\.naver\.com|map\.naver\.com/i.test(u)) continue;
-        return u;
+        return (typeof _a1NormalizeDetailUrl === 'function') ? _a1NormalizeDetailUrl(u) : u;
       }
       if (d.product_id || d._pid) {
         return 'https://www.auction1.co.kr/auction/ca_view.php?product_id=' + encodeURIComponent(d.product_id || d._pid);
@@ -20762,7 +20767,8 @@ ${inputDesc.substring(0, 3000)}
     window._skApplyAuctionDetailUrl = function(item, url) {
       if (!item) return false;
       const d = item.data || (item.data = {});
-      const next = String(url || '').trim();
+      const nextRaw = String(url || '').trim();
+      const next = nextRaw ? ((typeof _a1NormalizeDetailUrl === 'function') ? _a1NormalizeDetailUrl(nextRaw) : nextRaw) : '';
       item._links = item._links && typeof item._links === 'object' ? item._links : {};
       const stamp = Date.now();
       if (next) {
@@ -20998,8 +21004,11 @@ ${inputDesc.substring(0, 3000)}
           item.updatedAt = Date.now();
           const sv = (typeof getSv === 'function') ? getSv() : [];
           if (Array.isArray(sv) && sv.some(function(x){ return String(x && x.id || '') === String(item.id || ''); })) {
-            if (typeof setSv === 'function') setSv(sv);
-            window._skPushSavedRowNow(item, 'naver-land-geocode');
+            if (typeof _persistSingleSavedItemFast === 'function') _persistSingleSavedItemFast(sv, item, 'naver-land-geocode', { pushNow:true });
+            else {
+              if (typeof setSv === 'function') setSv(sv);
+              window._skPushSavedRowNow(item, 'naver-land-geocode');
+            }
           }
         } catch(e) {}
         url = 'https://new.land.naver.com/offices?ms=' + ll.lat + ',' + ll.lng + ',17&a=SG:SMS:APTHGJ&e=RETAIL';
@@ -21059,6 +21068,113 @@ ${inputDesc.substring(0, 3000)}
         return { ok:false, error:String(e && (e.message || e)) };
       }
     };
+
+
+    // v135: 옥션원/온비드 상세 URL 저장값은 사용자가 입력한 raw URL을 보존한다.
+    // 열기 시에만 세션성 파라미터를 제거한다. 단, m.auction1 ca_view_sns 공유 URL(auth 포함)은 그대로 열어야 한다.
+    window._skAuctionRawUrlFromItem = function(item) {
+      if (!item) return '';
+      const d = item.data || {};
+      const links = (item._links && typeof item._links === 'object') ? item._links : {};
+      const candidates = [
+        links.auctionDetailRaw, links.auctionDetailUser, links.auctionDetail, links.originalRaw, links.original,
+        d.옥션원URL, d.온비드URL, d.상세URL, d.원본URL, d.원본링크,
+        d.originalUrl, d.original_url, d.url, d.link,
+        item.url, item.originalUrl, item.original_url, item.link
+      ];
+      for (const v of candidates) {
+        const u = String(v || '').trim();
+        if (!u) continue;
+        if (/new\.land\.naver\.com|map\.naver\.com/i.test(u)) continue;
+        return u;
+      }
+      return '';
+    };
+    window._skAuctionOpenUrl = function(rawUrl) {
+      const raw = String(rawUrl || '').trim();
+      if (!raw) return '';
+      try {
+        const u = new URL(raw, window.location && window.location.href ? window.location.href : undefined);
+        const host = String(u.hostname || '').toLowerCase();
+        if (host.indexOf('auction1.co.kr') >= 0) {
+          const path = String(u.pathname || '');
+          const pid = String(u.searchParams.get('product_id') || '').trim();
+          const hasShareAuth = /ca_view_sns\.php/i.test(path) || u.searchParams.has('auth') || host.indexOf('m.auction1.co.kr') >= 0;
+          if (hasShareAuth) {
+            // 모바일/SNS 공유 URL은 auth 토큰이 핵심이므로 절대 product_id URL로 줄이지 않는다.
+            return raw;
+          }
+          if (pid && /ca_view\.php/i.test(path)) {
+            return 'https://www.auction1.co.kr/auction/ca_view.php?product_id=' + encodeURIComponent(pid);
+          }
+          u.protocol = 'https:';
+          if (host === 'auction1.co.kr') u.hostname = 'www.auction1.co.kr';
+          ['user_ssid','line_num','line_tnum','p_num','pageno','page','PHPSESSID','person_hide'].forEach(function(k){ u.searchParams.delete(k); });
+          return u.toString();
+        }
+      } catch(e) {}
+      return raw;
+    };
+    window._skAuctionDetailUrl = function(item) {
+      if (!item) return '';
+      const d = item.data || {};
+      if (typeof window._skIsAuctionPublicItem === 'function' && !window._skIsAuctionPublicItem(item, d)) return '';
+      const raw = window._skAuctionRawUrlFromItem(item);
+      if (raw) return raw;
+      if (d.product_id || d._pid) return 'https://www.auction1.co.kr/auction/ca_view.php?product_id=' + encodeURIComponent(d.product_id || d._pid);
+      return '';
+    };
+    window._skApplyAuctionDetailUrl = function(item, url) {
+      if (!item) return false;
+      const d = item.data || (item.data = {});
+      const raw = String(url || '').trim();
+      const openUrl = (typeof window._skAuctionOpenUrl === 'function') ? window._skAuctionOpenUrl(raw) : raw;
+      item._links = item._links && typeof item._links === 'object' ? item._links : {};
+      const stamp = Date.now();
+      if (raw) {
+        // raw는 사용자가 수정한 주소 그대로 보존한다. openUrl은 세션 파라미터 제거/공유 URL 보존용 보조값이다.
+        item._links.auctionDetailRaw = raw;
+        item._links.auctionDetailUser = raw;
+        item._links.auctionDetail = raw;
+        item._links.originalRaw = raw;
+        item._links.original = raw;
+        item._links.auctionOpenUrl = openUrl;
+        item._links.updatedAt = stamp;
+        item._links.userEdited = true;
+        d.상세URL = raw;
+        d.원본URL = raw;
+        d.원본링크 = raw;
+        d.originalUrl = raw;
+        d.original_url = raw;
+        d.url = raw;
+        d.link = raw;
+        item.url = raw;
+        item.originalUrl = raw;
+        item.link = raw;
+        if (/onbid\.co\.kr/i.test(raw) || /온비드|공매/i.test(String(item.source || d.출처 || ''))) {
+          d.온비드URL = raw;
+          d.옥션원URL = '';
+        } else {
+          d.옥션원URL = raw;
+          if (/auction1\.co\.kr/i.test(raw)) d.온비드URL = '';
+        }
+      } else {
+        ['상세URL','원본URL','원본링크','originalUrl','original_url','url','link','옥션원URL','온비드URL'].forEach(function(k){ d[k] = ''; });
+        item.url = '';
+        item.originalUrl = '';
+        item.link = '';
+        ['auctionDetailRaw','auctionDetailUser','auctionDetail','originalRaw','original','auctionOpenUrl'].forEach(function(k){ item._links[k] = ''; });
+        item._links.updatedAt = stamp;
+        item._links.userEdited = true;
+      }
+      item.updatedAt = stamp;
+      item._skUrlEditedAt = stamp;
+      item._skLocalEditedAt = stamp;
+      try { d._skUrlEditedAt = stamp; d._skLocalEditedAt = stamp; } catch(e) {}
+      return true;
+    };
+    window._skSavedItemDetailUrl = function(item) { return window._skAuctionDetailUrl(item); };
+    window._skApplySavedItemDetailUrl = function(item, url) { return window._skApplyAuctionDetailUrl(item, url); };
 
     function _skFindSavedItemById(id) {
       const sid = String(id || '');
@@ -21130,6 +21246,7 @@ ${inputDesc.substring(0, 3000)}
       _persistSingleSavedItemFast(sv, item, 'url-save', { pushNow:true });
       try { if (typeof refreshMapCardData === 'function') refreshMapCardData(sid); } catch(e) {}
       if (inp) inp.value = (typeof window._skAuctionDetailUrl === 'function' ? window._skAuctionDetailUrl(item) : url);
+      try { if (String(window.popupId || '') === sid && typeof openPopup === 'function') setTimeout(function(){ openPopup(sid); }, 30); } catch(e) {}
       if (typeof showToast === 'function') showToast(url ? '🔗 URL 저장됨' : '원본 URL을 비웠습니다', 'ok');
     };
 
@@ -22345,7 +22462,7 @@ ${fi(d.기타사항, '기타사항', 'text', idx, '기타사항', isPopup)}
       // 액션 버튼들
       const _auctionDetailURL = (typeof window._skAuctionDetailUrl === 'function') ? window._skAuctionDetailUrl(item) : '';
       const detailBtn = _auctionDetailURL
-        ? `<a href="${esc(_auctionDetailURL)}" target="_blank" style="font-size:10px;padding:2px 8px;background:rgba(${_srcRgb},.12);color:${_srcColor};border:1px solid rgba(${_srcRgb},.4);border-radius:5px;text-decoration:none;font-weight:600;">🔗 상세</a>`
+        ? `<button type="button" onclick="event.preventDefault();event.stopPropagation();window.openAuctionLinkOrPdf && window.openAuctionLinkOrPdf('${popupId || item.id}', '${esc(_auctionDetailURL)}')" style="font-size:10px;padding:2px 8px;background:rgba(${_srcRgb},.12);color:${_srcColor};border:1px solid rgba(${_srcRgb},.4);border-radius:5px;text-decoration:none;font-weight:600;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">🔗 상세</button>`
         : '';
       const siteMapURL = _isJumpo ? 'https://map.jumpoline.com/main'
         : _isAssa ? 'https://xn--v69ap5so3hsnb81e1wfh6z.com/map'
@@ -52720,7 +52837,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260511-workroom-v133-separate-naver-land-url';
+  var BUILD='20260511-workroom-v135-url-raw-preserve-safe-open';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
