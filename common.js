@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260511-workroom-v146-input-fix-percent-actions-ui';
+    window.__SK_BUILD = '20260511-workroom-v147-natural-comma-simplify-bench';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -9713,8 +9713,8 @@ window.wr2SummaryCancelEdit = function() {
                 function wcpReadWon(id){ return Math.round(wcpNum(wcpRead(id))); }
                 function wcpReadPct(id){ return wcpNum(wcpRead(id)); }
                 function wcpIsActiveInput(id){ const el=document.getElementById(id); return !!(el && document.activeElement===el); }
-                function wcpSetWon(id,n,opts){ const el=document.getElementById(id); if(!el) return; if(opts&&opts.skipActive&&document.activeElement===el) return; el.value=n?Math.round(n).toLocaleString('ko-KR'):''; }
-                function wcpSetPct(id,n,d,opts){ const el=document.getElementById(id); if(!el || !isFinite(n)) return; if(opts&&opts.skipActive&&document.activeElement===el) return; el.value=(+n).toFixed(d==null?2:d).replace(/\.00$/,''); }
+                function wcpSetWon(id,n,opts){ const el=document.getElementById(id); if(!el) return; if(((opts&&opts.skipActive)||(!opts||!opts.force)) && document.activeElement===el && el.getAttribute('data-wcp-output')!=='1') return; el.value=n?Math.round(n).toLocaleString('ko-KR'):''; }
+                function wcpSetPct(id,n,d,opts){ const el=document.getElementById(id); if(!el || !isFinite(n)) return; if(((opts&&opts.skipActive)||(!opts||!opts.force)) && document.activeElement===el && el.getAttribute('data-wcp-output')!=='1') return; el.value=(+n).toFixed(d==null?2:d).replace(/\.00$/,''); }
                 function wcpFormatWon(n){ n=Math.round(Number(n)||0); return n? n.toLocaleString('ko-KR')+'원' : '-'; }
                 function wcpCommaValue(v){ const raw=String(v==null?'':v).trim(); if(!raw) return ''; const n=wcpNum(raw); if(!n) return raw==='0'?'0':''; return Math.round(n).toLocaleString('ko-KR'); }
                 function wcpFormatMoneyInput(el){ if(!el) return; const raw=String(el.value||''); if(!raw || !/[0-9]/.test(raw)) return; const pos=el.selectionStart||raw.length; const digitBefore=raw.slice(0,pos).replace(/[^0-9]/g,'').length; const only=raw.replace(/[^0-9]/g,''); if(!only){ el.value=''; return; } const next=Number(only).toLocaleString('ko-KR'); el.value=next; try{ let seen=0, newPos=next.length; for(let i=0;i<next.length;i++){ if(/[0-9]/.test(next[i])) seen++; if(seen>=digitBefore){ newPos=i+1; break; } } el.setSelectionRange(newPos,newPos); }catch(e){} }
@@ -9880,11 +9880,8 @@ window.wr2SummaryCancelEdit = function() {
                       <div class="wcp-main-grid">
                         <div class="wcp-card orange wcp-bench-panel">
                           <h3>① 시세 기준 입찰가 판단</h3>
-                          <div class="wcp-grid3" style="margin-top:8px;">
-                            <div class="wcp-section"><h4>기준면적</h4><div class="wcp-form">${wcpField('wc_area','전용면적','㎡',s.area,'','')}${wcpField('wc_area_py','전용평수','평',s.areaPy,'','')}${wcpField('wc_bunyang_py','분양평수','평',s.bunyangPy,'','관리비 기준')}</div></div>
-                            <div class="wcp-section"><h4>나의 입찰가</h4><div class="wcp-form">${wcpField('wc_my_bid','입찰가','원',s.myBid,'','')}<div class="wcp-price-note-row"><div class="wcp-note orange" id="wcp_my_bid_note">-</div></div>${wcpField('wc_extra_reserve','예비비','원',s.extraReserve,'','')}${wcpField('wc_target_profit','목표 순이익','원',s.targetProfit,'','예: 30,000,000')}<div class="wcp-bid-actions"><button class="wcp-btn primary" onclick="wr2CalcUseSuggestedBid()" title="추천 입찰가를 나의 입찰가에 반영">추가 적용</button></div></div></div>
-                          </div>
-                          <div class="wcp-grid4" style="margin-top:8px;">
+                          <input id="wc_area" type="hidden" value="${wcpEsc(s.area||'')}"><input id="wc_area_py" type="hidden" value="${wcpEsc(s.areaPy||'')}"><input id="wc_bunyang_py" type="hidden" value="${wcpEsc(s.bunyangPy||'')}"><input id="wc_my_bid" type="hidden" value="">
+                          <div class="wcp-grid4 wcp-bench-grid-compact" style="margin-top:8px;">
                             ${wcpBenchCard(1,'네이버 매매 호가','현재 시장 상한선','wc_bench_max',s.benchMax,'MAX','wcp_bench_max_note')}
                             ${wcpBenchCard(2,'최근 2년치 거래 사례','실거래 중간값','wc_bench_mid',s.benchMid,'MID','wcp_bench_mid_note')}
                             ${wcpBenchCard(3,'최근 2년치 낙찰가','시장 하한선','wc_bench_min',s.benchMin,'MIN','wcp_bench_min_note')}
@@ -9974,9 +9971,9 @@ window.wr2SummaryCancelEdit = function() {
                   if(trigger==='wc_area' && area>0) wcpSet('wc_area_py',(area/3.305785).toFixed(2));
                   if(trigger==='wc_area_py' && areaPy>0) wcpSet('wc_area',(areaPy*3.305785).toFixed(2));
 
-                  const priceBase=wcpReadWon('wc_my_bid')||wcpReadWon('wc_price');
+                  const priceBase=(trigger==='wc_price') ? wcpReadWon('wc_price') : (wcpReadWon('wc_my_bid')||wcpReadWon('wc_price'));
                   if(trigger==='wc_my_bid' && priceBase) wcpSetWon('wc_price',priceBase);
-                  if(trigger==='wc_price' && priceBase) wcpSetWon('wc_my_bid',priceBase);
+                  if(trigger==='wc_price' && priceBase) wcpSetWon('wc_my_bid',priceBase,{force:true});
                   const price=wcpReadWon('wc_price')||wcpReadWon('wc_my_bid'), appraisal=wcpReadWon('wc_appraisal');
 
                   [['wc_acq_tax_rate','wc_acq_tax',price],['wc_legal_rate','wc_legal_fee',price]].forEach(function(p){
@@ -10320,45 +10317,20 @@ window.wr2SummaryCancelEdit = function() {
                 }
 
                 function wcpBind(){
-                  function normalizeMoneyWhileEditing(el){
+                  function formatMoneyNaturally(el){
                     if(!el || el.getAttribute('data-wcp-money')!=='1') return;
-                    const before=String(el.value||'');
-                    const pos=(typeof el.selectionStart==='number')?el.selectionStart:before.length;
-                    const digitBefore=before.slice(0,pos).replace(/[^0-9]/g,'').length;
-                    const next=before.replace(/[^0-9]/g,'');
-                    if(before!==next){
-                      el.value=next;
-                      try{
-                        const p=Math.min(next.length,digitBefore);
-                        el.setSelectionRange(p,p);
-                      }catch(_e){}
-                    }
+                    wcpFormatMoneyInput(el);
                   }
                   document.querySelectorAll('.wr2-calc-pro-shell .wcp-inp').forEach(function(el){
                     if(el.getAttribute('data-wcp-output')==='1') return;
-                    if(el.getAttribute('data-wcp-money')==='1'){
-                      el.addEventListener('focus',function(){
-                        try{
-                          const raw=String(el.value||'').replace(/[^0-9]/g,'');
-                          if(raw!==String(el.value||'')) el.value=raw;
-                          setTimeout(function(){ try{ el.select(); }catch(_e){} },0);
-                        }catch(_e){}
-                      });
-                      el.addEventListener('keydown',function(e){
-                        if(e && (e.key==='Backspace' || e.key==='Delete')){
-                          el.__wcpUserDeleting=true;
-                          setTimeout(function(){ el.__wcpUserDeleting=false; },0);
-                        }
-                      });
-                    }
                     el.addEventListener('input',function(){
-                      if(el.getAttribute('data-wcp-money')==='1') normalizeMoneyWhileEditing(el);
+                      if(el.getAttribute('data-wcp-money')==='1') formatMoneyNaturally(el);
                       if(el.id==='wc_cf_loan_rate') wcpSet('wc_loan_manual_mode','rate');
                       if(el.id==='wc_cf_loan') wcpSet('wc_loan_manual_mode','amount');
                       wcpScheduleInputUpdate(el.id);
                     });
                     el.addEventListener('blur',function(){
-                      if(el.getAttribute('data-wcp-money')==='1') wcpSetWon(el.id,wcpReadWon(el.id));
+                      if(el.getAttribute('data-wcp-money')==='1') wcpSetWon(el.id,wcpReadWon(el.id),{force:true});
                       wcpRenderOutputs(el.id);
                       wcpPersistCurrent({immediate:false});
                     });
@@ -53410,7 +53382,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260511-workroom-v146-input-fix-percent-actions-ui';
+  var BUILD='20260511-workroom-v147-natural-comma-simplify-bench';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
@@ -55718,4 +55690,24 @@ window.addEventListener('DOMContentLoaded', () => {
     inject();
     if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',inject,{once:true});
   }catch(e){console.warn('[v146 calc polish]',e);}
+})();
+
+
+/* v147: natural comma editing + simplify market judgement inputs */
+(function(){
+  try{
+    var old=document.getElementById('sk-v147-natural-comma-simplify-bench');
+    if(old) old.remove();
+    var st=document.createElement('style');
+    st.id='sk-v147-natural-comma-simplify-bench';
+    st.textContent=`
+      .wr2-calc-pro-shell .wcp-bench-panel > .wcp-grid3{display:none!important;}
+      .wr2-calc-pro-shell .wcp-bench-grid-compact{margin-top:10px!important;}
+      .wr2-calc-pro-shell .wcp-bench-panel .wcp-quick-reco{margin-top:10px!important;}
+      .wr2-calc-pro-shell input.wcp-inp[type="hidden"]{display:none!important;}
+      .wr2-calc-pro-shell .wcp-bench-panel{padding-top:10px!important;}
+      .wr2-calc-pro-shell .wcp-inp[data-wcp-money="1"]{font-variant-numeric:tabular-nums!important;}
+    `;
+    document.head.appendChild(st);
+  }catch(e){console.warn('[v147 natural comma simplify bench]',e);}
 })();
