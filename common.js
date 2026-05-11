@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260511-workroom-v130-url-save-and-detail-lag-fix';
+    window.__SK_BUILD = '20260511-workroom-v132-prune-stale-workroom-pending';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -20455,6 +20455,32 @@ ${inputDesc.substring(0, 3000)}
         if (window.idbSet) window.idbSet('re_sv', arr).catch(function() {});
       }
     }
+
+    // v131: 상세팝업의 단일 필드 저장은 setSv(full) / workrooms 전체 동기화를 타지 않는다.
+    // - 로컬 re_sv 캐시/IDB는 즉시 갱신
+    // - 변경된 saved item 1건만 durable outbox + 비동기 push
+    // - 팝업 입력 클릭/blur 때 1천건 hash scan, 저장목록 전체 렌더, 작업룸 59건 push가 걸리지 않게 한다.
+    function _persistSingleSavedItemFast(sv, item, reason, opts) {
+      const list = Array.isArray(sv) ? sv : _getSavedDraftWorkingSet();
+      if (!item || !item.id) return { ok:false, reason:'no-item' };
+      const why = reason || 'saved-item-fast';
+      try { _svTouchSavedRowForCloud(item, why); } catch(e) {
+        const t = Date.now(); item.updatedAt = t; item._skLocalEditedAt = t; item._skCloudQueueAt = t;
+        try { item.data = item.data || {}; item.data._skLocalEditedAt = t; } catch(_e) {}
+      }
+      try { if (typeof normalizeItem === 'function') normalizeItem(item); } catch(e) {}
+      try { if (typeof _svIndexOne === 'function') _svIndexOne(item); } catch(e) {}
+      try { if (typeof _itemHash === 'function') item._svHash = _itemHash(item); } catch(e) {}
+      try { if (window._sbPersistCachedArray) window._sbPersistCachedArray('re_sv', list.filter(function(x){ return x && x.id && !x.deletedAt; }), { immediate:true });
+        else { if (window._idbCache) window._idbCache.re_sv = list; if (window.idbSet) window.idbSet('re_sv', list).catch(function(){}); }
+      } catch(e) {}
+      try { if (typeof _svRefreshMeta === 'function') _svRefreshMeta(list); } catch(e) {}
+      try { if (typeof _svQueueSavedRowsForCloud === 'function') _svQueueSavedRowsForCloud([item], why); } catch(e) {}
+      if (opts && opts.pushNow) {
+        try { if (typeof window.skCloudPushTable === 'function') window.skCloudPushTable('items', [item]).catch(function(e){ console.warn('[saved item direct push]', e); }); } catch(e) {}
+      }
+      return { ok:true, id:item.id, reason:why };
+    }
     function _getSavedDraftWorkingSet() {
       const cached = window._idbCache && window._idbCache['re_sv'];
       if (Array.isArray(cached)) return cached;
@@ -20544,10 +20570,9 @@ ${inputDesc.substring(0, 3000)}
         _applySavedFieldMutation(item, field, rawValue, { normalize: false });
       }
       _ensureNormalizedItem(item);
-      _svTouchSavedRowForCloud(item, 'saved-draft-commit');
-      setSv(sv);
-      _svQueueSavedRowsForCloud([item], 'saved-draft-commit');
-      _syncAfterSavedMutation(itemId, sv, { skipMapRefresh: true, skipPlWorkroomSync: true });
+      _persistSingleSavedItemFast(sv, item, 'saved-draft-commit', { pushNow:false });
+      // 상세 입력 blur는 로컬 캐시 + 단일 row outbox까지만 수행한다.
+      // 저장목록/지도/작업룸 전체 렌더링은 사용자가 팝업을 닫거나 탭을 전환할 때 자연 갱신되도록 둔다.
     };
 
     function _popEditField(label, field, val, itemId, type) {
@@ -21051,16 +21076,12 @@ ${inputDesc.substring(0, 3000)}
       if (typeof window._skApplyAuctionDetailUrl === 'function') window._skApplyAuctionDetailUrl(item, url);
       else window._skApplySavedItemDetailUrl(item, url);
       try { if (typeof _ensureNormalizedItem === 'function') _ensureNormalizedItem(item); } catch(e) {}
-      setSv(sv);
-      try { if (typeof window._skPropagateAuctionDetailUrlToLocalCopies === 'function') window._skPropagateAuctionDetailUrlToLocalCopies(item, url); } catch(e) { console.warn('[url propagate]', e); }
-      try { if (typeof window._skPushSavedRowNow === 'function') window._skPushSavedRowNow(item, 'url-save'); } catch(e) { console.warn('[url cloud queue]', e); }
-      try { if (typeof window.skCloudFlushPendingSafe === 'function') window.skCloudFlushPendingSafe({ maxRows:80 }).then(function(r){ try{ console.log('[SK-v126] url save flushed', r); }catch(_e){} }); } catch(e) { console.warn('[url flush]', e); }
-      try { if (typeof _syncAfterSavedMutation === 'function') _syncAfterSavedMutation(sid, sv, { skipMapRefresh: false, skipPlWorkroomSync: true }); } catch(e) { console.warn('[url save sync]', e); }
-      try { if (typeof renderSaved === 'function') renderSaved(); } catch(e) {}
+      // v131: URL 저장은 saved item 1건만 즉시 저장/푸시한다.
+      // setSv(full) + workrooms/pl_items 전파는 오래된 복사본이 원본 URL을 되살리고 UI를 멈추게 한 원인이므로 제거.
+      _persistSingleSavedItemFast(sv, item, 'url-save', { pushNow:true });
       try { if (typeof refreshMapCardData === 'function') refreshMapCardData(sid); } catch(e) {}
+      if (inp) inp.value = (typeof window._skAuctionDetailUrl === 'function' ? window._skAuctionDetailUrl(item) : url);
       if (typeof showToast === 'function') showToast(url ? '🔗 URL 저장됨' : '원본 URL을 비웠습니다', 'ok');
-      // 팝업 topbar를 서버/로컬 동일 원본 기준으로 다시 그린다.
-      if (typeof openPopup === 'function') openPopup(sid);
     };
 
     if (!window.__skPopUrlDelegatedV122) {
@@ -21091,20 +21112,16 @@ ${inputDesc.substring(0, 3000)}
       if (typeof window._skApplyAuctionDetailUrl === 'function') window._skApplyAuctionDetailUrl(item, url);
       else if (typeof window._skApplySavedItemDetailUrl === 'function') window._skApplySavedItemDetailUrl(item, url);
       else { item.data = item.data || {}; item.data.상세URL = url; item.url = url; }
-      setSv(sv);
-      try { if (typeof window._skPropagateAuctionDetailUrlToLocalCopies === 'function') window._skPropagateAuctionDetailUrlToLocalCopies(item, url); } catch(e) {}
-      try { if (typeof window._skPushSavedRowNow === 'function') window._skPushSavedRowNow(item, 'url-prompt-save'); } catch(e) {}
-      try { if (typeof window.skCloudFlushPendingSafe === 'function') window.skCloudFlushPendingSafe({ maxRows:80 }).then(function(r){ try{ console.log('[SK-v126] url prompt flushed', r); }catch(_e){} }); } catch(e) {}
-      try { if (typeof _syncAfterSavedMutation === 'function') _syncAfterSavedMutation(id, sv, { skipMapRefresh: false, skipPlWorkroomSync: true }); } catch(e) {}
-      renderSaved();
+      _persistSingleSavedItemFast(sv, item, 'url-prompt-save', { pushNow:true });
+      try { if (typeof refreshMapCardData === 'function') refreshMapCardData(id); } catch(e) {}
       showToast(url ? '🔗 원본 링크 저장됨' : '원본 링크를 비웠습니다', 'ok');
     };
 
     function savePopupItem() {
       const sv = getSv(); const item = sv.find(s => s.id === popupId);
       if (!item) return;
-      setSv(sv);
-      renderSaved();
+      _persistSingleSavedItemFast(sv, item, 'popup-save-button', { pushNow:false });
+      try { if (typeof renderSaved === 'function') renderSaved(); } catch(e) {}
       const btn = document.getElementById('popSaveBtn');
       btn.textContent = '✓ 저장됨'; setTimeout(() => btn.textContent = '💾 저장', 1500);
       updSvCnt();
@@ -52629,7 +52646,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260511-workroom-v130-url-save-and-detail-lag-fix';
+  var BUILD='20260511-workroom-v132-prune-stale-workroom-pending';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
@@ -52997,13 +53014,35 @@ window.addEventListener('DOMContentLoaded', () => {
       return copy;
     });
   }
+  function maxCaptureDeleteTs(r){
+    var m=normalizeCaptureDeleteMap(r);
+    var mx=0;
+    Object.keys(m||{}).forEach(function(k){ mx=Math.max(mx, Number(m[k] && m[k].deletedAt || 0) || 0); });
+    return mx;
+  }
+  function shouldFlushPendingWorkroom(row){
+    var id=idOf(row);
+    if(!id) return false;
+    var recentCut=now() - (10 * 60 * 1000);
+    var dirtyAt=Number(cfDirtyRoomIds[id]||0)||0;
+    if(deletedOf(row)) return true;
+    if(dirtyAt) return true;
+    if(localEditMarkerOf(row) >= recentCut) return true;
+    if(maxCaptureDeleteTs(row) >= recentCut) return true;
+    return false;
+  }
   function selectWorkroomRowsForPersistPush(rows){
     var activeId=String(window.wr2State && window.wr2State.activeRoomId || '');
     var picked=[];
+    var recentCut=now() - (10 * 60 * 1000);
     (Array.isArray(rows)?rows:[]).forEach(function(r){
       var id=idOf(r); if(!id) return;
-      var hasDelete=Object.keys(normalizeCaptureDeleteMap(r)).length>0;
-      if(cfDirtyRoomIds[id] || (activeId && id===activeId) || deletedOf(r) || hasDelete) picked.push(r);
+      var dirtyAt=Number(cfDirtyRoomIds[id]||0)||0;
+      var recentLocal=localEditMarkerOf(r) >= recentCut;
+      var recentDelete=maxCaptureDeleteTs(r) >= recentCut;
+      // v132: 오래된 pending/tombstone 때문에 작업룸 전체가 재푸시되는 경로 차단.
+      // 실제 dirty/recent 삭제/명시 삭제/최근 active edit만 단일 row push 대상으로 제한한다.
+      if(dirtyAt || deletedOf(r) || recentDelete || (activeId && id===activeId && recentLocal)) picked.push(r);
     });
     return picked;
   }
@@ -53782,7 +53821,10 @@ window.addEventListener('DOMContentLoaded', () => {
     var picked={};
     var pickedCount=0;
     var pruned=0;
-    Object.keys(pending).forEach(function(table){
+    Object.keys(pending).sort(function(a,b){
+      function pri(t){ t=String(t||''); if(t==='items') return 0; if(t==='pl_items') return 1; if(t==='notes') return 2; if(t==='sections') return 3; if(t==='workrooms') return 9; return 5; }
+      return pri(a)-pri(b);
+    }).forEach(function(table){
       if(pickedCount>=maxRows) return;
       var ids=Object.keys(pending[table]||{});
       for(var i=0;i<ids.length && pickedCount<maxRows;i+=1){
@@ -53791,6 +53833,13 @@ window.addEventListener('DOMContentLoaded', () => {
         if(!row || !idOf(row)) continue;
         var queuedAt=Number(row && row._skPendingQueuedAt || 0) || 0;
         if(!queuedAt || (now()-queuedAt) > PENDING_TTL_MS){
+          delete pending[table][id];
+          pruned += 1;
+          continue;
+        }
+        // v132: v130/v131 이전에 잘못 쌓인 workrooms 대량 outbox를 여기서 제거한다.
+        // dirty/recent 삭제/명시 삭제/최근 로컬 수정이 아닌 작업룸 pending은 push하지 않는다.
+        if(String(table||'')==='workrooms' && !shouldFlushPendingWorkroom(row)){
           delete pending[table][id];
           pruned += 1;
           continue;
