@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260511-workroom-v140-one-screen-kpi-drag-fix';
+    window.__SK_BUILD = '20260511-workroom-v142-loan-ltv80-layout-polish';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -9628,6 +9628,79 @@ window.wr2SummaryCancelEdit = function() {
                       .wcp-calc-combined .wcp-calc-combined-grid{grid-template-columns:1fr!important;}
                     }
 
+                    /* v141: KPI colors restrained, hand-check height balance, pyeong note color */
+                    .wcp-kpi-summary-panel .wcp-form>.wcp-line .wcp-out,
+                    .wcp-kpi-summary-panel .wcp-form>.wcp-line .wcp-out.orange,
+                    .wcp-kpi-summary-panel .wcp-form>.wcp-line .wcp-out.green,
+                    .wcp-kpi-summary-panel .wcp-form>.wcp-line .wcp-out.blue,
+                    .wcp-kpi-summary-panel .wcp-form>.wcp-line .wcp-out.purple,
+                    .wcp-kpi-summary-panel .wcp-form>.wcp-line .wcp-out.red{
+                      color:#e8ecf4!important;
+                    }
+                    .wcp-kpi-summary-panel #wcp_o_month_net_kpi,
+                    .wcp-kpi-summary-panel #wcp_p_total_with_deposit{
+                      color:#4ade80!important;
+                    }
+                    .wcp-kpi-summary-panel #wcp_p_abs_yield,
+                    .wcp-kpi-summary-panel #wcp_p_lev_yield{
+                      color:#c084fc!important;
+                    }
+                    .wcp-kpi-summary-panel #wcp_p_roi{
+                      color:#e8ecf4!important;
+                    }
+                    .wcp-bench-note-py,
+                    .wcp-note.orange.wcp-bench-note-py,
+                    .wcp-bench-card.rent-yield .wcp-bench-note-py{
+                      color:#fb923c!important;
+                      font-weight:900!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3{
+                      align-items:stretch!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3>.wcp-section{
+                      display:flex!important;
+                      flex-direction:column!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3>.wcp-section>.wcp-form{
+                      flex:1 1 auto!important;
+                      display:grid!important;
+                      align-content:stretch!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(2) .wcp-bid-actions{
+                      margin-top:auto!important;
+                      padding-top:4px!important;
+                      display:flex!important;
+                      justify-content:flex-start!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(2) .wcp-bid-actions .wcp-btn{
+                      min-height:26px!important;
+                      padding:4px 10px!important;
+                    }
+                    .wcp-quick-reco{
+                      min-height:56px!important;
+                    }
+                    .wcp-top.wcp-kpi-banner-bottom .wcp-kpi .v,
+                    .wcp-top.wcp-kpi-banner-bottom .wcp-kpi .sub{
+                      color:inherit;
+                    }
+
+                    /* v142: loan baseline 80%, retain v141 restrained KPI colors and hand-check balance */
+                    .wcp-kpi-summary-panel .wcp-form>.wcp-line .wcp-out,
+                    .wcp-kpi-summary-panel .wcp-form>.wcp-line .wcp-out.orange,
+                    .wcp-kpi-summary-panel .wcp-form>.wcp-line .wcp-out.green,
+                    .wcp-kpi-summary-panel .wcp-form>.wcp-line .wcp-out.blue,
+                    .wcp-kpi-summary-panel .wcp-form>.wcp-line .wcp-out.purple,
+                    .wcp-kpi-summary-panel .wcp-form>.wcp-line .wcp-out.red{color:#e8ecf4!important;}
+                    .wcp-kpi-summary-panel #wcp_o_month_net_kpi,
+                    .wcp-kpi-summary-panel #wcp_p_total_with_deposit{color:#4ade80!important;}
+                    .wcp-kpi-summary-panel #wcp_p_abs_yield,
+                    .wcp-kpi-summary-panel #wcp_p_lev_yield{color:#c084fc!important;}
+                    .wcp-kpi-summary-panel #wcp_p_roi{color:#e8ecf4!important;}
+                    .wcp-bench-note-py,
+                    .wcp-note.orange.wcp-bench-note-py,
+                    .wcp-bench-card.rent-yield .wcp-bench-note-py{color:#fb923c!important;font-weight:900!important;}
+                    .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(2) .wcp-bid-actions{margin-top:auto!important;align-items:flex-end!important;}
+
                   `;
 
                 }
@@ -9701,7 +9774,7 @@ window.wr2SummaryCancelEdit = function() {
                   pick('price',legacy.price||''); pick('myBid',s.price||legacy.price||''); pick('deposit',legacy.deposit||''); pick('rent',legacy.rent||''); pick('yield',legacy.yield||''); pick('area',legacy.area||''); pick('areaPy',legacy.area_py||legacy.areaPy||''); pick('bunyangPy',legacy.bunyangPy||''); pick('appraisal',legacy.appraisal||'');
                   const linkedSeeds=wcpGetLinkedSeeds(room);
                   wcpApplySeedDefaults(s,linkedSeeds,false);
-                  pick('loanManualMode', legacy.loanManualMode || legacy.loanMode || ''); if(!s.loanManualMode){ s.loanRate='85.00'; s.loan=''; } pick('loanRate',legacy.cf_loan_rate||'85'); if(!s.loanManualMode){ s.loanRate='85.00'; } pick('loan',legacy.cf_loan||''); pick('interestRate',legacy.cf_rate||'5'); pick('interestAnnual',legacy.cf_interest_amt||legacy.interestAnnual||''); pick('interestMonthly',legacy.cf_interest_monthly||legacy.interestMonthly||''); pick('facility',legacy.cf_extra||''); pick('managementMonthly',legacy.managementMonthly||'5000');
+                  pick('loanManualMode', legacy.loanManualMode || legacy.loanMode || ''); if(!s.loanManualMode){ if(!s.loanRate || /^85(?:\.0+)?$/.test(String(s.loanRate).replace(/,/g,''))) s.loanRate='80.00'; s.loan=''; } pick('loanRate',legacy.cf_loan_rate||'80'); if(!s.loanManualMode && (!s.loanRate || /^85(?:\.0+)?$/.test(String(s.loanRate).replace(/,/g,'')))){ s.loanRate='80.00'; } pick('loan',legacy.cf_loan||''); pick('interestRate',legacy.cf_rate||'5'); pick('interestAnnual',legacy.cf_interest_amt||legacy.interestAnnual||''); pick('interestMonthly',legacy.cf_interest_monthly||legacy.interestMonthly||''); pick('facility',legacy.cf_extra||''); pick('managementMonthly',legacy.managementMonthly||'5000');
                   if(!s.acqTaxRate) s.acqTaxRate='4.60'; if(!s.legalRate) s.legalRate='1.00'; if(!s.rentBrokerRate) s.rentBrokerRate='0.90'; if(!s.saleBrokerRate) s.saleBrokerRate='0.90'; if(!s.corpRateUnder || String(s.corpRateUnder)==='19') s.corpRateUnder='9'; if(!s.corpRateOver || String(s.corpRateOver)==='21') s.corpRateOver='19'; if(!s.targetYield1) s.targetYield1='8.0'; if(!s.targetYield2) s.targetYield2='6.0'; if(!s.targetYield3) s.targetYield3='7.0'; if(!s.benchYieldRate) s.benchYieldRate='8.0';
                   return s;
                 }
@@ -9720,7 +9793,8 @@ window.wr2SummaryCancelEdit = function() {
                 }
                 function wcpRateField(rateId,amountId,label,rate,amount,noteId){ const amountIsPct=/corp_rate_over/i.test(amountId); const isOutput=/^wcp_target_price_/.test(String(amountId||'')); const unit2=amountIsPct?'%':'원'; const attrs=(amountIsPct?' inputmode="decimal" autocomplete="off"':' data-wcp-money="1" inputmode="numeric" autocomplete="off"')+(isOutput?' readonly tabindex="-1" data-wcp-output="1"':''); const amountShown=amountIsPct?wcpEsc(amount||''):wcpEsc(wcpCommaValue(amount)); return '<div class="wcp-line rate wcp-rate-field"><label>'+wcpEsc(label)+'</label><input id="'+rateId+'" class="wcp-inp wcp-rate wcp-rate-input" inputmode="decimal" autocomplete="off" value="'+wcpEsc(rate||'')+'"><span class="wcp-unit">%</span><input id="'+amountId+'" class="wcp-inp wcp-money-cell"'+attrs+' value="'+amountShown+'"><span class="wcp-unit">'+unit2+'</span></div>'+(noteId?'<div class="wcp-note" id="'+noteId+'">-</div>':''); }
                 function wcpOutputRow(label,id,unit,cls){ return '<div class="wcp-line"><label>'+wcpEsc(label)+'</label><div id="'+id+'" class="wcp-out '+(cls||'')+'">-</div><span class="wcp-unit">'+wcpEsc(unit||'')+'</span></div>'; }
-                function wcpLoanRuleBox(){ return '<div class="wcp-loan-rule"><div class="title"><span>대출 가능금액 참고 <small>(LTV 기준)</small></span></div><div class="formula"><div class="chip"><span>감정가 × 60%</span><b id="wcp_loan_app_cap">-</b></div><div class="chip"><span id="wcp_loan_bid_label">낙찰가 × LTV(현재 85%)</span><b id="wcp_loan_bid_cap">-</b></div><div class="chip on"><span>적용 대출금</span><b id="wcp_loan_rule_applied">-</b></div></div><div class="help" id="wcp_loan_rule_text">참고용 자동 계산값입니다.</div></div>'; }
+                function wcpLoanDefaultLtv(){ return 80; }
+                function wcpLoanRuleBox(){ return '<div class="wcp-loan-rule"><div class="title"><span>대출 가능금액 참고 <small>(감정가 60% / 입찰가 80% 중 낮은 금액)</small></span></div><div class="formula"><div class="chip"><span>감정가 × 60%</span><b id="wcp_loan_app_cap">-</b></div><div class="chip"><span id="wcp_loan_bid_label">입찰가 × 80%</span><b id="wcp_loan_bid_cap">-</b></div><div class="chip on"><span>적용 대출금</span><b id="wcp_loan_rule_applied">-</b></div></div><div class="help" id="wcp_loan_rule_text">감정가 60%와 입찰가 80% 중 낮은 금액을 백만원 단위 절사합니다.</div></div>'; }
                 function wcpParsePyVals(raw){
                   const src=String(raw||'').replace(/@|만원|평|,/g,' ').trim();
                   const nums=(src.match(/\d+(?:\.\d+)?/g)||[]).map(Number).filter(function(n){return isFinite(n)&&n>0;});
@@ -9922,11 +9996,9 @@ window.wr2SummaryCancelEdit = function() {
                       const manualLoan=wcpReadWon('wc_cf_loan');
                       if(manualLoan) wcpSetPct('wc_cf_loan_rate',manualLoan/price*100,2);
                     }else{
-                      let enteredRate=wcpReadPct('wc_cf_loan_rate');
-                      if(!enteredRate || mode===''){
-                        enteredRate=85;
-                        if(mode==='') setLoanMode('');
-                      }
+                      let enteredRate=(mode==='') ? (typeof wcpLoanDefaultLtv==='function'?wcpLoanDefaultLtv():80) : wcpReadPct('wc_cf_loan_rate');
+                      if(!enteredRate) enteredRate=(typeof wcpLoanDefaultLtv==='function'?wcpLoanDefaultLtv():80);
+                      if(mode==='') setLoanMode('');
                       const bidCap=price*enteredRate/100;
                       const rawLoan=appCap?Math.min(appCap,bidCap):bidCap;
                       const appliedLoan=rawLoan?Math.floor(rawLoan/1000000)*1000000:0;
@@ -9992,7 +10064,7 @@ window.wr2SummaryCancelEdit = function() {
                 }
                 function wcpCalc(trigger){
                   // 엑셀 '수익률분석' 시트 수식 기준
-                  // - 대출금: INT(MIN(감정가*60%, 매수가*LTV)/1,000,000)*1,000,000
+                  // - 대출금: INT(MIN(감정가*60%, 입찰가*80%)/1,000,000)*1,000,000
                   // - 총투자금: 매수가+취득세+법무비+미납관리비+미납세금+명도비+임대중개+시설비+운영비-대출금
                   // - 보증금 포함 총투자금: 총투자금-임대보증금
                   // - 초기 필요자금: 총투자금+부가세+1년치 이자+1년치 관리비
@@ -10104,12 +10176,12 @@ window.wr2SummaryCancelEdit = function() {
                   wcpSetText('wcp_price_note',r.price&&r.areaPy?'@ '+Math.round(r.price/r.areaPy/10000).toLocaleString('ko-KR')+'만/평':'-');
                   wcpSetText('wcp_rent_note',r.rentPerPy?'월세 @ '+r.rentPerPy.toFixed(1)+'만/평':'-');
 
-                  const _loanRate=wcpReadPct('wc_cf_loan_rate')||85, _app=wcpReadWon('wc_appraisal'), _bid=r.price||0, _appCap=_app?_app*0.60:0, _bidCap=_bid?_bid*_loanRate/100:0, _rawAutoLoan=(_appCap&&_bidCap)?Math.min(_appCap,_bidCap):(_bidCap||_appCap||0), _autoLoan=_rawAutoLoan?Math.floor(_rawAutoLoan/1000000)*1000000:0, _loanMode=wcpRead('wc_loan_manual_mode');
+                  const _loanMode=wcpRead('wc_loan_manual_mode'), _loanRate=(_loanMode==='rate' ? (wcpReadPct('wc_cf_loan_rate')||80) : (typeof wcpLoanDefaultLtv==='function'?wcpLoanDefaultLtv():80)), _app=wcpReadWon('wc_appraisal'), _bid=r.price||0, _appCap=_app?_app*0.60:0, _bidCap=_bid?_bid*_loanRate/100:0, _rawAutoLoan=(_appCap&&_bidCap)?Math.min(_appCap,_bidCap):(_bidCap||_appCap||0), _autoLoan=_rawAutoLoan?Math.floor(_rawAutoLoan/1000000)*1000000:0;
                   wcpSetText('wcp_loan_app_cap',_appCap?wcpFormatWon(_appCap):'-');
                   wcpSetText('wcp_loan_bid_cap',_bidCap?wcpFormatWon(_bidCap):'-');
                   wcpSetText('wcp_loan_rule_applied',r.loan?wcpFormatWon(r.loan):(_autoLoan?wcpFormatWon(_autoLoan):'-'));
                   wcpSetText('wcp_auto_loan',r.loan?wcpFormatWon(r.loan):(_autoLoan?wcpFormatWon(_autoLoan):'-'));
-                  wcpSetText('wcp_loan_bid_label','낙찰가 × LTV(현재 '+_loanRate.toFixed(2).replace(/\.00$/,'')+'%)');
+                  wcpSetText('wcp_loan_bid_label',(_loanMode==='rate'?'입찰가 × LTV(현재 '+_loanRate.toFixed(2).replace(/\.00$/,'')+'%)':'입찰가 × 80%'));
                   wcpSetText('wcp_loan_rule_text',_appCap?('* 감정가 × 60% 기준: '+wcpFormatWon(_appCap)):'');
                   wcpSetText('wcp_o_month_net',wcpFormatWon(r.monthNet));
                   wcpSetText('wcp_o_month_net_kpi',wcpFormatWon(r.monthNet));
@@ -10257,7 +10329,7 @@ window.wr2SummaryCancelEdit = function() {
                 window.wr2CalcLoadLinkedTotal=function(roomId){ const room=(wr2State.rooms||[]).find(r=>String(r.id)===String(roomId))||wcpActiveRoom(); if(!room)return; const sv=(typeof getSv==='function')?getSv():[]; const items=(typeof wr2ResolveLinkedSavedItems==='function')?wr2ResolveLinkedSavedItems(room,sv,typeof wr2BuildPlLinkedMap==='function'?wr2BuildPlLinkedMap():{}):[]; if(!items.length)return; const _seeds=items.map(wr2SummarySeed); _seeds.forEach(function(s){s.bidWon=wr2BidSeedBidWon(room,s);}); const _agg=wcpAggregateSeeds(_seeds); wcpLoadSeedIntoForm(_agg,'total'); wcpSet('wc_seed_signature',wcpSeedSignature(_seeds)); try{ if(typeof showToast==='function')showToast('연결 물건 합산 계산값을 불러왔습니다','ok'); }catch(e){} };
                 window.wr2RenderProCalc=function(room){ const mount=wcpResolveMount(); if(!mount||!room) return false; wcpGetStore(room); mount.classList.add('wr2-calc-pro-mount'); mount.innerHTML=wcpBuildHtml(room); wcpApplyState(wcpDefaultState(room)); wcpFormatMoneyInputs(); wcpBind(); try{ wcpInstallMainGridResizers(); }catch(e){} wcpRenderOutputs(''); wcpRenderScenarioTable(); wcpRenderSnapshots(); try{ setTimeout(wcpInstallMainGridResizers,60); }catch(e){} return true; };
                 window.wr2CalcProRun=function(){ wcpRenderOutputs(''); wcpPersistCurrent({immediate:true}); try{ if(typeof showToast==='function') showToast('계산 완료·자동저장됨','ok'); }catch(e){} };
-                window.wr2CalcProClear=function(){ if(!confirm('현재 계산 입력값을 초기화할까요? 저장된 시나리오는 유지됩니다.')) return; document.querySelectorAll('.wr2-calc-pro-shell .wcp-inp').forEach(function(el){el.value='';}); [['wc_loan_manual_mode',''],['wc_acq_tax_rate','4.60'],['wc_legal_rate','1.00'],['wc_rent_broker_rate','0.90'],['wc_sale_broker_rate','0.90'],['wc_cf_rate','5.00'],['wc_cf_loan_rate','85.00'],['wc_corp_rate_under','9'],['wc_corp_rate_over','19'],['wc_target_yield_1','8.0'],['wc_target_yield_2','6.0'],['wc_target_yield_3','7.0'],['wc_bench_yield_rate','8.0'],['wc_management_monthly','5000']].forEach(function(p){wcpSet(p[0],p[1]);}); wcpRenderOutputs(''); wcpPersistCurrent({immediate:true}); };
+                window.wr2CalcProClear=function(){ if(!confirm('현재 계산 입력값을 초기화할까요? 저장된 시나리오는 유지됩니다.')) return; document.querySelectorAll('.wr2-calc-pro-shell .wcp-inp').forEach(function(el){el.value='';}); [['wc_loan_manual_mode',''],['wc_acq_tax_rate','4.60'],['wc_legal_rate','1.00'],['wc_rent_broker_rate','0.90'],['wc_sale_broker_rate','0.90'],['wc_cf_rate','5.00'],['wc_cf_loan_rate','80.00'],['wc_corp_rate_under','9'],['wc_corp_rate_over','19'],['wc_target_yield_1','8.0'],['wc_target_yield_2','6.0'],['wc_target_yield_3','7.0'],['wc_bench_yield_rate','8.0'],['wc_management_monthly','5000']].forEach(function(p){wcpSet(p[0],p[1]);}); wcpRenderOutputs(''); wcpPersistCurrent({immediate:true}); };
                 window.wr2CalcUseSuggestedBid=function(){ const r=wcpCalc(''); if(r.suggested){ wcpSetWon('wc_my_bid',r.suggested); wcpSetWon('wc_price',r.suggested); try{ const room=wcpActiveRoom(); const seeds=wcpGetLinkedSeeds(room); if(room&&seeds&&seeds.length>1){ wr2BidDistributeByArea(room,r.suggested); } }catch(e){} wcpRenderOutputs('wc_my_bid'); wcpPersistCurrent({immediate:true}); } };
                 window.wr2CalcScenarioSave=function(name){ const room=wcpActiveRoom(); if(!room) return; const store=wcpGetStore(room); const r=wcpRenderOutputs(''); const defaultName=(r.price?wcpFormatShort(r.price):'입찰가')+' 시나리오'; const label=name||prompt('시나리오 이름',defaultName); if(label===null) return; const clean=String(label||'').trim()||defaultName; const item={id:'sc_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,7),version:7,name:clean,state:wcpCollectState(),result:r,savedAt:Date.now(),updatedAt:Date.now()}; store.scenarios=Array.isArray(store.scenarios)?store.scenarios:[]; store.scenarios.unshift(item); store.scenarios=store.scenarios.slice(0,40); store.current=item.state; store.updatedAt=Date.now(); store.rev=Number(store.rev||0)+1; room.calcProV7=store; room.calcProV5=store; room.calcProV3=store; room.calcProState=store.current; room.calcScenarios=store.scenarios; room.calcSnapshots=store.snapshots||[]; room.calcProRev=store.rev; room.updatedAt=Date.now(); wcpLocalSave(room,store); try{ saveRooms(); if(typeof window.__wr2FlushSaveRooms==='function') window.__wr2FlushSaveRooms(); }catch(e){} wcpRenderScenarioTable(); try{ if(typeof showToast==='function') showToast('입찰가 시나리오 저장됨','ok'); }catch(e){} };
                 window.wr2CalcScenarioLoad=function(id){ const room=wcpActiveRoom(); if(!room) return; const store=wcpGetStore(room); const sc=(store.scenarios||[]).find(function(x){return x.id===id;}); if(!sc) return; wcpApplyState(sc.state||{}); store.current=Object.assign({},sc.state||{}); store.updatedAt=Date.now(); store.rev=Number(store.rev||0)+1; wcpLocalSave(room,store); wcpRenderOutputs(''); wcpPersistCurrent({immediate:true}); try{ if(typeof showToast==='function') showToast('시나리오 불러오기 완료','ok'); }catch(e){} };
@@ -53294,7 +53366,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260511-workroom-v140-one-screen-kpi-drag-fix';
+  var BUILD='20260511-workroom-v142-loan-ltv80-layout-polish';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
