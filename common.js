@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260511-workroom-v150-management-inline-bench-bottom';
+    window.__SK_BUILD = '20260512-workroom-v153-rent-input-accent-lifecycle-guard';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -1755,7 +1755,14 @@
       if (cloudRooms !== null) {
         const localRooms = window._wrGetRoomsCache ? window._wrGetRoomsCache() : ((window._idbCache && window._idbCache['wr2_rooms']) || []);
         const hasRoomDirty = !!(_dirtyItems.workrooms && _dirtyItems.workrooms.size);
-        const mergedRooms = (options.force === true && !hasRoomDirty)
+        const recentCut = Date.now() - (30 * 60 * 1000);
+        const hasRecentLocalRoomEdit = (Array.isArray(localRooms) ? localRooms : []).some(function(r) {
+          try { return Number((r && (r._skLifecycleEditedAt || r._skLocalEditedAt || r.updatedAt)) || 0) >= recentCut; }
+          catch(e) { return false; }
+        });
+        // 최근 로컬 상태변경(활성/변경/종료)이 있으면 force pull이어도 클라우드 단독 배열로 덮지 않는다.
+        // 서버 반영 지연 중 오래된 active row가 내려와 변경 상태를 되살리는 현상 방지.
+        const mergedRooms = (options.force === true && !hasRoomDirty && !hasRecentLocalRoomEdit)
           ? _sbTakeCloudArray(cloudRooms)
           : _sbMergeTrackedById('workrooms', cloudRooms, localRooms);
         if (window._wrPersistRoomCache) roomPayload = window._wrPersistRoomCache(mergedRooms, { syncState: false });
@@ -3932,6 +3939,11 @@ var _safeLocalSet = function(key, value) {
                     delete safePatch.activePhase;
                   }
                   delete safePatch.__forceLifecycleChange;
+                  if (safePatch && Object.prototype.hasOwnProperty.call(safePatch, 'lifecycleStatus')) {
+                    var _lifeNow = Date.now();
+                    safePatch._skLifecycleEditedAt = _lifeNow;
+                    safePatch._skLocalEditedAt = _lifeNow;
+                  }
                   wr2State.rooms[idx] = Object.assign({}, prevRoom, safePatch, { updatedAt: Date.now() });
                   if (patch && (
                     Object.prototype.hasOwnProperty.call(patch, 'closedSummary')
@@ -10251,7 +10263,7 @@ window.wr2SummaryCancelEdit = function() {
                   wcpSetText('wcp_flow_max',wcpFormatWon(r.cashFlowMax||r.initialNeed));
                   wcpSetText('wcp_flow_min',wcpFormatWon(r.cashFlowMin||r.minRequired));
                 }
-                function wcpPersistCurrent(options){ const room=wcpActiveRoom(); if(!room) return; const opts=options||{}, store=wcpGetStore(room); store.current=wcpCollectState(); store.updatedAt=Date.now(); store.rev=Number(store.rev||0)+1; room.calcProV7=store; room.calcProV5=store; room.calcProV3=store; room.calcProState=store.current; room.calcScenarios=store.scenarios; room.calcSnapshots=store.snapshots; room.calcProRev=store.rev; room.updatedAt=Date.now(); wcpLocalSave(room,store); clearTimeout(window.__wcpSaveTimerV6); const run=function(){ try{ saveRooms(); }catch(e){ console.warn('[WCP] saveRooms fail',e); } if(opts.immediate){ try{ if(typeof window.__wr2FlushSaveRooms==='function') window.__wr2FlushSaveRooms(); }catch(e){} } const stamp='자동저장됨 '+wcpNowText(Date.now()).slice(11); wcpSetText('wcp_auto_save_status',stamp); wcpSetText('wcp_auto_save_status_inline',stamp); }; if(opts.immediate) run(); else window.__wcpSaveTimerV6=setTimeout(run,700); }
+                function wcpPersistCurrent(options){ const room=wcpActiveRoom(); if(!room) return; const opts=options||{}, store=wcpGetStore(room); store.current=wcpCollectState(); store.updatedAt=Date.now(); store.rev=Number(store.rev||0)+1; room.calcProV7=store; room.calcProV5=store; room.calcProV3=store; room.calcProState=store.current; room.calcScenarios=store.scenarios; room.calcSnapshots=store.snapshots; room.calcProRev=store.rev; room.updatedAt=Date.now(); wcpLocalSave(room,store); clearTimeout(window.__wcpSaveTimerV6); const isEditing=function(){ const a=document.activeElement; return !!(a && a.closest && a.closest('.wr2-calc-pro-shell') && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName||'') && a.getAttribute('data-wcp-output')!=='1'); }; const run=function(){ if(!opts.immediate && isEditing()){ wcpSetText('wcp_auto_save_status','입력 중'); wcpSetText('wcp_auto_save_status_inline','입력 중'); clearTimeout(window.__wcpSaveTimerV6); window.__wcpSaveTimerV6=setTimeout(run,1200); return; } try{ saveRooms(); }catch(e){ console.warn('[WCP] saveRooms fail',e); } if(opts.immediate){ try{ if(typeof window.__wr2FlushSaveRooms==='function') window.__wr2FlushSaveRooms(); }catch(e){} } const stamp='저장됨 '+wcpNowText(Date.now()).slice(11); wcpSetText('wcp_auto_save_status',stamp); wcpSetText('wcp_auto_save_status_inline',stamp); }; if(opts.immediate) run(); else window.__wcpSaveTimerV6=setTimeout(run,1500); }
                 let __wcpInputRaf=0;
                 function wcpScheduleInputUpdate(triggerId){
                   if(__wcpInputRaf) cancelAnimationFrame(__wcpInputRaf);
@@ -48969,9 +48981,14 @@ window.addEventListener('DOMContentLoaded', () => {
       if (safePatch.address && !safePatch.region) safePatch.region = safePatch.address;
       delete safePatch.title;
       delete safePatch.address;
+      var hadLifecyclePatch = Object.prototype.hasOwnProperty.call(safePatch, 'lifecycleStatus') || Object.prototype.hasOwnProperty.call(patch || {}, 'lifecycleStatus');
       delete safePatch.closedSummary;
       delete safePatch.lifecycleStatus;
       delete safePatch.__targetItemId;
+      if (hadLifecyclePatch) {
+        safePatch._skLifecycleEditedAt = Date.now();
+        safePatch._skLocalEditedAt = safePatch._skLifecycleEditedAt;
+      }
       var next = Object.assign({}, it, safePatch, { updatedAt: Date.now() });
       if (next.status === 'archived') next.archived = true;
       if (JSON.stringify(next) !== JSON.stringify(it)) changed = true;
@@ -49053,6 +49070,19 @@ window.addEventListener('DOMContentLoaded', () => {
     var roomLifeNow = String((room && room.lifecycleStatus) || '').trim();
     var roomUpdatedAt = Number((room && room.updatedAt) || 0);
     var itemUpdatedAt = Number((item && item.updatedAt) || 0);
+    var roomLifeEditAt = Number((room && (room._skLifecycleEditedAt || room._skLocalEditedAt)) || 0) || 0;
+    var itemLifeEditAt = Number((item && (item._skLifecycleEditedAt || item._skLocalEditedAt)) || 0) || 0;
+    if (patch.lifecycleStatus && roomLifeNow && patch.lifecycleStatus !== roomLifeNow
+        && !(item && item.__allowLifecycleReopen)
+        && roomLifeEditAt && (Date.now() - roomLifeEditAt) < (30 * 60 * 1000)
+        && itemLifeEditAt < roomLifeEditAt) {
+      // 최근 작업룸에서 직접 바꾼 활성/변경/종료 상태를 오래된 물건리스트 row가 되돌리지 못하게 한다.
+      delete patch.lifecycleStatus;
+      delete patch.phase;
+      delete patch.status;
+      delete patch.activePhase;
+      delete patch.closedSummary;
+    }
     if (patch.lifecycleStatus && roomLifeNow && patch.lifecycleStatus !== roomLifeNow
         && !(item && item.__allowLifecycleReopen)
         && roomUpdatedAt && itemUpdatedAt && (roomUpdatedAt - itemUpdatedAt) > 1500) {
@@ -49208,6 +49238,8 @@ window.addEventListener('DOMContentLoaded', () => {
       it.archived = false;
       if (String(it.status || '') !== prevStatus || String(it.biddate || '') !== prevBiddate) {
         it.updatedAt = now;
+        it._skLifecycleEditedAt = Math.max(Number(it._skLifecycleEditedAt || 0) || 0, Number(room && (room._skLifecycleEditedAt || room._skLocalEditedAt) || 0) || now);
+        it._skLocalEditedAt = Math.max(Number(it._skLocalEditedAt || 0) || 0, Number(it._skLifecycleEditedAt || 0) || now);
         changed = true;
       }
     });
@@ -49285,11 +49317,14 @@ window.addEventListener('DOMContentLoaded', () => {
 
     if (roomId && typeof updateRoom === 'function') {
       var nextStatus = (simple === 'closed') ? 'closed' : (simple === 'changed' ? 'field' : 'review');
+      var _lifeStamp = Date.now();
       var patch = {
         lifecycleStatus: simple,
         status: nextStatus,
         phase: nextStatus,
         activePhase: nextStatus,
+        _skLifecycleEditedAt: _lifeStamp,
+        _skLocalEditedAt: _lifeStamp,
         __targetItemId: resolvedItemId,
         __forceLifecycleChange: true
       };
@@ -49386,6 +49421,8 @@ window.addEventListener('DOMContentLoaded', () => {
       }
     }
     item.__allowLifecycleReopen = true;
+    item._skLifecycleEditedAt = Date.now();
+    item._skLocalEditedAt = item._skLifecycleEditedAt;
     plSave(items.map(plNormalizeItem));
     window.__plLastLocalStatusMutationAt = Date.now();
     syncToWorkroom(item);
@@ -53411,7 +53448,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260511-workroom-v150-management-inline-bench-bottom';
+  var BUILD='20260512-workroom-v153-rent-input-accent-lifecycle-guard';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
@@ -54046,8 +54083,8 @@ window.addEventListener('DOMContentLoaded', () => {
     var d=(row.data && typeof row.data==='object') ? row.data : {};
     var links=(row._links && typeof row._links==='object') ? row._links : {};
     return Math.max(
-      Number(row._skUrlEditedAt||0)||0, Number(row._skNaverEditedAt||0)||0, Number(row._skUnsoldEditedAt||0)||0, Number(row._skLocalEditedAt||0)||0,
-      Number(d._skUrlEditedAt||0)||0, Number(d._skNaverEditedAt||0)||0, Number(d._skUnsoldEditedAt||0)||0,
+      Number(row._skUrlEditedAt||0)||0, Number(row._skNaverEditedAt||0)||0, Number(row._skUnsoldEditedAt||0)||0, Number(row._skLifecycleEditedAt||0)||0, Number(row._skLocalEditedAt||0)||0,
+      Number(d._skUrlEditedAt||0)||0, Number(d._skNaverEditedAt||0)||0, Number(d._skUnsoldEditedAt||0)||0, Number(d._skLifecycleEditedAt||0)||0,
       Number(links.updatedAt||0)||0, Number(links.naverUpdatedAt||0)||0
     );
   }
@@ -55893,4 +55930,96 @@ window.addEventListener('DOMContentLoaded', () => {
     `;
     (document.head||document.documentElement).appendChild(st);
   }catch(e){console.warn('[v150 management inline bench bottom]',e);}
+})();
+
+
+/* v151: autosave idle guard + bottom fit + no visible autosave badge */
+(function(){
+  try{
+    var old=document.getElementById('sk-v151-autosave-idle-bottom-fit');
+    if(old) old.remove();
+    var st=document.createElement('style');
+    st.id='sk-v151-autosave-idle-bottom-fit';
+    st.textContent=`
+      /* 자동저장 표시는 입력 중 레이아웃 흔들림의 원인이므로 화면에서 제거. 저장 자체는 백그라운드/idle로 유지 */
+      #wcp_auto_save_status_inline,#wcp_auto_save_status{display:none!important;visibility:hidden!important;width:0!important;max-width:0!important;margin:0!important;padding:0!important;overflow:hidden!important;}
+      .wr2-calc-pro-shell .wcp-calc-head-actions{gap:6px!important;}
+      .wr2-calc-pro-shell .wcp-calc-head-actions .wcp-btn{flex:0 0 auto!important;}
+
+      /* 작업룸 계산기 영역이 화면 아래에 어정쩡한 공백을 남기지 않도록 세 패널을 가용 높이에 맞춤 */
+      #wcp_pane_input{min-height:calc(100vh - 185px)!important;display:flex!important;flex-direction:column!important;min-width:0!important;}
+      #wcp_pane_input .wcp-main-grid{flex:1 1 auto!important;min-height:calc(100vh - 250px)!important;align-items:stretch!important;}
+      #wcp_pane_input .wcp-main-grid>.wcp-card{height:100%!important;min-height:0!important;display:flex!important;flex-direction:column!important;}
+      #wcp_pane_input .wcp-bench-panel .wcp-bench-grid-compact{flex:0 0 auto!important;}
+      #wcp_pane_input .wcp-bench-panel .wcp-quick-reco{margin-top:auto!important;margin-bottom:0!important;}
+      #wcp_pane_input .wcp-calc-combined .wcp-calc-combined-grid{flex:1 1 auto!important;min-height:0!important;}
+      #wcp_pane_input .wcp-kpi-summary-panel .wcp-form{flex:0 0 auto!important;}
+
+      /* 월 관리비는 취등록세/법무비와 동일한 '비율/입력값 + 산출값' 행처럼 붙여서 배치 */
+      #wcp_pane_input .wcp-management-subsec .wcp-management-pair{display:grid!important;grid-template-columns:minmax(68px,92px) minmax(48px,64px) 44px minmax(96px,1fr) 28px!important;gap:5px!important;align-items:center!important;white-space:nowrap!important;border-bottom:1px solid rgba(148,163,184,.16)!important;padding-bottom:5px!important;margin-bottom:3px!important;}
+      #wcp_pane_input .wcp-management-subsec .wcp-management-pair label{width:auto!important;min-width:0!important;flex:auto!important;font-size:10.5px!important;overflow:hidden!important;text-overflow:ellipsis!important;}
+      #wcp_pane_input .wcp-management-subsec .wcp-management-pair .wcp-management-py{width:100%!important;max-width:none!important;min-width:0!important;text-align:right!important;}
+      #wcp_pane_input .wcp-management-subsec .wcp-management-pair .wcp-management-total{width:100%!important;min-width:0!important;max-width:none!important;text-align:right!important;justify-content:flex-end!important;color:#4ade80!important;background:rgba(15,23,42,.55)!important;border:1px solid rgba(96,165,250,.20)!important;border-radius:6px!important;padding:4px 7px!important;min-height:26px!important;font-size:11px!important;}
+      #wcp_pane_input .wcp-management-subsec .wcp-management-pair .wcp-unit{width:auto!important;min-width:0!important;font-size:9.5px!important;color:#9aa6bd!important;}
+      @media(max-width:1320px){
+        #wcp_pane_input{min-height:auto!important;}
+        #wcp_pane_input .wcp-main-grid{min-height:auto!important;}
+        #wcp_pane_input .wcp-main-grid>.wcp-card{height:auto!important;}
+      }
+    `;
+    (document.head||document.documentElement).appendChild(st);
+  }catch(e){console.warn('[v151 autosave idle bottom fit]',e);}
+})();
+
+
+/* v153: 임대조건 입력값 subtle accent + lifecycle guard confirmation build */
+(function(){
+  try{
+    function inject(){
+      var old=document.getElementById('sk-v153-rent-input-accent');
+      if(old) old.remove();
+      var st=document.createElement('style');
+      st.id='sk-v153-rent-input-accent';
+      st.textContent=`
+        /* 임대 조건은 수익률 계산의 핵심 입력값이므로, 과하지 않게 별도 톤으로 강조 */
+        .wr2-calc-pro-shell .wcp-lease-input-subsec{
+          border-color:rgba(74,222,128,.32)!important;
+          background:linear-gradient(180deg,rgba(34,197,94,.055),rgba(6,16,24,.96))!important;
+          box-shadow:inset 0 0 0 1px rgba(255,255,255,.025),0 0 0 1px rgba(74,222,128,.035)!important;
+        }
+        .wr2-calc-pro-shell .wcp-lease-input-subsec h5,
+        .wr2-calc-pro-shell .wcp-lease-input-subsec h5 *{
+          color:#bbf7d0!important;
+        }
+        .wr2-calc-pro-shell .wcp-lease-input-subsec .wcp-line label{
+          color:#d9fbe5!important;
+          font-weight:850!important;
+        }
+        .wr2-calc-pro-shell #wc_deposit,
+        .wr2-calc-pro-shell #wc_rent{
+          background:linear-gradient(180deg,rgba(18,50,40,.96),rgba(8,25,23,.98))!important;
+          border-color:rgba(74,222,128,.50)!important;
+          color:#f4fff8!important;
+          box-shadow:inset 0 0 0 1px rgba(255,255,255,.025),0 0 0 1px rgba(74,222,128,.055)!important;
+        }
+        .wr2-calc-pro-shell #wc_deposit:focus,
+        .wr2-calc-pro-shell #wc_rent:focus{
+          border-color:rgba(74,222,128,.78)!important;
+          box-shadow:0 0 0 2px rgba(74,222,128,.10), inset 0 0 0 1px rgba(255,255,255,.04)!important;
+        }
+        .wr2-calc-pro-shell .wcp-lease-input-subsec .wcp-unit{
+          color:#a7f3d0!important;
+          opacity:.82!important;
+        }
+        .wr2-calc-pro-shell .wcp-lease-helper,
+        .wr2-calc-pro-shell #wcp_o_rent_per_py{
+          color:#86efac!important;
+          font-weight:850!important;
+        }
+      `;
+      (document.head||document.documentElement).appendChild(st);
+    }
+    inject();
+    if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',inject,{once:true});
+  }catch(e){console.warn('[v153 rent input accent]',e);}
 })();
