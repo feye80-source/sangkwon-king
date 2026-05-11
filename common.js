@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260511-workroom-v136-origin-detail-label-safe-link-drag';
+    window.__SK_BUILD = '20260511-workroom-v137-tooltip-bid-recommend-layout';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -6230,6 +6230,9 @@ var _safeLocalSet = function(key, value) {
                     var n = Math.round(Number(v || 0));
                     return (n > 0) ? n.toLocaleString('ko-KR') : '';
                   })(minVal);
+                  var _singleBidSeed = (typeof wr2SummarySeed === 'function') ? wr2SummarySeed(item) : { id: String(item && item.id || ''), areaPy: areaPy, item: item };
+                  var _singleBidWon = (typeof wr2BidSeedBidWon === 'function') ? wr2BidSeedBidWon(room, _singleBidSeed) : 0;
+                  let bidPriceInputVal = _singleBidWon ? Math.round(_singleBidWon).toLocaleString('ko-KR') : '';
                   const _summaryEditState = window.__wr2SummaryEditState || {};
                   const _sameRoomDraft = String(_summaryEditState.roomId || '') === String(room.id || '');
                   if (_sameRoomDraft) {
@@ -6259,6 +6262,14 @@ var _safeLocalSet = function(key, value) {
                       ${minPy ? `<span class="wr2-sub-py">${minPy}</span>` : ''}
                     </span>
                   </div>`;
+                  html += `<div class="wr2-info-row">
+                    <span class="wr2-info-lbl">입찰가</span>
+                    <span class="wr2-info-val" style="display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:wrap;">
+                      <input id="wr2SummaryBidPriceInput" type="text" inputmode="numeric" value="${bidPriceInputVal}" onclick="event.stopPropagation()" oninput="event.stopPropagation();window.wr2FormatBidInput && window.wr2FormatBidInput(this)" onchange="event.stopPropagation();window.wr2BidSetItem && window.wr2BidSetItem('${roomIdEsc}','${String((_singleBidSeed && _singleBidSeed.id) || (item && item.id) || '').replace(/'/g, "\'")}',this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();return false;}" placeholder="입찰가" style="padding:5px 8px;border-radius:8px;border:1px solid rgba(249,115,22,.32);background:rgba(249,115,22,.08);color:#ffd7bd;font-size:12px;min-width:128px;max-width:160px;text-align:right;font-weight:800;">
+                      <span class="wr2-sub-py">${wr2PricePerPyHtml(_singleBidWon||0, areaPy, 'bid')}</span>
+                    </span>
+                  </div>`;
+
                   html += `<div class="wr2-info-row">
                     <span class="wr2-info-lbl">매각기일</span>
                     <span class="wr2-info-val" style="display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:wrap;">
@@ -9450,6 +9461,12 @@ window.wr2SummaryCancelEdit = function() {
                             ${wcpBenchCard(3,'최근 2년치 낙찰가','시장 하한선','wc_bench_min',s.benchMin,'MIN','wcp_bench_min_note')}
                             ${wcpRentBenchCard(4,'네이버 월세 호가','월세 평단가 (원/평)','wc_bench_rent_py',s.benchRentPy,'wc_bench_yield_rate',s.benchYieldRate,'YIELD','wcp_bench_rent_note')}
                           </div>
+                          <div class="wcp-quick-reco" aria-label="손품 추천 입찰가">
+                            <div class="wcp-quick-reco-label">손품 추천 입찰가</div>
+                            <div class="wcp-quick-reco-main" id="wcp_quick_suggest_bid">-</div>
+                            <div class="wcp-quick-reco-sub"><span id="wcp_quick_suggest_py">-</span><span id="wcp_quick_suggest_src">MAX·MID·MIN·YIELD 기준</span></div>
+                            <button type="button" class="wcp-btn primary" onclick="wr2CalcUseSuggestedBid()">나의 입찰가에 적용</button>
+                          </div>
                         </div>
                         <div class="wcp-card wcp-calc-combined">
                           <div class="wcp-calc-combined-head"><h3>수익률 계산기</h3><span class="wcp-status" id="wcp_auto_save_status_inline">자동저장 대기</span></div>
@@ -9641,14 +9658,21 @@ window.wr2SummaryCancelEdit = function() {
                   const benchAmts=[wcpBenchAmount(maxS,areaPy),wcpBenchAmount(midS,areaPy),wcpBenchAmount(minS,areaPy)].filter(Boolean);
                   let rentMonthly=rentPyS.avg&&areaPy?rentPyS.avg*areaPy*10000:0;
                   let yieldAmt=0;
-                  let pyCandidates=[maxS.avg,midS.avg,minS.avg].filter(Boolean);
-                  const suggestedPy=pyCandidates.length?pyCandidates.reduce((a,b)=>a+b,0)/pyCandidates.length:0;
-                  const marketSuggested=suggestedPy&&areaPy?suggestedPy*areaPy*10000:0;
+                  let pyCandidates=[];
+                  let suggestedPy=0;
+                  let marketSuggested=0;
                   const acq=wcpReadWon('wc_acq_tax'), legal=wcpReadWon('wc_legal_fee'), unpaid=wcpReadWon('wc_unpaid_mgmt'), unpaidTax=wcpReadWon('wc_unpaid_tax'), eviction=wcpReadWon('wc_eviction'), facility=wcpReadWon('wc_facility'), vat=wcpReadWon('wc_vat'), operating=wcpReadWon('wc_operating_annual'), rentBroker=wcpReadWon('wc_rent_broker_fee'), saleBroker=wcpReadWon('wc_sale_broker_fee'), loan=wcpReadWon('wc_cf_loan'), intY=wcpReadWon('wc_cf_interest_amt'), intM=wcpReadWon('wc_cf_interest_monthly'), dep=wcpReadWon('wc_deposit'), rent=wcpReadWon('wc_rent'), contract=wcpReadWon('wc_contract_deposit')||(price?price*0.1:0), reserve=wcpReadWon('wc_extra_reserve');
                   const mgmtMonthlyPy=wcpReadWon('wc_management_monthly');
                   // 엑셀 원본 기준: 1년치 관리비 = 월 기본관리비 × 분양평수 × 12. 분양평수가 없을 때만 전용평수 fallback.
                   const mgmtBasePy=bunyangPy||areaPy||0;
                   const mgmtYear=mgmtMonthlyPy*mgmtBasePy*12;
+                  // v137: 빠른 손품 판단 4요소(MAX/MID/MIN/YIELD)를 모두 추천 입찰가 산식에 반영한다.
+                  // YIELD는 월세 평단가 × 전용평수로 월세를 추정한 뒤, 목표 수익률 기준의 매입가능가를 역산한다.
+                  yieldAmt = (rentMonthly > 0 && yRate > 0) ? Math.max(0, dep + (rentMonthly * 12 / (yRate / 100))) : 0;
+                  const yieldPy = (yieldAmt && areaPy) ? (yieldAmt / areaPy / 10000) : 0;
+                  pyCandidates=[maxS.avg,midS.avg,minS.avg,yieldPy].filter(Boolean);
+                  suggestedPy=pyCandidates.length?pyCandidates.reduce((a,b)=>a+b,0)/pyCandidates.length:0;
+                  marketSuggested=suggestedPy&&areaPy?suggestedPy*areaPy*10000:0;
                   const monthNet=rent-intM;                         // C18 = C17-C15
                   const yearNet=rent*12-intY;                       // C19 = C17*12-C14
                   const totalNoDeposit=Math.max(0,price+acq+legal+unpaid+unpaidTax+eviction+rentBroker+facility+operating-loan); // C20
@@ -9699,9 +9723,12 @@ window.wr2SummaryCancelEdit = function() {
                     wcpSetBasisActive(wcpRead('wc_calc_link_mode')||'total');
                   })();
                   wcpSetText('wcp_suggested_bid',wcpFormatWon(r.suggested));
+                  wcpSetText('wcp_quick_suggest_bid',wcpFormatWon(r.suggested));
                   let summary='';
                   if(r.suggestedPy) summary='@'+Math.round(r.suggestedPy).toLocaleString('ko-KR')+'만원/평';
                   wcpSetText('wcp_bench_summary',summary);
+                  wcpSetText('wcp_quick_suggest_py',summary || '-');
+                  wcpSetText('wcp_quick_suggest_src',r.suggestedSource==='profit_cap'?'목표 순이익 상한 반영':'MAX·MID·MIN·YIELD 평균');
 
                   const setBenchNote=function(baseId,pyText,amtText){
                     const pyEl=document.getElementById(baseId+'_py');
@@ -9724,7 +9751,7 @@ window.wr2SummaryCancelEdit = function() {
                   setBenchNote('wcp_bench_min_note',r.minS.avg?r.minS.label:'-',minAmt?wcpFormatWon(minAmt):'');
 
                   const rentSummary=r.rentPyS.avg?(r.rentPyS.label+' · 월세 '+wcpFormatWon(r.rentMonthly)):'-';
-                  setBenchNote('wcp_bench_rent_note',rentSummary,'');
+                  setBenchNote('wcp_bench_rent_note',rentSummary,r.yieldAmt?wcpFormatWon(r.yieldAmt):'');
 
                   wcpSetText('wcp_my_bid_note',(r.price&&r.areaPy)?('@ '+Math.round(r.price/r.areaPy/10000).toLocaleString('ko-KR')+'만/평'):'');
                   wcpSetText('wcp_price_note',r.price&&r.areaPy?'@ '+Math.round(r.price/r.areaPy/10000).toLocaleString('ko-KR')+'만/평':'-');
@@ -52837,7 +52864,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260511-workroom-v136-origin-detail-label-safe-link-drag';
+  var BUILD='20260511-workroom-v137-tooltip-bid-recommend-layout';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
@@ -54539,4 +54566,41 @@ window.addEventListener('DOMContentLoaded', () => {
   }
 
   try{ install(); }catch(e){ console.warn('[SK-CF-v126] init failed', e); }
+})();
+
+
+/* v137 UI fixes: linked-card menu outside-close, calculator clipping guard, quick recommendation panel */
+(function(){
+  try{
+    if(!document.getElementById('sk-v137-workroom-style')){
+      var st=document.createElement('style');
+      st.id='sk-v137-workroom-style';
+      st.textContent='\
+        .wr2-lcard-menu[open] .wr2-lcard-menu-pop{z-index:9999!important;}\
+        .wcp-quick-reco{margin-top:10px;padding:12px 14px;border:1px solid rgba(249,115,22,.38);background:linear-gradient(135deg,rgba(249,115,22,.14),rgba(7,17,29,.62));border-radius:13px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:5px 12px;align-items:center;}\
+        .wcp-quick-reco-label{font-size:11px;color:#fb923c;font-weight:900;letter-spacing:.03em;}\
+        .wcp-quick-reco-main{font-size:clamp(18px,1.45vw,28px);font-weight:950;color:#fff;line-height:1.05;text-align:right;}\
+        .wcp-quick-reco-sub{grid-column:1/3;display:flex;justify-content:space-between;gap:10px;font-size:11px;color:#9fb0c9;}\
+        .wcp-quick-reco .wcp-btn{grid-column:2;grid-row:1/3;white-space:nowrap;}\
+        @media(max-width:1500px){.wr2-calc-pro-shell{overflow-x:visible!important}.wcp-main-grid{grid-template-columns:1fr!important}.wcp-main-grid>.wcp-card{height:auto!important}.wcp-kpi-summary-panel{max-width:100%!important}.wcp-calc-combined-grid{grid-template-columns:1fr 1fr!important}}\
+        @media(max-width:900px){.wcp-calc-combined-grid{grid-template-columns:1fr!important}.wcp-quick-reco{grid-template-columns:1fr}.wcp-quick-reco-main{text-align:left}.wcp-quick-reco-sub,.wcp-quick-reco .wcp-btn{grid-column:auto;grid-row:auto}}\
+      ';
+      (document.head||document.documentElement).appendChild(st);
+    }
+    if(!window.__skV137MenuOutsideClose){
+      window.__skV137MenuOutsideClose=true;
+      document.addEventListener('pointerdown',function(e){
+        try{
+          document.querySelectorAll('details.wr2-lcard-menu[open]').forEach(function(d){
+            if(!d.contains(e.target)) d.removeAttribute('open');
+          });
+        }catch(_e){}
+      },true);
+      document.addEventListener('keydown',function(e){
+        if(e&&e.key==='Escape'){
+          try{document.querySelectorAll('details.wr2-lcard-menu[open]').forEach(function(d){d.removeAttribute('open');});}catch(_e){}
+        }
+      },true);
+    }
+  }catch(e){console.warn('[v137 ui fixes]',e);}
 })();
