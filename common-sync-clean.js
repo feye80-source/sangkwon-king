@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260511-workroom-v128-no-auto-delete-saved-items';
+    window.__SK_BUILD = '20260511-workroom-v129-items-local-pending-guard';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -1243,6 +1243,11 @@
       const options = opts || {};
       const full = (Array.isArray(arr) ? arr : []).filter(item => item && item.id);
       const active = full.filter(item => !item.deletedAt);
+      const stamp = Date.now();
+      const explicitRows = full.filter(item => {
+        const queuedAt = Number(item && (item._skCloudQueueAt || item._skLocalEditedAt) || 0) || 0;
+        return queuedAt && !item.deletedAt && (stamp - queuedAt) <= (10 * 60 * 1000);
+      });
       if (window._sbPersistCachedArray) window._sbPersistCachedArray('re_sv', active, { delay: 220 });
       else {
         if (window._idbCache) window._idbCache['re_sv'] = active;
@@ -1252,6 +1257,7 @@
       if (options.render !== false) {
         _svScheduleUiRefresh({ list: true, map: true });
       }
+      if (options.sync !== false && explicitRows.length) _svQueueSavedRowsForCloud(explicitRows, 'svPersistItems-local-items');
       if (options.sync !== false && window._sbScheduleSaveSv) window._sbScheduleSaveSv(full);
       else if (options.sync !== false && window._sbSaveSv) window._sbSaveSv(full).catch(e => console.warn('[SB] saved sync fail', e));
       return { full, active };
@@ -15901,30 +15907,75 @@ window.wr2SummaryCancelEdit = function() {
       });
     }
 
+    function _svTouchSavedRowForCloud(item, reason, stamp) {
+      if (!item || !item.id) return item;
+      const t = stamp || Date.now();
+      item.updatedAt = t;
+      item._skLocalEditedAt = t;
+      item._skCloudQueueAt = t;
+      item._skCloudQueueReason = reason || 'saved-item-local-change';
+      try {
+        item.data = item.data || {};
+        item.data._skLocalEditedAt = t;
+      } catch (e) {}
+      try { if (window._sbMarkSvDirty) window._sbMarkSvDirty(item.id); } catch (e) {}
+      return item;
+    }
+
+    function _svQueueSavedRowsForCloud(rows, reason) {
+      const clean = (Array.isArray(rows) ? rows : [rows]).filter(row => row && row.id);
+      if (!clean.length) return { ok: true, queued: 0, table: 'items', reason: reason || 'saved-item-local-change' };
+      try {
+        if (typeof window.skCloudQueuePushTable === 'function') {
+          return window.skCloudQueuePushTable('items', clean, reason || 'saved-item-local-change');
+        }
+        if (typeof window.skCloudPushTable === 'function') {
+          window.skCloudPushTable('items', clean).catch(e => console.warn('[saved item cloud push]', e));
+          return { ok: true, queued: clean.length, table: 'items', reason: reason || 'saved-item-local-change', fallback: 'direct-push' };
+        }
+      } catch (e) {
+        console.warn('[saved item cloud queue]', e);
+      }
+      return { ok: false, queued: 0, table: 'items', reason: reason || 'saved-item-local-change', error: 'cloud-queue-missing' };
+    }
+
     function setSv(arr) {
       const { cleaned, removed: removedInvalidRows } = sanitizeSavedItems(arr);
       arr = cleaned;
       _svPreparedRef = null;
-      // dirty tracking: 이전 상태와 비교해 변경된 item만 marking
+      // dirty tracking: 저장목록 배열은 getSv()가 같은 참조를 돌려주므로,
+      // setSv() 안에서 이전 배열과 비교하면 신규 행이 이미 prev에 섞여 있을 수 있다.
+      // 따라서 저장/편집 함수가 찍어둔 _skCloudQueueAt 행은 즉시 durable outbox에 넣어 pull 덮어쓰기를 막는다.
       const now = Date.now();
       const prev = (window._idbCache && window._idbCache['re_sv']) || [];
       const changedAiItems = [];
+      const cloudRowsToQueue = [];
       (arr || []).forEach(item => {
         if (!item || !item.id) return;
         const prevHash = item._svHash;
         const curHash = _itemHash(item);
-        if (prevHash === undefined || prevHash !== curHash) {
+        const queuedAt = Number(item._skCloudQueueAt || item._skLocalEditedAt || 0) || 0;
+        const explicitlyQueued = queuedAt && (now - queuedAt) <= (10 * 60 * 1000);
+        if (prevHash !== undefined && prevHash !== curHash) {
           if (typeof normalizeItem === 'function') normalizeItem(item);
-          item.updatedAt = now;
+          _svTouchSavedRowForCloud(item, 'setSv-hash-change', now);
           item._svHash = _itemHash(item);
-          if (window._sbMarkSvDirty) window._sbMarkSvDirty(item.id);
           _svIndexOne(item); // 변경된 항목만 인덱스 갱신
+          cloudRowsToQueue.push(item);
           if (window._sbSaveAi && item.data && (item.data.AI기본분석 || item.data.AI추가분석)) {
             changedAiItems.push({ id: item.id, data: item.data });
           }
         } else if (item._svHash === undefined) {
-          item._svHash = curHash;
+          // 기존 row에 _svHash가 없다는 이유만으로 전체 1천여 건을 수정 처리하지 않는다.
+          // 다만 방금 만든 신규 row(timestamp/updatedAt가 최근)만 local-only 보호 대상으로 찍는다.
+          const bornAt = Number(item.updatedAt || item.timestamp || 0) || 0;
+          if (bornAt && (now - bornAt) >= 0 && (now - bornAt) <= (10 * 60 * 1000) && !item.deletedAt) {
+            _svTouchSavedRowForCloud(item, 'setSv-recent-new-row', now);
+            cloudRowsToQueue.push(item);
+          }
+          item._svHash = _itemHash(item);
         }
+        if (explicitlyQueued && !item.deletedAt) cloudRowsToQueue.push(item);
       });
       // 항목 수가 바뀌면 (추가/삭제) 전체 인덱스 재빌드
       if ((arr || []).length !== prev.length) _svBuildIndex(arr);
@@ -15935,6 +15986,7 @@ window.wr2SummaryCancelEdit = function() {
         if (window._idbCache) window._idbCache['re_sv'] = arr;
         if (window.idbSet) window.idbSet('re_sv', arr).catch(() => {});
       }
+      if (cloudRowsToQueue.length) _svQueueSavedRowsForCloud(cloudRowsToQueue, 'setSv-local-items');
       if (window._sbScheduleSaveSv) window._sbScheduleSaveSv(arr);
       else if (window._sbSaveSv) window._sbSaveSv(arr).catch(e => console.warn("[SB] setSv sync fail", e));
       changedAiItems.forEach(({ id, data }) => {
@@ -16586,8 +16638,10 @@ window.wr2SummaryCancelEdit = function() {
             additionalDocs: _sanitizeSavedAdditionalDocs(item.additionalDocs)
           };
           normalizeAreaFields(itemToSave);
+          _svTouchSavedRowForCloud(itemToSave, 'saveItem-duplicate-update');
           Object.assign(duplicateItem, itemToSave);
           setSv(sv);
+          _svQueueSavedRowsForCloud([duplicateItem], 'saveItem-duplicate-update');
           updSvCnt();
           showToast('✅ 기존 매물 정보 업데이트', 'ok');
           const sok = document.getElementById('sok_' + idx);
@@ -16616,14 +16670,18 @@ window.wr2SummaryCancelEdit = function() {
 
       normalizeAreaFields(itemToSave);
       normalizeAreaFields(item);
+      _svTouchSavedRowForCloud(itemToSave, 'saveItem');
 
       const exists = sv.find(s => s.id === item.id);
+      let savedRow = itemToSave;
       if (exists) {
         Object.assign(exists, itemToSave);
+        savedRow = exists;
       } else {
         sv.push(itemToSave);
       }
       setSv(sv);
+      _svQueueSavedRowsForCloud([savedRow], 'saveItem');
       updSvCnt();
       renderTabs(); // 저장 여부 탭 표시 갱신
       const sok = document.getElementById('sok_' + idx);
@@ -17118,9 +17176,11 @@ window.wr2SummaryCancelEdit = function() {
         }
       };
       _ensureNormalizedItem(item);
+      _svTouchSavedRowForCloud(item, 'manual-saved-item', now);
       var next = getSv().slice();
       next.unshift(item);
       setSv(next);
+      _svQueueSavedRowsForCloud([item], 'manual-saved-item');
       _manualSavedRefreshUi();
       closeManualSavedModal();
       window._manualSavedPresetGeo = null;
@@ -20457,7 +20517,9 @@ ${inputDesc.substring(0, 3000)}
         _applySavedFieldMutation(item, field, rawValue, { normalize: false });
       }
       _ensureNormalizedItem(item);
+      _svTouchSavedRowForCloud(item, 'saved-draft-commit');
       setSv(sv);
+      _svQueueSavedRowsForCloud([item], 'saved-draft-commit');
       _syncAfterSavedMutation(itemId, sv, { skipMapRefresh: false });
     };
 
@@ -21861,8 +21923,10 @@ ${combinedText}
             additionalDocs: _sanitizeSavedAdditionalDocs(item.additionalDocs)
           };
           normalizeAreaFields(itemToSave);
+          _svTouchSavedRowForCloud(itemToSave, 'saveAllResults-duplicate-update');
           Object.assign(dup, itemToSave);
           setSv(sv);
+          _svQueueSavedRowsForCloud([dup], 'saveAllResults-duplicate-update');
           updated++;
           continue;
         }
@@ -21872,9 +21936,13 @@ ${combinedText}
           additionalDocs: _sanitizeSavedAdditionalDocs(item.additionalDocs)
         };
         normalizeAreaFields(itemToSave); normalizeAreaFields(item);
+        _svTouchSavedRowForCloud(itemToSave, 'saveAllResults');
         const exists = sv.find(s => s.id === item.id);
-        if (exists) { Object.assign(exists, itemToSave); } else { sv.push(itemToSave); }
-        setSv(sv); saved++;
+        let savedRow = itemToSave;
+        if (exists) { Object.assign(exists, itemToSave); savedRow = exists; } else { sv.push(itemToSave); }
+        setSv(sv);
+        _svQueueSavedRowsForCloud([savedRow], 'saveAllResults');
+        saved++;
       }
       updSvCnt();
       const msg = `💾 ${saved}개 저장` + (updated ? ` (${updated}개 업데이트)` : '');
@@ -52529,7 +52597,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260511-workroom-v128-no-auto-delete-saved-items';
+  var BUILD='20260511-workroom-v129-items-local-pending-guard';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
@@ -53180,6 +53248,17 @@ window.addEventListener('DOMContentLoaded', () => {
     (Array.isArray(localRows)?localRows:[]).forEach(function(local){
       var id=idOf(local); if(!id) return;
       var remote=map.get(id);
+      if(!remote && table==='items' && !deletedOf(local)){
+        var localMark=localEditMarkerOf(local);
+        if(localMark){
+          var age=now()-localMark;
+          if(age < 0) age=0;
+          if(age <= (30 * 60 * 1000)){
+            map.set(id, local);
+            return;
+          }
+        }
+      }
       if(remote && shouldKeepLocalProtected(table, local, remote)){
         map.set(id, table==='workrooms' ? mergeRoomCaptureDeletes(local, remote) : local);
       }
