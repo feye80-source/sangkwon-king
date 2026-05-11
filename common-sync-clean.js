@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260511-workroom-v147-natural-comma-simplify-bench';
+    window.__SK_BUILD = '20260511-workroom-v148-unsold-fast-calc-reorder-comma';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -9717,7 +9717,26 @@ window.wr2SummaryCancelEdit = function() {
                 function wcpSetPct(id,n,d,opts){ const el=document.getElementById(id); if(!el || !isFinite(n)) return; if(((opts&&opts.skipActive)||(!opts||!opts.force)) && document.activeElement===el && el.getAttribute('data-wcp-output')!=='1') return; el.value=(+n).toFixed(d==null?2:d).replace(/\.00$/,''); }
                 function wcpFormatWon(n){ n=Math.round(Number(n)||0); return n? n.toLocaleString('ko-KR')+'원' : '-'; }
                 function wcpCommaValue(v){ const raw=String(v==null?'':v).trim(); if(!raw) return ''; const n=wcpNum(raw); if(!n) return raw==='0'?'0':''; return Math.round(n).toLocaleString('ko-KR'); }
-                function wcpFormatMoneyInput(el){ if(!el) return; const raw=String(el.value||''); if(!raw || !/[0-9]/.test(raw)) return; const pos=el.selectionStart||raw.length; const digitBefore=raw.slice(0,pos).replace(/[^0-9]/g,'').length; const only=raw.replace(/[^0-9]/g,''); if(!only){ el.value=''; return; } const next=Number(only).toLocaleString('ko-KR'); el.value=next; try{ let seen=0, newPos=next.length; for(let i=0;i<next.length;i++){ if(/[0-9]/.test(next[i])) seen++; if(seen>=digitBefore){ newPos=i+1; break; } } el.setSelectionRange(newPos,newPos); }catch(e){} }
+                function wcpFormatMoneyInput(el){
+                  if(!el) return;
+                  const raw=String(el.value||'');
+                  const pos=(typeof el.selectionStart==='number')?el.selectionStart:raw.length;
+                  const digitBefore=raw.slice(0,pos).replace(/[^0-9]/g,'').length;
+                  let only=raw.replace(/[^0-9]/g,'');
+                  if(!only){ el.value=''; return; }
+                  only=only.replace(/^0+(?=\d)/,'');
+                  const next=only.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+                  if(next===raw) return;
+                  el.value=next;
+                  try{
+                    let seen=0, newPos=next.length;
+                    for(let i=0;i<next.length;i++){
+                      if(/[0-9]/.test(next[i])) seen++;
+                      if(seen>=digitBefore){ newPos=i+1; break; }
+                    }
+                    el.setSelectionRange(newPos,newPos);
+                  }catch(e){}
+                }
                 function wcpFormatMoneyInputs(){ document.querySelectorAll('.wr2-calc-pro-shell [data-wcp-money="1"]').forEach(function(el){ if(el.value) wcpSetWon(el.id,wcpReadWon(el.id)); }); }
                 function wcpFormatKrwMixed(n){
                   n=Math.round(Number(n)||0);
@@ -9900,20 +9919,22 @@ window.wr2SummaryCancelEdit = function() {
                             <div class="wcp-section wcp-calc-col">
                               <h4>입력</h4>
                               <div class="wcp-subsec"><h5>① 취득비용</h5><div class="wcp-form">${wcpField('wc_appraisal','감정가','원',s.appraisal,'','')}${wcpField('wc_price','입찰가/매수가','원',s.price,'wcp_price_note','')}</div></div>
-                              <div class="wcp-subsec wcp-lease-input-subsec"><h5>② 임대 조건</h5><div class="wcp-form">
+                              <div class="wcp-subsec wcp-interest-subsec"><h5>② 이자 · 수익</h5><div class="wcp-form">${wcpRateField('wc_cf_loan_rate','wc_cf_loan','대출',s.loanRate,s.loan,'')}${wcpRateField('wc_cf_rate','wc_cf_interest_amt','대출 이자율/연이자',s.interestRate,s.interestAnnual,'')}${wcpField('wc_cf_interest_monthly','대출 이자(월)','원',s.interestMonthly,'','')}</div></div>
+                              <div class="wcp-subsec"><h5>③ 취득 필요경비</h5><div class="wcp-form">${wcpField('wc_unpaid_mgmt','미납 관리비','원',s.unpaidMgmt,'','')}${wcpField('wc_unpaid_tax','미납 세금','원',s.unpaidTax,'','')}${wcpField('wc_eviction','명도비','원',s.eviction,'','')}${wcpField('wc_facility','시설비','원',s.facility,'','')}</div></div>
+                              <div class="wcp-subsec"><h5>④ 운영 필요경비 (연)</h5><div class="wcp-form">${wcpRateField('wc_rent_broker_rate','wc_rent_broker_fee','임대중개수수료',s.rentBrokerRate,s.rentBrokerFee,'')}${wcpRateField('wc_sale_broker_rate','wc_sale_broker_fee','매도중개수수료',s.saleBrokerRate,s.saleBrokerFee,'')}${wcpField('wc_sell_price','예상 매도가','원',s.sellPrice,'','')}</div></div>
+                              <div class="wcp-subsec wcp-lease-input-subsec"><h5>⑤ 임대 조건</h5><div class="wcp-form">
                                 <div class="wcp-line"><label for="wc_deposit">임대 보증금</label><input id="wc_deposit" class="wcp-inp" data-wcp-money="1" inputmode="numeric" autocomplete="off" value="${wcpEsc(wcpCommaValue(s.deposit))}"><span class="wcp-unit">원</span></div>
                                 <div class="wcp-line wcp-rent-input-line"><label for="wc_rent">월 임대료</label><input id="wc_rent" class="wcp-inp" data-wcp-money="1" inputmode="numeric" autocomplete="off" value="${wcpEsc(wcpCommaValue(s.rent))}"><span class="wcp-unit">원</span></div>
                                 <div class="wcp-lease-helper" id="wcp_o_rent_per_py">-</div>
+                                ${wcpOutputRow('월 순수익','wcp_o_month_net_inline','원','green')}
+                                ${wcpOutputRow('연 순수익','wcp_o_year_net_inline','원','green')}
                               </div></div>
-                              <div class="wcp-subsec"><h5>③ 취득시 필요경비</h5><div class="wcp-form">${wcpField('wc_unpaid_mgmt','미납 관리비','원',s.unpaidMgmt,'','')}${wcpField('wc_unpaid_tax','미납 세금','원',s.unpaidTax,'','')}${wcpField('wc_eviction','명도비','원',s.eviction,'','')}${wcpField('wc_facility','시설비','원',s.facility,'','')}${wcpField('wc_vat','부가세 환급예상','원',s.vat,'','')}</div></div>
-                              <div class="wcp-subsec"><h5>④ 운영시 필요경비 (연)</h5><div class="wcp-form">${wcpRateField('wc_rent_broker_rate','wc_rent_broker_fee','임대중개수수료',s.rentBrokerRate,s.rentBrokerFee,'')}${wcpRateField('wc_sale_broker_rate','wc_sale_broker_fee','매도중개수수료',s.saleBrokerRate,s.saleBrokerFee,'')}${wcpField('wc_sell_price','예상 매도가','원',s.sellPrice,'','')}</div></div>
-                              <div class="wcp-subsec"><h5>⑤ 이자 · 수익</h5><div class="wcp-form">${wcpRateField('wc_cf_loan_rate','wc_cf_loan','LTV/대출금',s.loanRate,s.loan,'')}${wcpRateField('wc_cf_rate','wc_cf_interest_amt','대출 이자율/연이자',s.interestRate,s.interestAnnual,'')}${wcpField('wc_cf_interest_monthly','대출 이자(월)','원',s.interestMonthly,'','')}</div></div>
                             </div>
                             <div class="wcp-section wcp-calc-col">
                               <h4>자동 산출</h4>
-                              <div class="wcp-subsec"><h5>① 취득특세/기타</h5><div class="wcp-form">${wcpRateField('wc_acq_tax_rate','wc_acq_tax','취득특세',s.acqTaxRate,s.acqTax,'')}${wcpRateField('wc_legal_rate','wc_legal_fee','법무비 등',s.legalRate,s.legalFee,'')}</div></div>
-                              <div class="wcp-subsec wcp-management-subsec"><h5>② 1년 운영 비용</h5><div class="wcp-form">${wcpField('wc_management_monthly','월 관리비 평단가','원/평·월',s.managementMonthly,'','평당 월 관리비')}${wcpOutputRow('1년치 이자','wcp_o_interest_year','원','')}${wcpOutputRow('1년치 관리비','wcp_o_management_year','원','')}</div></div>
-                              <div class="wcp-subsec"><h5>③ 기타 산출</h5><div class="wcp-form">${wcpOutputRow('부가세 환급예상','wcp_o_vat','원','green')}${wcpOutputRow('적용 대출금','wcp_auto_loan','원','blue')}</div></div>
+                              <div class="wcp-subsec"><h5>① 취등록세/기타</h5><div class="wcp-form">${wcpRateField('wc_acq_tax_rate','wc_acq_tax','취등록세',s.acqTaxRate,s.acqTax,'')}${wcpRateField('wc_legal_rate','wc_legal_fee','법무비 등',s.legalRate,s.legalFee,'')}</div></div>
+                              <div class="wcp-subsec wcp-management-subsec"><h5>② 1년 운영 비용</h5><div class="wcp-form wcp-management-form">${wcpField('wc_management_monthly','월 관리비 평단가','원/평·월',s.managementMonthly,'','평당 월 관리비')}${wcpOutputRow('월 관리비','wcp_o_management_month','원','green')}${wcpOutputRow('1년치 이자','wcp_o_interest_year','원','')}${wcpOutputRow('1년치 관리비','wcp_o_management_year','원','')}</div></div>
+                              <div class="wcp-subsec"><h5>③ 기타 산출</h5><div class="wcp-form">${wcpOutputRow('적용 대출금','wcp_auto_loan','원','blue')}</div></div>
                               <div class="wcp-subsec">${wcpLoanRuleBox()}</div>
                             </div>
                           </div>
@@ -10177,16 +10198,19 @@ window.wr2SummaryCancelEdit = function() {
                   wcpSetText('wcp_loan_bid_cap',_bidCap?wcpFormatWon(_bidCap):'-');
                   wcpSetText('wcp_loan_rule_applied',r.loan?wcpFormatWon(r.loan):(_autoLoan?wcpFormatWon(_autoLoan):'-'));
                   wcpSetText('wcp_auto_loan',r.loan?wcpFormatWon(r.loan):(_autoLoan?wcpFormatWon(_autoLoan):'-'));
-                  wcpSetText('wcp_loan_bid_label',(_loanMode==='rate'?'입찰가 × LTV(현재 '+_loanRate.toFixed(2).replace(/\.00$/,'')+'%)':'입찰가 × 80%'));
+                  wcpSetText('wcp_loan_bid_label',(_loanMode==='rate'?'입찰가 × '+_loanRate.toFixed(2).replace(/\.00$/,'')+'%':'입찰가 × 80%'));
                   wcpSetText('wcp_loan_rule_text',_appCap?('* 감정가 × 60% 기준: '+wcpFormatWon(_appCap)):'');
                   wcpSetText('wcp_o_month_net',wcpFormatWon(r.monthNet));
                   wcpSetText('wcp_o_month_net_kpi',wcpFormatWon(r.monthNet));
                   wcpSetText('wcp_o_year_net',wcpFormatWon(r.yearNet));
+                  wcpSetText('wcp_o_month_net_inline',wcpFormatWon(r.monthNet));
+                  wcpSetText('wcp_o_year_net_inline',wcpFormatWon(r.yearNet));
                   wcpSetText('wcp_o_initial_need',wcpFormatWon(r.initialNeed));
                   wcpSetText('wcp_o_per_py',r.perPy?Math.round(r.perPy).toLocaleString('ko-KR'):'-');
                   wcpSetText('wcp_o_rent_per_py',r.rentPerPy?('@ '+r.rentPerPy.toFixed(1)+'만/평'):'-');
                   wcpSetText('wcp_o_vat',wcpFormatWon(r.vat));
                   wcpSetText('wcp_o_interest_year',wcpFormatWon(r.intY));
+                  wcpSetText('wcp_o_management_month',wcpFormatWon((wcpReadWon('wc_management_monthly')||0)*(r.bunyangPy||r.areaPy||0)));
                   wcpSetText('wcp_o_management_year',wcpFormatWon(r.mgmtYear));
                   wcpSetText('wcp_auto_acq',wcpFormatWon(r.acq));
                   wcpSetText('wcp_auto_legal',wcpFormatWon(r.legal));
@@ -52827,55 +52851,60 @@ window.addEventListener('DOMContentLoaded', () => {
     };
     document.addEventListener('keydown', modal.__escHandler);
     saveEl.onclick = function(){
-      try {
-        var nextRound = parseInt(roundEl && roundEl.value || '', 10);
-        var nextDate = String(dateEl && dateEl.value || '').trim();
-        var nextPrice = _skDigits(priceEl && priceEl.value || '');
-        if (!manualMode && (!nextRound || nextRound < 1)) {
-          if (typeof showToast === 'function') showToast('다음 회차를 확인해주세요.', 'warn');
-          return;
-        }
-        if (!nextDate) {
-          if (typeof showToast === 'function') showToast('다음 매각기일을 입력해주세요.', 'warn');
-          return;
-        }
-        if (!nextPrice) {
-          if (typeof showToast === 'function') showToast('다음 최저가를 입력해주세요.', 'warn');
-          return;
-        }
-        if (ctx && ctx.source === 'wr') {
-          var applied = manualMode
-            ? _skApplyManualBidInfoToWorkroomSource(ctx, nextDate, nextPrice)
-            : _skApplyUnsoldToWorkroomSource(ctx, nextRound, nextDate, nextPrice);
-          if (!applied || applied.ok !== true) {
-            if (typeof showToast === 'function') showToast('연결된 원본 물건을 찾지 못했습니다. 물건 연결 상태를 확인해주세요.', 'warn');
-            return;
-          }
-          setTimeout(function() {
-            try { if (typeof window.__wr2FlushSaveRooms === 'function') window.__wr2FlushSaveRooms(); } catch(e) {}
-          }, 120);
-        } else if (ctx && ctx.source === 'pl') {
-          var itemId = String(ctx.id || (ctx.item && ctx.item.id) || '').trim();
-          if (itemId && typeof window.plInlineSet === 'function') {
-            window.plInlineSet(itemId, 'round', String(nextRound));
-            window.plInlineSet(itemId, 'biddate', nextDate);
-            window.plInlineSet(itemId, 'minprice', nextPrice);
-          }
-          try {
-            if (itemId && typeof window.plSetSimpleStatus === 'function') {
-              var prevForce2 = window.__plForceDirectSet;
-              window.__plForceDirectSet = true;
-              window.plSetSimpleStatus(itemId, 'active');
-              window.__plForceDirectSet = prevForce2;
-            }
-          } catch (e) {}
-          try { if (typeof renderPropertyList === 'function') renderPropertyList(); } catch(e) {}
-        }
-        _skCloseUnsoldModal();
-      } catch (e) {
-        console.warn('[unsold save]', e);
-        if (typeof showToast === 'function') showToast('유찰 저장 중 오류가 발생했습니다.', 'warn');
+      var nextRound = parseInt(roundEl && roundEl.value || '', 10);
+      var nextDate = String(dateEl && dateEl.value || '').trim();
+      var nextPrice = _skDigits(priceEl && priceEl.value || '');
+      if (!manualMode && (!nextRound || nextRound < 1)) {
+        if (typeof showToast === 'function') showToast('다음 회차를 확인해주세요.', 'warn');
+        return;
       }
+      if (!nextDate) {
+        if (typeof showToast === 'function') showToast('다음 매각기일을 입력해주세요.', 'warn');
+        return;
+      }
+      if (!nextPrice) {
+        if (typeof showToast === 'function') showToast('다음 최저가를 입력해주세요.', 'warn');
+        return;
+      }
+      var runCtx = ctx || {};
+      _skCloseUnsoldModal();
+      if (typeof showToast === 'function') showToast(manualMode ? '기일/최저가 수정 반영 중...' : '유찰 정보 반영 중...', 'ok');
+      setTimeout(function(){
+        try {
+          if (runCtx && runCtx.source === 'wr') {
+            var applied = manualMode
+              ? _skApplyManualBidInfoToWorkroomSource(runCtx, nextDate, nextPrice)
+              : _skApplyUnsoldToWorkroomSource(runCtx, nextRound, nextDate, nextPrice);
+            if (!applied || applied.ok !== true) {
+              if (typeof showToast === 'function') showToast('연결된 원본 물건을 찾지 못했습니다. 물건 연결 상태를 확인해주세요.', 'warn');
+              return;
+            }
+            setTimeout(function() {
+              try { if (typeof window.__wr2FlushSaveRooms === 'function') window.__wr2FlushSaveRooms(); } catch(e) {}
+            }, 120);
+          } else if (runCtx && runCtx.source === 'pl') {
+            var itemId = String(runCtx.id || (runCtx.item && runCtx.item.id) || '').trim();
+            if (itemId && typeof window.plInlineSet === 'function') {
+              window.plInlineSet(itemId, 'round', String(nextRound));
+              window.plInlineSet(itemId, 'biddate', nextDate);
+              window.plInlineSet(itemId, 'minprice', nextPrice);
+            }
+            try {
+              if (itemId && typeof window.plSetSimpleStatus === 'function') {
+                var prevForce2 = window.__plForceDirectSet;
+                window.__plForceDirectSet = true;
+                window.plSetSimpleStatus(itemId, 'active');
+                window.__plForceDirectSet = prevForce2;
+              }
+            } catch (e) {}
+            try { if (typeof renderPropertyList === 'function') renderPropertyList(); } catch(e) {}
+          }
+          if (typeof showToast === 'function') showToast(manualMode ? '기일/최저가가 반영되었습니다.' : '유찰 정보가 반영되었습니다.', 'ok');
+        } catch (e) {
+          console.warn('[unsold save]', e);
+          if (typeof showToast === 'function') showToast('유찰 저장 중 오류가 발생했습니다.', 'warn');
+        }
+      }, 0);
     };
     modal.style.display = 'flex';
   }
@@ -53382,7 +53411,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260511-workroom-v147-natural-comma-simplify-bench';
+  var BUILD='20260511-workroom-v148-unsold-fast-calc-reorder-comma';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
@@ -55710,4 +55739,37 @@ window.addEventListener('DOMContentLoaded', () => {
     `;
     document.head.appendChild(st);
   }catch(e){console.warn('[v147 natural comma simplify bench]',e);}
+})();
+
+
+/* v148: fast unsold close + calculator section reorder/input polish */
+(function(){
+  try{
+    var old=document.getElementById('sk-v148-unsold-calc-polish');
+    if(old) old.remove();
+    var st=document.createElement('style');
+    st.id='sk-v148-unsold-calc-polish';
+    st.textContent=`
+      #wcp_pane_input .wcp-calc-combined .wcp-subsec h5{font-weight:850!important;color:#e8f0ff!important;}
+      #wcp_pane_input .wcp-interest-subsec{border:1px solid rgba(192,132,252,.16)!important;background:rgba(126,34,206,.035)!important;border-radius:8px!important;padding:6px!important;}
+      #wcp_pane_input .wcp-lease-input-subsec{margin-top:auto!important;}
+      #wcp_pane_input .wcp-lease-input-subsec #wcp_o_month_net_inline,
+      #wcp_pane_input .wcp-lease-input-subsec #wcp_o_year_net_inline{color:#4ade80!important;font-weight:900!important;}
+      #wcp_pane_input .wcp-management-subsec .wcp-form{gap:5px!important;}
+      #wcp_pane_input .wcp-management-subsec #wcp_o_management_month{color:#4ade80!important;font-weight:900!important;}
+      #wcp_pane_input .wcp-management-subsec .wcp-line:first-child{border-bottom:1px solid rgba(148,163,184,.14)!important;padding-bottom:4px!important;margin-bottom:2px!important;}
+      #wcp_pane_input .wcp-calc-combined .wcp-calc-col:first-child{display:flex!important;flex-direction:column!important;}
+      #wcp_pane_input .wcp-calc-combined .wcp-calc-col:first-child .wcp-subsec{flex:0 0 auto!important;}
+      #wcp_pane_input .wcp-calc-combined .wcp-calc-col:first-child .wcp-lease-input-subsec{margin-top:auto!important;}
+      .wr2-calc-pro-shell input.wcp-inp:not([readonly]):not([data-wcp-output="1"]){background:linear-gradient(180deg,rgba(15,35,60,.98),rgba(7,18,33,.98))!important;border-color:rgba(96,165,250,.42)!important;}
+      .wr2-calc-pro-shell input.wcp-inp[data-wcp-money="1"]{font-variant-numeric:tabular-nums!important;letter-spacing:0!important;}
+      #wcp_pane_input .wcp-kpi-summary-panel #wcp_o_year_net,
+      #wcp_pane_input .wcp-kpi-summary-panel #wcp_o_initial_need,
+      #wcp_pane_input .wcp-kpi-summary-panel #wcp_p_total_no_deposit,
+      #wcp_pane_input .wcp-kpi-summary-panel #wcp_p_sell_price,
+      #wcp_pane_input .wcp-kpi-summary-panel #wcp_p_after_tax,
+      #wcp_pane_input .wcp-kpi-summary-panel #wcp_p_roi{color:#e8ecf4!important;}
+    `;
+    (document.head||document.documentElement).appendChild(st);
+  }catch(e){console.warn('[v148 calc polish]',e);}
 })();
