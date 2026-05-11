@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260511-workroom-v123-auction-detail-naver-link-split';
+    window.__SK_BUILD = '20260511-workroom-v124-naverland-unsold-drag-fix';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -6000,23 +6000,29 @@ var _safeLocalSet = function(key, value) {
                   scope.querySelectorAll('[data-wr2-drag-scroll="1"]').forEach(function(el){
                     if(el.__wr2DragBound) return;
                     el.__wr2DragBound=true;
-                    let down=false,startX=0,startLeft=0,moved=false,pid=null;
+                    let down=false,startX=0,startLeft=0,moved=false,pid=null,raf=0,nextLeft=0;
                     function isInteractive(target){return !!(target&&target.closest&&target.closest('button,a,input,textarea,select,summary,details,.wr2-lcard-menu-pop'));}
+                    function setScrollLeft(v){
+                      nextLeft=v;
+                      if(raf) return;
+                      raf=requestAnimationFrame(function(){ el.scrollLeft=nextLeft; raf=0; });
+                    }
                     el.addEventListener('pointerdown',function(e){
                       if(isInteractive(e.target)) return;
                       if(el.scrollWidth<=el.clientWidth+2) return;
-                      down=true; moved=false; pid=e.pointerId; startX=e.clientX; startLeft=el.scrollLeft;
+                      down=true; moved=false; pid=e.pointerId; startX=e.clientX; startLeft=el.scrollLeft; nextLeft=startLeft;
                       el.classList.add('dragging');
+                      el.style.scrollBehavior='auto';
                       try{el.setPointerCapture(pid);}catch(_e){}
                     });
                     el.addEventListener('pointermove',function(e){
                       if(!down) return;
                       const dx=e.clientX-startX;
                       if(Math.abs(dx)>3) moved=true;
-                      el.scrollLeft=startLeft-dx;
-                      e.preventDefault();
-                    });
-                    function end(){down=false; el.classList.remove('dragging'); try{ if(pid!=null) el.releasePointerCapture(pid); }catch(_e){} pid=null;}
+                      setScrollLeft(startLeft-dx);
+                      if(e.cancelable) e.preventDefault();
+                    }, {passive:false});
+                    function end(){down=false; el.classList.remove('dragging'); el.style.scrollBehavior=''; try{ if(pid!=null) el.releasePointerCapture(pid); }catch(_e){} pid=null;}
                     el.addEventListener('pointerup',end);
                     el.addEventListener('pointercancel',end);
                     el.addEventListener('click',function(e){ if(moved){ e.preventDefault(); e.stopPropagation(); moved=false; } }, true);
@@ -7664,7 +7670,7 @@ window.wr2SummaryCancelEdit = function() {
                     .wr2-linked-nav::-webkit-scrollbar{display:none!important;}
                     .wr2-linked-nav-btn{flex:0 0 auto!important;border:1px solid rgba(96,165,250,.30)!important;border-radius:999px!important;background:rgba(96,165,250,.08)!important;color:#9cc4ff!important;font-size:11px!important;font-weight:900!important;padding:5px 10px!important;cursor:pointer!important;}
                     .wr2-linked-nav-btn.active{background:rgba(96,165,250,.22)!important;color:#eaf3ff!important;border-color:rgba(147,197,253,.55)!important;}
-                    .wr2-linked-cards{display:flex!important;gap:14px!important;overflow-x:auto!important;overflow-y:visible!important;scrollbar-color:rgba(79,142,255,.65) rgba(255,255,255,.06)!important;padding:0 0 10px 0!important;cursor:grab!important;scroll-snap-type:none!important;overscroll-behavior-x:contain!important;-webkit-overflow-scrolling:touch!important;touch-action:pan-x pan-y!important;max-width:100%!important;min-width:0!important;}
+                    .wr2-linked-cards{display:flex!important;gap:14px!important;overflow-x:auto!important;overflow-y:visible!important;scrollbar-color:rgba(79,142,255,.65) rgba(255,255,255,.06)!important;padding:0 0 10px 0!important;cursor:grab!important;scroll-snap-type:none!important;overscroll-behavior-x:contain!important;-webkit-overflow-scrolling:touch!important;touch-action:pan-x!important;scroll-behavior:smooth!important;max-width:100%!important;min-width:0!important;}
                     .wr2-linked-cards.dragging{cursor:grabbing!important;user-select:none!important;scroll-snap-type:none!important;}
                     .wr2-linked-cards.fit2{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;overflow-x:hidden!important;cursor:default!important;}
                     .wr2-linked-cards.fit2 .wr2-linked-card{min-width:0!important;width:100%!important;}
@@ -7705,7 +7711,7 @@ window.wr2SummaryCancelEdit = function() {
                     .wr2-agg-cell span{font-size:10px!important;color:#93a4ba!important;font-weight:900!important;white-space:nowrap!important;}
                     .wr2-agg-val{font-size:12px!important;line-height:1.1!important;color:#e8eefb!important;font-weight:900!important;letter-spacing:-.03em!important;max-width:none!important;white-space:nowrap!important;overflow:visible!important;text-overflow:clip!important;}
                     .wr2-agg-val.blue{color:#4f8eff!important}.wr2-agg-val.green,.wr2-agg-val.rent{color:#4ade80!important}.wr2-agg-val.yellow{color:#ffd166!important}
-                    @container (max-width:820px){.wr2-linked-nav{display:flex!important}.wr2-ml-top.clean{align-items:flex-start!important;flex-direction:column!important}.wr2-lcard-head{align-items:flex-start!important;flex-wrap:wrap!important}.wr2-lcard-title{white-space:normal!important;overflow:visible!important;text-overflow:clip!important;line-height:1.28!important;max-width:100%!important}.wr2-lcard-actions{margin-left:auto!important}.wr2-lcard-addr{display:block!important;-webkit-line-clamp:unset!important;overflow:visible!important;min-height:0!important;white-space:normal!important;word-break:keep-all!important}.wr2-linked-cards.fit2{display:flex!important;grid-template-columns:none!important;overflow-x:auto!important;cursor:grab!important;scroll-snap-type:x mandatory!important}.wr2-linked-cards.fit2 .wr2-linked-card,.wr2-linked-cards.scroll .wr2-linked-card{flex:0 0 calc(100% - 4px)!important;width:auto!important;min-width:0!important;scroll-snap-align:start!important}.wr2-lcard-row{grid-template-columns:minmax(76px,96px) minmax(0,1fr)!important}.wr2-lcard-row b{white-space:normal!important;overflow-wrap:anywhere!important}.wr2-money-line,.wr2-price-line{flex-wrap:wrap!important;white-space:normal!important}.wr2-bid-input,.wr2-bid-total-input{width:118px!important}.wr2-agg-head{align-items:flex-start!important;flex-direction:column!important}.wr2-agg-grid{display:grid!important;grid-template-columns:1fr!important}.wr2-agg-cell{min-width:0!important;justify-content:space-between!important}}
+                    @container (max-width:820px){.wr2-linked-nav{display:flex!important}.wr2-ml-top.clean{align-items:flex-start!important;flex-direction:column!important}.wr2-lcard-head{align-items:flex-start!important;flex-wrap:wrap!important}.wr2-lcard-title{white-space:normal!important;overflow:visible!important;text-overflow:clip!important;line-height:1.28!important;max-width:100%!important}.wr2-lcard-actions{margin-left:auto!important}.wr2-lcard-addr{display:block!important;-webkit-line-clamp:unset!important;overflow:visible!important;min-height:0!important;white-space:normal!important;word-break:keep-all!important}.wr2-linked-cards.fit2{display:flex!important;grid-template-columns:none!important;overflow-x:auto!important;cursor:grab!important;scroll-snap-type:none!important}.wr2-linked-cards.fit2 .wr2-linked-card,.wr2-linked-cards.scroll .wr2-linked-card{flex:0 0 calc(100% - 4px)!important;width:auto!important;min-width:0!important;scroll-snap-align:start!important}.wr2-lcard-row{grid-template-columns:minmax(76px,96px) minmax(0,1fr)!important}.wr2-lcard-row b{white-space:normal!important;overflow-wrap:anywhere!important}.wr2-money-line,.wr2-price-line{flex-wrap:wrap!important;white-space:normal!important}.wr2-bid-input,.wr2-bid-total-input{width:118px!important}.wr2-agg-head{align-items:flex-start!important;flex-direction:column!important}.wr2-agg-grid{display:grid!important;grid-template-columns:1fr!important}.wr2-agg-cell{min-width:0!important;justify-content:space-between!important}}
                     @media(max-width:760px){.wr2-ml-top.clean{align-items:flex-start!important;flex-direction:column!important}.wr2-lcard-actions .wr2-mini-btn{padding:5px 8px!important;font-size:11px!important}.wr2-linked-cards.scroll .wr2-linked-card{flex-basis:calc(100% - 8px)!important}.wr2-agg-head{align-items:flex-start!important;flex-direction:column!important}.wr2-lcard-row{grid-template-columns:minmax(70px,86px) minmax(0,1fr)!important;}}
                     .wcp-basis-toolbar{display:grid;grid-template-columns:minmax(240px,auto) minmax(0,1fr) auto;gap:8px;align-items:center;margin:8px 0 10px;padding:0;}
                     .wcp-linked-picker{display:flex;align-items:center;gap:0;flex-wrap:nowrap;border:1px solid rgba(255,255,255,.12);background:rgba(5,9,15,.38);border-radius:12px;padding:0;margin:0;overflow:hidden;min-width:0;}
@@ -20514,9 +20520,45 @@ ${inputDesc.substring(0, 3000)}
     };
     window._skItemLatLngForLink = window._skItemLatLngForLink || function(item) {
       const d = (item && item.data) || {};
-      const lat = Number(d.lat ?? d.위도 ?? item?.lat ?? item?.latitude);
-      const lng = Number(d.lng ?? d.lon ?? d.경도 ?? item?.lng ?? item?.lon ?? item?.longitude);
-      if (isFinite(lat) && isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180) return { lat, lng };
+      function toNum(v) {
+        if (v == null || v === '') return NaN;
+        if (typeof v === 'object') return NaN;
+        const n = Number(String(v).replace(/,/g, '').trim());
+        return Number.isFinite(n) ? n : NaN;
+      }
+      function pick(list) {
+        for (const v of list) {
+          const n = toNum(v);
+          if (Number.isFinite(n)) return n;
+        }
+        return NaN;
+      }
+      // 좌표 필드명이 수집 경로마다 달라서 한 곳에서만 보정한다.
+      // x/y 계열은 통상 x=경도, y=위도이므로 lat 후보에는 y, lng 후보에는 x를 둔다.
+      let lat = pick([
+        d.lat, d.latitude, d.위도, d.y, d.Y, d.mapLat, d.map_lat, d.coordY, d.coord_y,
+        d.centerLat, d.center_lat, d.kakaoLat, d.naverLat,
+        item && item.lat, item && item.latitude, item && item.y, item && item.mapLat
+      ]);
+      let lng = pick([
+        d.lng, d.lon, d.longitude, d.경도, d.x, d.X, d.mapLng, d.map_lng, d.coordX, d.coord_x,
+        d.centerLng, d.center_lng, d.kakaoLng, d.naverLng,
+        item && item.lng, item && item.lon, item && item.longitude, item && item.x, item && item.mapLng
+      ]);
+      try {
+        const pos = d.position || d.coords || d.coordinate || item?.position || item?.coords;
+        if ((!Number.isFinite(lat) || !Number.isFinite(lng)) && pos && typeof pos === 'object') {
+          if (!Number.isFinite(lat)) lat = pick([pos.lat, pos.latitude, pos.y, pos.Ma, pos.La]);
+          if (!Number.isFinite(lng)) lng = pick([pos.lng, pos.lon, pos.longitude, pos.x, pos.La, pos.Ma]);
+        }
+      } catch(e) {}
+      // 위경도가 뒤바뀐 케이스 보정
+      if (Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) > 90 && Math.abs(lng) <= 90) {
+        const tmp = lat; lat = lng; lng = tmp;
+      }
+      // 국내 서비스 기준으로 너무 엉뚱한 좌표는 버린다.
+      if (Number.isFinite(lat) && Number.isFinite(lng) && lat >= 30 && lat <= 45 && lng >= 120 && lng <= 135) return { lat, lng };
+      if (Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180) return { lat, lng };
       return null;
     };
     window._skAuctionDetailUrl = window._skAuctionDetailUrl || function(item) {
@@ -20579,10 +20621,12 @@ ${inputDesc.substring(0, 3000)}
       const d = (item && item.data) || {};
       const articleNo = String(d.매물번호 || d.articleNo || d.atclNo || '').trim();
       if (articleNo) return 'https://new.land.naver.com/offices?articleNo=' + encodeURIComponent(articleNo);
-      const addr = window._skItemAddressForLink(item);
-      if (addr) return 'https://new.land.naver.com/offices?query=' + encodeURIComponent(addr) + '&a=SG:SMS:APTHGJ&e=RETAIL';
+      // 경공매/공매 물건은 네이버부동산 매물번호가 없다. 이 경우 주소 query 방식은
+      // 네이버부동산 SPA가 이전에 보던 지역 상태를 복원하는 일이 있어 좌표(ms)를 우선한다.
       const ll = window._skItemLatLngForLink(item);
       if (ll) return 'https://new.land.naver.com/offices?ms=' + ll.lat + ',' + ll.lng + ',17&a=SG:SMS:APTHGJ&e=RETAIL';
+      const addr = window._skItemAddressForLink(item);
+      if (addr) return 'https://new.land.naver.com/offices?query=' + encodeURIComponent(addr) + '&a=SG:SMS:APTHGJ&e=RETAIL';
       return '';
     };
     function _skFindSavedItemById(id) {
@@ -51132,26 +51176,47 @@ window.addEventListener('DOMContentLoaded', () => {
   function _skForceUnsoldCloudSync(opts){
     var options = opts || {};
     var writes = [];
-    try {
-      if (typeof window._sbSavePlItems === 'function' && typeof plLoad === 'function') {
-        writes.push(Promise.resolve(window._sbSavePlItems(plLoad())));
+    var rowMap = options.rows || {};
+    function queueCf(table, rows){
+      rows = (Array.isArray(rows) ? rows : []).filter(function(r){ return r && r.id; });
+      if (!rows.length) return;
+      try {
+        if (typeof window.skCloudQueuePushTable === 'function') {
+          writes.push(Promise.resolve(window.skCloudQueuePushTable(table, rows, 'unsold-save')));
+        } else if (typeof window.skCloudPushTable === 'function') {
+          writes.push(Promise.resolve(window.skCloudPushTable(table, rows)));
+        }
+      } catch(e) {
+        console.warn('[sync] cf queue error', table, e);
       }
-    } catch(e) {
-      console.warn('[sync] pl write error', e);
     }
-    try {
-      if (typeof window._sbSaveRooms === 'function') {
-        writes.push(Promise.resolve(window._sbSaveRooms(_skGetRooms())));
+    // v124: 유찰/기일수정은 Cloudflare 동기화가 실제 기준이다.
+    // 전체 배열 저장보다 변경된 row만 outbox에 먼저 넣어, 직후 pull이 와도 예전 기일/금액으로 되돌아가지 않게 한다.
+    queueCf('pl_items', rowMap.pl_items);
+    queueCf('workrooms', rowMap.workrooms);
+    queueCf('items', rowMap.items);
+    if (!rowMap.pl_items && !rowMap.workrooms && !rowMap.items) {
+      try {
+        if (typeof window._sbSavePlItems === 'function' && typeof plLoad === 'function') {
+          writes.push(Promise.resolve(window._sbSavePlItems(plLoad())));
+        }
+      } catch(e) {
+        console.warn('[sync] pl write error', e);
       }
-    } catch(e) {
-      console.warn('[sync] room write error', e);
-    }
-    try {
-      if (typeof window._sbSaveSv === 'function' && typeof getSv === 'function') {
-        writes.push(Promise.resolve(window._sbSaveSv(getSv())));
+      try {
+        if (typeof window._sbSaveRooms === 'function') {
+          writes.push(Promise.resolve(window._sbSaveRooms(_skGetRooms())));
+        }
+      } catch(e) {
+        console.warn('[sync] room write error', e);
       }
-    } catch(e) {
-      console.warn('[sync] saved write error', e);
+      try {
+        if (typeof window._sbSaveSv === 'function' && typeof getSv === 'function') {
+          writes.push(Promise.resolve(window._sbSaveSv(getSv())));
+        }
+      } catch(e) {
+        console.warn('[sync] saved write error', e);
+      }
     }
     var afterWrite = Promise.allSettled(writes).then(function(results){
       var failed = results.filter(function(r){ return r && r.status === 'rejected'; });
@@ -51413,7 +51478,20 @@ window.addEventListener('DOMContentLoaded', () => {
     try { if (typeof renderPropertyList === 'function') renderPropertyList(); } catch(e) {}
     try { if (typeof wr2Render === 'function') wr2Render(); } catch(e) {}
     try { if (typeof renderSaved === 'function') renderSaved(); } catch(e) {}
-    _skForceUnsoldCloudSync({ pull:false });
+    try {
+      var stampUnsold = Date.now();
+      if (appliedItem) appliedItem.updatedAt = Math.max(Number(appliedItem.updatedAt || 0) || 0, stampUnsold);
+      if (appliedSaved) appliedSaved.updatedAt = Math.max(Number(appliedSaved.updatedAt || 0) || 0, stampUnsold);
+      if (room) room.updatedAt = Math.max(Number(room.updatedAt || 0) || 0, stampUnsold);
+    } catch(e) {}
+    _skForceUnsoldCloudSync({
+      pull:false,
+      rows:{
+        pl_items: appliedItem ? [appliedItem] : [],
+        workrooms: room ? [room] : [],
+        items: appliedSaved ? [appliedSaved] : []
+      }
+    });
     return { ok:true, room: room, item: appliedItem, saved: appliedSaved || null };
   }
   function _skApplyManualBidInfoToWorkroomSource(ctx, nextDate, nextPrice){
@@ -51472,7 +51550,20 @@ window.addEventListener('DOMContentLoaded', () => {
     try { if (typeof renderPropertyList === 'function') renderPropertyList(); } catch(e) {}
     try { if (typeof wr2Render === 'function') wr2Render(); } catch(e) {}
     try { if (typeof renderSaved === 'function') renderSaved(); } catch(e) {}
-    _skForceUnsoldCloudSync({ pull:false });
+    try {
+      var stampUnsold = Date.now();
+      if (appliedItem) appliedItem.updatedAt = Math.max(Number(appliedItem.updatedAt || 0) || 0, stampUnsold);
+      if (appliedSaved) appliedSaved.updatedAt = Math.max(Number(appliedSaved.updatedAt || 0) || 0, stampUnsold);
+      if (room) room.updatedAt = Math.max(Number(room.updatedAt || 0) || 0, stampUnsold);
+    } catch(e) {}
+    _skForceUnsoldCloudSync({
+      pull:false,
+      rows:{
+        pl_items: appliedItem ? [appliedItem] : [],
+        workrooms: room ? [room] : [],
+        items: appliedSaved ? [appliedSaved] : []
+      }
+    });
     return { ok:true, room: room, item: appliedItem, saved: appliedSaved || null };
   }
 
@@ -52067,7 +52158,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260511-workroom-v123-auction-detail-naver-link-split';
+  var BUILD='20260511-workroom-v124-naverland-unsold-drag-fix';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
@@ -53441,6 +53532,11 @@ window.addEventListener('DOMContentLoaded', () => {
     installPersistWrap('_wrPersistAndSyncRooms');
 
     window.skCloudPushTable=function(table, rows){ return pushRows(table, rows); };
+    window.skCloudQueuePushTable=function(table, rows, reason){
+      var clean=(Array.isArray(rows)?rows:[]).filter(function(r){ return r && idOf(r); });
+      if(clean.length) scheduleRowsPush(String(table||''), clean, reason||'queued-row-push', 120);
+      return {ok:true, queued:clean.length, table:String(table||''), reason:reason||'queued-row-push'};
+    };
     window.skCloudPullTable=function(table, opts){ return pullTable(table, opts||{full:true}); };
     window.skCloudPullAll=function(opts){ return pullAll(opts||{full:true}); };
     window.skCloudPushRoomNow=function(room, reason){
