@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260511-workroom-v126-url-naver-unsold-verified-fix';
+    window.__SK_BUILD = '20260511-workroom-v128-no-auto-delete-saved-items';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -6185,7 +6185,7 @@ var _safeLocalSet = function(key, value) {
 
                   const primaryAddr = d['소재지'] || d['도로명주소'] || d['지번주소'] || d['주소'] || room.address || '-';
                   const pdfDoc = _getPrimaryPdfDoc(item);
-                  const sourceUrl = String(d['상세URL'] || d['옥션원URL'] || d['온비드URL'] || '').trim();
+                  const sourceUrl = (typeof window._skAuctionDetailUrl === 'function') ? window._skAuctionDetailUrl(item) : String(d['상세URL'] || d['옥션원URL'] || d['온비드URL'] || '').trim();
                   let html = '';
 
                   // 경매번호/사건번호
@@ -15649,29 +15649,14 @@ window.wr2SummaryCancelEdit = function() {
     }
 
     function sanitizeSavedItems(arr) {
+      // v128 안전수정:
+      // 저장목록 정리 함수가 네이버/일반 추출물 일부를 '정보 없는 항목'으로 오판해서
+      // setSv()/getSv() 시점에 실제 저장목록에서 제거하고, 그 제거를 클라우드 삭제 큐에 태우는 문제가 있었다.
+      // 저장 함수는 사용자의 명시적 삭제가 아닌 이상 절대 항목을 제거하면 안 된다.
+      // 빈 네이버 카드/중복 네이버 카드 정리는 별도 수동 진단/정리 기능에서만 처리한다.
       const src = Array.isArray(arr) ? arr : [];
-      const cleaned = [];
-      const removed = [];
-      const seenNaver = [];
-      src.forEach(item => {
-        if (isBrokenNaverSavedItem(item)) {
-          removed.push(item);
-          return;
-        }
-        if (isAnyNaverSavedItem(item)) {
-          const dup = seenNaver.find(existing => isDuplicateNaverSavedItem(existing, item));
-          if (dup) {
-            const merged = mergeNaverSavedItem(dup, item);
-            Object.keys(dup).forEach(key => delete dup[key]);
-            Object.assign(dup, merged);
-            removed.push(item);
-            return;
-          }
-          seenNaver.push(item);
-        }
-        cleaned.push(item);
-      });
-      return { cleaned, removed };
+      const cleaned = src.filter(item => !!item && typeof item === 'object');
+      return { cleaned, removed: [] };
     }
 
     const _SB_SV_DELETE_QUEUE_KEY = 'sb_pending_sv_delete_rows_v1';
@@ -20865,6 +20850,48 @@ ${inputDesc.substring(0, 3000)}
       }
       return false;
     };
+
+    window.skVerifyUrlNaverUnsoldFix = function(id) {
+      try {
+        var sid = String(id || window.popupId || '').trim();
+        var sv = (typeof getSv === 'function') ? (getSv() || []) : [];
+        var item = sid ? (sv.find(function(x){ return String(x && x.id || '') === sid; }) || null) : null;
+        var d = (item && item.data) || {};
+        var auctionUrl = item ? ((typeof window._skAuctionDetailUrl === 'function') ? window._skAuctionDetailUrl(item) : '') : '';
+        var naverDirect = item ? ((typeof window._skNaverLandUrl === 'function') ? window._skNaverLandUrl(item) : '') : '';
+        var isAuction = item ? ((typeof window._skIsAuctionPublicItem === 'function') ? window._skIsAuctionPublicItem(item, d) : (item.mode === 'auction')) : false;
+        var rawNaverBad = /new\.land\.naver\.com\/offices\?query=/i.test(String(JSON.stringify(item || {})));
+        var out = {
+          build: window.__SK_BUILD,
+          id: sid,
+          found: !!item,
+          isAuctionPublic: !!isAuction,
+          auctionUrl: auctionUrl,
+          naverDirectUrl: naverDirect,
+          legacy: item ? {
+            상세URL: d.상세URL || '',
+            옥션원URL: d.옥션원URL || '',
+            온비드URL: d.온비드URL || '',
+            itemUrl: item.url || '',
+            originalUrl: item.originalUrl || '',
+            linksAuctionDetail: item._links && item._links.auctionDetail || '',
+            linksUpdatedAt: item._links && item._links.updatedAt || 0
+          } : null,
+          schedule: item ? {
+            biddate: item.biddate || d.매각기일 || d.매각일 || d.입찰기일 || '',
+            minprice: item.minprice || d.최저가 || d.최저가_원 || '',
+            round: item.round || d.회차 || '',
+            failCount: d.유찰횟수 || ''
+          } : null,
+          hasBadNaverQueryInItem: rawNaverBad
+        };
+        try { console.table(out.legacy || {}); console.log('[SK-v127 verify]', out); } catch(_e) { console.log(out); }
+        return out;
+      } catch(e) {
+        return { ok:false, error:String(e && (e.message || e)) };
+      }
+    };
+
     function _skFindSavedItemById(id) {
       const sid = String(id || '');
       const sv = getSv();
@@ -27165,7 +27192,7 @@ ${fi(d.수익설명, '수익설명', 'text', idx, '수익설명', isPopup)}
         })();
         const 평단가str = _fPP(평당가_val);
         const 매각일str = d.매각일 || d.매각기일 || '-';
-        const linkUrl = d.상세URL || d.옥션원URL || (d.product_id ? `https://auction1.co.kr/auction/ca_view.php?product_id=${encodeURIComponent(d.product_id)}` : '#');
+        const linkUrl = (typeof window._skAuctionDetailUrl === 'function' ? window._skAuctionDetailUrl(item) : '') || d.상세URL || d.옥션원URL || d.온비드URL || (d.product_id ? `https://auction1.co.kr/auction/ca_view.php?product_id=${encodeURIComponent(d.product_id)}` : '#');
         return `
       ${row('감정가', 감정가str || '-')}
       <div class="map-card-row"><span class="map-card-label">최저가</span><span class="map-card-value" style="color:#ff4444;font-weight:700;">${최저가str || '-'}</span></div>
@@ -51789,8 +51816,14 @@ window.addEventListener('DOMContentLoaded', () => {
         if (typeof updateRoom === 'function') {
           updateRoom(room.id, {
             biddate: room.biddate,
+            bidDate: room.bidDate || room.biddate,
+            saleDate: room.saleDate || room.biddate,
             round: room.round,
             minprice: room.minprice,
+            data: room.data,
+            _norm: room._norm,
+            _skUnsoldEditedAt: room._skUnsoldEditedAt,
+            _skLocalEditedAt: room._skLocalEditedAt,
             lifecycleStatus: 'active',
             status: 'review',
             phase: 'review',
@@ -51870,8 +51903,14 @@ window.addEventListener('DOMContentLoaded', () => {
         if (typeof updateRoom === 'function') {
           updateRoom(room.id, {
             biddate: room.biddate,
+            bidDate: room.bidDate || room.biddate,
+            saleDate: room.saleDate || room.biddate,
             minprice: room.minprice,
             round: room.round,
+            data: room.data,
+            _norm: room._norm,
+            _skUnsoldEditedAt: room._skUnsoldEditedAt,
+            _skLocalEditedAt: room._skLocalEditedAt,
             __targetItemId: targetId,
             __forceLifecycleChange: true
           }, true);
@@ -52490,7 +52529,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260511-workroom-v126-url-naver-unsold-verified-fix';
+  var BUILD='20260511-workroom-v128-no-auto-delete-saved-items';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
