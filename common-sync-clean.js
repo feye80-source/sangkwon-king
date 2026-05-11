@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260511-workroom-v144-decision-flow-ui';
+    window.__SK_BUILD = '20260511-workroom-v145-visible-decision-layout-fix';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -53365,7 +53365,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260511-workroom-v144-decision-flow-ui';
+  var BUILD='20260511-workroom-v145-visible-decision-layout-fix';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
@@ -55396,4 +55396,166 @@ window.addEventListener('DOMContentLoaded', () => {
     inject();
     if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',inject,{once:true});
   }catch(e){console.warn('[v144 decision flow ui]',e);}
+})();
+
+
+/* v145: visible decision layout fix — make the information roles visibly different, not just renamed */
+(function(){
+  try{
+    function inject(){
+      var old=document.getElementById('sk-v145-visible-decision-layout-fix');
+      if(old) old.remove();
+      var st=document.createElement('style');
+      st.id='sk-v145-visible-decision-layout-fix';
+      st.textContent=`
+        /* 전체: 한 화면에서 역할이 바로 보이도록 재정렬 */
+        .wr2-calc-pro-shell{
+          --sk-inp-bg:rgba(25,48,78,.86);
+          --sk-inp-bd:rgba(96,165,250,.44);
+          --sk-out-bg:rgba(255,255,255,.025);
+          --sk-ref-bd:rgba(249,115,22,.30);
+          --sk-calc-bd:rgba(96,165,250,.34);
+          --sk-kpi-bd:rgba(148,163,184,.26);
+          padding:0 6px 8px!important;
+          max-width:100%!important;
+          overflow-x:hidden!important;
+        }
+        /* 상단 반복 요약은 정보 과밀 원인이라 컴팩트하게 축소 */
+        .wr2-calc-pro-shell .wcp-basis-toolbar{padding:7px 10px!important;margin:0!important;border-radius:10px 10px 0 0!important;}
+        .wr2-calc-pro-shell .wcp-basis-titlewrap b{font-size:14px!important;}
+        .wr2-calc-pro-shell .wcp-basis-summary{display:none!important;}
+        .wr2-calc-pro-shell .wcp-tabs{margin:6px 0 7px!important;padding-bottom:5px!important;}
+
+        /* 최종 판단바: 실제로 화면에 보이도록 강하게 고정 */
+        #wcp_pane_input .wcp-decision-bar{
+          display:grid!important;
+          grid-template-columns:1.18fr 1fr 1.05fr .82fr .70fr!important;
+          gap:7px!important;
+          margin:0 0 9px!important;
+          padding:8px!important;
+          border:1px solid rgba(96,165,250,.32)!important;
+          border-radius:12px!important;
+          background:linear-gradient(90deg,rgba(11,31,54,.96),rgba(7,15,28,.95))!important;
+          box-shadow:0 10px 24px rgba(0,0,0,.22), inset 0 0 0 1px rgba(255,255,255,.025)!important;
+        }
+        #wcp_pane_input .wcp-decision-bar:before{
+          content:'최종 판단';
+          grid-column:1/-1;
+          color:#bfdbfe;
+          font-size:11px;
+          font-weight:950;
+          letter-spacing:-.02em;
+          margin-bottom:-1px;
+        }
+        .wcp-decision-cell{padding:7px 9px!important;border-radius:9px!important;background:rgba(5,12,22,.70)!important;border:1px solid rgba(148,163,184,.16)!important;}
+        .wcp-decision-cell span{font-size:10px!important;color:#94a3b8!important;font-weight:850!important;}
+        .wcp-decision-cell b{font-size:clamp(13px,.95vw,17px)!important;letter-spacing:-.035em!important;}
+
+        /* 3개 섹션: 참조 / 입력 / 결과가 시각적으로 다르게 보이게 */
+        #wcp_pane_input .wcp-main-grid{
+          display:grid!important;
+          grid-template-columns:minmax(330px,34fr) minmax(455px,43fr) minmax(255px,23fr)!important;
+          gap:8px!important;
+          align-items:stretch!important;
+          min-width:0!important;
+          overflow:visible!important;
+        }
+        #wcp_pane_input .wcp-main-grid.wcp-resized{grid-template-columns:var(--wcp-user-cols)!important;}
+        #wcp_pane_input .wcp-main-grid>.wcp-card{height:100%!important;min-width:0!important;overflow:hidden!important;margin:0!important;border-radius:13px!important;}
+        #wcp_pane_input .wcp-main-grid>.wcp-card>h3,
+        #wcp_pane_input .wcp-calc-combined-head h3,
+        #wcp_pane_input .wcp-kpi-summary-panel>h3{
+          font-size:15px!important;
+          line-height:1.15!important;
+          margin:0 0 8px!important;
+          display:flex!important;
+          align-items:center!important;
+          justify-content:space-between!important;
+          gap:8px!important;
+          letter-spacing:-.025em!important;
+        }
+        #wcp_pane_input .wcp-bench-panel{border-color:var(--sk-ref-bd)!important;background:linear-gradient(180deg,rgba(249,115,22,.055),rgba(7,15,25,.98))!important;}
+        #wcp_pane_input .wcp-bench-panel>h3:after{content:'참고값';font-size:10px;font-weight:950;color:#fed7aa;border:1px solid rgba(249,115,22,.35);border-radius:999px;padding:3px 7px;background:rgba(249,115,22,.10);}
+        #wcp_pane_input .wcp-calc-combined{border-color:var(--sk-calc-bd)!important;background:linear-gradient(180deg,rgba(37,99,235,.055),rgba(7,15,25,.98))!important;}
+        #wcp_pane_input .wcp-calc-combined-head h3:after{content:'입력/조건';font-size:10px;font-weight:950;color:#bfdbfe;border:1px solid rgba(96,165,250,.35);border-radius:999px;padding:3px 7px;background:rgba(96,165,250,.10);}
+        #wcp_pane_input .wcp-kpi-summary-panel{border-color:var(--sk-kpi-bd)!important;background:linear-gradient(180deg,rgba(148,163,184,.055),rgba(7,15,25,.98))!important;}
+        #wcp_pane_input .wcp-kpi-summary-panel>h3:after{content:'결과';font-size:10px;font-weight:950;color:#e2e8f0;border:1px solid rgba(148,163,184,.35);border-radius:999px;padding:3px 7px;background:rgba(148,163,184,.10);}
+
+        /* 손품 패널: 추천 박스 과대 노출 방지 */
+        #wcp_pane_input .wcp-bench-panel .wcp-grid3{grid-template-columns:minmax(0,.92fr) minmax(0,1.08fr)!important;gap:7px!important;margin-top:6px!important;}
+        #wcp_pane_input .wcp-bench-panel .wcp-grid3>.wcp-section{min-height:120px!important;padding:8px!important;}
+        #wcp_pane_input .wcp-bench-panel .wcp-grid4{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:7px!important;margin-top:7px!important;}
+        #wcp_pane_input .wcp-bench-card{min-height:94px!important;padding:8px!important;}
+        #wcp_pane_input .wcp-bench-card .name{font-size:11px!important;}
+        #wcp_pane_input .wcp-bench-card .desc{font-size:9.5px!important;}
+        #wcp_pane_input .wcp-quick-reco{min-height:48px!important;padding:8px 10px!important;margin-top:7px!important;display:grid!important;grid-template-columns:auto minmax(0,1fr) auto!important;gap:8px!important;align-items:center!important;}
+        #wcp_pane_input .wcp-quick-reco-label{font-size:11px!important;white-space:nowrap!important;}
+        #wcp_pane_input .wcp-quick-reco-main{font-size:clamp(18px,1.75vw,28px)!important;line-height:1!important;text-align:right!important;}
+        #wcp_pane_input .wcp-quick-reco-sub{grid-column:2/3!important;font-size:9.5px!important;text-align:right!important;}
+        #wcp_pane_input .wcp-quick-reco .wcp-btn{padding:7px 10px!important;font-size:11px!important;}
+
+        /* 입력칸: 직접 입력은 파란 배경, 계산값은 무채색 */
+        .wr2-calc-pro-shell input.wcp-inp:not([readonly]):not([data-wcp-output="1"]){
+          background:linear-gradient(180deg,var(--sk-inp-bg),rgba(10,22,38,.96))!important;
+          border-color:var(--sk-inp-bd)!important;
+          box-shadow:inset 0 0 0 1px rgba(255,255,255,.02)!important;
+        }
+        .wr2-calc-pro-shell input.wcp-inp[readonly],
+        .wr2-calc-pro-shell .wcp-out{
+          background:var(--sk-out-bg)!important;
+          border-color:rgba(148,163,184,.12)!important;
+        }
+        #wcp_pane_input .wcp-calc-combined .wcp-calc-combined-grid{grid-template-columns:minmax(0,1fr) minmax(0,1.02fr)!important;gap:7px!important;}
+        #wcp_pane_input .wcp-calc-combined .wcp-section,#wcp_pane_input .wcp-calc-combined .wcp-calc-col{padding:7px!important;}
+        #wcp_pane_input .wcp-calc-combined .wcp-line{grid-template-columns:minmax(68px,92px) minmax(0,1fr) 14px!important;gap:5px!important;min-height:24px!important;}
+        #wcp_pane_input .wcp-calc-combined .wcp-line.rate.wcp-rate-field{grid-template-columns:minmax(68px,92px) minmax(38px,48px) 10px minmax(0,1fr) 14px!important;gap:4px!important;}
+        #wcp_pane_input .wcp-calc-combined .wcp-line label{font-size:9.5px!important;}
+        #wcp_pane_input .wcp-calc-combined .wcp-inp,#wcp_pane_input .wcp-calc-combined .wcp-out{min-height:24px!important;font-size:10.2px!important;padding:3px 6px!important;}
+
+        /* 결과 패널: 진짜 결과만, 기본색 중심 */
+        #wcp_pane_input .wcp-kpi-summary-panel .wcp-kpi-lease-inputs{display:none!important;}
+        #wcp_pane_input .wcp-kpi-summary-panel .wcp-form{gap:4px!important;}
+        #wcp_pane_input .wcp-kpi-summary-panel .wcp-form>.wcp-line{grid-template-columns:minmax(0,1fr) minmax(86px,auto)!important;gap:6px!important;min-height:23px!important;padding:0!important;}
+        #wcp_pane_input .wcp-kpi-summary-panel .wcp-form>.wcp-line label{font-size:10px!important;color:#cbd5e1!important;font-weight:760!important;}
+        #wcp_pane_input .wcp-kpi-summary-panel .wcp-form>.wcp-line label:before{content:'•'!important;color:#6aa7ff!important;margin-right:4px!important;}
+        #wcp_pane_input .wcp-kpi-summary-panel .wcp-form>.wcp-line .wcp-out{border:0!important;background:transparent!important;padding:0!important;min-height:23px!important;font-size:clamp(10.5px,.78vw,13px)!important;color:#e8ecf4!important;font-weight:780!important;}
+        #wcp_pane_input .wcp-kpi-summary-panel .wcp-form>.wcp-line .wcp-unit{display:none!important;}
+        #wcp_pane_input .wcp-kpi-summary-panel #wcp_o_month_net_kpi,
+        #wcp_pane_input .wcp-kpi-summary-panel #wcp_p_total_with_deposit{color:#4ade80!important;}
+        #wcp_pane_input .wcp-kpi-summary-panel #wcp_p_abs_yield,
+        #wcp_pane_input .wcp-kpi-summary-panel #wcp_p_lev_yield{color:#c084fc!important;}
+        #wcp_pane_input .wcp-kpi-summary-panel #wcp_o_year_net,
+        #wcp_pane_input .wcp-kpi-summary-panel #wcp_o_initial_need,
+        #wcp_pane_input .wcp-kpi-summary-panel #wcp_p_total_no_deposit,
+        #wcp_pane_input .wcp-kpi-summary-panel #wcp_p_sell_price,
+        #wcp_pane_input .wcp-kpi-summary-panel #wcp_p_after_tax,
+        #wcp_pane_input .wcp-kpi-summary-panel #wcp_p_roi{color:#e8ecf4!important;}
+        #wcp_pane_input .wcp-kpi-summary-panel #wcp_p_roi::after{content:'';}
+        #wcp_pane_input .wcp-kpi-summary-panel .wcp-divider{margin:5px 0!important;}
+
+        /* 하단 중복 KPI는 완전히 제거, 저장 액션만 우측에 */
+        #wcp_pane_input .wcp-top.wcp-kpi-banner-bottom .wcp-kpi-strip{display:none!important;}
+        #wcp_pane_input .wcp-top.wcp-kpi-banner-bottom{margin-top:8px!important;padding:0!important;background:transparent!important;border:0!important;}
+        #wcp_pane_input .wcp-top.wcp-kpi-banner-bottom .wcp-head{display:flex!important;justify-content:flex-end!important;}
+        #wcp_pane_input .wcp-top.wcp-kpi-banner-bottom .wcp-head>div:first-child{display:none!important;}
+
+        @media(max-width:1500px){
+          #wcp_pane_input .wcp-decision-bar{grid-template-columns:repeat(5,minmax(0,1fr))!important;}
+          #wcp_pane_input .wcp-main-grid{grid-template-columns:minmax(300px,34fr) minmax(420px,43fr) minmax(230px,23fr)!important;gap:6px!important;}
+        }
+        @media(max-width:1180px){
+          #wcp_pane_input .wcp-main-grid{grid-template-columns:1fr!important;}
+          #wcp_pane_input .wcp-decision-bar{grid-template-columns:repeat(2,minmax(0,1fr))!important;}
+          .wcp-col-resizer{display:none!important;}
+        }
+        @media(max-width:760px){
+          #wcp_pane_input .wcp-decision-bar{grid-template-columns:1fr!important;}
+          #wcp_pane_input .wcp-bench-panel .wcp-grid3,#wcp_pane_input .wcp-bench-panel .wcp-grid4,#wcp_pane_input .wcp-calc-combined .wcp-calc-combined-grid{grid-template-columns:1fr!important;}
+        }
+      `;
+      (document.head||document.documentElement).appendChild(st);
+    }
+    inject();
+    if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',inject,{once:true});
+  }catch(e){console.warn('[v145 visible decision layout]',e);}
 })();
