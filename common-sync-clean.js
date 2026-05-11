@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260511-workroom-v142-loan-ltv80-layout-polish';
+    window.__SK_BUILD = '20260511-workroom-v143-input-highlight-layout-fix';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -9903,7 +9903,7 @@ window.wr2SummaryCancelEdit = function() {
                             <div class="wcp-section wcp-calc-col">
                               <h4>자동 산출</h4>
                               <div class="wcp-subsec"><h5>① 취득특세/기타</h5><div class="wcp-form">${wcpRateField('wc_acq_tax_rate','wc_acq_tax','취득특세',s.acqTaxRate,s.acqTax,'')}${wcpRateField('wc_legal_rate','wc_legal_fee','법무비 등',s.legalRate,s.legalFee,'')}</div></div>
-                              <div class="wcp-subsec"><h5>② 1년 운영 비용</h5><div class="wcp-form">${wcpOutputRow('1년치 이자','wcp_o_interest_year','원','')}${wcpOutputRow('1년치 관리비','wcp_o_management_year','원','')}</div></div>
+                              <div class="wcp-subsec wcp-management-subsec"><h5>② 1년 운영 비용</h5><div class="wcp-form">${wcpField('wc_management_monthly','월 관리비 평단가','원/평·월',s.managementMonthly,'','평당 월 관리비')}${wcpOutputRow('1년치 이자','wcp_o_interest_year','원','')}${wcpOutputRow('1년치 관리비','wcp_o_management_year','원','')}</div></div>
                               <div class="wcp-subsec"><h5>③ 기타 산출</h5><div class="wcp-form">${wcpOutputRow('부가세 환급예상','wcp_o_vat','원','green')}${wcpOutputRow('적용 대출금','wcp_auto_loan','원','blue')}</div></div>
                               <div class="wcp-subsec">${wcpLoanRuleBox()}</div>
                             </div>
@@ -53366,7 +53366,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260511-workroom-v142-loan-ltv80-layout-polish';
+  var BUILD='20260511-workroom-v143-input-highlight-layout-fix';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
@@ -55141,4 +55141,134 @@ window.addEventListener('DOMContentLoaded', () => {
     inject();
     if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',inject,{once:true});
   }catch(e){console.warn('[v138 workroom fit]',e);}
+})();
+
+
+/* v143 calculator polish: restrained KPI colors, visible editable inputs, compact top/quick panels, management pyeong input */
+(function(){
+  try{
+    function inject(){
+      var old=document.getElementById('sk-v143-calc-polish-style');
+      if(old) old.remove();
+      var st=document.createElement('style');
+      st.id='sk-v143-calc-polish-style';
+      st.textContent=`
+        /* 전체 입력칸: 사용자가 직접 입력하는 곳만 배경을 살짝 다르게 */
+        .wr2-calc-pro-shell input.wcp-inp:not([readonly]):not([data-wcp-output="1"]){
+          background:linear-gradient(180deg,rgba(16,31,52,.96),rgba(8,17,30,.98))!important;
+          border-color:rgba(96,165,250,.30)!important;
+          box-shadow:inset 0 0 0 1px rgba(96,165,250,.06)!important;
+        }
+        .wr2-calc-pro-shell input.wcp-inp:not([readonly]):not([data-wcp-output="1"]):focus{
+          background:linear-gradient(180deg,rgba(25,45,74,.98),rgba(10,22,39,.98))!important;
+          border-color:rgba(249,115,22,.70)!important;
+          box-shadow:0 0 0 2px rgba(249,115,22,.14), inset 0 0 0 1px rgba(255,255,255,.04)!important;
+        }
+        .wr2-calc-pro-shell input.wcp-inp[readonly],
+        .wr2-calc-pro-shell input.wcp-inp[data-wcp-output="1"]{
+          background:rgba(4,9,16,.56)!important;
+          border-color:rgba(148,163,184,.13)!important;
+          color:#cbd5e1!important;
+        }
+
+        /* KPI 요약: 월순수익/보증금포함투자금, 절대/레버리지 수익률만 포인트색. 나머지는 기본색 */
+        .wcp-kpi-summary-panel .wcp-out,
+        .wcp-kpi-summary-panel .wcp-out.orange,
+        .wcp-kpi-summary-panel .wcp-out.green,
+        .wcp-kpi-summary-panel .wcp-out.blue,
+        .wcp-kpi-summary-panel .wcp-out.purple,
+        .wcp-kpi-summary-panel .wcp-out.red,
+        .wcp-kpi-summary-panel #wcp_o_year_net,
+        .wcp-kpi-summary-panel #wcp_o_initial_need,
+        .wcp-kpi-summary-panel #wcp_p_total_no_deposit,
+        .wcp-kpi-summary-panel #wcp_p_sell_price,
+        .wcp-kpi-summary-panel #wcp_p_after_tax,
+        .wcp-kpi-summary-panel #wcp_p_roi{
+          color:#e8ecf4!important;
+        }
+        .wcp-kpi-summary-panel #wcp_o_month_net_kpi,
+        .wcp-kpi-summary-panel #wcp_p_total_with_deposit{
+          color:#4ade80!important;
+        }
+        .wcp-kpi-summary-panel #wcp_p_abs_yield,
+        .wcp-kpi-summary-panel #wcp_p_lev_yield{
+          color:#c084fc!important;
+        }
+
+        /* 손품 추정 상단: 기준면적/나의입찰가 높이를 맞추고 추가적용 버튼은 하단 정렬 */
+        #wcp_pane_input .wcp-bench-panel .wcp-grid3{
+          align-items:stretch!important;
+        }
+        #wcp_pane_input .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(1),
+        #wcp_pane_input .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(2){
+          min-height:158px!important;
+          display:flex!important;
+          flex-direction:column!important;
+        }
+        #wcp_pane_input .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(1) .wcp-form,
+        #wcp_pane_input .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(2) .wcp-form{
+          flex:1 1 auto!important;
+          display:flex!important;
+          flex-direction:column!important;
+        }
+        #wcp_pane_input .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(2) .wcp-bid-actions{
+          margin-top:auto!important;
+          padding-top:6px!important;
+          justify-content:flex-start!important;
+          align-items:flex-end!important;
+        }
+        #wcp_pane_input .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(2) .wcp-bid-actions .wcp-btn{
+          min-height:28px!important;
+          padding:5px 14px!important;
+        }
+
+        /* 손품 추천입찰가: 너무 크게 보이지 않게 압축 */
+        #wcp_pane_input .wcp-quick-reco{
+          margin-top:6px!important;
+          padding:7px 10px!important;
+          min-height:42px!important;
+          border-radius:10px!important;
+          gap:2px 8px!important;
+          grid-template-columns:minmax(86px,.75fr) minmax(0,1fr) auto!important;
+          grid-template-areas:"label main btn" "sub sub btn"!important;
+        }
+        #wcp_pane_input .wcp-quick-reco-label{font-size:9.8px!important;grid-area:label!important;}
+        #wcp_pane_input .wcp-quick-reco-main{font-size:clamp(15px,1.15vw,20px)!important;line-height:1.05!important;grid-area:main!important;}
+        #wcp_pane_input .wcp-quick-reco-sub{font-size:9px!important;line-height:1.1!important;grid-area:sub!important;}
+        #wcp_pane_input .wcp-quick-reco .wcp-btn{grid-area:btn!important;min-height:26px!important;padding:4px 10px!important;font-size:10px!important;}
+
+        /* 손품 평단가 표기는 다른 평단가처럼 포인트색 */
+        #wcp_bench_max_note_py,#wcp_bench_mid_note_py,#wcp_bench_min_note_py,#wcp_bench_rent_note_py,
+        .wcp-bench-note-py,.wcp-note.orange.wcp-bench-note-py{
+          color:#fb923c!important;
+          font-weight:850!important;
+        }
+
+        /* 관리비 평단가 입력칸을 별도 입력으로 보이게 하고, 1년 운영비 산출과 분리 */
+        .wcp-management-subsec .wcp-line:first-child{
+          padding-bottom:4px!important;
+          margin-bottom:2px!important;
+          border-bottom:1px solid rgba(148,163,184,.12)!important;
+        }
+        .wcp-management-subsec #wc_management_monthly{
+          background:linear-gradient(180deg,rgba(16,31,52,.96),rgba(8,17,30,.98))!important;
+          border-color:rgba(96,165,250,.34)!important;
+        }
+
+        /* 하단 KPI 스트립도 필요한 포인트 외에는 과색 방지 */
+        .wcp-top.wcp-kpi-banner-bottom .wcp-kpi .v{color:#e8ecf4!important;}
+        .wcp-top.wcp-kpi-banner-bottom #wcp_k_minneed{color:#4ade80!important;}
+        .wcp-top.wcp-kpi-banner-bottom #wcp_k_abs,
+        .wcp-top.wcp-kpi-banner-bottom #wcp_k_lev{color:#c084fc!important;}
+
+        @media(max-width:900px){
+          #wcp_pane_input .wcp-quick-reco{grid-template-columns:1fr!important;grid-template-areas:"label" "main" "sub" "btn"!important;}
+          #wcp_pane_input .wcp-quick-reco-main{text-align:left!important;}
+        }
+      `;
+      (document.head||document.documentElement).appendChild(st);
+    }
+    inject();
+    if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',inject,{once:true});
+  }catch(e){console.warn('[v143 calc polish]',e);}
 })();
