@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260511-workroom-v132-prune-stale-workroom-pending';
+    window.__SK_BUILD = '20260511-workroom-v133-separate-naver-land-url';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -20071,6 +20071,9 @@ ${inputDesc.substring(0, 3000)}
         }
         if (_naverMapQ) extBtns.push(`<a href="${esc(_naverMapQ)}" target="_blank" class="popup-src-btn" style="${extBtnStyle}">🧭 네이버지도</a>`);
         if (_naverLandQ || _addrQ) extBtns.push(`<button type="button" class="popup-src-btn" style="${extBtnStyle}" onclick="event.preventDefault();event.stopPropagation();window.skOpenNaverLandForSaved && window.skOpenNaverLandForSaved('${id}', event)">🏠 네이버부동산</button>`);
+        if (typeof window._skIsAuctionPublicItem === 'function' ? window._skIsAuctionPublicItem(item) : a) {
+          extBtns.push(`<button type="button" class="popup-src-btn" style="background:rgba(4,222,91,.10);color:#7ee787;border-color:rgba(4,222,91,.34);" onclick="event.preventDefault();event.stopPropagation();window.promptSavedNaverLandUrl && window.promptSavedNaverLandUrl('${id}')">🏠 네이버URL수정</button>`);
+        }
 
         if (_hasPos) appBtns.push(`<button class="popup-src-btn" style="background:rgba(255,209,102,.12);color:#ffd166;border-color:rgba(255,209,102,.4);" onclick="goToMapFromCard('${id}')">📍 내 지도</button>`);
         // ★ 경매 아이템: AI 분석 버튼 추가
@@ -20803,7 +20806,50 @@ ${inputDesc.substring(0, 3000)}
     };
     window._skSavedItemDetailUrl = function(item) { return window._skAuctionDetailUrl(item); };
     window._skApplySavedItemDetailUrl = function(item, url) { return window._skApplyAuctionDetailUrl(item, url); };
+    window._skManualNaverLandUrl = function(item) {
+      const d = (item && item.data) || {};
+      const links = (item && item._links && typeof item._links === 'object') ? item._links : {};
+      const candidates = [
+        links.naverLand, links.naver_land, links.naverRealty,
+        d.네이버부동산URL, d.네이버부동산링크, d.네이버URL, d.네이버링크,
+        d.naverLandUrl, d.naver_land_url, d.naverRealtyUrl, d.naverUrl, d.landUrl
+      ];
+      for (const v of candidates) {
+        const u = String(v || '').trim();
+        if (!u) continue;
+        // 네이버부동산 수동 링크만 이 경로에서 인정한다. 옥션원/온비드 상세URL과 절대 섞지 않는다.
+        if (/new\.land\.naver\.com|land\.naver\.com/i.test(u)) return u;
+      }
+      return '';
+    };
+    window._skApplyNaverLandUrl = function(item, url) {
+      if (!item) return false;
+      const d = item.data || (item.data = {});
+      item._links = item._links && typeof item._links === 'object' ? item._links : {};
+      const next = String(url || '').trim();
+      const stamp = Date.now();
+      if (next) {
+        item._links.naverLand = next;
+        item._links.naverUpdatedAt = stamp;
+        item._links.naverUserEdited = true;
+        d.네이버부동산URL = next;
+        d.네이버부동산링크 = next;
+        d.naverLandUrl = next;
+      } else {
+        ['네이버부동산URL','네이버부동산링크','네이버URL','네이버링크','naverLandUrl','naver_land_url','naverRealtyUrl','naverUrl','landUrl'].forEach(function(k){ d[k] = ''; });
+        item._links.naverLand = '';
+        item._links.naverUpdatedAt = stamp;
+        item._links.naverUserEdited = true;
+      }
+      item.updatedAt = stamp;
+      item._skNaverEditedAt = stamp;
+      item._skLocalEditedAt = stamp;
+      try { d._skNaverEditedAt = stamp; d._skLocalEditedAt = stamp; } catch(e) {}
+      return true;
+    };
     window._skNaverLandUrl = function(item) {
+      const manual = (typeof window._skManualNaverLandUrl === 'function') ? window._skManualNaverLandUrl(item) : '';
+      if (manual) return manual;
       const d = (item && item.data) || {};
       const articleNo = String(d.매물번호 || d.articleNo || d.atclNo || '').trim();
       if (articleNo) return 'https://new.land.naver.com/offices?articleNo=' + encodeURIComponent(articleNo);
@@ -20937,11 +20983,12 @@ ${inputDesc.substring(0, 3000)}
       }
       const addr = (typeof window._skItemAddressForLink === 'function') ? window._skItemAddressForLink(item) : String((item.data && (item.data.소재지 || item.data.주소)) || item.address || '').trim();
       const isAuctionPublic = (typeof window._skIsAuctionPublicItem === 'function') ? window._skIsAuctionPublicItem(item, item.data || {}) : false;
+      // 수동으로 저장한 네이버부동산 URL은 경공매 여부와 무관하게 최우선한다.
+      let url = (typeof window._skManualNaverLandUrl === 'function') ? window._skManualNaverLandUrl(item) : '';
+      if (!url && !isAuctionPublic) url = (typeof window._skNaverLandUrl === 'function') ? window._skNaverLandUrl(item) : '';
+      if (url) { window.open(url, '_blank'); return true; }
       // 경공매는 네이버 매물번호가 없고, 저장 좌표가 예전 물건에서 섞여 들어온 사례가 있었다.
       // 주소가 있으면 좌표 필드보다 주소 지오코딩을 우선해 현재 물건 위치로 연다.
-      let url = '';
-      if (!isAuctionPublic) url = (typeof window._skNaverLandUrl === 'function') ? window._skNaverLandUrl(item) : '';
-      if (url) { window.open(url, '_blank'); return true; }
       const ll = await window._skGeocodeAddressForNaverLand(addr);
       if (ll) {
         try {
@@ -20994,7 +21041,9 @@ ${inputDesc.substring(0, 3000)}
             itemUrl: item.url || '',
             originalUrl: item.originalUrl || '',
             linksAuctionDetail: item._links && item._links.auctionDetail || '',
-            linksUpdatedAt: item._links && item._links.updatedAt || 0
+            linksUpdatedAt: item._links && item._links.updatedAt || 0,
+            네이버부동산URL: d.네이버부동산URL || '',
+            linksNaverLand: item._links && item._links.naverLand || ''
           } : null,
           schedule: item ? {
             biddate: item.biddate || d.매각기일 || d.매각일 || d.입찰기일 || '',
@@ -21082,6 +21131,31 @@ ${inputDesc.substring(0, 3000)}
       try { if (typeof refreshMapCardData === 'function') refreshMapCardData(sid); } catch(e) {}
       if (inp) inp.value = (typeof window._skAuctionDetailUrl === 'function' ? window._skAuctionDetailUrl(item) : url);
       if (typeof showToast === 'function') showToast(url ? '🔗 URL 저장됨' : '원본 URL을 비웠습니다', 'ok');
+    };
+
+    window.promptSavedNaverLandUrl = function(id) {
+      const sid = String(id || window.popupId || '').trim();
+      const found = _skFindSavedItemById(sid);
+      const sv = found.sv;
+      const item = found.item;
+      if (!item) {
+        if (typeof showToast === 'function') showToast('네이버부동산 URL을 저장할 물건을 찾지 못했습니다.', 'warn');
+        return;
+      }
+      const cur = (typeof window._skManualNaverLandUrl === 'function') ? window._skManualNaverLandUrl(item) : '';
+      const auto = (typeof window._skNaverLandUrl === 'function') ? window._skNaverLandUrl(item) : '';
+      const next = prompt('네이버부동산 수동 URL을 입력하세요.\n비우면 주소/좌표 기반 자동 연결로 돌아갑니다.', cur || auto || 'https://new.land.naver.com/offices?');
+      if (next == null) return;
+      const url = String(next || '').trim();
+      if (url && !/new\.land\.naver\.com|land\.naver\.com/i.test(url)) {
+        if (typeof showToast === 'function') showToast('네이버부동산 URL만 저장할 수 있습니다.', 'warn');
+        return;
+      }
+      if (typeof window._skApplyNaverLandUrl === 'function') window._skApplyNaverLandUrl(item, url);
+      _persistSingleSavedItemFast(sv, item, 'naver-land-url-save', { pushNow:true });
+      try { if (typeof refreshMapCardData === 'function') refreshMapCardData(sid); } catch(e) {}
+      try { if (String(window.popupId || '') === sid && typeof openPopup === 'function') setTimeout(function(){ openPopup(sid); }, 30); } catch(e) {}
+      if (typeof showToast === 'function') showToast(url ? '🏠 네이버부동산 URL 저장됨' : '네이버부동산 수동 URL을 비웠습니다', 'ok');
     };
 
     if (!window.__skPopUrlDelegatedV122) {
@@ -52646,7 +52720,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260511-workroom-v132-prune-stale-workroom-pending';
+  var BUILD='20260511-workroom-v133-separate-naver-land-url';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
@@ -53281,9 +53355,9 @@ window.addEventListener('DOMContentLoaded', () => {
     var d=(row.data && typeof row.data==='object') ? row.data : {};
     var links=(row._links && typeof row._links==='object') ? row._links : {};
     return Math.max(
-      Number(row._skUrlEditedAt||0)||0, Number(row._skUnsoldEditedAt||0)||0, Number(row._skLocalEditedAt||0)||0,
-      Number(d._skUrlEditedAt||0)||0, Number(d._skUnsoldEditedAt||0)||0,
-      Number(links.updatedAt||0)||0
+      Number(row._skUrlEditedAt||0)||0, Number(row._skNaverEditedAt||0)||0, Number(row._skUnsoldEditedAt||0)||0, Number(row._skLocalEditedAt||0)||0,
+      Number(d._skUrlEditedAt||0)||0, Number(d._skNaverEditedAt||0)||0, Number(d._skUnsoldEditedAt||0)||0,
+      Number(links.updatedAt||0)||0, Number(links.naverUpdatedAt||0)||0
     );
   }
   function shouldKeepLocalProtected(table, local, remote){
