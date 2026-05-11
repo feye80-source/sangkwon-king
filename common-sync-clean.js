@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260511-workroom-v135-url-raw-preserve-safe-open';
+    window.__SK_BUILD = '20260511-workroom-v136-origin-detail-label-safe-link-drag';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -5952,9 +5952,9 @@ var _safeLocalSet = function(key, value) {
                     return '<div class="wr2-linked-card">'
                       + '<div class="wr2-lcard-head"><div class="wr2-lcard-title" title="'+title+'">'+title+'</div><div class="wr2-lcard-actions">'
                       + '<button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();wr2CalcLoadLinkedItem(&quot;'+rid+'&quot;,&quot;'+sid+'&quot;)">계산</button>'
-                      + '<button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();openPopup(&quot;'+sid+'&quot;)">원본</button>'
+                      + '<button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();openPopup(&quot;'+sid+'&quot;)">상세</button>'
                       + '<details class="wr2-lcard-menu" onclick="event.stopPropagation()"><summary>•••</summary><div class="wr2-lcard-menu-pop">'
-                      + (seed.url?'<a href="'+wr2SummaryEsc(seed.url)+'" target="_blank" rel="noopener noreferrer">상세 URL 열기</a>':'')
+                      + (seed.url?'<button type="button" data-origin-id="'+wr2SummaryEsc(seed.id||'')+'" data-origin-url="'+wr2SummaryEsc(seed.url)+'" onclick="event.preventDefault();event.stopPropagation();window.openAuctionLinkOrPdf&&window.openAuctionLinkOrPdf(this.getAttribute(&quot;data-origin-id&quot;),this.getAttribute(&quot;data-origin-url&quot;))">원본 URL 열기</button>':'')
                       + '<button type="button" onclick="event.stopPropagation();wr2UnlinkSaved(&quot;'+rid+'&quot;,&quot;'+sid+'&quot;)">연결 해제</button>'
                       + '</div></details></div></div>'
                       + '<div class="wr2-lcard-addr">'+wr2SummaryEsc(seed.address||'-')+'</div>'
@@ -6006,19 +6006,19 @@ var _safeLocalSet = function(key, value) {
                   scope.querySelectorAll('[data-wr2-drag-scroll="1"]').forEach(function(el){
                     if(el.__wr2DragBound) return;
                     el.__wr2DragBound=true;
-                    let down=false,startX=0,startLeft=0,moved=false,pid=null,raf=0,nextLeft=0;
+                    let down=false,startX=0,startLeft=0,moved=false,pid=null;
                     function isInteractive(target){return !!(target&&target.closest&&target.closest('button,a,input,textarea,select,summary,details,.wr2-lcard-menu-pop'));}
                     function setScrollLeft(v){
-                      nextLeft=v;
-                      if(raf) return;
-                      raf=requestAnimationFrame(function(){ el.scrollLeft=nextLeft; raf=0; });
+                      // v136: RAF/smooth-scroll를 거치면 손가락/마우스를 따라오지 못해 늦게 밀리는 느낌이 난다.
+                      // 드래그 중에는 일반적인 드래그처럼 즉시 1:1로 scrollLeft를 반영한다.
+                      el.scrollLeft = v;
                     }
                     el.addEventListener('pointerdown',function(e){
                       if(isInteractive(e.target)) return;
                       if(el.scrollWidth<=el.clientWidth+2) return;
                       down=true; moved=false; pid=e.pointerId; startX=e.clientX; startLeft=el.scrollLeft; nextLeft=startLeft;
                       el.classList.add('dragging');
-                      el.style.scrollBehavior='auto';
+                      el.style.setProperty('scroll-behavior','auto','important');
                       try{el.setPointerCapture(pid);}catch(_e){}
                     });
                     el.addEventListener('pointermove',function(e){
@@ -6028,7 +6028,7 @@ var _safeLocalSet = function(key, value) {
                       setScrollLeft(startLeft-dx);
                       if(e.cancelable) e.preventDefault();
                     }, {passive:false});
-                    function end(){down=false; el.classList.remove('dragging'); el.style.scrollBehavior=''; try{ if(pid!=null) el.releasePointerCapture(pid); }catch(_e){} pid=null;}
+                    function end(){down=false; el.classList.remove('dragging'); el.style.removeProperty('scroll-behavior'); try{ if(pid!=null) el.releasePointerCapture(pid); }catch(_e){} pid=null;}
                     el.addEventListener('pointerup',end);
                     el.addEventListener('pointercancel',end);
                     el.addEventListener('click',function(e){ if(moved){ e.preventDefault(); e.stopPropagation(); moved=false; } }, true);
@@ -6205,7 +6205,7 @@ var _safeLocalSet = function(key, value) {
                     html += `<div class="wr2-info-row"><span class="wr2-info-lbl">원본자료</span><span class="wr2-info-val" style="display:flex;justify-content:flex-end;gap:6px;flex-wrap:wrap;"><button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();wr2OpenPrimaryPdf('${String(item.id).replace(/'/g, "\\'")}')">PDF 보기</button><button type="button" class="wr2-mini-btn" onclick="event.stopPropagation();wr2DownloadPrimaryPdf('${String(item.id).replace(/'/g, "\\'")}')">PDF 다운로드</button></span></div>`;
                   }
                   if (sourceUrl) {
-                    html += `<div class="wr2-info-row"><span class="wr2-info-lbl">원본 링크</span><span class="wr2-info-val" style="display:flex;justify-content:flex-end;"><a class="wr2-mini-btn" href="${esc(sourceUrl)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">옥션원/온비드 열기</a></span></div>`;
+                    html += `<div class="wr2-info-row"><span class="wr2-info-lbl">원본 링크</span><span class="wr2-info-val" style="display:flex;justify-content:flex-end;"><button type="button" class="wr2-mini-btn" data-origin-id="${esc(String(item.id || ''))}" data-origin-url="${esc(sourceUrl)}" onclick="event.preventDefault();event.stopPropagation();window.openAuctionLinkOrPdf&&window.openAuctionLinkOrPdf(this.getAttribute('data-origin-id'),this.getAttribute('data-origin-url'))">옥션원/온비드 열기</button></span></div>`;
                   }
                   if (d['물건종류'] || d['용도']) html += `<div class="wr2-info-row"><span class="wr2-info-lbl">물건종류</span><span class="wr2-info-val">${d['물건종류']||d['용도']}</span></div>`;
 
@@ -7676,7 +7676,7 @@ window.wr2SummaryCancelEdit = function() {
                     .wr2-linked-nav::-webkit-scrollbar{display:none!important;}
                     .wr2-linked-nav-btn{flex:0 0 auto!important;border:1px solid rgba(96,165,250,.30)!important;border-radius:999px!important;background:rgba(96,165,250,.08)!important;color:#9cc4ff!important;font-size:11px!important;font-weight:900!important;padding:5px 10px!important;cursor:pointer!important;}
                     .wr2-linked-nav-btn.active{background:rgba(96,165,250,.22)!important;color:#eaf3ff!important;border-color:rgba(147,197,253,.55)!important;}
-                    .wr2-linked-cards{display:flex!important;gap:14px!important;overflow-x:auto!important;overflow-y:visible!important;scrollbar-color:rgba(79,142,255,.65) rgba(255,255,255,.06)!important;padding:0 0 10px 0!important;cursor:grab!important;scroll-snap-type:none!important;overscroll-behavior-x:contain!important;-webkit-overflow-scrolling:touch!important;touch-action:pan-x!important;scroll-behavior:smooth!important;max-width:100%!important;min-width:0!important;}
+                    .wr2-linked-cards{display:flex!important;gap:14px!important;overflow-x:auto!important;overflow-y:visible!important;scrollbar-color:rgba(79,142,255,.65) rgba(255,255,255,.06)!important;padding:0 0 10px 0!important;cursor:grab!important;scroll-snap-type:none!important;overscroll-behavior-x:contain!important;-webkit-overflow-scrolling:touch!important;touch-action:pan-x!important;scroll-behavior:auto!important;max-width:100%!important;min-width:0!important;}
                     .wr2-linked-cards.dragging{cursor:grabbing!important;user-select:none!important;scroll-snap-type:none!important;}
                     .wr2-linked-cards.fit2{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;overflow-x:hidden!important;cursor:default!important;}
                     .wr2-linked-cards.fit2 .wr2-linked-card{min-width:0!important;width:100%!important;}
@@ -7717,7 +7717,7 @@ window.wr2SummaryCancelEdit = function() {
                     .wr2-agg-cell span{font-size:10px!important;color:#93a4ba!important;font-weight:900!important;white-space:nowrap!important;}
                     .wr2-agg-val{font-size:12px!important;line-height:1.1!important;color:#e8eefb!important;font-weight:900!important;letter-spacing:-.03em!important;max-width:none!important;white-space:nowrap!important;overflow:visible!important;text-overflow:clip!important;}
                     .wr2-agg-val.blue{color:#4f8eff!important}.wr2-agg-val.green,.wr2-agg-val.rent{color:#4ade80!important}.wr2-agg-val.yellow{color:#ffd166!important}
-                    @container (max-width:820px){.wr2-linked-nav{display:flex!important}.wr2-ml-top.clean{align-items:flex-start!important;flex-direction:column!important}.wr2-lcard-head{align-items:flex-start!important;flex-wrap:wrap!important}.wr2-lcard-title{white-space:normal!important;overflow:visible!important;text-overflow:clip!important;line-height:1.28!important;max-width:100%!important}.wr2-lcard-actions{margin-left:auto!important}.wr2-lcard-addr{display:block!important;-webkit-line-clamp:unset!important;overflow:visible!important;min-height:0!important;white-space:normal!important;word-break:keep-all!important}.wr2-linked-cards.fit2{display:flex!important;grid-template-columns:none!important;overflow-x:auto!important;cursor:grab!important;scroll-snap-type:none!important}.wr2-linked-cards.fit2 .wr2-linked-card,.wr2-linked-cards.scroll .wr2-linked-card{flex:0 0 calc(100% - 4px)!important;width:auto!important;min-width:0!important;scroll-snap-align:start!important}.wr2-lcard-row{grid-template-columns:minmax(76px,96px) minmax(0,1fr)!important}.wr2-lcard-row b{white-space:normal!important;overflow-wrap:anywhere!important}.wr2-money-line,.wr2-price-line{flex-wrap:wrap!important;white-space:normal!important}.wr2-bid-input,.wr2-bid-total-input{width:118px!important}.wr2-agg-head{align-items:flex-start!important;flex-direction:column!important}.wr2-agg-grid{display:grid!important;grid-template-columns:1fr!important}.wr2-agg-cell{min-width:0!important;justify-content:space-between!important}}
+                    @container (max-width:820px){.wr2-linked-nav{display:flex!important}.wr2-ml-top.clean{align-items:flex-start!important;flex-direction:column!important}.wr2-lcard-head{align-items:flex-start!important;flex-wrap:wrap!important}.wr2-lcard-title{white-space:normal!important;overflow:visible!important;text-overflow:clip!important;line-height:1.28!important;max-width:100%!important}.wr2-lcard-actions{margin-left:auto!important}.wr2-lcard-addr{display:block!important;-webkit-line-clamp:unset!important;overflow:visible!important;min-height:0!important;white-space:normal!important;word-break:keep-all!important}.wr2-linked-cards.fit2{display:flex!important;grid-template-columns:none!important;overflow-x:auto!important;cursor:grab!important;scroll-snap-type:none!important}.wr2-linked-cards.fit2 .wr2-linked-card,.wr2-linked-cards.scroll .wr2-linked-card{flex:0 0 calc(100% - 4px)!important;width:auto!important;min-width:0!important;scroll-snap-align:none!important}.wr2-lcard-row{grid-template-columns:minmax(76px,96px) minmax(0,1fr)!important}.wr2-lcard-row b{white-space:normal!important;overflow-wrap:anywhere!important}.wr2-money-line,.wr2-price-line{flex-wrap:wrap!important;white-space:normal!important}.wr2-bid-input,.wr2-bid-total-input{width:118px!important}.wr2-agg-head{align-items:flex-start!important;flex-direction:column!important}.wr2-agg-grid{display:grid!important;grid-template-columns:1fr!important}.wr2-agg-cell{min-width:0!important;justify-content:space-between!important}}
                     @media(max-width:760px){.wr2-ml-top.clean{align-items:flex-start!important;flex-direction:column!important}.wr2-lcard-actions .wr2-mini-btn{padding:5px 8px!important;font-size:11px!important}.wr2-linked-cards.scroll .wr2-linked-card{flex-basis:calc(100% - 8px)!important}.wr2-agg-head{align-items:flex-start!important;flex-direction:column!important}.wr2-lcard-row{grid-template-columns:minmax(70px,86px) minmax(0,1fr)!important;}}
                     .wcp-basis-toolbar{display:grid;grid-template-columns:minmax(240px,auto) minmax(0,1fr) auto;gap:8px;align-items:center;margin:8px 0 10px;padding:0;}
                     .wcp-linked-picker{display:flex;align-items:center;gap:0;flex-wrap:nowrap;border:1px solid rgba(255,255,255,.12);background:rgba(5,9,15,.38);border-radius:12px;padding:0;margin:0;overflow:hidden;min-width:0;}
@@ -20067,10 +20067,10 @@ ${inputDesc.substring(0, 3000)}
         var extBtns = [];
         var appBtns = [];
         if (_auctionDetailURL) {
-          extBtns.push(`<button type="button" class="popup-src-btn" data-auction-open-id="${esc(id)}" data-auction-open-url="${esc(_auctionDetailURL)}" style="${bStyle}" onclick="event.preventDefault();event.stopPropagation();window.openAuctionLinkOrPdf && window.openAuctionLinkOrPdf(this.getAttribute('data-auction-open-id'), this.getAttribute('data-auction-open-url'))">🔗 상세</button>`);
+          extBtns.push(`<button type="button" class="popup-src-btn" data-auction-open-id="${esc(id)}" data-auction-open-url="${esc(_auctionDetailURL)}" style="${bStyle}" onclick="event.preventDefault();event.stopPropagation();window.openAuctionLinkOrPdf && window.openAuctionLinkOrPdf(this.getAttribute('data-auction-open-id'), this.getAttribute('data-auction-open-url'))">🔗 원본</button>`);
         }
         if (typeof window._skIsAuctionPublicItem === 'function' ? window._skIsAuctionPublicItem(item) : a) {
-          extBtns.push(`<button type="button" class="popup-src-btn" id="popEditUrlBtn" data-pop-url-edit-id="${esc(id)}" style="background:rgba(255,255,255,.06);color:#aab4cc;border-color:rgba(255,255,255,.24);" onclick="event.preventDefault();event.stopPropagation();window.showPopupUrlInput && window.showPopupUrlInput(this.getAttribute('data-pop-url-edit-id'))">${_auctionDetailURL ? '✏️ 상세URL수정' : '🔗 상세URL추가'}</button>`);
+          extBtns.push(`<button type="button" class="popup-src-btn" id="popEditUrlBtn" data-pop-url-edit-id="${esc(id)}" style="background:rgba(255,255,255,.06);color:#aab4cc;border-color:rgba(255,255,255,.24);" onclick="event.preventDefault();event.stopPropagation();window.showPopupUrlInput && window.showPopupUrlInput(this.getAttribute('data-pop-url-edit-id'))">${_auctionDetailURL ? '✏️ 원본URL수정' : '🔗 원본URL추가'}</button>`);
         }
         if (_siteMapURL === 'copy_planet') {
           extBtns.push(`<button class="popup-src-btn" style="background:rgba(100,180,100,.12);color:#7ecf7e;border-color:rgba(100,180,100,.35);" onclick="(()=>{const addr='${esc(_addrQ)}';if(addr){navigator.clipboard.writeText(addr).catch(()=>{});const ta=document.createElement('textarea');ta.value=addr;document.body.appendChild(ta);ta.select();try{document.execCommand('copy');}catch(e){}document.body.removeChild(ta);}window.open('https://www.bdsplanet.com/map/realprice_map.ytp','_blank');})()">🌍 플래닛</button>`);
@@ -20099,7 +20099,7 @@ ${inputDesc.substring(0, 3000)}
           wrap.id = 'popUrlInputWrap';
           wrap.style.cssText = 'display:none;margin-top:6px;display:none;';
           wrap.innerHTML = `<div style="display:flex;gap:6px;align-items:center;">
-        <input id="popUrlInput" type="text" placeholder="옥션원/온비드 상세 URL" 
+        <input id="popUrlInput" type="text" placeholder="옥션원/온비드 원본 URL" 
           style="flex:1;padding:6px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.2);border-radius:6px;color:#e0e6ff;font-size:11px;outline:none;"
           oninput="this.style.borderColor=this.value?'rgba(79,142,255,.6)':'rgba(255,255,255,.2)'"
           onkeydown="if(event.key==='Enter')savePopupUrl('${id}')">
@@ -21201,7 +21201,7 @@ ${inputDesc.substring(0, 3000)}
       wrap.dataset.itemId = sid;
       wrap.style.cssText = 'display:block;flex:0 0 100%;width:100%;margin-top:8px;padding:8px;border:1px solid rgba(79,142,255,.28);border-radius:10px;background:rgba(79,142,255,.07);box-sizing:border-box;';
       wrap.innerHTML = '<div style="display:flex;gap:7px;align-items:center;width:100%;">'
-        + '<input id="popUrlInput" type="text" placeholder="옥션원/온비드 상세 URL" style="flex:1;min-width:180px;padding:8px 10px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.24);border-radius:7px;color:#e0e6ff;font-size:12px;outline:none;box-sizing:border-box;">'
+        + '<input id="popUrlInput" type="text" placeholder="옥션원/온비드 원본 URL" style="flex:1;min-width:180px;padding:8px 10px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.24);border-radius:7px;color:#e0e6ff;font-size:12px;outline:none;box-sizing:border-box;">'
         + '<button type="button" id="popUrlSaveBtn" data-pop-url-save-id="' + String(sid).replace(/&/g,'&amp;').replace(/"/g,'&quot;') + '" style="padding:7px 13px;background:rgba(79,142,255,.22);color:#8ab8ff;border:1px solid rgba(79,142,255,.45);border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">저장</button>'
         + '<button type="button" id="popUrlCancelBtn" style="padding:7px 10px;background:none;color:#8b96ad;border:1px solid rgba(255,255,255,.18);border-radius:7px;font-size:12px;cursor:pointer;white-space:nowrap;">취소</button>'
         + '</div>';
@@ -21297,7 +21297,7 @@ ${inputDesc.substring(0, 3000)}
       const item = sv.find(s => String(s.id) === String(id));
       if (!item) return;
       const cur = (typeof window._skAuctionDetailUrl === 'function') ? window._skAuctionDetailUrl(item) : ((typeof window._skSavedItemDetailUrl === 'function') ? window._skSavedItemDetailUrl(item) : String((item.data && item.data.상세URL) || '').trim());
-      const next = prompt('옥션원/온비드 상세 URL을 입력하세요', cur || 'https://');
+      const next = prompt('옥션원/온비드 원본 URL을 입력하세요', cur || 'https://');
       if (next == null) return;
       const url = String(next || '').trim();
       if (typeof window._skApplyAuctionDetailUrl === 'function') window._skApplyAuctionDetailUrl(item, url);
@@ -22462,7 +22462,7 @@ ${fi(d.기타사항, '기타사항', 'text', idx, '기타사항', isPopup)}
       // 액션 버튼들
       const _auctionDetailURL = (typeof window._skAuctionDetailUrl === 'function') ? window._skAuctionDetailUrl(item) : '';
       const detailBtn = _auctionDetailURL
-        ? `<button type="button" onclick="event.preventDefault();event.stopPropagation();window.openAuctionLinkOrPdf && window.openAuctionLinkOrPdf('${popupId || item.id}', '${esc(_auctionDetailURL)}')" style="font-size:10px;padding:2px 8px;background:rgba(${_srcRgb},.12);color:${_srcColor};border:1px solid rgba(${_srcRgb},.4);border-radius:5px;text-decoration:none;font-weight:600;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">🔗 상세</button>`
+        ? `<button type="button" onclick="event.preventDefault();event.stopPropagation();window.openAuctionLinkOrPdf && window.openAuctionLinkOrPdf('${popupId || item.id}', '${esc(_auctionDetailURL)}')" style="font-size:10px;padding:2px 8px;background:rgba(${_srcRgb},.12);color:${_srcColor};border:1px solid rgba(${_srcRgb},.4);border-radius:5px;text-decoration:none;font-weight:600;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">🔗 원본</button>`
         : '';
       const siteMapURL = _isJumpo ? 'https://map.jumpoline.com/main'
         : _isAssa ? 'https://xn--v69ap5so3hsnb81e1wfh6z.com/map'
@@ -52837,7 +52837,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260511-workroom-v135-url-raw-preserve-safe-open';
+  var BUILD='20260511-workroom-v136-origin-detail-label-safe-link-drag';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
