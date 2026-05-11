@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260511-workroom-v148-unsold-fast-calc-reorder-comma';
+    window.__SK_BUILD = '20260511-workroom-v149-rent-invest-label-actions-management-pair';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -9892,7 +9892,7 @@ window.wr2SummaryCancelEdit = function() {
                       <div class="wcp-decision-bar" aria-label="최종 의사결정 요약">
                         <div class="wcp-decision-cell primary"><span>나의 입찰가</span><b id="wcp_dec_price">-</b></div>
                         <div class="wcp-decision-cell good"><span>월 순수익</span><b id="wcp_dec_month_net">-</b></div>
-                        <div class="wcp-decision-cell money"><span>보증금포함 투자금</span><b id="wcp_dec_total_with_deposit">-</b></div>
+                        <div class="wcp-decision-cell money"><span>(보증금 포함) 투자금</span><b id="wcp_dec_total_with_deposit">-</b></div>
                         <div class="wcp-decision-cell yield"><span>레버리지</span><b id="wcp_dec_lev_yield">-</b></div>
                         <div class="wcp-decision-cell"><span>ROI</span><b id="wcp_dec_roi">-</b></div>
                       </div>
@@ -9914,7 +9914,7 @@ window.wr2SummaryCancelEdit = function() {
                           </div>
                         </div>
                         <div class="wcp-card wcp-calc-combined">
-                          <div class="wcp-calc-combined-head"><h3>② 수익률 계산 조건</h3><span class="wcp-status" id="wcp_auto_save_status_inline">자동저장 대기</span></div>
+                          <div class="wcp-calc-combined-head"><h3>② 수익률 계산 조건</h3><div class="wcp-calc-head-actions"><span class="wcp-status" id="wcp_auto_save_status_inline">자동저장 대기</span><button class="wcp-btn" onclick="wr2CalcProClear()">초기화</button><button class="wcp-btn primary" onclick="wr2CalcScenarioSave()">시나리오 저장</button><button class="wcp-btn" onclick="wr2CalcSnapshotSave()">화면 캡처</button><button class="wcp-btn primary" onclick="wr2CalcProRun()">계산하기</button></div></div>
                           <div class="wcp-calc-combined-grid">
                             <div class="wcp-section wcp-calc-col">
                               <h4>입력</h4>
@@ -9927,13 +9927,13 @@ window.wr2SummaryCancelEdit = function() {
                                 <div class="wcp-line wcp-rent-input-line"><label for="wc_rent">월 임대료</label><input id="wc_rent" class="wcp-inp" data-wcp-money="1" inputmode="numeric" autocomplete="off" value="${wcpEsc(wcpCommaValue(s.rent))}"><span class="wcp-unit">원</span></div>
                                 <div class="wcp-lease-helper" id="wcp_o_rent_per_py">-</div>
                                 ${wcpOutputRow('월 순수익','wcp_o_month_net_inline','원','green')}
-                                ${wcpOutputRow('연 순수익','wcp_o_year_net_inline','원','green')}
+                                ${wcpOutputRow('(보증금 포함) 투자금','wcp_o_year_net_inline','원','green')}
                               </div></div>
                             </div>
                             <div class="wcp-section wcp-calc-col">
                               <h4>자동 산출</h4>
                               <div class="wcp-subsec"><h5>① 취등록세/기타</h5><div class="wcp-form">${wcpRateField('wc_acq_tax_rate','wc_acq_tax','취등록세',s.acqTaxRate,s.acqTax,'')}${wcpRateField('wc_legal_rate','wc_legal_fee','법무비 등',s.legalRate,s.legalFee,'')}</div></div>
-                              <div class="wcp-subsec wcp-management-subsec"><h5>② 1년 운영 비용</h5><div class="wcp-form wcp-management-form">${wcpField('wc_management_monthly','월 관리비 평단가','원/평·월',s.managementMonthly,'','평당 월 관리비')}${wcpOutputRow('월 관리비','wcp_o_management_month','원','green')}${wcpOutputRow('1년치 이자','wcp_o_interest_year','원','')}${wcpOutputRow('1년치 관리비','wcp_o_management_year','원','')}</div></div>
+                              <div class="wcp-subsec wcp-management-subsec"><h5>② 1년 운영 비용</h5><div class="wcp-form wcp-management-form"><div class="wcp-line wcp-management-pair"><label for="wc_management_monthly">월 관리비</label><input id="wc_management_monthly" class="wcp-inp wcp-management-py" data-wcp-money="1" inputmode="numeric" autocomplete="off" value="${wcpEsc(wcpCommaValue(s.managementMonthly))}" placeholder="평당 월 관리비"><span class="wcp-unit">원/평·월</span><div id="wcp_o_management_month" class="wcp-out green wcp-management-total">-</div><span class="wcp-unit">원/월</span></div>${wcpOutputRow('1년치 이자','wcp_o_interest_year','원','')}${wcpOutputRow('1년치 관리비','wcp_o_management_year','원','')}</div></div>
                               <div class="wcp-subsec"><h5>③ 기타 산출</h5><div class="wcp-form">${wcpOutputRow('적용 대출금','wcp_auto_loan','원','blue')}</div></div>
                               <div class="wcp-subsec">${wcpLoanRuleBox()}</div>
                             </div>
@@ -9947,7 +9947,7 @@ window.wr2SummaryCancelEdit = function() {
                                 ${wcpOutputRow('초기 필요자금','wcp_o_initial_need','원','orange')}
                                 <div class="wcp-divider wcp-divider-invest"></div>
                                 ${wcpOutputRow('총 투자금','wcp_p_total_no_deposit','원','')}
-                                ${wcpOutputRow('보증금포함 투자금','wcp_p_total_with_deposit','원','green')}
+                                ${wcpOutputRow('(보증금 포함) 투자금','wcp_p_total_with_deposit','원','green')}
                                 ${wcpOutputRow('절대 수익률','wcp_p_abs_yield','%','purple')}
                                 ${wcpOutputRow('레버리지 수익률','wcp_p_lev_yield','%','purple')}
                                 ${wcpOutputRow('예상 매도가','wcp_p_sell_price','원','orange')}
@@ -10204,7 +10204,7 @@ window.wr2SummaryCancelEdit = function() {
                   wcpSetText('wcp_o_month_net_kpi',wcpFormatWon(r.monthNet));
                   wcpSetText('wcp_o_year_net',wcpFormatWon(r.yearNet));
                   wcpSetText('wcp_o_month_net_inline',wcpFormatWon(r.monthNet));
-                  wcpSetText('wcp_o_year_net_inline',wcpFormatWon(r.yearNet));
+                  wcpSetText('wcp_o_year_net_inline',wcpFormatWon(r.minRequired));
                   wcpSetText('wcp_o_initial_need',wcpFormatWon(r.initialNeed));
                   wcpSetText('wcp_o_per_py',r.perPy?Math.round(r.perPy).toLocaleString('ko-KR'):'-');
                   wcpSetText('wcp_o_rent_per_py',r.rentPerPy?('@ '+r.rentPerPy.toFixed(1)+'만/평'):'-');
@@ -53411,7 +53411,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260511-workroom-v148-unsold-fast-calc-reorder-comma';
+  var BUILD='20260511-workroom-v149-rent-invest-label-actions-management-pair';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
@@ -55772,4 +55772,31 @@ window.addEventListener('DOMContentLoaded', () => {
     `;
     (document.head||document.documentElement).appendChild(st);
   }catch(e){console.warn('[v148 calc polish]',e);}
+})();
+
+/* v149: rent condition investment label + top action buttons + management pair */
+(function(){
+  try{
+    var old=document.getElementById('sk-v149-rent-invest-actions-management');
+    if(old) old.remove();
+    var st=document.createElement('style');
+    st.id='sk-v149-rent-invest-actions-management';
+    st.textContent=`
+      .wr2-calc-pro-shell .wcp-calc-combined-head{display:flex!important;align-items:center!important;gap:10px!important;justify-content:space-between!important;flex-wrap:wrap!important;}
+      .wr2-calc-pro-shell .wcp-calc-head-actions{display:flex!important;align-items:center!important;gap:6px!important;flex-wrap:wrap!important;justify-content:flex-end!important;margin-left:auto!important;}
+      .wr2-calc-pro-shell .wcp-calc-head-actions .wcp-btn{height:26px!important;padding:0 10px!important;border-radius:12px!important;font-size:11px!important;font-weight:850!important;}
+      .wr2-calc-pro-shell .wcp-calc-head-actions #wcp_auto_save_status_inline{margin-right:4px!important;font-size:11px!important;}
+      #wcp_pane_input .wcp-kpi-banner-bottom{display:none!important;}
+      #wcp_pane_input .wcp-management-subsec .wcp-management-pair{grid-template-columns:minmax(84px,0.82fr) minmax(116px,1.1fr) 62px minmax(126px,1.2fr) 42px!important;align-items:center!important;gap:7px!important;}
+      #wcp_pane_input .wcp-management-subsec .wcp-management-pair .wcp-management-py{min-width:0!important;}
+      #wcp_pane_input .wcp-management-subsec .wcp-management-pair .wcp-management-total{min-width:0!important;text-align:right!important;color:#4ade80!important;font-weight:900!important;background:rgba(15,23,42,.45)!important;border:1px solid rgba(96,165,250,.18)!important;border-radius:10px!important;padding:6px 10px!important;}
+      #wcp_pane_input .wcp-lease-input-subsec #wcp_o_year_net_inline{color:#4ade80!important;font-weight:900!important;}
+      #wcp_pane_input .wcp-decision-cell.money span{white-space:nowrap!important;}
+      @media (max-width:1380px){
+        #wcp_pane_input .wcp-management-subsec .wcp-management-pair{grid-template-columns:minmax(72px,.8fr) minmax(105px,1fr) 56px minmax(110px,1fr) 38px!important;font-size:12px!important;}
+        .wr2-calc-pro-shell .wcp-calc-head-actions .wcp-btn{padding:0 8px!important;font-size:10.5px!important;}
+      }
+    `;
+    document.head.appendChild(st);
+  }catch(e){console.warn('[v149 rent/invest actions]',e);}
 })();
