@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260511-workroom-v120-linked-carousel-bunyang-mgmt';
+    window.__SK_BUILD = '20260511-workroom-v121-unsold-date-save-fix';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -50798,7 +50798,10 @@ window.addEventListener('DOMContentLoaded', () => {
     var curRound = _skCurrentRound(base);
     var nextRound = (curRound > 0) ? (curRound + 1) : 1;
     var baseDate = _skFmtYmd(_skCurrentBidDate(base));
-    var weeks = _skSuggestIntervalWeeks(base, baseDate);
+    var suggestedWeeks = _skSuggestIntervalWeeks(base, baseDate);
+    // 실제 법원 재매각 공고는 기존 추정(+6주 안팎)보다 약 1주 빠르게 잡히는 케이스가 많아,
+    // 팝업 기본 제안값만 1주 앞당긴다. 단, 지나치게 짧아지지 않도록 최소 4주는 보장한다.
+    var weeks = Math.max(4, (parseInt(suggestedWeeks, 10) || 6) - 1);
     var ratio = _skSuggestDiscountRatio(base);
     var nextDate = '';
     if (baseDate && baseDate !== '미정') nextDate = _skSameWeekdayAfterWeeks(baseDate, weeks);
@@ -50808,8 +50811,9 @@ window.addEventListener('DOMContentLoaded', () => {
       date: String(nextDate || ''),
       price: String(nextPrice || ''),
       intervalWeeks: String(weeks),
+      originalIntervalWeeks: String(suggestedWeeks || ''),
       ratio: String(ratio),
-      hint: '예상 기준: 동일 요일 +' + String(weeks) + '주, 최저가 ×' + String(ratio)
+      hint: '예상 기준: 동일 요일 +' + String(weeks) + '주' + (suggestedWeeks && Number(suggestedWeeks) !== Number(weeks) ? ' (기존 추정 +' + String(suggestedWeeks) + '주에서 1주 앞당김)' : '') + ', 최저가 ×' + String(ratio)
     };
   }
   function _skCurrentRound(item){
@@ -50880,6 +50884,65 @@ window.addEventListener('DOMContentLoaded', () => {
     // 유찰 금액 입력은 원 단위 숫자만 허용한다.
     var n = Number(raw.replace(/[^\d]/g, '') || 0);
     return Number.isFinite(n) ? n : 0;
+  }
+  function _skPatchSavedAuctionSource(target, fields){
+    // 작업룸 연결 카드/합산 기준은 저장목록(re_sv)의 원본 물건을 읽는다.
+    // 따라서 유찰 처리 시 pl_items만 고치면 화면에는 바로 반영되지 않을 수 있다.
+    // 여기서는 같은 원본(saved item)을 찾아 매각기일/최저가/회차를 함께 갱신한다.
+    try {
+      if (!target || typeof getSv !== 'function' || typeof setSv !== 'function') return null;
+      var savedId = String((fields && fields.savedId) || target.linkedSavedId || target.savedId || target.sourceSavedId || '').trim();
+      var targetId = String(target.id || '').trim();
+      var arr = getSv() || [];
+      if (!Array.isArray(arr) || !arr.length) return null;
+      var idx = -1;
+      if (savedId) idx = arr.findIndex(function(it){ return String(it && it.id || '') === savedId; });
+      if (idx < 0 && targetId) idx = arr.findIndex(function(it){ return String(it && it.id || '') === targetId; });
+      if (idx < 0 && targetId) idx = arr.findIndex(function(it){ return String(it && it.linkedPlItemId || '') === targetId || String(it && it.plItemId || '') === targetId; });
+      if (idx < 0) return null;
+
+      var prev = arr[idx] || {};
+      var next = Object.assign({}, prev);
+      var d = Object.assign({}, next.data || {});
+      var round = String((fields && fields.round) || '').trim();
+      var date = String((fields && fields.date) || '').trim();
+      var priceNum = Number((fields && fields.priceWon) || 0) || 0;
+      if (round) {
+        d['회차'] = round;
+        d['유찰횟수'] = round;
+        next.round = round;
+      }
+      if (date) {
+        d['매각기일'] = date;
+        d['매각일'] = date;
+        d['입찰기일'] = date;
+        next.biddate = date;
+        next.bidDate = date;
+        next.saleDate = date;
+      }
+      if (priceNum > 0) {
+        d['최저가'] = priceNum;
+        d['최저가_원'] = priceNum;
+        d['최저가_만원'] = Math.round(priceNum / 10000);
+        next.minprice = String(priceNum);
+      }
+      next.data = d;
+      next.updatedAt = Date.now();
+      try {
+        next._norm = Object.assign({}, next._norm || {});
+        if (priceNum > 0) next._norm.최저가_만원 = Math.round(priceNum / 10000);
+        if (round) next._norm.유찰횟수 = Number(round) || round;
+        if (date) next._norm.매각기일 = date;
+      } catch(_e) {}
+      try { if (typeof _ensureNormalizedItem === 'function') _ensureNormalizedItem(next); } catch(_e2) {}
+      arr[idx] = next;
+      setSv(arr);
+      try { if (typeof window._plSyncFromSavedItems === 'function') window._plSyncFromSavedItems(arr, { render:false }); } catch(_e3) {}
+      return next;
+    } catch (e) {
+      console.warn('[unsold saved patch]', e);
+      return null;
+    }
   }
   function _skGetRooms(){
     try {
@@ -51108,6 +51171,7 @@ window.addEventListener('DOMContentLoaded', () => {
     nextData['회차'] = String(nextRound);
     nextData['유찰횟수'] = String(nextRound);
     nextData['매각기일'] = String(nextDate || '').trim();
+    nextData['매각일'] = String(nextDate || '').trim();
     nextData['입찰기일'] = String(nextDate || '').trim();
     nextData['최저가'] = priceNum;
     nextData['최저가_원'] = priceNum;
@@ -51141,6 +51205,7 @@ window.addEventListener('DOMContentLoaded', () => {
       appliedItem = items[idx];
     }
     if (!appliedItem || !appliedItem.id) return { ok:false, reason:'apply_failed', room: room, item: null };
+    var appliedSaved = _skPatchSavedAuctionSource(appliedItem, { savedId: room && room.linkedSavedId, round:String(nextRound), date:String(nextDate || '').trim(), priceWon:priceNum });
     try { if (targetId && typeof window.plSetSimpleStatus === 'function') {
       var prevForce = window.__plForceDirectSet;
       window.__plForceDirectSet = true;
@@ -51179,8 +51244,8 @@ window.addEventListener('DOMContentLoaded', () => {
     try { if (typeof renderPropertyList === 'function') renderPropertyList(); } catch(e) {}
     try { if (typeof wr2Render === 'function') wr2Render(); } catch(e) {}
     try { if (typeof renderSaved === 'function') renderSaved(); } catch(e) {}
-    _skForceUnsoldCloudSync({ pull:true });
-    return { ok:true, room: room, item: appliedItem };
+    _skForceUnsoldCloudSync({ pull:false });
+    return { ok:true, room: room, item: appliedItem, saved: appliedSaved || null };
   }
   function _skApplyManualBidInfoToWorkroomSource(ctx, nextDate, nextPrice){
     var resolved = _skResolveUnsoldWorkroomTarget(ctx);
@@ -51197,6 +51262,7 @@ window.addEventListener('DOMContentLoaded', () => {
     nextData['회차'] = String(keepRound);
     nextData['유찰횟수'] = String(keepRound);
     nextData['매각기일'] = String(nextDate || '').trim();
+    nextData['매각일'] = String(nextDate || '').trim();
     nextData['입찰기일'] = String(nextDate || '').trim();
     nextData['최저가'] = priceNum;
     nextData['최저가_원'] = priceNum;
@@ -51214,6 +51280,7 @@ window.addEventListener('DOMContentLoaded', () => {
     var appliedItem = null;
     if (typeof window.plUpdateItem === 'function') appliedItem = window.plUpdateItem(targetId, patch);
     if (!appliedItem) return { ok:false, reason:'apply_failed', room: room, item: null };
+    var appliedSaved = _skPatchSavedAuctionSource(appliedItem, { savedId: room && room.linkedSavedId, round:String(keepRound), date:String(nextDate || '').trim(), priceWon:priceNum });
 
     if (room) {
       try {
@@ -51236,8 +51303,8 @@ window.addEventListener('DOMContentLoaded', () => {
     try { if (typeof renderPropertyList === 'function') renderPropertyList(); } catch(e) {}
     try { if (typeof wr2Render === 'function') wr2Render(); } catch(e) {}
     try { if (typeof renderSaved === 'function') renderSaved(); } catch(e) {}
-    _skForceUnsoldCloudSync({ pull:true });
-    return { ok:true, room: room, item: appliedItem };
+    _skForceUnsoldCloudSync({ pull:false });
+    return { ok:true, room: room, item: appliedItem, saved: appliedSaved || null };
   }
 
   function _skOpenUnsoldFlow(ctx){
@@ -51831,7 +51898,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260511-workroom-v120-linked-carousel-bunyang-mgmt';
+  var BUILD='20260511-workroom-v121-unsold-date-save-fix';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
