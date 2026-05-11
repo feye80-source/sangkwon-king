@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260511-workroom-v139-kpi-fit-resizable-layout';
+    window.__SK_BUILD = '20260511-workroom-v140-one-screen-kpi-drag-fix';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -9313,7 +9313,7 @@ window.wr2SummaryCancelEdit = function() {
                       margin:0!important;
                       border-radius:12px!important;
                     }
-                    .wcp-main-grid.wcp-resized{
+                    #wcp_pane_input .wcp-main-grid.wcp-resized{
                       grid-template-columns:var(--wcp-user-cols)!important;
                     }
                     .wcp-col-resizer{
@@ -9512,6 +9512,117 @@ window.wr2SummaryCancelEdit = function() {
                       .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(2){grid-area:auto!important;min-height:auto!important;}
                     }
                     @media(max-width:980px){
+                      #wcp_pane_input .wcp-main-grid{grid-template-columns:1fr!important;}
+                      .wcp-col-resizer{display:none!important;}
+                      .wcp-calc-combined .wcp-calc-combined-grid{grid-template-columns:1fr!important;}
+                    }
+
+                    /* v140: one-screen balance, working width drag, compact KPI/bottom strip */
+                    #wcp_pane_input .wcp-main-grid{
+                      grid-template-columns:minmax(0,35fr) minmax(0,43fr) minmax(220px,22fr)!important;
+                      gap:6px!important;
+                      overflow:visible!important;
+                    }
+                    #wcp_pane_input .wcp-main-grid.wcp-resized{
+                      grid-template-columns:var(--wcp-user-cols)!important;
+                    }
+                    #wcp_pane_input .wcp-main-grid>.wcp-card{
+                      padding:7px!important;
+                      border-radius:11px!important;
+                      min-width:0!important;
+                    }
+                    .wcp-bench-panel{min-width:0!important;}
+                    .wcp-bench-panel .wcp-grid3{
+                      grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr)!important;
+                      gap:6px!important;
+                      margin-top:6px!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(1),
+                    .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(2){
+                      min-height:128px!important;
+                      padding:8px!important;
+                    }
+                    .wcp-bench-panel .wcp-grid3 .wcp-section:first-child .wcp-line,
+                    .wcp-bench-panel .wcp-grid3 .wcp-section:nth-child(2) .wcp-line{
+                      grid-template-columns:minmax(58px,78px) minmax(0,1fr) 14px!important;
+                      min-height:25px!important;
+                    }
+                    .wcp-bench-panel .wcp-grid4{
+                      grid-template-columns:repeat(2,minmax(0,1fr))!important;
+                      gap:5px!important;
+                      margin-top:6px!important;
+                    }
+                    .wcp-bench-card{
+                      min-height:94px!important;
+                      padding:7px!important;
+                    }
+                    .wcp-bench-card .top{gap:4px!important;margin-bottom:3px!important;}
+                    .wcp-bench-card .name{font-size:11px!important;line-height:1.1!important;}
+                    .wcp-bench-card .desc{font-size:9px!important;margin-bottom:4px!important;}
+                    .wcp-bench-card .wcp-inp{min-height:24px!important;font-size:11px!important;padding:4px 6px!important;}
+                    .wcp-bench-note{font-size:9.5px!important;line-height:1.15!important;min-height:28px!important;margin-top:3px!important;}
+                    .wcp-quick-reco{
+                      margin-top:5px!important;
+                      padding:7px 9px!important;
+                      display:grid!important;
+                      grid-template-columns:minmax(90px,.8fr) minmax(0,1.2fr) auto!important;
+                      grid-template-areas:"label main btn" "sub sub btn"!important;
+                      align-items:center!important;
+                      gap:2px 8px!important;
+                    }
+                    .wcp-quick-reco-label{grid-area:label!important;font-size:10px!important;}
+                    .wcp-quick-reco-main{grid-area:main!important;font-size:clamp(17px,1.55vw,26px)!important;line-height:1.05!important;text-align:right!important;}
+                    .wcp-quick-reco-sub{grid-area:sub!important;font-size:9.5px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;}
+                    .wcp-quick-reco .wcp-btn{grid-area:btn!important;padding:5px 9px!important;min-height:28px!important;white-space:nowrap!important;}
+
+                    .wcp-calc-combined .wcp-calc-combined-grid{gap:6px!important;}
+                    .wcp-calc-combined .wcp-section,.wcp-calc-combined .wcp-calc-col{padding:7px!important;}
+                    .wcp-calc-combined .wcp-subsec{margin-top:5px!important;padding-top:5px!important;}
+                    .wcp-calc-combined .wcp-line{grid-template-columns:minmax(62px,84px) minmax(0,1fr) 13px!important;min-height:23px!important;gap:4px!important;}
+                    .wcp-calc-combined .wcp-line.rate.wcp-rate-field{grid-template-columns:minmax(62px,84px) minmax(38px,48px) 10px minmax(0,1fr) 12px!important;gap:4px!important;}
+                    .wcp-calc-combined .wcp-line label{font-size:9.4px!important;}
+                    .wcp-calc-combined .wcp-inp,.wcp-calc-combined .wcp-out{min-height:23px!important;font-size:10.1px!important;padding:3px 5px!important;}
+                    .wcp-calc-combined h4{font-size:11px!important;margin-bottom:4px!important;}
+                    .wcp-calc-combined h5{font-size:9.6px!important;margin:0 0 4px!important;}
+                    .wcp-loan-rule{padding:5px!important;margin-top:4px!important;}
+                    .wcp-loan-rule .chip{padding:4px 6px!important;font-size:9.5px!important;}
+
+                    .wcp-kpi-summary-panel{padding:7px 8px!important;min-width:0!important;}
+                    .wcp-kpi-summary-panel h3{font-size:13px!important;margin-bottom:5px!important;}
+                    .wcp-kpi-summary-panel .wcp-kpi-lease-inputs{padding:5px!important;margin-bottom:5px!important;}
+                    .wcp-kpi-summary-panel .wcp-kpi-lease-line .wcp-inp{min-height:23px!important;font-size:10.8px!important;padding:3px 6px!important;}
+                    .wcp-kpi-summary-panel .wcp-form{gap:2px!important;}
+                    .wcp-kpi-summary-panel .wcp-form>.wcp-line{grid-template-columns:minmax(0,1fr) minmax(82px,auto)!important;min-height:21px!important;gap:5px!important;padding:0!important;}
+                    .wcp-kpi-summary-panel .wcp-form>.wcp-line label{font-size:9.8px!important;letter-spacing:-.035em!important;}
+                    .wcp-kpi-summary-panel .wcp-form>.wcp-line .wcp-out{font-size:clamp(10.5px,.76vw,13.5px)!important;letter-spacing:-.045em!important;}
+                    .wcp-kpi-summary-panel .wcp-form>.wcp-line .wcp-unit{display:none!important;}
+                    .wcp-kpi-summary-panel .wcp-divider{margin:3px 0!important;}
+                    #wcp_o_month_net_kpi,#wcp_p_total_with_deposit{color:#4ade80!important;}
+                    #wcp_p_abs_yield,#wcp_p_lev_yield{color:#c084fc!important;}
+                    .wcp-out.purple{color:#c084fc!important;}
+                    #wcp_p_roi{color:#fb7185!important;}
+
+                    .wcp-top.wcp-kpi-banner-bottom{margin-top:5px!important;}
+                    .wcp-top.wcp-kpi-banner-bottom .wcp-head{display:none!important;}
+                    .wcp-kpi-strip{grid-template-columns:repeat(7,minmax(0,1fr))!important;gap:5px!important;margin-top:0!important;}
+                    .wcp-kpi{grid-template-columns:minmax(0,1fr)!important;min-height:40px!important;padding:5px 7px!important;border-radius:8px!important;}
+                    .wcp-kpi .kicon{display:none!important;}
+                    .wcp-kpi .kmeta{gap:1px!important;}
+                    .wcp-kpi .l{font-size:9px!important;line-height:1.05!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;}
+                    .wcp-kpi .v{font-size:clamp(10.4px,.82vw,13.5px)!important;line-height:1.04!important;letter-spacing:-.055em!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;}
+                    .wcp-kpi .sub{font-size:8.2px!important;line-height:1!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;}
+
+                    .wcp-col-resizer{width:16px!important;margin-left:-8px!important;opacity:.72!important;z-index:80!important;}
+                    .wcp-col-resizer::after{font-size:16px!important;}
+                    @media(max-width:1380px){
+                      #wcp_pane_input .wcp-main-grid{grid-template-columns:minmax(0,34fr) minmax(0,43fr) minmax(210px,23fr)!important;gap:5px!important;}
+                      #wcp_pane_input .wcp-main-grid.wcp-resized{grid-template-columns:var(--wcp-user-cols)!important;}
+                      .wcp-bench-panel .wcp-grid3{grid-template-columns:1fr!important;}
+                      .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(1),.wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(2){min-height:auto!important;}
+                      .wcp-kpi-summary-panel .wcp-form>.wcp-line label{font-size:9.2px!important;}
+                      .wcp-kpi-summary-panel .wcp-form>.wcp-line .wcp-out{font-size:10.4px!important;}
+                    }
+                    @media(max-width:1100px){
                       #wcp_pane_input .wcp-main-grid{grid-template-columns:1fr!important;}
                       .wcp-col-resizer{display:none!important;}
                       .wcp-calc-combined .wcp-calc-combined-grid{grid-template-columns:1fr!important;}
@@ -9740,15 +9851,14 @@ window.wr2SummaryCancelEdit = function() {
                                     <div class="wcp-rent-py-inline" id="wcp_o_rent_per_py">-</div>
                                   </div>
                                 </div>
-                                ${wcpOutputRow('월 순수익','wcp_o_month_net_kpi','원','blue')}
+                                ${wcpOutputRow('월 순수익','wcp_o_month_net_kpi','원','green')}
                                 ${wcpOutputRow('연 순수익','wcp_o_year_net','원','orange')}
                                 ${wcpOutputRow('초기 필요자금','wcp_o_initial_need','원','orange')}
-                                ${wcpOutputRow('전용 평단가','wcp_o_per_py','원/평','')}
                                 <div class="wcp-divider wcp-divider-invest"></div>
                                 ${wcpOutputRow('총 투자금 (보증금 미포함)','wcp_p_total_no_deposit','원','')}
                                 ${wcpOutputRow('총 투자금 (보증금 포함)','wcp_p_total_with_deposit','원','green')}
-                                ${wcpOutputRow('절대 수익률','wcp_p_abs_yield','%','blue')}
-                                ${wcpOutputRow('레버리지 수익률','wcp_p_lev_yield','%','green')}
+                                ${wcpOutputRow('절대 수익률','wcp_p_abs_yield','%','purple')}
+                                ${wcpOutputRow('레버리지 수익률','wcp_p_lev_yield','%','purple')}
                                 ${wcpOutputRow('예상 매도가','wcp_p_sell_price','원','orange')}
                                 ${wcpOutputRow('세후수익','wcp_p_after_tax','원','orange')}
                                 ${wcpOutputRow('ROI','wcp_p_roi','%','red')}
@@ -10028,7 +10138,7 @@ window.wr2SummaryCancelEdit = function() {
                   wcpSetText('wcp_p_abs_yield',(r.absYield||0).toFixed(2));
                   wcpSetText('wcp_p_lev_yield',(r.levYield||0).toFixed(2));
                   wcpSetText('wcp_p_sell_price',wcpFormatWon(r.sell));
-                  wcpSetText('wcp_p_roi',(r.roi||0).toFixed(0));
+                  wcpSetText('wcp_p_roi',((r.roi||0).toFixed(0))+'%');
                   wcpSetText('wcp_p_after_tax',wcpFormatWon(r.afterTax));
                   wcpSetText('wcp_tax_gain',wcpFormatWon(r.saleGain));
                   wcpSetText('wcp_tax_base',wcpFormatWon(r.taxBase));
@@ -10063,9 +10173,9 @@ window.wr2SummaryCancelEdit = function() {
                     const cards=Array.from(grid.children).filter(function(el){return el && el.classList && el.classList.contains('wcp-card');}).slice(0,3);
                     if(cards.length<3) return;
                     grid.querySelectorAll('.wcp-col-resizer').forEach(function(el){el.remove();});
-                    const key='wcp_main_grid_cols_v139';
-                    const defaults=[44,42,14];
-                    const min=[28,32,10];
+                    const key='wcp_main_grid_cols_v140';
+                    const defaults=[35,43,22];
+                    const min=[26,34,16];
                     function read(){
                       try{
                         const raw=JSON.parse(localStorage.getItem(key)||'null');
@@ -10084,7 +10194,7 @@ window.wr2SummaryCancelEdit = function() {
                     function apply(a,save){
                       a=norm(a);
                       grid.classList.add('wcp-resized');
-                      grid.style.setProperty('--wcp-user-cols','minmax(0,'+a[0]+'fr) minmax(0,'+a[1]+'fr) minmax(150px,'+a[2]+'fr)');
+                      grid.style.setProperty('--wcp-user-cols','minmax(0,'+a[0]+'fr) minmax(0,'+a[1]+'fr) minmax(220px,'+a[2]+'fr)');
                       if(save){ try{localStorage.setItem(key,JSON.stringify(a));}catch(e){} }
                       window.requestAnimationFrame(place);
                       return a;
@@ -53184,7 +53294,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260511-workroom-v138-calculator-responsive-fit';
+  var BUILD='20260511-workroom-v140-one-screen-kpi-drag-fix';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
