@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260511-workroom-v129-items-local-pending-guard';
+    window.__SK_BUILD = '20260511-workroom-v130-url-save-and-detail-lag-fix';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -11561,6 +11561,31 @@ window.wr2SummaryCancelEdit = function() {
       const options = opts || {};
       item.data = item.data || {};
       const d = item.data;
+      const _urlAliasKeys = ['상세URL','옥션원URL','온비드URL','원본URL','원본링크','originalUrl','original_url','url','link'];
+      if (_urlAliasKeys.indexOf(String(key || '')) >= 0) {
+        const nextUrl = String(rawValue || '').trim();
+        const isAuctionLike = (typeof window._skIsAuctionPublicItem === 'function')
+          ? window._skIsAuctionPublicItem(item, d)
+          : (typeof _isAuctionSavedItem === 'function' ? _isAuctionSavedItem(item, d) : false);
+        if (isAuctionLike && typeof window._skApplyAuctionDetailUrl === 'function') {
+          window._skApplyAuctionDetailUrl(item, nextUrl);
+        } else {
+          if (nextUrl) {
+            d[key] = nextUrl;
+            if (key === '상세URL' || key === 'url' || key === 'originalUrl' || key === '원본URL') {
+              d.상세URL = nextUrl; d.원본URL = nextUrl; d.originalUrl = nextUrl; d.url = nextUrl;
+              item.url = nextUrl; item.originalUrl = nextUrl; item.link = nextUrl;
+            }
+          } else {
+            try { delete d[key]; } catch(e) { d[key] = ''; }
+          }
+          item.updatedAt = Date.now();
+          item._skLocalEditedAt = item.updatedAt;
+          try { d._skLocalEditedAt = item.updatedAt; } catch(e) {}
+        }
+        if (options.normalize !== false) _ensureNormalizedItem(item);
+        return item;
+      }
       if (_isFloorField(key)) {
         const isEmpty = rawValue == null || rawValue === '';
         const nextFloor = isEmpty ? '' : rawValue;
@@ -20465,12 +20490,14 @@ ${inputDesc.substring(0, 3000)}
         }
       } catch (e) { console.warn('[syncAfterSavedMutation:linkedSnapshot]', e); }
       try {
-        if (typeof window._plSyncFromSavedItems === 'function') {
+        if (!options.skipPlSavedSync && typeof window._plSyncFromSavedItems === 'function') {
           window._plSyncFromSavedItems(list, { render: false });
         }
       } catch (e) { console.warn('[syncAfterSavedMutation:plSaved]', e); }
       try {
-        if (typeof window._plSyncFromWorkrooms === 'function') {
+        // 저장목록 상세 입력 blur마다 workrooms 전체를 다시 훑으면 클릭/입력 지연과 대량 push가 발생한다.
+        // 저장목록 → 물건리스트 보강은 setSv wrapper에서 처리하고, workrooms → 물건리스트 역동기화는 명시적 작업룸 액션 때만 수행한다.
+        if (!options.skipPlWorkroomSync && typeof window._plSyncFromWorkrooms === 'function') {
           window._plSyncFromWorkrooms({ render: false, savedItems: list });
         }
       } catch (e) { console.warn('[syncAfterSavedMutation:plWork]', e); }
@@ -20520,7 +20547,7 @@ ${inputDesc.substring(0, 3000)}
       _svTouchSavedRowForCloud(item, 'saved-draft-commit');
       setSv(sv);
       _svQueueSavedRowsForCloud([item], 'saved-draft-commit');
-      _syncAfterSavedMutation(itemId, sv, { skipMapRefresh: false });
+      _syncAfterSavedMutation(itemId, sv, { skipMapRefresh: true, skipPlWorkroomSync: true });
     };
 
     function _popEditField(label, field, val, itemId, type) {
@@ -20779,6 +20806,10 @@ ${inputDesc.substring(0, 3000)}
         const sid = String(savedItem.id || '');
         const nextUrl = String(url || '').trim();
         const stamp = Date.now();
+        function _pidFromUrl(u){ try { const m=String(u||'').match(/[?&]product_id=([^&#]+)/i); return m ? decodeURIComponent(m[1]) : ''; } catch(e){ return ''; } }
+        const savedData = savedItem.data || {};
+        const savedPid = String(savedData.product_id || savedData._pid || _pidFromUrl(nextUrl) || _pidFromUrl(savedData.상세URL) || _pidFromUrl(savedData.옥션원URL) || '').trim();
+        function _rowPid(obj){ const d=(obj && obj.data) || {}; return String(d.product_id || d._pid || obj.product_id || obj._pid || _pidFromUrl(d.상세URL) || _pidFromUrl(d.옥션원URL) || _pidFromUrl(obj.url) || '').trim(); }
         var changedPlRows = [];
         var changedRooms = [];
         // 물건리스트(pl_items) 안의 복사본도 같은 URL로 맞춘다.
@@ -20790,9 +20821,10 @@ ${inputDesc.substring(0, 3000)}
             const d = it.data || {};
             const linked = String(it.linkedSavedId || it.savedId || it.sourceSavedId || d.linkedSavedId || d.savedId || d.sourceSavedId || '') === sid;
             const sameId = String(it.id || '') === sid;
-            const caseSame = (savedItem.data && d) && String(savedItem.data.경매번호 || savedItem.data.사건번호 || '').replace(/\s+/g,'') &&
-              String(savedItem.data.경매번호 || savedItem.data.사건번호 || '').replace(/\s+/g,'') === String(d.경매번호 || d.사건번호 || '').replace(/\s+/g,'');
-            if (!linked && !sameId && !caseSame) return it;
+            const productSame = !!(savedPid && _rowPid(it) && _rowPid(it) === savedPid);
+            // 사건번호만 같은 202호/203호 같은 별개 물건까지 URL이 전파되면 링크가 되살아나는 원인이 된다.
+            // URL 전파는 저장목록 id 또는 product_id/상세URL이 같은 복사본에만 제한한다.
+            if (!linked && !sameId && !productSame) return it;
             const cp = Object.assign({}, it, { data:Object.assign({}, d), updatedAt:stamp, _skUrlEditedAt:stamp, _skLocalEditedAt:stamp });
             window._skApplyAuctionDetailUrl(cp, nextUrl);
             changed = true;
@@ -20820,13 +20852,9 @@ ${inputDesc.substring(0, 3000)}
               if(!obj || typeof obj!=='object') return;
               var d=obj.data || {};
               var idOk=[obj.id,obj.savedId,obj.linkedSavedId,obj.sourceSavedId,obj.itemId,d.id,d.savedId,d.linkedSavedId,d.sourceSavedId].some(function(v){ return String(v||'')===sid; });
-              var caseOk=false;
-              try {
-                var a=String((savedItem.data||{}).경매번호 || (savedItem.data||{}).사건번호 || '').replace(/\s+/g,'');
-                var b=String(d.경매번호 || d.사건번호 || obj.caseNo || '').replace(/\s+/g,'');
-                caseOk=!!(a && b && a===b);
-              } catch(e) {}
-              if(!idOk && !caseOk) return;
+              var productOk=false;
+              try { productOk = !!(savedPid && _rowPid(obj) && _rowPid(obj) === savedPid); } catch(e) {}
+              if(!idOk && !productOk) return;
               obj.data = Object.assign({}, d);
               window._skApplyAuctionDetailUrl(obj, nextUrl);
               obj.updatedAt = stamp;
@@ -20839,7 +20867,11 @@ ${inputDesc.substring(0, 3000)}
             if(touched){ room.updatedAt=stamp; room._skUrlEditedAt=stamp; room._skLocalEditedAt=stamp; changedRooms.push(room); }
           });
           if(changedRooms.length){
-            try { if (typeof saveRooms === 'function') saveRooms(); } catch(e) {}
+            try {
+              // 전체 workrooms를 저장/push하지 않고, 로컬 캐시만 조용히 갱신한 뒤 실제 변경된 방만 outbox에 넣는다.
+              if (typeof window._wrPersistRooms === 'function') window._wrPersistRooms(rooms, { sync:false, syncState:false, keepDeletedInState:true });
+              else if (window._idbCache) window._idbCache.wr2_rooms = rooms;
+            } catch(e) {}
             try { if (typeof window.skCloudQueuePushTable === 'function') window.skCloudQueuePushTable('workrooms', changedRooms, 'url-save-room-copy'); } catch(e) {}
           }
         }
@@ -21023,7 +21055,7 @@ ${inputDesc.substring(0, 3000)}
       try { if (typeof window._skPropagateAuctionDetailUrlToLocalCopies === 'function') window._skPropagateAuctionDetailUrlToLocalCopies(item, url); } catch(e) { console.warn('[url propagate]', e); }
       try { if (typeof window._skPushSavedRowNow === 'function') window._skPushSavedRowNow(item, 'url-save'); } catch(e) { console.warn('[url cloud queue]', e); }
       try { if (typeof window.skCloudFlushPendingSafe === 'function') window.skCloudFlushPendingSafe({ maxRows:80 }).then(function(r){ try{ console.log('[SK-v126] url save flushed', r); }catch(_e){} }); } catch(e) { console.warn('[url flush]', e); }
-      try { if (typeof _syncAfterSavedMutation === 'function') _syncAfterSavedMutation(sid, sv, { skipMapRefresh: false }); } catch(e) { console.warn('[url save sync]', e); }
+      try { if (typeof _syncAfterSavedMutation === 'function') _syncAfterSavedMutation(sid, sv, { skipMapRefresh: false, skipPlWorkroomSync: true }); } catch(e) { console.warn('[url save sync]', e); }
       try { if (typeof renderSaved === 'function') renderSaved(); } catch(e) {}
       try { if (typeof refreshMapCardData === 'function') refreshMapCardData(sid); } catch(e) {}
       if (typeof showToast === 'function') showToast(url ? '🔗 URL 저장됨' : '원본 URL을 비웠습니다', 'ok');
@@ -21063,7 +21095,7 @@ ${inputDesc.substring(0, 3000)}
       try { if (typeof window._skPropagateAuctionDetailUrlToLocalCopies === 'function') window._skPropagateAuctionDetailUrlToLocalCopies(item, url); } catch(e) {}
       try { if (typeof window._skPushSavedRowNow === 'function') window._skPushSavedRowNow(item, 'url-prompt-save'); } catch(e) {}
       try { if (typeof window.skCloudFlushPendingSafe === 'function') window.skCloudFlushPendingSafe({ maxRows:80 }).then(function(r){ try{ console.log('[SK-v126] url prompt flushed', r); }catch(_e){} }); } catch(e) {}
-      try { if (typeof _syncAfterSavedMutation === 'function') _syncAfterSavedMutation(id, sv, { skipMapRefresh: false }); } catch(e) {}
+      try { if (typeof _syncAfterSavedMutation === 'function') _syncAfterSavedMutation(id, sv, { skipMapRefresh: false, skipPlWorkroomSync: true }); } catch(e) {}
       renderSaved();
       showToast(url ? '🔗 원본 링크 저장됨' : '원본 링크를 비웠습니다', 'ok');
     };
@@ -52597,7 +52629,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260511-workroom-v129-items-local-pending-guard';
+  var BUILD='20260511-workroom-v130-url-save-and-detail-lag-fix';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
