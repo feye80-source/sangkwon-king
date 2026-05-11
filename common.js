@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260511-workroom-v124-naverland-unsold-drag-fix';
+    window.__SK_BUILD = '20260511-workroom-v126-url-naver-unsold-verified-fix';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -17836,13 +17836,13 @@ window.wr2SummaryCancelEdit = function() {
                 : `<button onclick="event.stopPropagation();promptSavedOriginalUrl('${item.id}')" class="sc-btn sc-btn-detail" style="background:rgba(255,255,255,.05);color:var(--di);border-style:dashed;">🔗 원본없음</button>`)}
           <button onclick="event.stopPropagation();openPopupAndEdit('${itemIdJs}')" class="sc-btn" style="background:rgba(79,142,255,.12);color:#8ab8ff;border-color:rgba(79,142,255,.38);" title="상세 페이지에서 수정">✏️ 상세수정</button>
           ${src === '점포라인' ? `<a href="https://map.jumpoline.com/main" target="_blank" onclick="event.stopPropagation()" class="sc-btn sc-btn-map">🗺️ 지도</a>` : ''}
-          ${(src === '네이버부동산' || src === '네이버' || src === 'naver') && typeof window._skNaverLandUrl === 'function' && window._skNaverLandUrl(item) ? `<a href="${esc(window._skNaverLandUrl(item))}" target="_blank" onclick="event.stopPropagation()" class="sc-btn sc-btn-map" style="background:rgba(4,222,91,.12);color:#04de5b;border-color:rgba(4,222,91,.4);">🏠 부동산</a>` : ''}
+          ${(src === '네이버부동산' || src === '네이버' || src === 'naver') ? `<button type="button" onclick="event.stopPropagation();window.skOpenNaverLandForSaved && window.skOpenNaverLandForSaved('${itemIdJs}', event)" class="sc-btn sc-btn-map" style="background:rgba(4,222,91,.12);color:#04de5b;border-color:rgba(4,222,91,.4);">🏠 부동산</button>` : ''}
           ${_isAssaSource(src) ? `<a href="https://xn--v69ap5so3hsnb81e1wfh6z.com/map" target="_blank" onclick="event.stopPropagation()" class="sc-btn sc-btn-map">🗺️ 지도</a>` : ''}
           ${src === '부동산플래닛' ? `<button onclick="event.stopPropagation();(()=>{const _a=(item.data&&item.data.소재지)||d.소재지||'';if(_a){try{navigator.clipboard.writeText(_a);}catch(e){}const ta=document.createElement('textarea');ta.value=_a;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.focus();ta.select();try{document.execCommand('copy');}catch(e){}document.body.removeChild(ta);}window.open('https://www.bdsplanet.com/map/realprice_map.ytp','_blank');})()" class="sc-btn sc-btn-map" style="background:rgba(17,157,237,.12);color:#119ded;border-color:rgba(17,157,237,.4);" title="${esc(String((item.data && item.data.소재지) || d.소재지 || ''))}">🌍 플래닛</button>` : ''}
           ${(ia && d.소재지 && d.소재지.trim().length >= 3) ? `<a href="https://map.naver.com/v5/search/${encodeURIComponent(d.소재지.trim())}" target="_blank" onclick="event.stopPropagation()" class="sc-btn" style="background:rgba(4,222,91,.12);color:#04de5b;border-color:rgba(4,222,91,.4);">🗺️ 지도</a>` : ''}
-          ${(ia && d.소재지 && d.소재지.trim().length >= 3) ? `<a href="https://new.land.naver.com/offices?query=${encodeURIComponent(d.소재지.trim())}&a=SG:SMS:APTHGJ&e=RETAIL" target="_blank" onclick="event.stopPropagation()" class="sc-btn" style="background:rgba(4,222,91,.12);color:#04de5b;border-color:rgba(4,222,91,.4);">🏠 부동산</a>` : ''}
+          ${(ia && d.소재지 && d.소재지.trim().length >= 3) ? `<button type="button" onclick="event.stopPropagation();window.skOpenNaverLandForSaved && window.skOpenNaverLandForSaved('${itemIdJs}', event)" class="sc-btn" style="background:rgba(4,222,91,.12);color:#04de5b;border-color:rgba(4,222,91,.4);">🏠 부동산</button>` : ''}
           ${(!ia && !d.상세URL && d.소재지 && d.소재지.trim().length >= 3 && item.mode !== 'transaction' && src !== '디스코' && src !== '부동산플래닛') ? `<a href="https://map.naver.com/v5/search/${encodeURIComponent(d.소재지.trim())}" target="_blank" onclick="event.stopPropagation()" class="sc-btn" style="background:rgba(4,222,91,.12);color:#04de5b;border-color:rgba(4,222,91,.4);">🗺️ 지도</a>` : ''}
-          ${(!ia && !d.상세URL && d.소재지 && d.소재지.trim().length >= 3 && item.mode !== 'transaction' && src !== '디스코' && src !== '부동산플래닛') ? `<a href="https://new.land.naver.com/offices?query=${encodeURIComponent(d.소재지.trim())}&a=SG:SMS:APTHGJ&e=RETAIL" target="_blank" onclick="event.stopPropagation()" class="sc-btn" style="background:rgba(4,222,91,.12);color:#04de5b;border-color:rgba(4,222,91,.4);">🏠 부동산</a>` : ''}
+          ${(!ia && !d.상세URL && d.소재지 && d.소재지.trim().length >= 3 && item.mode !== 'transaction' && src !== '디스코' && src !== '부동산플래닛') ? `<button type="button" onclick="event.stopPropagation();window.skOpenNaverLandForSaved && window.skOpenNaverLandForSaved('${itemIdJs}', event)" class="sc-btn" style="background:rgba(4,222,91,.12);color:#04de5b;border-color:rgba(4,222,91,.4);">🏠 부동산</button>` : ''}
           ${_hasItemMapTarget(item) ? `<button onclick="event.stopPropagation();goToMapFromCard('${item.id}')" class="sc-btn sc-btn-mymap">📍 내 지도</button>` : ''}
           ${listBtnHtml}
           ${roomBtnHtml}
@@ -19968,7 +19968,7 @@ ${inputDesc.substring(0, 3000)}
         const _auctionDetailURL = (typeof window._skAuctionDetailUrl === 'function') ? window._skAuctionDetailUrl(item) : '';
         const _addrQ = (typeof window._skItemAddressForLink === 'function') ? window._skItemAddressForLink(item) : String(d.소재지 || d.address || item.address || item.title || '').trim();
         const _naverMapQ = (typeof window._skNaverMapUrl === 'function') ? window._skNaverMapUrl(item) : (_addrQ ? ('https://map.naver.com/v5/search/' + encodeURIComponent(_addrQ)) : '');
-        const _naverLandQ = (typeof window._skNaverLandUrl === 'function') ? window._skNaverLandUrl(item) : (_addrQ ? ('https://new.land.naver.com/offices?query=' + encodeURIComponent(_addrQ) + '&a=SG:SMS:APTHGJ&e=RETAIL') : '');
+        const _naverLandQ = (typeof window._skNaverLandUrl === 'function') ? window._skNaverLandUrl(item) : ''; // v125: query fallback 금지
         // 사이트 지도 URL
         const _siteMapURL = _isJumpo ? 'https://map.jumpoline.com/main'
           : _isAssa ? 'https://xn--v69ap5so3hsnb81e1wfh6z.com/map'
@@ -20000,7 +20000,7 @@ ${inputDesc.substring(0, 3000)}
           extBtns.push(`<a href="${esc(_siteMapURL)}" target="_blank" class="popup-src-btn" style="background:rgba(100,180,100,.12);color:#7ecf7e;border-color:rgba(100,180,100,.35);">🗺️ 출처지도</a>`);
         }
         if (_naverMapQ) extBtns.push(`<a href="${esc(_naverMapQ)}" target="_blank" class="popup-src-btn" style="${extBtnStyle}">🧭 네이버지도</a>`);
-        if (_naverLandQ) extBtns.push(`<a href="${esc(_naverLandQ)}" target="_blank" class="popup-src-btn" style="${extBtnStyle}">🏠 네이버부동산</a>`);
+        if (_naverLandQ || _addrQ) extBtns.push(`<button type="button" class="popup-src-btn" style="${extBtnStyle}" onclick="event.preventDefault();event.stopPropagation();window.skOpenNaverLandForSaved && window.skOpenNaverLandForSaved('${id}', event)">🏠 네이버부동산</button>`);
 
         if (_hasPos) appBtns.push(`<button class="popup-src-btn" style="background:rgba(255,209,102,.12);color:#ffd166;border-color:rgba(255,209,102,.4);" onclick="goToMapFromCard('${id}')">📍 내 지도</button>`);
         // ★ 경매 아이템: AI 분석 버튼 추가
@@ -20022,7 +20022,7 @@ ${inputDesc.substring(0, 3000)}
           wrap.id = 'popUrlInputWrap';
           wrap.style.cssText = 'display:none;margin-top:6px;display:none;';
           wrap.innerHTML = `<div style="display:flex;gap:6px;align-items:center;">
-        <input id="popUrlInput" type="text" placeholder="https://new.land.naver.com/..." 
+        <input id="popUrlInput" type="text" placeholder="옥션원/온비드 상세 URL" 
           style="flex:1;padding:6px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.2);border-radius:6px;color:#e0e6ff;font-size:11px;outline:none;"
           oninput="this.style.borderColor=this.value?'rgba(79,142,255,.6)':'rgba(255,255,255,.2)'"
           onkeydown="if(event.key==='Enter')savePopupUrl('${id}')">
@@ -20626,8 +20626,244 @@ ${inputDesc.substring(0, 3000)}
       const ll = window._skItemLatLngForLink(item);
       if (ll) return 'https://new.land.naver.com/offices?ms=' + ll.lat + ',' + ll.lng + ',17&a=SG:SMS:APTHGJ&e=RETAIL';
       const addr = window._skItemAddressForLink(item);
-      if (addr) return 'https://new.land.naver.com/offices?query=' + encodeURIComponent(addr) + '&a=SG:SMS:APTHGJ&e=RETAIL';
+      if (addr) return ''; // v125: query fallback 금지
       return '';
+    };
+
+    // v125: URL/네이버부동산 링크를 한 관문으로 강제한다.
+    // - 경매/공매 '상세'는 옥션원/온비드만
+    // - 네이버부동산은 query fallback 금지(이전 지역 복원 문제), articleNo 또는 좌표(ms)만 직접 사용
+    // - 주소만 있는 경우 클릭 시 카카오 지오코딩 후 ms 링크로 열고, 실패 시 네이버지도 검색으로 fallback
+    window._skAuctionDetailUrl = function(item) {
+      if (!item) return '';
+      const d = item.data || {};
+      if (typeof window._skIsAuctionPublicItem === 'function' && !window._skIsAuctionPublicItem(item, d)) return '';
+      const candidates = [
+        item._links && item._links.auctionDetail,
+        item._links && item._links.original,
+        d.옥션원URL, d.온비드URL, d.상세URL, d.원본URL, d.원본링크,
+        d.originalUrl, d.original_url, d.url, d.link,
+        item.url, item.originalUrl, item.original_url, item.link
+      ];
+      for (const v of candidates) {
+        const u = String(v || '').trim();
+        if (!u) continue;
+        // 네이버/지도 URL은 경공매 상세 링크로 쓰지 않는다.
+        if (/new\.land\.naver\.com|map\.naver\.com/i.test(u)) continue;
+        return u;
+      }
+      if (d.product_id || d._pid) {
+        return 'https://www.auction1.co.kr/auction/ca_view.php?product_id=' + encodeURIComponent(d.product_id || d._pid);
+      }
+      return '';
+    };
+    window._skApplyAuctionDetailUrl = function(item, url) {
+      if (!item) return false;
+      const d = item.data || (item.data = {});
+      const next = String(url || '').trim();
+      item._links = item._links && typeof item._links === 'object' ? item._links : {};
+      const stamp = Date.now();
+      if (next) {
+        // 표준 필드 + 레거시 필드를 동시에 같은 값으로 맞춘다.
+        item._links.auctionDetail = next;
+        item._links.original = next;
+        item._links.updatedAt = stamp;
+        item._links.userEdited = true;
+        d.상세URL = next;
+        d.원본URL = next;
+        d.원본링크 = next;
+        d.originalUrl = next;
+        d.original_url = next;
+        d.url = next;
+        d.link = next;
+        item.url = next;
+        item.originalUrl = next;
+        item.link = next;
+        if (/onbid\.co\.kr/i.test(next) || /온비드|공매/i.test(String(item.source || d.출처 || ''))) {
+          d.온비드URL = next;
+          d.옥션원URL = '';
+        } else {
+          d.옥션원URL = next;
+          d.온비드URL = /auction1\.co\.kr/i.test(next) ? '' : (d.온비드URL || '');
+        }
+      } else {
+        ['상세URL','원본URL','원본링크','originalUrl','original_url','url','link','옥션원URL','온비드URL'].forEach(function(k){ d[k] = ''; });
+        item.url = '';
+        item.originalUrl = '';
+        item.link = '';
+        item._links.auctionDetail = '';
+        item._links.original = '';
+        item._links.updatedAt = stamp;
+        item._links.userEdited = true;
+      }
+      item.updatedAt = stamp;
+      item._skUrlEditedAt = stamp;
+      item._skLocalEditedAt = stamp;
+      try { d._skUrlEditedAt = stamp; d._skLocalEditedAt = stamp; } catch(e) {}
+      return true;
+    };
+    window._skSavedItemDetailUrl = function(item) { return window._skAuctionDetailUrl(item); };
+    window._skApplySavedItemDetailUrl = function(item, url) { return window._skApplyAuctionDetailUrl(item, url); };
+    window._skNaverLandUrl = function(item) {
+      const d = (item && item.data) || {};
+      const articleNo = String(d.매물번호 || d.articleNo || d.atclNo || '').trim();
+      if (articleNo) return 'https://new.land.naver.com/offices?articleNo=' + encodeURIComponent(articleNo);
+      const ll = (typeof window._skItemLatLngForLink === 'function') ? window._skItemLatLngForLink(item) : null;
+      if (ll) return 'https://new.land.naver.com/offices?ms=' + ll.lat + ',' + ll.lng + ',17&a=SG:SMS:APTHGJ&e=RETAIL';
+      // 주소 query fallback은 네이버부동산 SPA가 이전 지역을 복원하는 원인이므로 반환하지 않는다.
+      return '';
+    };
+    window._skPushSavedRowNow = function(item, reason) {
+      if (!item || !item.id) return { ok:false, reason:'no-item' };
+      try {
+        if (typeof window.skCloudQueuePushTable === 'function') {
+          return window.skCloudQueuePushTable('items', [item], reason || 'saved-row-update');
+        }
+        if (typeof window.skCloudPushTable === 'function') {
+          window.skCloudPushTable('items', [item]).catch(function(e){ console.warn('[saved row push]', e); });
+          return { ok:true, queued:1, table:'items', reason:reason || 'saved-row-update' };
+        }
+      } catch(e) { console.warn('[saved row push]', e); }
+      return { ok:false, reason:'push-missing' };
+    };
+    window._skPropagateAuctionDetailUrlToLocalCopies = function(savedItem, url) {
+      try {
+        if (!savedItem || !savedItem.id) return {pl:0, rooms:0};
+        const sid = String(savedItem.id || '');
+        const nextUrl = String(url || '').trim();
+        const stamp = Date.now();
+        var changedPlRows = [];
+        var changedRooms = [];
+        // 물건리스트(pl_items) 안의 복사본도 같은 URL로 맞춘다.
+        if (typeof window.plLoad === 'function' && typeof window.plSave === 'function') {
+          const arr = window.plLoad() || [];
+          let changed = false;
+          const out = arr.map(function(it){
+            if (!it) return it;
+            const d = it.data || {};
+            const linked = String(it.linkedSavedId || it.savedId || it.sourceSavedId || d.linkedSavedId || d.savedId || d.sourceSavedId || '') === sid;
+            const sameId = String(it.id || '') === sid;
+            const caseSame = (savedItem.data && d) && String(savedItem.data.경매번호 || savedItem.data.사건번호 || '').replace(/\s+/g,'') &&
+              String(savedItem.data.경매번호 || savedItem.data.사건번호 || '').replace(/\s+/g,'') === String(d.경매번호 || d.사건번호 || '').replace(/\s+/g,'');
+            if (!linked && !sameId && !caseSame) return it;
+            const cp = Object.assign({}, it, { data:Object.assign({}, d), updatedAt:stamp, _skUrlEditedAt:stamp, _skLocalEditedAt:stamp });
+            window._skApplyAuctionDetailUrl(cp, nextUrl);
+            changed = true;
+            const norm = (typeof window.plNormalizeItem === 'function') ? window.plNormalizeItem(cp) : cp;
+            changedPlRows.push(norm);
+            return norm;
+          });
+          if (changed) {
+            window.plSave(out);
+            try { if (typeof window.skCloudQueuePushTable === 'function') window.skCloudQueuePushTable('pl_items', changedPlRows, 'url-save-pl-copy'); } catch(e) {}
+          }
+        }
+        // 작업룸 안에 저장목록/물건리스트 복사본이 남아 있으면 그 복사본도 같은 URL로 맞춘다.
+        var rooms = [];
+        try {
+          if (window.wr2State && Array.isArray(window.wr2State.rooms)) rooms = window.wr2State.rooms;
+          else if (typeof window.wrGetRooms === 'function') rooms = window.wrGetRooms() || [];
+          else if (window._idbCache && Array.isArray(window._idbCache.wr2_rooms)) rooms = window._idbCache.wr2_rooms;
+        } catch(e) { rooms = []; }
+        if (Array.isArray(rooms) && rooms.length) {
+          rooms.forEach(function(room){
+            if(!room) return;
+            var touched=false;
+            function patchObj(obj){
+              if(!obj || typeof obj!=='object') return;
+              var d=obj.data || {};
+              var idOk=[obj.id,obj.savedId,obj.linkedSavedId,obj.sourceSavedId,obj.itemId,d.id,d.savedId,d.linkedSavedId,d.sourceSavedId].some(function(v){ return String(v||'')===sid; });
+              var caseOk=false;
+              try {
+                var a=String((savedItem.data||{}).경매번호 || (savedItem.data||{}).사건번호 || '').replace(/\s+/g,'');
+                var b=String(d.경매번호 || d.사건번호 || obj.caseNo || '').replace(/\s+/g,'');
+                caseOk=!!(a && b && a===b);
+              } catch(e) {}
+              if(!idOk && !caseOk) return;
+              obj.data = Object.assign({}, d);
+              window._skApplyAuctionDetailUrl(obj, nextUrl);
+              obj.updatedAt = stamp;
+              obj._skUrlEditedAt = stamp;
+              obj._skLocalEditedAt = stamp;
+              touched=true;
+            }
+            patchObj(room.sourceItem); patchObj(room.savedItem); patchObj(room.item); patchObj(room.auctionItem); patchObj(room.summaryItem);
+            if(Array.isArray(room.linkedItems)) room.linkedItems.forEach(patchObj);
+            if(touched){ room.updatedAt=stamp; room._skUrlEditedAt=stamp; room._skLocalEditedAt=stamp; changedRooms.push(room); }
+          });
+          if(changedRooms.length){
+            try { if (typeof saveRooms === 'function') saveRooms(); } catch(e) {}
+            try { if (typeof window.skCloudQueuePushTable === 'function') window.skCloudQueuePushTable('workrooms', changedRooms, 'url-save-room-copy'); } catch(e) {}
+          }
+        }
+        return {pl:changedPlRows.length, rooms:changedRooms.length};
+      } catch(e) { console.warn('[url propagate copies]', e); return {pl:0, rooms:0, error:String(e&&e.message||e)}; }
+    };
+    window._skGeocodeAddressForNaverLand = function(addr) {
+      const q = String(addr || '').trim();
+      if (!q) return Promise.resolve(null);
+      return new Promise(function(resolve){
+        try {
+          if (!(window.kakao && window.kakao.maps && window.kakao.maps.services && window.kakao.maps.services.Geocoder)) return resolve(null);
+          const gc = new window.kakao.maps.services.Geocoder();
+          gc.addressSearch(q, function(result, status){
+            try {
+              if (status === window.kakao.maps.services.Status.OK && result && result[0]) {
+                const lat = Number(result[0].y);
+                const lng = Number(result[0].x);
+                if (Number.isFinite(lat) && Number.isFinite(lng)) return resolve({ lat:lat, lng:lng });
+              }
+            } catch(e) {}
+            resolve(null);
+          });
+        } catch(e) { resolve(null); }
+      });
+    };
+    window.skOpenNaverLandForSaved = async function(id, ev) {
+      try { if (ev) { ev.preventDefault(); ev.stopPropagation(); } } catch(e) {}
+      const sid = String(id || (window.popupId || '') || '').trim();
+      let item = null;
+      try { item = (typeof getSv === 'function' ? (getSv() || []) : []).find(function(s){ return String(s && s.id || '') === sid; }) || null; } catch(e) {}
+      if (!item && typeof window.plLoad === 'function') {
+        try { item = (window.plLoad() || []).find(function(s){ return String(s && s.id || '') === sid || String(s && s.linkedSavedId || '') === sid; }) || null; } catch(e) {}
+      }
+      if (!item) {
+        if (typeof showToast === 'function') showToast('네이버부동산으로 열 물건을 찾지 못했습니다.', 'warn');
+        return false;
+      }
+      const addr = (typeof window._skItemAddressForLink === 'function') ? window._skItemAddressForLink(item) : String((item.data && (item.data.소재지 || item.data.주소)) || item.address || '').trim();
+      const isAuctionPublic = (typeof window._skIsAuctionPublicItem === 'function') ? window._skIsAuctionPublicItem(item, item.data || {}) : false;
+      // 경공매는 네이버 매물번호가 없고, 저장 좌표가 예전 물건에서 섞여 들어온 사례가 있었다.
+      // 주소가 있으면 좌표 필드보다 주소 지오코딩을 우선해 현재 물건 위치로 연다.
+      let url = '';
+      if (!isAuctionPublic) url = (typeof window._skNaverLandUrl === 'function') ? window._skNaverLandUrl(item) : '';
+      if (url) { window.open(url, '_blank'); return true; }
+      const ll = await window._skGeocodeAddressForNaverLand(addr);
+      if (ll) {
+        try {
+          item.data = item.data || {};
+          item.data.lat = ll.lat; item.data.lng = ll.lng;
+          item.lat = ll.lat; item.lng = ll.lng;
+          item.updatedAt = Date.now();
+          const sv = (typeof getSv === 'function') ? getSv() : [];
+          if (Array.isArray(sv) && sv.some(function(x){ return String(x && x.id || '') === String(item.id || ''); })) {
+            if (typeof setSv === 'function') setSv(sv);
+            window._skPushSavedRowNow(item, 'naver-land-geocode');
+          }
+        } catch(e) {}
+        url = 'https://new.land.naver.com/offices?ms=' + ll.lat + ',' + ll.lng + ',17&a=SG:SMS:APTHGJ&e=RETAIL';
+        window.open(url, '_blank');
+        return true;
+      }
+      // 좌표화 실패 시 잘못된 이전지역 네이버부동산을 열지 않는다. 주소는 복사하고 네이버지도 검색으로 보낸다.
+      try { if (addr && navigator.clipboard) await navigator.clipboard.writeText(addr); } catch(e) {}
+      if (addr) {
+        if (typeof showToast === 'function') showToast('좌표를 찾지 못해 주소를 복사하고 네이버지도 검색으로 엽니다.', 'warn');
+        window.open('https://map.naver.com/v5/search/' + encodeURIComponent(addr), '_blank');
+      } else if (typeof showToast === 'function') {
+        showToast('주소/좌표가 없어 네이버부동산 위치를 열 수 없습니다.', 'warn');
+      }
+      return false;
     };
     function _skFindSavedItemById(id) {
       const sid = String(id || '');
@@ -20695,6 +20931,9 @@ ${inputDesc.substring(0, 3000)}
       else window._skApplySavedItemDetailUrl(item, url);
       try { if (typeof _ensureNormalizedItem === 'function') _ensureNormalizedItem(item); } catch(e) {}
       setSv(sv);
+      try { if (typeof window._skPropagateAuctionDetailUrlToLocalCopies === 'function') window._skPropagateAuctionDetailUrlToLocalCopies(item, url); } catch(e) { console.warn('[url propagate]', e); }
+      try { if (typeof window._skPushSavedRowNow === 'function') window._skPushSavedRowNow(item, 'url-save'); } catch(e) { console.warn('[url cloud queue]', e); }
+      try { if (typeof window.skCloudFlushPendingSafe === 'function') window.skCloudFlushPendingSafe({ maxRows:80 }).then(function(r){ try{ console.log('[SK-v126] url save flushed', r); }catch(_e){} }); } catch(e) { console.warn('[url flush]', e); }
       try { if (typeof _syncAfterSavedMutation === 'function') _syncAfterSavedMutation(sid, sv, { skipMapRefresh: false }); } catch(e) { console.warn('[url save sync]', e); }
       try { if (typeof renderSaved === 'function') renderSaved(); } catch(e) {}
       try { if (typeof refreshMapCardData === 'function') refreshMapCardData(sid); } catch(e) {}
@@ -20732,6 +20971,9 @@ ${inputDesc.substring(0, 3000)}
       else if (typeof window._skApplySavedItemDetailUrl === 'function') window._skApplySavedItemDetailUrl(item, url);
       else { item.data = item.data || {}; item.data.상세URL = url; item.url = url; }
       setSv(sv);
+      try { if (typeof window._skPropagateAuctionDetailUrlToLocalCopies === 'function') window._skPropagateAuctionDetailUrlToLocalCopies(item, url); } catch(e) {}
+      try { if (typeof window._skPushSavedRowNow === 'function') window._skPushSavedRowNow(item, 'url-prompt-save'); } catch(e) {}
+      try { if (typeof window.skCloudFlushPendingSafe === 'function') window.skCloudFlushPendingSafe({ maxRows:80 }).then(function(r){ try{ console.log('[SK-v126] url prompt flushed', r); }catch(_e){} }); } catch(e) {}
       try { if (typeof _syncAfterSavedMutation === 'function') _syncAfterSavedMutation(id, sv, { skipMapRefresh: false }); } catch(e) {}
       renderSaved();
       showToast(url ? '🔗 원본 링크 저장됨' : '원본 링크를 비웠습니다', 'ok');
@@ -21902,8 +22144,8 @@ ${fi(d.기타사항, '기타사항', 'text', idx, '기타사항', isPopup)}
       const naverMapBtn = (typeof window._skNaverMapUrl === 'function' && window._skNaverMapUrl(item))
         ? `<a href="${esc(window._skNaverMapUrl(item))}" target="_blank" style="font-size:10px;padding:2px 8px;background:rgba(56,189,248,.12);color:#a5d8ff;border:1px solid rgba(125,211,252,.4);border-radius:5px;text-decoration:none;font-weight:600;">🧭 네이버지도</a>`
         : '';
-      const naverLandBtn = (typeof window._skNaverLandUrl === 'function' && window._skNaverLandUrl(item))
-        ? `<a href="${esc(window._skNaverLandUrl(item))}" target="_blank" style="font-size:10px;padding:2px 8px;background:rgba(4,222,91,.12);color:#04de5b;border:1px solid rgba(4,222,91,.4);border-radius:5px;text-decoration:none;font-weight:600;">🏠 네이버부동산</a>`
+      const naverLandBtn = (typeof window.skOpenNaverLandForSaved === 'function')
+        ? `<button type="button" onclick="event.preventDefault();event.stopPropagation();window.skOpenNaverLandForSaved && window.skOpenNaverLandForSaved('${popupId || item.id}', event)" style="font-size:10px;padding:2px 8px;background:rgba(4,222,91,.12);color:#04de5b;border:1px solid rgba(4,222,91,.4);border-radius:5px;text-decoration:none;font-weight:600;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">🏠 네이버부동산</button>`
         : '';
       const mapBtn = isPopup && popupId
         ? `<button onclick="goToMapFromCard('${popupId}')" style="font-size:10px;padding:2px 8px;background:rgba(255,209,102,.12);color:#ffd166;border:1px solid rgba(255,209,102,.4);border-radius:5px;cursor:pointer;font-weight:600;font-family:'Noto Sans KR',sans-serif;">📍 내 지도</button>`
@@ -51034,7 +51276,8 @@ window.addEventListener('DOMContentLoaded', () => {
     return isNaN(r) ? 0 : r;
   }
   function _skCurrentBidDate(item){
-    return item.biddate || item.saleDate || item.매각기일 || '';
+    var d = (item && item.data) || {};
+    return (item && (item.biddate || item.bidDate || item.saleDate || item.매각기일)) || d['매각기일'] || d['매각일'] || d['입찰기일'] || d['경매일'] || '';
   }
   function _skCloseUnsoldModal(){
     var modal = document.getElementById('skUnsoldOnlyModal');
@@ -51098,60 +51341,105 @@ window.addEventListener('DOMContentLoaded', () => {
     var n = Number(raw.replace(/[^\d]/g, '') || 0);
     return Number.isFinite(n) ? n : 0;
   }
+  function _skFailCountFromNextRound(round){
+    var n=parseInt(String(round||''),10);
+    if(!Number.isFinite(n) || n<1) return 0;
+    return Math.max(0, n-1);
+  }
+  function _skTouchAuctionScheduleObject(obj, fields){
+    if(!obj || typeof obj!=='object') return false;
+    fields=fields||{};
+    var date=String(fields.date||'').trim();
+    var round=String(fields.round||'').trim();
+    var fail=(fields.failCount!=null) ? String(fields.failCount) : (round ? String(_skFailCountFromNextRound(round)) : '');
+    var priceNum=Number(fields.priceWon||0)||0;
+    var stamp=Number(fields.stamp||Date.now())||Date.now();
+    var d=Object.assign({}, obj.data||{});
+    if(round){ d['회차']=round; obj.round=round; }
+    if(fail!=='' && fail!=null){ d['유찰횟수']=fail; obj.failCount=fail; }
+    if(date){ d['매각기일']=date; d['매각일']=date; d['입찰기일']=date; obj.biddate=date; obj.bidDate=date; obj.saleDate=date; obj.매각기일=date; obj.매각일=date; }
+    if(priceNum>0){ d['최저가']=priceNum; d['최저가_원']=priceNum; d['최저가_만원']=Math.round(priceNum/10000); obj.minprice=String(priceNum); obj.최저가=priceNum; }
+    d._skUnsoldEditedAt=stamp; d._skLocalEditedAt=stamp;
+    obj.data=d; obj.updatedAt=stamp; obj._skUnsoldEditedAt=stamp; obj._skLocalEditedAt=stamp;
+    try{ obj._norm=Object.assign({}, obj._norm||{}); if(date) obj._norm.매각기일=date; if(priceNum>0) obj._norm.최저가_만원=Math.round(priceNum/10000); if(fail!=='') obj._norm.유찰횟수=Number(fail)||0; }catch(e){}
+    return true;
+  }
   function _skPatchSavedAuctionSource(target, fields){
-    // 작업룸 연결 카드/합산 기준은 저장목록(re_sv)의 원본 물건을 읽는다.
-    // 따라서 유찰 처리 시 pl_items만 고치면 화면에는 바로 반영되지 않을 수 있다.
-    // 여기서는 같은 원본(saved item)을 찾아 매각기일/최저가/회차를 함께 갱신한다.
+    // v125: 유찰/기일수정은 저장목록 원본(re_sv)까지 반드시 같은 row로 갱신해야 한다.
+    // 기존에는 linkedSavedId가 비어 있으면 re_sv를 못 찾아서, 다음 pull 때 예전 기일/금액이 다시 살아났다.
     try {
+      window.__skLastUnsoldSavedRows = [];
       if (!target || typeof getSv !== 'function' || typeof setSv !== 'function') return null;
-      var savedId = String((fields && fields.savedId) || target.linkedSavedId || target.savedId || target.sourceSavedId || '').trim();
+      fields = fields || {};
+      var room = fields.room || null;
       var targetId = String(target.id || '').trim();
+      var td = target.data || {};
+      var ids = new Set();
+      [
+        fields.savedId,
+        target.linkedSavedId, target.savedId, target.sourceSavedId, target.savedItemId,
+        td.linkedSavedId, td.savedId, td.sourceSavedId,
+        room && room.linkedSavedId, room && room.savedId, room && room.sourceSavedId
+      ].forEach(function(v){ v=String(v||'').trim(); if(v) ids.add(v); });
+      try {
+        if (room && Array.isArray(room.linkedItems)) {
+          room.linkedItems.forEach(function(v){
+            if (typeof v === 'string' || typeof v === 'number') { v=String(v||'').trim(); if(v) ids.add(v); }
+            else if (v && typeof v === 'object') {
+              [v.savedId, v.linkedSavedId, v.itemId, v.id].forEach(function(x){ x=String(x||'').trim(); if(x) ids.add(x); });
+            }
+          });
+        }
+      } catch(e) {}
+
       var arr = getSv() || [];
       if (!Array.isArray(arr) || !arr.length) return null;
-      var idx = -1;
-      if (savedId) idx = arr.findIndex(function(it){ return String(it && it.id || '') === savedId; });
-      if (idx < 0 && targetId) idx = arr.findIndex(function(it){ return String(it && it.id || '') === targetId; });
-      if (idx < 0 && targetId) idx = arr.findIndex(function(it){ return String(it && it.linkedPlItemId || '') === targetId || String(it && it.plItemId || '') === targetId; });
-      if (idx < 0) return null;
+      var targetCase = String(td['경매번호'] || td['사건번호'] || target.caseNo || '').replace(/\s+/g,'').trim();
+      var targetObj  = String(td['물건번호'] || td['objectNo'] || target.objectNo || '').replace(/\s+/g,'').trim();
+      var targetPid  = String(td.product_id || td._pid || target.product_id || '').trim();
+      var targetAddr = String(td['소재지'] || td['주소'] || target.address || '').replace(/\s+/g,'').trim();
 
-      var prev = arr[idx] || {};
-      var next = Object.assign({}, prev);
-      var d = Object.assign({}, next.data || {});
+      function rowMatches(it){
+        if (!it || !it.id) return false;
+        var id = String(it.id || '').trim();
+        var d = it.data || {};
+        if (ids.has(id)) return true;
+        if (targetId && [it.linkedPlItemId, it.plItemId, it.targetItemId, d.linkedPlItemId, d.plItemId].map(function(x){return String(x||'').trim();}).includes(targetId)) return true;
+        var pid = String(d.product_id || d._pid || it.product_id || '').trim();
+        if (targetPid && pid && targetPid === pid) return true;
+        var c = String(d['경매번호'] || d['사건번호'] || it.caseNo || '').replace(/\s+/g,'').trim();
+        var o = String(d['물건번호'] || d['objectNo'] || it.objectNo || '').replace(/\s+/g,'').trim();
+        if (targetCase && c && targetCase === c) {
+          if (targetObj && o) return targetObj === o;
+          var a = String(d['소재지'] || d['주소'] || it.address || '').replace(/\s+/g,'').trim();
+          if (targetAddr && a) return targetAddr === a;
+          return true;
+        }
+        return false;
+      }
+
+      var matchIdx = [];
+      arr.forEach(function(it, i){ if (rowMatches(it)) matchIdx.push(i); });
+      if (!matchIdx.length) return null;
+
       var round = String((fields && fields.round) || '').trim();
       var date = String((fields && fields.date) || '').trim();
       var priceNum = Number((fields && fields.priceWon) || 0) || 0;
-      if (round) {
-        d['회차'] = round;
-        d['유찰횟수'] = round;
-        next.round = round;
-      }
-      if (date) {
-        d['매각기일'] = date;
-        d['매각일'] = date;
-        d['입찰기일'] = date;
-        next.biddate = date;
-        next.bidDate = date;
-        next.saleDate = date;
-      }
-      if (priceNum > 0) {
-        d['최저가'] = priceNum;
-        d['최저가_원'] = priceNum;
-        d['최저가_만원'] = Math.round(priceNum / 10000);
-        next.minprice = String(priceNum);
-      }
-      next.data = d;
-      next.updatedAt = Date.now();
-      try {
-        next._norm = Object.assign({}, next._norm || {});
-        if (priceNum > 0) next._norm.최저가_만원 = Math.round(priceNum / 10000);
-        if (round) next._norm.유찰횟수 = Number(round) || round;
-        if (date) next._norm.매각기일 = date;
-      } catch(_e) {}
-      try { if (typeof _ensureNormalizedItem === 'function') _ensureNormalizedItem(next); } catch(_e2) {}
-      arr[idx] = next;
+      var stamp = Date.now();
+      var updatedRows = [];
+      matchIdx.forEach(function(idx){
+        var prev = arr[idx] || {};
+        var next = Object.assign({}, prev, { data:Object.assign({}, prev.data || {}) });
+        _skTouchAuctionScheduleObject(next, { round:round, failCount:_skFailCountFromNextRound(round), date:date, priceWon:priceNum, stamp:stamp });
+        try { if (typeof _ensureNormalizedItem === 'function') _ensureNormalizedItem(next); } catch(_e2) {}
+        arr[idx] = next;
+        updatedRows.push(next);
+      });
       setSv(arr);
+      window.__skLastUnsoldSavedRows = updatedRows;
       try { if (typeof window._plSyncFromSavedItems === 'function') window._plSyncFromSavedItems(arr, { render:false }); } catch(_e3) {}
-      return next;
+      try { console.log('[SK-v125] unsold saved rows patched', updatedRows.map(function(x){ return {id:x.id,biddate:x.biddate || (x.data&&x.data.매각기일),minprice:x.minprice || (x.data&&x.data.최저가),updatedAt:x.updatedAt}; })); } catch(e) {}
+      return updatedRows[0] || null;
     } catch (e) {
       console.warn('[unsold saved patch]', e);
       return null;
@@ -51222,7 +51510,19 @@ window.addEventListener('DOMContentLoaded', () => {
       var failed = results.filter(function(r){ return r && r.status === 'rejected'; });
       if (failed.length) console.warn('[sync] write failed', failed);
       return results;
+    }).then(function(results){
+      if (typeof window.skCloudFlushPendingSafe === 'function') {
+        return window.skCloudFlushPendingSafe({ maxRows:120 }).then(function(flush){
+          try { console.log('[SK-v126] unsold pending flushed', flush); } catch(e) {}
+          return { queued:results, flush:flush };
+        }).catch(function(e){
+          console.warn('[sync] pending flush failed; queued rows kept', e);
+          return { queued:results, flush:{ok:false,error:String(e&&e.message||e)} };
+        });
+      }
+      return { queued:results, flush:{ok:true,skipped:true,reason:'flush-missing'} };
     });
+    window.__skLastUnsoldSyncPromise = afterWrite;
     if (options.pull !== true) return afterWrite;
     return afterWrite.then(function(){
       var pulls = [];
@@ -51278,12 +51578,29 @@ window.addEventListener('DOMContentLoaded', () => {
         var byTarget = items.find(function(it){ return String(it && it.id || '') === tid; });
         if (byTarget) return byTarget;
       }
-      var linkedItems = Array.isArray(room.linkedItems)
-        ? room.linkedItems.map(function(v){ return String(v || '').trim(); }).filter(Boolean)
-        : [];
+      var linkedItems = [];
+      if (Array.isArray(room.linkedItems)) {
+        room.linkedItems.forEach(function(v){
+          if (v == null) return;
+          if (typeof v === 'string' || typeof v === 'number') { var s=String(v||'').trim(); if(s) linkedItems.push(s); return; }
+          if (typeof v === 'object') {
+            [v.id, v.itemId, v.plItemId, v.linkedPlItemId, v.savedId, v.linkedSavedId, v.sourceSavedId].forEach(function(x){ var s=String(x||'').trim(); if(s) linkedItems.push(s); });
+          }
+        });
+      }
       for (var i = 0; i < linkedItems.length; i += 1) {
-        var byLinked = items.find(function(it){ return String(it && it.id || '') === linkedItems[i]; });
+        var key = linkedItems[i];
+        var byLinked = items.find(function(it){
+          var d=(it&&it.data)||{};
+          return String(it && it.id || '') === key
+            || String(it && (it.linkedSavedId || it.savedId || it.sourceSavedId) || '') === key
+            || String(d.linkedSavedId || d.savedId || d.sourceSavedId || '') === key;
+        });
         if (byLinked) return byLinked;
+      }
+      if (room.linkedSavedId) {
+        var bySaved = items.find(function(it){ var d=(it&&it.data)||{}; return String(it && (it.linkedSavedId || it.savedId || it.sourceSavedId) || d.linkedSavedId || d.savedId || d.sourceSavedId || '') === String(room.linkedSavedId); });
+        if (bySaved) return bySaved;
       }
       var roomId = String(room.id || '');
       var matched = items.filter(function(it){ return String(it && it.roomId || '') === roomId; });
@@ -51298,12 +51615,23 @@ window.addEventListener('DOMContentLoaded', () => {
   function _skTouchUnsoldRoomLink(room, item){
     if (!room || !item || !item.id) return;
     room.targetItemId = String(item.id || '');
-    room.linkedItems = Array.isArray(room.linkedItems)
-      ? room.linkedItems.map(function(v){ return String(v || '').trim(); }).filter(Boolean)
-      : [];
-    if (!room.linkedItems.includes(String(item.id))) room.linkedItems.push(String(item.id));
+    var hasItem=false;
+    room.linkedItems = Array.isArray(room.linkedItems) ? room.linkedItems.filter(function(v){
+      if(v == null) return false;
+      if(typeof v === 'object'){
+        var ids=[v.id, v.itemId, v.plItemId, v.linkedPlItemId].map(function(x){ return String(x||'').trim(); }).filter(Boolean);
+        if(ids.indexOf(String(item.id||''))>=0) hasItem=true;
+        return true;
+      }
+      var s=String(v||'').trim();
+      if(s===String(item.id||'')) hasItem=true;
+      return !!s;
+    }) : [];
+    if (!hasItem) room.linkedItems.push(String(item.id));
     if (item.linkedSavedId) room.linkedSavedId = String(item.linkedSavedId || '');
     room.updatedAt = Date.now();
+    room._skUnsoldEditedAt = room.updatedAt;
+    room._skLocalEditedAt = room.updatedAt;
     try { if (typeof saveRooms === 'function') saveRooms(); } catch(e) {}
   }
   function _skResolveUnsoldWorkroomTarget(ctx){
@@ -51403,7 +51731,7 @@ window.addEventListener('DOMContentLoaded', () => {
     var priceNum = _skParseUnsoldMoney(nextPrice);
     var nextData = Object.assign({}, target.data || {});
     nextData['회차'] = String(nextRound);
-    nextData['유찰횟수'] = String(nextRound);
+    nextData['유찰횟수'] = String(_skFailCountFromNextRound(nextRound));
     nextData['매각기일'] = String(nextDate || '').trim();
     nextData['매각일'] = String(nextDate || '').trim();
     nextData['입찰기일'] = String(nextDate || '').trim();
@@ -51439,7 +51767,7 @@ window.addEventListener('DOMContentLoaded', () => {
       appliedItem = items[idx];
     }
     if (!appliedItem || !appliedItem.id) return { ok:false, reason:'apply_failed', room: room, item: null };
-    var appliedSaved = _skPatchSavedAuctionSource(appliedItem, { savedId: room && room.linkedSavedId, round:String(nextRound), date:String(nextDate || '').trim(), priceWon:priceNum });
+    var appliedSaved = _skPatchSavedAuctionSource(appliedItem, { room: room, savedId: room && room.linkedSavedId, round:String(nextRound), date:String(nextDate || '').trim(), priceWon:priceNum });
     try { if (targetId && typeof window.plSetSimpleStatus === 'function') {
       var prevForce = window.__plForceDirectSet;
       window.__plForceDirectSet = true;
@@ -51448,6 +51776,8 @@ window.addEventListener('DOMContentLoaded', () => {
     if (room) {
       try {
         room._summaryOverride = {};
+        _skTouchAuctionScheduleObject(room, { round:String(nextRound), failCount:_skFailCountFromNextRound(nextRound), date:String(nextDate || '').trim(), priceWon:priceNum, stamp:Date.now() });
+        if (Array.isArray(room.linkedItems)) room.linkedItems.forEach(function(x){ _skTouchAuctionScheduleObject(x, { round:String(nextRound), failCount:_skFailCountFromNextRound(nextRound), date:String(nextDate || '').trim(), priceWon:priceNum, stamp:room.updatedAt }); });
         room.biddate = String(nextDate || '').trim();
         room.round = String(nextRound);
         room.minprice = priceNum ? String(priceNum) : String(nextPrice || '').trim();
@@ -51489,7 +51819,7 @@ window.addEventListener('DOMContentLoaded', () => {
       rows:{
         pl_items: appliedItem ? [appliedItem] : [],
         workrooms: room ? [room] : [],
-        items: appliedSaved ? [appliedSaved] : []
+        items: (window.__skLastUnsoldSavedRows && window.__skLastUnsoldSavedRows.length) ? window.__skLastUnsoldSavedRows : (appliedSaved ? [appliedSaved] : [])
       }
     });
     return { ok:true, room: room, item: appliedItem, saved: appliedSaved || null };
@@ -51507,7 +51837,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
     var nextData = Object.assign({}, target.data || {});
     nextData['회차'] = String(keepRound);
-    nextData['유찰횟수'] = String(keepRound);
+    nextData['유찰횟수'] = String((target.data && target.data['유찰횟수'] != null) ? target.data['유찰횟수'] : _skFailCountFromNextRound(keepRound));
     nextData['매각기일'] = String(nextDate || '').trim();
     nextData['매각일'] = String(nextDate || '').trim();
     nextData['입찰기일'] = String(nextDate || '').trim();
@@ -51527,10 +51857,12 @@ window.addEventListener('DOMContentLoaded', () => {
     var appliedItem = null;
     if (typeof window.plUpdateItem === 'function') appliedItem = window.plUpdateItem(targetId, patch);
     if (!appliedItem) return { ok:false, reason:'apply_failed', room: room, item: null };
-    var appliedSaved = _skPatchSavedAuctionSource(appliedItem, { savedId: room && room.linkedSavedId, round:String(keepRound), date:String(nextDate || '').trim(), priceWon:priceNum });
+    var appliedSaved = _skPatchSavedAuctionSource(appliedItem, { room: room, savedId: room && room.linkedSavedId, round:String(keepRound), date:String(nextDate || '').trim(), priceWon:priceNum });
 
     if (room) {
       try {
+        _skTouchAuctionScheduleObject(room, { round:String(keepRound), failCount:(target.data && target.data['유찰횟수'] != null) ? target.data['유찰횟수'] : _skFailCountFromNextRound(keepRound), date:String(nextDate || '').trim(), priceWon:priceNum, stamp:Date.now() });
+        if (Array.isArray(room.linkedItems)) room.linkedItems.forEach(function(x){ _skTouchAuctionScheduleObject(x, { round:String(keepRound), failCount:(target.data && target.data['유찰횟수'] != null) ? target.data['유찰횟수'] : _skFailCountFromNextRound(keepRound), date:String(nextDate || '').trim(), priceWon:priceNum, stamp:room.updatedAt }); });
         room.biddate = String(nextDate || '').trim();
         room.minprice = patch.minprice;
         room.round = String(keepRound);
@@ -51561,7 +51893,7 @@ window.addEventListener('DOMContentLoaded', () => {
       rows:{
         pl_items: appliedItem ? [appliedItem] : [],
         workrooms: room ? [room] : [],
-        items: appliedSaved ? [appliedSaved] : []
+        items: (window.__skLastUnsoldSavedRows && window.__skLastUnsoldSavedRows.length) ? window.__skLastUnsoldSavedRows : (appliedSaved ? [appliedSaved] : [])
       }
     });
     return { ok:true, room: room, item: appliedItem, saved: appliedSaved || null };
@@ -52158,7 +52490,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260511-workroom-v124-naverland-unsold-drag-fix';
+  var BUILD='20260511-workroom-v126-url-naver-unsold-verified-fix';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
@@ -52180,8 +52512,8 @@ window.addEventListener('DOMContentLoaded', () => {
   var PENDING_TTL_MS=7 * 24 * 60 * 60 * 1000;
   var BROKEN_CAPTURE_KEY='sk_cf_v115_broken_capture_urls';
 
-  function log(){ try{ console.log.apply(console, ['[SK-CF-v118D]'].concat([].slice.call(arguments))); }catch(e){} }
-  function warn(){ try{ console.warn.apply(console, ['[SK-CF-v118D]'].concat([].slice.call(arguments))); }catch(e){} }
+  function log(){ try{ console.log.apply(console, ['[SK-CF-v126]'].concat([].slice.call(arguments))); }catch(e){} }
+  function warn(){ try{ console.warn.apply(console, ['[SK-CF-v126]'].concat([].slice.call(arguments))); }catch(e){} }
   function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
   function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
   function now(){ return Date.now(); }
@@ -52760,9 +53092,34 @@ window.addEventListener('DOMContentLoaded', () => {
       if(!prev){ map.set(id, r); return; }
       var prevTs=syncTs(prev);
       var nextTs=syncTs(r);
+      if(shouldKeepLocalProtected('', prev, r)){ return; }
       if(nextTs >= prevTs) map.set(id, r);
     });
     return Array.from(map.values());
+  }
+
+  function localEditMarkerOf(row){
+    if(!row || typeof row!=='object') return 0;
+    var d=(row.data && typeof row.data==='object') ? row.data : {};
+    var links=(row._links && typeof row._links==='object') ? row._links : {};
+    return Math.max(
+      Number(row._skUrlEditedAt||0)||0, Number(row._skUnsoldEditedAt||0)||0, Number(row._skLocalEditedAt||0)||0,
+      Number(d._skUrlEditedAt||0)||0, Number(d._skUnsoldEditedAt||0)||0,
+      Number(links.updatedAt||0)||0
+    );
+  }
+  function shouldKeepLocalProtected(table, local, remote){
+    try{
+      var localMark=localEditMarkerOf(local);
+      if(!localMark) return false;
+      var remoteMark=localEditMarkerOf(remote);
+      // URL/유찰/기일 수정 직후 Cloudflare edge 또는 다른 기기의 오래된 row가 잠시 내려와도
+      // 로컬에서 방금 확정한 row를 덮지 못하게 한다. 서버가 같은 marker를 가진 row를 돌려주면 수렴된 것으로 본다.
+      if(remoteMark >= localMark) return false;
+      var age=now()-localMark;
+      if(age < 0) age=0;
+      return age <= (30 * 60 * 1000);
+    }catch(e){ return false; }
   }
 
   function mergeRemoteAuthoritative(table, localRows, incomingRows){
@@ -52781,6 +53138,13 @@ window.addEventListener('DOMContentLoaded', () => {
         if(remote) map.set(id, mergeRoomCaptureDeletes(remote, local));
       });
     }
+    (Array.isArray(localRows)?localRows:[]).forEach(function(local){
+      var id=idOf(local); if(!id) return;
+      var remote=map.get(id);
+      if(remote && shouldKeepLocalProtected(table, local, remote)){
+        map.set(id, table==='workrooms' ? mergeRoomCaptureDeletes(local, remote) : local);
+      }
+    });
     var pending=readPending();
     var byTable=(pending && pending[table]) || {};
     var pendingTouched=false;
@@ -53784,5 +54148,5 @@ window.addEventListener('DOMContentLoaded', () => {
     log('installed', {build:BUILD, ios:isIOS(), activeRoomId:window.wr2State && window.wr2State.activeRoomId || null});
   }
 
-  try{ install(); }catch(e){ console.warn('[SK-CF-v118D] init failed', e); }
+  try{ install(); }catch(e){ console.warn('[SK-CF-v126] init failed', e); }
 })();

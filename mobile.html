@@ -3477,7 +3477,7 @@ input, textarea, select {
 <script>if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
 
 <!-- 공통 로직 -->
-<script src="common-sync-clean.js?v=20260511-v124-naverland-unsold-drag-fix" onerror="this.onerror=null;this.src='common-sync-clean.js?v=20260511-v124-naverland-unsold-drag-fix&retry=1';"></script>
+<script src="common-sync-clean.js?v=20260511-v126-url-naver-unsold-verified-fix" onerror="this.onerror=null;this.src='common-sync-clean.js?v=20260511-v126-url-naver-unsold-verified-fix&retry=1';"></script>
 
 <!-- ════════════════════════════════════════════════════════
      mobile.js — 모바일 전용 초기화 및 UI 제어
@@ -5152,15 +5152,12 @@ input, textarea, select {
     if (isNaverSrc && /^\d{6,14}$/.test(articleNo)) {
       return 'https://new.land.naver.com/offices?articleNo=' + encodeURIComponent(articleNo);
     }
-    var addr = _mbGetItemAddr(item, addrHint);
-    if (addr) {
-      return 'https://new.land.naver.com/offices?query=' + encodeURIComponent(addr) + '&a=SG:SMS:APTHGJ&e=RETAIL';
-    }
     var lat = parseFloat(d.lat || (item && item.lat));
     var lng = parseFloat(d.lng || (item && item.lng));
     if (Number.isFinite(lat) && Number.isFinite(lng)) {
       return 'https://new.land.naver.com/offices?ms=' + lat + ',' + lng + ',17&a=SG:SMS:APTHGJ&e=RETAIL';
     }
+    // v125: 주소 query 방식은 네이버부동산이 이전 지역을 복원할 수 있어 사용하지 않는다.
     return '';
   }
 
