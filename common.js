@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260511-workroom-v145-visible-decision-layout-fix';
+    window.__SK_BUILD = '20260511-workroom-v146-input-fix-percent-actions-ui';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -10206,8 +10206,8 @@ window.wr2SummaryCancelEdit = function() {
                   wcpSetText('wcp_o_abs_yield',(r.absYield||0).toFixed(2));
                   wcpSetText('wcp_p_total_no_deposit',wcpFormatWon(r.maxRequired));
                   wcpSetText('wcp_p_total_with_deposit',wcpFormatWon(r.minRequired));
-                  wcpSetText('wcp_p_abs_yield',(r.absYield||0).toFixed(2));
-                  wcpSetText('wcp_p_lev_yield',(r.levYield||0).toFixed(2));
+                  wcpSetText('wcp_p_abs_yield',(r.absYield||0).toFixed(2)+'%');
+                  wcpSetText('wcp_p_lev_yield',(r.levYield||0).toFixed(2)+'%');
                   wcpSetText('wcp_p_sell_price',wcpFormatWon(r.sell));
                   wcpSetText('wcp_p_roi',((r.roi||0).toFixed(0))+'%');
                   wcpSetText('wcp_p_after_tax',wcpFormatWon(r.afterTax));
@@ -10319,7 +10319,52 @@ window.wr2SummaryCancelEdit = function() {
                   }catch(e){ console.warn('[WCP] resize handles fail',e); }
                 }
 
-                function wcpBind(){ document.querySelectorAll('.wr2-calc-pro-shell .wcp-inp').forEach(function(el){ if(el.getAttribute('data-wcp-output')==='1') return; el.addEventListener('input',function(){ if(el.id==='wc_cf_loan_rate') wcpSet('wc_loan_manual_mode','rate'); if(el.id==='wc_cf_loan') wcpSet('wc_loan_manual_mode','amount'); wcpScheduleInputUpdate(el.id); }); el.addEventListener('blur',function(){ if(el.getAttribute('data-wcp-money')==='1') wcpSetWon(el.id,wcpReadWon(el.id)); wcpRenderOutputs(el.id); wcpPersistCurrent({immediate:false}); }); }); document.querySelectorAll('.wcp-tab').forEach(function(btn){ btn.addEventListener('click',function(){ document.querySelectorAll('.wcp-tab').forEach(function(b){b.classList.remove('active')}); document.querySelectorAll('.wcp-pane').forEach(function(p){p.classList.remove('active')}); btn.classList.add('active'); const pane=document.getElementById('wcp_pane_'+btn.getAttribute('data-pane')); if(pane) pane.classList.add('active'); }); }); }
+                function wcpBind(){
+                  function normalizeMoneyWhileEditing(el){
+                    if(!el || el.getAttribute('data-wcp-money')!=='1') return;
+                    const before=String(el.value||'');
+                    const pos=(typeof el.selectionStart==='number')?el.selectionStart:before.length;
+                    const digitBefore=before.slice(0,pos).replace(/[^0-9]/g,'').length;
+                    const next=before.replace(/[^0-9]/g,'');
+                    if(before!==next){
+                      el.value=next;
+                      try{
+                        const p=Math.min(next.length,digitBefore);
+                        el.setSelectionRange(p,p);
+                      }catch(_e){}
+                    }
+                  }
+                  document.querySelectorAll('.wr2-calc-pro-shell .wcp-inp').forEach(function(el){
+                    if(el.getAttribute('data-wcp-output')==='1') return;
+                    if(el.getAttribute('data-wcp-money')==='1'){
+                      el.addEventListener('focus',function(){
+                        try{
+                          const raw=String(el.value||'').replace(/[^0-9]/g,'');
+                          if(raw!==String(el.value||'')) el.value=raw;
+                          setTimeout(function(){ try{ el.select(); }catch(_e){} },0);
+                        }catch(_e){}
+                      });
+                      el.addEventListener('keydown',function(e){
+                        if(e && (e.key==='Backspace' || e.key==='Delete')){
+                          el.__wcpUserDeleting=true;
+                          setTimeout(function(){ el.__wcpUserDeleting=false; },0);
+                        }
+                      });
+                    }
+                    el.addEventListener('input',function(){
+                      if(el.getAttribute('data-wcp-money')==='1') normalizeMoneyWhileEditing(el);
+                      if(el.id==='wc_cf_loan_rate') wcpSet('wc_loan_manual_mode','rate');
+                      if(el.id==='wc_cf_loan') wcpSet('wc_loan_manual_mode','amount');
+                      wcpScheduleInputUpdate(el.id);
+                    });
+                    el.addEventListener('blur',function(){
+                      if(el.getAttribute('data-wcp-money')==='1') wcpSetWon(el.id,wcpReadWon(el.id));
+                      wcpRenderOutputs(el.id);
+                      wcpPersistCurrent({immediate:false});
+                    });
+                  });
+                  document.querySelectorAll('.wcp-tab').forEach(function(btn){ btn.addEventListener('click',function(){ document.querySelectorAll('.wcp-tab').forEach(function(b){b.classList.remove('active')}); document.querySelectorAll('.wcp-pane').forEach(function(p){p.classList.remove('active')}); btn.classList.add('active'); const pane=document.getElementById('wcp_pane_'+btn.getAttribute('data-pane')); if(pane) pane.classList.add('active'); }); });
+                }
                 function wcpResolveMount(){ const p=document.getElementById('wc_price')||document.getElementById('wr2CalcTabBar')||document.getElementById('wc_result'); if(!p) return null; return p.closest('.wr2-section-card,.wr2-card,.wr2-widget,.wr2-dash-card,.card')||p.parentElement; }
 
                 function wcpLoadSeedIntoForm(seed, mode){ if(!seed)return; wcpSet('wc_calc_link_mode',mode||''); try{wcpSetBasisActive(mode||'');}catch(e){} wcpSet('wc_seed_signature',wcpSeedSignature([seed])); wcpSet('wc_area',seed.areaM2?seed.areaM2.toFixed(2):''); wcpSet('wc_area_py',seed.areaPy?seed.areaPy.toFixed(2):''); wcpSet('wc_bunyang_py',seed.bunyangPy?seed.bunyangPy.toFixed(2):(seed.areaPy?seed.areaPy.toFixed(2):'')); wcpSetWon('wc_appraisal',seed.appraisalWon||0); wcpSetWon('wc_price',seed.bidWon||seed.minWon||0); wcpSetWon('wc_my_bid',seed.bidWon||seed.minWon||0); wcpSetWon('wc_deposit',seed.depositWon||0); wcpSetWon('wc_rent',seed.rentWon||0); wcpRenderOutputs('wc_my_bid'); wcpPersistCurrent({immediate:true}); }
@@ -53365,7 +53410,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260511-workroom-v145-visible-decision-layout-fix';
+  var BUILD='20260511-workroom-v146-input-fix-percent-actions-ui';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
@@ -55558,4 +55603,119 @@ window.addEventListener('DOMContentLoaded', () => {
     inject();
     if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',inject,{once:true});
   }catch(e){console.warn('[v145 visible decision layout]',e);}
+})();
+
+
+/* v146: calculator input stability + final UI polish */
+(function(){
+  try{
+    function inject(){
+      var old=document.getElementById('sk-v146-calc-polish-style');
+      if(old) old.remove();
+      var st=document.createElement('style');
+      st.id='sk-v146-calc-polish-style';
+      st.textContent=`
+        /* 숫자 입력칸: 입력 중에는 raw digit를 쓰므로 글자가 튀지 않게 안정화 */
+        .wr2-calc-pro-shell input.wcp-inp[data-wcp-money="1"]{
+          font-variant-numeric:tabular-nums!important;
+          letter-spacing:.01em!important;
+        }
+        .wr2-calc-pro-shell input.wcp-inp:not([readonly]):not([data-wcp-output="1"]){
+          background:linear-gradient(180deg,rgba(14,34,58,.98),rgba(8,18,32,.98))!important;
+          border-color:rgba(96,165,250,.42)!important;
+        }
+        .wr2-calc-pro-shell input.wcp-inp:not([readonly]):not([data-wcp-output="1"]):focus{
+          background:linear-gradient(180deg,rgba(24,47,78,.98),rgba(10,25,44,.98))!important;
+          border-color:rgba(249,115,22,.82)!important;
+          outline:none!important;
+        }
+
+        /* 전체 글자 크기는 아주 조금만 상향 */
+        #wcp_pane_input .wcp-card,
+        #wcp_pane_input .wcp-section,
+        #wcp_pane_input .wcp-bench-card,
+        #wcp_pane_input .wcp-kpi-summary-panel{font-size:10.8px!important;}
+        #wcp_pane_input .wcp-calc-combined .wcp-line label,
+        #wcp_pane_input .wcp-kpi-summary-panel .wcp-form>.wcp-line label{font-size:10.6px!important;}
+        #wcp_pane_input .wcp-calc-combined .wcp-inp,
+        #wcp_pane_input .wcp-calc-combined .wcp-out{font-size:10.8px!important;}
+        #wcp_pane_input .wcp-kpi-summary-panel .wcp-form>.wcp-line .wcp-out{font-size:clamp(11px,.82vw,13.4px)!important;}
+
+        /* KPI 색상: 지정한 포인트만 유지, 나머지는 기본색 */
+        #wcp_pane_input .wcp-kpi-summary-panel .wcp-out{color:#e8ecf4!important;}
+        #wcp_pane_input .wcp-kpi-summary-panel #wcp_o_month_net_kpi,
+        #wcp_pane_input .wcp-kpi-summary-panel #wcp_p_total_with_deposit{color:#4ade80!important;}
+        #wcp_pane_input .wcp-kpi-summary-panel #wcp_p_abs_yield,
+        #wcp_pane_input .wcp-kpi-summary-panel #wcp_p_lev_yield{color:#c084fc!important;}
+        #wcp_pane_input .wcp-kpi-summary-panel #wcp_o_year_net,
+        #wcp_pane_input .wcp-kpi-summary-panel #wcp_o_initial_need,
+        #wcp_pane_input .wcp-kpi-summary-panel #wcp_p_total_no_deposit,
+        #wcp_pane_input .wcp-kpi-summary-panel #wcp_p_sell_price,
+        #wcp_pane_input .wcp-kpi-summary-panel #wcp_p_after_tax,
+        #wcp_pane_input .wcp-kpi-summary-panel #wcp_p_roi{color:#e8ecf4!important;}
+
+        /* 합산 기준 칩: 숫자 길이에 따라 위치가 흔들리지 않게 고정 */
+        .wr2-calc-pro-shell .wcp-basis-chip{
+          display:grid!important;
+          grid-template-rows:auto minmax(22px,1fr) auto!important;
+          align-content:center!important;
+        }
+        .wr2-calc-pro-shell .wcp-basis-chip .v{
+          min-height:22px!important;
+          display:flex!important;
+          align-items:center!important;
+          justify-content:flex-end!important;
+          width:100%!important;
+          text-align:right!important;
+        }
+        .wr2-calc-pro-shell .wcp-basis-chip .sub{
+          min-height:14px!important;
+          display:block!important;
+          text-align:right!important;
+        }
+        .wr2-calc-pro-shell .wcp-basis-chip.bid .v,
+        .wr2-calc-pro-shell .wcp-basis-chip.bid .sub{justify-content:flex-end!important;text-align:right!important;}
+
+        /* 손품 추천 입찰가: 과대 노출 방지 */
+        #wcp_pane_input .wcp-quick-reco{
+          min-height:42px!important;
+          padding:6px 9px!important;
+          margin-top:6px!important;
+          grid-template-columns:auto minmax(0,1fr) auto!important;
+        }
+        #wcp_pane_input .wcp-quick-reco-main{font-size:clamp(17px,1.45vw,24px)!important;}
+        #wcp_pane_input .wcp-quick-reco-sub{font-size:9.5px!important;}
+        #wcp_pane_input .wcp-quick-reco .wcp-btn{min-height:26px!important;padding:5px 9px!important;font-size:10.5px!important;}
+
+        /* 하단 액션 버튼: 결과 밑에 어색하게 떠 있지 않도록 섹션 안쪽으로 끌어올림 */
+        #wcp_pane_input .wcp-top.wcp-kpi-banner-bottom{
+          margin-top:6px!important;
+          padding:6px 8px!important;
+          border:1px solid rgba(96,165,250,.18)!important;
+          border-radius:11px!important;
+          background:rgba(7,17,30,.56)!important;
+        }
+        #wcp_pane_input .wcp-top.wcp-kpi-banner-bottom .wcp-head{
+          display:flex!important;
+          justify-content:flex-end!important;
+          align-items:center!important;
+          gap:7px!important;
+        }
+        #wcp_pane_input .wcp-actions{gap:7px!important;flex-wrap:nowrap!important;}
+        #wcp_pane_input .wcp-actions .wcp-btn{min-height:28px!important;padding:5px 10px!important;font-size:11px!important;}
+        #wcp_pane_input .wcp-actions .wcp-status{font-size:10px!important;color:#86efac!important;margin-right:2px!important;}
+
+        /* 3열 높이 정돈 */
+        #wcp_pane_input .wcp-main-grid>.wcp-card{align-self:stretch!important;}
+        #wcp_pane_input .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(1),
+        #wcp_pane_input .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(2){min-height:124px!important;}
+        #wcp_pane_input .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(2){display:flex!important;flex-direction:column!important;}
+        #wcp_pane_input .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(2) .wcp-form{flex:1 1 auto!important;}
+        #wcp_pane_input .wcp-bench-panel .wcp-grid3>.wcp-section:nth-child(2) .wcp-bid-actions{margin-top:auto!important;}
+      `;
+      (document.head||document.documentElement).appendChild(st);
+    }
+    inject();
+    if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',inject,{once:true});
+  }catch(e){console.warn('[v146 calc polish]',e);}
 })();
