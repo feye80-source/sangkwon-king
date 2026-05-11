@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260511-workroom-v149-rent-invest-label-actions-management-pair';
+    window.__SK_BUILD = '20260511-workroom-v150-management-inline-bench-bottom';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -53411,7 +53411,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260511-workroom-v149-rent-invest-label-actions-management-pair';
+  var BUILD='20260511-workroom-v150-management-inline-bench-bottom';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
@@ -55799,4 +55799,98 @@ window.addEventListener('DOMContentLoaded', () => {
     `;
     document.head.appendChild(st);
   }catch(e){console.warn('[v149 rent/invest actions]',e);}
+})();
+
+
+/* v150: management fee inline row + bench panel bottom alignment */
+(function(){
+  try{
+    var old=document.getElementById('sk-v150-management-inline-bench-bottom');
+    if(old) old.remove();
+    var st=document.createElement('style');
+    st.id='sk-v150-management-inline-bench-bottom';
+    st.textContent=`
+      /* 손품 섹션: 추천 입찰가 패널을 섹션 하단에 붙이고 불필요한 하단 공백 제거 */
+      #wcp_pane_input .wcp-main-grid{align-items:stretch!important;}
+      #wcp_pane_input .wcp-bench-panel{
+        display:flex!important;
+        flex-direction:column!important;
+        min-height:0!important;
+        height:100%!important;
+        padding-bottom:10px!important;
+      }
+      #wcp_pane_input .wcp-bench-panel .wcp-bench-grid-compact{
+        flex:0 0 auto!important;
+      }
+      #wcp_pane_input .wcp-bench-panel .wcp-quick-reco{
+        margin-top:auto!important;
+        margin-bottom:0!important;
+      }
+      /* 월 관리비: 취등록세/법무비처럼 '입력값 + 산출값'을 한 줄에 고정 */
+      #wcp_pane_input .wcp-management-subsec .wcp-management-pair{
+        display:flex!important;
+        flex-wrap:nowrap!important;
+        align-items:center!important;
+        gap:6px!important;
+        min-width:0!important;
+        width:100%!important;
+        padding-bottom:5px!important;
+        margin-bottom:3px!important;
+        border-bottom:1px solid rgba(148,163,184,.16)!important;
+      }
+      #wcp_pane_input .wcp-management-subsec .wcp-management-pair label{
+        flex:0 0 70px!important;
+        width:70px!important;
+        min-width:70px!important;
+        font-size:10.5px!important;
+        white-space:nowrap!important;
+        overflow:hidden!important;
+        text-overflow:ellipsis!important;
+      }
+      #wcp_pane_input .wcp-management-subsec .wcp-management-pair .wcp-management-py{
+        flex:0 1 92px!important;
+        width:92px!important;
+        min-width:64px!important;
+        max-width:104px!important;
+        text-align:right!important;
+      }
+      #wcp_pane_input .wcp-management-subsec .wcp-management-pair .wcp-unit{
+        flex:0 0 auto!important;
+        width:auto!important;
+        min-width:auto!important;
+        white-space:nowrap!important;
+        font-size:10px!important;
+        text-align:left!important;
+      }
+      #wcp_pane_input .wcp-management-subsec .wcp-management-pair .wcp-management-total{
+        flex:1 1 112px!important;
+        width:auto!important;
+        min-width:90px!important;
+        max-width:none!important;
+        text-align:right!important;
+        justify-content:flex-end!important;
+        white-space:nowrap!important;
+        overflow:hidden!important;
+        text-overflow:ellipsis!important;
+        color:#4ade80!important;
+        font-weight:900!important;
+        background:rgba(15,23,42,.55)!important;
+        border:1px solid rgba(96,165,250,.20)!important;
+        border-radius:8px!important;
+        padding:5px 8px!important;
+        min-height:28px!important;
+        line-height:1.1!important;
+      }
+      #wcp_pane_input .wcp-management-subsec .wcp-form{gap:4px!important;}
+      /* 작은 폭에서도 두 줄로 떨어지지 않도록 더 압축 */
+      @media (max-width:1500px){
+        #wcp_pane_input .wcp-management-subsec .wcp-management-pair{gap:5px!important;}
+        #wcp_pane_input .wcp-management-subsec .wcp-management-pair label{flex-basis:60px!important;width:60px!important;min-width:60px!important;font-size:10px!important;}
+        #wcp_pane_input .wcp-management-subsec .wcp-management-pair .wcp-management-py{flex-basis:78px!important;width:78px!important;max-width:86px!important;}
+        #wcp_pane_input .wcp-management-subsec .wcp-management-pair .wcp-management-total{min-width:82px!important;font-size:11.5px!important;padding:5px 6px!important;}
+        #wcp_pane_input .wcp-management-subsec .wcp-management-pair .wcp-unit{font-size:9.5px!important;}
+      }
+    `;
+    (document.head||document.documentElement).appendChild(st);
+  }catch(e){console.warn('[v150 management inline bench bottom]',e);}
 })();
