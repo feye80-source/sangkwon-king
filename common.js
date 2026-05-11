@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260512-workroom-v154-management-reverse-lease-color-gap-fix';
+    window.__SK_BUILD = '20260512-workroom-v155-lifecycle-durable-gap-accent';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -53462,7 +53462,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260512-workroom-v153-rent-input-accent-lifecycle-guard';
+  var BUILD='20260512-workroom-v155-lifecycle-durable-gap-accent';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
@@ -56098,4 +56098,220 @@ window.addEventListener('DOMContentLoaded', () => {
     inject();
     if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',inject,{once:true});
   }catch(e){console.warn('[v154 management/lease/gap fix]',e);}
+})();
+
+
+/* v155: lifecycle durable commit + bottom gap/accent final polish */
+(function(){
+  'use strict';
+  var BUILD='20260512-workroom-v155-lifecycle-durable-gap-accent';
+  try { window.__SK_BUILD = BUILD; console.log('[build] common.js ' + BUILD); } catch(e) {}
+
+  function _now(){ return Date.now(); }
+  function _id(x){ return String(x && (x.id || x.item_id || x.roomId || x._id || '') || ''); }
+  function _simple(v){
+    var s=String(v||'active').trim();
+    if(s==='closed' || s==='archived') return 'closed';
+    if(s==='changed' || s==='field' || s==='bid' || s==='won' || s==='sell') return 'changed';
+    return 'active';
+  }
+  function _phase(simple){
+    simple=_simple(simple);
+    return simple==='closed' ? 'closed' : (simple==='changed' ? 'field' : 'review');
+  }
+  function _activeRooms(rows){
+    return (Array.isArray(rows)?rows:[]).filter(function(r){ return r && r.id && !r.deletedAt; });
+  }
+  function _allRooms(){
+    try { if (typeof window._wrGetRoomsCache === 'function') return window._wrGetRoomsCache().slice(); } catch(e) {}
+    try { if (window._idbCache && Array.isArray(window._idbCache.wr2_rooms)) return window._idbCache.wr2_rooms.slice(); } catch(e) {}
+    try { return JSON.parse(localStorage.getItem('wr2_rooms') || '[]').filter(function(r){ return r && r.id; }); } catch(e) { return []; }
+  }
+  function _persistRoomsDirect(rows, changedRows){
+    rows=(Array.isArray(rows)?rows:[]).filter(function(r){ return r && r.id; });
+    changedRows=(Array.isArray(changedRows)?changedRows:[]).filter(function(r){ return r && r.id; });
+    try { if (window._idbCache) window._idbCache.wr2_rooms = rows; } catch(e) {}
+    try { if (typeof window.idbSet === 'function') window.idbSet('wr2_rooms', rows).catch(function(){}); } catch(e) {}
+    try { localStorage.setItem('wr2_rooms', JSON.stringify(rows)); } catch(e) {}
+    try {
+      if (window.wr2State) {
+        var prevActive=String(window.wr2State.activeRoomId||'');
+        window.wr2State.rooms = _activeRooms(rows);
+        if (prevActive && !window.wr2State.rooms.some(function(r){ return String(r.id)===prevActive; })) window.wr2State.activeRoomId='';
+      }
+    } catch(e) {}
+    try {
+      // outbox에 먼저 넣어 둔다. push 실패/새로고침/포커스 pull이 와도 로컬 변경 row를 잃지 않게 하는 핵심.
+      if (typeof window.skCloudQueuePushTable === 'function') window.skCloudQueuePushTable('workrooms', changedRows, 'lifecycle-durable');
+    } catch(e) {}
+    try {
+      if (typeof window.skCloudPushTable === 'function' && changedRows.length) {
+        window.skCloudPushTable('workrooms', changedRows).catch(function(e){ console.warn('[v155 lifecycle] direct workroom push failed; queued', e && (e.message||e)); });
+      }
+    } catch(e) {}
+  }
+  function _allPlItems(){
+    try { if (typeof window.plLoad === 'function') return window.plLoad().slice(); } catch(e) {}
+    try { if (window._idbCache && Array.isArray(window._idbCache.pl_items_v3)) return window._idbCache.pl_items_v3.slice(); } catch(e) {}
+    try { return JSON.parse(localStorage.getItem('pl_items_v3') || '[]').filter(function(x){return x&&x.id;}); } catch(e) { return []; }
+  }
+  function _persistPlDirect(items, changed){
+    items=(Array.isArray(items)?items:[]).filter(function(it){ return it && it.id; });
+    changed=(Array.isArray(changed)?changed:[]).filter(function(it){ return it && it.id; });
+    try { if (typeof window.plSave === 'function') window.plSave(items); } catch(e) {
+      try { if (window._idbCache) window._idbCache.pl_items_v3=items; } catch(_e) {}
+      try { if (typeof window.idbSet === 'function') window.idbSet('pl_items_v3', items).catch(function(){}); } catch(_e) {}
+    }
+    try { if (typeof window.skCloudQueuePushTable === 'function') window.skCloudQueuePushTable('pl_items', changed, 'lifecycle-durable-pl'); } catch(e) {}
+    try { if (typeof window.skCloudPushTable === 'function' && changed.length) window.skCloudPushTable('pl_items', changed).catch(function(e){ console.warn('[v155 lifecycle] direct pl push failed; queued', e && (e.message||e)); }); } catch(e) {}
+  }
+  function _targetItem(roomId, itemId){
+    var items=_allPlItems();
+    var iid=String(itemId||'').trim();
+    var rid=String(roomId||'').trim();
+    if(iid){
+      var direct=items.find(function(it){ return String(it && it.id || '')===iid; });
+      if(direct) return direct;
+    }
+    var roomItems=items.filter(function(it){ return String(it && it.roomId || '')===rid; });
+    if(roomItems.length===1) return roomItems[0];
+    roomItems.sort(function(a,b){ return Number(b && (b._skLifecycleEditedAt || b._skLocalEditedAt || b.updatedAt || 0))-Number(a && (a._skLifecycleEditedAt || a._skLocalEditedAt || a.updatedAt || 0)); });
+    return roomItems[0] || null;
+  }
+  function _statusForItem(simple, oldStatus){
+    simple=_simple(simple);
+    if(simple==='closed') return 'closed';
+    if(simple==='changed') {
+      var s=String(oldStatus||'');
+      return (s==='field'||s==='bid'||s==='won'||s==='sell') ? s : 'field';
+    }
+    return 'review';
+  }
+
+  window.skApplyUnifiedLifecycle = function(opts){
+    opts=opts||{};
+    var roomId=String(opts.roomId || opts.id || '').trim();
+    var simple=_simple(opts.lifecycleStatus || opts.simple || 'active');
+    var stamp=_now();
+    var target=_targetItem(roomId, opts.itemId || opts.targetItemId || '');
+    var itemId=String((target && target.id) || opts.itemId || opts.targetItemId || '').trim();
+    var phase=_phase(simple);
+
+    var rooms=_allRooms();
+    var changedRoom=null;
+    rooms=rooms.map(function(r){
+      if(!r || String(r.id)!==roomId) return r;
+      var next=Object.assign({}, r);
+      next.lifecycleStatus=simple;
+      next.status=phase;
+      next.phase=phase;
+      next.activePhase=phase;
+      if (itemId) next.__targetItemId=itemId;
+      if (opts.closedSummary !== undefined) next.closedSummary=opts.closedSummary;
+      next._skLifecycleEditedAt=stamp;
+      next._skLocalEditedAt=stamp;
+      next.updatedAt=stamp;
+      changedRoom=next;
+      return next;
+    });
+    if(changedRoom){
+      _persistRoomsDirect(rooms, [changedRoom]);
+    }
+
+    var changedItem=null;
+    if(itemId){
+      var items=_allPlItems();
+      items=items.map(function(it){
+        if(!it || String(it.id)!==itemId) return it;
+        var next=Object.assign({}, it);
+        next.status=_statusForItem(simple, it.status);
+        next.archived=(next.status==='archived');
+        next._skLifecycleEditedAt=stamp;
+        next._skLocalEditedAt=stamp;
+        next.updatedAt=stamp;
+        if(roomId) next.roomId=roomId;
+        changedItem=next;
+        return next;
+      });
+      if(changedItem) _persistPlDirect(items, [changedItem]);
+    }
+
+    try { window.__plLastLocalStatusMutationAt=stamp; } catch(e) {}
+    try { if (typeof window._plSetLifecycleOverride === 'function' && changedItem) window._plSetLifecycleOverride(changedItem, simple); } catch(e) {}
+    try { if (typeof window.renderPropertyList === 'function') window.renderPropertyList(); } catch(e) {}
+    try { if (typeof window.wr2Render === 'function') window.wr2Render(); } catch(e) {}
+    try { if (typeof window.mbRoomRefreshSel === 'function') window.mbRoomRefreshSel(); } catch(e) {}
+    return { ok:true, roomId:roomId, itemId:itemId, lifecycleStatus:simple, pushed:true };
+  };
+
+  // 물건리스트에서 직접 상태를 바꾸는 경우도 동일하게 durable commit을 통과시킨다.
+  if (typeof window.plSetSimpleStatus === 'function' && !window.plSetSimpleStatus.__skV155Durable) {
+    var _origPlSetSimpleStatus=window.plSetSimpleStatus;
+    window.plSetSimpleStatus=function(id, simpleStatus){
+      var item=null;
+      try { item=_allPlItems().find(function(it){ return String(it && it.id || '')===String(id||''); }); } catch(e) {}
+      if(item && item.roomId){
+        return window.skApplyUnifiedLifecycle({ roomId:item.roomId, itemId:item.id, lifecycleStatus:simpleStatus });
+      }
+      var out=_origPlSetSimpleStatus.apply(this, arguments);
+      try {
+        var changed=_allPlItems().find(function(it){ return String(it && it.id || '')===String(id||''); });
+        if(changed){
+          changed._skLifecycleEditedAt=changed._skLifecycleEditedAt||_now();
+          changed._skLocalEditedAt=changed._skLocalEditedAt||changed._skLifecycleEditedAt;
+          _persistPlDirect(_allPlItems().map(function(it){ return String(it.id)===String(id)?changed:it; }), [changed]);
+        }
+      } catch(e) {}
+      return out;
+    };
+    window.plSetSimpleStatus.__skV155Durable=true;
+  }
+
+  // 기존 4초 local override는 새로고침/느린 pull에 너무 짧다. 상태 동기화 보호만 30분으로 늘린다.
+  try {
+    var bag=window.__plLifecycleOverride || {byRoom:{}, bySaved:{}, byItem:{}};
+    window.__plLifecycleOverride=bag;
+  } catch(e) {}
+
+  function injectStyle(){
+    var old=document.getElementById('sk-v155-gap-accent-polish');
+    if(old) old.remove();
+    var st=document.createElement('style');
+    st.id='sk-v155-gap-accent-polish';
+    st.textContent=`
+      /* 하단 공백: 계산기 패널 자체가 남은 높이를 채우도록 하고, 손품 추천 박스는 바닥에 붙인다. */
+      .wr2-calc-pro-mount{height:calc(100vh - 104px)!important;min-height:0!important;overflow:hidden!important;}
+      .wr2-calc-pro-shell{height:100%!important;min-height:0!important;display:flex!important;flex-direction:column!important;overflow:hidden!important;padding-bottom:4px!important;}
+      .wr2-calc-pro-shell .wcp-tabs{flex:0 0 auto!important;}
+      #wcp_pane_input{flex:1 1 auto!important;height:auto!important;min-height:0!important;display:flex!important;flex-direction:column!important;overflow:hidden!important;}
+      #wcp_pane_input .wcp-main-grid{flex:1 1 auto!important;height:auto!important;min-height:0!important;margin-bottom:0!important;padding-bottom:0!important;align-items:stretch!important;}
+      #wcp_pane_input .wcp-main-grid>.wcp-card{height:100%!important;min-height:0!important;display:flex!important;flex-direction:column!important;}
+      #wcp_pane_input .wcp-bench-panel .wcp-quick-reco{margin-top:auto!important;margin-bottom:0!important;}
+      #wcp_pane_input .wcp-calc-combined-grid{flex:1 1 auto!important;min-height:0!important;}
+
+      /* 월 순수익 / (보증금 포함) 투자금은 입력값과 구분되는 따뜻한 붉은 계열 포인트 */
+      .wr2-calc-pro-shell .wcp-lease-input-subsec #wcp_o_month_net_inline,
+      .wr2-calc-pro-shell .wcp-lease-input-subsec #wcp_o_year_net_inline{
+        color:#fb7185!important;
+        text-shadow:0 0 10px rgba(251,113,133,.10)!important;
+        font-weight:900!important;
+      }
+      .wr2-calc-pro-shell .wcp-lease-input-subsec .wcp-line:has(#wcp_o_month_net_inline),
+      .wr2-calc-pro-shell .wcp-lease-input-subsec .wcp-line:has(#wcp_o_year_net_inline){
+        background:rgba(251,113,133,.045)!important;
+        border-radius:8px!important;
+      }
+      .wr2-calc-pro-shell .wcp-lease-input-subsec .wcp-line:has(#wcp_o_month_net_inline) label,
+      .wr2-calc-pro-shell .wcp-lease-input-subsec .wcp-line:has(#wcp_o_year_net_inline) label{
+        color:#fecdd3!important;
+      }
+      @media(max-height:760px){
+        .wr2-calc-pro-mount{height:calc(100vh - 92px)!important;}
+        .wr2-calc-pro-shell{padding-bottom:2px!important;}
+      }
+    `;
+    (document.head||document.documentElement).appendChild(st);
+  }
+  injectStyle();
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', injectStyle, {once:true});
 })();
