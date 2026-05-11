@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260512-workroom-v153-rent-input-accent-lifecycle-guard';
+    window.__SK_BUILD = '20260512-workroom-v154-management-reverse-lease-color-gap-fix';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -9945,7 +9945,7 @@ window.wr2SummaryCancelEdit = function() {
                             <div class="wcp-section wcp-calc-col">
                               <h4>자동 산출</h4>
                               <div class="wcp-subsec"><h5>① 취등록세/기타</h5><div class="wcp-form">${wcpRateField('wc_acq_tax_rate','wc_acq_tax','취등록세',s.acqTaxRate,s.acqTax,'')}${wcpRateField('wc_legal_rate','wc_legal_fee','법무비 등',s.legalRate,s.legalFee,'')}</div></div>
-                              <div class="wcp-subsec wcp-management-subsec"><h5>② 1년 운영 비용</h5><div class="wcp-form wcp-management-form"><div class="wcp-line wcp-management-pair"><label for="wc_management_monthly">월 관리비</label><input id="wc_management_monthly" class="wcp-inp wcp-management-py" data-wcp-money="1" inputmode="numeric" autocomplete="off" value="${wcpEsc(wcpCommaValue(s.managementMonthly))}" placeholder="평당 월 관리비"><span class="wcp-unit">원/평·월</span><div id="wcp_o_management_month" class="wcp-out green wcp-management-total">-</div><span class="wcp-unit">원/월</span></div>${wcpOutputRow('1년치 이자','wcp_o_interest_year','원','')}${wcpOutputRow('1년치 관리비','wcp_o_management_year','원','')}</div></div>
+                              <div class="wcp-subsec wcp-management-subsec"><h5>② 1년 운영 비용</h5><div class="wcp-form wcp-management-form"><div class="wcp-line wcp-management-pair"><label for="wc_management_monthly">월 관리비</label><input id="wc_management_monthly" class="wcp-inp wcp-management-py" data-wcp-money="1" inputmode="numeric" autocomplete="off" value="${wcpEsc(wcpCommaValue(s.managementMonthly))}" placeholder="평당"><span class="wcp-unit">원/평·월</span><input id="wc_management_total_month" class="wcp-inp wcp-management-total" data-wcp-money="1" inputmode="numeric" autocomplete="off" value="" placeholder="월 관리비"><span class="wcp-unit">원/월</span></div>${wcpOutputRow('1년치 이자','wcp_o_interest_year','원','')}${wcpOutputRow('1년치 관리비','wcp_o_management_year','원','')}</div></div>
                               <div class="wcp-subsec"><h5>③ 기타 산출</h5><div class="wcp-form">${wcpOutputRow('적용 대출금','wcp_auto_loan','원','blue')}</div></div>
                               <div class="wcp-subsec">${wcpLoanRuleBox()}</div>
                             </div>
@@ -10008,6 +10008,20 @@ window.wr2SummaryCancelEdit = function() {
                   if(trigger==='wc_my_bid' && priceBase) wcpSetWon('wc_price',priceBase);
                   if(trigger==='wc_price' && priceBase) wcpSetWon('wc_my_bid',priceBase,{force:true});
                   const price=wcpReadWon('wc_price')||wcpReadWon('wc_my_bid'), appraisal=wcpReadWon('wc_appraisal');
+
+                  // 월 관리비는 취등록세/법무비처럼 '평단가 입력 ↔ 월 총액'을 양방향으로 연동한다.
+                  // - 평단가를 입력하면 월 관리비가 계산된다.
+                  // - 월 관리비 총액을 직접 입력하면 분양평수 기준 평단가가 역산된다.
+                  const mgmtBasePyForSync=wcpNum(wcpRead('wc_bunyang_py'))||wcpNum(wcpRead('wc_area_py'))||0;
+                  if(mgmtBasePyForSync>0){
+                    if(trigger==='wc_management_total_month'){
+                      const total=wcpReadWon('wc_management_total_month');
+                      if(total) wcpSetWon('wc_management_monthly',Math.round(total/mgmtBasePyForSync),{force:true});
+                    }else if(trigger==='wc_management_monthly' || trigger==='wc_area_py' || trigger==='wc_bunyang_py' || trigger===''){
+                      const py=wcpReadWon('wc_management_monthly');
+                      if(py) wcpSetWon('wc_management_total_month',Math.round(py*mgmtBasePyForSync));
+                    }
+                  }
 
                   [['wc_acq_tax_rate','wc_acq_tax',price],['wc_legal_rate','wc_legal_fee',price]].forEach(function(p){
                     const rateId=p[0], amtId=p[1], base=p[2]; if(!base) return;
@@ -10222,7 +10236,7 @@ window.wr2SummaryCancelEdit = function() {
                   wcpSetText('wcp_o_rent_per_py',r.rentPerPy?('@ '+r.rentPerPy.toFixed(1)+'만/평'):'-');
                   wcpSetText('wcp_o_vat',wcpFormatWon(r.vat));
                   wcpSetText('wcp_o_interest_year',wcpFormatWon(r.intY));
-                  wcpSetText('wcp_o_management_month',wcpFormatWon((wcpReadWon('wc_management_monthly')||0)*(r.bunyangPy||r.areaPy||0)));
+                  wcpSetWon('wc_management_total_month',Math.round((wcpReadWon('wc_management_monthly')||0)*(r.bunyangPy||r.areaPy||0)));
                   wcpSetText('wcp_o_management_year',wcpFormatWon(r.mgmtYear));
                   wcpSetText('wcp_auto_acq',wcpFormatWon(r.acq));
                   wcpSetText('wcp_auto_legal',wcpFormatWon(r.legal));
@@ -56022,4 +56036,66 @@ window.addEventListener('DOMContentLoaded', () => {
     inject();
     if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',inject,{once:true});
   }catch(e){console.warn('[v153 rent input accent]',e);}
+})();
+
+
+/* v154: 월 관리비 양방향 입력 + 임대 조건 색 분리 + 하단 공백 정리 */
+(function(){
+  try{
+    function inject(){
+      var old=document.getElementById('sk-v154-management-lease-gap-fix');
+      if(old) old.remove();
+      var st=document.createElement('style');
+      st.id='sk-v154-management-lease-gap-fix';
+      st.textContent=`
+        /* 월 관리비: 취등록세/법무비와 같은 구조. 좌측은 평당가, 우측은 월 총액 입력/역산 */
+        #wcp_pane_input .wcp-management-subsec .wcp-management-pair{
+          display:grid!important;
+          grid-template-columns:minmax(74px,92px) minmax(74px,.58fr) 54px minmax(108px,.95fr) 34px!important;
+          align-items:center!important;
+          gap:6px!important;
+          white-space:nowrap!important;
+          border-bottom:1px solid rgba(148,163,184,.16)!important;
+          padding-bottom:5px!important;
+          margin-bottom:3px!important;
+        }
+        #wcp_pane_input .wcp-management-subsec .wcp-management-pair label{min-width:0!important;width:auto!important;font-size:11px!important;color:#cbd5e1!important;font-weight:800!important;}
+        #wcp_pane_input .wcp-management-subsec .wcp-management-pair .wcp-management-py,
+        #wcp_pane_input .wcp-management-subsec .wcp-management-pair .wcp-management-total{
+          width:100%!important;min-width:0!important;max-width:none!important;text-align:right!important;
+          color:#e8ecf4!important;background:linear-gradient(180deg,rgba(15,35,60,.98),rgba(7,18,33,.98))!important;
+          border-color:rgba(96,165,250,.42)!important;font-weight:850!important;
+        }
+        #wcp_pane_input .wcp-management-subsec .wcp-management-pair .wcp-unit{font-size:10px!important;color:#9aa6bd!important;min-width:0!important;width:auto!important;text-align:left!important;}
+        @media(max-width:1450px){
+          #wcp_pane_input .wcp-management-subsec .wcp-management-pair{grid-template-columns:minmax(62px,76px) minmax(58px,.55fr) 48px minmax(88px,.95fr) 30px!important;gap:5px!important;}
+          #wcp_pane_input .wcp-management-subsec .wcp-management-pair label{font-size:10px!important;}
+          #wcp_pane_input .wcp-management-subsec .wcp-management-pair .wcp-unit{font-size:9px!important;}
+          #wcp_pane_input .wcp-management-subsec .wcp-management-pair .wcp-management-py,
+          #wcp_pane_input .wcp-management-subsec .wcp-management-pair .wcp-management-total{font-size:11px!important;padding-left:5px!important;padding-right:5px!important;}
+        }
+
+        /* 임대 입력과 계산 결과의 의미 분리: 보증금/월세는 초록, 월수익/투자금은 파랑 계열 */
+        .wr2-calc-pro-shell .wcp-lease-input-subsec{border-color:rgba(74,222,128,.24)!important;background:linear-gradient(180deg,rgba(34,197,94,.045),rgba(6,16,24,.96))!important;}
+        .wr2-calc-pro-shell .wcp-lease-input-subsec h5{color:#bbf7d0!important;}
+        .wr2-calc-pro-shell #wc_deposit,.wr2-calc-pro-shell #wc_rent{border-color:rgba(74,222,128,.48)!important;background:linear-gradient(180deg,rgba(18,50,40,.94),rgba(8,25,23,.98))!important;color:#f4fff8!important;}
+        .wr2-calc-pro-shell .wcp-lease-input-subsec #wcp_o_month_net_inline,
+        .wr2-calc-pro-shell .wcp-lease-input-subsec #wcp_o_year_net_inline{color:#60a5fa!important;font-weight:900!important;}
+        .wr2-calc-pro-shell .wcp-lease-input-subsec .wcp-line:has(#wcp_o_month_net_inline) label,
+        .wr2-calc-pro-shell .wcp-lease-input-subsec .wcp-line:has(#wcp_o_year_net_inline) label{color:#bfdbfe!important;}
+        .wr2-calc-pro-shell .wcp-lease-input-subsec .wcp-line:has(#wcp_o_month_net_inline),
+        .wr2-calc-pro-shell .wcp-lease-input-subsec .wcp-line:has(#wcp_o_year_net_inline){background:rgba(37,99,235,.035)!important;border-radius:8px!important;}
+
+        /* 계산기 하단 여백: v151의 강제 min-height로 생기는 바닥 공백을 제거 */
+        .wr2-calc-pro-mount,.wr2-calc-pro-shell,#wcp_pane_input{margin-bottom:0!important;padding-bottom:0!important;}
+        #wcp_pane_input{min-height:0!important;height:auto!important;}
+        #wcp_pane_input .wcp-main-grid{margin-bottom:0!important;padding-bottom:0!important;min-height:0!important;align-items:stretch!important;}
+        #wcp_pane_input .wcp-main-grid>.wcp-card{margin-bottom:0!important;}
+        .wr2-calc-pro-shell .wcp-tabs{margin-bottom:4px!important;}
+      `;
+      (document.head||document.documentElement).appendChild(st);
+    }
+    inject();
+    if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',inject,{once:true});
+  }catch(e){console.warn('[v154 management/lease/gap fix]',e);}
 })();
