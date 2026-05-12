@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260513-workroom-v173-pl-dualwrite-planner-touch-restore';
+    window.__SK_BUILD = '20260513-workroom-v174-pl-duplicate-merge-render-fix';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -48054,6 +48054,7 @@ window.addEventListener('DOMContentLoaded', () => {
       if (hasMemCache) {
         var mem = window._idbCache[PL_KEY] || [];
         var normalizedMem = (Array.isArray(mem) ? mem : []).map(plNormalizeItem);
+        try { normalizedMem = plRepairDuplicateUserFields(normalizedMem, { persist:false }).rows; } catch(e) {}
         try { localStorage.setItem(PL_KEY, JSON.stringify(normalizedMem)); } catch (e) {}
         return normalizedMem;
       }
@@ -48061,6 +48062,7 @@ window.addEventListener('DOMContentLoaded', () => {
       var legacy = JSON.parse(localStorage.getItem(PL_KEY) || '[]');
       if (Array.isArray(legacy)) {
         var normalizedLegacy = legacy.map(plNormalizeItem);
+        try { normalizedLegacy = plRepairDuplicateUserFields(normalizedLegacy, { persist:false }).rows; } catch(e) {}
         if (window._idbCache) window._idbCache[PL_KEY] = normalizedLegacy;
         return normalizedLegacy;
       }
@@ -48077,6 +48079,7 @@ window.addEventListener('DOMContentLoaded', () => {
       if (!u) it.updatedAt = Number(it.createdAt || now);
       return plNormalizeItem(it);
     });
+    try { full = plRepairDuplicateUserFields(full, { persist:false }).rows; } catch(e) {}
     if (typeof _sbPersistCachedArray === 'function') _sbPersistCachedArray(PL_KEY, full, { delay: 120 });
     else localStorage.setItem(PL_KEY, JSON.stringify(full));
     if (typeof window._sbMarkKvDirty === 'function') window._sbMarkKvDirty(PL_KEY);
@@ -48185,22 +48188,20 @@ window.addEventListener('DOMContentLoaded', () => {
     var man = Number(plParseAmountText(v));
     return (Number.isFinite(man) && man > 0) ? Math.round(man * 10000) : 0;
   }
-  function plQueueUserEditRow(row, reason) {
-    if (!row || !row.id) return;
-    var clean = plNormalizeItem(Object.assign({}, row));
+  function plQueueUserEditRows(rows, reason) {
+    var cleans = (Array.isArray(rows) ? rows : [rows]).map(function(r){ return r && r.id ? plNormalizeItem(Object.assign({}, r)) : null; }).filter(Boolean);
+    if (!cleans.length) return;
     window.__skLastPlEditSyncPromise = Promise.resolve({ ok:false, skipped:true });
     try {
       var fullPayload = [];
-      try { fullPayload = (typeof plLoad === 'function' ? plLoad() : []).map(plNormalizeItem).filter(function(x){ return x && x.id; }); } catch(e0) { fullPayload = [clean]; }
+      try { fullPayload = (typeof plLoad === 'function' ? plLoad() : []).map(plNormalizeItem).filter(function(x){ return x && x.id; }); } catch(e0) { fullPayload = cleans; }
       var jobs = [];
       if (typeof window.skCloudQueuePushTable === 'function') {
-        window.skCloudQueuePushTable('pl_items', [clean], reason || 'pl-user-edit');
+        window.skCloudQueuePushTable('pl_items', cleans, reason || 'pl-user-edit');
       }
       if (typeof window.skCloudPushTable === 'function') {
-        jobs.push(window.skCloudPushTable('pl_items', [clean]).then(function(res){ return { target:'cf-row', ok: !!(res && (res.ok !== false)), result: res }; }));
+        jobs.push(window.skCloudPushTable('pl_items', cleans).then(function(res){ return { target:'cf-rows', ok: !!(res && (res.ok !== false)), result: res }; }));
       }
-      // v173: 일부 기기/초기화 경로는 아직 Supabase KV chunk(pl_items_v3)를 읽는다.
-      // 직접 편집값은 CF row table뿐 아니라 KV chunk에도 즉시 반영해야 아이패드가 바로 같은 값을 본다.
       if (typeof window._sbSavePlItems === 'function') {
         jobs.push(Promise.resolve(window._sbSavePlItems(fullPayload)).then(function(res){ return { target:'kv-chunk', ok:true, result: res }; }));
       }
@@ -48209,13 +48210,14 @@ window.addEventListener('DOMContentLoaded', () => {
           var results = list.map(function(x){ return x.status === 'fulfilled' ? x.value : { ok:false, error:String(x.reason && (x.reason.message || x.reason) || x.reason) }; });
           var ok = results.some(function(x){ return x && x.ok; });
           var allOk = results.every(function(x){ return x && x.ok; });
-          return { ok: ok, allOk: allOk, table:'pl_items', row: clean.id, result: results };
-        }).catch(function(e){ console.warn('[pl user edit dual push]', e && (e.message || e)); return { ok:false, table:'pl_items', row: clean.id, error:String(e && (e.message || e)) }; });
+          return { ok: ok, allOk: allOk, table:'pl_items', rows: cleans.map(function(x){return x.id;}), result: results };
+        }).catch(function(e){ console.warn('[pl user edit dual push]', e && (e.message || e)); return { ok:false, table:'pl_items', rows:cleans.map(function(x){return x.id;}), error:String(e && (e.message || e)) }; });
       }
     } catch(e) {
       console.warn('[pl user edit queue]', e && (e.message || e));
     }
   }
+  function plQueueUserEditRow(row, reason) { return plQueueUserEditRows([row], reason); }
   function plNormalizeDateInput(v) {
     var raw = String(v || '').trim();
     if (!raw) return '';
@@ -48333,6 +48335,103 @@ window.addEventListener('DOMContentLoaded', () => {
       return (r && r.id && localById[String(r.id)]) ? plMergeUserOwnedFields(r, localById[String(r.id)]) : r;
     });
   }
+
+  // v174: 같은 물건이 pl_items 안에 여러 row로 남아도 사용자 편집값(의향/금액/기일 등)은 하나로 보인다.
+  // 원인: 기존 저장목록 import row(pl_*)와 작업룸 파생 row(pl_room_*)가 공존하면,
+  // 아이맥은 편집한 row를 보고 아이패드는 다른 duplicate row를 렌더링해 값이 안 바뀐 것처럼 보였다.
+  function plCanonicalClusterKeys(row) {
+    row = row || {};
+    var keys = [];
+    function add(prefix, v) {
+      var s = String(v == null ? '' : v).trim();
+      if (!s) return;
+      if (prefix === 'title') {
+        s = s.replace(/\s+/g, '').replace(/[^0-9a-zA-Z가-힣]/g, '').toLowerCase();
+        if (s.length < 3) return;
+      }
+      if (prefix === 'case') s = s.replace(/\s+/g, '').toLowerCase();
+      var k = prefix + ':' + s;
+      if (keys.indexOf(k) < 0) keys.push(k);
+    }
+    add('saved', row.linkedSavedId || row.savedId || row.sourceSavedId);
+    add('case', row.casenum || row.caseNo || row.caseNumber || (row.data && (row.data['경매번호'] || row.data['사건번호'])));
+    add('title', row.addr || row.title || row.name);
+    return keys;
+  }
+  var PL_DUPLICATE_PROPAGATE_FIELDS = ['intent','type','status','feature','appraisal','minprice','round','biddate','bidDate','saleDate','estimate','site','bidFocus','bidders','memo','result'];
+  function plRepairDuplicateUserFields(rows, opts) {
+    opts = opts || {};
+    var arr = (Array.isArray(rows) ? rows : []).map(plNormalizeItem);
+    if (arr.length < 2) return { rows: arr, changed:false, changedRows: [] };
+    var parent = arr.map(function(_, i){ return i; });
+    function find(x){ while(parent[x] !== x){ parent[x] = parent[parent[x]]; x = parent[x]; } return x; }
+    function union(a,b){ var ra=find(a), rb=find(b); if(ra!==rb) parent[rb]=ra; }
+    var keyFirst = {};
+    arr.forEach(function(row, idx){
+      plCanonicalClusterKeys(row).forEach(function(k){
+        if (keyFirst[k] === undefined) keyFirst[k] = idx;
+        else union(keyFirst[k], idx);
+      });
+    });
+    var groups = {};
+    arr.forEach(function(_, idx){ var r=find(idx); (groups[r] = groups[r] || []).push(idx); });
+    var changed = false;
+    var changedRowsMap = {};
+    Object.keys(groups).forEach(function(g){
+      var idxs = groups[g];
+      if (idxs.length < 2) return;
+      var groupRows = idxs.map(function(i){ return arr[i]; });
+      var maxPlEdited = 0;
+      groupRows.forEach(function(r){ maxPlEdited = Math.max(maxPlEdited, Number(r._skPlEditedAt || 0) || 0); });
+      PL_DUPLICATE_PROPAGATE_FIELDS.forEach(function(field){
+        var bestSet = false, bestVal, bestScore = 0, bestStamp = 0;
+        groupRows.forEach(function(r){
+          var val = r[field];
+          var stamp = plFieldStamp(r, field);
+          var score = stamp || (!plIsEmptyValue(val) ? (Number(r._skPlEditedAt || r.updatedAt || 0) || 0) : 0);
+          if (!score) return;
+          if (!bestSet || score > bestScore || (score === bestScore && stamp > bestStamp)) {
+            bestSet = true; bestVal = plCloneValue(val); bestScore = score; bestStamp = stamp;
+          }
+        });
+        if (!bestSet) return;
+        idxs.forEach(function(i){
+          var r = arr[i];
+          var before = JSON.stringify(r[field]);
+          var after = JSON.stringify(bestVal);
+          if (before !== after) { r[field] = plCloneValue(bestVal); changed = true; changedRowsMap[String(r.id)] = r; }
+          if (bestStamp) {
+            r._skPlFieldEditedAt = Object.assign({}, r._skPlFieldEditedAt || {});
+            if ((Number(r._skPlFieldEditedAt[field] || 0) || 0) < bestStamp) {
+              r._skPlFieldEditedAt[field] = bestStamp;
+              changed = true; changedRowsMap[String(r.id)] = r;
+            }
+          }
+        });
+      });
+      if (maxPlEdited) {
+        idxs.forEach(function(i){
+          var r = arr[i];
+          if ((Number(r._skPlEditedAt || 0) || 0) < maxPlEdited) { r._skPlEditedAt = maxPlEdited; changed = true; changedRowsMap[String(r.id)] = r; }
+          if ((Number(r._skLocalEditedAt || 0) || 0) < maxPlEdited) { r._skLocalEditedAt = maxPlEdited; changed = true; changedRowsMap[String(r.id)] = r; }
+        });
+      }
+    });
+    var changedRows = Object.keys(changedRowsMap).map(function(id){ return plNormalizeItem(changedRowsMap[id]); });
+    return { rows: arr.map(plNormalizeItem), changed: changed, changedRows: changedRows };
+  }
+  window.skRepairPlDuplicateRowsNow = function(reason) {
+    var items = plLoad();
+    var res = plRepairDuplicateUserFields(items, { persist:false });
+    if (res.changed) {
+      plSave(res.rows);
+      try { if (res.changedRows.length) plQueueUserEditRows(res.changedRows, reason || 'pl-duplicate-repair'); } catch(e) {}
+      try { if (typeof renderPropertyList === 'function') renderPropertyList(); } catch(e) {}
+    }
+    try { console.log('[SK-v174] pl duplicate repair', { changed:res.changed, rows:res.changedRows.length }); } catch(e) {}
+    return res;
+  };
+
   function plWithSavedSyncMute(fn) {
     _plSavedSyncMute += 1;
     try { return fn(); }
@@ -49872,18 +49971,37 @@ window.addEventListener('DOMContentLoaded', () => {
     var ts = Date.now();
     var changedFields = Object.keys(patch || {}).filter(function(k){ return k !== 'updatedAt' && k !== '_skPlEditedAt' && k !== '_skPlFieldEditedAt'; });
     items = items.map(function(it){
-      if (it.id !== id) return it;
+      if (String(it.id) !== String(id)) return it;
       var next = Object.assign({}, it, patch || {}, { updatedAt: ts });
       plMarkUserFields(next, changedFields, ts);
       changedItem = plNormalizeItem(next);
       return changedItem;
     });
     if (!changedItem) return null;
+    // v174: 같은 물건의 중복 pl row(pl_* / pl_room_*)에도 같은 사용자 편집값을 즉시 전파한다.
+    var clusterKeys = plCanonicalClusterKeys(changedItem);
+    var changedRows = [changedItem];
+    if (clusterKeys.length) {
+      items = items.map(function(it){
+        if (!it || String(it.id) === String(changedItem.id)) return it;
+        var same = plCanonicalClusterKeys(it).some(function(k){ return clusterKeys.indexOf(k) >= 0; });
+        if (!same) return it;
+        var next = Object.assign({}, it, patch || {}, { updatedAt: ts });
+        plMarkUserFields(next, changedFields, ts);
+        next = plNormalizeItem(next);
+        changedRows.push(next);
+        return next;
+      });
+    }
+    var repaired = plRepairDuplicateUserFields(items, { persist:false });
+    items = repaired.rows;
+    if (repaired.changedRows && repaired.changedRows.length) {
+      var seen = {};
+      changedRows.concat(repaired.changedRows).forEach(function(r){ if(r && r.id) seen[String(r.id)] = r; });
+      changedRows = Object.keys(seen).map(function(k){ return seen[k]; });
+    }
     plSave(items);
-    // 물건리스트 직접 편집은 pl_items 한 row가 원본이다.
-    // plSave가 먼저 IDB 캐시를 갱신하면 지연 저장 경로가 delta=0으로 판단할 수 있으므로,
-    // 변경 row를 durable outbox + 즉시 push로 별도 커밋한다.
-    try { plQueueUserEditRow(changedItem, 'pl-user-edit'); } catch(e) {}
+    try { plQueueUserEditRows(changedRows, 'pl-user-edit-cluster'); } catch(e) {}
     syncToWorkroom(changedItem);
     try { plSyncItemToSaved(changedItem); } catch(e) {}
     return changedItem;
@@ -49893,10 +50011,11 @@ window.addEventListener('DOMContentLoaded', () => {
   window.plSave = plSave;
   window.plUpdateItem = plUpdateItem;
   window.plNormalizeItem = plNormalizeItem;
+  try { setTimeout(function(){ try { window.skRepairPlDuplicateRowsNow && window.skRepairPlDuplicateRowsNow('startup-pl-duplicate-repair'); } catch(e) {} }, 1200); } catch(e) {}
   window.skDebugPlItem = function(q) {
     var needle=String(q||'').trim();
     var rows=(typeof plLoad==='function'?plLoad():[]).filter(function(x){return !needle || JSON.stringify(x||{}).indexOf(needle)>=0;});
-    var out=rows.map(function(x){return {id:x.id, title:x.addr||x.title, intent:x.intent, appraisal:x.appraisal, minprice:x.minprice, biddate:x.biddate, estimate:x.estimate, plAt:x._skPlEditedAt, fields:x._skPlFieldEditedAt, updatedAt:x.updatedAt};});
+    var out=rows.map(function(x){return {id:x.id, title:x.addr||x.title, roomId:x.roomId, linkedSavedId:x.linkedSavedId, keys:plCanonicalClusterKeys(x).join('|'), intent:x.intent, appraisal:x.appraisal, minprice:x.minprice, biddate:x.biddate, estimate:x.estimate, plAt:x._skPlEditedAt, fields:x._skPlFieldEditedAt, updatedAt:x.updatedAt};});
     try{ console.table(out); }catch(e){ console.log(out); }
     return out;
   };
@@ -53755,7 +53874,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260513-workroom-v173-pl-dualwrite-planner-touch-restore';
+  var BUILD='20260513-workroom-v174-pl-duplicate-merge-render-fix';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
@@ -56686,7 +56805,7 @@ window.addEventListener('DOMContentLoaded', () => {
 */
 (function(){
   'use strict';
-  var BUILD='20260513-workroom-v173-pl-dualwrite-planner-touch-restore';
+  var BUILD='20260513-workroom-v174-pl-duplicate-merge-render-fix';
   try{ window.__SK_BUILD=BUILD; console.log('[build] common.js '+BUILD); }catch(e){}
 
   // ─────────────────────────────────────────────────────
@@ -57434,7 +57553,7 @@ window.addEventListener('DOMContentLoaded', () => {
 (function(){
   if(window.__skV166DetailScheduleInstalled) return;
   window.__skV166DetailScheduleInstalled=true;
-  var BUILD='20260513-workroom-v173-pl-dualwrite-planner-touch-restore';
+  var BUILD='20260513-workroom-v174-pl-duplicate-merge-render-fix';
   try{ window.__SK_BUILD=BUILD; }catch(e){}
   function clean(v){ return String(v==null?'':v).trim(); }
   function ymd(v){
@@ -57600,7 +57719,7 @@ window.addEventListener('DOMContentLoaded', () => {
 (function(){
   if(window.__skV168ScheduleCanonicalInstalled) return;
   window.__skV168ScheduleCanonicalInstalled=true;
-  var BUILD='20260513-workroom-v173-pl-dualwrite-planner-touch-restore';
+  var BUILD='20260513-workroom-v174-pl-duplicate-merge-render-fix';
   try{ window.__SK_BUILD=BUILD; }catch(e){}
 
   function clean(v){ return String(v==null?'':v).trim(); }
