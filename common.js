@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260512-workroom-v162-workroom-pending-delta-guard';
+    window.__SK_BUILD = '20260512-workroom-v163-workroom-pending-explicit-action';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -53479,7 +53479,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260512-workroom-v162-workroom-pending-delta-guard';
+  var BUILD='20260512-workroom-v163-workroom-pending-explicit-action';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
@@ -54140,6 +54140,21 @@ window.addEventListener('DOMContentLoaded', () => {
     var d=(row.data && typeof row.data==='object') ? row.data : {};
     return Math.max(Number(row._skUrlEditedAt||0)||0, Number(row._skNaverEditedAt||0)||0, Number(d._skUrlEditedAt||0)||0, Number(d._skNaverEditedAt||0)||0);
   }
+  function explicitLifecycleActionStampOf(row){
+    if(!row || typeof row!=='object') return 0;
+    var d=(row.data && typeof row.data==='object') ? row.data : {};
+    // v163: _skLifecycleEditedAt만으로는 작업룸 push를 허용하지 않는다.
+    // v156~v162 과정에서 전체 작업룸에 찍힌 broad marker가 workrooms 55개 pending을 계속 되살렸다.
+    // 실제 사용자가 상태를 바꾼 commit 경로에서만 아래 explicit action marker를 찍고, 이 marker가 있는 row만 push한다.
+    return Math.max(
+      Number(row._skLifecycleActionAt||0)||0,
+      Number(row._skLifecycleCommitAt||0)||0,
+      Number(row._skExplicitLifecycleActionAt||0)||0,
+      Number(d._skLifecycleActionAt||0)||0,
+      Number(d._skLifecycleCommitAt||0)||0,
+      Number(d._skExplicitLifecycleActionAt||0)||0
+    );
+  }
   function savedExplicitUnsoldMapForPending(){
     var out={};
     try{
@@ -54192,7 +54207,7 @@ window.addEventListener('DOMContentLoaded', () => {
     if(Number(cfDirtyRoomIds[id]||0)||0) return true;
     if(maxCaptureDeleteTs(row) >= recentCut) return true;
     if(explicitUrlStampOf(row) >= recentCut) return true;
-    if((Number(row._skLifecycleEditedAt||0)||0) >= lifeCut) return true;
+    if(explicitLifecycleActionStampOf(row) >= lifeCut) return true;
     if(workroomUnsoldBackedBySaved(row)) return true;
     if(/capture|image|delete|url|naver|lifecycle|unsold|room-push|active-room-now/i.test(r)){
       // 이유 문자열만으로는 허용하지 않는다. 위 marker 중 하나가 있어야 한다.
@@ -55119,7 +55134,7 @@ window.addEventListener('DOMContentLoaded', () => {
     window.skCloudFlushPendingSafe=function(opts){ return flushPendingSafe(opts||{}); };
     window.skCloudPendingWorkroomAudit=function(){
       var p=readPending();
-      var rows=Object.keys((p&&p.workrooms)||{}).map(function(id){ var r=p.workrooms[id]||{}; return {id:id,title:String(r.title||r.name||r.addr||'').slice(0,40),reason:r._skPendingReason||'',updatedAt:r.updatedAt,localEditedAt:r._skLocalEditedAt,life:r._skLifecycleEditedAt,unsold:r._skUnsoldEditedAt,url:r._skUrlEditedAt||r._skNaverEditedAt,allow:shouldQueuePendingWorkroom(r,r._skPendingReason)}; });
+      var rows=Object.keys((p&&p.workrooms)||{}).map(function(id){ var r=p.workrooms[id]||{}; return {id:id,title:String(r.title||r.name||r.addr||'').slice(0,40),reason:r._skPendingReason||'',updatedAt:r.updatedAt,localEditedAt:r._skLocalEditedAt,life:r._skLifecycleEditedAt,lifeAction:explicitLifecycleActionStampOf(r),unsold:r._skUnsoldEditedAt,url:r._skUrlEditedAt||r._skNaverEditedAt,allow:shouldQueuePendingWorkroom(r,r._skPendingReason)}; });
       try{ console.table(rows); }catch(e){}
       return rows;
     };
@@ -56253,7 +56268,7 @@ window.addEventListener('DOMContentLoaded', () => {
 */
 (function(){
   'use strict';
-  var BUILD='20260512-workroom-v162-workroom-pending-delta-guard';
+  var BUILD='20260512-workroom-v163-workroom-pending-explicit-action';
   try{ window.__SK_BUILD=BUILD; console.log('[build] common.js '+BUILD); }catch(e){}
 
   // ─────────────────────────────────────────────────────
@@ -56381,6 +56396,9 @@ window.addEventListener('DOMContentLoaded', () => {
       if(explicitItem) n.__targetItemId=explicitItem;
       if(Object.prototype.hasOwnProperty.call(opts,'closedSummary')) n.closedSummary=opts.closedSummary;
       n._skLifecycleEditedAt=stamp;
+      n._skLifecycleActionAt=stamp;
+      n._skLifecycleCommitAt=stamp;
+      n._skExplicitLifecycleActionAt=stamp;
       n._skLocalEditedAt=stamp;
       n.updatedAt=stamp;
       roomObj=n;
@@ -56399,6 +56417,9 @@ window.addEventListener('DOMContentLoaded', () => {
         n.archived=false;
         if(rid) n.roomId=rid;
         n._skLifecycleEditedAt=stamp;
+        n._skLifecycleActionAt=stamp;
+        n._skLifecycleCommitAt=stamp;
+        n._skExplicitLifecycleActionAt=stamp;
         n._skLocalEditedAt=stamp;
         n.updatedAt=stamp;
         changedItems.push(n);
@@ -56423,7 +56444,7 @@ window.addEventListener('DOMContentLoaded', () => {
       var out=prevPlSet.apply(this, arguments);
       var stamp=now(), life=simple(simpleStatus), changed=null, rows=getItems().map(function(x){
         if(!x || sid(x.id)!==sid(id)) return x;
-        var n=Object.assign({},x,{status:itemStatusOf(life,x.status),archived:false,_skLifecycleEditedAt:stamp,_skLocalEditedAt:stamp,updatedAt:stamp});
+        var n=Object.assign({},x,{status:itemStatusOf(life,x.status),archived:false,_skLifecycleEditedAt:stamp,_skLifecycleActionAt:stamp,_skLifecycleCommitAt:stamp,_skExplicitLifecycleActionAt:stamp,_skLocalEditedAt:stamp,updatedAt:stamp});
         changed=n; return n;
       });
       if(changed) writeItems(rows,[changed],'lifecycle-authoritative-v158');
