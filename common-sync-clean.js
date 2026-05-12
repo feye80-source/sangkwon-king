@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260513-workroom-v168-linked-schedule-canonical';
+    window.__SK_BUILD = '20260513-workroom-v169-saved-priority-pl-repair';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -53594,7 +53594,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260513-workroom-v168-linked-schedule-canonical';
+  var BUILD='20260513-workroom-v169-saved-priority-pl-repair';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
@@ -56486,7 +56486,7 @@ window.addEventListener('DOMContentLoaded', () => {
 */
 (function(){
   'use strict';
-  var BUILD='20260513-workroom-v168-linked-schedule-canonical';
+  var BUILD='20260513-workroom-v169-saved-priority-pl-repair';
   try{ window.__SK_BUILD=BUILD; console.log('[build] common.js '+BUILD); }catch(e){}
 
   // ─────────────────────────────────────────────────────
@@ -57234,7 +57234,7 @@ window.addEventListener('DOMContentLoaded', () => {
 (function(){
   if(window.__skV166DetailScheduleInstalled) return;
   window.__skV166DetailScheduleInstalled=true;
-  var BUILD='20260513-workroom-v168-linked-schedule-canonical';
+  var BUILD='20260513-workroom-v169-saved-priority-pl-repair';
   try{ window.__SK_BUILD=BUILD; }catch(e){}
   function clean(v){ return String(v==null?'':v).trim(); }
   function ymd(v){
@@ -57259,7 +57259,7 @@ window.addEventListener('DOMContentLoaded', () => {
   function scheduleFromSaved(saved){
     if(!saved || !saved.id) return null;
     var d=(saved.data&&typeof saved.data==='object')?saved.data:{};
-    var date=ymd(d['매각기일'] || d['매각일'] || d['입찰기일'] || saved.biddate || saved.bidDate || saved.saleDate || saved.매각기일 || saved.매각일 || '');
+    var date=ymd(saved.biddate || saved.bidDate || saved.saleDate || saved.매각기일 || saved.매각일 || d['매각기일'] || d['매각일'] || d['입찰기일'] || '');
     var price=digits(d['최저가_원'] || d['최저가'] || saved.minprice || saved.minPrice || '');
     if(!price && d['최저가_만원']) price=String(Number(d['최저가_만원']) * 10000);
     var round=clean(saved.round || d['회차'] || d['입찰회차'] || d['매각회차'] || '');
@@ -57295,6 +57295,28 @@ window.addEventListener('DOMContentLoaded', () => {
       row._skScheduleEditedAt=st;
       row._skLocalEditedAt=st;
       row.updatedAt=st;
+      d._skScheduleEditedAt=st;
+      d._skLocalEditedAt=st;
+    }
+    return changed;
+  }
+
+  function normalizeSavedScheduleSelf(saved, src){
+    if(!saved || !src || !src.date) return false;
+    var changed=false;
+    if(!saved.data || typeof saved.data!=='object') saved.data={};
+    var d=saved.data;
+    function setObj(obj,k,v){ if(v==null || v==='') return; if(String(obj[k]||'')!==String(v)){ obj[k]=v; changed=true; } }
+    // 저장목록 자체도 top-level/data/_norm의 기일을 같은 값으로 맞춘다.
+    // v168 문제의 핵심은 saved.biddate는 최신인데 saved.data['매각기일'] 또는 pl_items가 예전값인 케이스였다.
+    ['biddate','bidDate','saleDate','매각기일','매각일','입찰기일'].forEach(function(k){ setObj(saved,k,src.date); });
+    ['매각기일','매각일','입찰기일'].forEach(function(k){ setObj(d,k,src.date); });
+    try{ saved._norm=Object.assign({}, saved._norm||{}); if(String(saved._norm.매각기일||'')!==String(src.date)){ saved._norm.매각기일=src.date; changed=true; } }catch(e){}
+    if(changed){
+      var st=Math.max(Number(src.stamp)||0, Date.now());
+      saved._skScheduleEditedAt=st;
+      saved._skLocalEditedAt=st;
+      saved.updatedAt=Math.max(num(saved.updatedAt), st);
       d._skScheduleEditedAt=st;
       d._skLocalEditedAt=st;
     }
@@ -57378,7 +57400,7 @@ window.addEventListener('DOMContentLoaded', () => {
 (function(){
   if(window.__skV168ScheduleCanonicalInstalled) return;
   window.__skV168ScheduleCanonicalInstalled=true;
-  var BUILD='20260513-workroom-v168-linked-schedule-canonical';
+  var BUILD='20260513-workroom-v169-saved-priority-pl-repair';
   try{ window.__SK_BUILD=BUILD; }catch(e){}
 
   function clean(v){ return String(v==null?'':v).trim(); }
@@ -57429,7 +57451,7 @@ window.addEventListener('DOMContentLoaded', () => {
   function scheduleFromSaved(saved, forceExplicit){
     if(!saved || saved.id==null) return null;
     var d=(saved.data&&typeof saved.data==='object')?saved.data:{};
-    var date=ymd(d['매각기일'] || d['매각일'] || d['입찰기일'] || saved.biddate || saved.bidDate || saved.saleDate || saved.매각기일 || saved.매각일 || '');
+    var date=ymd(saved.biddate || saved.bidDate || saved.saleDate || saved.매각기일 || saved.매각일 || d['매각기일'] || d['매각일'] || d['입찰기일'] || '');
     if(!date || date==='미정') return null;
     var est=explicitScheduleStamp(saved);
     var stamp=forceExplicit ? (est||touchSavedScheduleStamp(saved)) : (est || stampOf(saved));
@@ -57439,6 +57461,28 @@ window.addEventListener('DOMContentLoaded', () => {
     var round=clean(saved.round || d['회차'] || d['입찰회차'] || d['매각회차'] || '');
     var fail=clean(saved.failCount || d['유찰횟수'] || '');
     return {savedId:String(saved.id), date:date, price:price, round:round, fail:fail, stamp:stamp, explicit:!!est, saved:saved};
+  }
+
+  function normalizeSavedScheduleSelf(saved, src){
+    if(!saved || !src || !src.date) return false;
+    var changed=false;
+    if(!saved.data || typeof saved.data!=='object') saved.data={};
+    var d=saved.data;
+    function setObj(obj,k,v){ if(v==null || v==='') return; if(String(obj[k]||'')!==String(v)){ obj[k]=v; changed=true; } }
+    // 저장목록 자체도 top-level/data/_norm의 기일을 같은 값으로 맞춘다.
+    // v168 문제의 핵심은 saved.biddate는 최신인데 saved.data['매각기일'] 또는 pl_items가 예전값인 케이스였다.
+    ['biddate','bidDate','saleDate','매각기일','매각일','입찰기일'].forEach(function(k){ setObj(saved,k,src.date); });
+    ['매각기일','매각일','입찰기일'].forEach(function(k){ setObj(d,k,src.date); });
+    try{ saved._norm=Object.assign({}, saved._norm||{}); if(String(saved._norm.매각기일||'')!==String(src.date)){ saved._norm.매각기일=src.date; changed=true; } }catch(e){}
+    if(changed){
+      var st=Math.max(Number(src.stamp)||0, Date.now());
+      saved._skScheduleEditedAt=st;
+      saved._skLocalEditedAt=st;
+      saved.updatedAt=Math.max(num(saved.updatedAt), st);
+      d._skScheduleEditedAt=st;
+      d._skLocalEditedAt=st;
+    }
+    return changed;
   }
   function linkedSavedIdOfPl(it){ var d=(it&&it.data)||{}; return clean(it && (it.linkedSavedId || it.savedId || d.linkedSavedId || d.savedId)); }
   function roomSavedIds(room, plById){
@@ -57504,11 +57548,17 @@ window.addEventListener('DOMContentLoaded', () => {
       var savedRows=readRows('re_sv');
       var only=clean(options.savedId||'');
       var bySaved={};
+      var changedSaved=[];
       (Array.isArray(savedRows)?savedRows:[]).forEach(function(s){
         if(!s || s.id==null) return;
         if(only && String(s.id)!==only) return;
         var src=scheduleFromSaved(s, !!options.forceExplicit);
-        if(src) bySaved[String(s.id)]=src;
+        if(src){
+          if(normalizeSavedScheduleSelf(s, src)) changedSaved.push(s);
+          // normalizeSavedScheduleSelf가 stamp를 갱신했을 수 있으므로 source를 한 번 더 만든다.
+          src=scheduleFromSaved(s, !!options.forceExplicit) || src;
+          bySaved[String(s.id)]=src;
+        }
       });
       var pl=readRows('pl_items_v3').slice();
       var plById={}; pl.forEach(function(x){ if(x&&x.id) plById[String(x.id)]=x; });
@@ -57525,6 +57575,10 @@ window.addEventListener('DOMContentLoaded', () => {
         for(var i=0;i<ids.length;i++){ if(bySaved[ids[i]]){ src=bySaved[ids[i]]; break; } }
         if(src && touchScheduleRow(r,src)) changedRooms.push(r);
       });
+      if(changedSaved.length){
+        writeRows('re_sv', savedRows);
+        if(options.push!==false && typeof window.skCloudQueuePushTable==='function') window.skCloudQueuePushTable('items',changedSaved,'saved-detail-schedule-v169');
+      }
       if(changedPl.length){
         writeRows('pl_items_v3',pl);
         if(options.push!==false && typeof window.skCloudQueuePushTable==='function') window.skCloudQueuePushTable('pl_items',changedPl,'saved-detail-schedule-v168');
@@ -57539,7 +57593,7 @@ window.addEventListener('DOMContentLoaded', () => {
         try{ if(typeof window.wr2Render==='function') window.wr2Render(); }catch(e){}
         try{ if(typeof window.__wr2RenderNow==='function') window.__wr2RenderNow(); }catch(e){}
       }
-      if(changedPl.length||changedRooms.length){ try{ console.log('[SK-v168] linked schedule canonical',{savedId:only||'*',pl:changedPl.length,rooms:changedRooms.length,push:options.push!==false}); }catch(e){} }
+      if(changedPl.length||changedRooms.length){ try{ console.log('[SK-v169] linked schedule canonical',{savedId:only||'*',pl:changedPl.length,rooms:changedRooms.length,push:options.push!==false}); }catch(e){} }
       return {ok:true,savedId:only||'',pl:changedPl.length,rooms:changedRooms.length};
     }finally{ window.__skReconcilingScheduleV168=false; }
   };
@@ -57594,5 +57648,7 @@ window.addEventListener('DOMContentLoaded', () => {
   };
   setTimeout(function(){ try{ window._skReconcileScheduleCanonical({push:false, render:true}); }catch(e){} },400);
   setTimeout(function(){ try{ window._skReconcileScheduleCanonical({push:false, render:true}); }catch(e){} },2200);
-  try{ console.log('[SK-v168] installed',{build:BUILD}); }catch(e){}
+  // v169: 기존 서버/로컬에 남은 stale pl_items/rooms 기일은 안정화 후 한 번만 서버에도 수렴시킨다.
+  setTimeout(function(){ try{ window._skReconcileScheduleCanonical({push:true, render:true}); }catch(e){} },4200);
+  try{ console.log('[SK-v169] installed',{build:BUILD}); }catch(e){}
 })();
