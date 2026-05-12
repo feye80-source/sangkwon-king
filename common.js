@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260512-workroom-v160-unsold-canonical-load-fast';
+    window.__SK_BUILD = '20260512-workroom-v161-strict-unsold-no-broad-rewrite';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -53479,7 +53479,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260512-workroom-v160-unsold-canonical-load-fast';
+  var BUILD='20260512-workroom-v161-strict-unsold-no-broad-rewrite';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
@@ -56152,7 +56152,7 @@ window.addEventListener('DOMContentLoaded', () => {
 */
 (function(){
   'use strict';
-  var BUILD='20260512-workroom-v160-unsold-canonical-load-fast';
+  var BUILD='20260512-workroom-v161-strict-unsold-no-broad-rewrite';
   try{ window.__SK_BUILD=BUILD; console.log('[build] common.js '+BUILD); }catch(e){}
 
   // ─────────────────────────────────────────────────────
@@ -56697,4 +56697,191 @@ window.addEventListener('DOMContentLoaded', () => {
   var runInitial=function(){ try { window._skReconcileUnsoldCanonical({render:false}); } catch(e) {} };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function(){ setTimeout(runInitial, 80); setTimeout(runInitial, 1200); });
   else { setTimeout(runInitial, 80); setTimeout(runInitial, 1200); }
+})();
+
+/* === v161: strict unsold canonical + no broad auto rewrite ===
+   - v160 applied schedules from every saved row and could rewrite dozens of workrooms/pl_items.
+   - v161 only propagates rows with explicit _skUnsoldEditedAt from saved items.
+   - It also prunes v160-style unsold pending rows that are not backed by an explicitly unsold saved item.
+*/
+(function(){
+  if (window.__skV161StrictUnsoldInstalled) return;
+  window.__skV161StrictUnsoldInstalled = true;
+
+  function numTs(v){ var n=Number(v||0); return isFinite(n)?n:0; }
+  function clean(v){ return String(v == null ? '' : v).trim(); }
+  function ymd(v){
+    var s=clean(v);
+    if (!s || s==='미정') return s;
+    var m=s.match(/(20\d{2})[.\-/년\s]*(\d{1,2})[.\-/월\s]*(\d{1,2})/);
+    if (!m) return s;
+    return m[1]+'-'+String(Number(m[2])).padStart(2,'0')+'-'+String(Number(m[3])).padStart(2,'0');
+  }
+  function digits(v){ return clean(v).replace(/[^0-9]/g,''); }
+  function explicitUnsoldStamp(row){
+    var d=(row&&row.data)||{};
+    return Math.max(numTs(row&&row._skUnsoldEditedAt), numTs(d&&d._skUnsoldEditedAt));
+  }
+  function savedRows(){
+    try { if (typeof getSv==='function') return getSv()||[]; } catch(e) {}
+    try { return (window._idbCache&&window._idbCache.re_sv)||[]; } catch(e) { return []; }
+  }
+  function scheduleFromSavedStrict(saved){
+    if (!saved || !saved.id) return null;
+    var stamp=explicitUnsoldStamp(saved);
+    if (!stamp) return null; // 핵심: 일반 updatedAt/기일 정보만으로는 전파하지 않는다.
+    var d=saved.data||{};
+    var date=ymd(saved.biddate || saved.saleDate || saved.bidDate || d['매각기일'] || d['매각일'] || d['입찰기일'] || '');
+    var price=clean(saved.minprice || saved.minPrice || d['최저가_원'] || d['최저가'] || d['최저가_만원'] || '');
+    var round=clean(saved.round || d['회차'] || d['입찰회차'] || d['매각회차'] || '');
+    var fail=clean(saved.failCount || d['유찰횟수'] || '');
+    if (!date && !price && !round && !fail) return null;
+    return {savedId:String(saved.id), date:date, price:price, round:round, fail:fail, stamp:stamp, saved:saved};
+  }
+  function buildStrictSavedMap(){
+    var byId={};
+    (Array.isArray(savedRows())?savedRows():[]).forEach(function(s){
+      var sc=scheduleFromSavedStrict(s);
+      if (sc) byId[String(s.id)]=sc;
+    });
+    return byId;
+  }
+  function applyScheduleIfNewer(row, src){
+    if (!row || !src || !src.stamp) return false;
+    var current=explicitUnsoldStamp(row);
+    if (current > src.stamp) return false; // 사용자가 다른 기기에서 더 최신으로 처리한 값은 건드리지 않는다.
+    var changed=false;
+    function set(k,v){ if(v===undefined||v===null||v==='') return; if(String(row[k]||'')!==String(v)){ row[k]=v; changed=true; } }
+    if (!row.data || typeof row.data!=='object') row.data={};
+    var d=row.data;
+    if (src.date) {
+      ['biddate','bidDate','saleDate'].forEach(function(k){ set(k,src.date); });
+      ['매각기일','매각일','입찰기일'].forEach(function(k){ if(String(d[k]||'')!==String(src.date)){ d[k]=src.date; changed=true; } });
+    }
+    if (src.price) {
+      set('minprice', src.price);
+      var pn=Number(digits(src.price));
+      if (pn) {
+        if(String(d['최저가']||'')!==String(pn)){ d['최저가']=pn; changed=true; }
+        if(String(d['최저가_원']||'')!==String(pn)){ d['최저가_원']=pn; changed=true; }
+        var man=Math.round(pn/10000);
+        if(String(d['최저가_만원']||'')!==String(man)){ d['최저가_만원']=man; changed=true; }
+      } else if(String(d['최저가']||'')!==String(src.price)){ d['최저가']=src.price; changed=true; }
+    }
+    if (src.round) { set('round',src.round); if(String(d['회차']||'')!==String(src.round)){ d['회차']=src.round; changed=true; } }
+    if (src.fail!==undefined && src.fail!==null && src.fail!=='') { if(String(d['유찰횟수']||'')!==String(src.fail)){ d['유찰횟수']=src.fail; changed=true; } }
+    var st=Number(src.stamp)||Date.now();
+    if (numTs(row._skUnsoldEditedAt)!==st) { row._skUnsoldEditedAt=st; changed=true; }
+    if (numTs(row._skLocalEditedAt)<st) { row._skLocalEditedAt=st; changed=true; }
+    if (numTs(row.updatedAt)<st) { row.updatedAt=st; changed=true; }
+    if (numTs(d._skUnsoldEditedAt)!==st) { d._skUnsoldEditedAt=st; changed=true; }
+    if (numTs(d._skLocalEditedAt)<st) { d._skLocalEditedAt=st; changed=true; }
+    return changed;
+  }
+  function plRows(){ try { return (typeof window.plLoad==='function') ? (window.plLoad()||[]) : ((window._idbCache&&window._idbCache.pl_items_v3)||[]); } catch(e){ return []; } }
+  function roomRows(){ try { return (window._wrGetRoomsCache&&window._wrGetRoomsCache()) || ((window._idbCache&&window._idbCache.wr2_rooms)||[]); } catch(e){ return []; } }
+  function linkedSavedIdOfPl(it){ return clean(it && (it.linkedSavedId || it.savedId || (it.data&&it.data.linkedSavedId) || (it.data&&it.data.savedId))); }
+  function idsFromRoom(room, plById){
+    var ids=[]; function push(v){ var s=clean(v); if(s && ids.indexOf(s)<0) ids.push(s); }
+    if(!room) return ids;
+    [room.linkedSavedId, room.savedId, room.sourceSavedId, room.auctionId, room.listingId].forEach(push);
+    if(room.targetItemId && plById[String(room.targetItemId)]) push(linkedSavedIdOfPl(plById[String(room.targetItemId)]));
+    (Array.isArray(room.linkedItems)?room.linkedItems:[]).forEach(function(v){
+      if(v == null) return;
+      if(typeof v==='object') [v.linkedSavedId,v.savedId,v.sourceSavedId,v.itemId,v.plItemId,v.id].forEach(function(x){
+        var s=clean(x); if(!s) return; if(plById[s]) push(linkedSavedIdOfPl(plById[s])); else push(s);
+      });
+      else { var s=clean(v); if(plById[s]) push(linkedSavedIdOfPl(plById[s])); else push(s); }
+    });
+    return ids.filter(Boolean);
+  }
+  function safeWriteArray(key, rows){
+    try { if(window._idbCache) window._idbCache[key]=rows; } catch(e) {}
+    try { if(typeof window.idbSet==='function') window.idbSet(key, rows).catch(function(){}); } catch(e) {}
+  }
+  function persistPlStrict(all, changed){
+    if(!changed.length) return;
+    safeWriteArray('pl_items_v3', all);
+    try { if(typeof window.skCloudQueuePushTable==='function') window.skCloudQueuePushTable('pl_items', changed, 'unsold-canonical-v161-strict'); } catch(e) {}
+  }
+  function persistRoomsStrict(all, changed){
+    if(!changed.length) return;
+    safeWriteArray('wr2_rooms', all);
+    try { if(window.wr2State) window.wr2State.rooms=all; } catch(e) {}
+    try { if(typeof window.skCloudQueuePushTable==='function') window.skCloudQueuePushTable('workrooms', changed, 'unsold-canonical-v161-strict'); } catch(e) {}
+  }
+  function pruneBadV160Pending(bySaved){
+    try{
+      var raw=localStorage.getItem('sk_cf_v115_pending_rows');
+      if(!raw) return {pruned:0};
+      var p=JSON.parse(raw||'{}')||{};
+      var pruned=0;
+      var pl=(Array.isArray(plRows())?plRows():[]), plById={};
+      pl.forEach(function(x){ if(x&&x.id) plById[String(x.id)]=x; });
+      function isValidRow(table,row){
+        if(!row || !explicitUnsoldStamp(row)) return true; // 유찰 pending이 아니면 건드리지 않는다.
+        if(table==='pl_items') { var sid=linkedSavedIdOfPl(row); return !!(sid && bySaved[sid]); }
+        if(table==='workrooms') { var ids=idsFromRoom(row, plById); return ids.some(function(id){ return !!bySaved[id]; }); }
+        return true;
+      }
+      ['pl_items','workrooms'].forEach(function(table){
+        var map=p[table]||{};
+        Object.keys(map).forEach(function(id){ if(!isValidRow(table,map[id])){ delete map[id]; pruned++; } });
+        if(p[table] && !Object.keys(p[table]).length) delete p[table];
+      });
+      if(pruned) localStorage.setItem('sk_cf_v115_pending_rows', JSON.stringify(p));
+      return {pruned:pruned};
+    }catch(e){ return {error:String(e&&e.message||e)}; }
+  }
+
+  window._skReconcileUnsoldCanonical = function(opts){
+    var options=opts||{};
+    if(window.__skReconcilingUnsoldV161) return {running:true};
+    window.__skReconcilingUnsoldV161=true;
+    try{
+      var bySaved=buildStrictSavedMap();
+      var ids=Object.keys(bySaved);
+      var prune=pruneBadV160Pending(bySaved);
+      if(!ids.length) return {pl:0,rooms:0,prune:prune,reason:'no-explicit-unsold-saved-row'};
+      var pl=Array.isArray(plRows()) ? plRows().slice() : [];
+      var plById={}; pl.forEach(function(x){ if(x&&x.id) plById[String(x.id)]=x; });
+      var changedPl=[];
+      pl.forEach(function(it){
+        var sid=linkedSavedIdOfPl(it);
+        var src=sid && bySaved[sid];
+        if(src && applyScheduleIfNewer(it,src)) changedPl.push(it);
+      });
+      var rooms=Array.isArray(roomRows()) ? roomRows().slice() : [];
+      var changedRooms=[];
+      rooms.forEach(function(r){
+        if(!r || !r.id || r.deletedAt) return;
+        var roomIds=idsFromRoom(r, plById);
+        var src=null;
+        for(var i=0;i<roomIds.length;i++){ if(bySaved[roomIds[i]]){ src=bySaved[roomIds[i]]; break; } }
+        if(src && applyScheduleIfNewer(r,src)) changedRooms.push(r);
+      });
+      persistPlStrict(pl,changedPl);
+      persistRoomsStrict(rooms,changedRooms);
+      if((changedPl.length||changedRooms.length) && options.render!==false){
+        try{ if(typeof window.renderPropertyList==='function') window.renderPropertyList(); }catch(e){}
+        try{ if(typeof window.wr2Render==='function') window.wr2Render(); }catch(e){}
+      }
+      if(changedPl.length||changedRooms.length||prune.pruned){ try{ console.log('[SK-v161] strict unsold reconciled',{pl:changedPl.length,rooms:changedRooms.length,prune:prune}); }catch(e){} }
+      return {pl:changedPl.length, rooms:changedRooms.length, prune:prune};
+    } finally { window.__skReconcilingUnsoldV161=false; }
+  };
+
+  window._skDebugUnsoldRows = function(keyword){
+    try{ window._skReconcileUnsoldCanonical({render:false}); }catch(e){}
+    var kw=clean(keyword);
+    var hit=function(x){ return !kw || JSON.stringify(x||'').indexOf(kw)>=0; };
+    var rooms=roomRows()||[], pl=plRows()||[], sv=savedRows()||[];
+    var pick=function(x){ var d=(x&&x.data)||{}; return {id:x&&x.id,title:x&&(x.title||x.name||x.addr),status:x&&x.status,lifecycleStatus:x&&x.lifecycleStatus,roomId:x&&x.roomId,linkedSavedId:x&&x.linkedSavedId,매각기일:x&&(x.biddate||x.saleDate||x.bidDate||d['매각기일']),회차:x&&(x.round||d['회차']||d['유찰횟수']),최저가:x&&(x.minprice||d['최저가_원']||d['최저가']),unsoldEditedAt:x&&x._skUnsoldEditedAt,localEditedAt:x&&x._skLocalEditedAt,updatedAt:x&&x.updatedAt}; };
+    console.log('[unsold rows v161]', kw);
+    try{ console.table((rooms||[]).filter(hit).map(pick)); console.table((pl||[]).filter(hit).map(pick)); console.table((sv||[]).filter(hit).map(pick)); }catch(e){}
+    return {rooms:(rooms||[]).filter(hit), pl:(pl||[]).filter(hit), sv:(sv||[]).filter(hit)};
+  };
+
+  setTimeout(function(){ try{ window._skReconcileUnsoldCanonical({render:false}); }catch(e){} }, 250);
+  setTimeout(function(){ try{ window._skReconcileUnsoldCanonical({render:false}); }catch(e){} }, 1800);
 })();
