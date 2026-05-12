@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260512-workroom-v156-lifecycle-persist-input-bid-sync';
+    window.__SK_BUILD = '20260512-workroom-v158-lifecycle-authoritative-no-intent';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -53317,184 +53317,8 @@ window.addEventListener('DOMContentLoaded', () => {
 })();
 
 
-/* === lifecycle local override patch (2026-04-23) === */
-(function(){
-  try {
-    var TTL = 4000;
-    window.__plLifecycleOverride = window.__plLifecycleOverride || { byRoom:{}, bySaved:{}, byItem:{} };
 
-    function _now(){ return Date.now(); }
-    function _cleanStore(store){
-      var now = _now();
-      Object.keys(store || {}).forEach(function(key){
-        var entry = store[key];
-        if (!entry || !entry.until || entry.until <= now) delete store[key];
-      });
-    }
-    function _normalizeSimple(value){
-      try {
-        return (typeof plSimpleStatusKey === 'function') ? plSimpleStatusKey(value) : String(value || 'active');
-      } catch(e) {
-        var s = String(value || 'active');
-        if (s === 'field' || s === 'bid' || s === 'won' || s === 'sell') return 'changed';
-        if (s === 'archived') return 'closed';
-        return (s === 'active' || s === 'changed' || s === 'closed') ? s : 'active';
-      }
-    }
-    function _statusFromSimple(simple, base){
-      var s = _normalizeSimple(simple);
-      var b = String(base || 'review');
-      if (s === 'closed') return 'closed';
-      if (s === 'changed') {
-        if (b === 'field' || b === 'bid' || b === 'won' || b === 'sell') return b;
-        return 'field';
-      }
-      // active는 changed 계열(field/bid/won/sell)에서 반드시 review로 복귀시켜야
-      // 상태가 changed로 다시 되돌아가는 교차 덮어쓰기를 막을 수 있다.
-      if (b === 'field' || b === 'bid' || b === 'won' || b === 'sell' || b === 'closed' || b === 'archived') return 'review';
-      return b || 'review';
-    }
-    function _getOverride(item, room, savedId){
-      var bag = window.__plLifecycleOverride || {};
-      var byRoom = bag.byRoom || {};
-      var bySaved = bag.bySaved || {};
-      var byItem = bag.byItem || {};
-      _cleanStore(byRoom); _cleanStore(bySaved); _cleanStore(byItem);
-      var entry = null;
-      var keys = [];
-      if (item && item.id) keys.push(['item', String(item.id)]);
-      for (var i=0;i<keys.length;i++){
-        var type = keys[i][0], key = keys[i][1];
-        var candidate = type === 'item' ? byItem[key] : (type === 'room' ? byRoom[key] : bySaved[key]);
-        if (candidate && candidate.until > _now()) { entry = candidate; break; }
-      }
-      return entry;
-    }
-    function _setOverride(item, simple){
-      var bag = window.__plLifecycleOverride || {};
-      bag.byRoom = bag.byRoom || {};
-      bag.bySaved = bag.bySaved || {};
-      bag.byItem = bag.byItem || {};
-      window.__plLifecycleOverride = bag;
-      var entry = { simple:_normalizeSimple(simple), until:_now()+TTL };
-      if (item && item.id) bag.byItem[String(item.id)] = entry;
-      return entry;
-    }
-    function _clearOverride(item, roomId, savedId){
-      var bag = window.__plLifecycleOverride || {};
-      if (item && item.id && bag.byItem) delete bag.byItem[String(item.id)];
-    }
-
-    window._plSetLifecycleOverride = _setOverride;
-    window._plClearLifecycleOverride = _clearOverride;
-    window._plGetLifecycleOverride = _getOverride;
-
-    if (typeof plBuildPatchFromSaved === 'function' && !plBuildPatchFromSaved.__skOverridePatched) {
-      var _origBuildPatchFromSaved = plBuildPatchFromSaved;
-      plBuildPatchFromSaved = function(src, curItem){
-        var patch = _origBuildPatchFromSaved(src, curItem);
-        if (!patch) return patch;
-        var savedId = String((src && src.id) || (curItem && curItem.linkedSavedId) || '');
-        var entry = _getOverride(curItem || null, null, savedId);
-        if (!entry) return patch;
-        patch.status = _statusFromSimple(entry.simple, patch.status || (curItem && curItem.status) || 'review');
-        // 상태와 무관하게 기존 기일은 보존한다.
-        if (patch.biddate === '미정' && curItem && curItem.biddate && curItem.biddate !== '미정') {
-          patch.biddate = curItem.biddate;
-        }
-        return patch;
-      };
-      plBuildPatchFromSaved.__skOverridePatched = true;
-      window.plBuildPatchFromSaved = plBuildPatchFromSaved;
-    }
-
-    if (typeof plBuildFromRoom === 'function' && !plBuildFromRoom.__skOverridePatched) {
-      var _origBuildFromRoom = plBuildFromRoom;
-      plBuildFromRoom = function(room, savedItem, prevItem, resolvedSavedId){
-        var built = _origBuildFromRoom(room, savedItem, prevItem, resolvedSavedId);
-        var entry = _getOverride(prevItem || built || null, room || null, resolvedSavedId || (savedItem && savedItem.id));
-        if (!entry || !built) return built;
-        built.status = _statusFromSimple(entry.simple, built.status || (prevItem && prevItem.status) || 'review');
-        built.archived = (built.status === 'archived');
-        // 상태와 무관하게 기존 기일은 보존한다.
-        if (built.biddate === '미정' && prevItem && prevItem.biddate && prevItem.biddate !== '미정') {
-          built.biddate = prevItem.biddate;
-        }
-        return (typeof plNormalizeItem === 'function') ? plNormalizeItem(built) : built;
-      };
-      plBuildFromRoom.__skOverridePatched = true;
-      window.plBuildFromRoom = plBuildFromRoom;
-    }
-
-    if (typeof plEffectiveSimpleStatus === 'function' && !plEffectiveSimpleStatus.__skOverridePatched) {
-      var _origEffective = plEffectiveSimpleStatus;
-      plEffectiveSimpleStatus = function(item, roomById){
-        var room = roomById && item && item.roomId ? roomById[String(item.roomId)] : null;
-        var entry = _getOverride(item || null, room || null, item && item.linkedSavedId);
-        if (entry) return entry.simple;
-        return _origEffective(item, roomById);
-      };
-      plEffectiveSimpleStatus.__skOverridePatched = true;
-      window.plEffectiveSimpleStatus = plEffectiveSimpleStatus;
-    }
-
-    if (typeof syncPropertyFromRoom === 'function' && !syncPropertyFromRoom.__skOverridePatched) {
-      var _origSyncPropertyFromRoom = syncPropertyFromRoom;
-      syncPropertyFromRoom = function(roomId, patch){
-        var out = _origSyncPropertyFromRoom(roomId, patch);
-        try {
-          var items = (typeof plLoad === 'function') ? plLoad() : [];
-          var item = (items || []).find(function(it){ return String(it && it.roomId || '') === String(roomId || ''); });
-          if (item) {
-            var room = (typeof getWrRooms === 'function') ? (getWrRooms() || []).find(function(r){ return String(r && r.id || '') === String(roomId || ''); }) : null;
-            var entry = _getOverride(item, room, item.linkedSavedId);
-            if (entry) {
-              var currentSimple = _normalizeSimple(item.status);
-              var roomSimple = _normalizeSimple(room && (room.lifecycleStatus || room.status || room.phase) || '');
-              if (currentSimple === entry.simple && roomSimple === entry.simple) {
-                _clearOverride(item);
-              }
-            }
-          }
-        } catch(e) {}
-        return out;
-      };
-      syncPropertyFromRoom.__skOverridePatched = true;
-      window.syncPropertyFromRoom = syncPropertyFromRoom;
-    }
-
-    if (typeof window.plSetSimpleStatus === 'function' && !window.plSetSimpleStatus.__skOverridePatched) {
-      var _origSetSimple = window.plSetSimpleStatus;
-      window.plSetSimpleStatus = function(id, simpleStatus){
-        var out = _origSetSimple.apply(this, arguments);
-        if (out !== true) return out;
-        try {
-          var items = (typeof plLoad === 'function') ? plLoad() : [];
-          var item = (items || []).find(function(it){ return String(it && it.id || '') === String(id || ''); });
-          if (item) _setOverride(item, simpleStatus);
-        } catch(e) {}
-        return out;
-      };
-      window.plSetSimpleStatus.__skOverridePatched = true;
-    }
-
-    if (typeof window.renderPropertyList === 'function' && !window.renderPropertyList.__skOverridePatched2) {
-      var _origRenderList = window.renderPropertyList;
-      window.renderPropertyList = function(){
-        try {
-          var bag = window.__plLifecycleOverride || {};
-          _cleanStore(bag.byRoom || {});
-          _cleanStore(bag.bySaved || {});
-          _cleanStore(bag.byItem || {});
-        } catch(e) {}
-        return _origRenderList.apply(this, arguments);
-      };
-      window.renderPropertyList.__skOverridePatched2 = true;
-    }
-  } catch (e) {
-    console.warn('[lifecycle local override patch]', e);
-  }
-})();
+/* v158 removed: legacy lifecycle local override patch (intent/display override) */
 
 /* ════════════════════════════════════════════════════════
    SK-CF v117: capture tombstone delete sync
@@ -53504,7 +53328,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260512-workroom-v156-lifecycle-persist-input-bid-sync';
+  var BUILD='20260512-workroom-v158-lifecycle-authoritative-no-intent';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
@@ -56162,351 +55986,334 @@ window.addEventListener('DOMContentLoaded', () => {
 })();
 
 
-/* v156: lifecycle persistent intent + robust numeric input + bid sync */
+
+/* v158 removed: v156 lifecycle persistent intent/durable wrapper block */
+
+
+/* v158 removed: v156 lifecycle intent guard block */
+
+
+
+/* v158: authoritative lifecycle + iPad input/scroll fix, no intent/override
+   - 상태 기준은 실제 wr2_rooms/workrooms row와 pl_items row만 사용한다.
+   - sk_lifecycle_intent_v156, __plLifecycleOverride, _plSetLifecycleOverride 계열은 사용하지 않는다.
+   - pull/push 충돌은 row의 _skLifecycleEditedAt 비교로 병합 단계에서 막는다.
+*/
 (function(){
   'use strict';
-  var BUILD='20260512-workroom-v156-lifecycle-persist-input-bid-sync';
-  try { window.__SK_BUILD = BUILD; console.log('[build] common.js ' + BUILD); } catch(e) {}
+  var BUILD='20260512-workroom-v158-lifecycle-authoritative-no-intent';
+  try{ window.__SK_BUILD=BUILD; console.log('[build] common.js '+BUILD); }catch(e){}
 
-  function _now(){ return Date.now(); }
-  function _id(x){ return String(x && (x.id || x.item_id || x.roomId || x._id || '') || ''); }
-  function _simple(v){
-    var s=String(v||'active').trim();
-    if(s==='closed' || s==='archived') return 'closed';
-    if(s==='changed' || s==='field' || s==='bid' || s==='won' || s==='sell') return 'changed';
+  // ─────────────────────────────────────────────────────
+  // 0) legacy intent/override hard remove
+  // ─────────────────────────────────────────────────────
+  try{
+    ['sk_lifecycle_intent_v156','sk_wr_lifecycle_override_v1','sk_lifecycle_intent_v155','sk_pl_lifecycle_override_v1'].forEach(function(k){ try{ localStorage.removeItem(k); }catch(e){} });
+    window.__plLifecycleOverride = { byRoom:{}, bySaved:{}, byItem:{} };
+    window._plSetLifecycleOverride = undefined;
+    window._plGetLifecycleOverride = undefined;
+    window._plClearLifecycleOverride = undefined;
+    window.skApplyLifecycleIntents = undefined;
+  }catch(e){}
+
+  function sid(v){ return String(v==null?'':v).trim(); }
+  function now(){ return Date.now(); }
+  function simple(v){
+    var s=sid(v);
+    if(s==='closed'||s==='archived'||s==='end'||s==='done') return 'closed';
+    if(s==='changed'||s==='field'||s==='hold'||s==='pending'||s==='stop'||s==='paused'||s==='bid'||s==='won'||s==='sell') return 'changed';
     return 'active';
   }
-  function _phase(simple){
-    simple=_simple(simple);
-    return simple==='closed' ? 'closed' : (simple==='changed' ? 'field' : 'review');
-  }
-  function _activeRooms(rows){
-    return (Array.isArray(rows)?rows:[]).filter(function(r){ return r && r.id && !r.deletedAt; });
-  }
-  function _allRooms(){
-    try { if (typeof window._wrGetRoomsCache === 'function') return window._wrGetRoomsCache().slice(); } catch(e) {}
-    try { if (window._idbCache && Array.isArray(window._idbCache.wr2_rooms)) return window._idbCache.wr2_rooms.slice(); } catch(e) {}
-    try { return JSON.parse(localStorage.getItem('wr2_rooms') || '[]').filter(function(r){ return r && r.id; }); } catch(e) { return []; }
-  }
-  function _persistRoomsDirect(rows, changedRows){
-    rows=(Array.isArray(rows)?rows:[]).filter(function(r){ return r && r.id; });
-    changedRows=(Array.isArray(changedRows)?changedRows:[]).filter(function(r){ return r && r.id; });
-    try { if (window._idbCache) window._idbCache.wr2_rooms = rows; } catch(e) {}
-    try { if (typeof window.idbSet === 'function') window.idbSet('wr2_rooms', rows).catch(function(){}); } catch(e) {}
-    try { localStorage.setItem('wr2_rooms', JSON.stringify(rows)); } catch(e) {}
-    try {
-      if (window.wr2State) {
-        var prevActive=String(window.wr2State.activeRoomId||'');
-        window.wr2State.rooms = _activeRooms(rows);
-        if (prevActive && !window.wr2State.rooms.some(function(r){ return String(r.id)===prevActive; })) window.wr2State.activeRoomId='';
-      }
-    } catch(e) {}
-    try {
-      // outbox에 먼저 넣어 둔다. push 실패/새로고침/포커스 pull이 와도 로컬 변경 row를 잃지 않게 하는 핵심.
-      if (typeof window.skCloudQueuePushTable === 'function') window.skCloudQueuePushTable('workrooms', changedRows, 'lifecycle-durable');
-    } catch(e) {}
-    try {
-      if (typeof window.skCloudPushTable === 'function' && changedRows.length) {
-        window.skCloudPushTable('workrooms', changedRows).catch(function(e){ console.warn('[v155 lifecycle] direct workroom push failed; queued', e && (e.message||e)); });
-      }
-    } catch(e) {}
-  }
-  function _allPlItems(){
-    try { if (typeof window.plLoad === 'function') return window.plLoad().slice(); } catch(e) {}
-    try { if (window._idbCache && Array.isArray(window._idbCache.pl_items_v3)) return window._idbCache.pl_items_v3.slice(); } catch(e) {}
-    try { return JSON.parse(localStorage.getItem('pl_items_v3') || '[]').filter(function(x){return x&&x.id;}); } catch(e) { return []; }
-  }
-  function _persistPlDirect(items, changed){
-    items=(Array.isArray(items)?items:[]).filter(function(it){ return it && it.id; });
-    changed=(Array.isArray(changed)?changed:[]).filter(function(it){ return it && it.id; });
-    try { if (typeof window.plSave === 'function') window.plSave(items); } catch(e) {
-      try { if (window._idbCache) window._idbCache.pl_items_v3=items; } catch(_e) {}
-      try { if (typeof window.idbSet === 'function') window.idbSet('pl_items_v3', items).catch(function(){}); } catch(_e) {}
-    }
-    try { if (typeof window.skCloudQueuePushTable === 'function') window.skCloudQueuePushTable('pl_items', changed, 'lifecycle-durable-pl'); } catch(e) {}
-    try { if (typeof window.skCloudPushTable === 'function' && changed.length) window.skCloudPushTable('pl_items', changed).catch(function(e){ console.warn('[v155 lifecycle] direct pl push failed; queued', e && (e.message||e)); }); } catch(e) {}
-  }
-  function _targetItem(roomId, itemId){
-    var items=_allPlItems();
-    var iid=String(itemId||'').trim();
-    var rid=String(roomId||'').trim();
-    if(iid){
-      var direct=items.find(function(it){ return String(it && it.id || '')===iid; });
-      if(direct) return direct;
-    }
-    var roomItems=items.filter(function(it){ return String(it && it.roomId || '')===rid; });
-    if(roomItems.length===1) return roomItems[0];
-    roomItems.sort(function(a,b){ return Number(b && (b._skLifecycleEditedAt || b._skLocalEditedAt || b.updatedAt || 0))-Number(a && (a._skLifecycleEditedAt || a._skLocalEditedAt || a.updatedAt || 0)); });
-    return roomItems[0] || null;
-  }
-  function _statusForItem(simple, oldStatus){
-    simple=_simple(simple);
-    if(simple==='closed') return 'closed';
-    if(simple==='changed') {
-      var s=String(oldStatus||'');
-      return (s==='field'||s==='bid'||s==='won'||s==='sell') ? s : 'field';
-    }
+  function phaseOf(life){ life=simple(life); return life==='closed'?'closed':(life==='changed'?'field':'review'); }
+  function itemStatusOf(life, oldStatus){
+    life=simple(life); oldStatus=sid(oldStatus);
+    if(life==='closed') return 'closed';
+    if(life==='changed') return (oldStatus==='field'||oldStatus==='bid'||oldStatus==='won'||oldStatus==='sell') ? oldStatus : 'field';
     return 'review';
   }
-
-  window.skApplyUnifiedLifecycle = function(opts){
-    opts=opts||{};
-    var roomId=String(opts.roomId || opts.id || '').trim();
-    var simple=_simple(opts.lifecycleStatus || opts.simple || 'active');
-    var stamp=_now();
-    var target=_targetItem(roomId, opts.itemId || opts.targetItemId || '');
-    var itemId=String((target && target.id) || opts.itemId || opts.targetItemId || '').trim();
-    var phase=_phase(simple);
-
-    var rooms=_allRooms();
-    var changedRoom=null;
-    rooms=rooms.map(function(r){
-      if(!r || String(r.id)!==roomId) return r;
-      var next=Object.assign({}, r);
-      next.lifecycleStatus=simple;
-      next.status=phase;
-      next.phase=phase;
-      next.activePhase=phase;
-      if (itemId) next.__targetItemId=itemId;
-      if (opts.closedSummary !== undefined) next.closedSummary=opts.closedSummary;
-      next._skLifecycleEditedAt=stamp;
-      next._skLocalEditedAt=stamp;
-      next.updatedAt=stamp;
-      changedRoom=next;
-      return next;
-    });
-    if(changedRoom){
-      _persistRoomsDirect(rooms, [changedRoom]);
+  function lifeMarker(row){
+    if(!row||typeof row!=='object') return 0;
+    var d=(row.data&&typeof row.data==='object')?row.data:{};
+    return Math.max(Number(row._skLifecycleEditedAt||0)||0, Number(row._skLocalEditedAt||0)||0, Number(row.updatedAt||0)||0, Number(d._skLifecycleEditedAt||0)||0, Number(d._skLocalEditedAt||0)||0);
+  }
+  function rowsFromCache(key){
+    try{ if(window._idbCache && Array.isArray(window._idbCache[key])) return window._idbCache[key].slice(); }catch(e){}
+    try{ return JSON.parse(localStorage.getItem(key)||'[]').filter(Boolean); }catch(e){ return []; }
+  }
+  function getRooms(){
+    try{ if(typeof window._wrGetRoomsCache==='function'){ var r=window._wrGetRoomsCache(); if(Array.isArray(r)) return r.slice(); } }catch(e){}
+    if(window.wr2State && Array.isArray(window.wr2State.rooms)){
+      var cache=rowsFromCache('wr2_rooms');
+      if(cache.length) return cache;
+      return window.wr2State.rooms.slice();
     }
-
-    var changedItem=null;
-    if(itemId){
-      var items=_allPlItems();
-      items=items.map(function(it){
-        if(!it || String(it.id)!==itemId) return it;
-        var next=Object.assign({}, it);
-        next.status=_statusForItem(simple, it.status);
-        next.archived=(next.status==='archived');
-        next._skLifecycleEditedAt=stamp;
-        next._skLocalEditedAt=stamp;
-        next.updatedAt=stamp;
-        if(roomId) next.roomId=roomId;
-        changedItem=next;
-        return next;
+    return rowsFromCache('wr2_rooms');
+  }
+  function getItems(){
+    try{ if(typeof window.plLoad==='function'){ var x=window.plLoad(); if(Array.isArray(x)) return x.slice(); } }catch(e){}
+    return rowsFromCache('pl_items_v3');
+  }
+  function writeRooms(allRows, changedRows, reason){
+    allRows=(Array.isArray(allRows)?allRows:[]).filter(function(r){return r&&r.id;});
+    changedRows=(Array.isArray(changedRows)?changedRows:[]).filter(function(r){return r&&r.id;});
+    try{ if(window._idbCache) window._idbCache.wr2_rooms=allRows; }catch(e){}
+    try{ if(typeof window.idbSet==='function') window.idbSet('wr2_rooms', allRows).catch(function(){}); }catch(e){}
+    try{ localStorage.setItem('wr2_rooms', JSON.stringify(allRows)); }catch(e){}
+    try{
+      if(window.wr2State){
+        var active=sid(window.wr2State.activeRoomId);
+        window.wr2State.rooms=allRows.filter(function(r){return r&&r.id&&!r.deletedAt;});
+        if(active && !window.wr2State.rooms.some(function(r){return sid(r.id)===active;})) window.wr2State.activeRoomId='';
+      }
+    }catch(e){}
+    changedRows.forEach(function(r){ try{ if(typeof window._sbMarkRoomDirty==='function') window._sbMarkRoomDirty(r.id); }catch(e){} });
+    try{ if(changedRows.length && typeof window.skCloudQueuePushTable==='function') window.skCloudQueuePushTable('workrooms', changedRows, reason||'lifecycle-authoritative-v158'); }catch(e){}
+    try{ if(changedRows.length && typeof window.skCloudPushTable==='function') window.skCloudPushTable('workrooms', changedRows).catch(function(e){ console.warn('[v158 lifecycle workrooms push queued]', e&&e.message||e); }); }catch(e){}
+  }
+  function writeItems(allItems, changedItems, reason){
+    allItems=(Array.isArray(allItems)?allItems:[]).filter(function(x){return x&&x.id;});
+    changedItems=(Array.isArray(changedItems)?changedItems:[]).filter(function(x){return x&&x.id;});
+    try{ if(window._idbCache) window._idbCache.pl_items_v3=allItems; }catch(e){}
+    try{ if(typeof window.idbSet==='function') window.idbSet('pl_items_v3', allItems).catch(function(){}); }catch(e){}
+    try{ localStorage.setItem('pl_items_v3', JSON.stringify(allItems)); }catch(e){}
+    try{ if(typeof window.plSave==='function') window.plSave(allItems); }catch(e){}
+    try{ if(changedItems.length && typeof window.skCloudQueuePushTable==='function') window.skCloudQueuePushTable('pl_items', changedItems, reason||'lifecycle-authoritative-v158'); }catch(e){}
+    try{ if(changedItems.length && typeof window.skCloudPushTable==='function') window.skCloudPushTable('pl_items', changedItems).catch(function(e){ console.warn('[v158 lifecycle pl_items push queued]', e&&e.message||e); }); }catch(e){}
+  }
+  function linkedIds(room, explicitItemId){
+    var ids=[];
+    function add(v){ v=sid(v); if(v && ids.indexOf(v)<0) ids.push(v); }
+    add(explicitItemId);
+    if(room){
+      add(room.targetItemId); add(room.__targetItemId); add(room.plItemId); add(room.sourceItemId); add(room.itemId);
+      (Array.isArray(room.linkedItems)?room.linkedItems:[]).forEach(function(v){
+        if(v&&typeof v==='object') add(v.itemId||v.id||v.plItemId); else add(v);
       });
-      if(changedItem) _persistPlDirect(items, [changedItem]);
     }
+    var items=getItems();
+    var rid=sid(room&&room.id);
+    var savedIds=[];
+    function addSaved(v){ v=sid(v); if(v && savedIds.indexOf(v)<0) savedIds.push(v); }
+    if(room){ addSaved(room.linkedSavedId); addSaved(room.auctionId); addSaved(room.listingId); }
+    items.forEach(function(it){
+      if(!it||!it.id) return;
+      if(rid && sid(it.roomId)===rid) add(it.id);
+      if(savedIds.length && savedIds.indexOf(sid(it.linkedSavedId))>=0) add(it.id);
+    });
+    return ids;
+  }
 
-    try { window.__plLastLocalStatusMutationAt=stamp; } catch(e) {}
-    try { if (typeof window._plSetLifecycleOverride === 'function' && changedItem) window._plSetLifecycleOverride(changedItem, simple); } catch(e) {}
-    try { if (typeof window.renderPropertyList === 'function') window.renderPropertyList(); } catch(e) {}
-    try { if (typeof window.wr2Render === 'function') window.wr2Render(); } catch(e) {}
-    try { if (typeof window.mbRoomRefreshSel === 'function') window.mbRoomRefreshSel(); } catch(e) {}
-    return { ok:true, roomId:roomId, itemId:itemId, lifecycleStatus:simple, pushed:true };
+  function commitLifecycle(opts){
+    opts=opts||{};
+    var life=simple(opts.lifecycleStatus||opts.simple||opts.status||'active');
+    var rid=sid(opts.roomId||opts.id);
+    var explicitItem=sid(opts.itemId||opts.targetItemId||opts.__targetItemId);
+    var rooms=getRooms();
+    var items=getItems();
+    if(!rid && explicitItem){
+      var found=items.find(function(x){return sid(x&&x.id)===explicitItem;});
+      if(found) rid=sid(found.roomId);
+    }
+    if(!rid && !explicitItem) return {ok:false, reason:'missing-target'};
+    var stamp=now();
+    var ph=phaseOf(life);
+    var changedRooms=[];
+    var roomObj=null;
+    rooms=rooms.map(function(r){
+      if(!r || (rid && sid(r.id)!==rid)) return r;
+      var n=Object.assign({}, r);
+      n.lifecycleStatus=life;
+      n.status=ph;
+      n.phase=ph;
+      n.activePhase=ph;
+      if(explicitItem) n.__targetItemId=explicitItem;
+      if(Object.prototype.hasOwnProperty.call(opts,'closedSummary')) n.closedSummary=opts.closedSummary;
+      n._skLifecycleEditedAt=stamp;
+      n._skLocalEditedAt=stamp;
+      n.updatedAt=stamp;
+      roomObj=n;
+      changedRooms.push(n);
+      return n;
+    });
+    if(changedRooms.length) writeRooms(rooms, changedRooms, 'lifecycle-authoritative-v158');
+
+    var ids=linkedIds(roomObj || rooms.find(function(r){return r&&sid(r.id)===rid;}), explicitItem);
+    var changedItems=[];
+    if(ids.length){
+      items=items.map(function(it){
+        if(!it || ids.indexOf(sid(it.id))<0) return it;
+        var n=Object.assign({}, it);
+        n.status=itemStatusOf(life, it.status);
+        n.archived=false;
+        if(rid) n.roomId=rid;
+        n._skLifecycleEditedAt=stamp;
+        n._skLocalEditedAt=stamp;
+        n.updatedAt=stamp;
+        changedItems.push(n);
+        return n;
+      });
+      if(changedItems.length) writeItems(items, changedItems, 'lifecycle-authoritative-v158');
+    }
+    try{ window.__plLastLocalStatusMutationAt=stamp; }catch(e){}
+    if(opts.render!==false && opts.silentRender!==true) scheduleRender(80);
+    return {ok:true, roomId:rid, itemIds:ids, lifecycleStatus:life, stamp:stamp};
+  }
+  window.skCommitLifecycleAuthoritative=commitLifecycle;
+  window.skApplyUnifiedLifecycle=function(opts){ return commitLifecycle(opts||{}); };
+
+  // pl_items 직접 변경도 같은 commit 경로로만 처리한다.
+  var prevPlSet=window.plSetSimpleStatus;
+  window.plSetSimpleStatus=function(id, simpleStatus){
+    var item=null;
+    try{ item=getItems().find(function(x){return sid(x&&x.id)===sid(id);}); }catch(e){}
+    if(item && sid(item.roomId)) return commitLifecycle({roomId:item.roomId, itemId:item.id, lifecycleStatus:simpleStatus});
+    if(typeof prevPlSet==='function'){
+      var out=prevPlSet.apply(this, arguments);
+      var stamp=now(), life=simple(simpleStatus), changed=null, rows=getItems().map(function(x){
+        if(!x || sid(x.id)!==sid(id)) return x;
+        var n=Object.assign({},x,{status:itemStatusOf(life,x.status),archived:false,_skLifecycleEditedAt:stamp,_skLocalEditedAt:stamp,updatedAt:stamp});
+        changed=n; return n;
+      });
+      if(changed) writeItems(rows,[changed],'lifecycle-authoritative-v158');
+      return out;
+    }
+    return false;
   };
 
-  // 물건리스트에서 직접 상태를 바꾸는 경우도 동일하게 durable commit을 통과시킨다.
-  if (typeof window.plSetSimpleStatus === 'function' && !window.plSetSimpleStatus.__skV155Durable) {
-    var _origPlSetSimpleStatus=window.plSetSimpleStatus;
-    window.plSetSimpleStatus=function(id, simpleStatus){
-      var item=null;
-      try { item=_allPlItems().find(function(it){ return String(it && it.id || '')===String(id||''); }); } catch(e) {}
-      if(item && item.roomId){
-        return window.skApplyUnifiedLifecycle({ roomId:item.roomId, itemId:item.id, lifecycleStatus:simpleStatus });
-      }
-      var out=_origPlSetSimpleStatus.apply(this, arguments);
-      try {
-        var changed=_allPlItems().find(function(it){ return String(it && it.id || '')===String(id||''); });
-        if(changed){
-          changed._skLifecycleEditedAt=changed._skLifecycleEditedAt||_now();
-          changed._skLocalEditedAt=changed._skLocalEditedAt||changed._skLifecycleEditedAt;
-          _persistPlDirect(_allPlItems().map(function(it){ return String(it.id)===String(id)?changed:it; }), [changed]);
-        }
-      } catch(e) {}
+  var prevUpdateRoom=window.updateRoom;
+  window.updateRoom=function(id, patch, silentRender){
+    if(patch && Object.prototype.hasOwnProperty.call(patch,'lifecycleStatus') && !patch.__skLifecycleInternal){
+      return commitLifecycle({roomId:id, itemId:patch.__targetItemId||patch.targetItemId, lifecycleStatus:patch.lifecycleStatus, closedSummary:patch.closedSummary, silentRender:silentRender});
+    }
+    return (typeof prevUpdateRoom==='function') ? prevUpdateRoom.apply(this, arguments) : undefined;
+  };
+
+  var prevWrDbUpdateStatus=window.wrDbUpdateStatus;
+  if(typeof prevWrDbUpdateStatus==='function'){
+    window.wrDbUpdateStatus=function(id, val){
+      var life=simple(val);
+      if(life==='active'||life==='changed'||life==='closed') return commitLifecycle({roomId:id, lifecycleStatus:life});
+      return prevWrDbUpdateStatus.apply(this, arguments);
+    };
+  }
+
+  function reconcileAuthoritative(){
+    var rooms=getRooms(), items=getItems();
+    if(!rooms.length && !items.length) return {rooms:0,items:0};
+    var roomById={}; rooms.forEach(function(r){ if(r&&r.id) roomById[sid(r.id)]=r; });
+    var changedItems=[];
+    items=items.map(function(it){
+      if(!it||!it.id||!it.roomId) return it;
+      var r=roomById[sid(it.roomId)]; if(!r) return it;
+      var life=simple(r.lifecycleStatus||r.status||r.phase);
+      var expected=itemStatusOf(life, it.status);
+      if(simple(it.status)===life && sid(it.status)===expected) return it;
+      var rt=lifeMarker(r)||now();
+      var n=Object.assign({}, it, {status:expected, archived:false, _skLifecycleEditedAt:rt, _skLocalEditedAt:rt, updatedAt:Math.max(Number(it.updatedAt||0)||0, rt)});
+      changedItems.push(n);
+      return n;
+    });
+    if(changedItems.length) writeItems(items, changedItems, 'lifecycle-reconcile-room-authoritative-v158');
+    return {rooms:0, items:changedItems.length};
+  }
+  window.skReconcileLifecycleRows=reconcileAuthoritative;
+  ['skCloudPullAll','skCloudPullTable','_wrRefreshFromCloud','_plRefreshFromCloud','skCloudHardConverge','skCloudManualSync'].forEach(function(name){
+    var fn=window[name]; if(typeof fn!=='function'||fn.__skV158) return;
+    window[name]=function(){
+      var ret=fn.apply(this, arguments);
+      var done=function(){ try{ reconcileAuthoritative(); }catch(e){ console.warn('[v158 reconcile]',e); } };
+      try{ if(ret && typeof ret.then==='function') ret.then(done, done); else setTimeout(done,0); }catch(e){}
+      return ret;
+    };
+    window[name].__skV158=true;
+  });
+
+  // ─────────────────────────────────────────────────────
+  // iPad numeric input and scroll stability
+  // ─────────────────────────────────────────────────────
+  function isCalcEditing(){
+    var a=document.activeElement;
+    if(a && a.closest && (a.closest('.wr2-calc-pro-shell') || a.closest('.wr2-multi-linked-summary')) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName||'')) return true;
+    if(window.__skLinkedDraggingUntil && now()<window.__skLinkedDraggingUntil) return true;
+    return false;
+  }
+  function captureScrolls(){
+    var data=[];
+    try{ document.querySelectorAll('.wr2-detail-body,.wr2-main,.wr2-content,.wr2-list,.wr2-linked-cards,[data-wr2-drag-scroll="1"]').forEach(function(el,i){ data.push({i:i,left:el.scrollLeft||0,top:el.scrollTop||0}); }); }catch(e){}
+    return data;
+  }
+  function restoreScrolls(data){
+    if(!data||!data.length) return;
+    setTimeout(function(){ try{ var els=document.querySelectorAll('.wr2-detail-body,.wr2-main,.wr2-content,.wr2-list,.wr2-linked-cards,[data-wr2-drag-scroll="1"]'); data.forEach(function(x){ var el=els[x.i]; if(el){ el.scrollLeft=x.left||0; el.scrollTop=x.top||0; } }); }catch(e){} },0);
+  }
+  var renderTimer=0;
+  function scheduleRender(delay){
+    clearTimeout(renderTimer);
+    renderTimer=setTimeout(function(){
+      renderTimer=0;
+      try{ if(typeof window.renderPropertyList==='function') window.renderPropertyList(); }catch(e){}
+      try{ if(typeof window.wr2Render==='function') window.wr2Render({__skForced:true}); }catch(e){}
+    }, delay||300);
+  }
+  var prevWr2Render=window.wr2Render;
+  if(typeof prevWr2Render==='function' && !prevWr2Render.__skV158){
+    window.wr2Render=function(arg){
+      if(!(arg&&arg.__skForced) && isCalcEditing()){ scheduleRender(900); return; }
+      var pos=captureScrolls();
+      var out=prevWr2Render.apply(this, arguments);
+      restoreScrolls(pos);
       return out;
     };
-    window.plSetSimpleStatus.__skV155Durable=true;
+    window.wr2Render.__skV158=true;
   }
+  document.addEventListener('pointerdown',function(ev){ if(ev.target&&ev.target.closest&&ev.target.closest('.wr2-linked-cards,[data-wr2-drag-scroll="1"]')) window.__skLinkedDraggingUntil=now()+1500; },true);
+  document.addEventListener('pointermove',function(ev){ if(ev.target&&ev.target.closest&&ev.target.closest('.wr2-linked-cards,[data-wr2-drag-scroll="1"]')) window.__skLinkedDraggingUntil=now()+1000; },true);
 
-  // 기존 4초 local override는 새로고침/느린 pull에 너무 짧다. 상태 동기화 보호만 30분으로 늘린다.
-  try {
-    var bag=window.__plLifecycleOverride || {byRoom:{}, bySaved:{}, byItem:{}};
-    window.__plLifecycleOverride=bag;
-  } catch(e) {}
-
-  function injectStyle(){
-    var old=document.getElementById('sk-v155-gap-accent-polish');
-    if(old) old.remove();
-    var st=document.createElement('style');
-    st.id='sk-v155-gap-accent-polish';
-    st.textContent=`
-      /* 하단 공백: 계산기 패널 자체가 남은 높이를 채우도록 하고, 손품 추천 박스는 바닥에 붙인다. */
-      .wr2-calc-pro-mount{height:calc(100vh - 104px)!important;min-height:0!important;overflow:hidden!important;}
-      .wr2-calc-pro-shell{height:100%!important;min-height:0!important;display:flex!important;flex-direction:column!important;overflow:hidden!important;padding-bottom:4px!important;}
-      .wr2-calc-pro-shell .wcp-tabs{flex:0 0 auto!important;}
-      #wcp_pane_input{flex:1 1 auto!important;height:auto!important;min-height:0!important;display:flex!important;flex-direction:column!important;overflow:hidden!important;}
-      #wcp_pane_input .wcp-main-grid{flex:1 1 auto!important;height:auto!important;min-height:0!important;margin-bottom:0!important;padding-bottom:0!important;align-items:stretch!important;}
-      #wcp_pane_input .wcp-main-grid>.wcp-card{height:100%!important;min-height:0!important;display:flex!important;flex-direction:column!important;}
-      #wcp_pane_input .wcp-bench-panel .wcp-quick-reco{margin-top:auto!important;margin-bottom:0!important;}
-      #wcp_pane_input .wcp-calc-combined-grid{flex:1 1 auto!important;min-height:0!important;}
-
-      /* 월 순수익 / (보증금 포함) 투자금은 입력값과 구분되는 따뜻한 붉은 계열 포인트 */
-      .wr2-calc-pro-shell .wcp-lease-input-subsec #wcp_o_month_net_inline,
-      .wr2-calc-pro-shell .wcp-lease-input-subsec #wcp_o_year_net_inline{
-        color:#fb7185!important;
-        text-shadow:0 0 10px rgba(251,113,133,.10)!important;
-        font-weight:900!important;
-      }
-      .wr2-calc-pro-shell .wcp-lease-input-subsec .wcp-line:has(#wcp_o_month_net_inline),
-      .wr2-calc-pro-shell .wcp-lease-input-subsec .wcp-line:has(#wcp_o_year_net_inline){
-        background:rgba(251,113,133,.045)!important;
-        border-radius:8px!important;
-      }
-      .wr2-calc-pro-shell .wcp-lease-input-subsec .wcp-line:has(#wcp_o_month_net_inline) label,
-      .wr2-calc-pro-shell .wcp-lease-input-subsec .wcp-line:has(#wcp_o_year_net_inline) label{
-        color:#fecdd3!important;
-      }
-      @media(max-height:760px){
-        .wr2-calc-pro-mount{height:calc(100vh - 92px)!important;}
-        .wr2-calc-pro-shell{padding-bottom:2px!important;}
-      }
-    `;
-    (document.head||document.documentElement).appendChild(st);
-  }
-  injectStyle();
-  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', injectStyle, {once:true});
-})();
-
-
-/* v156 final guard: persistent lifecycle intent, iPad numeric input, bid-field sync */
-(function(){
-  'use strict';
-  var BUILD='20260512-workroom-v156-lifecycle-persist-input-bid-sync';
-  try{ window.__SK_BUILD=BUILD; console.log('[build] common.js '+BUILD); }catch(e){}
-  var LIFE_KEY='sk_lifecycle_intent_v156';
-  var LIFE_TTL=14*24*60*60*1000;
-  function now(){return Date.now();}
-  function sid(v){return String(v==null?'':v).trim();}
-  function simple(v){v=sid(v); if(v==='closed'||v==='archived')return'closed'; if(v==='changed'||v==='field'||v==='bid'||v==='won'||v==='sell')return'changed'; return'active';}
-  function phase(v){v=simple(v); return v==='closed'?'closed':(v==='changed'?'field':'review');}
-  function readBag(){try{return JSON.parse(localStorage.getItem(LIFE_KEY)||'{}')||{};}catch(e){return{};}}
-  function writeBag(b){try{localStorage.setItem(LIFE_KEY,JSON.stringify(b||{}));}catch(e){}}
-  function saveIntent(roomId,itemId,life){
-    roomId=sid(roomId); itemId=sid(itemId); life=simple(life); if(!roomId&&!itemId)return;
-    var b=readBag(), t=now();
-    if(roomId) b['room:'+roomId]={roomId:roomId,itemId:itemId,lifecycleStatus:life,ts:t};
-    if(itemId) b['item:'+itemId]={roomId:roomId,itemId:itemId,lifecycleStatus:life,ts:t};
-    writeBag(b);
-  }
-  function activeIntents(){
-    var b=readBag(), out=[], dirty=false, t=now();
-    Object.keys(b).forEach(function(k){var it=b[k]; if(!it||!it.ts||t-Number(it.ts)>LIFE_TTL){delete b[k]; dirty=true; return;} out.push(it);});
-    if(dirty) writeBag(b); return out;
-  }
-  function rows(){
-    var rooms=[],items=[];
-    try{rooms=(window._idbCache&&Array.isArray(window._idbCache.wr2_rooms))?window._idbCache.wr2_rooms:JSON.parse(localStorage.getItem('wr2_rooms')||'[]');}catch(e){rooms=[];}
-    try{items=(window._idbCache&&Array.isArray(window._idbCache.pl_items_v3))?window._idbCache.pl_items_v3:JSON.parse(localStorage.getItem('pl_items_v3')||'[]');}catch(e){items=[];}
-    return {rooms:Array.isArray(rooms)?rooms:[],items:Array.isArray(items)?items:[]};
-  }
-  var pushTimer=null;
-  function queuePush(changedRooms,changedItems){
-    changedRooms=(changedRooms||[]).filter(Boolean); changedItems=(changedItems||[]).filter(Boolean);
-    try{ if(changedRooms.length && typeof window.skCloudQueuePushTable==='function') window.skCloudQueuePushTable('workrooms',changedRooms,'lifecycle-intent-v156'); }catch(e){}
-    try{ if(changedItems.length && typeof window.skCloudQueuePushTable==='function') window.skCloudQueuePushTable('pl_items',changedItems,'lifecycle-intent-v156'); }catch(e){}
-    clearTimeout(pushTimer);
-    pushTimer=setTimeout(function(){
-      try{ if(changedItems.length && typeof window.skCloudPushTable==='function') window.skCloudPushTable('pl_items',changedItems).catch(function(){}); }catch(e){}
-      try{ if(changedRooms.length && typeof window.skCloudPushTable==='function') window.skCloudPushTable('workrooms',changedRooms).catch(function(){}); }catch(e){}
-    },120);
-  }
-  function applyIntents(render){
-    var intents=activeIntents(); if(!intents.length)return {rooms:0,items:0};
-    var data=rows(), rooms=data.rooms.slice(), items=data.items.slice(), changedRooms=[], changedItems=[], t=now();
-    var byRoom={}, byItem={};
-    intents.forEach(function(x){ if(x.roomId)byRoom[sid(x.roomId)]=x; if(x.itemId)byItem[sid(x.itemId)]=x; });
-    rooms=rooms.map(function(r){ if(!r||!r.id)return r; var it=byRoom[sid(r.id)]; if(!it)return r; var life=simple(it.lifecycleStatus), ph=phase(life); if(r.lifecycleStatus===life && r.status===ph && r.phase===ph && r.activePhase===ph)return r; var n=Object.assign({},r,{lifecycleStatus:life,status:ph,phase:ph,activePhase:ph,_skLifecycleEditedAt:Math.max(Number(r._skLifecycleEditedAt||0)||0,Number(it.ts)||t),_skLocalEditedAt:Math.max(Number(r._skLocalEditedAt||0)||0,Number(it.ts)||t),updatedAt:Math.max(Number(r.updatedAt||0)||0,Number(it.ts)||t)}); changedRooms.push(n); return n; });
-    items=items.map(function(x){ if(!x||!x.id)return x; var it=byItem[sid(x.id)] || (x.roomId?byRoom[sid(x.roomId)]:null); if(!it)return x; var life=simple(it.lifecycleStatus), st=life==='closed'?'closed':(life==='changed'?'field':'review'); if(simple(x.status)===life && x.status===st)return x; var n=Object.assign({},x,{status:st,archived:false,_skLifecycleEditedAt:Math.max(Number(x._skLifecycleEditedAt||0)||0,Number(it.ts)||t),_skLocalEditedAt:Math.max(Number(x._skLocalEditedAt||0)||0,Number(it.ts)||t),updatedAt:Math.max(Number(x.updatedAt||0)||0,Number(it.ts)||t)}); if(it.roomId)n.roomId=it.roomId; changedItems.push(n); return n; });
-    if(changedRooms.length){ try{ if(window._idbCache)window._idbCache.wr2_rooms=rooms; }catch(e){} try{ if(window.wr2State)window.wr2State.rooms=rooms.filter(function(r){return r&&!r.deletedAt;}); }catch(e){} try{ if(typeof window.idbSet==='function')window.idbSet('wr2_rooms',rooms).catch(function(){}); }catch(e){} }
-    if(changedItems.length){ try{ if(window._idbCache)window._idbCache.pl_items_v3=items; }catch(e){} try{ if(typeof window.idbSet==='function')window.idbSet('pl_items_v3',items).catch(function(){}); }catch(e){} }
-    if(changedRooms.length||changedItems.length) queuePush(changedRooms,changedItems);
-    if(render&&changedRooms.length){try{ if(typeof window.wr2Render==='function')window.wr2Render(); }catch(e){}}
-    if(render&&changedItems.length){try{ if(typeof window.renderPropertyList==='function')window.renderPropertyList(); }catch(e){}}
-    return {rooms:changedRooms.length,items:changedItems.length};
-  }
-  window.skApplyLifecycleIntents=applyIntents;
-  function wrap(name){
-    var fn=window[name]; if(typeof fn!=='function'||fn.__v156wrapped)return;
-    var w=function(){ var r=fn.apply(this,arguments); try{ var done=function(){applyIntents(true);}; if(r&&typeof r.then==='function')r.then(done,done); else setTimeout(done,0);}catch(e){} return r; };
-    w.__v156wrapped=true; window[name]=w;
-  }
-  var origLife=window.skApplyUnifiedLifecycle;
-  if(typeof origLife==='function'&&!origLife.__v156wrapped){
-    window.skApplyUnifiedLifecycle=function(opts){ opts=opts||{}; var rid=sid(opts.roomId||opts.id), iid=sid(opts.itemId||opts.targetItemId), life=simple(opts.lifecycleStatus||opts.simple); saveIntent(rid,iid,life); var out=origLife.apply(this,arguments); setTimeout(function(){applyIntents(true);},0); return out; };
-    window.skApplyUnifiedLifecycle.__v156wrapped=true;
-  }
-  var origUpdate=window.updateRoom;
-  if(typeof origUpdate==='function'&&!origUpdate.__v156wrapped){
-    window.updateRoom=function(id,patch,silent){ if(patch&&patch.lifecycleStatus)saveIntent(id,patch.__targetItemId,patch.lifecycleStatus); var out=origUpdate.apply(this,arguments); setTimeout(function(){applyIntents(!silent);},0); return out; };
-    window.updateRoom.__v156wrapped=true;
-  }
-  ['_wrRefreshFromCloud','_plRefreshFromCloud','skCloudManualSync','skCloudHardConverge','skCloudPullAll','wr2Render','__wr2RenderNow','renderPropertyList'].forEach(wrap);
-  window.addEventListener('pageshow',function(){setTimeout(function(){applyIntents(true);},50);});
-  document.addEventListener('visibilitychange',function(){ if(!document.hidden)setTimeout(function(){applyIntents(true);},50); });
-  setTimeout(function(){applyIntents(true);},250);
-
-  function isMoneyTarget(el){return !!(el&&el.matches&& (el.matches('.wr2-calc-pro-shell [data-wcp-money="1"]')||el.matches('.wr2-bid-input,.wr2-bid-total-input,#wr2SummaryBidPriceInput')) && el.getAttribute('data-wcp-output')!=='1');}
-  function fmt(d){d=String(d||'').replace(/\D/g,'').replace(/^0+(?=\d)/,''); return d?d.replace(/\B(?=(\d{3})+(?!\d))/g,','):'';}
-  function digitIndex(v,pos){return String(v||'').slice(0,Math.max(0,pos||0)).replace(/\D/g,'').length;}
-  function caretForDigit(v,idx){ if(idx<=0)return 0; var seen=0; for(var i=0;i<String(v).length;i++){ if(/\d/.test(v[i]))seen++; if(seen>=idx)return i+1; } return String(v).length; }
-  var handling=false;
+  function moneyTarget(el){ return !!(el&&el.matches&& (el.matches('.wr2-calc-pro-shell [data-wcp-money="1"]')||el.matches('.wr2-bid-input,.wr2-bid-total-input,#wr2SummaryBidPriceInput,#wc_price,#wc_my_bid,#wcp_basis_bid_input')) && el.getAttribute('data-wcp-output')!=='1'); }
+  function fmtDigits(d){ d=String(d||'').replace(/\D/g,'').replace(/^0+(?=\d)/,''); return d?d.replace(/\B(?=(\d{3})+(?!\d))/g,','):''; }
+  function digitPos(v,pos){ return String(v||'').slice(0,Math.max(0,pos||0)).replace(/\D/g,'').length; }
+  function caretFor(v,idx){ if(idx<=0) return 0; var c=0,s=String(v||''); for(var i=0;i<s.length;i++){ if(/\d/.test(s[i])) c++; if(c>=idx) return i+1; } return s.length; }
+  var inputGuard=false;
   document.addEventListener('beforeinput',function(ev){
-    var el=ev.target; if(handling||!isMoneyTarget(el))return;
+    var el=ev.target;
+    if(inputGuard||!moneyTarget(el)) return;
     var type=String(ev.inputType||''), raw=String(el.value||''), start=el.selectionStart==null?raw.length:el.selectionStart, end=el.selectionEnd==null?start:el.selectionEnd;
-    if(type==='historyUndo'||type==='historyRedo'||type==='insertCompositionText')return;
-    var digits=raw.replace(/\D/g,''), ds=digitIndex(raw,start), de=digitIndex(raw,end), insert='';
-    if(type.indexOf('insert')===0){ insert=String(ev.data||'').replace(/\D/g,''); if(!insert&&type!=='insertFromPaste') { ev.preventDefault(); return; } }
+    if(type==='historyUndo'||type==='historyRedo'||type==='insertCompositionText') return;
+    var ds=digitPos(raw,start), de=digitPos(raw,end), digs=raw.replace(/\D/g,''), ins='';
+    if(type.indexOf('insert')===0){ ins=String(ev.data||'').replace(/\D/g,''); if(type==='insertFromPaste') ins=String((ev.clipboardData&&ev.clipboardData.getData('text'))||ev.data||'').replace(/\D/g,''); if(!ins){ ev.preventDefault(); return; } }
     else if(type==='deleteContentBackward'){ if(ds===de && ds>0) ds-=1; }
-    else if(type==='deleteContentForward'){ if(ds===de && de<digits.length) de+=1; }
-    else if(type.indexOf('delete')===0){ }
-    else return;
+    else if(type==='deleteContentForward'){ if(ds===de && de<digs.length) de+=1; }
+    else if(type.indexOf('delete')!==0) return;
     ev.preventDefault();
-    var nextDigits=digits.slice(0,ds)+insert+digits.slice(de);
-    var next=fmt(nextDigits), nextIdx=ds+insert.length;
+    var nextD=digs.slice(0,ds)+ins+digs.slice(de), next=fmtDigits(nextD), nextIdx=ds+ins.length;
     el.value=next;
-    try{ var c=caretForDigit(next,nextIdx); el.setSelectionRange(c,c); }catch(e){}
-    handling=true;
+    try{ var c=caretFor(next,nextIdx); el.setSelectionRange(c,c); }catch(e){}
+    inputGuard=true;
     try{ el.dispatchEvent(new Event('input',{bubbles:true})); }catch(e){}
-    handling=false;
+    inputGuard=false;
   },true);
 
-  function num(v){return Number(String(v||'').replace(/[^0-9]/g,''))||0;}
-  function setMoney(el,n){ if(!el)return; el.value=n?Math.round(n).toLocaleString('ko-KR'):''; }
-  function syncBidFrom(source){
-    if(!source)return;
-    var n=num(source.value); if(!n)return;
-    var price=document.getElementById('wc_price');
-    var basis=document.getElementById('wcp_basis_bid_input');
-    if(source!==price) setMoney(price,n);
-    if(source!==basis) setMoney(basis,n);
-    document.querySelectorAll('.wr2-bid-total-input,#wr2SummaryBidPriceInput').forEach(function(el){ if(el!==source)setMoney(el,n); });
-  }
-  var bidGuard=false;
+  function num(v){ return Number(String(v||'').replace(/[^0-9]/g,''))||0; }
+  function setMoney(el,n){ if(!el || document.activeElement===el) return; el.value=n?Math.round(n).toLocaleString('ko-KR'):''; }
+  var bidSync=false;
   document.addEventListener('input',function(ev){
-    if(bidGuard)return;
-    var el=ev.target; if(!el||!el.matches)return;
-    if(el.matches('#wc_price,#wcp_basis_bid_input,.wr2-bid-total-input,#wr2SummaryBidPriceInput')){
-      bidGuard=true; syncBidFrom(el); bidGuard=false;
-      if(el.id==='wcp_basis_bid_input'){
-        var p=document.getElementById('wc_price'); if(p)try{p.dispatchEvent(new Event('input',{bubbles:true}));}catch(e){}
-      }
+    var el=ev.target; if(!el||!el.matches||bidSync) return;
+    if(el.matches('#wc_price,#wc_my_bid,#wcp_basis_bid_input,.wr2-bid-total-input,#wr2SummaryBidPriceInput')){
+      bidSync=true;
+      var n=num(el.value);
+      ['#wc_price','#wc_my_bid','#wcp_basis_bid_input','.wr2-bid-total-input','#wr2SummaryBidPriceInput'].forEach(function(sel){ document.querySelectorAll(sel).forEach(function(other){ if(other!==el) setMoney(other,n); }); });
+      bidSync=false;
     }
   },true);
-  document.addEventListener('change',function(ev){
-    var el=ev.target; if(!el||!el.matches)return;
-    if(el.matches('#wc_price,#wcp_basis_bid_input')){
-      try{ var room=(window.wr2State&&window.wr2State.rooms||[]).find(function(r){return r&&window.wr2State&&r.id===window.wr2State.activeRoomId;}); if(room&&typeof window.wr2BidSetTotal==='function')window.wr2BidSetTotal(room.id,el.value); }catch(e){}
-    }
-  },true);
-  try{var st=document.createElement('style'); st.id='sk-v156-bid-input-sync-style'; st.textContent='.wcp-basis-bid-edit .bid-edit{display:grid!important;grid-template-columns:minmax(120px,1fr) auto auto!important;gap:6px!important;align-items:center!important}.wcp-basis-bid-input{min-height:28px!important;text-align:right!important;color:#ffd7bd!important;border-color:rgba(249,115,22,.45)!important;background:rgba(249,115,22,.08)!important}.wcp-basis-bid-edit .wcp-mini-btn{height:26px!important;padding:0 9px!important;border-radius:9px!important;border:1px solid rgba(96,165,250,.45)!important;background:rgba(59,130,246,.12)!important;color:#bfdbfe!important;font-size:11px!important;font-weight:850!important}'; document.head.appendChild(st);}catch(e){}
+
+  window.skDebugLifecycle=function(keyword){
+    keyword=sid(keyword);
+    var rooms=getRooms().filter(function(r){ return !keyword || JSON.stringify(r).indexOf(keyword)>=0; });
+    var items=getItems().filter(function(x){ return !keyword || JSON.stringify(x).indexOf(keyword)>=0; });
+    var out={build:window.__SK_BUILD, rooms:rooms.map(function(r){return {id:r.id,title:r.title||r.name,lifecycleStatus:r.lifecycleStatus,status:r.status,phase:r.phase,activePhase:r.activePhase,lifeAt:r._skLifecycleEditedAt,localAt:r._skLocalEditedAt,updatedAt:r.updatedAt};}), pl_items:items.map(function(x){return {id:x.id,roomId:x.roomId,title:x.title||x.addr,status:x.status,lifeAt:x._skLifecycleEditedAt,localAt:x._skLocalEditedAt,updatedAt:x.updatedAt};})};
+    try{ console.table(out.rooms); console.table(out.pl_items); }catch(e){}
+    return out;
+  };
+
+  try{ reconcileAuthoritative(); }catch(e){}
 })();
