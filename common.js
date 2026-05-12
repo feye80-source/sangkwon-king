@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260512-workroom-v166-detail-date-remote-echo-guard';
+    window.__SK_BUILD = '20260512-workroom-v167-quiet-remote-echo-guard';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -53594,7 +53594,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260512-workroom-v166-detail-date-remote-echo-guard';
+  var BUILD='20260512-workroom-v167-quiet-remote-echo-guard';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
@@ -55060,10 +55060,40 @@ window.addEventListener('DOMContentLoaded', () => {
     return true;
   }
 
+  // v167: echo-guard 로그 폭주 방지. 실제 업로드는 이미 차단되고 있었지만,
+  // pull 직후 렌더/보정 루프가 suppress 로그를 수십~수백 줄 찍어 콘솔과 Safari를 느리게 했다.
+  var remoteSuppressBucket={count:0, byTable:{}, byReason:{}, firstAt:0, lastAt:0, timer:0};
+  function noteRemoteEchoSuppressed(table, reason, rows, kind){
+    try{
+      var t=String(table||'');
+      var r=String(reason||kind||'remote-echo');
+      var n=Array.isArray(rows)?rows.length:(Number(rows||0)||0);
+      if(!remoteSuppressBucket.firstAt) remoteSuppressBucket.firstAt=now();
+      remoteSuppressBucket.lastAt=now();
+      remoteSuppressBucket.count+=1;
+      remoteSuppressBucket.byTable[t]=(remoteSuppressBucket.byTable[t]||0)+Math.max(1,n);
+      remoteSuppressBucket.byReason[r]=(remoteSuppressBucket.byReason[r]||0)+1;
+      clearTimeout(remoteSuppressBucket.timer);
+      remoteSuppressBucket.timer=setTimeout(function(){
+        try{
+          if(!remoteSuppressBucket.count) return;
+          log('remote echo pushes suppressed summary', {
+            count:remoteSuppressBucket.count,
+            byTable:Object.assign({}, remoteSuppressBucket.byTable),
+            byReason:Object.assign({}, remoteSuppressBucket.byReason),
+            remoteReason:window.__skCloudApplyingRemoteReason||'',
+            ms:Math.max(0, (remoteSuppressBucket.lastAt||now())-(remoteSuppressBucket.firstAt||now()))
+          });
+        }catch(e){}
+        remoteSuppressBucket={count:0, byTable:{}, byReason:{}, firstAt:0, lastAt:0, timer:0};
+      }, 1200);
+    }catch(e){}
+  }
+
   function scheduleRowsPush(table, rows, reason, delay){
     var tkey=String(table||'');
     if(shouldSuppressRemoteEchoPush(tkey, rows, reason||'scheduled-row-push')){
-      try{ log('remote echo push suppressed', {table:tkey, reason:reason||'', rows:(Array.isArray(rows)?rows.length:0), remoteReason:window.__skCloudApplyingRemoteReason||''}); }catch(e){}
+      noteRemoteEchoSuppressed(tkey, reason||'scheduled-row-push', rows, 'scheduled');
       return;
     }
     var clean=dedupeRows((Array.isArray(rows)?rows:[]).filter(function(r){ return r && idOf(r); }));
@@ -55235,7 +55265,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
     window.skCloudPushTable=function(table, rows){
       if(shouldSuppressRemoteEchoPush(String(table||''), rows, 'direct-push')){
-        try{ log('remote direct push suppressed', {table:String(table||''), rows:(Array.isArray(rows)?rows.length:0), remoteReason:window.__skCloudApplyingRemoteReason||''}); }catch(e){}
+        noteRemoteEchoSuppressed(String(table||''), 'direct-push', rows, 'direct');
         return Promise.resolve({ok:true, table:String(table||''), requested:0, saved:0, suppressed:true, reason:'remote-echo-guard'});
       }
       return pushRows(table, rows);
@@ -55243,7 +55273,7 @@ window.addEventListener('DOMContentLoaded', () => {
     window.skCloudQueuePushTable=function(table, rows, reason){
       var clean=(Array.isArray(rows)?rows:[]).filter(function(r){ return r && idOf(r); });
       if(shouldSuppressRemoteEchoPush(String(table||''), clean, reason||'queued-row-push')){
-        try{ log('remote queued push suppressed', {table:String(table||''), reason:reason||'', rows:clean.length, remoteReason:window.__skCloudApplyingRemoteReason||''}); }catch(e){}
+        noteRemoteEchoSuppressed(String(table||''), reason||'queued-row-push', clean, 'queued');
         return {ok:true, queued:0, suppressed:true, table:String(table||''), reason:'remote-echo-guard'};
       }
       if(clean.length) scheduleRowsPush(String(table||''), clean, reason||'queued-row-push', 120);
@@ -56456,7 +56486,7 @@ window.addEventListener('DOMContentLoaded', () => {
 */
 (function(){
   'use strict';
-  var BUILD='20260512-workroom-v166-detail-date-remote-echo-guard';
+  var BUILD='20260512-workroom-v167-quiet-remote-echo-guard';
   try{ window.__SK_BUILD=BUILD; console.log('[build] common.js '+BUILD); }catch(e){}
 
   // ─────────────────────────────────────────────────────
@@ -57204,7 +57234,7 @@ window.addEventListener('DOMContentLoaded', () => {
 (function(){
   if(window.__skV166DetailScheduleInstalled) return;
   window.__skV166DetailScheduleInstalled=true;
-  var BUILD='20260512-workroom-v166-detail-date-remote-echo-guard';
+  var BUILD='20260512-workroom-v167-quiet-remote-echo-guard';
   try{ window.__SK_BUILD=BUILD; }catch(e){}
   function clean(v){ return String(v==null?'':v).trim(); }
   function ymd(v){
