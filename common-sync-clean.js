@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260513-workroom-v169-saved-priority-pl-repair';
+    window.__SK_BUILD = '20260513-workroom-v170-pl-fields-single-source';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -2010,6 +2010,7 @@
       const cloudItems = window._sbLoadPlItems ? await window._sbLoadPlItems() : [];
       const localItems = _sbGetCachedArray('pl_items_v3');
       let merged = _sbMergeById(cloudItems, localItems).filter(it => it && it.id);
+      merged = plMergeRowsUserOwned(merged, localItems);
       // 최근 로컬 라이프사이클 변경 직후에만 로컬 상태를 우선한다.
       // 그렇지 않으면 클라우드 기준으로 수렴시켜 기기간 개수 흔들림을 막는다.
       if (preferLocalLifecycle) {
@@ -2037,7 +2038,7 @@
       // (기기별 오래된 로컬 캐시가 최신 클라우드를 덮어쓰는 현상 방지)
       if (forceCloud) {
         const cloudOnly = _sbTakeCloudArray(cloudItems);
-        if (cloudOnly.length) merged = cloudOnly;
+        if (cloudOnly.length) merged = plMergeRowsUserOwned(cloudOnly, localItems);
       }
       _sbPersistCachedArray('pl_items_v3', merged);
       // 로컬이 더 최신/풍부한 경우 클라우드로 역전파(backfill)하여 기기간 빈 목록 불일치 방지
@@ -48027,9 +48028,12 @@ window.addEventListener('DOMContentLoaded', () => {
     // 유찰 처리 후 data/_skUnsoldEditedAt이 plNormalizeItem에서 사라지면 iPad/물건리스트가 옛 기일로 남는다.
     if (Object.keys(rawData).length) out.data = rawData;
     if (rawNorm) out._norm = rawNorm;
-    ['_skUnsoldEditedAt','_skLocalEditedAt','_skLifecycleEditedAt','_skUrlEditedAt','_skNaverEditedAt'].forEach(function(k){
+    ['_skUnsoldEditedAt','_skLocalEditedAt','_skLifecycleEditedAt','_skUrlEditedAt','_skNaverEditedAt','_skPlEditedAt'].forEach(function(k){
       if (it[k] !== undefined && it[k] !== null && it[k] !== '') out[k] = it[k];
     });
+    if (it._skPlFieldEditedAt && typeof it._skPlFieldEditedAt === 'object') {
+      out._skPlFieldEditedAt = Object.assign({}, it._skPlFieldEditedAt);
+    }
     if (it.bidDate) out.bidDate = _plNormalizeBiddateValue(it.bidDate) || it.bidDate;
     if (it.saleDate) out.saleDate = _plNormalizeBiddateValue(it.saleDate) || it.saleDate;
     return out;
@@ -48204,6 +48208,73 @@ window.addEventListener('DOMContentLoaded', () => {
   }
   function plDiffers(a, b) {
     return String(a == null ? '' : a) !== String(b == null ? '' : b);
+  }
+
+  // v170: 물건리스트의 직접 편집 필드(의향/나의입찰가/기일/금액 등)는 모두 같은 저장 원칙을 사용한다.
+  // - 사용자 편집 필드에는 필드별 타임스탬프를 찍는다.
+  // - 서버 pull/저장목록 수렴 과정에서 서버 row가 비어 있거나 더 오래된 경우 로컬 사용자값을 보존한다.
+  var PL_USER_OWNED_FIELDS = ['intent','type','status','feature','appraisal','minprice','round','biddate','bidDate','saleDate','estimate','site','bidFocus','bidders','memo','roomId','linkedSavedId','result'];
+  function plFieldStamp(row, field) {
+    var m = row && row._skPlFieldEditedAt;
+    return Number(m && m[field] || 0) || 0;
+  }
+  function plIsEmptyValue(v) {
+    if (v === null || v === undefined) return true;
+    if (typeof v === 'string') return String(v).trim() === '';
+    if (typeof v === 'object') return JSON.stringify(v || {}) === '{}' || JSON.stringify(v || {}) === 'null';
+    return false;
+  }
+  function plCloneValue(v) {
+    if (v && typeof v === 'object') {
+      try { return JSON.parse(JSON.stringify(v)); } catch(e) { return Object.assign({}, v); }
+    }
+    return v;
+  }
+  function plMarkUserFields(row, fields, ts) {
+    if (!row || typeof row !== 'object') return row;
+    ts = Number(ts || Date.now()) || Date.now();
+    row._skPlEditedAt = Math.max(Number(row._skPlEditedAt || 0) || 0, ts);
+    row._skLocalEditedAt = Math.max(Number(row._skLocalEditedAt || 0) || 0, ts);
+    row._skPlFieldEditedAt = Object.assign({}, row._skPlFieldEditedAt || {});
+    (Array.isArray(fields) ? fields : [fields]).forEach(function(f){
+      if (!f) return;
+      row._skPlFieldEditedAt[f] = Math.max(Number(row._skPlFieldEditedAt[f] || 0) || 0, ts);
+    });
+    return row;
+  }
+  function plMergeUserOwnedFields(baseRow, localRow) {
+    if (!baseRow || !localRow) return baseRow;
+    var out = Object.assign({}, baseRow);
+    var outMap = Object.assign({}, out._skPlFieldEditedAt || {});
+    var localMap = localRow._skPlFieldEditedAt || {};
+    PL_USER_OWNED_FIELDS.forEach(function(field){
+      var hasLocal = localRow[field] !== undefined && localRow[field] !== null;
+      if (!hasLocal) return;
+      var localStamp = Number(localMap[field] || 0) || 0;
+      var remoteStamp = Number(outMap[field] || 0) || 0;
+      var remoteEmpty = plIsEmptyValue(out[field]);
+      var localEmpty = plIsEmptyValue(localRow[field]);
+      // 명시 편집값은 빈값도 보존한다. stamp가 없는 과거 데이터는 '로컬 값이 있고 서버가 빈 경우'만 보존한다.
+      if (localStamp && localStamp >= remoteStamp) {
+        out[field] = plCloneValue(localRow[field]);
+        outMap[field] = Math.max(localStamp, remoteStamp);
+      } else if (remoteEmpty && !localEmpty) {
+        out[field] = plCloneValue(localRow[field]);
+        outMap[field] = Math.max(localStamp, remoteStamp, Number(localRow._skPlEditedAt || 0) || 0);
+      }
+    });
+    var localEdited = Number(localRow._skPlEditedAt || 0) || 0;
+    var remoteEdited = Number(out._skPlEditedAt || 0) || 0;
+    if (localEdited || remoteEdited) out._skPlEditedAt = Math.max(localEdited, remoteEdited);
+    if (Object.keys(outMap).length) out._skPlFieldEditedAt = outMap;
+    return out;
+  }
+  function plMergeRowsUserOwned(baseRows, localRows) {
+    var localById = {};
+    (Array.isArray(localRows) ? localRows : []).forEach(function(r){ if (r && r.id) localById[String(r.id)] = r; });
+    return (Array.isArray(baseRows) ? baseRows : []).map(function(r){
+      return (r && r.id && localById[String(r.id)]) ? plMergeUserOwnedFields(r, localById[String(r.id)]) : r;
+    });
   }
   function plWithSavedSyncMute(fn) {
     _plSavedSyncMute += 1;
@@ -49532,6 +49603,7 @@ window.addEventListener('DOMContentLoaded', () => {
     item.__allowLifecycleReopen = true;
     item._skLifecycleEditedAt = Date.now();
     item._skLocalEditedAt = item._skLifecycleEditedAt;
+    plMarkUserFields(item, ['status','archived'], item._skLifecycleEditedAt);
     plSave(items.map(plNormalizeItem));
     window.__plLastLocalStatusMutationAt = Date.now();
     syncToWorkroom(item);
@@ -49761,9 +49833,13 @@ window.addEventListener('DOMContentLoaded', () => {
   function plUpdateItem(id, patch) {
     var items = plLoad();
     var changedItem = null;
+    var ts = Date.now();
+    var changedFields = Object.keys(patch || {}).filter(function(k){ return k !== 'updatedAt' && k !== '_skPlEditedAt' && k !== '_skPlFieldEditedAt'; });
     items = items.map(function(it){
       if (it.id !== id) return it;
-      changedItem = plNormalizeItem(Object.assign({}, it, patch || {}, { updatedAt: Date.now() }));
+      var next = Object.assign({}, it, patch || {}, { updatedAt: ts });
+      plMarkUserFields(next, changedFields, ts);
+      changedItem = plNormalizeItem(next);
       return changedItem;
     });
     if (!changedItem) return null;
@@ -50051,8 +50127,6 @@ window.addEventListener('DOMContentLoaded', () => {
           + '<td style="padding:8px 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+plEditCellHtml(it.id,'feature',it.feature||'',it.feature||'',{type:'text',align:'left',minw:'100px',placeholder:'특징 입력',empty:'—',spanStyle:'font-size:12px;color:var(--fg2);'})+'</td>'
           + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'appraisal',plDisplayMoney(it.appraisal||''),plDisplayMan(it.appraisal||''),{type:'text',align:'right',minw:'70px',placeholder:'만원'})+'</td>'
           + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'minprice',plDisplayMoney(it.minprice||''),plDisplayMan(it.minprice||''),{type:'text',align:'right',minw:'70px',placeholder:'만원',spanStyle:'color:#fb923c;font-weight:700;'})+'</td>'
-          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'deposit',plDisplayMoney(it.deposit||''),plDisplayMan(it.deposit||''),{type:'text',align:'right',minw:'60px',placeholder:'만원'})+'</td>'
-          + '<td style="padding:8px 10px;text-align:right;">'+plEditCellHtml(it.id,'monthly',plDisplayMoney(it.monthly||''),plDisplayMan(it.monthly||''),{type:'text',align:'right',minw:'60px',placeholder:'만원'})+'</td>'
           + '<td style="padding:8px 10px;text-align:center;font-size:12px;">'+(it.round||'—')+'</td>'
           + '<td style="padding:8px 10px;white-space:nowrap;">'
           +   plBiddateCellHtml(it, ddayLabel, ddayColor)
@@ -50436,9 +50510,8 @@ window.addEventListener('DOMContentLoaded', () => {
     var items = plLoad();
     var it = items.find(function(x){ return x.id === id; });
     if (!it) return;
-    it.site = String(parseInt(it.site||'0') > 0 ? '0' : '1');
-    it.updatedAt = Date.now();
-    plSave(items.map(plNormalizeItem));
+    var nextSite = String(parseInt(it.site||'0') > 0 ? '0' : '1');
+    plUpdateItem(id, { site: nextSite });
     renderPropertyList();
   };
 
@@ -50610,7 +50683,12 @@ window.addEventListener('DOMContentLoaded', () => {
       item.result = oldItem.result;
       item.linkedSavedId = oldItem.linkedSavedId || '';
       item.bidders = oldItem.bidders || '';
-    } // 결과 보존
+      item.createdAt = oldItem.createdAt || oldItem.timestamp || Date.now();
+      item._skPlEditedAt = oldItem._skPlEditedAt || 0;
+      item._skPlFieldEditedAt = Object.assign({}, oldItem._skPlFieldEditedAt || {});
+      ['_skUnsoldEditedAt','_skScheduleEditedAt','_skLifecycleEditedAt','_skLocalEditedAt'].forEach(function(k){ if (oldItem[k]) item[k]=oldItem[k]; });
+    } // 결과/연결/편집스탬프 보존
+    plMarkUserFields(item, ['type','status','intent','addr','casenum','region','feature','appraisal','minprice','round','biddate','estimate','site','roomId','memo'], Date.now());
     if (id) {
       var idx = items.findIndex(function(i){return i.id===id;}); if (idx>=0) items[idx]=item; else items.push(item);
     } else {
@@ -50675,6 +50753,8 @@ window.addEventListener('DOMContentLoaded', () => {
       review: document.getElementById('pl-r-review').value.trim(),
     };
     it.status = 'closed';
+    it.updatedAt = Date.now();
+    plMarkUserFields(it, ['result','status'], it.updatedAt);
     plSave(items.map(plNormalizeItem));
     syncToWorkroom(it);
     try { plSyncItemToSaved(it); } catch(e) {}
@@ -53594,7 +53674,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260513-workroom-v169-saved-priority-pl-repair';
+  var BUILD='20260513-workroom-v170-pl-fields-single-source';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
@@ -54357,6 +54437,37 @@ window.addEventListener('DOMContentLoaded', () => {
     }catch(e){ return false; }
   }
 
+
+  function cfIsEmptyPlValue(v){
+    if(v===null || v===undefined) return true;
+    if(typeof v==='string') return String(v).trim()==='';
+    if(typeof v==='object') { try { return JSON.stringify(v||{})==='{}' || JSON.stringify(v||{})==='null'; } catch(e){ return false; } }
+    return false;
+  }
+  function cfClonePlValue(v){
+    if(v && typeof v==='object') { try { return JSON.parse(JSON.stringify(v)); } catch(e){ return Object.assign({}, v); } }
+    return v;
+  }
+  function cfMergePlUserFields(remote, local){
+    if(!remote || !local) return remote;
+    var fields=['intent','type','status','feature','appraisal','minprice','round','biddate','bidDate','saleDate','estimate','site','bidFocus','bidders','memo','roomId','linkedSavedId','result'];
+    var out=Object.assign({}, remote);
+    var rm=Object.assign({}, (remote && remote._skPlFieldEditedAt)||{});
+    var lm=(local && local._skPlFieldEditedAt)||{};
+    fields.forEach(function(f){
+      if(local[f]===undefined || local[f]===null) return;
+      var ls=Number(lm[f]||0)||0, rs=Number(rm[f]||0)||0;
+      var remEmpty=cfIsEmptyPlValue(out[f]);
+      var locEmpty=cfIsEmptyPlValue(local[f]);
+      if(ls && ls>=rs){ out[f]=cfClonePlValue(local[f]); rm[f]=Math.max(ls,rs); }
+      else if(remEmpty && !locEmpty){ out[f]=cfClonePlValue(local[f]); rm[f]=Math.max(ls,rs,Number(local._skPlEditedAt||0)||0); }
+    });
+    var le=Number(local._skPlEditedAt||0)||0, re=Number(remote._skPlEditedAt||0)||0;
+    if(le||re) out._skPlEditedAt=Math.max(le,re);
+    if(Object.keys(rm).length) out._skPlFieldEditedAt=rm;
+    return out;
+  }
+
   function mergeRemoteAuthoritative(table, localRows, incomingRows){
     var map=new Map();
     (Array.isArray(incomingRows)?incomingRows:[]).forEach(function(r){
@@ -54378,8 +54489,8 @@ window.addEventListener('DOMContentLoaded', () => {
       var remote=map.get(id);
       if(!remote && (table==='items' || table==='workrooms' || table==='pl_items') && !deletedOf(local)){
         var localMark=localEditMarkerOf(local);
-        if(localMark){
-          var age=now()-localMark;
+        if(localMark || (table==='pl_items' && Number(local._skPlEditedAt||0))){
+          var age=now()-(localMark || Number(local._skPlEditedAt||0));
           if(age < 0) age=0;
           if(age <= (30 * 60 * 1000)){
             map.set(id, local);
@@ -54391,6 +54502,14 @@ window.addEventListener('DOMContentLoaded', () => {
         map.set(id, table==='workrooms' ? mergeRoomCaptureDeletes(local, remote) : local);
       }
     });
+    if(table==='pl_items'){
+      var _plLocalById={};
+      (Array.isArray(localRows)?localRows:[]).forEach(function(local){ var id=idOf(local); if(id) _plLocalById[id]=local; });
+      Array.from(map.keys()).forEach(function(id){
+        var local=_plLocalById[id];
+        if(local) map.set(id, cfMergePlUserFields(map.get(id), local));
+      });
+    }
     var pending=readPending();
     var byTable=(pending && pending[table]) || {};
     var pendingTouched=false;
@@ -56486,7 +56605,7 @@ window.addEventListener('DOMContentLoaded', () => {
 */
 (function(){
   'use strict';
-  var BUILD='20260513-workroom-v169-saved-priority-pl-repair';
+  var BUILD='20260513-workroom-v170-pl-fields-single-source';
   try{ window.__SK_BUILD=BUILD; console.log('[build] common.js '+BUILD); }catch(e){}
 
   // ─────────────────────────────────────────────────────
@@ -57234,7 +57353,7 @@ window.addEventListener('DOMContentLoaded', () => {
 (function(){
   if(window.__skV166DetailScheduleInstalled) return;
   window.__skV166DetailScheduleInstalled=true;
-  var BUILD='20260513-workroom-v169-saved-priority-pl-repair';
+  var BUILD='20260513-workroom-v170-pl-fields-single-source';
   try{ window.__SK_BUILD=BUILD; }catch(e){}
   function clean(v){ return String(v==null?'':v).trim(); }
   function ymd(v){
@@ -57400,7 +57519,7 @@ window.addEventListener('DOMContentLoaded', () => {
 (function(){
   if(window.__skV168ScheduleCanonicalInstalled) return;
   window.__skV168ScheduleCanonicalInstalled=true;
-  var BUILD='20260513-workroom-v169-saved-priority-pl-repair';
+  var BUILD='20260513-workroom-v170-pl-fields-single-source';
   try{ window.__SK_BUILD=BUILD; }catch(e){}
 
   function clean(v){ return String(v==null?'':v).trim(); }
