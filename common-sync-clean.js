@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260512-workroom-v161-strict-unsold-no-broad-rewrite';
+    window.__SK_BUILD = '20260512-workroom-v162-workroom-pending-delta-guard';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -53479,7 +53479,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260512-workroom-v161-strict-unsold-no-broad-rewrite';
+  var BUILD='20260512-workroom-v162-workroom-pending-delta-guard';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
@@ -53854,29 +53854,15 @@ window.addEventListener('DOMContentLoaded', () => {
     return mx;
   }
   function shouldFlushPendingWorkroom(row){
-    var id=idOf(row);
-    if(!id) return false;
-    var recentCut=now() - (10 * 60 * 1000);
-    var dirtyAt=Number(cfDirtyRoomIds[id]||0)||0;
-    if(deletedOf(row)) return true;
-    if(dirtyAt) return true;
-    if(lifecycleMarkerOf(row) && (now()-lifecycleMarkerOf(row)) <= (7 * 24 * 60 * 60 * 1000)) return true;
-    if(localEditMarkerOf(row) >= recentCut) return true;
-    if(maxCaptureDeleteTs(row) >= recentCut) return true;
-    return false;
+    // v162: pending flush에서도 같은 guard를 사용한다.
+    // 과거 v160/v161 broad rewrite로 찍힌 _skLocalEditedAt row는 여기서 prune된다.
+    return shouldQueuePendingWorkroom(row, row && row._skPendingReason);
   }
   function selectWorkroomRowsForPersistPush(rows){
-    var activeId=String(window.wr2State && window.wr2State.activeRoomId || '');
     var picked=[];
-    var recentCut=now() - (10 * 60 * 1000);
     (Array.isArray(rows)?rows:[]).forEach(function(r){
-      var id=idOf(r); if(!id) return;
-      var dirtyAt=Number(cfDirtyRoomIds[id]||0)||0;
-      var recentLocal=localEditMarkerOf(r) >= recentCut;
-      var recentDelete=maxCaptureDeleteTs(r) >= recentCut;
-      // v132: 오래된 pending/tombstone 때문에 작업룸 전체가 재푸시되는 경로 차단.
-      // 실제 dirty/recent 삭제/명시 삭제/최근 active edit만 단일 row push 대상으로 제한한다.
-      if(dirtyAt || deletedOf(r) || recentDelete || (activeId && id===activeId && recentLocal)) picked.push(r);
+      if(!r || !idOf(r)) return;
+      if(shouldQueuePendingWorkroom(r, 'persist-wrap')) picked.push(r);
     });
     return picked;
   }
@@ -53983,23 +53969,32 @@ window.addEventListener('DOMContentLoaded', () => {
       return pushRows('workrooms', changedRows).then(function(pushRes){
         return {ok:true, changedRooms:changedRows.length, removedRefs:removedRefs, brokenUrlCount:broken.length, push:pushRes};
       }).catch(function(e){
-        var queued=enqueuePending('workrooms', changedRows);
+        var queued=enqueuePending('workrooms', changedRows, 'broken-capture-repair');
         return {ok:false, changedRooms:changedRows.length, removedRefs:removedRefs, brokenUrlCount:broken.length, queued:queued, error:String(e && (e.message||e))};
       });
     });
   }
-  function enqueuePending(table, rows){
+  function enqueuePending(table, rows, reason){
+    var t=String(table||'');
     var clean=(Array.isArray(rows)?rows:[]).filter(function(r){ return r && idOf(r); });
+    if(t==='workrooms'){
+      var before=clean.length;
+      clean=clean.filter(function(r){ return shouldQueuePendingWorkroom(r, reason); });
+      if(before && !clean.length){
+        try{ log('workrooms pending suppressed', {reason:reason||'', rows:before}); }catch(e){}
+      }
+    }
     if(!clean.length) return 0;
     var p=readPending();
-    if(!p[table]) p[table]={};
+    if(!p[t]) p[t]={};
     var stampedAt=now();
     clean.forEach(function(r){
       var id=idOf(r);
       if(!id) return;
       var copy=JSON.parse(JSON.stringify(r));
       copy._skPendingQueuedAt=stampedAt;
-      p[table][id]=copy;
+      copy._skPendingReason=String(reason||'');
+      p[t][id]=copy;
     });
     writePending(p);
     return clean.length;
@@ -54130,6 +54125,80 @@ window.addEventListener('DOMContentLoaded', () => {
       Number(d._skUrlEditedAt||0)||0, Number(d._skNaverEditedAt||0)||0, Number(d._skUnsoldEditedAt||0)||0, Number(d._skLifecycleEditedAt||0)||0,
       Number(links.updatedAt||0)||0, Number(links.naverUpdatedAt||0)||0
     );
+  }
+
+  // v162: 작업룸 pending 대량 재생성 방지.
+  // _skLocalEditedAt만 있거나 과거 broad-rewrite로 찍힌 row는 저장 대기열에 넣지 않는다.
+  // 실제 사용자 액션 marker(상태/URL/유찰/사진삭제/dirty)가 있는 row만 push한다.
+  function explicitUnsoldStampOf(row){
+    if(!row || typeof row!=='object') return 0;
+    var d=(row.data && typeof row.data==='object') ? row.data : {};
+    return Math.max(Number(row._skUnsoldEditedAt||0)||0, Number(d._skUnsoldEditedAt||0)||0);
+  }
+  function explicitUrlStampOf(row){
+    if(!row || typeof row!=='object') return 0;
+    var d=(row.data && typeof row.data==='object') ? row.data : {};
+    return Math.max(Number(row._skUrlEditedAt||0)||0, Number(row._skNaverEditedAt||0)||0, Number(d._skUrlEditedAt||0)||0, Number(d._skNaverEditedAt||0)||0);
+  }
+  function savedExplicitUnsoldMapForPending(){
+    var out={};
+    try{
+      readCache('items').forEach(function(s){
+        if(!s || !idOf(s)) return;
+        var st=explicitUnsoldStampOf(s);
+        if(st) out[idOf(s)]=st;
+      });
+    }catch(e){}
+    return out;
+  }
+  function collectSavedIdsForWorkroomPending(row){
+    var ids=[];
+    function add(v){ v=String(v==null?'':v).trim(); if(v && ids.indexOf(v)<0) ids.push(v); }
+    if(!row || typeof row!=='object') return ids;
+    add(row.linkedSavedId); add(row.savedId); add(row.sourceSavedId); add(row.auctionId); add(row.listingId);
+    var plById={};
+    try{ readCache('pl_items').forEach(function(x){ if(x && idOf(x)) plById[idOf(x)]=x; }); }catch(e){}
+    function addFromPlId(pid){
+      var p=plById[String(pid||'')];
+      if(p) add(p.linkedSavedId || p.savedId || (p.data && (p.data.linkedSavedId || p.data.savedId)));
+    }
+    addFromPlId(row.targetItemId); addFromPlId(row.__targetItemId); addFromPlId(row.plItemId); addFromPlId(row.itemId);
+    (Array.isArray(row.linkedItems)?row.linkedItems:[]).forEach(function(v){
+      if(v && typeof v==='object'){
+        add(v.linkedSavedId); add(v.savedId); add(v.sourceSavedId);
+        addFromPlId(v.itemId || v.plItemId || v.id);
+      } else addFromPlId(v);
+    });
+    return ids;
+  }
+  function workroomUnsoldBackedBySaved(row){
+    var st=explicitUnsoldStampOf(row);
+    if(!st) return false;
+    var savedMap=savedExplicitUnsoldMapForPending();
+    var ids=collectSavedIdsForWorkroomPending(row);
+    for(var i=0;i<ids.length;i+=1){
+      var sv=Number(savedMap[ids[i]]||0)||0;
+      if(sv && sv >= Math.min(st, st + 1)) return true;
+    }
+    return false;
+  }
+  function shouldQueuePendingWorkroom(row, reason){
+    var id=idOf(row);
+    if(!id) return false;
+    var r=String(reason||row._skPendingReason||'');
+    var recentCut=now() - (10 * 60 * 1000);
+    var lifeCut=now() - (7 * 24 * 60 * 60 * 1000);
+    if(deletedOf(row)) return true;
+    if(Number(cfDirtyRoomIds[id]||0)||0) return true;
+    if(maxCaptureDeleteTs(row) >= recentCut) return true;
+    if(explicitUrlStampOf(row) >= recentCut) return true;
+    if((Number(row._skLifecycleEditedAt||0)||0) >= lifeCut) return true;
+    if(workroomUnsoldBackedBySaved(row)) return true;
+    if(/capture|image|delete|url|naver|lifecycle|unsold|room-push|active-room-now/i.test(r)){
+      // 이유 문자열만으로는 허용하지 않는다. 위 marker 중 하나가 있어야 한다.
+      return false;
+    }
+    return false;
   }
   function shouldKeepLocalProtected(table, local, remote){
     try{
@@ -54637,7 +54706,15 @@ window.addEventListener('DOMContentLoaded', () => {
   }
 
   function pushRows(table, rows){
-    if(String(table||'')==='workrooms') rows=prepareWorkroomRowsForSync(rows);
+    if(String(table||'')==='workrooms'){
+      var rawRows=(Array.isArray(rows)?rows:[]);
+      var before=rawRows.length;
+      rows=rawRows.filter(function(r){ return shouldQueuePendingWorkroom(r, r && r._skPendingReason || 'pushRows-direct'); });
+      if(before && !rows.length){
+        try{ log('workrooms push suppressed', {rows:before}); }catch(e){}
+      }
+      rows=prepareWorkroomRowsForSync(rows);
+    }
     rows=dedupeRows(rows).filter(function(r){ return r && idOf(r); });
     if(!rows.length) return Promise.resolve({ok:true, table:table, requested:0, saved:0, skipped:0, hasMore:false});
     var payload=rows.map(rowPayload).filter(Boolean);
@@ -54759,10 +54836,19 @@ window.addEventListener('DOMContentLoaded', () => {
         if(!plan.delta.length) return {ok:true, table:table, saved:0, skipped:true, reason:'no-changes'};
         // 먼저 durable outbox에 적재한 뒤 네트워크 전송한다.
         // 새로고침/탭 종료가 끼어도 다음 진입 때 outbox가 먼저 flush되어 로컬 수정이 유실되지 않는다.
-        var queued=enqueuePending(table, plan.delta);
-        return pushRows(table, plan.delta).then(function(res){
-          clearPendingRows(table, plan.delta);
-          if(String(table||'')==='workrooms') clearCfDirtyRows(plan.delta);
+        var delta=plan.delta;
+        if(String(table||'')==='workrooms'){
+          var beforeDelta=delta.length;
+          delta=delta.filter(function(r){ return shouldQueuePendingWorkroom(r, 'save-facade:workrooms'); });
+          if(beforeDelta && !delta.length){
+            try{ log('workrooms save delta suppressed', {rows:beforeDelta}); }catch(e){}
+            return {ok:true, table:table, saved:0, skipped:true, reason:'no-explicit-workroom-delta'};
+          }
+        }
+        var queued=enqueuePending(table, delta, 'save-facade:'+String(table||''));
+        return pushRows(table, delta).then(function(res){
+          clearPendingRows(table, delta);
+          if(String(table||'')==='workrooms') clearCfDirtyRows(delta);
           return Object.assign({queued:queued}, res||{});
         }).catch(function(e){
           warn('save push failed; kept queued', table, queued, e && (e.message||e));
@@ -54807,8 +54893,17 @@ window.addEventListener('DOMContentLoaded', () => {
 
   function scheduleRowsPush(table, rows, reason, delay){
     var clean=dedupeRows((Array.isArray(rows)?rows:[]).filter(function(r){ return r && idOf(r); }));
+    if(String(table||'')==='workrooms'){
+      var before=clean.length;
+      clean=clean.filter(function(r){ return shouldQueuePendingWorkroom(r, reason||'scheduled-row-push'); });
+      if(before && !clean.length){
+        try{ log('workrooms scheduled push suppressed', {reason:reason||'', rows:before}); }catch(e){}
+        return;
+      }
+    }
     if(!clean.length) return;
-    enqueuePending(table, clean);
+    var queuedNow=enqueuePending(table, clean, reason||'scheduled-row-push');
+    if(String(table||'')==='workrooms' && !queuedNow) return;
     clearTimeout(pushTimer);
     pushTimer=setTimeout(function(){
       pushRows(table, clean)
@@ -54958,7 +55053,7 @@ window.addEventListener('DOMContentLoaded', () => {
       if(!room || !idOf(room)) return Promise.resolve({ok:false, reason:'room-not-found'});
       var rid=idOf(room);
       cfDirtyRoomIds[rid]=now();
-      enqueuePending('workrooms', [room]);
+      enqueuePending('workrooms', [room], reason||'room-push');
       return pushRows('workrooms', [room]).then(function(res){
         clearPendingRows('workrooms', [room]);
         clearCfDirtyRows([room]);
@@ -55022,6 +55117,12 @@ window.addEventListener('DOMContentLoaded', () => {
     };
     window.skCloudPendingSummary=function(){ return pendingSummary(); };
     window.skCloudFlushPendingSafe=function(opts){ return flushPendingSafe(opts||{}); };
+    window.skCloudPendingWorkroomAudit=function(){
+      var p=readPending();
+      var rows=Object.keys((p&&p.workrooms)||{}).map(function(id){ var r=p.workrooms[id]||{}; return {id:id,title:String(r.title||r.name||r.addr||'').slice(0,40),reason:r._skPendingReason||'',updatedAt:r.updatedAt,localEditedAt:r._skLocalEditedAt,life:r._skLifecycleEditedAt,unsold:r._skUnsoldEditedAt,url:r._skUrlEditedAt||r._skNaverEditedAt,allow:shouldQueuePendingWorkroom(r,r._skPendingReason)}; });
+      try{ console.table(rows); }catch(e){}
+      return rows;
+    };
     window.__skRememberBrokenCaptureUrl=function(url){ return rememberBrokenCaptureUrl(url); };
     window.__skIsBrokenCaptureUrl=function(url){
       var n=normUrl(url);
@@ -56152,7 +56253,7 @@ window.addEventListener('DOMContentLoaded', () => {
 */
 (function(){
   'use strict';
-  var BUILD='20260512-workroom-v161-strict-unsold-no-broad-rewrite';
+  var BUILD='20260512-workroom-v162-workroom-pending-delta-guard';
   try{ window.__SK_BUILD=BUILD; console.log('[build] common.js '+BUILD); }catch(e){}
 
   // ─────────────────────────────────────────────────────
