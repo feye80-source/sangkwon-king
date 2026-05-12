@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260513-workroom-v176-pl-override-row-sync-fix';
+    window.__SK_BUILD = '20260513-workroom-v177-pl-auto-pull-override-fix';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -51366,6 +51366,62 @@ window.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('focus', _plQuickCloudPull);
   }
 
+  // v177: 물건리스트는 저장 버튼이 없는 즉시 편집 UI라서,
+  // 다른 기기에서 의향/금액을 바꾸면 아이패드가 포커스 이벤트 없이도 주기적으로 pl_items만 가볍게 받아야 한다.
+  // 기존 20초 _plRefreshFromCloud는 KV chunk 기준이라 row/override 최신값 반영이 늦거나 누락될 수 있어,
+  // 여기서는 Cloudflare rows(pl_items)만 targeted pull한다.
+  function plIsListVisibleForAutoPull() {
+    try {
+      if (document.hidden) return false;
+      if (typeof currentPage !== 'undefined' && currentPage !== 4) return false;
+      var tab = String(window.__pmActiveTab || 'list');
+      if (tab !== 'list') return false;
+      if (window.__plAutoCloudPull !== true) return false;
+      if (document.getElementById('plIntentMenu')) return false;
+      if (Date.now() < Number(window.__plIntentMenuOpenUntil || 0)) return false;
+      var ae = document.activeElement;
+      if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return false;
+      return true;
+    } catch(e) { return false; }
+  }
+  window.skPlPullNow = window.skPlPullNow || function(reason) {
+    if (window.__skPlPullInFlight) return window.__skPlPullInFlight;
+    var why = reason || 'pl-pull-now';
+    var job;
+    if (typeof window.skCloudPullAll === 'function') {
+      job = window.skCloudPullAll({ full:true, force:true, flushPending:false, reason:why, tables:['pl_items'] });
+    } else if (typeof window.skCloudOpenPullOnce === 'function') {
+      job = window.skCloudOpenPullOnce(why);
+    } else if (typeof window._plRefreshFromCloud === 'function') {
+      job = window._plRefreshFromCloud({ render:true, force:true, sync:false });
+    } else {
+      job = Promise.resolve({ ok:false, reason:'no-pull-api' });
+    }
+    window.__skPlPullInFlight = Promise.resolve(job).then(function(r){
+      try { if (typeof renderPropertyList === 'function' && (!document.hidden)) renderPropertyList(); } catch(e) {}
+      return r;
+    }).finally(function(){ window.__skPlPullInFlight = null; });
+    return window.__skPlPullInFlight;
+  };
+  function plAutoPollOnce(reason) {
+    try {
+      if (!plIsListVisibleForAutoPull()) return;
+      var nowTs = Date.now();
+      var last = Number(window.__skPlAutoPollAt || 0) || 0;
+      if (last && nowTs - last < 6500) return;
+      window.__skPlAutoPollAt = nowTs;
+      window.skPlPullNow(reason || 'pl-auto-poll').catch(function(){});
+    } catch(e) {}
+  }
+  if (!window.__skPlAutoPollBound) {
+    window.__skPlAutoPollBound = true;
+    setInterval(function(){ plAutoPollOnce('pl-auto-poll'); }, 7000);
+    document.addEventListener('visibilitychange', function(){ if (!document.hidden) setTimeout(function(){ plAutoPollOnce('pl-visible'); }, 300); }, true);
+    window.addEventListener('focus', function(){ setTimeout(function(){ plAutoPollOnce('pl-focus'); }, 300); }, true);
+    window.addEventListener('pageshow', function(){ setTimeout(function(){ plAutoPollOnce('pl-pageshow'); }, 500); }, true);
+  }
+
+
 })();
 
 /* ═══════════════════════════════════════════════
@@ -54061,7 +54117,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260513-workroom-v176-pl-override-row-sync-fix';
+  var BUILD='20260513-workroom-v177-pl-auto-pull-override-fix';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
@@ -56992,7 +57048,7 @@ window.addEventListener('DOMContentLoaded', () => {
 */
 (function(){
   'use strict';
-  var BUILD='20260513-workroom-v176-pl-override-row-sync-fix';
+  var BUILD='20260513-workroom-v177-pl-auto-pull-override-fix';
   try{ window.__SK_BUILD=BUILD; console.log('[build] common.js '+BUILD); }catch(e){}
 
   // ─────────────────────────────────────────────────────
@@ -57740,7 +57796,7 @@ window.addEventListener('DOMContentLoaded', () => {
 (function(){
   if(window.__skV166DetailScheduleInstalled) return;
   window.__skV166DetailScheduleInstalled=true;
-  var BUILD='20260513-workroom-v176-pl-override-row-sync-fix';
+  var BUILD='20260513-workroom-v177-pl-auto-pull-override-fix';
   try{ window.__SK_BUILD=BUILD; }catch(e){}
   function clean(v){ return String(v==null?'':v).trim(); }
   function ymd(v){
@@ -57906,7 +57962,7 @@ window.addEventListener('DOMContentLoaded', () => {
 (function(){
   if(window.__skV168ScheduleCanonicalInstalled) return;
   window.__skV168ScheduleCanonicalInstalled=true;
-  var BUILD='20260513-workroom-v176-pl-override-row-sync-fix';
+  var BUILD='20260513-workroom-v177-pl-auto-pull-override-fix';
   try{ window.__SK_BUILD=BUILD; }catch(e){}
 
   function clean(v){ return String(v==null?'':v).trim(); }
