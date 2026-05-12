@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260513-workroom-v171-pl-edit-commit-money-fix';
+    window.__SK_BUILD = '20260513-workroom-v173-pl-dualwrite-planner-touch-restore';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -2038,7 +2038,14 @@
       // (기기별 오래된 로컬 캐시가 최신 클라우드를 덮어쓰는 현상 방지)
       if (forceCloud) {
         const cloudOnly = _sbTakeCloudArray(cloudItems);
-        if (cloudOnly.length) merged = plMergeRowsUserOwned(cloudOnly, localItems);
+        if (cloudOnly.length) {
+          // v173: 다른 기기에서 직접 수정해 Cloudflare/Supabase에 올라온 pl_items 값을
+          // 이 기기의 오래된 로컬 의향/금액/기일 값이 다시 덮지 못하게 한다.
+          // 단, 서버 row에 비어 있는 보조 필드만 로컬 값으로 보강한다.
+          try { window.__skPlPreferCloudNow = true; } catch(e) {}
+          try { merged = plMergeRowsUserOwned(cloudOnly, localItems); }
+          finally { try { window.__skPlPreferCloudNow = false; } catch(e) {} }
+        }
       }
       _sbPersistCachedArray('pl_items_v3', merged);
       // 로컬이 더 최신/풍부한 경우 클라우드로 역전파(backfill)하여 기기간 빈 목록 불일치 방지
@@ -48183,13 +48190,27 @@ window.addEventListener('DOMContentLoaded', () => {
     var clean = plNormalizeItem(Object.assign({}, row));
     window.__skLastPlEditSyncPromise = Promise.resolve({ ok:false, skipped:true });
     try {
+      var fullPayload = [];
+      try { fullPayload = (typeof plLoad === 'function' ? plLoad() : []).map(plNormalizeItem).filter(function(x){ return x && x.id; }); } catch(e0) { fullPayload = [clean]; }
+      var jobs = [];
       if (typeof window.skCloudQueuePushTable === 'function') {
         window.skCloudQueuePushTable('pl_items', [clean], reason || 'pl-user-edit');
       }
       if (typeof window.skCloudPushTable === 'function') {
-        window.__skLastPlEditSyncPromise = window.skCloudPushTable('pl_items', [clean])
-          .then(function(res){ return { ok: !!(res && (res.ok !== false)), table:'pl_items', row: clean.id, result: res }; })
-          .catch(function(e){ console.warn('[pl user edit direct push]', e && (e.message || e)); return { ok:false, table:'pl_items', row: clean.id, error:String(e && (e.message || e)) }; });
+        jobs.push(window.skCloudPushTable('pl_items', [clean]).then(function(res){ return { target:'cf-row', ok: !!(res && (res.ok !== false)), result: res }; }));
+      }
+      // v173: 일부 기기/초기화 경로는 아직 Supabase KV chunk(pl_items_v3)를 읽는다.
+      // 직접 편집값은 CF row table뿐 아니라 KV chunk에도 즉시 반영해야 아이패드가 바로 같은 값을 본다.
+      if (typeof window._sbSavePlItems === 'function') {
+        jobs.push(Promise.resolve(window._sbSavePlItems(fullPayload)).then(function(res){ return { target:'kv-chunk', ok:true, result: res }; }));
+      }
+      if (jobs.length) {
+        window.__skLastPlEditSyncPromise = Promise.allSettled(jobs).then(function(list){
+          var results = list.map(function(x){ return x.status === 'fulfilled' ? x.value : { ok:false, error:String(x.reason && (x.reason.message || x.reason) || x.reason) }; });
+          var ok = results.some(function(x){ return x && x.ok; });
+          var allOk = results.every(function(x){ return x && x.ok; });
+          return { ok: ok, allOk: allOk, table:'pl_items', row: clean.id, result: results };
+        }).catch(function(e){ console.warn('[pl user edit dual push]', e && (e.message || e)); return { ok:false, table:'pl_items', row: clean.id, error:String(e && (e.message || e)) }; });
       }
     } catch(e) {
       console.warn('[pl user edit queue]', e && (e.message || e));
@@ -48273,6 +48294,7 @@ window.addEventListener('DOMContentLoaded', () => {
     var out = Object.assign({}, baseRow);
     var outMap = Object.assign({}, out._skPlFieldEditedAt || {});
     var localMap = localRow._skPlFieldEditedAt || {};
+    var preferCloud = !!(window && window.__skPlPreferCloudNow);
     PL_USER_OWNED_FIELDS.forEach(function(field){
       var hasLocal = localRow[field] !== undefined && localRow[field] !== null;
       if (!hasLocal) return;
@@ -48280,8 +48302,17 @@ window.addEventListener('DOMContentLoaded', () => {
       var remoteStamp = Number(outMap[field] || 0) || 0;
       var remoteEmpty = plIsEmptyValue(out[field]);
       var localEmpty = plIsEmptyValue(localRow[field]);
+      // v173: force cloud pull 중에는 서버값을 우선한다.
+      // 기존 로컬 캐시가 비어 있는 서버 보조 필드를 채우는 경우만 허용한다.
+      if (preferCloud) {
+        if (remoteEmpty && !localEmpty) {
+          out[field] = plCloneValue(localRow[field]);
+          outMap[field] = Math.max(localStamp, remoteStamp, Number(localRow._skPlEditedAt || 0) || 0);
+        }
+        return;
+      }
       // 명시 편집값은 빈값도 보존한다. stamp가 없는 과거 데이터는 '로컬 값이 있고 서버가 빈 경우'만 보존한다.
-      if (localStamp && localStamp >= remoteStamp) {
+      if (localStamp && localStamp > remoteStamp) {
         out[field] = plCloneValue(localRow[field]);
         outMap[field] = Math.max(localStamp, remoteStamp);
       } else if (remoteEmpty && !localEmpty) {
@@ -50315,76 +50346,74 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   };
 
-  // ── 파이프라인 드래그 리사이저 (데스크톱만) ─────────────────────────
-  // 상단 매각기일 보드와 하단 칸반 사이를 드래그해서 높이를 조절
+  // ── 파이프라인 드래그 리사이저 ─────────────────────────
+  // 상단 매각기일 보드와 하단 칸반 사이를 마우스/아이패드/펜으로 조절
   window.__pmInitPipelineResizer = function() {
-    var isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent || '') || window.innerWidth <= 900;
     var resizer = document.getElementById('pipelineResizer');
     var board = document.getElementById('watchScheduleBoard');
     if (!resizer || !board) return;
 
-    // 모바일은 리사이저 숨김
-    if (isMobile) {
-      resizer.style.display = 'none';
-      return;
-    }
-
-    // 상단 보드가 표시 중일 때만 리사이저 노출
     var boardVisible = board.style.display !== 'none' && board.offsetHeight > 0;
-    resizer.style.display = boardVisible ? '' : 'none';
+    resizer.style.display = boardVisible ? 'block' : 'none';
     if (!boardVisible) return;
 
-    // 저장된 높이 복원
     try {
       var saved = parseInt(localStorage.getItem('pipelineBoardHeight') || '', 10);
-      if (!isNaN(saved) && saved >= 80 && saved <= 2000) {
-        board.style.height = saved + 'px';
-      }
+      if (!isNaN(saved) && saved >= 80 && saved <= 2000) board.style.height = saved + 'px';
     } catch(e) {}
 
-    // 중복 바인딩 방지
-    if (resizer.__rzBound) return;
-    resizer.__rzBound = true;
+    if (resizer.__rzBoundV173) return;
+    resizer.__rzBoundV173 = true;
+    resizer.style.touchAction = 'none';
+    resizer.style.userSelect = 'none';
 
-    var dragging = false;
-    var startY = 0;
-    var startHeight = 0;
-
-    var onMove = function(e) {
+    var dragging = false, startY = 0, startHeight = 0;
+    function pointY(e){
+      if (e && e.touches && e.touches[0]) return e.touches[0].clientY;
+      if (e && e.changedTouches && e.changedTouches[0]) return e.changedTouches[0].clientY;
+      return e ? e.clientY : 0;
+    }
+    function onMove(e){
       if (!dragging) return;
-      var y = (e.touches && e.touches[0]) ? e.touches[0].clientY : e.clientY;
-      var dy = y - startY;
+      var dy = pointY(e) - startY;
       var viewport = window.innerHeight || 800;
-      // 최소 80px, 최대 뷰포트의 80%
       var newH = Math.max(80, Math.min(Math.round(viewport * 0.8), startHeight + dy));
       board.style.height = newH + 'px';
-      e.preventDefault();
-    };
-    var onUp = function() {
+      if (e && e.cancelable) e.preventDefault();
+    }
+    function onUp(){
       if (!dragging) return;
       dragging = false;
       resizer.classList.remove('dragging');
       document.body.classList.remove('pipeline-resizing');
-      try { localStorage.setItem('pipelineBoardHeight', String(parseInt(board.style.height, 10) || 230)); } catch(e) {}
+      try { localStorage.setItem('pipelineBoardHeight', String(parseInt(board.style.height, 10) || board.offsetHeight || 230)); } catch(e) {}
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
       document.removeEventListener('touchmove', onMove);
       document.removeEventListener('touchend', onUp);
-    };
-    var onDown = function(e) {
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+      document.removeEventListener('pointercancel', onUp);
+    }
+    function onDown(e){
       dragging = true;
-      startY = (e.touches && e.touches[0]) ? e.touches[0].clientY : e.clientY;
-      startHeight = board.offsetHeight;
+      startY = pointY(e);
+      startHeight = board.offsetHeight || parseInt(board.style.height, 10) || 230;
       resizer.classList.add('dragging');
       document.body.classList.add('pipeline-resizing');
       document.addEventListener('mousemove', onMove);
       document.addEventListener('mouseup', onUp);
-      document.addEventListener('touchmove', onMove, { passive: false });
+      document.addEventListener('touchmove', onMove, { passive:false });
       document.addEventListener('touchend', onUp);
-      e.preventDefault();
-    };
+      document.addEventListener('pointermove', onMove);
+      document.addEventListener('pointerup', onUp);
+      document.addEventListener('pointercancel', onUp);
+      try { if (e.pointerId && resizer.setPointerCapture) resizer.setPointerCapture(e.pointerId); } catch(err) {}
+      if (e && e.cancelable) e.preventDefault();
+    }
     resizer.addEventListener('mousedown', onDown);
-    resizer.addEventListener('touchstart', onDown, { passive: false });
+    resizer.addEventListener('touchstart', onDown, { passive:false });
+    resizer.addEventListener('pointerdown', onDown);
   };
 
   // ── 작업룸 이동 ─────────────────────────
@@ -51553,6 +51582,42 @@ window.addEventListener('DOMContentLoaded', () => {
             if (dragMoved) window.__wbSuppressOpenUntil = Date.now() + 320;
             dragMoved = false;
           });
+        }
+
+        if (touchMode && card.dataset && card.dataset.skSwipeMoveBound !== '1') {
+          var swipe = { down:false, id:null, x:0, y:0, moved:false, done:false };
+          card.style.touchAction = 'pan-y';
+          card.addEventListener('pointerdown', function(e){
+            if (e.button !== undefined && e.button !== 0) return;
+            swipe.down = true; swipe.done = false; swipe.moved = false; swipe.id = e.pointerId;
+            swipe.x = e.clientX || 0; swipe.y = e.clientY || 0;
+          }, { passive:true });
+          card.addEventListener('pointermove', function(e){
+            if (!swipe.down || swipe.done) return;
+            var dx = (e.clientX || 0) - swipe.x;
+            var dy = (e.clientY || 0) - swipe.y;
+            if (Math.abs(dx) < 42 || Math.abs(dx) < Math.abs(dy) * 1.15) return;
+            swipe.moved = true;
+            var curIdx = COL_STATUS.indexOf(status);
+            var nextIdx = curIdx + (dx > 0 ? 1 : -1);
+            if (nextIdx < 0 || nextIdx >= COL_STATUS.length) return;
+            swipe.done = true;
+            window.__wbSuppressOpenUntil = Date.now() + 520;
+            var nextStatus = COL_STATUS[nextIdx];
+            var ok = setItemStatus(itemId, nextStatus);
+            if (ok && typeof window.showToast === 'function') window.showToast((STATUS_LABELS[nextStatus] || nextStatus) + '로 이동했습니다', 'ok', 1200);
+            try { card.style.transform = 'translateX(' + (dx > 0 ? 28 : -28) + 'px)'; setTimeout(function(){ card.style.transform=''; }, 120); } catch(err) {}
+            if (e && e.cancelable) e.preventDefault();
+          }, { passive:false });
+          var swipeEnd = function(){
+            if (!swipe.down) return;
+            swipe.down = false;
+            if (swipe.moved || swipe.done) window.__wbSuppressOpenUntil = Date.now() + 320;
+            swipe.moved = false; swipe.done = false;
+          };
+          card.addEventListener('pointerup', swipeEnd, { passive:true });
+          card.addEventListener('pointercancel', swipeEnd, { passive:true });
+          card.dataset.skSwipeMoveBound = '1';
         }
 
         if (touchMode && card.dataset && card.dataset.skTouchMoveBound !== '1') {
@@ -53690,7 +53755,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260513-workroom-v171-pl-edit-commit-money-fix';
+  var BUILD='20260513-workroom-v173-pl-dualwrite-planner-touch-restore';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
@@ -56621,7 +56686,7 @@ window.addEventListener('DOMContentLoaded', () => {
 */
 (function(){
   'use strict';
-  var BUILD='20260513-workroom-v171-pl-edit-commit-money-fix';
+  var BUILD='20260513-workroom-v173-pl-dualwrite-planner-touch-restore';
   try{ window.__SK_BUILD=BUILD; console.log('[build] common.js '+BUILD); }catch(e){}
 
   // ─────────────────────────────────────────────────────
@@ -57369,7 +57434,7 @@ window.addEventListener('DOMContentLoaded', () => {
 (function(){
   if(window.__skV166DetailScheduleInstalled) return;
   window.__skV166DetailScheduleInstalled=true;
-  var BUILD='20260513-workroom-v171-pl-edit-commit-money-fix';
+  var BUILD='20260513-workroom-v173-pl-dualwrite-planner-touch-restore';
   try{ window.__SK_BUILD=BUILD; }catch(e){}
   function clean(v){ return String(v==null?'':v).trim(); }
   function ymd(v){
@@ -57535,7 +57600,7 @@ window.addEventListener('DOMContentLoaded', () => {
 (function(){
   if(window.__skV168ScheduleCanonicalInstalled) return;
   window.__skV168ScheduleCanonicalInstalled=true;
-  var BUILD='20260513-workroom-v171-pl-edit-commit-money-fix';
+  var BUILD='20260513-workroom-v173-pl-dualwrite-planner-touch-restore';
   try{ window.__SK_BUILD=BUILD; }catch(e){}
 
   function clean(v){ return String(v==null?'':v).trim(); }

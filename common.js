@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260513-workroom-v170-pl-fields-single-source';
+    window.__SK_BUILD = '20260513-workroom-v173-pl-dualwrite-planner-touch-restore';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -2038,7 +2038,14 @@
       // (기기별 오래된 로컬 캐시가 최신 클라우드를 덮어쓰는 현상 방지)
       if (forceCloud) {
         const cloudOnly = _sbTakeCloudArray(cloudItems);
-        if (cloudOnly.length) merged = plMergeRowsUserOwned(cloudOnly, localItems);
+        if (cloudOnly.length) {
+          // v173: 다른 기기에서 직접 수정해 Cloudflare/Supabase에 올라온 pl_items 값을
+          // 이 기기의 오래된 로컬 의향/금액/기일 값이 다시 덮지 못하게 한다.
+          // 단, 서버 row에 비어 있는 보조 필드만 로컬 값으로 보강한다.
+          try { window.__skPlPreferCloudNow = true; } catch(e) {}
+          try { merged = plMergeRowsUserOwned(cloudOnly, localItems); }
+          finally { try { window.__skPlPreferCloudNow = false; } catch(e) {} }
+        }
       }
       _sbPersistCachedArray('pl_items_v3', merged);
       // 로컬이 더 최신/풍부한 경우 클라우드로 역전파(backfill)하여 기기간 빈 목록 불일치 방지
@@ -48107,26 +48114,31 @@ window.addEventListener('DOMContentLoaded', () => {
   function plParseAmountText(v) {
     var raw = String(v || '').trim();
     if (!raw) return '';
-    if (/^\d+$/.test(raw)) return raw;
     var cleaned = raw.replace(/,/g, '').replace(/\s+/g, '');
-    var total = 0;
-    if (/[억만천백]/.test(cleaned)) {
-      var eok = cleaned.match(/(\d+)억/);
-      var cheon = cleaned.match(/(\d+)천/);
-      var baek = cleaned.match(/(\d+)백/);
-      var man = cleaned.match(/(\d+)만/);
-      if (eok) total += parseInt(eok[1],10) * 10000;
-      if (cheon) total += parseInt(cheon[1],10) * 1000;
-      if (baek) total += parseInt(baek[1],10) * 100;
-      if (man && cleaned.indexOf('억') < 0) total += parseInt(man[1],10);
-      if (!total) {
-        var digitsOnly = cleaned.replace(/[^0-9]/g, '');
-        return digitsOnly;
-      }
-      return String(total);
+    var hasKorUnit = /[억만천백]/.test(cleaned);
+    var hasWonUnit = /원/.test(cleaned);
+    if (hasKorUnit) {
+      var total = 0;
+      var eok = cleaned.match(/(\d+(?:\.\d+)?)억/);
+      var cheon = cleaned.match(/(\d+(?:\.\d+)?)천/);
+      var baek = cleaned.match(/(\d+(?:\.\d+)?)백/);
+      var man = cleaned.match(/(\d+(?:\.\d+)?)만/);
+      if (eok) total += Math.round(parseFloat(eok[1]) * 10000);
+      // 경매 금액 표기에서 '3억5천'의 천/백은 만원 단위 축약으로 본다.
+      if (cheon) total += Math.round(parseFloat(cheon[1]) * 1000);
+      if (baek) total += Math.round(parseFloat(baek[1]) * 100);
+      if (man) total += Math.round(parseFloat(man[1]));
+      if (total > 0) return String(total);
     }
     var digitsOnly = cleaned.replace(/[^0-9]/g, '');
-    return digitsOnly;
+    if (!digitsOnly) return '';
+    var n = Number(digitsOnly);
+    if (!Number.isFinite(n) || n <= 0) return '';
+    // 물건리스트 금액 컬럼은 '만원' 단위다.
+    // 사용자가 266,000,000 또는 266000000처럼 원 단위를 넣으면 26,600(만원)으로 저장한다.
+    // 단, 50,000/120,763 같은 기존 만원 단위 입력은 그대로 둔다.
+    if (hasWonUnit || n >= 1000000) return String(Math.round(n / 10000));
+    return String(Math.round(n));
   }
   function plDisplayMoney(v) {
     var raw = plParseAmountText(v);
@@ -48168,6 +48180,41 @@ window.addEventListener('DOMContentLoaded', () => {
   function plDisplayMan(v) {
     var disp = plDisplayMoney(v);
     return disp ? (disp + '만') : '';
+  }
+  function plManToWon(v) {
+    var man = Number(plParseAmountText(v));
+    return (Number.isFinite(man) && man > 0) ? Math.round(man * 10000) : 0;
+  }
+  function plQueueUserEditRow(row, reason) {
+    if (!row || !row.id) return;
+    var clean = plNormalizeItem(Object.assign({}, row));
+    window.__skLastPlEditSyncPromise = Promise.resolve({ ok:false, skipped:true });
+    try {
+      var fullPayload = [];
+      try { fullPayload = (typeof plLoad === 'function' ? plLoad() : []).map(plNormalizeItem).filter(function(x){ return x && x.id; }); } catch(e0) { fullPayload = [clean]; }
+      var jobs = [];
+      if (typeof window.skCloudQueuePushTable === 'function') {
+        window.skCloudQueuePushTable('pl_items', [clean], reason || 'pl-user-edit');
+      }
+      if (typeof window.skCloudPushTable === 'function') {
+        jobs.push(window.skCloudPushTable('pl_items', [clean]).then(function(res){ return { target:'cf-row', ok: !!(res && (res.ok !== false)), result: res }; }));
+      }
+      // v173: 일부 기기/초기화 경로는 아직 Supabase KV chunk(pl_items_v3)를 읽는다.
+      // 직접 편집값은 CF row table뿐 아니라 KV chunk에도 즉시 반영해야 아이패드가 바로 같은 값을 본다.
+      if (typeof window._sbSavePlItems === 'function') {
+        jobs.push(Promise.resolve(window._sbSavePlItems(fullPayload)).then(function(res){ return { target:'kv-chunk', ok:true, result: res }; }));
+      }
+      if (jobs.length) {
+        window.__skLastPlEditSyncPromise = Promise.allSettled(jobs).then(function(list){
+          var results = list.map(function(x){ return x.status === 'fulfilled' ? x.value : { ok:false, error:String(x.reason && (x.reason.message || x.reason) || x.reason) }; });
+          var ok = results.some(function(x){ return x && x.ok; });
+          var allOk = results.every(function(x){ return x && x.ok; });
+          return { ok: ok, allOk: allOk, table:'pl_items', row: clean.id, result: results };
+        }).catch(function(e){ console.warn('[pl user edit dual push]', e && (e.message || e)); return { ok:false, table:'pl_items', row: clean.id, error:String(e && (e.message || e)) }; });
+      }
+    } catch(e) {
+      console.warn('[pl user edit queue]', e && (e.message || e));
+    }
   }
   function plNormalizeDateInput(v) {
     var raw = String(v || '').trim();
@@ -48247,6 +48294,7 @@ window.addEventListener('DOMContentLoaded', () => {
     var out = Object.assign({}, baseRow);
     var outMap = Object.assign({}, out._skPlFieldEditedAt || {});
     var localMap = localRow._skPlFieldEditedAt || {};
+    var preferCloud = !!(window && window.__skPlPreferCloudNow);
     PL_USER_OWNED_FIELDS.forEach(function(field){
       var hasLocal = localRow[field] !== undefined && localRow[field] !== null;
       if (!hasLocal) return;
@@ -48254,8 +48302,17 @@ window.addEventListener('DOMContentLoaded', () => {
       var remoteStamp = Number(outMap[field] || 0) || 0;
       var remoteEmpty = plIsEmptyValue(out[field]);
       var localEmpty = plIsEmptyValue(localRow[field]);
+      // v173: force cloud pull 중에는 서버값을 우선한다.
+      // 기존 로컬 캐시가 비어 있는 서버 보조 필드를 채우는 경우만 허용한다.
+      if (preferCloud) {
+        if (remoteEmpty && !localEmpty) {
+          out[field] = plCloneValue(localRow[field]);
+          outMap[field] = Math.max(localStamp, remoteStamp, Number(localRow._skPlEditedAt || 0) || 0);
+        }
+        return;
+      }
       // 명시 편집값은 빈값도 보존한다. stamp가 없는 과거 데이터는 '로컬 값이 있고 서버가 빈 경우'만 보존한다.
-      if (localStamp && localStamp >= remoteStamp) {
+      if (localStamp && localStamp > remoteStamp) {
         out[field] = plCloneValue(localRow[field]);
         outMap[field] = Math.max(localStamp, remoteStamp);
       } else if (remoteEmpty && !localEmpty) {
@@ -48407,45 +48464,21 @@ window.addEventListener('DOMContentLoaded', () => {
       putField('사건번호', item.casenum);
     }
     if (item.appraisal) {
-      putField('감정가_만원', plParseAmountText(item.appraisal));
-      putField('감정가', Number(plParseAmountText(item.appraisal)) * 10000);
+      var appMan = Number(plParseAmountText(item.appraisal));
+      if (Number.isFinite(appMan) && appMan > 0) {
+        putField('감정가_만원', Math.round(appMan));
+        putField('감정가', Math.round(appMan * 10000));
+      }
     }
     if (item.minprice) {
-      // minprice는 경로에 따라 원/만원이 혼재할 수 있으므로
-      // 저장목록에는 항상 원(최저가) + 만원(최저가_만원)을 일관되게 기록한다.
-      var minWon = 0;
-      var dWonRaw = Number(String(d['최저가_원'] || d['최저가'] || '').replace(/[^0-9]/g, ''));
-      if (Number.isFinite(dWonRaw) && dWonRaw > 0) {
-        minWon = Math.round(dWonRaw);
-      } else {
-        var minDigits = String(item.minprice || '').replace(/[^0-9]/g, '');
-        var nMin = Number(minDigits || 0);
-        if (Number.isFinite(nMin) && nMin > 0) {
-          var candWon = Math.round(nMin);
-          var candMan = Math.round(nMin * 10000);
-          var refWon = Number(String(d['감정가'] || d['최저가'] || '').replace(/[^0-9]/g, ''));
-          if (!(Number.isFinite(refWon) && refWon > 0)) {
-            var appDigits = String(item.appraisal || '').replace(/[^0-9]/g, '');
-            var appNum = Number(appDigits || 0);
-            if (Number.isFinite(appNum) && appNum > 0) {
-              // appraisal은 기존 물건리스트에서 만원 단위가 많으므로 보정
-              refWon = appNum >= 10000000 ? appNum : Math.round(appNum * 10000);
-            }
-          }
-          if (Number.isFinite(refWon) && refWon > 0) {
-            var diffWon = Math.abs(Math.log((candWon + 1) / (refWon + 1)));
-            var diffMan = Math.abs(Math.log((candMan + 1) / (refWon + 1)));
-            minWon = (diffWon <= diffMan) ? candWon : candMan;
-          } else {
-            // 기준값이 없으면 1천만원 이상은 원 단위로, 그보다 작으면 만원 단위로 간주
-            minWon = (nMin >= 10000000) ? candWon : candMan;
-          }
-        }
-      }
-      if (minWon > 0) {
+      // 물건리스트 최저가는 사용자 입력값이 우선이다.
+      // 기존 저장목록 최저가를 우선 읽으면 사용자가 수정한 금액이 다시 옛값으로 되돌아간다.
+      var minMan = Number(plParseAmountText(item.minprice));
+      if (Number.isFinite(minMan) && minMan > 0) {
+        var minWon = Math.round(minMan * 10000);
         putField('최저가', minWon);
         putField('최저가_원', minWon);
-        putField('최저가_만원', Math.round(minWon / 10000));
+        putField('최저가_만원', Math.round(minMan));
       }
     }
     if (item.deposit) putField('보증금_만원', plParseAmountText(item.deposit));
@@ -48508,6 +48541,8 @@ window.addEventListener('DOMContentLoaded', () => {
       var patch = plBuildPatchFromSaved(src, it);
       if (!patch) return it;
       var next = plNormalizeItem(Object.assign({}, it, patch, { updatedAt: Date.now() }));
+      // 서버/저장목록 수렴값이 로컬 사용자 편집 필드(의향/최저가/입찰기일/나의입찰가 등)를 되돌리지 않게 보호한다.
+      next = plNormalizeItem(plMergeUserOwnedFields(next, it));
       if (!plDiffers(JSON.stringify(it), JSON.stringify(next))) return it;
       changed = true;
       changedItems.push(next);
@@ -48605,6 +48640,7 @@ window.addEventListener('DOMContentLoaded', () => {
       if (bidderCount) next.bidders = bidderCount;
       if (closeMemo) next.memo = closeMemo;
     }
+    next = plNormalizeItem(plMergeUserOwnedFields(next, prev));
     return plNormalizeItem(next);
   }
   function plSyncFromWorkrooms(opts) {
@@ -49844,6 +49880,10 @@ window.addEventListener('DOMContentLoaded', () => {
     });
     if (!changedItem) return null;
     plSave(items);
+    // 물건리스트 직접 편집은 pl_items 한 row가 원본이다.
+    // plSave가 먼저 IDB 캐시를 갱신하면 지연 저장 경로가 delta=0으로 판단할 수 있으므로,
+    // 변경 row를 durable outbox + 즉시 push로 별도 커밋한다.
+    try { plQueueUserEditRow(changedItem, 'pl-user-edit'); } catch(e) {}
     syncToWorkroom(changedItem);
     try { plSyncItemToSaved(changedItem); } catch(e) {}
     return changedItem;
@@ -49853,6 +49893,13 @@ window.addEventListener('DOMContentLoaded', () => {
   window.plSave = plSave;
   window.plUpdateItem = plUpdateItem;
   window.plNormalizeItem = plNormalizeItem;
+  window.skDebugPlItem = function(q) {
+    var needle=String(q||'').trim();
+    var rows=(typeof plLoad==='function'?plLoad():[]).filter(function(x){return !needle || JSON.stringify(x||{}).indexOf(needle)>=0;});
+    var out=rows.map(function(x){return {id:x.id, title:x.addr||x.title, intent:x.intent, appraisal:x.appraisal, minprice:x.minprice, biddate:x.biddate, estimate:x.estimate, plAt:x._skPlEditedAt, fields:x._skPlFieldEditedAt, updatedAt:x.updatedAt};});
+    try{ console.table(out); }catch(e){ console.log(out); }
+    return out;
+  };
 
   window._plScheduleRender = window._plScheduleRender || (function() {
     var timer = null;
@@ -50299,76 +50346,74 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   };
 
-  // ── 파이프라인 드래그 리사이저 (데스크톱만) ─────────────────────────
-  // 상단 매각기일 보드와 하단 칸반 사이를 드래그해서 높이를 조절
+  // ── 파이프라인 드래그 리사이저 ─────────────────────────
+  // 상단 매각기일 보드와 하단 칸반 사이를 마우스/아이패드/펜으로 조절
   window.__pmInitPipelineResizer = function() {
-    var isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent || '') || window.innerWidth <= 900;
     var resizer = document.getElementById('pipelineResizer');
     var board = document.getElementById('watchScheduleBoard');
     if (!resizer || !board) return;
 
-    // 모바일은 리사이저 숨김
-    if (isMobile) {
-      resizer.style.display = 'none';
-      return;
-    }
-
-    // 상단 보드가 표시 중일 때만 리사이저 노출
     var boardVisible = board.style.display !== 'none' && board.offsetHeight > 0;
-    resizer.style.display = boardVisible ? '' : 'none';
+    resizer.style.display = boardVisible ? 'block' : 'none';
     if (!boardVisible) return;
 
-    // 저장된 높이 복원
     try {
       var saved = parseInt(localStorage.getItem('pipelineBoardHeight') || '', 10);
-      if (!isNaN(saved) && saved >= 80 && saved <= 2000) {
-        board.style.height = saved + 'px';
-      }
+      if (!isNaN(saved) && saved >= 80 && saved <= 2000) board.style.height = saved + 'px';
     } catch(e) {}
 
-    // 중복 바인딩 방지
-    if (resizer.__rzBound) return;
-    resizer.__rzBound = true;
+    if (resizer.__rzBoundV173) return;
+    resizer.__rzBoundV173 = true;
+    resizer.style.touchAction = 'none';
+    resizer.style.userSelect = 'none';
 
-    var dragging = false;
-    var startY = 0;
-    var startHeight = 0;
-
-    var onMove = function(e) {
+    var dragging = false, startY = 0, startHeight = 0;
+    function pointY(e){
+      if (e && e.touches && e.touches[0]) return e.touches[0].clientY;
+      if (e && e.changedTouches && e.changedTouches[0]) return e.changedTouches[0].clientY;
+      return e ? e.clientY : 0;
+    }
+    function onMove(e){
       if (!dragging) return;
-      var y = (e.touches && e.touches[0]) ? e.touches[0].clientY : e.clientY;
-      var dy = y - startY;
+      var dy = pointY(e) - startY;
       var viewport = window.innerHeight || 800;
-      // 최소 80px, 최대 뷰포트의 80%
       var newH = Math.max(80, Math.min(Math.round(viewport * 0.8), startHeight + dy));
       board.style.height = newH + 'px';
-      e.preventDefault();
-    };
-    var onUp = function() {
+      if (e && e.cancelable) e.preventDefault();
+    }
+    function onUp(){
       if (!dragging) return;
       dragging = false;
       resizer.classList.remove('dragging');
       document.body.classList.remove('pipeline-resizing');
-      try { localStorage.setItem('pipelineBoardHeight', String(parseInt(board.style.height, 10) || 230)); } catch(e) {}
+      try { localStorage.setItem('pipelineBoardHeight', String(parseInt(board.style.height, 10) || board.offsetHeight || 230)); } catch(e) {}
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
       document.removeEventListener('touchmove', onMove);
       document.removeEventListener('touchend', onUp);
-    };
-    var onDown = function(e) {
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+      document.removeEventListener('pointercancel', onUp);
+    }
+    function onDown(e){
       dragging = true;
-      startY = (e.touches && e.touches[0]) ? e.touches[0].clientY : e.clientY;
-      startHeight = board.offsetHeight;
+      startY = pointY(e);
+      startHeight = board.offsetHeight || parseInt(board.style.height, 10) || 230;
       resizer.classList.add('dragging');
       document.body.classList.add('pipeline-resizing');
       document.addEventListener('mousemove', onMove);
       document.addEventListener('mouseup', onUp);
-      document.addEventListener('touchmove', onMove, { passive: false });
+      document.addEventListener('touchmove', onMove, { passive:false });
       document.addEventListener('touchend', onUp);
-      e.preventDefault();
-    };
+      document.addEventListener('pointermove', onMove);
+      document.addEventListener('pointerup', onUp);
+      document.addEventListener('pointercancel', onUp);
+      try { if (e.pointerId && resizer.setPointerCapture) resizer.setPointerCapture(e.pointerId); } catch(err) {}
+      if (e && e.cancelable) e.preventDefault();
+    }
     resizer.addEventListener('mousedown', onDown);
-    resizer.addEventListener('touchstart', onDown, { passive: false });
+    resizer.addEventListener('touchstart', onDown, { passive:false });
+    resizer.addEventListener('pointerdown', onDown);
   };
 
   // ── 작업룸 이동 ─────────────────────────
@@ -51537,6 +51582,42 @@ window.addEventListener('DOMContentLoaded', () => {
             if (dragMoved) window.__wbSuppressOpenUntil = Date.now() + 320;
             dragMoved = false;
           });
+        }
+
+        if (touchMode && card.dataset && card.dataset.skSwipeMoveBound !== '1') {
+          var swipe = { down:false, id:null, x:0, y:0, moved:false, done:false };
+          card.style.touchAction = 'pan-y';
+          card.addEventListener('pointerdown', function(e){
+            if (e.button !== undefined && e.button !== 0) return;
+            swipe.down = true; swipe.done = false; swipe.moved = false; swipe.id = e.pointerId;
+            swipe.x = e.clientX || 0; swipe.y = e.clientY || 0;
+          }, { passive:true });
+          card.addEventListener('pointermove', function(e){
+            if (!swipe.down || swipe.done) return;
+            var dx = (e.clientX || 0) - swipe.x;
+            var dy = (e.clientY || 0) - swipe.y;
+            if (Math.abs(dx) < 42 || Math.abs(dx) < Math.abs(dy) * 1.15) return;
+            swipe.moved = true;
+            var curIdx = COL_STATUS.indexOf(status);
+            var nextIdx = curIdx + (dx > 0 ? 1 : -1);
+            if (nextIdx < 0 || nextIdx >= COL_STATUS.length) return;
+            swipe.done = true;
+            window.__wbSuppressOpenUntil = Date.now() + 520;
+            var nextStatus = COL_STATUS[nextIdx];
+            var ok = setItemStatus(itemId, nextStatus);
+            if (ok && typeof window.showToast === 'function') window.showToast((STATUS_LABELS[nextStatus] || nextStatus) + '로 이동했습니다', 'ok', 1200);
+            try { card.style.transform = 'translateX(' + (dx > 0 ? 28 : -28) + 'px)'; setTimeout(function(){ card.style.transform=''; }, 120); } catch(err) {}
+            if (e && e.cancelable) e.preventDefault();
+          }, { passive:false });
+          var swipeEnd = function(){
+            if (!swipe.down) return;
+            swipe.down = false;
+            if (swipe.moved || swipe.done) window.__wbSuppressOpenUntil = Date.now() + 320;
+            swipe.moved = false; swipe.done = false;
+          };
+          card.addEventListener('pointerup', swipeEnd, { passive:true });
+          card.addEventListener('pointercancel', swipeEnd, { passive:true });
+          card.dataset.skSwipeMoveBound = '1';
         }
 
         if (touchMode && card.dataset && card.dataset.skTouchMoveBound !== '1') {
@@ -53674,7 +53755,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260513-workroom-v170-pl-fields-single-source';
+  var BUILD='20260513-workroom-v173-pl-dualwrite-planner-touch-restore';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
@@ -56605,7 +56686,7 @@ window.addEventListener('DOMContentLoaded', () => {
 */
 (function(){
   'use strict';
-  var BUILD='20260513-workroom-v170-pl-fields-single-source';
+  var BUILD='20260513-workroom-v173-pl-dualwrite-planner-touch-restore';
   try{ window.__SK_BUILD=BUILD; console.log('[build] common.js '+BUILD); }catch(e){}
 
   // ─────────────────────────────────────────────────────
@@ -57353,7 +57434,7 @@ window.addEventListener('DOMContentLoaded', () => {
 (function(){
   if(window.__skV166DetailScheduleInstalled) return;
   window.__skV166DetailScheduleInstalled=true;
-  var BUILD='20260513-workroom-v170-pl-fields-single-source';
+  var BUILD='20260513-workroom-v173-pl-dualwrite-planner-touch-restore';
   try{ window.__SK_BUILD=BUILD; }catch(e){}
   function clean(v){ return String(v==null?'':v).trim(); }
   function ymd(v){
@@ -57519,7 +57600,7 @@ window.addEventListener('DOMContentLoaded', () => {
 (function(){
   if(window.__skV168ScheduleCanonicalInstalled) return;
   window.__skV168ScheduleCanonicalInstalled=true;
-  var BUILD='20260513-workroom-v170-pl-fields-single-source';
+  var BUILD='20260513-workroom-v173-pl-dualwrite-planner-touch-restore';
   try{ window.__SK_BUILD=BUILD; }catch(e){}
 
   function clean(v){ return String(v==null?'':v).trim(); }
