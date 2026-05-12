@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260512-workroom-v158-lifecycle-authoritative-no-intent';
+    window.__SK_BUILD = '20260512-workroom-v159-unsold-pl-items-authoritative';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -47962,7 +47962,12 @@ window.addEventListener('DOMContentLoaded', () => {
     var rawTs = Number(it.timestamp || 0);
     var createdAt = rawCreated || rawTs || 0;
     var updatedAt = rawUpdated || rawTs || createdAt || 0;
-    return {
+    var rawData = (it.data && typeof it.data === 'object') ? Object.assign({}, it.data) : {};
+    var rawNorm = (it._norm && typeof it._norm === 'object') ? Object.assign({}, it._norm) : null;
+    var biddate = _plNormalizeBiddateValue(it.biddate || it.bidDate || it.saleDate || it.매각기일 || rawData['매각기일'] || rawData['매각일'] || rawData['입찰기일'] || '');
+    var minprice = it.minprice || it.최저가 || rawData['최저가_원'] || rawData['최저가'] || '';
+    var round = it.round || rawData['회차'] || rawData['유찰회차'] || '';
+    var out = {
       id: String(it.id || Date.now()),
       linkedSavedId: it.linkedSavedId || '',
       roomId: it.roomId || '',
@@ -47974,9 +47979,9 @@ window.addEventListener('DOMContentLoaded', () => {
       region: it.region || '',
       feature: it.feature || '',
       appraisal: it.appraisal || '',
-      minprice: it.minprice || '',
-      round: it.round || '',
-      biddate: _plNormalizeBiddateValue(it.biddate || ''),
+      minprice: minprice,
+      round: round,
+      biddate: biddate,
       // 나의입찰가(estimate)는 물건리스트 전용 편집값이다.
       // 빈 문자열('')도 사용자가 '삭제'한 정상 값이므로 fallback으로 되살리면 안 된다.
       estimate: (it.estimate === undefined || it.estimate === null) ? '' : String(it.estimate),
@@ -47993,6 +47998,16 @@ window.addEventListener('DOMContentLoaded', () => {
       createdAt: createdAt,
       updatedAt: updatedAt
     };
+    // v159: pl_items는 단순 표시 캐시가 아니라 작업룸/기기 동기화 기준 중 하나다.
+    // 유찰 처리 후 data/_skUnsoldEditedAt이 plNormalizeItem에서 사라지면 iPad/물건리스트가 옛 기일로 남는다.
+    if (Object.keys(rawData).length) out.data = rawData;
+    if (rawNorm) out._norm = rawNorm;
+    ['_skUnsoldEditedAt','_skLocalEditedAt','_skLifecycleEditedAt','_skUrlEditedAt','_skNaverEditedAt'].forEach(function(k){
+      if (it[k] !== undefined && it[k] !== null && it[k] !== '') out[k] = it[k];
+    });
+    if (it.bidDate) out.bidDate = _plNormalizeBiddateValue(it.bidDate) || it.bidDate;
+    if (it.saleDate) out.saleDate = _plNormalizeBiddateValue(it.saleDate) || it.saleDate;
+    return out;
   }
   function plLoad() {
     try {
@@ -48552,16 +48567,29 @@ window.addEventListener('DOMContentLoaded', () => {
       if (existing) {
         built.status = existing.status;
         built.archived = !!existing.archived;
-        // 기존 값이 비었거나 '미정'이면 room/saved에서 복구 가능한 기일을 우선 사용
+        // 기존 값이 비었거나 '미정'이면 room/saved에서 복구 가능한 기일을 우선 사용한다.
+        // 단, v159: 유찰/기일수정은 room/saved의 _skUnsoldEditedAt이 더 최신이면 그 값을 pl_items로 전파해야 한다.
+        var existingUnsoldTs = Number(existing._skUnsoldEditedAt || existing._skLocalEditedAt || 0) || 0;
+        var roomUnsoldTs = Number((room && (room._skUnsoldEditedAt || room._skLocalEditedAt)) || 0) || 0;
+        var savedUnsoldTs = Number((savedItem && (savedItem._skUnsoldEditedAt || savedItem._skLocalEditedAt)) || 0) || 0;
+        var unsoldSourceIsNewer = Math.max(roomUnsoldTs, savedUnsoldTs) > existingUnsoldTs;
         var existingBidNorm = _plNormalizeBiddateValue(existing.biddate || '');
         var builtBidNorm = _plNormalizeBiddateValue(built.biddate || '');
         var roomBidNorm = _plNormalizeBiddateValue((room && room.biddate) || '');
-        if (existingBidNorm && existingBidNorm !== '미정') built.biddate = existingBidNorm;
-        else if (builtBidNorm && builtBidNorm !== '미정') built.biddate = builtBidNorm;
-        else if (roomBidNorm && roomBidNorm !== '미정') built.biddate = roomBidNorm;
-        else built.biddate = existing.biddate;
-        built.round = existing.round;
-        built.minprice = existing.minprice;
+        if (unsoldSourceIsNewer) {
+          built.biddate = builtBidNorm || roomBidNorm || existing.biddate || '';
+          built.round = built.round || (room && room.round) || existing.round || '';
+          built.minprice = built.minprice || (room && room.minprice) || existing.minprice || '';
+          built._skUnsoldEditedAt = Math.max(roomUnsoldTs, savedUnsoldTs);
+          built._skLocalEditedAt = built._skUnsoldEditedAt;
+        } else {
+          if (existingBidNorm && existingBidNorm !== '미정') built.biddate = existingBidNorm;
+          else if (builtBidNorm && builtBidNorm !== '미정') built.biddate = builtBidNorm;
+          else if (roomBidNorm && roomBidNorm !== '미정') built.biddate = roomBidNorm;
+          else built.biddate = existing.biddate;
+          built.round = existing.round;
+          built.minprice = existing.minprice;
+        }
       }
       built.id = String((existing && existing.id) || fallbackBase.id || ('pl_room_' + roomId));
       built.createdAt = (existing && existing.createdAt) || fallbackBase.createdAt || Date.now();
@@ -52361,6 +52389,81 @@ window.addEventListener('DOMContentLoaded', () => {
     try{ obj._norm=Object.assign({}, obj._norm||{}); if(date) obj._norm.매각기일=date; if(priceNum>0) obj._norm.최저가_만원=Math.round(priceNum/10000); if(fail!=='') obj._norm.유찰횟수=Number(fail)||0; }catch(e){}
     return true;
   }
+  function _skFindUnsoldPlItemMatches(base, room){
+    var items = (typeof plLoad === 'function') ? (plLoad() || []) : [];
+    base = base || {}; room = room || null;
+    var bd = base.data || {};
+    var ids = new Set();
+    [base.id, base.linkedSavedId, base.savedId, base.sourceSavedId, base.savedItemId,
+      bd.linkedSavedId, bd.savedId, bd.sourceSavedId, room && room.targetItemId, room && room.linkedSavedId, room && room.savedId].forEach(function(v){
+      v = String(v || '').trim(); if (v) ids.add(v);
+    });
+    try {
+      if (room && Array.isArray(room.linkedItems)) room.linkedItems.forEach(function(v){
+        if (v && typeof v === 'object') [v.id, v.itemId, v.plItemId, v.linkedPlItemId, v.savedId, v.linkedSavedId].forEach(function(x){ x=String(x||'').trim(); if(x) ids.add(x); });
+        else { v=String(v||'').trim(); if(v) ids.add(v); }
+      });
+    } catch(e) {}
+    var roomId = String((room && room.id) || base.roomId || '').trim();
+    var savedId = String(base.linkedSavedId || base.savedId || bd.linkedSavedId || bd.savedId || (room && room.linkedSavedId) || '').trim();
+    var pid = String(bd.product_id || bd._pid || base.product_id || '').trim();
+    var caseNo = String(bd['경매번호'] || bd['사건번호'] || base.casenum || base.caseNo || '').replace(/\s+/g,'').trim();
+    var addr = String(bd['소재지'] || bd['주소'] || base.region || base.addr || base.address || '').replace(/\s+/g,'').trim();
+    var title = String(base.title || base.addr || '').replace(/\s+/g,'').trim();
+    var out = [];
+    items.forEach(function(it){
+      if (!it || !it.id) return;
+      var d = it.data || {};
+      var id = String(it.id || '').trim();
+      if (ids.has(id)) { out.push(it); return; }
+      if (roomId && String(it.roomId || '').trim() === roomId) { out.push(it); return; }
+      if (savedId && String(it.linkedSavedId || d.linkedSavedId || d.savedId || '').trim() === savedId) { out.push(it); return; }
+      var ipid = String(d.product_id || d._pid || it.product_id || '').trim();
+      if (pid && ipid && pid === ipid) { out.push(it); return; }
+      var icase = String(d['경매번호'] || d['사건번호'] || it.casenum || it.caseNo || '').replace(/\s+/g,'').trim();
+      if (caseNo && icase && caseNo === icase) { out.push(it); return; }
+      var iaddr = String(d['소재지'] || d['주소'] || it.region || it.addr || '').replace(/\s+/g,'').trim();
+      if (addr && iaddr && (addr === iaddr || addr.indexOf(iaddr) >= 0 || iaddr.indexOf(addr) >= 0)) { out.push(it); return; }
+      var ititle = String(it.title || it.addr || '').replace(/\s+/g,'').trim();
+      if (title && ititle && (title === ititle || title.indexOf(ititle) >= 0 || ititle.indexOf(title) >= 0)) out.push(it);
+    });
+    var seen = {};
+    return out.filter(function(it){ var id=String(it.id||''); if(!id || seen[id]) return false; seen[id]=1; return true; });
+  }
+  function _skPatchUnsoldPlItems(base, room, fields){
+    fields = fields || {};
+    var matches = _skFindUnsoldPlItemMatches(base, room);
+    var baseLooksLikePl = !!(base && (base.roomId || base.addr !== undefined || base.casenum !== undefined || /^pl_/i.test(String(base.id || ''))));
+    if (!matches.length && baseLooksLikePl) matches = [base];
+    var items = (typeof plLoad === 'function') ? (plLoad() || []) : [];
+    if (!Array.isArray(items)) items = [];
+    var byId = {}; items.forEach(function(it, i){ if(it && it.id) byId[String(it.id)] = i; });
+    var changed = [];
+    var stamp = Number(fields.stamp || Date.now()) || Date.now();
+    matches.forEach(function(m){
+      var id = String(m && m.id || '').trim(); if (!id) return;
+      var idx = Object.prototype.hasOwnProperty.call(byId, id) ? byId[id] : -1;
+      var cur = idx >= 0 ? items[idx] : m;
+      var next = Object.assign({}, cur, { data:Object.assign({}, (cur && cur.data) || {}) });
+      _skTouchAuctionScheduleObject(next, {
+        round:String(fields.round || ''),
+        failCount:(fields.failCount != null ? fields.failCount : _skFailCountFromNextRound(fields.round)),
+        date:String(fields.date || '').trim(),
+        priceWon:Number(fields.priceWon || 0) || 0,
+        stamp:stamp
+      });
+      next.roomId = String((room && room.id) || next.roomId || '');
+      if (room && room.linkedSavedId && !next.linkedSavedId) next.linkedSavedId = String(room.linkedSavedId || '');
+      next.status = next.status || 'review';
+      next.archived = false;
+      next = (typeof plNormalizeItem === 'function') ? plNormalizeItem(next) : next;
+      if (idx >= 0) items[idx] = next; else items.push(next);
+      changed.push(next);
+    });
+    if (changed.length && typeof plSave === 'function') plSave(items);
+    try { if (changed.length && typeof window.skCloudQueuePushTable === 'function') window.skCloudQueuePushTable('pl_items', changed, 'unsold-pl-authoritative-v159'); } catch(e) {}
+    return changed;
+  }
   function _skPatchSavedAuctionSource(target, fields){
     // v125: 유찰/기일수정은 저장목록 원본(re_sv)까지 반드시 같은 row로 갱신해야 한다.
     // 기존에는 linkedSavedId가 비어 있으면 re_sv를 못 찾아서, 다음 pull 때 예전 기일/금액이 다시 살아났다.
@@ -52435,7 +52538,20 @@ window.addEventListener('DOMContentLoaded', () => {
       setSv(arr);
       window.__skLastUnsoldSavedRows = updatedRows;
       try { if (typeof window._plSyncFromSavedItems === 'function') window._plSyncFromSavedItems(arr, { render:false }); } catch(_e3) {}
-      try { console.log('[SK-v125] unsold saved rows patched', updatedRows.map(function(x){ return {id:x.id,biddate:x.biddate || (x.data&&x.data.매각기일),minprice:x.minprice || (x.data&&x.data.최저가),updatedAt:x.updatedAt}; })); } catch(e) {}
+      try {
+        var plRowsFromSaved = [];
+        updatedRows.forEach(function(row){
+          plRowsFromSaved = plRowsFromSaved.concat(_skPatchUnsoldPlItems(row, room, {
+            round:round,
+            failCount:_skFailCountFromNextRound(round),
+            date:date,
+            priceWon:priceNum,
+            stamp:stamp
+          }));
+        });
+        window.__skLastUnsoldPlRows = plRowsFromSaved;
+      } catch(_e4) { console.warn('[unsold pl patch from saved]', _e4); }
+      try { console.log('[SK-v159] unsold saved/pl rows patched', {saved: updatedRows.map(function(x){ return {id:x.id,biddate:x.biddate || (x.data&&x.data.매각기일),minprice:x.minprice || (x.data&&x.data.최저가),updatedAt:x.updatedAt}; }), pl: (window.__skLastUnsoldPlRows||[]).map(function(x){ return {id:x.id,biddate:x.biddate || (x.data&&x.data.매각기일),minprice:x.minprice || (x.data&&x.data.최저가),updatedAt:x.updatedAt}; })}); } catch(e) {}
       return updatedRows[0] || null;
     } catch (e) {
       console.warn('[unsold saved patch]', e);
@@ -52736,14 +52852,22 @@ window.addEventListener('DOMContentLoaded', () => {
     nextData['최저가_원'] = priceNum;
     nextData['최저가_만원'] = priceNum ? Math.round(priceNum / 10000) : '';
 
+    var stampUnsoldStart = Date.now();
+    nextData._skUnsoldEditedAt = stampUnsoldStart;
+    nextData._skLocalEditedAt = stampUnsoldStart;
     var nextItemPatch = {
       roomId: room ? String(room.id || '') : String(target.roomId || ''),
       round: String(nextRound),
       biddate: String(nextDate || '').trim(),
+      bidDate: String(nextDate || '').trim(),
+      saleDate: String(nextDate || '').trim(),
       minprice: priceNum ? String(priceNum) : String(nextPrice || '').trim(),
       status: 'review',
       archived: false,
-      data: nextData
+      data: nextData,
+      _skUnsoldEditedAt: stampUnsoldStart,
+      _skLocalEditedAt: stampUnsoldStart,
+      updatedAt: stampUnsoldStart
     };
 
     var appliedItem = null;
@@ -52764,7 +52888,10 @@ window.addEventListener('DOMContentLoaded', () => {
       appliedItem = items[idx];
     }
     if (!appliedItem || !appliedItem.id) return { ok:false, reason:'apply_failed', room: room, item: null };
+    _skTouchAuctionScheduleObject(appliedItem, { round:String(nextRound), failCount:_skFailCountFromNextRound(nextRound), date:String(nextDate || '').trim(), priceWon:priceNum, stamp:stampUnsoldStart });
     var appliedSaved = _skPatchSavedAuctionSource(appliedItem, { room: room, savedId: room && room.linkedSavedId, round:String(nextRound), date:String(nextDate || '').trim(), priceWon:priceNum });
+    var allPlUnsoldRows = _skPatchUnsoldPlItems(appliedItem, room, { round:String(nextRound), failCount:_skFailCountFromNextRound(nextRound), date:String(nextDate || '').trim(), priceWon:priceNum, stamp:stampUnsoldStart });
+    if (!allPlUnsoldRows.length && appliedItem) allPlUnsoldRows = [appliedItem];
     try { if (targetId && typeof window.plSetSimpleStatus === 'function') {
       var prevForce = window.__plForceDirectSet;
       window.__plForceDirectSet = true;
@@ -52820,7 +52947,7 @@ window.addEventListener('DOMContentLoaded', () => {
     _skForceUnsoldCloudSync({
       pull:false,
       rows:{
-        pl_items: appliedItem ? [appliedItem] : [],
+        pl_items: (allPlUnsoldRows && allPlUnsoldRows.length) ? allPlUnsoldRows : (appliedItem ? [appliedItem] : []),
         workrooms: room ? [room] : [],
         items: (window.__skLastUnsoldSavedRows && window.__skLastUnsoldSavedRows.length) ? window.__skLastUnsoldSavedRows : (appliedSaved ? [appliedSaved] : [])
       }
@@ -52848,19 +52975,30 @@ window.addEventListener('DOMContentLoaded', () => {
     nextData['최저가_원'] = priceNum;
     nextData['최저가_만원'] = priceNum ? Math.round(priceNum / 10000) : '';
 
+    var stampManualStart = Date.now();
+    nextData._skUnsoldEditedAt = stampManualStart;
+    nextData._skLocalEditedAt = stampManualStart;
     var patch = {
       roomId: room ? String(room.id || '') : String(target.roomId || ''),
       round: String(keepRound),
       biddate: String(nextDate || '').trim(),
+      bidDate: String(nextDate || '').trim(),
+      saleDate: String(nextDate || '').trim(),
       minprice: priceNum ? String(priceNum) : String(nextPrice || '').trim(),
       archived: false,
-      data: nextData
+      data: nextData,
+      _skUnsoldEditedAt: stampManualStart,
+      _skLocalEditedAt: stampManualStart,
+      updatedAt: stampManualStart
     };
 
     var appliedItem = null;
     if (typeof window.plUpdateItem === 'function') appliedItem = window.plUpdateItem(targetId, patch);
     if (!appliedItem) return { ok:false, reason:'apply_failed', room: room, item: null };
+    _skTouchAuctionScheduleObject(appliedItem, { round:String(keepRound), failCount:(target.data && target.data['유찰횟수'] != null) ? target.data['유찰횟수'] : _skFailCountFromNextRound(keepRound), date:String(nextDate || '').trim(), priceWon:priceNum, stamp:stampManualStart });
     var appliedSaved = _skPatchSavedAuctionSource(appliedItem, { room: room, savedId: room && room.linkedSavedId, round:String(keepRound), date:String(nextDate || '').trim(), priceWon:priceNum });
+    var allPlManualRows = _skPatchUnsoldPlItems(appliedItem, room, { round:String(keepRound), failCount:(target.data && target.data['유찰횟수'] != null) ? target.data['유찰횟수'] : _skFailCountFromNextRound(keepRound), date:String(nextDate || '').trim(), priceWon:priceNum, stamp:stampManualStart });
+    if (!allPlManualRows.length && appliedItem) allPlManualRows = [appliedItem];
 
     if (room) {
       try {
@@ -52900,7 +53038,7 @@ window.addEventListener('DOMContentLoaded', () => {
     _skForceUnsoldCloudSync({
       pull:false,
       rows:{
-        pl_items: appliedItem ? [appliedItem] : [],
+        pl_items: (allPlManualRows && allPlManualRows.length) ? allPlManualRows : (appliedItem ? [appliedItem] : []),
         workrooms: room ? [room] : [],
         items: (window.__skLastUnsoldSavedRows && window.__skLastUnsoldSavedRows.length) ? window.__skLastUnsoldSavedRows : (appliedSaved ? [appliedSaved] : [])
       }
@@ -52908,6 +53046,19 @@ window.addEventListener('DOMContentLoaded', () => {
     return { ok:true, room: room, item: appliedItem, saved: appliedSaved || null };
   }
 
+  window._skDebugUnsoldRows = function(keyword){
+    var kw=String(keyword||'').trim();
+    var hit=function(x){ return !kw || JSON.stringify(x||'').indexOf(kw)>=0; };
+    var rooms=(window._idbCache&&window._idbCache.wr2_rooms)||[];
+    var pl=(window._idbCache&&window._idbCache.pl_items_v3)||[];
+    var sv=(typeof getSv==='function')?(getSv()||[]):[];
+    var pick=function(x){ var d=(x&&x.data)||{}; return {id:x&&x.id,title:(x&&(x.title||x.name||x.addr)),status:x&&x.status,lifecycleStatus:x&&x.lifecycleStatus,roomId:x&&x.roomId,linkedSavedId:x&&x.linkedSavedId,매각기일:(x&&(x.biddate||x.saleDate||x.bidDate||d['매각기일'])),회차:(x&&(x.round||d['회차']||d['유찰횟수'])),최저가:(x&&(x.minprice||d['최저가_원']||d['최저가'])),unsoldEditedAt:x&&x._skUnsoldEditedAt,localEditedAt:x&&x._skLocalEditedAt,updatedAt:x&&x.updatedAt}; };
+    console.log('[unsold rows v159]', kw);
+    console.table((rooms||[]).filter(hit).map(pick));
+    console.table((pl||[]).filter(hit).map(pick));
+    console.table((sv||[]).filter(hit).map(pick));
+    return {rooms:(rooms||[]).filter(hit), pl:(pl||[]).filter(hit), sv:(sv||[]).filter(hit)};
+  };
   function _skOpenUnsoldFlow(ctx){
     var modal = _skEnsureUnsoldOnlyModal();
     var item = (ctx && ctx.item) || {};
@@ -53328,7 +53479,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260512-workroom-v158-lifecycle-authoritative-no-intent';
+  var BUILD='20260512-workroom-v159-unsold-pl-items-authoritative';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
@@ -56001,7 +56152,7 @@ window.addEventListener('DOMContentLoaded', () => {
 */
 (function(){
   'use strict';
-  var BUILD='20260512-workroom-v158-lifecycle-authoritative-no-intent';
+  var BUILD='20260512-workroom-v159-unsold-pl-items-authoritative';
   try{ window.__SK_BUILD=BUILD; console.log('[build] common.js '+BUILD); }catch(e){}
 
   // ─────────────────────────────────────────────────────
