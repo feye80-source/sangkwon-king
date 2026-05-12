@@ -48838,19 +48838,87 @@ window.addEventListener('DOMContentLoaded', () => {
     var map = { '최상':'#ff4d5e', '상':'#fb923c', '중':'#60a5fa', '하':'#4ade80' };
     return '<span style="font-weight:800;color:'+ (map[v]||'#aaa') +';">'+v+'</span>';
   }
+  function plIntentColor(v) {
+    var cm = { '최상':'#ff4d5e', '상':'#fb923c', '중':'#60a5fa', '하':'#4ade80' };
+    return cm[String(v || '')] || '#8ea7c9';
+  }
+  window.plCloseIntentMenu = function() {
+    var old = document.getElementById('plIntentMenu');
+    if (old) old.remove();
+    if (window.__plIntentMenuOutsideHandler) {
+      try { document.removeEventListener('pointerdown', window.__plIntentMenuOutsideHandler, true); } catch(e) {}
+      try { document.removeEventListener('keydown', window.__plIntentMenuKeyHandler, true); } catch(e) {}
+      window.__plIntentMenuOutsideHandler = null;
+      window.__plIntentMenuKeyHandler = null;
+    }
+  };
+  window.plOpenIntentMenu = function(id, anchor, evt) {
+    try { if (evt) { evt.preventDefault(); evt.stopPropagation(); } } catch(e) {}
+    window.__plIntentMenuOpenUntil = Date.now() + 3000;
+    window.plCloseIntentMenu();
+    var items = (typeof plLoad === 'function' ? plLoad() : []);
+    var cur = '';
+    try {
+      var it = (items || []).find(function(x){ return String(x && x.id || '') === String(id || ''); });
+      cur = String(it && it.intent || '');
+    } catch(e) {}
+    var opts = ['', '최상', '상', '중', '하'];
+    var labels = { '':'—', '최상':'최상', '상':'상', '중':'중', '하':'하' };
+    var menu = document.createElement('div');
+    menu.id = 'plIntentMenu';
+    menu.setAttribute('data-pl-intent-menu', '1');
+    menu.style.cssText = 'position:fixed;z-index:100200;min-width:86px;padding:5px;border-radius:10px;border:1px solid rgba(255,255,255,.18);background:#0c111b;box-shadow:0 14px 34px rgba(0,0,0,.55);display:flex;flex-direction:column;gap:3px;';
+    menu.onpointerdown = function(e){ e.stopPropagation(); };
+    menu.onclick = function(e){ e.stopPropagation(); };
+    opts.forEach(function(v){
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = labels[v];
+      var active = String(v) === String(cur);
+      var col = v ? plIntentColor(v) : '#94a3b8';
+      b.style.cssText = 'width:100%;padding:7px 10px;border-radius:8px;border:1px solid ' + (active ? col + '66' : 'rgba(255,255,255,.08)') + ';background:' + (active ? col + '20' : 'rgba(255,255,255,.035)') + ';color:' + col + ';font-size:13px;font-weight:800;text-align:center;cursor:pointer;';
+      b.onpointerdown = function(e){ e.preventDefault(); e.stopPropagation(); };
+      b.onclick = function(e){
+        e.preventDefault(); e.stopPropagation();
+        window.__plIntentMenuOpenUntil = Date.now() + 1200;
+        if (typeof window.plInlineSetSelect === 'function') window.plInlineSetSelect(String(id || ''), 'intent', v);
+        window.plCloseIntentMenu();
+      };
+      menu.appendChild(b);
+    });
+    document.body.appendChild(menu);
+    try {
+      var r = anchor && anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : null;
+      var mw = menu.offsetWidth || 90, mh = menu.offsetHeight || 170;
+      var left = r ? Math.max(8, Math.min(window.innerWidth - mw - 8, r.left + (r.width - mw) / 2)) : 80;
+      var top = r ? (r.bottom + 6) : 80;
+      if (top + mh > window.innerHeight - 8 && r) top = Math.max(8, r.top - mh - 6);
+      menu.style.left = Math.round(left) + 'px';
+      menu.style.top = Math.round(top) + 'px';
+    } catch(e) {}
+    window.__plIntentMenuOutsideHandler = function(e) {
+      var m = document.getElementById('plIntentMenu');
+      if (!m) return;
+      if (m.contains(e.target)) return;
+      window.plCloseIntentMenu();
+    };
+    window.__plIntentMenuKeyHandler = function(e) {
+      if (e && e.key === 'Escape') window.plCloseIntentMenu();
+    };
+    setTimeout(function(){
+      try { document.addEventListener('pointerdown', window.__plIntentMenuOutsideHandler, true); } catch(e) {}
+      try { document.addEventListener('keydown', window.__plIntentMenuKeyHandler, true); } catch(e) {}
+    }, 0);
+  };
   function intentCell(it) {
     var v = it.intent || '';
-    var cm = { '최상':'#ff4d5e', '상':'#fb923c', '중':'#60a5fa', '하':'#4ade80' };
-    var col = cm[v] || '#555';
+    var col = plIntentColor(v);
     var idEsc = plEscHtml(it.id);
-    return '<select onclick="event.stopPropagation()" onchange="plInlineSetSelect(\'' + idEsc + '\',\'intent\',this.value);event.stopPropagation()" '
-      + 'style="appearance:none;-webkit-appearance:none;border:none;background:transparent;color:'+col+';font-size:13px;font-weight:800;cursor:pointer;text-align:center;padding:2px;width:100%;">'
-      + '<option value=""'+(v===''?' selected':'')+'>—</option>'
-      + '<option value="최상"'+(v==='최상'?' selected':'')+' style="color:#ff4d5e">최상</option>'
-      + '<option value="상"'+(v==='상'?' selected':'')+' style="color:#fb923c">상</option>'
-      + '<option value="중"'+(v==='중'?' selected':'')+' style="color:#60a5fa">중</option>'
-      + '<option value="하"'+(v==='하'?' selected':'')+' style="color:#4ade80">하</option>'
-      + '</select>';
+    var label = v || '—';
+    return '<button type="button" data-pl-intent-btn="1" onpointerdown="event.preventDefault();event.stopPropagation();plOpenIntentMenu(\'' + idEsc + '\',this,event)" onclick="event.preventDefault();event.stopPropagation();plOpenIntentMenu(\'' + idEsc + '\',this,event)" '
+      + 'style="border:none;background:transparent;color:'+col+';font-size:13px;font-weight:800;cursor:pointer;text-align:center;padding:4px 2px;width:100%;min-width:42px;line-height:1.2;">'
+      + plEscHtml(label)
+      + '</button>';
   }
   function statusCell(item, forcedSimple) {
     var id = item.id;
