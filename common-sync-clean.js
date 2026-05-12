@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260512-workroom-v167-quiet-remote-echo-guard';
+    window.__SK_BUILD = '20260513-workroom-v168-linked-schedule-canonical';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -53594,7 +53594,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260512-workroom-v167-quiet-remote-echo-guard';
+  var BUILD='20260513-workroom-v168-linked-schedule-canonical';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
@@ -56486,7 +56486,7 @@ window.addEventListener('DOMContentLoaded', () => {
 */
 (function(){
   'use strict';
-  var BUILD='20260512-workroom-v167-quiet-remote-echo-guard';
+  var BUILD='20260513-workroom-v168-linked-schedule-canonical';
   try{ window.__SK_BUILD=BUILD; console.log('[build] common.js '+BUILD); }catch(e){}
 
   // ─────────────────────────────────────────────────────
@@ -57234,7 +57234,7 @@ window.addEventListener('DOMContentLoaded', () => {
 (function(){
   if(window.__skV166DetailScheduleInstalled) return;
   window.__skV166DetailScheduleInstalled=true;
-  var BUILD='20260512-workroom-v167-quiet-remote-echo-guard';
+  var BUILD='20260513-workroom-v168-linked-schedule-canonical';
   try{ window.__SK_BUILD=BUILD; }catch(e){}
   function clean(v){ return String(v==null?'':v).trim(); }
   function ymd(v){
@@ -57366,4 +57366,233 @@ window.addEventListener('DOMContentLoaded', () => {
     return out;
   };
   try{ console.log('[SK-v166] installed',{build:BUILD}); }catch(e){}
+})();
+
+
+/* === v168: linked schedule canonical convergence ===
+   - 저장목록 상세탭에서 바뀐 매각기일이 pl_items에 남아 있던 예전 기일보다 최신이면,
+     작업룸 왼쪽 목록/물건리스트/작업룸 상세가 모두 저장목록 기준으로 수렴한다.
+   - 핵심: saved.updatedAt/_skScheduleEditedAt 기준이 linked pl/room보다 최신일 때만 반영한다.
+   - 원격 pull 직후에는 로컬 수렴만 하고, 사용자가 상세탭을 직접 수정한 경우에는 linked row도 서버에 push한다.
+*/
+(function(){
+  if(window.__skV168ScheduleCanonicalInstalled) return;
+  window.__skV168ScheduleCanonicalInstalled=true;
+  var BUILD='20260513-workroom-v168-linked-schedule-canonical';
+  try{ window.__SK_BUILD=BUILD; }catch(e){}
+
+  function clean(v){ return String(v==null?'':v).trim(); }
+  function num(v){ var n=Number(v||0); return isFinite(n)?n:0; }
+  function ymd(v){
+    var s=clean(v); if(!s || s==='미정') return '';
+    var m=s.match(/(20\d{2})[.\-/년\s]*(\d{1,2})[.\-/월\s]*(\d{1,2})/);
+    if(m) return m[1]+'-'+String(Number(m[2])).padStart(2,'0')+'-'+String(Number(m[3])).padStart(2,'0');
+    var d=s.replace(/[^0-9]/g,'');
+    if(d.length>=8) return d.slice(0,4)+'-'+d.slice(4,6)+'-'+d.slice(6,8);
+    return s;
+  }
+  function digits(v){ return clean(v).replace(/[^0-9]/g,''); }
+  function readRows(key){
+    try{ if(window._idbCache && Array.isArray(window._idbCache[key])) return window._idbCache[key]; }catch(e){}
+    try{ return JSON.parse(localStorage.getItem(key)||'[]').filter(Boolean); }catch(e){ return []; }
+  }
+  function writeRows(key, rows){
+    try{ if(window._idbCache) window._idbCache[key]=rows; }catch(e){}
+    try{ if(typeof window.idbSet==='function') window.idbSet(key, rows).catch(function(){}); }catch(e){}
+    try{ localStorage.setItem(key, JSON.stringify(rows)); }catch(e){}
+  }
+  function stampOf(row){
+    var d=(row&&row.data)||{};
+    return Math.max(
+      num(row&&row._skScheduleEditedAt), num(d&&d._skScheduleEditedAt),
+      num(row&&row._skUnsoldEditedAt), num(d&&d._skUnsoldEditedAt),
+      num(row&&row._skLocalEditedAt), num(d&&d._skLocalEditedAt),
+      num(row&&row.updatedAt), num(row&&row.timestamp)
+    );
+  }
+  function explicitScheduleStamp(row){
+    var d=(row&&row.data)||{};
+    return Math.max(num(row&&row._skScheduleEditedAt), num(d&&d._skScheduleEditedAt));
+  }
+  function touchSavedScheduleStamp(saved){
+    if(!saved) return 0;
+    var st=Date.now();
+    saved._skScheduleEditedAt=st;
+    saved._skLocalEditedAt=st;
+    saved.updatedAt=Math.max(num(saved.updatedAt), st);
+    if(!saved.data || typeof saved.data!=='object') saved.data={};
+    saved.data._skScheduleEditedAt=st;
+    saved.data._skLocalEditedAt=st;
+    try{ if(saved._norm && (saved.biddate||saved.bidDate||saved.saleDate||saved.data['매각기일'])) saved._norm.매각기일=ymd(saved.biddate||saved.bidDate||saved.saleDate||saved.data['매각기일']); }catch(e){}
+    return st;
+  }
+  function scheduleFromSaved(saved, forceExplicit){
+    if(!saved || saved.id==null) return null;
+    var d=(saved.data&&typeof saved.data==='object')?saved.data:{};
+    var date=ymd(d['매각기일'] || d['매각일'] || d['입찰기일'] || saved.biddate || saved.bidDate || saved.saleDate || saved.매각기일 || saved.매각일 || '');
+    if(!date || date==='미정') return null;
+    var est=explicitScheduleStamp(saved);
+    var stamp=forceExplicit ? (est||touchSavedScheduleStamp(saved)) : (est || stampOf(saved));
+    if(!stamp) return null;
+    var price=digits(d['최저가_원'] || d['최저가'] || saved.minprice || saved.minPrice || '');
+    if(!price && d['최저가_만원']) price=String(Number(d['최저가_만원']) * 10000);
+    var round=clean(saved.round || d['회차'] || d['입찰회차'] || d['매각회차'] || '');
+    var fail=clean(saved.failCount || d['유찰횟수'] || '');
+    return {savedId:String(saved.id), date:date, price:price, round:round, fail:fail, stamp:stamp, explicit:!!est, saved:saved};
+  }
+  function linkedSavedIdOfPl(it){ var d=(it&&it.data)||{}; return clean(it && (it.linkedSavedId || it.savedId || d.linkedSavedId || d.savedId)); }
+  function roomSavedIds(room, plById){
+    var ids=[]; function add(v){ var s=clean(v); if(s && ids.indexOf(s)<0) ids.push(s); }
+    if(!room) return ids;
+    [room.linkedSavedId,room.savedId,room.sourceSavedId,room.auctionId,room.listingId].forEach(add);
+    function addFromPl(pid){ var p=plById[String(pid||'')]; if(p) add(linkedSavedIdOfPl(p)); }
+    [room.targetItemId,room.__targetItemId,room.plItemId,room.itemId,room.sourceItemId].forEach(addFromPl);
+    (Array.isArray(room.linkedItems)?room.linkedItems:[]).forEach(function(v){
+      if(v&&typeof v==='object'){
+        [v.linkedSavedId,v.savedId,v.sourceSavedId].forEach(add);
+        addFromPl(v.itemId||v.plItemId||v.id);
+      } else {
+        var s=clean(v);
+        if(plById[s]) addFromPl(s); else add(s);
+      }
+    });
+    return ids.filter(Boolean);
+  }
+  function currentDateOf(row){ var d=(row&&row.data)||{}; return ymd(row && (row.biddate||row.bidDate||row.saleDate||row.매각기일||row.매각일||d['매각기일']||d['매각일']||d['입찰기일'])); }
+  function touchScheduleRow(row, src){
+    if(!row || !src || !src.date) return false;
+    var curDate=currentDateOf(row);
+    var rowStamp=stampOf(row);
+    // 저장목록이 명시적으로 기일수정된 경우는 항상 수렴. 아니면 saved가 더 최신일 때만 수렴.
+    if(!src.explicit && rowStamp > src.stamp && curDate && curDate !== src.date) return false;
+    if(curDate === src.date && (!src.explicit || explicitScheduleStamp(row) >= src.stamp)) return false;
+    var changed=false;
+    function set(k,v){ if(v==null || v==='') return; if(String(row[k]||'')!==String(v)){ row[k]=v; changed=true; } }
+    if(!row.data || typeof row.data!=='object') row.data={};
+    var d=row.data;
+    ['biddate','bidDate','saleDate','매각기일','매각일','입찰기일'].forEach(function(k){ set(k,src.date); });
+    ['매각기일','매각일','입찰기일'].forEach(function(k){ if(String(d[k]||'')!==String(src.date)){ d[k]=src.date; changed=true; } });
+    try{ row._norm=Object.assign({}, row._norm||{}); row._norm.매각기일=src.date; }catch(e){}
+    // 가격은 단위 혼선 위험이 있으므로, 빈 값일 때만 보강한다. 유찰 가격 변경은 기존 유찰 경로가 별도로 처리한다.
+    if(src.price && !clean(row.minprice) && !clean(d['최저가']) && !clean(d['최저가_원'])){
+      set('minprice',src.price);
+      var pn=Number(src.price)||0;
+      if(pn){ d['최저가']=pn; d['최저가_원']=pn; d['최저가_만원']=Math.round(pn/10000); changed=true; }
+    }
+    var st=Number(src.stamp)||Date.now();
+    if(num(row._skScheduleEditedAt)<st){ row._skScheduleEditedAt=st; changed=true; }
+    if(num(row._skLocalEditedAt)<st){ row._skLocalEditedAt=st; changed=true; }
+    if(num(row.updatedAt)<st){ row.updatedAt=st; changed=true; }
+    if(num(d._skScheduleEditedAt)<st){ d._skScheduleEditedAt=st; changed=true; }
+    if(num(d._skLocalEditedAt)<st){ d._skLocalEditedAt=st; changed=true; }
+    return changed;
+  }
+  function saveItemsRow(saved){
+    try{
+      var sv=readRows('re_sv').slice();
+      var sid=String(saved&&saved.id||'');
+      var idx=sv.findIndex(function(x){return String(x&&x.id)===sid;});
+      if(idx>=0){ sv[idx]=saved; writeRows('re_sv',sv); }
+      if(typeof window.skCloudQueuePushTable==='function') window.skCloudQueuePushTable('items',[saved],'saved-detail-schedule-v168');
+    }catch(e){}
+  }
+  window._skReconcileScheduleCanonical=function(opts){
+    var options=opts||{};
+    if(window.__skReconcilingScheduleV168) return {running:true};
+    window.__skReconcilingScheduleV168=true;
+    try{
+      var savedRows=readRows('re_sv');
+      var only=clean(options.savedId||'');
+      var bySaved={};
+      (Array.isArray(savedRows)?savedRows:[]).forEach(function(s){
+        if(!s || s.id==null) return;
+        if(only && String(s.id)!==only) return;
+        var src=scheduleFromSaved(s, !!options.forceExplicit);
+        if(src) bySaved[String(s.id)]=src;
+      });
+      var pl=readRows('pl_items_v3').slice();
+      var plById={}; pl.forEach(function(x){ if(x&&x.id) plById[String(x.id)]=x; });
+      var changedPl=[];
+      pl.forEach(function(it){
+        var sid=linkedSavedIdOfPl(it); var src=sid && bySaved[sid];
+        if(src && touchScheduleRow(it,src)) changedPl.push(it);
+      });
+      var rooms=readRows('wr2_rooms').slice();
+      var changedRooms=[];
+      rooms.forEach(function(r){
+        if(!r || !r.id || r.deletedAt) return;
+        var ids=roomSavedIds(r,plById); var src=null;
+        for(var i=0;i<ids.length;i++){ if(bySaved[ids[i]]){ src=bySaved[ids[i]]; break; } }
+        if(src && touchScheduleRow(r,src)) changedRooms.push(r);
+      });
+      if(changedPl.length){
+        writeRows('pl_items_v3',pl);
+        if(options.push!==false && typeof window.skCloudQueuePushTable==='function') window.skCloudQueuePushTable('pl_items',changedPl,'saved-detail-schedule-v168');
+      }
+      if(changedRooms.length){
+        writeRows('wr2_rooms',rooms);
+        try{ if(window.wr2State){ var active=String(window.wr2State.activeRoomId||''); window.wr2State.rooms=rooms.filter(function(r){return r&&r.id&&!r.deletedAt;}); if(active) window.wr2State.activeRoomId=active; } }catch(e){}
+        if(options.push!==false && typeof window.skCloudQueuePushTable==='function') window.skCloudQueuePushTable('workrooms',changedRooms,'saved-detail-schedule-v168');
+      }
+      if((changedPl.length||changedRooms.length) && options.render!==false){
+        try{ if(typeof window.renderPropertyList==='function') window.renderPropertyList(); }catch(e){}
+        try{ if(typeof window.wr2Render==='function') window.wr2Render(); }catch(e){}
+        try{ if(typeof window.__wr2RenderNow==='function') window.__wr2RenderNow(); }catch(e){}
+      }
+      if(changedPl.length||changedRooms.length){ try{ console.log('[SK-v168] linked schedule canonical',{savedId:only||'*',pl:changedPl.length,rooms:changedRooms.length,push:options.push!==false}); }catch(e){} }
+      return {ok:true,savedId:only||'',pl:changedPl.length,rooms:changedRooms.length};
+    }finally{ window.__skReconcilingScheduleV168=false; }
+  };
+
+  try{
+    var origCommit=window._savedDraftCommit;
+    if(typeof origCommit==='function' && !origCommit.__skV168Wrapped){
+      var wrap=function(itemId, field, rawValue, opts){
+        var ret=origCommit.apply(this,arguments);
+        try{
+          if(/^(매각기일|매각일|입찰기일)$/.test(String(field||''))){
+            var sv=readRows('re_sv');
+            var saved=sv.find(function(s){ return String(s&&s.id)===String(itemId); });
+            if(saved){
+              touchSavedScheduleStamp(saved);
+              saveItemsRow(saved);
+              window._skReconcileScheduleCanonical({savedId:String(itemId), forceExplicit:true, push:true, render:true});
+            }
+          }
+        }catch(e){ console.warn('[v168 saved schedule wrap]', e); }
+        return ret;
+      };
+      wrap.__skV168Wrapped=true;
+      window._savedDraftCommit=wrap;
+    }
+  }catch(e){}
+
+  ['_svRefreshFromCloud','_plRefreshFromCloud','_wrRefreshFromCloud','skCloudPullAll','skCloudManualSync','skCloudHardConverge','skCloudOpenPullOnce'].forEach(function(name){
+    try{
+      var orig=window[name];
+      if(typeof orig!=='function' || orig.__skV168ScheduleWrapped) return;
+      var w=function(){
+        var ret=orig.apply(this,arguments);
+        var after=function(v){ setTimeout(function(){ try{ window._skReconcileScheduleCanonical({push:false, render:true}); }catch(e){} },0); return v; };
+        if(ret && typeof ret.then==='function') return ret.then(after);
+        return after(ret);
+      };
+      w.__skV168ScheduleWrapped=true;
+      window[name]=w;
+    }catch(e){}
+  });
+
+  var prevDbg=window.skDebugScheduleSync;
+  window.skDebugScheduleSync=function(keyword){
+    try{ window._skReconcileScheduleCanonical({push:false, render:false}); }catch(e){}
+    if(typeof prevDbg==='function') return prevDbg(keyword);
+    var kw=clean(keyword); var hit=function(x){ return !kw || JSON.stringify(x||'').indexOf(kw)>=0; };
+    var pick=function(x){ var d=(x&&x.data)||{}; return {id:x&&x.id,title:x&&(x.title||x.name||x.addr),roomId:x&&x.roomId,linkedSavedId:x&&x.linkedSavedId,biddate:x&&(x.biddate||x.bidDate||x.saleDate||d['매각기일']||d['매각일']),scheduleAt:x&&x._skScheduleEditedAt,updatedAt:x&&x.updatedAt}; };
+    var out={build:window.__SK_BUILD,saved:readRows('re_sv').filter(hit).map(pick),pl:readRows('pl_items_v3').filter(hit).map(pick),rooms:readRows('wr2_rooms').filter(hit).map(pick)};
+    try{ console.table(out.saved); console.table(out.pl); console.table(out.rooms); }catch(e){}
+    return out;
+  };
+  setTimeout(function(){ try{ window._skReconcileScheduleCanonical({push:false, render:true}); }catch(e){} },400);
+  setTimeout(function(){ try{ window._skReconcileScheduleCanonical({push:false, render:true}); }catch(e){} },2200);
+  try{ console.log('[SK-v168] installed',{build:BUILD}); }catch(e){}
 })();
