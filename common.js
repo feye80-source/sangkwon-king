@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260512-workroom-v164-unsold-cloud-confirmed-save';
+    window.__SK_BUILD = '20260512-workroom-v165-unsold-fast-targeted-sync';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -52575,6 +52575,7 @@ window.addEventListener('DOMContentLoaded', () => {
     return [];
   }
   function _skForceUnsoldCloudSync(opts){
+    try { window.__skUnsoldCriticalUntil = Date.now() + 9000; } catch(e) {}
     var options = opts || {};
     var writes = [];
     var rowMap = options.rows || {};
@@ -52679,35 +52680,29 @@ window.addEventListener('DOMContentLoaded', () => {
         console.warn('[sync] critical unsold cloud write failed', failed);
         return failResult('critical-cloud-write-failed', failed.map(function(r){ return String(r.reason && (r.reason.message || r.reason) || 'failed'); }).join(' | '), results);
       }
-      if (typeof window.skCloudFlushPendingSafe !== 'function') {
-        return failResult('flush-missing', 'Cloudflare pending flush 함수가 없습니다.', results);
-      }
-      return window.skCloudFlushPendingSafe({ maxRows: Math.max(120, expectedTotal + 30) }).then(function(flush){
-        try { console.log('[SK-v164] unsold cloud confirmed', { expected:expected, expectedTotal:expectedTotal, flush:flush }); } catch(e) {}
-        if (!flush || flush.ok === false || Number(flush.failed || 0) > 0) {
-          return {
-            ok:false,
-            reason:'pending-flush-failed',
-            expected:expected,
-            expectedTotal:expectedTotal,
-            queued:results,
-            flush:flush || { ok:false, reason:'empty-flush-result' },
-            error:String((flush && (flush.error || flush.reason)) || 'pending flush failed')
-          };
-        }
-        return { ok:true, reason:'cloud-confirmed', expected:expected, expectedTotal:expectedTotal, queued:results, flush:flush };
-      }).catch(function(e){
-        console.warn('[sync] pending flush failed; queued rows kept', e);
-        return {
-          ok:false,
-          reason:'pending-flush-error',
-          expected:expected,
-          expectedTotal:expectedTotal,
-          queued:results,
-          flush:{ok:false,error:String(e&&e.message||e)},
-          error:String(e&&e.message||e)
-        };
-      });
+
+      // v165: 유찰 저장 성공 기준은 '이번 유찰 row의 직접 push 확인'이다.
+      // 여기서 전체 pending flush를 기다리면 과거 outbox 100여 개가 저장 버튼을 붙잡고,
+      // 방금 저장한 건과 무관한 pending 때문에 사용자가 실패로 오판한다.
+      try {
+        clearPendingRows('items', cleanRows(rowMap.items));
+        clearPendingRows('pl_items', cleanRows(rowMap.pl_items));
+        clearPendingRows('workrooms', cleanRows(rowMap.workrooms));
+        clearCfDirtyRows(cleanRows(rowMap.workrooms));
+      } catch(e) {}
+
+      var targetedFlush = { ok:true, skipped:true, reason:'critical-direct-push-confirmed', pending: (typeof pendingSummary==='function' ? pendingSummary() : null) };
+      try { console.log('[SK-v165] unsold cloud confirmed', { expected:expected, expectedTotal:expectedTotal, flush:targetedFlush }); } catch(e) {}
+
+      // 남은 오래된 pending은 UI 저장 흐름 밖에서 조용히 정리한다.
+      try {
+        clearTimeout(window.__skV165PendingCleanupTimer);
+        window.__skV165PendingCleanupTimer=setTimeout(function(){
+          try { if (typeof window.skCloudFlushPendingSafe === 'function') window.skCloudFlushPendingSafe({ maxRows:300, background:true }); } catch(_e) {}
+        }, 1800);
+      } catch(e) {}
+
+      return { ok:true, reason:'cloud-confirmed', expected:expected, expectedTotal:expectedTotal, queued:results, flush:targetedFlush };
     });
     window.__skLastUnsoldSyncPromise = afterWrite;
     if (options.pull !== true) return afterWrite;
@@ -53574,7 +53569,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260512-workroom-v164-unsold-cloud-confirmed-save';
+  var BUILD='20260512-workroom-v165-unsold-fast-targeted-sync';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
@@ -53587,7 +53582,7 @@ window.addEventListener('DOMContentLoaded', () => {
   var MAX_PAGES={workrooms:80,sections:80,items:80,notes:40,pl_items:40,kcards:40,snapshots:40,map_memos:40};
   var inFlightPull=false;
   var fgPullTimer=0;
-  var pushTimer=0;
+  var pushTimers={};
   var lastPushSig='';
   var pullFailCount=0;
   var pullCooldownUntil=0;
@@ -54288,7 +54283,8 @@ window.addEventListener('DOMContentLoaded', () => {
     var ids=collectSavedIdsForWorkroomPending(row);
     for(var i=0;i<ids.length;i+=1){
       var sv=Number(savedMap[ids[i]]||0)||0;
-      if(sv && sv >= Math.min(st, st + 1)) return true;
+      // v165: saved 원본 stamp가 room stamp보다 몇 초 먼저 찍힐 수 있으므로 근접 stamp는 같은 유찰 저장으로 인정한다.
+      if(sv && sv >= (st - 30000)) return true;
     }
     return false;
   }
@@ -55002,6 +54998,7 @@ window.addEventListener('DOMContentLoaded', () => {
   }
 
   function scheduleRowsPush(table, rows, reason, delay){
+    var tkey=String(table||'');
     var clean=dedupeRows((Array.isArray(rows)?rows:[]).filter(function(r){ return r && idOf(r); }));
     if(String(table||'')==='workrooms'){
       var before=clean.length;
@@ -55014,21 +55011,37 @@ window.addEventListener('DOMContentLoaded', () => {
     if(!clean.length) return;
     var queuedNow=enqueuePending(table, clean, reason||'scheduled-row-push');
     if(String(table||'')==='workrooms' && !queuedNow) return;
-    clearTimeout(pushTimer);
-    pushTimer=setTimeout(function(){
-      pushRows(table, clean)
+
+    // v165: pushTimer를 전역 1개로 쓰면 items/pl_items/workrooms 중 마지막 호출만 살아남아
+    // 앞서 큐에 넣은 row가 outbox에 영구 잔류한다. 테이블별 타이머 + pending 누적분 기준으로 flush한다.
+    if(!pushTimers[tkey]) pushTimers[tkey]=0;
+    clearTimeout(pushTimers[tkey]);
+    pushTimers[tkey]=setTimeout(function(){
+      var rowsToPush=clean;
+      try{
+        var p=readPending();
+        var pend=(p&&p[tkey])||{};
+        var pendingRows=Object.keys(pend).map(function(id){ return pend[id]; }).filter(function(r){ return r && idOf(r); });
+        if(pendingRows.length) rowsToPush=dedupeRows(clean.concat(pendingRows));
+        if(tkey==='workrooms'){
+          rowsToPush=rowsToPush.filter(function(r){ return shouldFlushPendingWorkroom(r); });
+        }
+      }catch(e){}
+      if(!rowsToPush.length) return;
+      pushRows(table, rowsToPush)
         .then(function(res){
-          clearPendingRows(table, clean);
-          if(String(table||'')==='workrooms') clearCfDirtyRows(clean);
-          log('rows push', {reason:reason||'persist', table:table, rows:clean.length, result:res});
+          clearPendingRows(table, rowsToPush);
+          if(String(table||'')==='workrooms') clearCfDirtyRows(rowsToPush);
+          log('rows push', {reason:reason||'persist', table:table, rows:rowsToPush.length, result:res});
         })
         .catch(function(e){
-          warn('rows push failed; kept queued', table, reason, e && (e.message||e), 'queued', clean.length);
+          warn('rows push failed; kept queued', table, reason, e && (e.message||e), 'queued', rowsToPush.length);
         });
     }, Math.max(120, Number(delay||500)||500));
   }
 
   function scheduleActiveRoomPush(reason, delay){
+    if(now() < Number(window.__skUnsoldCriticalUntil||0)) return;
     var room=activeRoom();
     if(!room || !idOf(room)) return;
     var sig=persistSig(room);
@@ -55078,6 +55091,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
   function attachForegroundPull(){
     function schedule(reason){
+      if(now() < Number(window.__skUnsoldCriticalUntil||0)) return;
       clearTimeout(fgPullTimer);
       fgPullTimer=setTimeout(function(){
         if(now() < netBlockUntil) return;
@@ -55094,6 +55108,7 @@ window.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('pageshow', function(){ schedule('pageshow'); }, true);
     document.addEventListener('visibilitychange', function(){
       if(document.hidden){
+        if(now() < Number(window.__skUnsoldCriticalUntil||0)) return;
         scheduleActiveRoomPush('visibility-hidden', 80);
       }else{
         schedule('visible');
@@ -55408,6 +55423,7 @@ window.addEventListener('DOMContentLoaded', () => {
     }catch(e){}
 
     log('installed', {build:BUILD, ios:isIOS(), activeRoomId:window.wr2State && window.wr2State.activeRoomId || null});
+    try{ setTimeout(function(){ try{ if(typeof window.skCloudFlushPendingSafe==='function') window.skCloudFlushPendingSafe({maxRows:300, background:true}); }catch(_e){} }, 3500); }catch(e){}
   }
 
   try{ install(); }catch(e){ console.warn('[SK-CF-v126] init failed', e); }
@@ -56363,7 +56379,7 @@ window.addEventListener('DOMContentLoaded', () => {
 */
 (function(){
   'use strict';
-  var BUILD='20260512-workroom-v164-unsold-cloud-confirmed-save';
+  var BUILD='20260512-workroom-v165-unsold-fast-targeted-sync';
   try{ window.__SK_BUILD=BUILD; console.log('[build] common.js '+BUILD); }catch(e){}
 
   // ─────────────────────────────────────────────────────
