@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260513-workroom-v175-pl-intent-menu-stable';
+    window.__SK_BUILD = '20260513-workroom-v176-pl-override-row-sync-fix';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -48041,6 +48041,10 @@ window.addEventListener('DOMContentLoaded', () => {
     if (it._skPlFieldEditedAt && typeof it._skPlFieldEditedAt === 'object') {
       out._skPlFieldEditedAt = Object.assign({}, it._skPlFieldEditedAt);
     }
+    // v176: 기기별 중복 pl row가 서로 다른 id를 표시해도 사용자 편집값을 전달하기 위한 보조 override row 보존
+    if (it._skPlOverride) out._skPlOverride = 1;
+    if (it._skPlOverrideKey) out._skPlOverrideKey = String(it._skPlOverrideKey || '');
+    if (it._skPlOverrideSourceId) out._skPlOverrideSourceId = String(it._skPlOverrideSourceId || '');
     if (it.bidDate) out.bidDate = _plNormalizeBiddateValue(it.bidDate) || it.bidDate;
     if (it.saleDate) out.saleDate = _plNormalizeBiddateValue(it.saleDate) || it.saleDate;
     return out;
@@ -48054,7 +48058,7 @@ window.addEventListener('DOMContentLoaded', () => {
       if (hasMemCache) {
         var mem = window._idbCache[PL_KEY] || [];
         var normalizedMem = (Array.isArray(mem) ? mem : []).map(plNormalizeItem);
-        try { normalizedMem = plRepairDuplicateUserFields(normalizedMem, { persist:false }).rows; } catch(e) {}
+        try { normalizedMem = plApplyPlOverridesAndRepair(normalizedMem, { persist:false }).rows; } catch(e) {}
         try { localStorage.setItem(PL_KEY, JSON.stringify(normalizedMem)); } catch (e) {}
         return normalizedMem;
       }
@@ -48062,7 +48066,7 @@ window.addEventListener('DOMContentLoaded', () => {
       var legacy = JSON.parse(localStorage.getItem(PL_KEY) || '[]');
       if (Array.isArray(legacy)) {
         var normalizedLegacy = legacy.map(plNormalizeItem);
-        try { normalizedLegacy = plRepairDuplicateUserFields(normalizedLegacy, { persist:false }).rows; } catch(e) {}
+        try { normalizedLegacy = plApplyPlOverridesAndRepair(normalizedLegacy, { persist:false }).rows; } catch(e) {}
         if (window._idbCache) window._idbCache[PL_KEY] = normalizedLegacy;
         return normalizedLegacy;
       }
@@ -48079,7 +48083,7 @@ window.addEventListener('DOMContentLoaded', () => {
       if (!u) it.updatedAt = Number(it.createdAt || now);
       return plNormalizeItem(it);
     });
-    try { full = plRepairDuplicateUserFields(full, { persist:false }).rows; } catch(e) {}
+    try { full = plApplyPlOverridesAndRepair(full, { persist:false }).rows; } catch(e) {}
     if (typeof _sbPersistCachedArray === 'function') _sbPersistCachedArray(PL_KEY, full, { delay: 120 });
     else localStorage.setItem(PL_KEY, JSON.stringify(full));
     if (typeof window._sbMarkKvDirty === 'function') window._sbMarkKvDirty(PL_KEY);
@@ -48359,6 +48363,111 @@ window.addEventListener('DOMContentLoaded', () => {
     return keys;
   }
   var PL_DUPLICATE_PROPAGATE_FIELDS = ['intent','type','status','feature','appraisal','minprice','round','biddate','bidDate','saleDate','estimate','site','bidFocus','bidders','memo','result'];
+  // v176: row id가 달라도(아이맥은 pl_* row, 아이패드는 pl_room_* row) 사용자 편집값을 놓치지 않도록
+  // 편집값을 'property override row'로도 저장한다. 화면에는 보이지 않지만 pull 후 plLoad에서 같은 물건 row에 적용된다.
+  var PL_OVERRIDE_FIELDS = PL_DUPLICATE_PROPAGATE_FIELDS.slice();
+  function plHashKey(str) {
+    str = String(str || '');
+    var h = 2166136261;
+    for (var i=0;i<str.length;i+=1) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return (h >>> 0).toString(36);
+  }
+  function plNormKeyText(v) {
+    return String(v == null ? '' : v).trim().replace(/\s+/g, '').replace(/[^0-9a-zA-Z가-힣]/g, '').toLowerCase();
+  }
+  function plOverrideKeyCandidates(row) {
+    row = row || {};
+    var keys = [];
+    function add(prefix, v) {
+      var s = String(v == null ? '' : v).trim();
+      if (!s) return;
+      if (prefix === 'title') s = plNormKeyText(s);
+      else s = s.replace(/\s+/g, '').toLowerCase();
+      if (!s || (prefix === 'title' && s.length < 4)) return;
+      var k = prefix + ':' + s;
+      if (keys.indexOf(k) < 0) keys.push(k);
+    }
+    add('saved', row.linkedSavedId || row.savedId || row.sourceSavedId);
+    add('room', row.roomId);
+    add('case', row.casenum || row.caseNo || row.caseNumber || (row.data && (row.data['경매번호'] || row.data['사건번호'])));
+    add('title', row.addr || row.title || row.name);
+    var c = String(row.casenum || row.caseNo || row.caseNumber || '').replace(/\s+/g,'').toLowerCase();
+    var t = plNormKeyText(row.addr || row.title || row.name || '');
+    if (c && t && t.length >= 4) add('caseTitle', c + ':' + t);
+    return keys;
+  }
+  function plBuildOverrideRowsForEdit(sourceRow, patch, fields, ts) {
+    sourceRow = sourceRow || {};
+    patch = patch || {};
+    fields = (Array.isArray(fields) ? fields : Object.keys(patch || {})).filter(function(f){ return PL_OVERRIDE_FIELDS.indexOf(f) >= 0; });
+    if (!fields.length) return [];
+    var keys = plOverrideKeyCandidates(sourceRow);
+    if (!keys.length) return [];
+    var out = [];
+    keys.forEach(function(key){
+      var row = {
+        id: 'pl_override_' + plHashKey(key),
+        _skPlOverride: 1,
+        _skPlOverrideKey: key,
+        _skPlOverrideSourceId: String(sourceRow.id || ''),
+        type: 'override',
+        status: 'override',
+        createdAt: ts,
+        updatedAt: ts,
+        _skPlEditedAt: ts,
+        _skLocalEditedAt: ts,
+        _skPlFieldEditedAt: {}
+      };
+      fields.forEach(function(f){
+        row[f] = plCloneValue(patch[f]);
+        row._skPlFieldEditedAt[f] = ts;
+      });
+      out.push(plNormalizeItem(row));
+    });
+    return out;
+  }
+  function plApplyPlOverridesAndRepair(rows, opts) {
+    opts = opts || {};
+    var arr = (Array.isArray(rows) ? rows : []).map(plNormalizeItem);
+    var normal = [];
+    var overrides = [];
+    arr.forEach(function(r){ if (r && r._skPlOverride) overrides.push(r); else normal.push(r); });
+    if (overrides.length) {
+      var byKey = {};
+      overrides.forEach(function(o){
+        var k = String(o._skPlOverrideKey || '').trim();
+        if (!k) return;
+        if (!byKey[k]) byKey[k] = [];
+        byKey[k].push(o);
+      });
+      normal = normal.map(function(r){
+        var next = Object.assign({}, r);
+        var keys = plOverrideKeyCandidates(next);
+        var touched = false;
+        keys.forEach(function(k){
+          (byKey[k] || []).forEach(function(o){
+            PL_OVERRIDE_FIELDS.forEach(function(f){
+              if (o[f] === undefined) return;
+              var os = plFieldStamp(o, f) || Number(o._skPlEditedAt || o.updatedAt || 0) || 0;
+              var ns = plFieldStamp(next, f) || 0;
+              if (os && os >= ns) {
+                if (JSON.stringify(next[f]) !== JSON.stringify(o[f])) { next[f] = plCloneValue(o[f]); touched = true; }
+                next._skPlFieldEditedAt = Object.assign({}, next._skPlFieldEditedAt || {});
+                if ((Number(next._skPlFieldEditedAt[f] || 0) || 0) < os) { next._skPlFieldEditedAt[f] = os; touched = true; }
+              }
+            });
+            var oe = Number(o._skPlEditedAt || o.updatedAt || 0) || 0;
+            if (oe && (Number(next._skPlEditedAt || 0) || 0) < oe) { next._skPlEditedAt = oe; touched = true; }
+            if (oe && (Number(next._skLocalEditedAt || 0) || 0) < oe) { next._skLocalEditedAt = oe; touched = true; }
+          });
+        });
+        if (touched) next.updatedAt = Math.max(Number(next.updatedAt || 0) || 0, Number(next._skPlEditedAt || 0) || Date.now());
+        return plNormalizeItem(next);
+      });
+    }
+    var repaired = plRepairDuplicateUserFields(normal, opts);
+    return { rows: repaired.rows.concat(overrides), changed: repaired.changed, changedRows: repaired.changedRows };
+  }
   function plRepairDuplicateUserFields(rows, opts) {
     opts = opts || {};
     var arr = (Array.isArray(rows) ? rows : []).map(plNormalizeItem);
@@ -48422,7 +48531,7 @@ window.addEventListener('DOMContentLoaded', () => {
   }
   window.skRepairPlDuplicateRowsNow = function(reason) {
     var items = plLoad();
-    var res = plRepairDuplicateUserFields(items, { persist:false });
+    var res = plApplyPlOverridesAndRepair(items, { persist:false });
     if (res.changed) {
       plSave(res.rows);
       try { if (res.changedRows.length) plQueueUserEditRows(res.changedRows, reason || 'pl-duplicate-repair'); } catch(e) {}
@@ -49904,6 +50013,7 @@ window.addEventListener('DOMContentLoaded', () => {
     }
     return (items || []).filter(function(it){
       it = plNormalizeItem(it);
+      if (it._skPlOverride) return false;
       // 물건리스트는 작업룸 기반으로만 노출 (작업룸=물건리스트)
       if (!it.roomId) return false;
       if (roomById && !roomById[String(it.roomId)]) return false;
@@ -50061,7 +50171,16 @@ window.addEventListener('DOMContentLoaded', () => {
         return next;
       });
     }
-    var repaired = plRepairDuplicateUserFields(items, { persist:false });
+    // v176: row id가 다른 기기에도 전달되도록 override row를 같이 저장/전송한다.
+    var overrideRows = plBuildOverrideRowsForEdit(changedItem, patch || {}, changedFields, ts);
+    if (overrideRows.length) {
+      var byId0 = {};
+      items.forEach(function(r){ if (r && r.id) byId0[String(r.id)] = r; });
+      overrideRows.forEach(function(orow){ byId0[String(orow.id)] = Object.assign({}, byId0[String(orow.id)] || {}, orow, { updatedAt: ts }); });
+      items = Object.keys(byId0).map(function(k){ return byId0[k]; });
+      changedRows = changedRows.concat(overrideRows);
+    }
+    var repaired = plApplyPlOverridesAndRepair(items, { persist:false });
     items = repaired.rows;
     if (repaired.changedRows && repaired.changedRows.length) {
       var seen = {};
@@ -50083,7 +50202,7 @@ window.addEventListener('DOMContentLoaded', () => {
   window.skDebugPlItem = function(q) {
     var needle=String(q||'').trim();
     var rows=(typeof plLoad==='function'?plLoad():[]).filter(function(x){return !needle || JSON.stringify(x||{}).indexOf(needle)>=0;});
-    var out=rows.map(function(x){return {id:x.id, title:x.addr||x.title, roomId:x.roomId, linkedSavedId:x.linkedSavedId, keys:plCanonicalClusterKeys(x).join('|'), intent:x.intent, appraisal:x.appraisal, minprice:x.minprice, biddate:x.biddate, estimate:x.estimate, plAt:x._skPlEditedAt, fields:x._skPlFieldEditedAt, updatedAt:x.updatedAt};});
+    var out=rows.map(function(x){return {id:x.id, override:x._skPlOverride||'', overrideKey:x._skPlOverrideKey||'', title:x.addr||x.title, roomId:x.roomId, linkedSavedId:x.linkedSavedId, keys:(plCanonicalClusterKeys(x).concat(plOverrideKeyCandidates(x))).join('|'), intent:x.intent, appraisal:x.appraisal, minprice:x.minprice, biddate:x.biddate, estimate:x.estimate, plAt:x._skPlEditedAt, fields:x._skPlFieldEditedAt, updatedAt:x.updatedAt};});
     try{ console.table(out); }catch(e){ console.log(out); }
     return out;
   };
@@ -53942,7 +54061,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260513-workroom-v175-pl-intent-menu-stable';
+  var BUILD='20260513-workroom-v176-pl-override-row-sync-fix';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
@@ -56873,7 +56992,7 @@ window.addEventListener('DOMContentLoaded', () => {
 */
 (function(){
   'use strict';
-  var BUILD='20260513-workroom-v175-pl-intent-menu-stable';
+  var BUILD='20260513-workroom-v176-pl-override-row-sync-fix';
   try{ window.__SK_BUILD=BUILD; console.log('[build] common.js '+BUILD); }catch(e){}
 
   // ─────────────────────────────────────────────────────
@@ -57621,7 +57740,7 @@ window.addEventListener('DOMContentLoaded', () => {
 (function(){
   if(window.__skV166DetailScheduleInstalled) return;
   window.__skV166DetailScheduleInstalled=true;
-  var BUILD='20260513-workroom-v175-pl-intent-menu-stable';
+  var BUILD='20260513-workroom-v176-pl-override-row-sync-fix';
   try{ window.__SK_BUILD=BUILD; }catch(e){}
   function clean(v){ return String(v==null?'':v).trim(); }
   function ymd(v){
@@ -57787,7 +57906,7 @@ window.addEventListener('DOMContentLoaded', () => {
 (function(){
   if(window.__skV168ScheduleCanonicalInstalled) return;
   window.__skV168ScheduleCanonicalInstalled=true;
-  var BUILD='20260513-workroom-v175-pl-intent-menu-stable';
+  var BUILD='20260513-workroom-v176-pl-override-row-sync-fix';
   try{ window.__SK_BUILD=BUILD; }catch(e){}
 
   function clean(v){ return String(v==null?'':v).trim(); }
