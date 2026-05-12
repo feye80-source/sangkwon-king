@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260512-workroom-v165-unsold-fast-targeted-sync';
+    window.__SK_BUILD = '20260512-workroom-v166-detail-date-remote-echo-guard';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -6235,7 +6235,9 @@ var _safeLocalSet = function(key, value) {
                   if (d['물건종류'] || d['용도']) html += `<div class="wr2-info-row"><span class="wr2-info-lbl">물건종류</span><span class="wr2-info-val">${d['물건종류']||d['용도']}</span></div>`;
 
                   const roomIdEsc = String(room.id || '').replace(/'/g, "\\'");
-                  const bidRaw = String(item.biddate || '').trim() || saleDateRaw || String(room.biddate || '').trim();
+                  // v166: 상세탭에서 수정된 data.매각기일/매각일을 우선 표시한다.
+                  // 과거 top-level item.biddate가 남아 있으면 작업룸 요약만 오래된 날짜를 보여 탭별 날짜가 갈라졌다.
+                  const bidRaw = saleDateRaw || String(item.biddate || item.bidDate || item.saleDate || '').trim() || String(room.biddate || room.bidDate || room.saleDate || '').trim();
                   const bidObj = wr2ParseSaleDateLoose(bidRaw);
                   const bidDday = wr2CalcDdayFromDate(bidObj);
                   const bidLabel = (bidDday == null) ? '' : (bidDday < 0 ? '기일지남·수정필요' : (bidDday === 0 ? 'D-Day' : 'D-' + bidDday));
@@ -12240,6 +12242,24 @@ window.wr2SummaryCancelEdit = function() {
         else item.direction = nextDir;
       } else if (_isAuctionScheduleField(key)) {
         _syncAuctionScheduleAliases(d, rawValue);
+        // v166: 상세팝업의 매각기일 수정은 data.* 뿐 아니라 top-level alias까지 즉시 맞춘다.
+        // 작업룸 요약/물건리스트는 top-level biddate를 먼저 보는 경로가 많아, 여기서 단일화하지 않으면 탭별 날짜가 갈라진다.
+        try {
+          const _nextScheduleDate = _normalizeSavedDateValue(rawValue);
+          if (_nextScheduleDate) {
+            item.biddate = _nextScheduleDate;
+            item.bidDate = _nextScheduleDate;
+            item.saleDate = _nextScheduleDate;
+            item.매각기일 = _nextScheduleDate;
+            item.매각일 = _nextScheduleDate;
+            item.입찰기일 = _nextScheduleDate;
+            item._norm = Object.assign({}, item._norm || {});
+            item._norm.매각기일 = _nextScheduleDate;
+          } else {
+            ['biddate','bidDate','saleDate','매각기일','매각일','입찰기일'].forEach(function(k){ try { delete item[k]; } catch(e) { item[k]=''; } });
+            if (item._norm) try { delete item._norm.매각기일; } catch(e) {}
+          }
+        } catch(e) {}
       } else {
         const normalizedValue = _normalizeSavedFieldValue(key, rawValue);
         const isEmpty = normalizedValue == null || normalizedValue === '';
@@ -21216,6 +21236,11 @@ ${inputDesc.substring(0, 3000)}
       }
       _ensureNormalizedItem(item);
       _persistSingleSavedItemFast(sv, item, 'saved-draft-commit', { pushNow:false });
+      try {
+        if (typeof window._skSyncLinkedScheduleFromSaved === 'function' && /^(매각기일|매각일|입찰기일|최저가|최저가_원|최저가_만원|유찰횟수|회차|입찰회차|매각회차)$/.test(String(field || ''))) {
+          window._skSyncLinkedScheduleFromSaved(item, { reason:'saved-detail-schedule-commit', render:true, push:true });
+        }
+      } catch(e) { console.warn('[saved detail schedule sync]', e); }
       // 상세 입력 blur는 로컬 캐시 + 단일 row outbox까지만 수행한다.
       // 저장목록/지도/작업룸 전체 렌더링은 사용자가 팝업을 닫거나 탭을 전환할 때 자연 갱신되도록 둔다.
     };
@@ -53569,7 +53594,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260512-workroom-v165-unsold-fast-targeted-sync';
+  var BUILD='20260512-workroom-v166-detail-date-remote-echo-guard';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
@@ -54211,8 +54236,8 @@ window.addEventListener('DOMContentLoaded', () => {
     var d=(row.data && typeof row.data==='object') ? row.data : {};
     var links=(row._links && typeof row._links==='object') ? row._links : {};
     return Math.max(
-      Number(row._skUrlEditedAt||0)||0, Number(row._skNaverEditedAt||0)||0, Number(row._skUnsoldEditedAt||0)||0, Number(row._skLifecycleEditedAt||0)||0, Number(row._skLocalEditedAt||0)||0,
-      Number(d._skUrlEditedAt||0)||0, Number(d._skNaverEditedAt||0)||0, Number(d._skUnsoldEditedAt||0)||0, Number(d._skLifecycleEditedAt||0)||0,
+      Number(row._skUrlEditedAt||0)||0, Number(row._skNaverEditedAt||0)||0, Number(row._skUnsoldEditedAt||0)||0, Number(row._skScheduleEditedAt||0)||0, Number(row._skLifecycleEditedAt||0)||0, Number(row._skLocalEditedAt||0)||0,
+      Number(d._skUrlEditedAt||0)||0, Number(d._skNaverEditedAt||0)||0, Number(d._skUnsoldEditedAt||0)||0, Number(d._skScheduleEditedAt||0)||0, Number(d._skLifecycleEditedAt||0)||0,
       Number(links.updatedAt||0)||0, Number(links.naverUpdatedAt||0)||0
     );
   }
@@ -54229,6 +54254,11 @@ window.addEventListener('DOMContentLoaded', () => {
     if(!row || typeof row!=='object') return 0;
     var d=(row.data && typeof row.data==='object') ? row.data : {};
     return Math.max(Number(row._skUrlEditedAt||0)||0, Number(row._skNaverEditedAt||0)||0, Number(d._skUrlEditedAt||0)||0, Number(d._skNaverEditedAt||0)||0);
+  }
+  function explicitScheduleStampOf(row){
+    if(!row || typeof row!=='object') return 0;
+    var d=(row.data && typeof row.data==='object') ? row.data : {};
+    return Math.max(Number(row._skScheduleEditedAt||0)||0, Number(d._skScheduleEditedAt||0)||0);
   }
   function explicitLifecycleActionStampOf(row){
     if(!row || typeof row!=='object') return 0;
@@ -54298,6 +54328,7 @@ window.addEventListener('DOMContentLoaded', () => {
     if(Number(cfDirtyRoomIds[id]||0)||0) return true;
     if(maxCaptureDeleteTs(row) >= recentCut) return true;
     if(explicitUrlStampOf(row) >= recentCut) return true;
+    if(explicitScheduleStampOf(row) >= lifeCut) return true;
     if(explicitLifecycleActionStampOf(row) >= lifeCut) return true;
     if(workroomUnsoldBackedBySaved(row)) return true;
     if(/capture|image|delete|url|naver|lifecycle|unsold|room-push|active-room-now/i.test(r)){
@@ -54496,7 +54527,22 @@ window.addEventListener('DOMContentLoaded', () => {
         merged=mergeByFresh(readCache(table), all);
       }
       return writeCache(table, merged).then(function(){
-        refreshTable(table);
+        // v166: 서버 pull을 로컬 캐시에 반영하는 동안 발생하는 렌더/보정 로직이
+        // 같은 row를 다시 Cloudflare로 push하지 않도록 짧은 echo-guard를 건다.
+        try {
+          window.__skCloudApplyingRemoteUntil = now() + 1800;
+          window.__skCloudApplyingRemoteReason = String(opts.reason || ('pull-table:' + table));
+        } catch(e) {}
+        try { refreshTable(table); }
+        finally {
+          setTimeout(function(){
+            try {
+              if (now() >= Number(window.__skCloudApplyingRemoteUntil || 0)) {
+                window.__skCloudApplyingRemoteReason = '';
+              }
+            } catch(e) {}
+          }, 1900);
+        }
         return { ok:true, table:table, pulled:all.length, total:merged.length, pages:pages, since:since, reachedPageCap:reachedPageCap };
       });
     });
@@ -54997,8 +55043,29 @@ window.addEventListener('DOMContentLoaded', () => {
     return [idOf(room), syncTs(room), imgs].join('|');
   }
 
+  function isRemoteEchoGuardActive(){
+    try { return now() < Number(window.__skCloudApplyingRemoteUntil || 0); } catch(e) { return false; }
+  }
+  function isUserCriticalPushReason(reason){
+    var r=String(reason||'');
+    return /unsold-save-critical|saved-draft-commit|saved-detail-schedule|url-save|naver-land-url-save|room-push|active-room-now|capture|image|delete|manual-user/i.test(r);
+  }
+  function shouldSuppressRemoteEchoPush(table, rows, reason){
+    var t=String(table||'');
+    if(!isRemoteEchoGuardActive()) return false;
+    if(now() < Number(window.__skUnsoldCriticalUntil||0)) return false;
+    if(isUserCriticalPushReason(reason)) return false;
+    if(['items','pl_items','workrooms'].indexOf(t)<0) return false;
+    // pull 직후 자동보정/렌더가 다시 push하는 echo만 차단한다.
+    return true;
+  }
+
   function scheduleRowsPush(table, rows, reason, delay){
     var tkey=String(table||'');
+    if(shouldSuppressRemoteEchoPush(tkey, rows, reason||'scheduled-row-push')){
+      try{ log('remote echo push suppressed', {table:tkey, reason:reason||'', rows:(Array.isArray(rows)?rows.length:0), remoteReason:window.__skCloudApplyingRemoteReason||''}); }catch(e){}
+      return;
+    }
     var clean=dedupeRows((Array.isArray(rows)?rows:[]).filter(function(r){ return r && idOf(r); }));
     if(String(table||'')==='workrooms'){
       var before=clean.length;
@@ -55166,9 +55233,19 @@ window.addEventListener('DOMContentLoaded', () => {
     installPersistWrap('_wrPersistRooms');
     installPersistWrap('_wrPersistAndSyncRooms');
 
-    window.skCloudPushTable=function(table, rows){ return pushRows(table, rows); };
+    window.skCloudPushTable=function(table, rows){
+      if(shouldSuppressRemoteEchoPush(String(table||''), rows, 'direct-push')){
+        try{ log('remote direct push suppressed', {table:String(table||''), rows:(Array.isArray(rows)?rows.length:0), remoteReason:window.__skCloudApplyingRemoteReason||''}); }catch(e){}
+        return Promise.resolve({ok:true, table:String(table||''), requested:0, saved:0, suppressed:true, reason:'remote-echo-guard'});
+      }
+      return pushRows(table, rows);
+    };
     window.skCloudQueuePushTable=function(table, rows, reason){
       var clean=(Array.isArray(rows)?rows:[]).filter(function(r){ return r && idOf(r); });
+      if(shouldSuppressRemoteEchoPush(String(table||''), clean, reason||'queued-row-push')){
+        try{ log('remote queued push suppressed', {table:String(table||''), reason:reason||'', rows:clean.length, remoteReason:window.__skCloudApplyingRemoteReason||''}); }catch(e){}
+        return {ok:true, queued:0, suppressed:true, table:String(table||''), reason:'remote-echo-guard'};
+      }
       if(clean.length) scheduleRowsPush(String(table||''), clean, reason||'queued-row-push', 120);
       return {ok:true, queued:clean.length, table:String(table||''), reason:reason||'queued-row-push'};
     };
@@ -56379,7 +56456,7 @@ window.addEventListener('DOMContentLoaded', () => {
 */
 (function(){
   'use strict';
-  var BUILD='20260512-workroom-v165-unsold-fast-targeted-sync';
+  var BUILD='20260512-workroom-v166-detail-date-remote-echo-guard';
   try{ window.__SK_BUILD=BUILD; console.log('[build] common.js '+BUILD); }catch(e){}
 
   // ─────────────────────────────────────────────────────
@@ -57117,4 +57194,146 @@ window.addEventListener('DOMContentLoaded', () => {
 
   setTimeout(function(){ try{ window._skReconcileUnsoldCanonical({render:false}); }catch(e){} }, 250);
   setTimeout(function(){ try{ window._skReconcileUnsoldCanonical({render:false}); }catch(e){} }, 1800);
+})();
+
+
+/* === v166: detail-tab schedule propagation + remote-pull echo guard diagnostics ===
+   - 상세팝업에서 매각기일/최저가를 바꾸면 저장목록 원본 → 물건리스트 → 작업룸이 같은 값으로 즉시 수렴한다.
+   - pull로 받은 원격 row를 렌더/보정하면서 다시 push하는 echo는 SK-CF 내부 guard가 차단한다.
+*/
+(function(){
+  if(window.__skV166DetailScheduleInstalled) return;
+  window.__skV166DetailScheduleInstalled=true;
+  var BUILD='20260512-workroom-v166-detail-date-remote-echo-guard';
+  try{ window.__SK_BUILD=BUILD; }catch(e){}
+  function clean(v){ return String(v==null?'':v).trim(); }
+  function ymd(v){
+    var s=clean(v); if(!s || s==='미정') return '';
+    var m=s.match(/(20\d{2})[.\-/년\s]*(\d{1,2})[.\-/월\s]*(\d{1,2})/);
+    if(m) return m[1]+'-'+String(Number(m[2])).padStart(2,'0')+'-'+String(Number(m[3])).padStart(2,'0');
+    var d=s.replace(/[^0-9]/g,'');
+    if(d.length>=8) return d.slice(0,4)+'-'+d.slice(4,6)+'-'+d.slice(6,8);
+    return s;
+  }
+  function digits(v){ return clean(v).replace(/[^0-9]/g,''); }
+  function idOf(x){ return String(x && (x.id||x.item_id||x.roomId||x.uuid||x.key) || ''); }
+  function readRows(key){
+    try{ if(window._idbCache && Array.isArray(window._idbCache[key])) return window._idbCache[key]; }catch(e){}
+    try{ return JSON.parse(localStorage.getItem(key)||'[]').filter(Boolean); }catch(e){ return []; }
+  }
+  function writeRows(key, rows){
+    try{ if(window._idbCache) window._idbCache[key]=rows; }catch(e){}
+    try{ if(typeof window.idbSet==='function') window.idbSet(key, rows).catch(function(){}); }catch(e){}
+    try{ localStorage.setItem(key, JSON.stringify(rows)); }catch(e){}
+  }
+  function scheduleFromSaved(saved){
+    if(!saved || !saved.id) return null;
+    var d=(saved.data&&typeof saved.data==='object')?saved.data:{};
+    var date=ymd(d['매각기일'] || d['매각일'] || d['입찰기일'] || saved.biddate || saved.bidDate || saved.saleDate || saved.매각기일 || saved.매각일 || '');
+    var price=digits(d['최저가_원'] || d['최저가'] || saved.minprice || saved.minPrice || '');
+    if(!price && d['최저가_만원']) price=String(Number(d['최저가_만원']) * 10000);
+    var round=clean(saved.round || d['회차'] || d['입찰회차'] || d['매각회차'] || '');
+    var fail=clean(saved.failCount || d['유찰횟수'] || '');
+    var stamp=Date.now();
+    return {savedId:String(saved.id), date:date, price:price, round:round, fail:fail, stamp:stamp};
+  }
+  function touchRow(row, src){
+    if(!row || !src) return false;
+    var changed=false;
+    function set(k,v){ if(v==null || v==='') return; if(String(row[k]||'')!==String(v)){ row[k]=v; changed=true; } }
+    if(!row.data || typeof row.data!=='object') row.data={};
+    var d=row.data;
+    if(src.date){
+      ['biddate','bidDate','saleDate','매각기일','매각일','입찰기일'].forEach(function(k){ set(k,src.date); });
+      ['매각기일','매각일','입찰기일'].forEach(function(k){ if(String(d[k]||'')!==String(src.date)){ d[k]=src.date; changed=true; } });
+      try{ row._norm=Object.assign({}, row._norm||{}); row._norm.매각기일=src.date; }catch(e){}
+    }
+    if(src.price){
+      set('minprice',src.price); set('minPrice',src.price);
+      var pn=Number(src.price)||0;
+      if(pn){
+        if(String(d['최저가']||'')!==String(pn)){ d['최저가']=pn; changed=true; }
+        if(String(d['최저가_원']||'')!==String(pn)){ d['최저가_원']=pn; changed=true; }
+        var man=Math.round(pn/10000);
+        if(String(d['최저가_만원']||'')!==String(man)){ d['최저가_만원']=man; changed=true; }
+      }
+    }
+    if(src.round){ set('round',src.round); if(String(d['회차']||'')!==String(src.round)){ d['회차']=src.round; changed=true; } }
+    if(src.fail){ if(String(d['유찰횟수']||'')!==String(src.fail)){ d['유찰횟수']=src.fail; changed=true; } }
+    if(changed){
+      var st=src.stamp||Date.now();
+      row._skScheduleEditedAt=st;
+      row._skLocalEditedAt=st;
+      row.updatedAt=st;
+      d._skScheduleEditedAt=st;
+      d._skLocalEditedAt=st;
+    }
+    return changed;
+  }
+  function linkedSavedIdOfPl(it){ var d=(it&&it.data)||{}; return clean(it && (it.linkedSavedId || it.savedId || d.linkedSavedId || d.savedId)); }
+  function roomSavedIds(room, plById){
+    var ids=[]; function add(v){ var s=clean(v); if(s && ids.indexOf(s)<0) ids.push(s); }
+    if(!room) return ids;
+    [room.linkedSavedId,room.savedId,room.sourceSavedId,room.auctionId,room.listingId].forEach(add);
+    function addFromPl(pid){ var p=plById[String(pid||'')]; if(p) add(linkedSavedIdOfPl(p)); }
+    [room.targetItemId,room.__targetItemId,room.plItemId,room.itemId,room.sourceItemId].forEach(addFromPl);
+    (Array.isArray(room.linkedItems)?room.linkedItems:[]).forEach(function(v){
+      if(v&&typeof v==='object'){
+        [v.linkedSavedId,v.savedId,v.sourceSavedId].forEach(add);
+        addFromPl(v.itemId||v.plItemId||v.id);
+      } else addFromPl(v);
+    });
+    return ids;
+  }
+  window._skSyncLinkedScheduleFromSaved=function(saved, opts){
+    var options=opts||{};
+    var src=scheduleFromSaved(saved);
+    if(!src || !src.savedId) return {ok:false, reason:'no-saved'};
+    var pl=readRows('pl_items_v3').slice();
+    var changedPl=[];
+    var plById={};
+    pl.forEach(function(it){ if(it&&it.id) plById[String(it.id)]=it; });
+    pl.forEach(function(it){
+      if(!it || !it.id) return;
+      if(linkedSavedIdOfPl(it)===src.savedId){ if(touchRow(it,src)) changedPl.push(it); }
+    });
+    var rooms=readRows('wr2_rooms').slice();
+    var changedRooms=[];
+    rooms.forEach(function(r){
+      if(!r || !r.id || r.deletedAt) return;
+      var ids=roomSavedIds(r, plById);
+      if(ids.indexOf(src.savedId)>=0){ if(touchRow(r,src)) changedRooms.push(r); }
+    });
+    if(changedPl.length){
+      writeRows('pl_items_v3',pl);
+      try{ if(typeof window.skCloudQueuePushTable==='function' && options.push!==false) window.skCloudQueuePushTable('pl_items',changedPl,'saved-detail-schedule'); }catch(e){}
+    }
+    if(changedRooms.length){
+      writeRows('wr2_rooms',rooms);
+      try{
+        if(window.wr2State){
+          var active=String(window.wr2State.activeRoomId||'');
+          window.wr2State.rooms=rooms.filter(function(r){return r&&r.id&&!r.deletedAt;});
+          if(active && !window.wr2State.rooms.some(function(r){return String(r.id)===active;})) window.wr2State.activeRoomId='';
+        }
+      }catch(e){}
+      try{ if(typeof window.skCloudQueuePushTable==='function' && options.push!==false) window.skCloudQueuePushTable('workrooms',changedRooms,'saved-detail-schedule'); }catch(e){}
+    }
+    if(options.render!==false && (changedPl.length||changedRooms.length)){
+      try{ if(typeof window.renderPropertyList==='function') window.renderPropertyList(); }catch(e){}
+      try{ if(typeof window.wr2Render==='function') window.wr2Render(); }catch(e){}
+      try{ if(typeof window.__wr2RenderNow==='function') window.__wr2RenderNow(); }catch(e){}
+    }
+    try{ if(changedPl.length||changedRooms.length) console.log('[SK-v166] detail schedule synced',{savedId:src.savedId,pl:changedPl.length,rooms:changedRooms.length,date:src.date,price:src.price}); }catch(e){}
+    return {ok:true,savedId:src.savedId,pl:changedPl.length,rooms:changedRooms.length,date:src.date,price:src.price};
+  };
+  window.skDebugScheduleSync=function(keyword){
+    var kw=clean(keyword);
+    var hit=function(x){ return !kw || JSON.stringify(x||'').indexOf(kw)>=0; };
+    var pick=function(x){ var d=(x&&x.data)||{}; return {id:x&&x.id,title:x&&(x.title||x.name||x.addr),roomId:x&&x.roomId,linkedSavedId:x&&x.linkedSavedId,biddate:x&&(x.biddate||x.bidDate||x.saleDate||d['매각기일']||d['매각일']),minprice:x&&(x.minprice||d['최저가']||d['최저가_원']),scheduleAt:x&&x._skScheduleEditedAt,updatedAt:x&&x.updatedAt}; };
+    var out={build:window.__SK_BUILD, saved:readRows('re_sv').filter(hit).map(pick), pl:readRows('pl_items_v3').filter(hit).map(pick), rooms:readRows('wr2_rooms').filter(hit).map(pick)};
+    try{ console.table(out.saved); console.table(out.pl); console.table(out.rooms); }catch(e){}
+    return out;
+  };
+  try{ console.log('[SK-v166] installed',{build:BUILD}); }catch(e){}
 })();
