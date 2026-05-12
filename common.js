@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260512-workroom-v163-workroom-pending-explicit-action';
+    window.__SK_BUILD = '20260512-workroom-v164-unsold-cloud-confirmed-save';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -52578,24 +52578,73 @@ window.addEventListener('DOMContentLoaded', () => {
     var options = opts || {};
     var writes = [];
     var rowMap = options.rows || {};
+    var expected = {};
+    var expectedTotal = 0;
+    function cleanRows(rows){
+      var map = {};
+      (Array.isArray(rows) ? rows : []).forEach(function(r){
+        if (!r || !r.id) return;
+        map[String(r.id)] = r;
+      });
+      return Object.keys(map).map(function(k){ return map[k]; });
+    }
+    function failResult(reason, details, queuedResults){
+      return {
+        ok:false,
+        reason:reason || 'unsold-cloud-sync-failed',
+        expected:expected,
+        expectedTotal:expectedTotal,
+        queued:queuedResults || [],
+        flush:{ ok:false, skipped:true, reason:reason || 'failed-before-flush' },
+        error:details || reason || 'unsold-cloud-sync-failed'
+      };
+    }
+    function directPushCheck(table, rows){
+      if (typeof window.skCloudPushTable !== 'function') {
+        return Promise.resolve({ ok:false, table:table, requested:rows.length, saved:0, reason:'direct-push-missing' });
+      }
+      return Promise.resolve(window.skCloudPushTable(table, rows)).then(function(res){
+        res = res || {};
+        var requested = Number(res.requested || rows.length) || rows.length;
+        var saved = Number(res.saved || 0) || 0;
+        var skipped = Number(res.skipped || 0) || 0;
+        if (res.ok === false) throw new Error(table + ' direct push failed: ' + String(res.error || res.reason || 'unknown'));
+        // 유찰/기일 변경은 '큐 적재'가 아니라 서버가 실제 저장한 saved 수를 성공 기준으로 본다.
+        // skipped는 서버가 row를 받지 않았다는 뜻일 수 있으므로 최종 성공으로 처리하지 않는다.
+        if (saved < requested) {
+          throw new Error(table + ' direct push incomplete: saved ' + saved + '/' + requested + (skipped ? ', skipped ' + skipped : ''));
+        }
+        return Object.assign({ ok:true, table:table, requested:requested, saved:saved }, res);
+      });
+    }
     function queueCf(table, rows){
-      rows = (Array.isArray(rows) ? rows : []).filter(function(r){ return r && r.id; });
+      rows = cleanRows(rows);
       if (!rows.length) return;
+      expected[table] = (expected[table] || 0) + rows.length;
+      expectedTotal += rows.length;
       try {
         if (typeof window.skCloudQueuePushTable === 'function') {
-          writes.push(Promise.resolve(window.skCloudQueuePushTable(table, rows, 'unsold-save')));
-        } else if (typeof window.skCloudPushTable === 'function') {
-          writes.push(Promise.resolve(window.skCloudPushTable(table, rows)));
+          // 1) durable outbox에 먼저 넣는다. 네트워크가 끊겨도 다음 진입 때 재전송된다.
+          writes.push(Promise.resolve(window.skCloudQueuePushTable(table, rows, 'unsold-save-critical')).then(function(res){
+            res = res || {};
+            var queued = Number(res.queued || 0) || 0;
+            if (res.ok === false) throw new Error(table + ' queue failed: ' + String(res.error || res.reason || 'unknown'));
+            if (queued < rows.length) throw new Error(table + ' queue incomplete: queued ' + queued + '/' + rows.length);
+            return Object.assign({ ok:true, table:table, queued:queued, requested:rows.length }, res);
+          }));
         }
+        // 2) 동시에 즉시 서버 push까지 완료 확인한다. 이제 UI 성공은 이 결과를 기준으로 한다.
+        writes.push(directPushCheck(table, rows));
       } catch(e) {
-        console.warn('[sync] cf queue error', table, e);
+        writes.push(Promise.reject(e));
       }
     }
-    // v124: 유찰/기일수정은 Cloudflare 동기화가 실제 기준이다.
-    // 전체 배열 저장보다 변경된 row만 outbox에 먼저 넣어, 직후 pull이 와도 예전 기일/금액으로 되돌아가지 않게 한다.
+    // 유찰/기일수정은 Cloudflare 저장 완료가 실제 성공 기준이다.
+    // 로컬 반영과 서버 반영을 분리하지 않도록, 핵심 row는 큐 적재 + 직접 push + pending flush까지 기다린다.
+    // saved 원본(items)을 먼저 큐/직접 push한다. workrooms pending guard가 저장목록의 유찰 marker를 기준으로 허용 여부를 판단하기 때문이다.
+    queueCf('items', rowMap.items);
     queueCf('pl_items', rowMap.pl_items);
     queueCf('workrooms', rowMap.workrooms);
-    queueCf('items', rowMap.items);
     if (!rowMap.pl_items && !rowMap.workrooms && !rowMap.items) {
       try {
         if (typeof window._sbSavePlItems === 'function' && typeof plLoad === 'function') {
@@ -52619,25 +52668,51 @@ window.addEventListener('DOMContentLoaded', () => {
         console.warn('[sync] saved write error', e);
       }
     }
+    if (expectedTotal > 0 && !writes.length) {
+      var missing = Promise.resolve(failResult('cloud-push-missing', 'Cloudflare push 함수가 없습니다.'));
+      window.__skLastUnsoldSyncPromise = missing;
+      return missing;
+    }
     var afterWrite = Promise.allSettled(writes).then(function(results){
       var failed = results.filter(function(r){ return r && r.status === 'rejected'; });
-      if (failed.length) console.warn('[sync] write failed', failed);
-      return results;
-    }).then(function(results){
-      if (typeof window.skCloudFlushPendingSafe === 'function') {
-        return window.skCloudFlushPendingSafe({ maxRows:120 }).then(function(flush){
-          try { console.log('[SK-v126] unsold pending flushed', flush); } catch(e) {}
-          return { queued:results, flush:flush };
-        }).catch(function(e){
-          console.warn('[sync] pending flush failed; queued rows kept', e);
-          return { queued:results, flush:{ok:false,error:String(e&&e.message||e)} };
-        });
+      if (failed.length) {
+        console.warn('[sync] critical unsold cloud write failed', failed);
+        return failResult('critical-cloud-write-failed', failed.map(function(r){ return String(r.reason && (r.reason.message || r.reason) || 'failed'); }).join(' | '), results);
       }
-      return { queued:results, flush:{ok:true,skipped:true,reason:'flush-missing'} };
+      if (typeof window.skCloudFlushPendingSafe !== 'function') {
+        return failResult('flush-missing', 'Cloudflare pending flush 함수가 없습니다.', results);
+      }
+      return window.skCloudFlushPendingSafe({ maxRows: Math.max(120, expectedTotal + 30) }).then(function(flush){
+        try { console.log('[SK-v164] unsold cloud confirmed', { expected:expected, expectedTotal:expectedTotal, flush:flush }); } catch(e) {}
+        if (!flush || flush.ok === false || Number(flush.failed || 0) > 0) {
+          return {
+            ok:false,
+            reason:'pending-flush-failed',
+            expected:expected,
+            expectedTotal:expectedTotal,
+            queued:results,
+            flush:flush || { ok:false, reason:'empty-flush-result' },
+            error:String((flush && (flush.error || flush.reason)) || 'pending flush failed')
+          };
+        }
+        return { ok:true, reason:'cloud-confirmed', expected:expected, expectedTotal:expectedTotal, queued:results, flush:flush };
+      }).catch(function(e){
+        console.warn('[sync] pending flush failed; queued rows kept', e);
+        return {
+          ok:false,
+          reason:'pending-flush-error',
+          expected:expected,
+          expectedTotal:expectedTotal,
+          queued:results,
+          flush:{ok:false,error:String(e&&e.message||e)},
+          error:String(e&&e.message||e)
+        };
+      });
     });
     window.__skLastUnsoldSyncPromise = afterWrite;
     if (options.pull !== true) return afterWrite;
-    return afterWrite.then(function(){
+    return afterWrite.then(function(syncResult){
+      if (!syncResult || syncResult.ok === false) return syncResult;
       var pulls = [];
       try {
         if (typeof window._plRefreshFromCloud === 'function') {
@@ -52654,12 +52729,27 @@ window.addEventListener('DOMContentLoaded', () => {
           pulls.push(Promise.resolve(window._svRefreshFromCloud({ render:false })));
         }
       } catch(e) { console.warn('[sync] saved pull error', e); }
-      return Promise.allSettled(pulls);
-    }).then(function(){
-      try { if (typeof renderPropertyList === 'function') renderPropertyList(); } catch(e) {}
-      try { if (typeof wr2Render === 'function') wr2Render(); } catch(e) {}
-      try { if (typeof renderSaved === 'function') renderSaved(); } catch(e) {}
-      return true;
+      return Promise.allSettled(pulls).then(function(){
+        try { if (typeof renderPropertyList === 'function') renderPropertyList(); } catch(e) {}
+        try { if (typeof wr2Render === 'function') wr2Render(); } catch(e) {}
+        try { if (typeof renderSaved === 'function') renderSaved(); } catch(e) {}
+        return syncResult;
+      });
+    });
+  }
+  function _skWaitUnsoldCloudSync(syncPromise, successText){
+    if (!syncPromise || typeof Promise === 'undefined') return;
+    Promise.resolve(syncPromise).then(function(res){
+      if (!res || res.ok === false) {
+        console.warn('[unsold cloud sync not confirmed]', res);
+        if (typeof showToast === 'function') showToast('로컬은 반영됐지만 클라우드 저장이 아직 실패/대기 상태입니다. 다른 기기 확인 전 동기화를 다시 실행하세요.', 'warn');
+        return res;
+      }
+      if (typeof showToast === 'function') showToast(successText || '클라우드까지 저장되었습니다.', 'ok');
+      return res;
+    }).catch(function(e){
+      console.warn('[unsold cloud sync error]', e);
+      if (typeof showToast === 'function') showToast('로컬은 반영됐지만 클라우드 저장 확인에 실패했습니다.', 'warn');
     });
   }
   function _skResolveRoomById(roomId){
@@ -52944,7 +53034,7 @@ window.addEventListener('DOMContentLoaded', () => {
       if (appliedSaved) appliedSaved.updatedAt = Math.max(Number(appliedSaved.updatedAt || 0) || 0, stampUnsold);
       if (room) room.updatedAt = Math.max(Number(room.updatedAt || 0) || 0, stampUnsold);
     } catch(e) {}
-    _skForceUnsoldCloudSync({
+    var syncPromise = _skForceUnsoldCloudSync({
       pull:false,
       rows:{
         pl_items: (allPlUnsoldRows && allPlUnsoldRows.length) ? allPlUnsoldRows : (appliedItem ? [appliedItem] : []),
@@ -52952,7 +53042,7 @@ window.addEventListener('DOMContentLoaded', () => {
         items: (window.__skLastUnsoldSavedRows && window.__skLastUnsoldSavedRows.length) ? window.__skLastUnsoldSavedRows : (appliedSaved ? [appliedSaved] : [])
       }
     });
-    return { ok:true, room: room, item: appliedItem, saved: appliedSaved || null };
+    return { ok:true, room: room, item: appliedItem, saved: appliedSaved || null, sync: syncPromise };
   }
   function _skApplyManualBidInfoToWorkroomSource(ctx, nextDate, nextPrice){
     var resolved = _skResolveUnsoldWorkroomTarget(ctx);
@@ -53035,7 +53125,7 @@ window.addEventListener('DOMContentLoaded', () => {
       if (appliedSaved) appliedSaved.updatedAt = Math.max(Number(appliedSaved.updatedAt || 0) || 0, stampUnsold);
       if (room) room.updatedAt = Math.max(Number(room.updatedAt || 0) || 0, stampUnsold);
     } catch(e) {}
-    _skForceUnsoldCloudSync({
+    var syncPromise = _skForceUnsoldCloudSync({
       pull:false,
       rows:{
         pl_items: (allPlManualRows && allPlManualRows.length) ? allPlManualRows : (appliedItem ? [appliedItem] : []),
@@ -53043,7 +53133,7 @@ window.addEventListener('DOMContentLoaded', () => {
         items: (window.__skLastUnsoldSavedRows && window.__skLastUnsoldSavedRows.length) ? window.__skLastUnsoldSavedRows : (appliedSaved ? [appliedSaved] : [])
       }
     });
-    return { ok:true, room: room, item: appliedItem, saved: appliedSaved || null };
+    return { ok:true, room: room, item: appliedItem, saved: appliedSaved || null, sync: syncPromise };
   }
 
   window._skDebugUnsoldRows = function(keyword){
@@ -53070,6 +53160,7 @@ window.addEventListener('DOMContentLoaded', () => {
     var saveEl = document.getElementById('skUnsoldOnlySave');
     modal.__ctx = ctx || {};
     var manualMode = !!(ctx && ctx.manualOnly);
+    if (saveEl) { saveEl.disabled = false; saveEl.style.opacity = ''; saveEl.textContent = '저장'; }
     if (roundEl) roundEl.value = plan.round || '';
     if (dateEl) dateEl.value = manualMode ? (String(item.biddate || '').trim() || plan.date || '') : (plan.date || '');
     if (priceEl) {
@@ -53111,6 +53202,7 @@ window.addEventListener('DOMContentLoaded', () => {
         return;
       }
       var runCtx = ctx || {};
+      if (saveEl) { saveEl.disabled = true; saveEl.style.opacity = '.6'; saveEl.textContent = '클라우드 저장 중...'; }
       _skCloseUnsoldModal();
       if (typeof showToast === 'function') showToast(manualMode ? '기일/최저가 수정 반영 중...' : '유찰 정보 반영 중...', 'ok');
       setTimeout(function(){
@@ -53143,7 +53235,9 @@ window.addEventListener('DOMContentLoaded', () => {
             } catch (e) {}
             try { if (typeof renderPropertyList === 'function') renderPropertyList(); } catch(e) {}
           }
-          if (typeof showToast === 'function') showToast(manualMode ? '기일/최저가가 반영되었습니다.' : '유찰 정보가 반영되었습니다.', 'ok');
+          var waitSync = (typeof window.__skLastUnsoldSyncPromise !== 'undefined') ? window.__skLastUnsoldSyncPromise : null;
+          if (runCtx && runCtx.source === 'wr' && applied && applied.sync) waitSync = applied.sync;
+          _skWaitUnsoldCloudSync(waitSync, manualMode ? '기일/최저가가 클라우드까지 저장되었습니다.' : '유찰 정보가 클라우드까지 저장되었습니다.');
         } catch (e) {
           console.warn('[unsold save]', e);
           if (typeof showToast === 'function') showToast('유찰 저장 중 오류가 발생했습니다.', 'warn');
@@ -53330,6 +53424,7 @@ window.addEventListener('DOMContentLoaded', () => {
               if (typeof showToast === 'function') showToast('연결된 원본 물건을 찾지 못했습니다. 물건 연결 상태를 확인해주세요.', 'warn');
               return;
             }
+            _skWaitUnsoldCloudSync(appliedWrUnsold.sync || window.__skLastUnsoldSyncPromise, '유찰 정보가 클라우드까지 저장되었습니다.');
             patch.lifecycleStatus = 'active';
             patch.status = 'review';
             patch.phase = 'review';
@@ -53479,7 +53574,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260512-workroom-v163-workroom-pending-explicit-action';
+  var BUILD='20260512-workroom-v164-unsold-cloud-confirmed-save';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
@@ -56268,7 +56363,7 @@ window.addEventListener('DOMContentLoaded', () => {
 */
 (function(){
   'use strict';
-  var BUILD='20260512-workroom-v163-workroom-pending-explicit-action';
+  var BUILD='20260512-workroom-v164-unsold-cloud-confirmed-save';
   try{ window.__SK_BUILD=BUILD; console.log('[build] common.js '+BUILD); }catch(e){}
 
   // ─────────────────────────────────────────────────────
