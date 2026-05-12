@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260513-workroom-v170-pl-fields-single-source';
+    window.__SK_BUILD = '20260513-workroom-v171-pl-edit-commit-money-fix';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -48107,26 +48107,31 @@ window.addEventListener('DOMContentLoaded', () => {
   function plParseAmountText(v) {
     var raw = String(v || '').trim();
     if (!raw) return '';
-    if (/^\d+$/.test(raw)) return raw;
     var cleaned = raw.replace(/,/g, '').replace(/\s+/g, '');
-    var total = 0;
-    if (/[억만천백]/.test(cleaned)) {
-      var eok = cleaned.match(/(\d+)억/);
-      var cheon = cleaned.match(/(\d+)천/);
-      var baek = cleaned.match(/(\d+)백/);
-      var man = cleaned.match(/(\d+)만/);
-      if (eok) total += parseInt(eok[1],10) * 10000;
-      if (cheon) total += parseInt(cheon[1],10) * 1000;
-      if (baek) total += parseInt(baek[1],10) * 100;
-      if (man && cleaned.indexOf('억') < 0) total += parseInt(man[1],10);
-      if (!total) {
-        var digitsOnly = cleaned.replace(/[^0-9]/g, '');
-        return digitsOnly;
-      }
-      return String(total);
+    var hasKorUnit = /[억만천백]/.test(cleaned);
+    var hasWonUnit = /원/.test(cleaned);
+    if (hasKorUnit) {
+      var total = 0;
+      var eok = cleaned.match(/(\d+(?:\.\d+)?)억/);
+      var cheon = cleaned.match(/(\d+(?:\.\d+)?)천/);
+      var baek = cleaned.match(/(\d+(?:\.\d+)?)백/);
+      var man = cleaned.match(/(\d+(?:\.\d+)?)만/);
+      if (eok) total += Math.round(parseFloat(eok[1]) * 10000);
+      // 경매 금액 표기에서 '3억5천'의 천/백은 만원 단위 축약으로 본다.
+      if (cheon) total += Math.round(parseFloat(cheon[1]) * 1000);
+      if (baek) total += Math.round(parseFloat(baek[1]) * 100);
+      if (man) total += Math.round(parseFloat(man[1]));
+      if (total > 0) return String(total);
     }
     var digitsOnly = cleaned.replace(/[^0-9]/g, '');
-    return digitsOnly;
+    if (!digitsOnly) return '';
+    var n = Number(digitsOnly);
+    if (!Number.isFinite(n) || n <= 0) return '';
+    // 물건리스트 금액 컬럼은 '만원' 단위다.
+    // 사용자가 266,000,000 또는 266000000처럼 원 단위를 넣으면 26,600(만원)으로 저장한다.
+    // 단, 50,000/120,763 같은 기존 만원 단위 입력은 그대로 둔다.
+    if (hasWonUnit || n >= 1000000) return String(Math.round(n / 10000));
+    return String(Math.round(n));
   }
   function plDisplayMoney(v) {
     var raw = plParseAmountText(v);
@@ -48168,6 +48173,27 @@ window.addEventListener('DOMContentLoaded', () => {
   function plDisplayMan(v) {
     var disp = plDisplayMoney(v);
     return disp ? (disp + '만') : '';
+  }
+  function plManToWon(v) {
+    var man = Number(plParseAmountText(v));
+    return (Number.isFinite(man) && man > 0) ? Math.round(man * 10000) : 0;
+  }
+  function plQueueUserEditRow(row, reason) {
+    if (!row || !row.id) return;
+    var clean = plNormalizeItem(Object.assign({}, row));
+    window.__skLastPlEditSyncPromise = Promise.resolve({ ok:false, skipped:true });
+    try {
+      if (typeof window.skCloudQueuePushTable === 'function') {
+        window.skCloudQueuePushTable('pl_items', [clean], reason || 'pl-user-edit');
+      }
+      if (typeof window.skCloudPushTable === 'function') {
+        window.__skLastPlEditSyncPromise = window.skCloudPushTable('pl_items', [clean])
+          .then(function(res){ return { ok: !!(res && (res.ok !== false)), table:'pl_items', row: clean.id, result: res }; })
+          .catch(function(e){ console.warn('[pl user edit direct push]', e && (e.message || e)); return { ok:false, table:'pl_items', row: clean.id, error:String(e && (e.message || e)) }; });
+      }
+    } catch(e) {
+      console.warn('[pl user edit queue]', e && (e.message || e));
+    }
   }
   function plNormalizeDateInput(v) {
     var raw = String(v || '').trim();
@@ -48407,45 +48433,21 @@ window.addEventListener('DOMContentLoaded', () => {
       putField('사건번호', item.casenum);
     }
     if (item.appraisal) {
-      putField('감정가_만원', plParseAmountText(item.appraisal));
-      putField('감정가', Number(plParseAmountText(item.appraisal)) * 10000);
+      var appMan = Number(plParseAmountText(item.appraisal));
+      if (Number.isFinite(appMan) && appMan > 0) {
+        putField('감정가_만원', Math.round(appMan));
+        putField('감정가', Math.round(appMan * 10000));
+      }
     }
     if (item.minprice) {
-      // minprice는 경로에 따라 원/만원이 혼재할 수 있으므로
-      // 저장목록에는 항상 원(최저가) + 만원(최저가_만원)을 일관되게 기록한다.
-      var minWon = 0;
-      var dWonRaw = Number(String(d['최저가_원'] || d['최저가'] || '').replace(/[^0-9]/g, ''));
-      if (Number.isFinite(dWonRaw) && dWonRaw > 0) {
-        minWon = Math.round(dWonRaw);
-      } else {
-        var minDigits = String(item.minprice || '').replace(/[^0-9]/g, '');
-        var nMin = Number(minDigits || 0);
-        if (Number.isFinite(nMin) && nMin > 0) {
-          var candWon = Math.round(nMin);
-          var candMan = Math.round(nMin * 10000);
-          var refWon = Number(String(d['감정가'] || d['최저가'] || '').replace(/[^0-9]/g, ''));
-          if (!(Number.isFinite(refWon) && refWon > 0)) {
-            var appDigits = String(item.appraisal || '').replace(/[^0-9]/g, '');
-            var appNum = Number(appDigits || 0);
-            if (Number.isFinite(appNum) && appNum > 0) {
-              // appraisal은 기존 물건리스트에서 만원 단위가 많으므로 보정
-              refWon = appNum >= 10000000 ? appNum : Math.round(appNum * 10000);
-            }
-          }
-          if (Number.isFinite(refWon) && refWon > 0) {
-            var diffWon = Math.abs(Math.log((candWon + 1) / (refWon + 1)));
-            var diffMan = Math.abs(Math.log((candMan + 1) / (refWon + 1)));
-            minWon = (diffWon <= diffMan) ? candWon : candMan;
-          } else {
-            // 기준값이 없으면 1천만원 이상은 원 단위로, 그보다 작으면 만원 단위로 간주
-            minWon = (nMin >= 10000000) ? candWon : candMan;
-          }
-        }
-      }
-      if (minWon > 0) {
+      // 물건리스트 최저가는 사용자 입력값이 우선이다.
+      // 기존 저장목록 최저가를 우선 읽으면 사용자가 수정한 금액이 다시 옛값으로 되돌아간다.
+      var minMan = Number(plParseAmountText(item.minprice));
+      if (Number.isFinite(minMan) && minMan > 0) {
+        var minWon = Math.round(minMan * 10000);
         putField('최저가', minWon);
         putField('최저가_원', minWon);
-        putField('최저가_만원', Math.round(minWon / 10000));
+        putField('최저가_만원', Math.round(minMan));
       }
     }
     if (item.deposit) putField('보증금_만원', plParseAmountText(item.deposit));
@@ -48508,6 +48510,8 @@ window.addEventListener('DOMContentLoaded', () => {
       var patch = plBuildPatchFromSaved(src, it);
       if (!patch) return it;
       var next = plNormalizeItem(Object.assign({}, it, patch, { updatedAt: Date.now() }));
+      // 서버/저장목록 수렴값이 로컬 사용자 편집 필드(의향/최저가/입찰기일/나의입찰가 등)를 되돌리지 않게 보호한다.
+      next = plNormalizeItem(plMergeUserOwnedFields(next, it));
       if (!plDiffers(JSON.stringify(it), JSON.stringify(next))) return it;
       changed = true;
       changedItems.push(next);
@@ -48605,6 +48609,7 @@ window.addEventListener('DOMContentLoaded', () => {
       if (bidderCount) next.bidders = bidderCount;
       if (closeMemo) next.memo = closeMemo;
     }
+    next = plNormalizeItem(plMergeUserOwnedFields(next, prev));
     return plNormalizeItem(next);
   }
   function plSyncFromWorkrooms(opts) {
@@ -49844,6 +49849,10 @@ window.addEventListener('DOMContentLoaded', () => {
     });
     if (!changedItem) return null;
     plSave(items);
+    // 물건리스트 직접 편집은 pl_items 한 row가 원본이다.
+    // plSave가 먼저 IDB 캐시를 갱신하면 지연 저장 경로가 delta=0으로 판단할 수 있으므로,
+    // 변경 row를 durable outbox + 즉시 push로 별도 커밋한다.
+    try { plQueueUserEditRow(changedItem, 'pl-user-edit'); } catch(e) {}
     syncToWorkroom(changedItem);
     try { plSyncItemToSaved(changedItem); } catch(e) {}
     return changedItem;
@@ -49853,6 +49862,13 @@ window.addEventListener('DOMContentLoaded', () => {
   window.plSave = plSave;
   window.plUpdateItem = plUpdateItem;
   window.plNormalizeItem = plNormalizeItem;
+  window.skDebugPlItem = function(q) {
+    var needle=String(q||'').trim();
+    var rows=(typeof plLoad==='function'?plLoad():[]).filter(function(x){return !needle || JSON.stringify(x||{}).indexOf(needle)>=0;});
+    var out=rows.map(function(x){return {id:x.id, title:x.addr||x.title, intent:x.intent, appraisal:x.appraisal, minprice:x.minprice, biddate:x.biddate, estimate:x.estimate, plAt:x._skPlEditedAt, fields:x._skPlFieldEditedAt, updatedAt:x.updatedAt};});
+    try{ console.table(out); }catch(e){ console.log(out); }
+    return out;
+  };
 
   window._plScheduleRender = window._plScheduleRender || (function() {
     var timer = null;
@@ -53674,7 +53690,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260513-workroom-v170-pl-fields-single-source';
+  var BUILD='20260513-workroom-v171-pl-edit-commit-money-fix';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
@@ -56605,7 +56621,7 @@ window.addEventListener('DOMContentLoaded', () => {
 */
 (function(){
   'use strict';
-  var BUILD='20260513-workroom-v170-pl-fields-single-source';
+  var BUILD='20260513-workroom-v171-pl-edit-commit-money-fix';
   try{ window.__SK_BUILD=BUILD; console.log('[build] common.js '+BUILD); }catch(e){}
 
   // ─────────────────────────────────────────────────────
@@ -57353,7 +57369,7 @@ window.addEventListener('DOMContentLoaded', () => {
 (function(){
   if(window.__skV166DetailScheduleInstalled) return;
   window.__skV166DetailScheduleInstalled=true;
-  var BUILD='20260513-workroom-v170-pl-fields-single-source';
+  var BUILD='20260513-workroom-v171-pl-edit-commit-money-fix';
   try{ window.__SK_BUILD=BUILD; }catch(e){}
   function clean(v){ return String(v==null?'':v).trim(); }
   function ymd(v){
@@ -57519,7 +57535,7 @@ window.addEventListener('DOMContentLoaded', () => {
 (function(){
   if(window.__skV168ScheduleCanonicalInstalled) return;
   window.__skV168ScheduleCanonicalInstalled=true;
-  var BUILD='20260513-workroom-v170-pl-fields-single-source';
+  var BUILD='20260513-workroom-v171-pl-edit-commit-money-fix';
   try{ window.__SK_BUILD=BUILD; }catch(e){}
 
   function clean(v){ return String(v==null?'':v).trim(); }
