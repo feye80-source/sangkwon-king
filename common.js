@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260515-pl-overrides-resize-calendar-fix';
+    window.__SK_BUILD = '20260515-workroom-v179-naver-land-planner-today-fix';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -21410,7 +21410,7 @@ ${inputDesc.substring(0, 3000)}
     // v125: URL/네이버부동산 링크를 한 관문으로 강제한다.
     // - 경매/공매 '상세'는 옥션원/온비드만
     // - 네이버부동산은 query fallback 금지(이전 지역 복원 문제), articleNo 또는 좌표(ms)만 직접 사용
-    // - 주소만 있는 경우 클릭 시 카카오 지오코딩 후 ms 링크로 열고, 실패 시 네이버지도 검색으로 fallback
+    // - 주소만 있는 경우 클릭 시 카카오 지오코딩/키워드검색 후 ms 링크로 열고, 실패 시 지도 fallback 없이 주소만 복사
     window._skAuctionDetailUrl = function(item) {
       if (!item) return '';
       const d = item.data || {};
@@ -21523,11 +21523,38 @@ ${inputDesc.substring(0, 3000)}
       try { d._skNaverEditedAt = stamp; d._skLocalEditedAt = stamp; } catch(e) {}
       return true;
     };
+    window._skExtractNaverArticleNo = function(item) {
+      try {
+        const d = (item && item.data) || {};
+        const links = (item && item._links && typeof item._links === 'object') ? item._links : {};
+        const candidates = [
+          d.매물번호, d.articleNo, d.articleNumber, d.atclNo, d.atcl_no, d.article_no,
+          item && item.articleNo, item && item.articleNumber, item && item.atclNo,
+          links.articleNo, links.articleNumber, links.atclNo
+        ];
+        for (const v of candidates) {
+          const no = String(v || '').trim();
+          if (/^\d{6,14}$/.test(no)) return no;
+        }
+        const textSources = [
+          d.상세URL, d.원본URL, d.원본링크, d.url, d.link,
+          d.네이버부동산URL, d.네이버부동산링크, d.naverLandUrl,
+          item && item.url, item && item.originalUrl, item && item.link,
+          links.naverLand, links.original, links.auctionDetail
+        ];
+        for (const u of textSources) {
+          const raw = String(u || '').trim();
+          if (!raw) continue;
+          const m = raw.match(/(?:articleNo=|articleNumber=|atclNo=|\/articles\/)(\d{6,14})/i);
+          if (m && m[1]) return m[1];
+        }
+      } catch(e) {}
+      return '';
+    };
     window._skNaverLandUrl = function(item) {
       const manual = (typeof window._skManualNaverLandUrl === 'function') ? window._skManualNaverLandUrl(item) : '';
       if (manual) return manual;
-      const d = (item && item.data) || {};
-      const articleNo = String(d.매물번호 || d.articleNo || d.atclNo || '').trim();
+      const articleNo = (typeof window._skExtractNaverArticleNo === 'function') ? window._skExtractNaverArticleNo(item) : '';
       if (articleNo) return 'https://new.land.naver.com/offices?articleNo=' + encodeURIComponent(articleNo);
       const ll = (typeof window._skItemLatLngForLink === 'function') ? window._skItemLatLngForLink(item) : null;
       if (ll) return 'https://new.land.naver.com/offices?ms=' + ll.lat + ',' + ll.lng + ',17&a=SG:SMS:APTHGJ&e=RETAIL';
@@ -21625,23 +21652,67 @@ ${inputDesc.substring(0, 3000)}
         return {pl:changedPlRows.length, rooms:changedRooms.length};
       } catch(e) { console.warn('[url propagate copies]', e); return {pl:0, rooms:0, error:String(e&&e.message||e)}; }
     };
-    window._skGeocodeAddressForNaverLand = function(addr) {
-      const q = String(addr || '').trim();
-      if (!q) return Promise.resolve(null);
+    window._skBuildNaverLandGeoQueries = function(addr, item) {
+      const out = [];
+      const push = function(v) {
+        const q = String(v || '').replace(/\s+/g, ' ').trim();
+        if (q && q.length >= 3 && !out.includes(q)) out.push(q);
+      };
+      const d = (item && item.data) || {};
+      push(addr);
+      ['도로명주소','지번주소','주소','소재지','법정동주소','대지위치','건물명','빌딩명'].forEach(function(k){ push(d[k]); });
+      push(item && item.address);
+      push(item && item.addr);
+      // 상세 호수/층/괄호 설명이 섞이면 Kakao addressSearch가 실패하는 경우가 있어 순차적으로 정제 후보를 만든다.
+      out.slice().forEach(function(q){
+        push(q.replace(/\([^)]*\)/g, ' '));
+        push(q.replace(/[,，].*$/g, ''));
+        push(q.replace(/\s+\d{1,4}\s*호.*$/g, ''));
+        push(q.replace(/\s+\d{1,2}\s*층.*$/g, ''));
+        push(q.replace(/\s+[A-Za-z가-힣]?\d{1,4}동\s*\d{1,4}호.*$/g, ''));
+      });
+      return out.filter(function(q, idx, arr){ return q && arr.indexOf(q) === idx; }).slice(0, 8);
+    };
+    window._skGeocodeAddressForNaverLand = function(addr, item) {
+      const queries = (typeof window._skBuildNaverLandGeoQueries === 'function') ? window._skBuildNaverLandGeoQueries(addr, item) : [String(addr || '').trim()].filter(Boolean);
+      if (!queries.length) return Promise.resolve(null);
       return new Promise(function(resolve){
         try {
-          if (!(window.kakao && window.kakao.maps && window.kakao.maps.services && window.kakao.maps.services.Geocoder)) return resolve(null);
-          const gc = new window.kakao.maps.services.Geocoder();
-          gc.addressSearch(q, function(result, status){
+          const svc = window.kakao && window.kakao.maps && window.kakao.maps.services;
+          if (!svc || !svc.Geocoder) return resolve(null);
+          const gc = new svc.Geocoder();
+          const ps = svc.Places ? new svc.Places() : null;
+          let idx = 0;
+          function validFromResult(result) {
             try {
-              if (status === window.kakao.maps.services.Status.OK && result && result[0]) {
-                const lat = Number(result[0].y);
-                const lng = Number(result[0].x);
-                if (Number.isFinite(lat) && Number.isFinite(lng)) return resolve({ lat:lat, lng:lng });
+              if (result && result[0]) {
+                const row = result[0];
+                const lat = Number(row.y || row.lat || row.latitude);
+                const lng = Number(row.x || row.lng || row.longitude);
+                if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat:lat, lng:lng };
               }
             } catch(e) {}
-            resolve(null);
-          });
+            return null;
+          }
+          function tryAddress() {
+            if (idx >= queries.length) { idx = 0; return tryKeyword(); }
+            const q = queries[idx++];
+            gc.addressSearch(q, function(result, status){
+              const ll = (status === svc.Status.OK) ? validFromResult(result) : null;
+              if (ll) return resolve(ll);
+              tryAddress();
+            });
+          }
+          function tryKeyword() {
+            if (!ps || idx >= queries.length) return resolve(null);
+            const q = queries[idx++];
+            ps.keywordSearch(q, function(result, status){
+              const ll = (status === svc.Status.OK) ? validFromResult(result) : null;
+              if (ll) return resolve(ll);
+              tryKeyword();
+            });
+          }
+          tryAddress();
         } catch(e) { resolve(null); }
       });
     };
@@ -21665,7 +21736,7 @@ ${inputDesc.substring(0, 3000)}
       if (url) { window.open(url, '_blank'); return true; }
       // 경공매는 네이버 매물번호가 없고, 저장 좌표가 예전 물건에서 섞여 들어온 사례가 있었다.
       // 주소가 있으면 좌표 필드보다 주소 지오코딩을 우선해 현재 물건 위치로 연다.
-      const ll = await window._skGeocodeAddressForNaverLand(addr);
+      const ll = await window._skGeocodeAddressForNaverLand(addr, item);
       if (ll) {
         try {
           item.data = item.data || {};
@@ -21685,11 +21756,11 @@ ${inputDesc.substring(0, 3000)}
         window.open(url, '_blank');
         return true;
       }
-      // 좌표화 실패 시 잘못된 이전지역 네이버부동산을 열지 않는다. 주소는 복사하고 네이버지도 검색으로 보낸다.
+      // 좌표화 실패 시 잘못된 이전지역 네이버부동산이나 네이버지도 fallback을 열지 않는다.
+      // 주소는 복사만 하고, 사용자가 원하면 주소를 정리/수정할 수 있게 한다.
       try { if (addr && navigator.clipboard) await navigator.clipboard.writeText(addr); } catch(e) {}
       if (addr) {
-        if (typeof showToast === 'function') showToast('좌표를 찾지 못해 주소를 복사하고 네이버지도 검색으로 엽니다.', 'warn');
-        window.open('https://map.naver.com/v5/search/' + encodeURIComponent(addr), '_blank');
+        if (typeof showToast === 'function') showToast('네이버부동산 좌표를 찾지 못했습니다. 주소만 복사했습니다.', 'warn');
       } else if (typeof showToast === 'function') {
         showToast('주소/좌표가 없어 네이버부동산 위치를 열 수 없습니다.', 'warn');
       }
@@ -38454,24 +38525,17 @@ function _restoreMarkerToAnchorIfDrifted(ov){
       if (!root[viewName]) root[viewName] = { locked: false, top: 0, programmaticUntil: 0 };
       return root[viewName];
     }
-    function _plMarkPipelineUserScroll(host, viewName) {
-      if (!host) return;
-      const st = _plGetPipelineScrollState(viewName);
-      if (Date.now() <= Number(st.programmaticUntil || 0)) return;
-      st.locked = true;
-      st.top = host.scrollTop || 0;
-    }
     function _plEnsurePipelineScrollWatch(host, viewName) {
       if (!host) return;
       const boundKey = '__plScrollWatchBound_' + viewName;
       if (host[boundKey]) return;
       host[boundKey] = true;
       host.addEventListener('scroll', function() {
-        _plMarkPipelineUserScroll(host, viewName);
+        const st = _plGetPipelineScrollState(viewName);
+        if (Date.now() <= Number(st.programmaticUntil || 0)) return;
+        st.locked = true;
+        st.top = host.scrollTop || 0;
       }, { passive: true });
-      ['wheel','touchstart','pointerdown'].forEach(function(evtName){
-        host.addEventListener(evtName, function(){ _plMarkPipelineUserScroll(host, viewName); }, { passive: true });
-      });
     }
     function _plSetPipelineScrollTop(host, viewName, top) {
       if (!host) return;
@@ -38691,10 +38755,14 @@ function _restoreMarkerToAnchorIfDrifted(ov){
       });
       byDay.forEach(rows => rows.sort(_plCalendarEntryCompare));
 
+      const _todayForRangeRaw = new Date();
+      const _todayForRange = new Date(_todayForRangeRaw.getFullYear(), _todayForRangeRaw.getMonth(), _todayForRangeRaw.getDate());
       const firstDate = items[0].date;
       const lastDate = items[items.length - 1].date;
-      const firstMonth = new Date(firstDate.getFullYear(), firstDate.getMonth(), 1);
-      const lastMonthEnd = new Date(lastDate.getFullYear(), lastDate.getMonth() + 1, 0);
+      const rangeFirst = firstDate > _todayForRange ? _todayForRange : firstDate;
+      const rangeLast = lastDate < _todayForRange ? _todayForRange : lastDate;
+      const firstMonth = new Date(rangeFirst.getFullYear(), rangeFirst.getMonth(), 1);
+      const lastMonthEnd = new Date(rangeLast.getFullYear(), rangeLast.getMonth() + 1, 0);
       const startDate = new Date(firstMonth);
       startDate.setDate(startDate.getDate() - startDate.getDay());
       const endDate = new Date(lastMonthEnd);
@@ -38749,10 +38817,11 @@ function _restoreMarkerToAnchorIfDrifted(ov){
         const cellBorderStyle = inactive ? 'dashed' : 'solid';
         const monthStartBorder = isFirstOfMonth
           ? ('border-left:3px solid ' + monthAccent.border + ';border-top-color:' + monthAccent.border + ';border-bottom-color:' + monthAccent.border + ';border-right-color:' + baseBorderColor + ';box-shadow:inset 2px 0 0 ' + monthAccent.bg + ';')
-          : (isToday ? 'box-shadow:inset 0 0 0 1px rgba(96,165,250,.34);' : '');
-        cells.push(`<div data-pcal-day="${key}" data-pcal-month-label="${monthLabelText}" style="min-height:176px;border:1px ${cellBorderStyle} ${baseBorderColor};background:${isToday ? 'linear-gradient(180deg,rgba(96,165,250,.10),rgba(7,12,21,.04))' : cellBg};border-radius:8px;padding:6px;display:flex;flex-direction:column;gap:5px;position:relative;box-sizing:border-box;overflow:hidden;${monthStartBorder}">
-          ${more}
-          <div style="font-size:11px;font-weight:800;color:${inactive ? 'rgba(203,213,225,.38)' : '#d8e2ff'};padding-right:${hasScroll ? '38px' : '0'};height:16px;line-height:16px;flex:0 0 auto;"><span style="${monthLabelStyle}">${dayLabel}</span></div>
+          : (isToday ? 'box-shadow:inset 0 0 0 2px rgba(96,165,250,.72),0 0 0 1px rgba(147,197,253,.22),0 0 22px rgba(96,165,250,.18);' : '');
+        const todayBadge = isToday ? '<span style="position:absolute;left:7px;top:27px;z-index:3;font-size:9px;font-weight:900;letter-spacing:.2px;color:#e0f2fe;background:rgba(37,99,235,.72);border:1px solid rgba(147,197,253,.85);border-radius:999px;padding:1px 6px;line-height:1.2;box-shadow:0 0 12px rgba(96,165,250,.32);">TODAY</span>' : '';
+        cells.push(`<div data-pcal-day="${key}" data-pcal-month-label="${monthLabelText}" style="min-height:176px;border:${isToday ? '2px' : '1px'} ${cellBorderStyle} ${isToday ? 'rgba(147,197,253,.88)' : baseBorderColor};background:${isToday ? 'linear-gradient(180deg,rgba(37,99,235,.22),rgba(7,12,21,.08))' : cellBg};border-radius:8px;padding:6px;display:flex;flex-direction:column;gap:5px;position:relative;box-sizing:border-box;overflow:hidden;${monthStartBorder}">
+          ${more}${todayBadge}
+          <div style="font-size:11px;font-weight:800;color:${isToday ? '#e0f2fe' : (inactive ? 'rgba(203,213,225,.38)' : '#d8e2ff')};padding-right:${hasScroll ? '38px' : '0'};height:16px;line-height:16px;flex:0 0 auto;"><span style="${isToday ? 'display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:999px;background:rgba(59,130,246,.45);border:1px solid rgba(147,197,253,.85);color:#e0f2fe;font-weight:900;' : monthLabelStyle}">${dayLabel}</span></div>
           <div style="display:flex;flex-direction:column;gap:5px;overflow-y:${hasScroll ? 'auto' : 'visible'};overflow-x:hidden;padding-right:${hasScroll ? '3px' : '0'};height:${hasScroll ? '130px' : 'auto'};max-height:${hasScroll ? '130px' : 'none'};box-sizing:border-box;${hasScroll ? 'overscroll-behavior:contain;' : ''}">
             ${chips || '<div style="height:1px;flex:0 0 auto;"></div>'}
           </div>
@@ -38773,12 +38842,13 @@ function _restoreMarkerToAnchorIfDrifted(ov){
       }
       _plUpdateCalendarVisibleMonth(host);
 
-      // 달력 자동 위치 보정은 최초 1회만 수행한다.
-      // 이후에는 사용자가 스크롤해 둔 날짜 위치를 재렌더/동기화/필터 변경 후에도 보존한다.
+      // [v178] 달력은 최초 진입 때만 오늘 주로 자동 이동한다.
+      // 이후 사용자가 스크롤했거나 이미 한 번 자동 위치를 잡은 상태의 재렌더는 현재 위치를 보존한다.
+      // 기존 조건은 locked && autoPositioned일 때만 보존해서, 렌더 타이밍에 따라 사용자가 맞춰둔 날짜가 다시 움직였다.
       if (calScrollState.locked || host.__plCalendarAutoPositioned === true) {
         setTimeout(() => {
           try {
-            const keepTop = (typeof calScrollState.top === 'number') ? calScrollState.top : prevTop;
+            const keepTop = calScrollState.locked && typeof calScrollState.top === 'number' ? calScrollState.top : prevTop;
             _plSetPipelineScrollTop(host, 'calendar', keepTop);
             _plUpdateCalendarVisibleMonth(host);
           } catch (_) {}
@@ -48454,14 +48524,15 @@ window.addEventListener('DOMContentLoaded', () => {
         keys.forEach(function(k){
           (byKey[k] || []).forEach(function(o){
             PL_OVERRIDE_FIELDS.forEach(function(f){
-              // override row는 plNormalizeItem을 거치며 intent/biddate/site 등 기본 빈값이 생긴다.
-              // 따라서 실제 사용자가 편집한 필드(_skPlFieldEditedAt에 찍힌 필드)만 전파해야 한다.
-              // 이 가드가 없으면 임장(site) 체크만 해도 빈 intent/biddate가 같은 물건 row에 덮여 의향/입찰기일이 해제된다.
-              var os = plFieldStamp(o, f);
-              if (!os) return;
-              if (o[f] === undefined) return;
+              // [v178] override row는 plNormalizeItem()을 거치면서 intent/biddate/minprice 등
+              // 여러 필드가 기본 빈값으로 생긴다. 실제 사용자가 수정한 필드는
+              // _skPlFieldEditedAt에 stamp가 있는 필드뿐이므로, stamp 없는 기본값은 절대 전파하지 않는다.
+              // 이 조건이 없으면 임장(site)만 체크해도 의향/입찰기일/금액 등이 빈값으로 덮인다.
+              var hasExplicitField = !!(o._skPlFieldEditedAt && Object.prototype.hasOwnProperty.call(o._skPlFieldEditedAt, f));
+              if (!hasExplicitField || o[f] === undefined) return;
+              var os = plFieldStamp(o, f) || Number(o._skPlEditedAt || o.updatedAt || 0) || 0;
               var ns = plFieldStamp(next, f) || 0;
-              if (os >= ns) {
+              if (os && os >= ns) {
                 if (JSON.stringify(next[f]) !== JSON.stringify(o[f])) { next[f] = plCloneValue(o[f]); touched = true; }
                 next._skPlFieldEditedAt = Object.assign({}, next._skPlFieldEditedAt || {});
                 if ((Number(next._skPlFieldEditedAt[f] || 0) || 0) < os) { next._skPlFieldEditedAt[f] = os; touched = true; }
@@ -50655,6 +50726,18 @@ window.addEventListener('DOMContentLoaded', () => {
     }
     if (tab === 'pipeline') {
       pmMountPanel('pipeline');
+      // v179: 플래너를 처음 여는 순간은 항상 오늘 기준에서 시작한다.
+      // 이후 사용자가 보드/달력을 직접 스크롤한 위치는 기존 scroll watcher가 보존한다.
+      if (!window.__pmPipelineOpenedOnceV179) {
+        window.__pmPipelineOpenedOnceV179 = true;
+        window.__skSchedScrollState = { locked:false, left:0 };
+        window.__wrPipelineScrollState = window.__wrPipelineScrollState || {};
+        window.__wrPipelineScrollState.calendar = { locked:false, top:0, programmaticUntil:0 };
+        try {
+          var _plCalHost = document.getElementById('pipelineListBoard');
+          if (_plCalHost) _plCalHost.__plCalendarAutoPositioned = false;
+        } catch(e) {}
+      }
       if (typeof window.renderWatchBoard === 'function') window.renderWatchBoard();
       // 데스크톱에서만 드래그 리사이저 활성화
       if (typeof window.__pmInitPipelineResizer === 'function') {
@@ -51440,122 +51523,123 @@ window.addEventListener('DOMContentLoaded', () => {
 ═══════════════════════════════════════════════ */
 (function() {
   'use strict';
+  var WIDTH_KEY = 'pl_col_w';
   var _savedWidths = {};
-  try { _savedWidths = JSON.parse(localStorage.getItem('pl_col_w') || '{}'); } catch(e) {}
 
+  function loadWidths() {
+    try { _savedWidths = JSON.parse(localStorage.getItem(WIDTH_KEY) || '{}') || {}; }
+    catch(e) { _savedWidths = {}; }
+    return _savedWidths;
+  }
   function saveWidths() {
-    try { localStorage.setItem('pl_col_w', JSON.stringify(_savedWidths)); } catch(e) {}
+    try { localStorage.setItem(WIDTH_KEY, JSON.stringify(_savedWidths || {})); } catch(e) {}
+  }
+  function pxNum(v) {
+    var n = parseFloat(String(v || '').replace('px',''));
+    return isFinite(n) && n > 0 ? n : 0;
+  }
+  function currentColWidth(col, th) {
+    return pxNum(col && col.style && col.style.width) ||
+      (col && col.getBoundingClientRect ? col.getBoundingClientRect().width : 0) ||
+      (th && th.getBoundingClientRect ? th.getBoundingClientRect().width : 0) || 60;
+  }
+  function syncTableWidth(table) {
+    if (!table) return;
+    var cols = Array.from(table.querySelectorAll('col'));
+    var total = cols.reduce(function(sum, col) {
+      return sum + (pxNum(col.style && col.style.width) || (col.getBoundingClientRect ? col.getBoundingClientRect().width : 0) || 0);
+    }, 0);
+    var wrap = document.getElementById('pl-table-wrap');
+    var minBase = Math.max(1260, wrap ? (wrap.clientWidth || 0) : 0);
+    if (total > 0) {
+      var w = Math.max(minBase, Math.ceil(total));
+      table.style.width = w + 'px';
+      table.style.minWidth = w + 'px';
+      table.style.tableLayout = 'fixed';
+    }
   }
 
   window.plInitColResize = function() {
     var table = document.getElementById('pl-table');
     if (!table) return;
-    var cols = Array.prototype.slice.call(table.querySelectorAll('col'));
-    var ths  = Array.prototype.slice.call(table.querySelectorAll('#pl-thead-row th.pl-rz-th'));
+    loadWidths();
+    var cols = table.querySelectorAll('col');
+    var ths  = table.querySelectorAll('#pl-thead-row th.pl-rz-th');
+    if (!cols.length || !ths.length) return;
 
-    function getColForTh(th) {
-      var idx = Number(th && th.cellIndex);
-      return (idx >= 0 && cols[idx]) ? cols[idx] : null;
-    }
-    function readColWidth(col, th) {
-      var raw = (col && (col.style.width || col.getAttribute('width'))) || '';
-      var n = parseInt(raw, 10);
-      if (!isFinite(n) || n <= 0) n = Math.round((th && th.getBoundingClientRect ? th.getBoundingClientRect().width : 0) || 80);
-      return Math.max(40, n);
-    }
-    function applyTableWidth() {
-      var total = 0;
-      cols.forEach(function(col, idx){
-        var n = parseInt(col && col.style && col.style.width || '', 10);
-        if (!isFinite(n) || n <= 0) {
-          var th = table.tHead && table.tHead.rows[0] ? table.tHead.rows[0].cells[idx] : null;
-          n = readColWidth(col, th);
-        }
-        total += Math.max(34, n);
-      });
-      if (total > 0) {
-        table.style.minWidth = Math.max(1260, total) + 'px';
-        table.style.width = Math.max(1260, total) + 'px';
-      }
-    }
-
-    // 저장된 너비 복원: th.cellIndex 기준으로 실제 col과 매칭한다.
-    ths.forEach(function(th) {
-      var key = 'c' + th.cellIndex;
-      var col = getColForTh(th);
-      if (col && _savedWidths[key]) col.style.width = Math.max(40, parseInt(_savedWidths[key], 10) || 40) + 'px';
-    });
-    applyTableWidth();
-
-    // 각 th에 리사이즈 핸들 추가 (이미 있으면 건너뜀)
-    ths.forEach(function(th) {
-      if (th.querySelector('.pl-rz-handle')) return;
-      var handle = document.createElement('div');
-      handle.className = 'pl-rz-handle';
-      handle.title = '드래그하여 너비 조절';
+    ths.forEach(function(th, i) {
+      var key = 'c' + i;
+      var col = cols[i + 1]; // 첫 col은 체크박스
+      if (!col) return;
+      if (_savedWidths[key]) col.style.width = Math.max(36, parseInt(_savedWidths[key], 10) || 0) + 'px';
       th.style.position = 'relative';
-      th.appendChild(handle);
-
-      var startX = 0, startW = 0, col = null, pointerId = null;
-      function move(clientX) {
-        var w = Math.max(40, Math.round(startW + (clientX - startX)));
-        if (col) col.style.width = w + 'px';
-        th.style.width = w + 'px';
-        applyTableWidth();
+      th.style.overflow = 'visible';
+      th.setAttribute('data-pl-rz-idx', String(i));
+      var handle = th.querySelector('.pl-rz-handle');
+      if (!handle) {
+        handle = document.createElement('div');
+        handle.className = 'pl-rz-handle';
+        handle.title = '드래그하여 너비 조절';
+        th.appendChild(handle);
       }
-      function finish() {
-        handle.classList.remove('dragging');
-        document.body.style.cursor = '';
-        document.body.style.userSelect = '';
-        var key = 'c' + th.cellIndex;
-        _savedWidths[key] = col ? readColWidth(col, th) : startW;
-        saveWidths();
-        document.removeEventListener('mousemove', onMouseMove, true);
-        document.removeEventListener('mouseup', onMouseUp, true);
-        document.removeEventListener('touchmove', onTouchMove, true);
-        document.removeEventListener('touchend', onTouchEnd, true);
-        document.removeEventListener('touchcancel', onTouchEnd, true);
-      }
-      function begin(e, clientX) {
-        if (e) { e.preventDefault(); e.stopPropagation(); }
-        col = getColForTh(th);
-        startX = clientX;
-        startW = readColWidth(col, th);
-        pointerId = e && e.pointerId;
+      if (handle.__plResizeBound) return;
+      handle.__plResizeBound = true;
+      handle.addEventListener('pointerdown', function(e) {
+        if (e.button !== undefined && e.button !== 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+        var idx = parseInt(th.getAttribute('data-pl-rz-idx') || i, 10) || 0;
+        var targetCol = table.querySelectorAll('col')[idx + 1];
+        if (!targetCol) return;
+        var startX = e.clientX;
+        var startW = currentColWidth(targetCol, th);
+        var minW = idx === 2 || idx === 12 ? 42 : 48; // 의향/임장처럼 짧은 칸은 조금 더 좁게 허용
         handle.classList.add('dragging');
-        document.body.style.cursor = 'col-resize';
-        document.body.style.userSelect = 'none';
-      }
-      function onMouseMove(e) { if (e) { e.preventDefault(); e.stopPropagation(); move(e.clientX); } }
-      function onMouseUp(e) { if (e) { e.preventDefault(); e.stopPropagation(); } finish(); }
-      function onTouchMove(e) { var t = e && e.touches && e.touches[0]; if (t) { e.preventDefault(); e.stopPropagation(); move(t.clientX); } }
-      function onTouchEnd(e) { if (e) { e.preventDefault(); e.stopPropagation(); } finish(); }
-      handle.addEventListener('mousedown', function(e) {
-        begin(e, e.clientX);
-        document.addEventListener('mousemove', onMouseMove, true);
-        document.addEventListener('mouseup', onMouseUp, true);
-      });
-      handle.addEventListener('touchstart', function(e) {
-        var t = e && e.touches && e.touches[0];
-        if (!t) return;
-        begin(e, t.clientX);
-        document.addEventListener('touchmove', onTouchMove, { capture:true, passive:false });
-        document.addEventListener('touchend', onTouchEnd, true);
-        document.addEventListener('touchcancel', onTouchEnd, true);
-      }, { passive:false });
+        document.documentElement.classList.add('pl-col-resizing');
+        try { handle.setPointerCapture && handle.setPointerCapture(e.pointerId); } catch(_) {}
+
+        function onMove(ev) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          var nextW = Math.max(minW, Math.round(startW + (ev.clientX - startX)));
+          targetCol.style.width = nextW + 'px';
+          _savedWidths['c' + idx] = nextW;
+          syncTableWidth(table);
+        }
+        function onUp(ev) {
+          try { ev && ev.preventDefault && ev.preventDefault(); } catch(_) {}
+          handle.classList.remove('dragging');
+          document.documentElement.classList.remove('pl-col-resizing');
+          saveWidths();
+          document.removeEventListener('pointermove', onMove, true);
+          document.removeEventListener('pointerup', onUp, true);
+          document.removeEventListener('pointercancel', onUp, true);
+          try { handle.releasePointerCapture && handle.releasePointerCapture(e.pointerId); } catch(_) {}
+        }
+        document.addEventListener('pointermove', onMove, true);
+        document.addEventListener('pointerup', onUp, true);
+        document.addEventListener('pointercancel', onUp, true);
+      }, true);
     });
+    syncTableWidth(table);
   };
 
-  // renderPropertyList 후 자동 초기화
   var _origRPL = window.renderPropertyList;
-  if (_origRPL) {
-    window.renderPropertyList = function() {
-      _origRPL.apply(this, arguments);
+  if (_origRPL && !_origRPL.__plResizeWrapped) {
+    var wrapped = function() {
+      var ret = _origRPL.apply(this, arguments);
       setTimeout(window.plInitColResize, 0);
+      return ret;
     };
+    wrapped.__plResizeWrapped = true;
+    window.renderPropertyList = wrapped;
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function(){ setTimeout(window.plInitColResize, 0); });
+  } else {
+    setTimeout(window.plInitColResize, 0);
   }
 })();
-
 
 /* ---- sk pipeline/workroom patch ---- */
 (function () {
@@ -52271,12 +52355,21 @@ window.addEventListener('DOMContentLoaded', () => {
       last.items.push(entry);
     });
 
+    var todayDate = new Date();
+    todayDate = new Date(todayDate.getFullYear(), todayDate.getMonth(), todayDate.getDate());
+    var todayKey = ymdKey(todayDate);
+    if (!groups.some(function(g){ return g.key === todayKey; })) {
+      groups.push({ key: todayKey, date: todayDate, items: [], isTodayAnchor: true });
+      groups.sort(function(a, b){ return a.date - b.date; });
+    } else {
+      groups.forEach(function(g){ if (g.key === todayKey) g.isTodayAnchor = false; });
+    }
+
     var groupMap = {};
     groups.forEach(function (g) { groupMap[g.key] = g; });
     window.__skSchedGroups = groupMap;
     window.__skOpenSchedModal = openScheduleModal;
 
-    var todayKey = ymdKey(new Date());
     var focusIdx = groups.findIndex(function (g) { return g.key >= todayKey; });
     if (focusIdx < 0) focusIdx = groups.length - 1;
     if (focusIdx < 0) focusIdx = 0;
@@ -52299,12 +52392,13 @@ window.addEventListener('DOMContentLoaded', () => {
         var dday = calcDday(group.date);
         var tone = _plGetDdayTone(dday);
         var color = tone.color;
-        var ddayLabel = dday < 0 ? '종료' : tone.label;
-        var isPast = dday < 0;
-        var cardBg = isPast ? 'rgba(11,13,19,.72)' : 'rgba(14,17,24,.92)';
-        var cardBd = isPast ? 'rgba(255,255,255,.05)' : 'rgba(255,255,255,.1)';
+        var isTodayGroup = group.key === todayKey;
+        var ddayLabel = isTodayGroup ? 'TODAY' : (dday < 0 ? '종료' : tone.label);
+        var isPast = dday < 0 && !isTodayGroup;
+        var cardBg = isTodayGroup ? 'linear-gradient(180deg,rgba(37,99,235,.22),rgba(14,17,24,.92))' : (isPast ? 'rgba(11,13,19,.72)' : 'rgba(14,17,24,.92)');
+        var cardBd = isTodayGroup ? 'rgba(147,197,253,.90)' : (isPast ? 'rgba(255,255,255,.05)' : 'rgba(255,255,255,.1)');
         var cardOp = isPast ? '0.72' : '1';
-        var lines = group.items.slice(0, 4).map(function (entry) {
+        var lines = group.items.length ? group.items.slice(0, 4).map(function (entry) {
           var it = entry.item || {};
           var d = it.data || {};
           var title = escHtml(it.title || d['소재지'] || it.id || '');
@@ -52316,14 +52410,14 @@ window.addEventListener('DOMContentLoaded', () => {
             + '<div style="font-size:11px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + title + '</div>'
             + '<div style="font-size:10px;color:var(--mu);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + addr + '</div>'
             + '</button>';
-        }).join('');
+        }).join('') : '<div style="padding:7px 8px;border:1px dashed rgba(147,197,253,.45);border-radius:8px;color:#bfdbfe;background:rgba(59,130,246,.10);font-size:11px;font-weight:700;text-align:center;">오늘 기준점</div>';
         var more = group.items.length > 4
           ? '<button type="button" class="sk-more-btn" onclick="event.stopPropagation();window.__skOpenSchedModal && window.__skOpenSchedModal(\'' + group.key + '\')">+' + (group.items.length - 4) + '건 더보기</button>'
           : '';
-        return '<div data-sched-key="' + group.key + '" style="min-width:220px;max-width:220px;background:' + cardBg + ';border:1px solid ' + cardBd + ';border-radius:10px;padding:10px;opacity:' + cardOp + ';">'
+        return '<div data-sched-key="' + group.key + '" style="min-width:220px;max-width:220px;background:' + cardBg + ';border:' + (isTodayGroup ? '2px' : '1px') + ' solid ' + cardBd + ';border-radius:10px;padding:10px;opacity:' + cardOp + ';box-shadow:' + (isTodayGroup ? '0 0 0 1px rgba(147,197,253,.16),0 0 20px rgba(96,165,250,.18)' : 'none') + ';">'
           + '<div onclick="window.__skOpenSchedModal && window.__skOpenSchedModal(\'' + group.key + '\')" style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:8px;cursor:pointer;">'
-          + '<div><div style="font-size:13px;font-weight:700;color:#e8edf5;">' + fmtShort(group.date) + '</div><div style="font-size:10px;color:var(--mu);margin-top:2px;">' + group.key + ' · ' + group.items.length + '건</div></div>'
-          + '<span style="flex-shrink:0;font-size:10px;font-weight:700;color:' + color + ';background:' + color + '18;border:1px solid ' + color + '33;padding:2px 7px;border-radius:999px;">' + ddayLabel + '</span>'
+          + '<div><div style="font-size:13px;font-weight:800;color:' + (isTodayGroup ? '#e0f2fe' : '#e8edf5') + ';">' + fmtShort(group.date) + '</div><div style="font-size:10px;color:' + (isTodayGroup ? '#bfdbfe' : 'var(--mu)') + ';margin-top:2px;">' + group.key + ' · ' + group.items.length + '건</div></div>'
+          + '<span style="flex-shrink:0;font-size:10px;font-weight:900;color:' + (isTodayGroup ? '#e0f2fe' : color) + ';background:' + (isTodayGroup ? 'rgba(37,99,235,.55)' : color + '18') + ';border:1px solid ' + (isTodayGroup ? 'rgba(147,197,253,.90)' : color + '33') + ';padding:2px 7px;border-radius:999px;">' + ddayLabel + '</span>'
           + '</div>'
           + '<div style="display:flex;flex-direction:column;gap:6px;">' + lines + more + '</div>'
           + '</div>';
@@ -54173,7 +54267,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260515-pl-overrides-resize-calendar-fix';
+  var BUILD='20260515-workroom-v179-naver-land-planner-today-fix';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
@@ -57104,7 +57198,7 @@ window.addEventListener('DOMContentLoaded', () => {
 */
 (function(){
   'use strict';
-  var BUILD='20260515-pl-overrides-resize-calendar-fix';
+  var BUILD='20260515-workroom-v179-naver-land-planner-today-fix';
   try{ window.__SK_BUILD=BUILD; console.log('[build] common.js '+BUILD); }catch(e){}
 
   // ─────────────────────────────────────────────────────
@@ -57852,7 +57946,7 @@ window.addEventListener('DOMContentLoaded', () => {
 (function(){
   if(window.__skV166DetailScheduleInstalled) return;
   window.__skV166DetailScheduleInstalled=true;
-  var BUILD='20260515-pl-overrides-resize-calendar-fix';
+  var BUILD='20260515-workroom-v179-naver-land-planner-today-fix';
   try{ window.__SK_BUILD=BUILD; }catch(e){}
   function clean(v){ return String(v==null?'':v).trim(); }
   function ymd(v){
@@ -58018,7 +58112,7 @@ window.addEventListener('DOMContentLoaded', () => {
 (function(){
   if(window.__skV168ScheduleCanonicalInstalled) return;
   window.__skV168ScheduleCanonicalInstalled=true;
-  var BUILD='20260515-pl-overrides-resize-calendar-fix';
+  var BUILD='20260515-workroom-v179-naver-land-planner-today-fix';
   try{ window.__SK_BUILD=BUILD; }catch(e){}
 
   function clean(v){ return String(v==null?'':v).trim(); }

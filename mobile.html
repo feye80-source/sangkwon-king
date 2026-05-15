@@ -3477,7 +3477,7 @@ input, textarea, select {
 <script>if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
 
 <!-- 공통 로직 -->
-<script src="common-sync-clean.js?v=20260513-v177-pl-auto-pull-override-fix" onerror="this.onerror=null;this.src='common-sync-clean.js?v=20260513-v177-pl-auto-pull-override-fix';"></script>
+<script src="common-sync-clean.js?v=20260515-v179-naver-planner-today-fix" onerror="this.onerror=null;this.src='common-sync-clean.js?v=20260515-v179-naver-planner-today-fix';"></script>
 
 <!-- ════════════════════════════════════════════════════════
      mobile.js — 모바일 전용 초기화 및 UI 제어
@@ -5148,8 +5148,13 @@ input, textarea, select {
     var isNaverSrc = (srcKey === '네이버부동산' || srcKey === '네이버' || srcKey === 'naver');
     var detailUrl = String(d['상세URL'] || '').trim();
     if (isNaverSrc && detailUrl && /new\.land\.naver\.com/i.test(detailUrl)) return detailUrl;
-    var articleNo = String(d['매물번호'] || '').trim();
-    if (isNaverSrc && /^\d{6,14}$/.test(articleNo)) {
+    var articleNo = String(d['매물번호'] || d.articleNo || d.articleNumber || d.atclNo || d.atcl_no || d.article_no || '').trim();
+    if (!articleNo) {
+      var srcText = [detailUrl, d['원본URL'], d['네이버부동산URL'], d.naverLandUrl, item && item.url, item && item.originalUrl].join(' ');
+      var m = String(srcText || '').match(/(?:articleNo=|articleNumber=|atclNo=|\/articles\/)(\d{6,14})/i);
+      if (m && m[1]) articleNo = m[1];
+    }
+    if (/^\d{6,14}$/.test(articleNo)) {
       return 'https://new.land.naver.com/offices?articleNo=' + encodeURIComponent(articleNo);
     }
     var lat = parseFloat(d.lat || (item && item.lat));

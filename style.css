@@ -10900,6 +10900,7 @@ select.intent-no-arrow {
   cursor: col-resize;
   z-index: 20;
   touch-action: none;
+  user-select: none;
 }
 .pl-rz-handle::after {
   content: '';
@@ -10913,6 +10914,11 @@ select.intent-no-arrow {
 .pl-rz-handle:hover::after,
 .pl-rz-handle.dragging::after {
   background: rgba(79,142,255,.7);
+}
+html.pl-col-resizing,
+html.pl-col-resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
 }
 
 /* 기일지남 행 — 더 어두운 음영 */
