@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260513-workroom-v177-pl-auto-pull-override-fix';
+    window.__SK_BUILD = '20260515-pl-overrides-resize-calendar-fix';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -38454,17 +38454,24 @@ function _restoreMarkerToAnchorIfDrifted(ov){
       if (!root[viewName]) root[viewName] = { locked: false, top: 0, programmaticUntil: 0 };
       return root[viewName];
     }
+    function _plMarkPipelineUserScroll(host, viewName) {
+      if (!host) return;
+      const st = _plGetPipelineScrollState(viewName);
+      if (Date.now() <= Number(st.programmaticUntil || 0)) return;
+      st.locked = true;
+      st.top = host.scrollTop || 0;
+    }
     function _plEnsurePipelineScrollWatch(host, viewName) {
       if (!host) return;
       const boundKey = '__plScrollWatchBound_' + viewName;
       if (host[boundKey]) return;
       host[boundKey] = true;
       host.addEventListener('scroll', function() {
-        const st = _plGetPipelineScrollState(viewName);
-        if (Date.now() <= Number(st.programmaticUntil || 0)) return;
-        st.locked = true;
-        st.top = host.scrollTop || 0;
+        _plMarkPipelineUserScroll(host, viewName);
       }, { passive: true });
+      ['wheel','touchstart','pointerdown'].forEach(function(evtName){
+        host.addEventListener(evtName, function(){ _plMarkPipelineUserScroll(host, viewName); }, { passive: true });
+      });
     }
     function _plSetPipelineScrollTop(host, viewName, top) {
       if (!host) return;
@@ -38766,9 +38773,9 @@ function _restoreMarkerToAnchorIfDrifted(ov){
       }
       _plUpdateCalendarVisibleMonth(host);
 
-      // 사용자가 이미 달력에서 직접 스크롤한 뒤의 재렌더는 현재 위치를 보존한다.
-      // 단, 달력 최초 진입 때는 저장된/이전 scroll 상태 때문에 오늘 주 자동 위치가 막히지 않도록 1회 자동 보정을 허용한다.
-      if (calScrollState.locked && host.__plCalendarAutoPositioned === true) {
+      // 달력 자동 위치 보정은 최초 1회만 수행한다.
+      // 이후에는 사용자가 스크롤해 둔 날짜 위치를 재렌더/동기화/필터 변경 후에도 보존한다.
+      if (calScrollState.locked || host.__plCalendarAutoPositioned === true) {
         setTimeout(() => {
           try {
             const keepTop = (typeof calScrollState.top === 'number') ? calScrollState.top : prevTop;
@@ -48447,10 +48454,14 @@ window.addEventListener('DOMContentLoaded', () => {
         keys.forEach(function(k){
           (byKey[k] || []).forEach(function(o){
             PL_OVERRIDE_FIELDS.forEach(function(f){
+              // override row는 plNormalizeItem을 거치며 intent/biddate/site 등 기본 빈값이 생긴다.
+              // 따라서 실제 사용자가 편집한 필드(_skPlFieldEditedAt에 찍힌 필드)만 전파해야 한다.
+              // 이 가드가 없으면 임장(site) 체크만 해도 빈 intent/biddate가 같은 물건 row에 덮여 의향/입찰기일이 해제된다.
+              var os = plFieldStamp(o, f);
+              if (!os) return;
               if (o[f] === undefined) return;
-              var os = plFieldStamp(o, f) || Number(o._skPlEditedAt || o.updatedAt || 0) || 0;
               var ns = plFieldStamp(next, f) || 0;
-              if (os && os >= ns) {
+              if (os >= ns) {
                 if (JSON.stringify(next[f]) !== JSON.stringify(o[f])) { next[f] = plCloneValue(o[f]); touched = true; }
                 next._skPlFieldEditedAt = Object.assign({}, next._skPlFieldEditedAt || {});
                 if ((Number(next._skPlFieldEditedAt[f] || 0) || 0) < os) { next._skPlFieldEditedAt[f] = os; touched = true; }
@@ -51439,20 +51450,45 @@ window.addEventListener('DOMContentLoaded', () => {
   window.plInitColResize = function() {
     var table = document.getElementById('pl-table');
     if (!table) return;
-    var cols = table.querySelectorAll('col');
-    var ths  = table.querySelectorAll('#pl-thead-row th.pl-rz-th');
+    var cols = Array.prototype.slice.call(table.querySelectorAll('col'));
+    var ths  = Array.prototype.slice.call(table.querySelectorAll('#pl-thead-row th.pl-rz-th'));
 
-    // 저장된 너비 복원
-    ths.forEach(function(th, i) {
-      var key = 'c' + i;
-      if (_savedWidths[key]) {
-        var col = cols[i + 1]; // 첫 col은 체크박스
-        if (col) col.style.width = _savedWidths[key] + 'px';
+    function getColForTh(th) {
+      var idx = Number(th && th.cellIndex);
+      return (idx >= 0 && cols[idx]) ? cols[idx] : null;
+    }
+    function readColWidth(col, th) {
+      var raw = (col && (col.style.width || col.getAttribute('width'))) || '';
+      var n = parseInt(raw, 10);
+      if (!isFinite(n) || n <= 0) n = Math.round((th && th.getBoundingClientRect ? th.getBoundingClientRect().width : 0) || 80);
+      return Math.max(40, n);
+    }
+    function applyTableWidth() {
+      var total = 0;
+      cols.forEach(function(col, idx){
+        var n = parseInt(col && col.style && col.style.width || '', 10);
+        if (!isFinite(n) || n <= 0) {
+          var th = table.tHead && table.tHead.rows[0] ? table.tHead.rows[0].cells[idx] : null;
+          n = readColWidth(col, th);
+        }
+        total += Math.max(34, n);
+      });
+      if (total > 0) {
+        table.style.minWidth = Math.max(1260, total) + 'px';
+        table.style.width = Math.max(1260, total) + 'px';
       }
+    }
+
+    // 저장된 너비 복원: th.cellIndex 기준으로 실제 col과 매칭한다.
+    ths.forEach(function(th) {
+      var key = 'c' + th.cellIndex;
+      var col = getColForTh(th);
+      if (col && _savedWidths[key]) col.style.width = Math.max(40, parseInt(_savedWidths[key], 10) || 40) + 'px';
     });
+    applyTableWidth();
 
     // 각 th에 리사이즈 핸들 추가 (이미 있으면 건너뜀)
-    ths.forEach(function(th, i) {
+    ths.forEach(function(th) {
       if (th.querySelector('.pl-rz-handle')) return;
       var handle = document.createElement('div');
       handle.className = 'pl-rz-handle';
@@ -51460,33 +51496,53 @@ window.addEventListener('DOMContentLoaded', () => {
       th.style.position = 'relative';
       th.appendChild(handle);
 
-      var startX, startW, col;
-      handle.addEventListener('mousedown', function(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        col = cols[i + 1];
-        startX = e.clientX;
-        startW = th.offsetWidth;
+      var startX = 0, startW = 0, col = null, pointerId = null;
+      function move(clientX) {
+        var w = Math.max(40, Math.round(startW + (clientX - startX)));
+        if (col) col.style.width = w + 'px';
+        th.style.width = w + 'px';
+        applyTableWidth();
+      }
+      function finish() {
+        handle.classList.remove('dragging');
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        var key = 'c' + th.cellIndex;
+        _savedWidths[key] = col ? readColWidth(col, th) : startW;
+        saveWidths();
+        document.removeEventListener('mousemove', onMouseMove, true);
+        document.removeEventListener('mouseup', onMouseUp, true);
+        document.removeEventListener('touchmove', onTouchMove, true);
+        document.removeEventListener('touchend', onTouchEnd, true);
+        document.removeEventListener('touchcancel', onTouchEnd, true);
+      }
+      function begin(e, clientX) {
+        if (e) { e.preventDefault(); e.stopPropagation(); }
+        col = getColForTh(th);
+        startX = clientX;
+        startW = readColWidth(col, th);
+        pointerId = e && e.pointerId;
         handle.classList.add('dragging');
         document.body.style.cursor = 'col-resize';
         document.body.style.userSelect = 'none';
-
-        function onMove(e) {
-          var w = Math.max(40, startW + (e.clientX - startX));
-          if (col) col.style.width = w + 'px';
-        }
-        function onUp() {
-          handle.classList.remove('dragging');
-          document.body.style.cursor = '';
-          document.body.style.userSelect = '';
-          _savedWidths['c' + i] = col ? parseInt(col.style.width) : startW;
-          saveWidths();
-          document.removeEventListener('mousemove', onMove);
-          document.removeEventListener('mouseup', onUp);
-        }
-        document.addEventListener('mousemove', onMove);
-        document.addEventListener('mouseup', onUp);
+      }
+      function onMouseMove(e) { if (e) { e.preventDefault(); e.stopPropagation(); move(e.clientX); } }
+      function onMouseUp(e) { if (e) { e.preventDefault(); e.stopPropagation(); } finish(); }
+      function onTouchMove(e) { var t = e && e.touches && e.touches[0]; if (t) { e.preventDefault(); e.stopPropagation(); move(t.clientX); } }
+      function onTouchEnd(e) { if (e) { e.preventDefault(); e.stopPropagation(); } finish(); }
+      handle.addEventListener('mousedown', function(e) {
+        begin(e, e.clientX);
+        document.addEventListener('mousemove', onMouseMove, true);
+        document.addEventListener('mouseup', onMouseUp, true);
       });
+      handle.addEventListener('touchstart', function(e) {
+        var t = e && e.touches && e.touches[0];
+        if (!t) return;
+        begin(e, t.clientX);
+        document.addEventListener('touchmove', onTouchMove, { capture:true, passive:false });
+        document.addEventListener('touchend', onTouchEnd, true);
+        document.addEventListener('touchcancel', onTouchEnd, true);
+      }, { passive:false });
     });
   };
 
@@ -54117,7 +54173,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260513-workroom-v177-pl-auto-pull-override-fix';
+  var BUILD='20260515-pl-overrides-resize-calendar-fix';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
@@ -57048,7 +57104,7 @@ window.addEventListener('DOMContentLoaded', () => {
 */
 (function(){
   'use strict';
-  var BUILD='20260513-workroom-v177-pl-auto-pull-override-fix';
+  var BUILD='20260515-pl-overrides-resize-calendar-fix';
   try{ window.__SK_BUILD=BUILD; console.log('[build] common.js '+BUILD); }catch(e){}
 
   // ─────────────────────────────────────────────────────
@@ -57796,7 +57852,7 @@ window.addEventListener('DOMContentLoaded', () => {
 (function(){
   if(window.__skV166DetailScheduleInstalled) return;
   window.__skV166DetailScheduleInstalled=true;
-  var BUILD='20260513-workroom-v177-pl-auto-pull-override-fix';
+  var BUILD='20260515-pl-overrides-resize-calendar-fix';
   try{ window.__SK_BUILD=BUILD; }catch(e){}
   function clean(v){ return String(v==null?'':v).trim(); }
   function ymd(v){
@@ -57962,7 +58018,7 @@ window.addEventListener('DOMContentLoaded', () => {
 (function(){
   if(window.__skV168ScheduleCanonicalInstalled) return;
   window.__skV168ScheduleCanonicalInstalled=true;
-  var BUILD='20260513-workroom-v177-pl-auto-pull-override-fix';
+  var BUILD='20260515-pl-overrides-resize-calendar-fix';
   try{ window.__SK_BUILD=BUILD; }catch(e){}
 
   function clean(v){ return String(v==null?'':v).trim(); }

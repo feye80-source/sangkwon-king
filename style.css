@@ -10894,11 +10894,12 @@ select.intent-no-arrow {
 /* 리사이즈 핸들 */
 .pl-rz-handle {
   position: absolute;
-  top: 0; right: 0;
-  width: 6px;
+  top: 0; right: -4px;
+  width: 12px;
   height: 100%;
   cursor: col-resize;
-  z-index: 1;
+  z-index: 20;
+  touch-action: none;
 }
 .pl-rz-handle::after {
   content: '';
