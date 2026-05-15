@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260515-workroom-v179-naver-land-planner-today-fix';
+    window.__SK_BUILD = '20260516-workroom-v180-naver-land-popup-debug-fix';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -1988,6 +1988,63 @@
       // 키가 아직 없는 초기 상태도 빈 목록으로 취급
       return _sbPruneTombstones(Array.isArray(out) ? out : []);
     };
+    // v180: _plRefreshFromCloud is defined before the property-list module is evaluated.
+    // Keep this merge helper in the same early scope so cloud refresh never throws
+    // ReferenceError and user-owned PL fields (intent/biddate/site/etc.) are not lost.
+    function plMergeRowsUserOwned(baseRows, localRows) {
+      var fields = ['intent','type','status','feature','appraisal','minprice','round','biddate','bidDate','saleDate','estimate','site','bidFocus','bidders','memo','roomId','linkedSavedId','result'];
+      function empty(v) {
+        if (v === null || v === undefined) return true;
+        if (typeof v === 'string') return String(v).trim() === '';
+        if (typeof v === 'object') {
+          try { return JSON.stringify(v || {}) === '{}' || JSON.stringify(v || {}) === 'null'; } catch(e) { return false; }
+        }
+        return false;
+      }
+      function clone(v) {
+        if (v && typeof v === 'object') {
+          try { return JSON.parse(JSON.stringify(v)); } catch(e) { return Object.assign({}, v); }
+        }
+        return v;
+      }
+      var localById = {};
+      (Array.isArray(localRows) ? localRows : []).forEach(function(r){ if (r && r.id) localById[String(r.id)] = r; });
+      return (Array.isArray(baseRows) ? baseRows : []).map(function(row){
+        if (!row || !row.id) return row;
+        var local = localById[String(row.id)];
+        if (!local) return row;
+        var out = Object.assign({}, row);
+        var outMap = Object.assign({}, out._skPlFieldEditedAt || {});
+        var localMap = local._skPlFieldEditedAt || {};
+        var preferCloud = !!(window && window.__skPlPreferCloudNow);
+        fields.forEach(function(field){
+          if (local[field] === undefined || local[field] === null) return;
+          var localStamp = Number(localMap[field] || 0) || 0;
+          var remoteStamp = Number(outMap[field] || 0) || 0;
+          var remoteEmpty = empty(out[field]);
+          var localEmpty = empty(local[field]);
+          if (preferCloud) {
+            if (remoteEmpty && !localEmpty) {
+              out[field] = clone(local[field]);
+              outMap[field] = Math.max(localStamp, remoteStamp, Number(local._skPlEditedAt || 0) || 0);
+            }
+            return;
+          }
+          if (localStamp && localStamp > remoteStamp) {
+            out[field] = clone(local[field]);
+            outMap[field] = Math.max(localStamp, remoteStamp);
+          } else if (remoteEmpty && !localEmpty) {
+            out[field] = clone(local[field]);
+            outMap[field] = Math.max(localStamp, remoteStamp, Number(local._skPlEditedAt || 0) || 0);
+          }
+        });
+        var le = Number(local._skPlEditedAt || 0) || 0;
+        var re = Number(out._skPlEditedAt || 0) || 0;
+        if (le || re) out._skPlEditedAt = Math.max(le, re);
+        if (Object.keys(outMap).length) out._skPlFieldEditedAt = outMap;
+        return out;
+      });
+    }
     window._plRefreshFromCloud = async function(opts) {
       const options = opts || {};
       let forceCloud = (options.force === true);
@@ -20614,6 +20671,7 @@ ${inputDesc.substring(0, 3000)}
       if (item.isCSVFile) return;
 
       popupId = String(item.id);
+      try { window.popupId = popupId; window.__skCurrentPopupId = popupId; } catch(e) {}
       popupEditMode = false;
 
       // ── AI분석 지연 로딩: 캐시에 없으면 DB 단건 조회 후 병합 ──
@@ -21667,9 +21725,15 @@ ${inputDesc.substring(0, 3000)}
       out.slice().forEach(function(q){
         push(q.replace(/\([^)]*\)/g, ' '));
         push(q.replace(/[,，].*$/g, ''));
+        push(q.replace(/\s+외\s*\d+\s*필지.*$/g, ''));
+        push(q.replace(/외\s*\d+\s*필지/g, ''));
+        push(q.replace(/\s+제?\d{1,4}\s*호.*$/g, ''));
         push(q.replace(/\s+\d{1,4}\s*호.*$/g, ''));
+        push(q.replace(/\s+제?\d{1,2}\s*층.*$/g, ''));
         push(q.replace(/\s+\d{1,2}\s*층.*$/g, ''));
+        push(q.replace(/\s+[A-Za-z가-힣]?\d{1,4}동\s*제?\d{1,4}호.*$/g, ''));
         push(q.replace(/\s+[A-Za-z가-힣]?\d{1,4}동\s*\d{1,4}호.*$/g, ''));
+        push(q.replace(/\s+위\s+.*$/g, ''));
       });
       return out.filter(function(q, idx, arr){ return q && arr.indexOf(q) === idx; }).slice(0, 8);
     };
@@ -21765,6 +21829,30 @@ ${inputDesc.substring(0, 3000)}
         showToast('주소/좌표가 없어 네이버부동산 위치를 열 수 없습니다.', 'warn');
       }
       return false;
+    };
+
+    window.skDebugNaverLandLink = function(id) {
+      const sid = String(id || window.popupId || window.__skCurrentPopupId || '').trim();
+      let item = null;
+      try { item = (typeof getSv === 'function' ? (getSv() || []) : []).find(function(s){ return String(s && s.id || '') === sid; }) || null; } catch(e) {}
+      if (!item && typeof window.plLoad === 'function') {
+        try { item = (window.plLoad() || []).find(function(s){ return String(s && s.id || '') === sid || String(s && s.linkedSavedId || '') === sid; }) || null; } catch(e) {}
+      }
+      const d = (item && item.data) || {};
+      const addr = item && (typeof window._skItemAddressForLink === 'function' ? window._skItemAddressForLink(item) : String(d.소재지 || d.주소 || item.address || '').trim());
+      const queries = item && (typeof window._skBuildNaverLandGeoQueries === 'function' ? window._skBuildNaverLandGeoQueries(addr, item) : []);
+      return {
+        popupId: sid || null,
+        found: !!item,
+        id: item && item.id,
+        title: item && item.title,
+        source: item && item.source,
+        usedAddress: addr || '',
+        queryCandidates: queries || [],
+        latlng: item && (window._skItemLatLngForLink ? window._skItemLatLngForLink(item) : null),
+        naverUrl: item && (window._skNaverLandUrl ? window._skNaverLandUrl(item) : ''),
+        fields: { 소재지:d.소재지, 주소:d.주소, 도로명주소:d.도로명주소, 지번주소:d.지번주소, itemAddress:item && item.address, itemLat:item && item.lat, itemLng:item && item.lng, dataLat:d.lat, dataLng:d.lng }
+      };
     };
 
     window.skVerifyUrlNaverUnsoldFix = function(id) {
@@ -22074,6 +22162,7 @@ ${inputDesc.substring(0, 3000)}
       const _ovB=document.getElementById('overlay');if(_ovB)_ovB.classList.remove('on');
       const _ppB=document.getElementById('popup');if(_ppB)_ppB.classList.remove('on');
       popupEditMode = false; popupId = null;
+      try { window.popupId = null; window.__skCurrentPopupId = null; } catch(e) {}
       const pbtn = document.getElementById('popupScrollTopBtn');
       if (pbtn) pbtn.classList.remove('visible');
       renderSaved();
@@ -54267,7 +54356,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260515-workroom-v179-naver-land-planner-today-fix';
+  var BUILD='20260516-workroom-v180-naver-land-popup-debug-fix';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
@@ -57198,7 +57287,7 @@ window.addEventListener('DOMContentLoaded', () => {
 */
 (function(){
   'use strict';
-  var BUILD='20260515-workroom-v179-naver-land-planner-today-fix';
+  var BUILD='20260516-workroom-v180-naver-land-popup-debug-fix';
   try{ window.__SK_BUILD=BUILD; console.log('[build] common.js '+BUILD); }catch(e){}
 
   // ─────────────────────────────────────────────────────
@@ -57946,7 +58035,7 @@ window.addEventListener('DOMContentLoaded', () => {
 (function(){
   if(window.__skV166DetailScheduleInstalled) return;
   window.__skV166DetailScheduleInstalled=true;
-  var BUILD='20260515-workroom-v179-naver-land-planner-today-fix';
+  var BUILD='20260516-workroom-v180-naver-land-popup-debug-fix';
   try{ window.__SK_BUILD=BUILD; }catch(e){}
   function clean(v){ return String(v==null?'':v).trim(); }
   function ymd(v){
@@ -58112,7 +58201,7 @@ window.addEventListener('DOMContentLoaded', () => {
 (function(){
   if(window.__skV168ScheduleCanonicalInstalled) return;
   window.__skV168ScheduleCanonicalInstalled=true;
-  var BUILD='20260515-workroom-v179-naver-land-planner-today-fix';
+  var BUILD='20260516-workroom-v180-naver-land-popup-debug-fix';
   try{ window.__SK_BUILD=BUILD; }catch(e){}
 
   function clean(v){ return String(v==null?'':v).trim(); }
