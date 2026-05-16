@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260516-workroom-v184-pl-refresh-dom-guard';
+    window.__SK_BUILD = '20260516-workroom-v185-pl-refresh-no-autorepaint-click-fix';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -50621,7 +50621,7 @@ window.addEventListener('DOMContentLoaded', () => {
         if (!rowName) rowName = it.addr || '';
         var casenumCell;
         if (linkedId) {
-          casenumCell = '<span onclick="event.stopPropagation();plOpenLinkedCard(\''+plEscHtml(linkedId)+'\')" style="color:#8ab8ff;font-family:monospace;font-size:11px;cursor:pointer;white-space:nowrap;" title="저장목록 카드 열기">'+(it.casenum||'—')+' 📑</span>';
+          casenumCell = '<button type="button" onpointerdown="event.preventDefault();event.stopPropagation();plOpenLinkedCard(\''+plEscHtml(linkedId)+'\')" onclick="event.preventDefault();event.stopPropagation();plOpenLinkedCard(\''+plEscHtml(linkedId)+'\')" style="padding:0;border:0;background:transparent;color:#8ab8ff;font-family:monospace;font-size:11px;cursor:pointer;white-space:nowrap;" title="저장목록 카드 열기">'+(it.casenum||'—')+' 📑</button>';
         } else if (it.casenum) {
           casenumCell = '<span style="font-family:monospace;font-size:11px;color:var(--fg2);white-space:nowrap;">'+(it.casenum)+'</span>'
             + '<div onclick="event.stopPropagation();plLinkByCasenum(\''+it.id+'\')" style="font-size:9px;color:#60a5fa;cursor:pointer;">🔗 연결</div>';
@@ -50972,22 +50972,31 @@ window.addEventListener('DOMContentLoaded', () => {
 
   // 경매번호 → 저장목록 카드 열기
   window.plOpenLinkedCard = function(linkedId) {
+    linkedId = String(linkedId || '').trim();
     if (!linkedId) return;
     try {
+      var t = Date.now();
+      if (window.__plLastOpenLinkedId === linkedId && (t - Number(window.__plLastOpenLinkedAt || 0)) < 450) return;
+      window.__plLastOpenLinkedId = linkedId;
+      window.__plLastOpenLinkedAt = t;
+    } catch(e) {}
+    try {
       var sv = typeof getSv === 'function' ? getSv() : [];
-      var item = sv.find(function(s){ return String(s.id) === String(linkedId); });
+      var item = sv.find(function(s){ return String(s && s.id) === String(linkedId); });
       if (item) {
-        // 물건리스트 탭에서 바로 상세 팝업 오픈 (탭 이동 없음)
+        // 물건리스트 탭에서 즉시 상세 팝업 오픈.
+        // v185: click 이벤트가 재렌더 후 유실되는 문제를 피하려고 버튼의 pointerdown에서 먼저 호출한다.
         if (typeof window.openPopup === 'function') {
           window.openPopup(linkedId);
           return;
         }
-        // 안전 폴백: 구버전/초기화 미완료 시에만 저장목록으로 이동
         if (typeof window.showPage === 'function') window.showPage(1);
-        setTimeout(function(){ if (typeof window.openPopup === 'function') window.openPopup(linkedId); }, 120);
+        setTimeout(function(){ if (typeof window.openPopup === 'function') window.openPopup(linkedId); }, 80);
         return;
       }
-    } catch(e) {}
+    } catch(e) {
+      console.warn('[plOpenLinkedCard]', e && (e.message || e));
+    }
     if (typeof showToast === 'function') showToast('저장목록에서 물건을 찾을 수 없습니다', 'warn');
   };
 
@@ -54410,7 +54419,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260516-workroom-v184-pl-refresh-dom-guard';
+  var BUILD='20260516-workroom-v185-pl-refresh-no-autorepaint-click-fix';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
@@ -55362,15 +55371,16 @@ window.addEventListener('DOMContentLoaded', () => {
         return;
       }
       if(table==='pl_items'){
-        // v184: pl_items pull은 현재 서브탭의 실제 DOM만 갱신한다.
-        // 물건리스트 탭에서 플래너 DOM이 없거나 v182 로딩 마스크가 패널을 비운 상태에서
-        // renderWatchBoard()가 wCnt*.textContent에 접근하면서 무한 경고가 발생했다.
-        if(onPropertyManager && activeTab === 'list' && _skDomReadyForRender('pl_list') && typeof window.renderPropertyList==='function') {
-          _skSafeRender(window.renderPropertyList, 'pl_items.renderPropertyList');
-        }
-        if(onPropertyManager && activeTab === 'pipeline' && _skDomReadyForRender('pipeline') && typeof window.renderWatchBoard==='function') {
-          _skSafeRender(window.renderWatchBoard, 'pl_items.renderWatchBoard');
-        }
+        // v185: Cloud/CF pl_items pull은 캐시만 갱신한다. 화면 자동 재렌더 금지.
+        // 이유: pull 완료 콜백이 탭 전환/마운트 중간에 renderPropertyList/renderWatchBoard를 호출하면
+        // 존재하지 않는 DOM에 textContent를 세팅하면서 경고가 무한 반복됐다.
+        // 화면 갱신은 pmShowTab cloud-first 완료 후 또는 사용자의 직접 편집 직후에만 명시적으로 수행한다.
+        try {
+          window.__skLastPlItemsRefreshAt = now();
+          window.__skLastPlItemsRefreshCount = rows.length;
+          window.__skLastPlItemsRefreshTab = activeTab;
+        } catch(e) {}
+        return;
       }
     }catch(e){ warn('refresh failed', table, e && (e.message||e)); }
   }
@@ -57369,7 +57379,7 @@ window.addEventListener('DOMContentLoaded', () => {
 */
 (function(){
   'use strict';
-  var BUILD='20260516-workroom-v184-pl-refresh-dom-guard';
+  var BUILD='20260516-workroom-v185-pl-refresh-no-autorepaint-click-fix';
   try{ window.__SK_BUILD=BUILD; console.log('[build] common.js '+BUILD); }catch(e){}
 
   // ─────────────────────────────────────────────────────
@@ -58117,7 +58127,7 @@ window.addEventListener('DOMContentLoaded', () => {
 (function(){
   if(window.__skV166DetailScheduleInstalled) return;
   window.__skV166DetailScheduleInstalled=true;
-  var BUILD='20260516-workroom-v184-pl-refresh-dom-guard';
+  var BUILD='20260516-workroom-v185-pl-refresh-no-autorepaint-click-fix';
   try{ window.__SK_BUILD=BUILD; }catch(e){}
   function clean(v){ return String(v==null?'':v).trim(); }
   function ymd(v){
@@ -58283,7 +58293,7 @@ window.addEventListener('DOMContentLoaded', () => {
 (function(){
   if(window.__skV168ScheduleCanonicalInstalled) return;
   window.__skV168ScheduleCanonicalInstalled=true;
-  var BUILD='20260516-workroom-v184-pl-refresh-dom-guard';
+  var BUILD='20260516-workroom-v185-pl-refresh-no-autorepaint-click-fix';
   try{ window.__SK_BUILD=BUILD; }catch(e){}
 
   function clean(v){ return String(v==null?'':v).trim(); }
@@ -58541,7 +58551,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
 /* === v182: cloud-first authority mode === */
 (function(){
-  try{ window.__SK_BUILD='20260516-workroom-v184-pl-refresh-dom-guard'; console.log('[build] common.js 20260516-workroom-v184-pl-refresh-dom-guard'); }catch(e){}
+  try{ window.__SK_BUILD='20260516-workroom-v185-pl-refresh-no-autorepaint-click-fix'; console.log('[build] common.js 20260516-workroom-v185-pl-refresh-no-autorepaint-click-fix'); }catch(e){}
   window.skDebugAuthorityLoad = function(){
     return {
       build: window.__SK_BUILD,
@@ -58573,3 +58583,58 @@ window.addEventListener('DOMContentLoaded', () => {
     };
   };
 })();
+
+/* === v185: PL refresh/render hard guard ===
+   Cloud pull must never repaint unmounted tabs. It only updates cache.
+   Visible rendering is explicit: tab open, user edit, or direct debug call. */
+(function(){
+  if (window.__skV185PlRenderGuardInstalled) return;
+  window.__skV185PlRenderGuardInstalled = true;
+  function isPage4(){
+    try { return (typeof currentPage === 'undefined') || currentPage === 4 || (document.getElementById('page4') && document.getElementById('page4').style.display !== 'none'); }
+    catch(e) { return true; }
+  }
+  function wrapList(){
+    if (typeof window.renderPropertyList !== 'function' || window.renderPropertyList.__skV185Safe) return;
+    var orig = window.renderPropertyList;
+    window.renderPropertyList = function(){
+      if (!isPage4()) return;
+      if (String(window.__pmActiveTab || 'list') !== 'list') return;
+      if (!document.getElementById('pl-tbody')) return;
+      try { return orig.apply(this, arguments); }
+      catch(e) { console.warn('[SK-v185] renderPropertyList blocked', e && (e.message || e)); return; }
+    };
+    window.renderPropertyList.__skV185Safe = true;
+  }
+  function wrapPipeline(){
+    if (typeof window.renderWatchBoard !== 'function' || window.renderWatchBoard.__skV185Safe) return;
+    var orig = window.renderWatchBoard;
+    window.renderWatchBoard = function(){
+      if (!isPage4()) return;
+      if (String(window.__pmActiveTab || '') !== 'pipeline') return;
+      if (!document.getElementById('pipelineKanbanBoard') || !document.getElementById('wCnt0')) return;
+      try { return orig.apply(this, arguments); }
+      catch(e) { console.warn('[SK-v185] renderWatchBoard blocked', e && (e.message || e)); return; }
+    };
+    window.renderWatchBoard.__skV185Safe = true;
+  }
+  function install(){ wrapList(); wrapPipeline(); }
+  install();
+  setTimeout(install, 0);
+  setTimeout(install, 500);
+  window.skDebugPlRefreshGuard = function(){
+    return {
+      build: window.__SK_BUILD,
+      activeTab: window.__pmActiveTab || '',
+      hasPlTbody: !!document.getElementById('pl-tbody'),
+      hasPipeline: !!document.getElementById('pipelineKanbanBoard'),
+      hasWCnt0: !!document.getElementById('wCnt0'),
+      lastPlItemsRefreshAt: window.__skLastPlItemsRefreshAt || 0,
+      lastPlItemsRefreshTab: window.__skLastPlItemsRefreshTab || '',
+      lastPlItemsRefreshCount: window.__skLastPlItemsRefreshCount || 0,
+      listGuard: !!(window.renderPropertyList && window.renderPropertyList.__skV185Safe),
+      pipelineGuard: !!(window.renderWatchBoard && window.renderWatchBoard.__skV185Safe)
+    };
+  };
+})();
+
