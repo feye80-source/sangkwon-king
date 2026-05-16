@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260516-workroom-v180-naver-land-popup-debug-fix';
+    window.__SK_BUILD = '20260516-workroom-v182-cloud-first-no-cache-mask';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -50125,25 +50125,10 @@ window.addEventListener('DOMContentLoaded', () => {
     el.innerHTML = chips.join('');
   }
   function plEnsureListCloudRefresh() {
-    if (window.__plAutoCloudPull !== true) return;
-    if (window.__plInlineEditKey) return;
-    if (window.__plListRefreshRunning) return;
-    if (typeof window._plRefreshFromCloud !== 'function') return;
-    var lastMutation = Number(window.__plLastLocalStatusMutationAt || 0);
-    if (lastMutation && (Date.now() - lastMutation) < 45000) return;
-    var now = Date.now();
-    var last = Number(window.__plListRefreshAt || 0);
-    if (last && (now - last) < 12000) return;
-    window.__plListRefreshAt = now;
-    window.__plListRefreshRunning = true;
-    Promise.resolve(window._plRefreshFromCloud({ render: false, force: true, sync: false }))
-      .then(function() {
-        if (typeof currentPage !== 'undefined' && currentPage === 4 && window.__pmActiveTab === 'list' && typeof renderPropertyList === 'function') {
-          renderPropertyList();
-        }
-      })
-      .catch(function(e){ console.warn('[plEnsureListCloudRefresh]', e); })
-      .finally(function(){ window.__plListRefreshRunning = false; });
+    // v182: 렌더 함수 안에서는 클라우드 pull을 시작하지 않는다.
+    // 화면은 탭 진입 시 cloud-first로 1회 수렴한 뒤 렌더한다.
+    // 이 함수에서 pull을 걸면 '로컬 먼저 표시 → 몇 초 후 서버값으로 재정렬'이 재발한다.
+    return;
   }
 
 
@@ -50781,42 +50766,66 @@ window.addEventListener('DOMContentLoaded', () => {
       el.style.borderBottomColor = (tab === key ? 'var(--accent,#4f8eff)' : 'transparent');
       el.style.color = (tab === key ? 'var(--fg)' : 'var(--fg2)');
     });
-      if (tab === 'list') {
-        pmRestoreInsightPanels();
-        if (window.__plAutoCloudPull === true && window._sbRunEntryRefresh && typeof window._plRefreshFromCloud === 'function') {
-        window._sbRunEntryRefresh('properties', window._plRefreshFromCloud, { render: true, label: 'properties', force: true })
-          .then(function(payload) {
-            if (!payload && typeof renderPropertyList === 'function') renderPropertyList();
+
+    function showAuthoritativeLoading(host, msg) {
+      if (!host) return;
+      host.innerHTML = '<div style="height:100%;min-height:260px;display:flex;align-items:center;justify-content:center;color:var(--mu);font-size:13px;">'
+        + '<div style="padding:18px 22px;border:1px solid var(--b1);border-radius:14px;background:rgba(17,19,24,.85);box-shadow:0 8px 24px rgba(0,0,0,.18);text-align:center;">'
+        + '<div style="font-weight:800;color:var(--tx);margin-bottom:6px;">☁️ 서버 기준으로 불러오는 중</div>'
+        + '<div>' + (msg || '최신 데이터를 확인한 뒤 표시합니다.') + '</div>'
+        + '</div></div>';
+    }
+
+    if (tab === 'list') {
+      pmRestoreInsightPanels();
+      var listSeq = (window.__pmListAuthSeq = (window.__pmListAuthSeq || 0) + 1);
+      if (window.__plAutoCloudPull === true && typeof window._plRefreshFromCloud === 'function') {
+        showAuthoritativeLoading(list, '물건리스트를 서버값으로 먼저 맞춘 뒤 표시합니다.');
+        Promise.resolve(window._plRefreshFromCloud({ render:false, force:true, sync:true }))
+          .then(function(){
+            if (window.__pmListAuthSeq !== listSeq || window.__pmActiveTab !== 'list') return;
+            if (typeof renderPropertyList === 'function') renderPropertyList();
+          })
+          .catch(function(e){
+            console.warn('[pmShowTab list cloud-first]', e);
+            if (typeof showToast === 'function') showToast('서버 불러오기 실패 · 로컬 캐시를 임시 표시합니다.', 'warn');
+            if (window.__pmListAuthSeq !== listSeq || window.__pmActiveTab !== 'list') return;
+            if (typeof renderPropertyList === 'function') renderPropertyList();
           });
-      } else {
+      } else if (typeof renderPropertyList === 'function') {
         renderPropertyList();
       }
     }
+
     if (tab === 'work') {
       pmMountPanel('work');
       try { if (!window.__wr2Inited && typeof window.wr2Init === 'function') { window.__wr2Inited = true; window.wr2Init(); } } catch(e) {}
       if (window.wr2State) window.wr2State.activeView = 'overview';
       const pendingRoomId = String(window.__pmPendingRoomId || '').trim();
-      if (pendingRoomId && window.wr2State) {
-        window.wr2State.activeRoomId = pendingRoomId;
-      }
-      if (window.__plAutoCloudPull === true && window._sbRunEntryRefresh && typeof window._wrRefreshFromCloud === 'function') {
-        window._sbRunEntryRefresh('workrooms', window._wrRefreshFromCloud, { render: true, label: 'workrooms', force: true })
-          .then(function(payload) {
-            if (window.wr2State && pendingRoomId) {
-              window.wr2State.activeRoomId = pendingRoomId;
-            }
-            if (!payload && typeof window.wr2Render === 'function') window.wr2Render();
+      if (pendingRoomId && window.wr2State) window.wr2State.activeRoomId = pendingRoomId;
+      var workSeq = (window.__pmWorkAuthSeq = (window.__pmWorkAuthSeq || 0) + 1);
+      if (window.__plAutoCloudPull === true && typeof window._wrRefreshFromCloud === 'function') {
+        showAuthoritativeLoading(work, '작업룸을 서버값으로 먼저 맞춘 뒤 표시합니다.');
+        Promise.resolve(window._wrRefreshFromCloud({ render:false, force:true }))
+          .then(function(){
+            if (window.__pmWorkAuthSeq !== workSeq || window.__pmActiveTab !== 'work') return;
+            if (window.wr2State && pendingRoomId) window.wr2State.activeRoomId = pendingRoomId;
+            if (typeof window.wr2Render === 'function') window.wr2Render();
+          })
+          .catch(function(e){
+            console.warn('[pmShowTab work cloud-first]', e);
+            if (typeof showToast === 'function') showToast('작업룸 서버 불러오기 실패 · 로컬 캐시를 임시 표시합니다.', 'warn');
+            if (window.__pmWorkAuthSeq !== workSeq || window.__pmActiveTab !== 'work') return;
+            if (typeof window.wr2Render === 'function') window.wr2Render();
           });
       } else if (typeof window.wr2Render === 'function') {
         window.wr2Render();
       }
       window.__pmPendingRoomId = '';
     }
+
     if (tab === 'pipeline') {
       pmMountPanel('pipeline');
-      // v179: 플래너를 처음 여는 순간은 항상 오늘 기준에서 시작한다.
-      // 이후 사용자가 보드/달력을 직접 스크롤한 위치는 기존 scroll watcher가 보존한다.
       if (!window.__pmPipelineOpenedOnceV179) {
         window.__pmPipelineOpenedOnceV179 = true;
         window.__skSchedScrollState = { locked:false, left:0 };
@@ -50827,10 +50836,25 @@ window.addEventListener('DOMContentLoaded', () => {
           if (_plCalHost) _plCalHost.__plCalendarAutoPositioned = false;
         } catch(e) {}
       }
-      if (typeof window.renderWatchBoard === 'function') window.renderWatchBoard();
-      // 데스크톱에서만 드래그 리사이저 활성화
-      if (typeof window.__pmInitPipelineResizer === 'function') {
-        setTimeout(function(){ window.__pmInitPipelineResizer(); }, 30);
+      var pipeSeq = (window.__pmPipeAuthSeq = (window.__pmPipeAuthSeq || 0) + 1);
+      if (window.__plAutoCloudPull === true && typeof window._wrRefreshFromCloud === 'function') {
+        showAuthoritativeLoading(pipe, '플래너를 서버값으로 먼저 맞춘 뒤 표시합니다.');
+        Promise.resolve(window._wrRefreshFromCloud({ render:false, force:true }))
+          .then(function(){
+            if (window.__pmPipeAuthSeq !== pipeSeq || window.__pmActiveTab !== 'pipeline') return;
+            if (typeof window.renderWatchBoard === 'function') window.renderWatchBoard();
+            if (typeof window.__pmInitPipelineResizer === 'function') setTimeout(function(){ window.__pmInitPipelineResizer(); }, 30);
+          })
+          .catch(function(e){
+            console.warn('[pmShowTab pipeline cloud-first]', e);
+            if (typeof showToast === 'function') showToast('플래너 서버 불러오기 실패 · 로컬 캐시를 임시 표시합니다.', 'warn');
+            if (window.__pmPipeAuthSeq !== pipeSeq || window.__pmActiveTab !== 'pipeline') return;
+            if (typeof window.renderWatchBoard === 'function') window.renderWatchBoard();
+            if (typeof window.__pmInitPipelineResizer === 'function') setTimeout(function(){ window.__pmInitPipelineResizer(); }, 30);
+          });
+      } else {
+        if (typeof window.renderWatchBoard === 'function') window.renderWatchBoard();
+        if (typeof window.__pmInitPipelineResizer === 'function') setTimeout(function(){ window.__pmInitPipelineResizer(); }, 30);
       }
     }
   };
@@ -51576,12 +51600,12 @@ window.addEventListener('DOMContentLoaded', () => {
     } else if (typeof window.skCloudOpenPullOnce === 'function') {
       job = window.skCloudOpenPullOnce(why);
     } else if (typeof window._plRefreshFromCloud === 'function') {
-      job = window._plRefreshFromCloud({ render:true, force:true, sync:false });
+      job = window._plRefreshFromCloud({ render:false, force:true, sync:false });
     } else {
       job = Promise.resolve({ ok:false, reason:'no-pull-api' });
     }
     window.__skPlPullInFlight = Promise.resolve(job).then(function(r){
-      try { if (typeof renderPropertyList === 'function' && (!document.hidden)) renderPropertyList(); } catch(e) {}
+      try { if (typeof renderPropertyList === 'function' && (!document.hidden) && window.__pmActiveTab === 'list') renderPropertyList(); } catch(e) {}
       return r;
     }).finally(function(){ window.__skPlPullInFlight = null; });
     return window.__skPlPullInFlight;
@@ -54356,7 +54380,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260516-workroom-v180-naver-land-popup-debug-fix';
+  var BUILD='20260516-workroom-v182-cloud-first-no-cache-mask';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
@@ -57287,7 +57311,7 @@ window.addEventListener('DOMContentLoaded', () => {
 */
 (function(){
   'use strict';
-  var BUILD='20260516-workroom-v180-naver-land-popup-debug-fix';
+  var BUILD='20260516-workroom-v182-cloud-first-no-cache-mask';
   try{ window.__SK_BUILD=BUILD; console.log('[build] common.js '+BUILD); }catch(e){}
 
   // ─────────────────────────────────────────────────────
@@ -57778,7 +57802,7 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   };
 
-  function afterCloud(){ setTimeout(function(){ try { window._skReconcileUnsoldCanonical({render:true}); } catch(e){ console.warn('[v160 reconcile]', e); } }, 0); }
+  function afterCloud(){ setTimeout(function(){ try { window._skReconcileUnsoldCanonical({render:false}); } catch(e){ console.warn('[v160 reconcile]', e); } }, 0); }
   ['_svRefreshFromCloud','_plRefreshFromCloud','_wrRefreshFromCloud','skCloudPullAll','skCloudManualSync','skCloudHardConverge'].forEach(function(name){
     try {
       var orig=window[name];
@@ -58035,7 +58059,7 @@ window.addEventListener('DOMContentLoaded', () => {
 (function(){
   if(window.__skV166DetailScheduleInstalled) return;
   window.__skV166DetailScheduleInstalled=true;
-  var BUILD='20260516-workroom-v180-naver-land-popup-debug-fix';
+  var BUILD='20260516-workroom-v182-cloud-first-no-cache-mask';
   try{ window.__SK_BUILD=BUILD; }catch(e){}
   function clean(v){ return String(v==null?'':v).trim(); }
   function ymd(v){
@@ -58201,7 +58225,7 @@ window.addEventListener('DOMContentLoaded', () => {
 (function(){
   if(window.__skV168ScheduleCanonicalInstalled) return;
   window.__skV168ScheduleCanonicalInstalled=true;
-  var BUILD='20260516-workroom-v180-naver-land-popup-debug-fix';
+  var BUILD='20260516-workroom-v182-cloud-first-no-cache-mask';
   try{ window.__SK_BUILD=BUILD; }catch(e){}
 
   function clean(v){ return String(v==null?'':v).trim(); }
@@ -58428,7 +58452,7 @@ window.addEventListener('DOMContentLoaded', () => {
       if(typeof orig!=='function' || orig.__skV168ScheduleWrapped) return;
       var w=function(){
         var ret=orig.apply(this,arguments);
-        var after=function(v){ setTimeout(function(){ try{ window._skReconcileScheduleCanonical({push:false, render:true}); }catch(e){} },0); return v; };
+        var after=function(v){ setTimeout(function(){ try{ window._skReconcileScheduleCanonical({push:false, render:false}); }catch(e){} },0); return v; };
         if(ret && typeof ret.then==='function') return ret.then(after);
         return after(ret);
       };
@@ -58447,9 +58471,29 @@ window.addEventListener('DOMContentLoaded', () => {
     try{ console.table(out.saved); console.table(out.pl); console.table(out.rooms); }catch(e){}
     return out;
   };
-  setTimeout(function(){ try{ window._skReconcileScheduleCanonical({push:false, render:true}); }catch(e){} },400);
-  setTimeout(function(){ try{ window._skReconcileScheduleCanonical({push:false, render:true}); }catch(e){} },2200);
+  setTimeout(function(){ try{ window._skReconcileScheduleCanonical({push:false, render:false}); }catch(e){} },400);
+  setTimeout(function(){ try{ window._skReconcileScheduleCanonical({push:false, render:false}); }catch(e){} },2200);
   // v169: 기존 서버/로컬에 남은 stale pl_items/rooms 기일은 안정화 후 한 번만 서버에도 수렴시킨다.
-  setTimeout(function(){ try{ window._skReconcileScheduleCanonical({push:true, render:true}); }catch(e){} },4200);
+  setTimeout(function(){ try{ window._skReconcileScheduleCanonical({push:false, render:false}); }catch(e){} },4200);
   try{ console.log('[SK-v169] installed',{build:BUILD}); }catch(e){}
+})();
+
+
+
+
+/* === v182: cloud-first authority mode === */
+(function(){
+  try{ window.__SK_BUILD='20260516-workroom-v182-cloud-first-no-cache-mask'; console.log('[build] common.js 20260516-workroom-v182-cloud-first-no-cache-mask'); }catch(e){}
+  window.skDebugAuthorityLoad = function(){
+    return {
+      build: window.__SK_BUILD,
+      activePage: (typeof currentPage !== 'undefined' ? currentPage : null),
+      activeTab: window.__pmActiveTab || '',
+      listSeq: window.__pmListAuthSeq || 0,
+      workSeq: window.__pmWorkAuthSeq || 0,
+      pipeSeq: window.__pmPipeAuthSeq || 0,
+      autoCloudPull: window.__plAutoCloudPull,
+      plPullInFlight: !!window.__skPlPullInFlight
+    };
+  };
 })();
