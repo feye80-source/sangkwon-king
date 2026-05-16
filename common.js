@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260516-workroom-v185-pl-refresh-no-autorepaint-click-fix';
+    window.__SK_BUILD = '20260516-workroom-v187-pl-field-isolation-hardening';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -2007,6 +2007,9 @@
         }
         return v;
       }
+      function hasStamp(map, field) {
+        return !!(map && Object.prototype.hasOwnProperty.call(map, field) && (Number(map[field] || 0) || 0));
+      }
       var localById = {};
       (Array.isArray(localRows) ? localRows : []).forEach(function(r){ if (r && r.id) localById[String(r.id)] = r; });
       return (Array.isArray(baseRows) ? baseRows : []).map(function(row){
@@ -2021,21 +2024,24 @@
           if (local[field] === undefined || local[field] === null) return;
           var localStamp = Number(localMap[field] || 0) || 0;
           var remoteStamp = Number(outMap[field] || 0) || 0;
+          var remoteHasExplicitStamp = hasStamp(outMap, field);
           var remoteEmpty = empty(out[field]);
           var localEmpty = empty(local[field]);
+          // v187: row 전체 updatedAt이 최신이어도, 해당 field stamp가 없으면 그 field는 권위값이 아니다.
+          // 의향만 바꾼 full-row push가 매각기일/임장/금액을 같이 덮는 경로를 차단한다.
           if (preferCloud) {
-            if (remoteEmpty && !localEmpty) {
+            if ((remoteEmpty || !remoteHasExplicitStamp) && !localEmpty) {
               out[field] = clone(local[field]);
-              outMap[field] = Math.max(localStamp, remoteStamp, Number(local._skPlEditedAt || 0) || 0);
+              if (localStamp) outMap[field] = Math.max(localStamp, remoteStamp);
             }
             return;
           }
           if (localStamp && localStamp > remoteStamp) {
             out[field] = clone(local[field]);
             outMap[field] = Math.max(localStamp, remoteStamp);
-          } else if (remoteEmpty && !localEmpty) {
+          } else if ((remoteEmpty || !remoteHasExplicitStamp) && !localEmpty) {
             out[field] = clone(local[field]);
-            outMap[field] = Math.max(localStamp, remoteStamp, Number(local._skPlEditedAt || 0) || 0);
+            if (localStamp) outMap[field] = Math.max(localStamp, remoteStamp);
           }
         });
         var le = Number(local._skPlEditedAt || 0) || 0;
@@ -48228,7 +48234,8 @@ window.addEventListener('DOMContentLoaded', () => {
         var mem = window._idbCache[PL_KEY] || [];
         var normalizedMem = (Array.isArray(mem) ? mem : []).map(plNormalizeItem);
         try { normalizedMem = plApplyPlOverridesAndRepair(normalizedMem, { persist:false }).rows; } catch(e) {}
-        try { localStorage.setItem(PL_KEY, JSON.stringify(normalizedMem)); } catch (e) {}
+        // v187: plLoad는 읽기 전용이어야 한다. 렌더 때마다 IDB/localStorage에 다시 쓰면
+        // 물건리스트 진입/필터/정렬만으로도 저장 큐가 흔들리고 체감 지연이 생긴다.
         return normalizedMem;
       }
       // 메모리 캐시가 아직 준비되지 않은 초기 시점에만 legacy를 폴백으로 사용한다.
@@ -48470,29 +48477,32 @@ window.addEventListener('DOMContentLoaded', () => {
     var outMap = Object.assign({}, out._skPlFieldEditedAt || {});
     var localMap = localRow._skPlFieldEditedAt || {};
     var preferCloud = !!(window && window.__skPlPreferCloudNow);
+    function hasExplicitStamp(map, field) {
+      return !!(map && Object.prototype.hasOwnProperty.call(map, field) && (Number(map[field] || 0) || 0));
+    }
     PL_USER_OWNED_FIELDS.forEach(function(field){
       var hasLocal = localRow[field] !== undefined && localRow[field] !== null;
       if (!hasLocal) return;
       var localStamp = Number(localMap[field] || 0) || 0;
       var remoteStamp = Number(outMap[field] || 0) || 0;
+      var remoteHasExplicitStamp = hasExplicitStamp(outMap, field);
       var remoteEmpty = plIsEmptyValue(out[field]);
       var localEmpty = plIsEmptyValue(localRow[field]);
-      // v173: force cloud pull 중에는 서버값을 우선한다.
-      // 기존 로컬 캐시가 비어 있는 서버 보조 필드를 채우는 경우만 허용한다.
+      // v187: full-row push의 updatedAt은 row 단위 신호일 뿐, 모든 field의 수정 신호가 아니다.
+      // 서버 row가 최신이어도 해당 field stamp가 없으면 의향/임장 편집이 매각기일/금액 등을 덮지 못한다.
       if (preferCloud) {
-        if (remoteEmpty && !localEmpty) {
+        if ((remoteEmpty || !remoteHasExplicitStamp) && !localEmpty) {
           out[field] = plCloneValue(localRow[field]);
-          outMap[field] = Math.max(localStamp, remoteStamp, Number(localRow._skPlEditedAt || 0) || 0);
+          if (localStamp) outMap[field] = Math.max(localStamp, remoteStamp);
         }
         return;
       }
-      // 명시 편집값은 빈값도 보존한다. stamp가 없는 과거 데이터는 '로컬 값이 있고 서버가 빈 경우'만 보존한다.
       if (localStamp && localStamp > remoteStamp) {
         out[field] = plCloneValue(localRow[field]);
         outMap[field] = Math.max(localStamp, remoteStamp);
-      } else if (remoteEmpty && !localEmpty) {
+      } else if ((remoteEmpty || !remoteHasExplicitStamp) && !localEmpty) {
         out[field] = plCloneValue(localRow[field]);
-        outMap[field] = Math.max(localStamp, remoteStamp, Number(localRow._skPlEditedAt || 0) || 0);
+        if (localStamp) outMap[field] = Math.max(localStamp, remoteStamp);
       }
     });
     var localEdited = Number(localRow._skPlEditedAt || 0) || 0;
@@ -48668,10 +48678,18 @@ window.addEventListener('DOMContentLoaded', () => {
       groupRows.forEach(function(r){ maxPlEdited = Math.max(maxPlEdited, Number(r._skPlEditedAt || 0) || 0); });
       PL_DUPLICATE_PROPAGATE_FIELDS.forEach(function(field){
         var bestSet = false, bestVal, bestScore = 0, bestStamp = 0;
+        var groupHasExplicitFieldStamp = groupRows.some(function(r){ return !!plFieldStamp(r, field); });
         groupRows.forEach(function(r){
           var val = r[field];
           var stamp = plFieldStamp(r, field);
-          var score = stamp || (!plIsEmptyValue(val) ? (Number(r._skPlEditedAt || r.updatedAt || 0) || 0) : 0);
+          var fieldMap = (r && r._skPlFieldEditedAt && typeof r._skPlFieldEditedAt === 'object') ? r._skPlFieldEditedAt : null;
+          var rowHasAnyFieldStamp = !!(fieldMap && Object.keys(fieldMap).length);
+          var score = stamp;
+          // v187: 특정 field stamp가 없는 modern row는, 다른 field 편집으로 올라간 _skPlEditedAt/updatedAt을
+          // 이 field의 최신성 근거로 쓰지 않는다. legacy row(필드맵 자체가 없음)만 보조 fallback 허용.
+          if (!score && !groupHasExplicitFieldStamp && !rowHasAnyFieldStamp && !plIsEmptyValue(val)) {
+            score = Number(r.updatedAt || r.timestamp || 0) || 0;
+          }
           if (!score) return;
           if (!bestSet || score > bestScore || (score === bestScore && stamp > bestStamp)) {
             bestSet = true; bestVal = plCloneValue(val); bestScore = score; bestStamp = stamp;
@@ -48819,9 +48837,22 @@ window.addEventListener('DOMContentLoaded', () => {
       memo: nextMemo
     };
   }
-  function plSyncItemToSaved(item) {
+  function plSyncItemToSaved(item, opts) {
     if (!item || !item.linkedSavedId) return false;
     if (typeof setSv !== 'function') return false;
+    opts = opts || {};
+    var fieldFilter = Array.isArray(opts.fields)
+      ? opts.fields.map(function(f){ return String(f || ''); }).filter(Boolean)
+      : null;
+    function hasAnyField(list) {
+      if (!fieldFilter) return true;
+      return (Array.isArray(list) ? list : [list]).some(function(f){ return fieldFilter.indexOf(String(f || '')) >= 0; });
+    }
+    if (fieldFilter) {
+      var reverseSyncFields = ['addr','title','region','address','casenum','caseNo','caseNumber','feature','appraisal','minprice','round','biddate','bidDate','saleDate','매각기일','매각일','입찰기일','deposit','monthly','status','archived','result','bidders','memo'];
+      var shouldSyncSaved = fieldFilter.some(function(f){ return reverseSyncFields.indexOf(String(f || '')) >= 0; });
+      if (!shouldSyncSaved) return false;
+    }
     var sv = plGetSavedItems();
     var idx = (sv || []).findIndex(function(s){ return String(s && s.id) === String(item.linkedSavedId); });
     if (idx < 0) return false;
@@ -48834,25 +48865,32 @@ window.addEventListener('DOMContentLoaded', () => {
       d[key] = val;
       changed = true;
     }
-    var nextTitle = String(item.addr || '').trim();
-    if (nextTitle && plDiffers(src.title, nextTitle)) { src.title = nextTitle; changed = true; }
-    var nextAddr = String(item.region || '').trim();
-    if (nextAddr) {
-      putField('소재지', nextAddr);
-      putField('주소', nextAddr);
+    // v186: 물건리스트의 일부 필드만 수정했는데 저장목록 원본의 다른 필드까지 역동기화하지 않는다.
+    // 특히 의향(intent), 임장(site), 입찰준비(bidFocus)만 바꿨을 때 PL row의 오래된/빈 biddate가
+    // 저장목록의 매각기일을 덮어쓰는 경로를 차단한다.
+    if (hasAnyField(['addr','title'])) {
+      var nextTitle = String(item.addr || '').trim();
+      if (nextTitle && plDiffers(src.title, nextTitle)) { src.title = nextTitle; changed = true; }
     }
-    if (item.casenum) {
+    if (hasAnyField(['region','address'])) {
+      var nextAddr = String(item.region || '').trim();
+      if (nextAddr) {
+        putField('소재지', nextAddr);
+        putField('주소', nextAddr);
+      }
+    }
+    if (hasAnyField(['casenum','caseNo','caseNumber']) && item.casenum) {
       putField('경매번호', item.casenum);
       putField('사건번호', item.casenum);
     }
-    if (item.appraisal) {
+    if (hasAnyField('appraisal') && item.appraisal) {
       var appMan = Number(plParseAmountText(item.appraisal));
       if (Number.isFinite(appMan) && appMan > 0) {
         putField('감정가_만원', Math.round(appMan));
         putField('감정가', Math.round(appMan * 10000));
       }
     }
-    if (item.minprice) {
+    if (hasAnyField('minprice') && item.minprice) {
       // 물건리스트 최저가는 사용자 입력값이 우선이다.
       // 기존 저장목록 최저가를 우선 읽으면 사용자가 수정한 금액이 다시 옛값으로 되돌아간다.
       var minMan = Number(plParseAmountText(item.minprice));
@@ -48863,35 +48901,35 @@ window.addEventListener('DOMContentLoaded', () => {
         putField('최저가_만원', Math.round(minMan));
       }
     }
-    if (item.deposit) putField('보증금_만원', plParseAmountText(item.deposit));
-    if (item.monthly) putField('월세_만원', plParseAmountText(item.monthly));
+    if (hasAnyField('deposit') && item.deposit) putField('보증금_만원', plParseAmountText(item.deposit));
+    if (hasAnyField('monthly') && item.monthly) putField('월세_만원', plParseAmountText(item.monthly));
     // 나의입찰가(estimate)는 물건리스트 전용 필드로 취급한다.
     // 저장목록 원본의 '예상입찰가/추천입찰가'와 상호 덮어쓰기하면
     // 사용자가 estimate를 비웠을 때 원본값이 다시 살아나는 문제가 생긴다.
     // 따라서 여기서는 저장목록으로 역동기화하지 않는다.
-    {
+    if (hasAnyField(['biddate','bidDate','saleDate','매각기일','매각일','입찰기일'])) {
       var bidDateNorm = String(item.biddate || '').trim();
       putField('입찰기일', bidDateNorm);
       putField('매각기일', bidDateNorm);
       putField('매각일', bidDateNorm);
     }
-    if (item.round) putField('유찰회차', item.round);
-    if (item.result && item.result.won) {
+    if (hasAnyField('round') && item.round) putField('유찰회차', item.round);
+    if (hasAnyField('result') && item.result && item.result.won) {
       var wonValue = Number(plParseWonText(item.result.won));
       if (Number.isFinite(wonValue) && wonValue > 0) {
         putField('낙찰가', Math.round(wonValue));
         putField('낙찰가_만원', Math.round(wonValue / 10000));
       }
     }
-    if (item.memo !== undefined) {
+    if (hasAnyField('memo') && item.memo !== undefined) {
       if (plDiffers(src.memo || '', item.memo || '')) {
         src.memo = item.memo || '';
         changed = true;
       }
       putField('종료메모', item.memo || '');
     }
-    if (item.bidders !== undefined) putField('입찰인수', item.bidders || '');
-    {
+    if (hasAnyField('bidders') && item.bidders !== undefined) putField('입찰인수', item.bidders || '');
+    if (hasAnyField(['status','archived'])) {
       var simpleLife = plSimpleStatusKey(item.status || '');
       putField('작업룸상태', simpleLife || 'active');
       putField('분석상태', simpleLife || 'active');
@@ -48922,17 +48960,23 @@ window.addEventListener('DOMContentLoaded', () => {
       if (!src) return it;
       var patch = plBuildPatchFromSaved(src, it);
       if (!patch) return it;
-      var next = plNormalizeItem(Object.assign({}, it, patch, { updatedAt: Date.now() }));
+      var next = plNormalizeItem(Object.assign({}, it, patch));
       // 서버/저장목록 수렴값이 로컬 사용자 편집 필드(의향/최저가/입찰기일/나의입찰가 등)를 되돌리지 않게 보호한다.
       next = plNormalizeItem(plMergeUserOwnedFields(next, it));
-      if (!plDiffers(JSON.stringify(it), JSON.stringify(next))) return it;
+      var changedFieldsFromSaved = Object.keys(patch || {}).filter(function(f){
+        return f !== 'updatedAt' && f !== '_skPlEditedAt' && f !== '_skPlFieldEditedAt'
+          && plDiffers(JSON.stringify(it && it[f]), JSON.stringify(next && next[f]));
+      });
+      // v187: updatedAt만 바뀌는 가짜 변경은 저장/렌더/작업룸 동기화를 일으키지 않는다.
+      if (!changedFieldsFromSaved.length) return it;
+      next.updatedAt = Date.now();
       changed = true;
-      changedItems.push(next);
+      changedItems.push({ item: next, fields: changedFieldsFromSaved });
       return next;
     });
     if (!changed) return false;
     plSave(items);
-    changedItems.forEach(function(it){ try { syncToWorkroom(it); } catch(e) {} });
+    changedItems.forEach(function(entry){ try { syncToWorkroom(entry.item, { fields: entry.fields, reason: 'plSyncFromSavedItems' }); } catch(e) {} });
     if (opts.render !== false && typeof renderPropertyList === 'function') renderPropertyList();
     return true;
   }
@@ -49718,21 +49762,34 @@ window.addEventListener('DOMContentLoaded', () => {
     });
     if (changed) window.wrSetRooms(rooms);
   }
-  function syncToWorkroom(item) {
+  function syncToWorkroom(item, opts) {
     plCanonicalizeRoomLink(item);
     if (!item.roomId) return;
+    opts = opts || {};
+    var fieldFilter = Array.isArray(opts.fields)
+      ? opts.fields.map(function(f){ return String(f || ''); }).filter(Boolean)
+      : null;
+    function hasAnyField(list) {
+      if (!fieldFilter) return true;
+      return (Array.isArray(list) ? list : [list]).some(function(f){ return fieldFilter.indexOf(String(f || '')) >= 0; });
+    }
+    var syncLifecycle = hasAnyField(['status','archived']) || !!(item && item.__allowLifecycleReopen);
+    var syncIdentity = hasAnyField(['roomId','linkedSavedId','addr','title','region','address']);
+    var syncClosedSummary = hasAnyField(['result','bidders','memo']);
+    // v187: 의향/임장/입찰준비/금액/기일만 바꿨는데 작업룸 lifecycle까지 다시 쓰는 경로 차단.
+    if (!syncLifecycle && !syncIdentity && !syncClosedSummary) return;
     var rooms = getWrRooms();
     var room = rooms.find(function(r){return r.id === item.roomId;});
     if (!room) return;
     var simple = plSimpleStatusKey(item.status);
     var newPhase = (item.status === 'archived' ? 'closed' : (item.status || 'review'));
-    var patch = {
-      phase: newPhase,
-      status: newPhase,
-      activePhase: newPhase,
-      lifecycleStatus: (simple === 'closed' ? 'closed' : (simple === 'changed' ? 'changed' : 'active')),
-      __targetItemId: String(item.id || '')
-    };
+    var patch = { __targetItemId: String(item.id || '') };
+    if (syncLifecycle) {
+      patch.phase = newPhase;
+      patch.status = newPhase;
+      patch.activePhase = newPhase;
+      patch.lifecycleStatus = (simple === 'closed' ? 'closed' : (simple === 'changed' ? 'changed' : 'active'));
+    }
     var roomLifeNow = String((room && room.lifecycleStatus) || '').trim();
     var roomUpdatedAt = Number((room && room.updatedAt) || 0);
     var itemUpdatedAt = Number((item && item.updatedAt) || 0);
@@ -49759,15 +49816,15 @@ window.addEventListener('DOMContentLoaded', () => {
       delete patch.activePhase;
       delete patch.closedSummary;
     }
-    if (roomLifeNow === 'closed' && patch.lifecycleStatus !== 'closed' && !(item && item.__allowLifecycleReopen)) {
+    if (syncLifecycle && roomLifeNow === 'closed' && patch.lifecycleStatus !== 'closed' && !(item && item.__allowLifecycleReopen)) {
       patch.phase = 'closed';
       patch.status = 'closed';
       patch.activePhase = 'closed';
       patch.lifecycleStatus = 'closed';
     }
-    if (item.addr && String(room.title || '') !== String(item.addr || '')) patch.title = item.addr;
-    if (item.region && String(room.address || '') !== String(item.region || '')) patch.address = item.region;
-    if (simple === 'closed') {
+    if (syncIdentity && item.addr && String(room.title || '') !== String(item.addr || '')) patch.title = item.addr;
+    if (syncIdentity && item.region && String(room.address || '') !== String(item.region || '')) patch.address = item.region;
+    if (syncClosedSummary && simple === 'closed') {
       var nextSummary = Object.assign({}, room.closedSummary || {});
       var csChanged = false;
       var won = String((item.result && item.result.won) || '').trim();
@@ -49783,8 +49840,12 @@ window.addEventListener('DOMContentLoaded', () => {
       window.updateRoom(room.id, patch);
       if (typeof window.wrDbLinkItem === 'function') window.wrDbLinkItem(room.id, item.id);
     } else {
-      room.phase = newPhase; room.status = newPhase; room.activePhase = newPhase;
-      room.lifecycleStatus = patch.lifecycleStatus;
+      if (syncLifecycle) {
+        room.phase = newPhase; room.status = newPhase; room.activePhase = newPhase;
+        room.lifecycleStatus = patch.lifecycleStatus;
+      }
+      if (patch.title !== undefined) room.title = patch.title;
+      if (patch.address !== undefined) room.address = patch.address;
       if (patch.closedSummary) room.closedSummary = patch.closedSummary;
       room.updatedAt = Date.now();
       if (!room.linkedItems) room.linkedItems = [];
@@ -50348,8 +50409,8 @@ window.addEventListener('DOMContentLoaded', () => {
     }
     plSave(items);
     try { plQueueUserEditRows(changedRows, 'pl-user-edit-cluster'); } catch(e) {}
-    syncToWorkroom(changedItem);
-    try { plSyncItemToSaved(changedItem); } catch(e) {}
+    syncToWorkroom(changedItem, { fields: changedFields, reason: 'plUpdateItem' });
+    try { plSyncItemToSaved(changedItem, { fields: changedFields, reason: 'plUpdateItem' }); } catch(e) {}
     return changedItem;
   }
   // [FIX] 물건관리 내부 함수 전역 노출: 작업룸/콘솔/유찰 처리에서 동일 원본 사용
@@ -54317,7 +54378,7 @@ window.addEventListener('DOMContentLoaded', () => {
   try {
     if (typeof syncToWorkroom === 'function') {
       var _origSyncToWorkroom = syncToWorkroom;
-      syncToWorkroom = function(item){
+      syncToWorkroom = function(item, opts){
         if (item && item.__allowLifecycleReopen && item.roomId) {
           var rooms = _skGetRooms();
           var room = rooms.find(function(r){return r.id === item.roomId;});
@@ -54337,7 +54398,7 @@ window.addEventListener('DOMContentLoaded', () => {
             return updateRoom(room.id, patch);
           }
         }
-        return _origSyncToWorkroom(item);
+        return _origSyncToWorkroom(item, opts);
       };
     }
   } catch(e) {}
@@ -54419,7 +54480,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260516-workroom-v185-pl-refresh-no-autorepaint-click-fix';
+  var BUILD='20260516-workroom-v187-pl-field-isolation-hardening';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
@@ -57379,7 +57440,7 @@ window.addEventListener('DOMContentLoaded', () => {
 */
 (function(){
   'use strict';
-  var BUILD='20260516-workroom-v185-pl-refresh-no-autorepaint-click-fix';
+  var BUILD='20260516-workroom-v187-pl-field-isolation-hardening';
   try{ window.__SK_BUILD=BUILD; console.log('[build] common.js '+BUILD); }catch(e){}
 
   // ─────────────────────────────────────────────────────
@@ -58127,7 +58188,7 @@ window.addEventListener('DOMContentLoaded', () => {
 (function(){
   if(window.__skV166DetailScheduleInstalled) return;
   window.__skV166DetailScheduleInstalled=true;
-  var BUILD='20260516-workroom-v185-pl-refresh-no-autorepaint-click-fix';
+  var BUILD='20260516-workroom-v187-pl-field-isolation-hardening';
   try{ window.__SK_BUILD=BUILD; }catch(e){}
   function clean(v){ return String(v==null?'':v).trim(); }
   function ymd(v){
@@ -58293,7 +58354,7 @@ window.addEventListener('DOMContentLoaded', () => {
 (function(){
   if(window.__skV168ScheduleCanonicalInstalled) return;
   window.__skV168ScheduleCanonicalInstalled=true;
-  var BUILD='20260516-workroom-v185-pl-refresh-no-autorepaint-click-fix';
+  var BUILD='20260516-workroom-v187-pl-field-isolation-hardening';
   try{ window.__SK_BUILD=BUILD; }catch(e){}
 
   function clean(v){ return String(v==null?'':v).trim(); }
@@ -58551,7 +58612,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
 /* === v182: cloud-first authority mode === */
 (function(){
-  try{ window.__SK_BUILD='20260516-workroom-v185-pl-refresh-no-autorepaint-click-fix'; console.log('[build] common.js 20260516-workroom-v185-pl-refresh-no-autorepaint-click-fix'); }catch(e){}
+  try{ window.__SK_BUILD='20260516-workroom-v187-pl-field-isolation-hardening'; console.log('[build] common.js 20260516-workroom-v187-pl-field-isolation-hardening'); }catch(e){}
   window.skDebugAuthorityLoad = function(){
     return {
       build: window.__SK_BUILD,
@@ -58638,3 +58699,38 @@ window.addEventListener('DOMContentLoaded', () => {
   };
 })();
 
+
+
+/* === v187: PL field-isolation diagnostics === */
+(function(){
+  try{ window.__SK_BUILD='20260516-workroom-v187-pl-field-isolation-hardening'; }catch(e){}
+  window.skDebugPlFieldIsolation = function(q){
+    var needle = String(q || '').trim();
+    var rows = [];
+    try { rows = (typeof plLoad === 'function' ? plLoad() : []); } catch(e) { rows = []; }
+    var hit = rows.filter(function(r){ return !needle || JSON.stringify(r || {}).indexOf(needle) >= 0; });
+    var out = hit.map(function(r){
+      var m = r && r._skPlFieldEditedAt || {};
+      return {
+        id: r && r.id,
+        title: r && (r.addr || r.title),
+        roomId: r && r.roomId,
+        linkedSavedId: r && r.linkedSavedId,
+        intent: r && r.intent,
+        biddate: r && r.biddate,
+        site: r && r.site,
+        bidFocus: r && r.bidFocus,
+        estimate: r && r.estimate,
+        updatedAt: r && r.updatedAt,
+        plEditedAt: r && r._skPlEditedAt,
+        intentAt: m.intent || 0,
+        biddateAt: m.biddate || 0,
+        siteAt: m.site || 0,
+        estimateAt: m.estimate || 0,
+        statusAt: m.status || 0
+      };
+    });
+    try { console.table(out); } catch(e) { console.log(out); }
+    return out;
+  };
+})();
