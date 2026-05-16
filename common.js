@@ -50,7 +50,7 @@
         throw e;
       }
     };
-    window.__SK_BUILD = '20260516-workroom-v182-cloud-first-no-cache-mask';
+    window.__SK_BUILD = '20260516-workroom-v184-pl-refresh-dom-guard';
     console.log('[build] common.js ' + window.__SK_BUILD);
     window._ensureInlineUploadHelpers = function() {
       if (typeof window._sbReadAsDataUrl !== 'function') {
@@ -39050,6 +39050,10 @@ function _restoreMarkerToAnchorIfDrifted(ov){
     }
 
     function renderWatchBoard() {
+      const kanbanHost = document.getElementById('pipelineKanbanBoard');
+      const scheduleEl = document.getElementById('watchScheduleBoard');
+      const requiredCnt = document.getElementById('wCnt0');
+      if (!kanbanHost || !requiredCnt) return;
       const sv = getSv();
       const sortKey = document.getElementById('watchSortSel')?.value || 'savedAt';
       const statuses = ['interest', 'review', 'field', 'bid', 'won', 'sell'];
@@ -39058,7 +39062,6 @@ function _restoreMarkerToAnchorIfDrifted(ov){
       const emptyEls = ['wEmpty0','wEmpty1','wEmpty2','wEmpty3','wEmpty4','wEmpty5'].map(id=>document.getElementById(id));
       const rooms = wrGetRooms();
       const plMetaBySaved = _plBuildPropertyMetaBySavedId();
-      const scheduleEl = document.getElementById('watchScheduleBoard');
       applyPipelineKanbanLayout();
       const itemLifecycle = {};
       const itemLifecycleTs = {};
@@ -39206,7 +39209,7 @@ function _restoreMarkerToAnchorIfDrifted(ov){
           items.sort((a, b) => { const pa = parseInt(String(a.data?.감정가 || a.data?.매매가 || 0).replace(/[^0-9]/g, '')) || 0; const pb = parseInt(String(b.data?.감정가 || b.data?.매매가 || 0).replace(/[^0-9]/g, '')) || 0; return pb - pa; });
         }
 
-        cntEls[ci].textContent = items.length;
+        if (cntEls[ci]) cntEls[ci].textContent = items.length;
         if (emptyEls[ci]) emptyEls[ci].style.display = items.length ? 'none' : '';
 
         if (cols[ci]) {
@@ -50767,13 +50770,31 @@ window.addEventListener('DOMContentLoaded', () => {
       el.style.color = (tab === key ? 'var(--fg)' : 'var(--fg2)');
     });
 
+    function clearAuthoritativeLoading(host) {
+      if (!host) return;
+      try {
+        Array.from(host.querySelectorAll('[data-pm-auth-loading="1"]')).forEach(function(el){ el.remove(); });
+      } catch(e) {}
+    }
     function showAuthoritativeLoading(host, msg) {
       if (!host) return;
-      host.innerHTML = '<div style="height:100%;min-height:260px;display:flex;align-items:center;justify-content:center;color:var(--mu);font-size:13px;">'
-        + '<div style="padding:18px 22px;border:1px solid var(--b1);border-radius:14px;background:rgba(17,19,24,.85);box-shadow:0 8px 24px rgba(0,0,0,.18);text-align:center;">'
+      // v183: 구조 패널의 innerHTML을 비우지 않는다.
+      // v182는 로딩 UI를 띄우면서 #pl-tbody/#wCnt* 같은 실제 렌더 대상 DOM까지 지워버렸다.
+      clearAuthoritativeLoading(host);
+      try {
+        var pos = (window.getComputedStyle && getComputedStyle(host).position) || '';
+        if (!pos || pos === 'static') host.style.position = 'relative';
+      } catch(e) {
+        host.style.position = host.style.position || 'relative';
+      }
+      var overlay = document.createElement('div');
+      overlay.setAttribute('data-pm-auth-loading', '1');
+      overlay.style.cssText = 'position:absolute;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;color:var(--mu);font-size:13px;background:rgba(7,10,16,.62);backdrop-filter:blur(2px);pointer-events:auto;';
+      overlay.innerHTML = '<div style="padding:18px 22px;border:1px solid var(--b1);border-radius:14px;background:rgba(17,19,24,.94);box-shadow:0 8px 24px rgba(0,0,0,.24);text-align:center;">'
         + '<div style="font-weight:800;color:var(--tx);margin-bottom:6px;">☁️ 서버 기준으로 불러오는 중</div>'
         + '<div>' + (msg || '최신 데이터를 확인한 뒤 표시합니다.') + '</div>'
-        + '</div></div>';
+        + '</div>';
+      host.appendChild(overlay);
     }
 
     if (tab === 'list') {
@@ -50784,12 +50805,14 @@ window.addEventListener('DOMContentLoaded', () => {
         Promise.resolve(window._plRefreshFromCloud({ render:false, force:true, sync:true }))
           .then(function(){
             if (window.__pmListAuthSeq !== listSeq || window.__pmActiveTab !== 'list') return;
+            clearAuthoritativeLoading(list);
             if (typeof renderPropertyList === 'function') renderPropertyList();
           })
           .catch(function(e){
             console.warn('[pmShowTab list cloud-first]', e);
             if (typeof showToast === 'function') showToast('서버 불러오기 실패 · 로컬 캐시를 임시 표시합니다.', 'warn');
             if (window.__pmListAuthSeq !== listSeq || window.__pmActiveTab !== 'list') return;
+            clearAuthoritativeLoading(list);
             if (typeof renderPropertyList === 'function') renderPropertyList();
           });
       } else if (typeof renderPropertyList === 'function') {
@@ -50810,12 +50833,14 @@ window.addEventListener('DOMContentLoaded', () => {
           .then(function(){
             if (window.__pmWorkAuthSeq !== workSeq || window.__pmActiveTab !== 'work') return;
             if (window.wr2State && pendingRoomId) window.wr2State.activeRoomId = pendingRoomId;
+            clearAuthoritativeLoading(work);
             if (typeof window.wr2Render === 'function') window.wr2Render();
           })
           .catch(function(e){
             console.warn('[pmShowTab work cloud-first]', e);
             if (typeof showToast === 'function') showToast('작업룸 서버 불러오기 실패 · 로컬 캐시를 임시 표시합니다.', 'warn');
             if (window.__pmWorkAuthSeq !== workSeq || window.__pmActiveTab !== 'work') return;
+            clearAuthoritativeLoading(work);
             if (typeof window.wr2Render === 'function') window.wr2Render();
           });
       } else if (typeof window.wr2Render === 'function') {
@@ -50842,6 +50867,7 @@ window.addEventListener('DOMContentLoaded', () => {
         Promise.resolve(window._wrRefreshFromCloud({ render:false, force:true }))
           .then(function(){
             if (window.__pmPipeAuthSeq !== pipeSeq || window.__pmActiveTab !== 'pipeline') return;
+            clearAuthoritativeLoading(pipe);
             if (typeof window.renderWatchBoard === 'function') window.renderWatchBoard();
             if (typeof window.__pmInitPipelineResizer === 'function') setTimeout(function(){ window.__pmInitPipelineResizer(); }, 30);
           })
@@ -50849,6 +50875,7 @@ window.addEventListener('DOMContentLoaded', () => {
             console.warn('[pmShowTab pipeline cloud-first]', e);
             if (typeof showToast === 'function') showToast('플래너 서버 불러오기 실패 · 로컬 캐시를 임시 표시합니다.', 'warn');
             if (window.__pmPipeAuthSeq !== pipeSeq || window.__pmActiveTab !== 'pipeline') return;
+            clearAuthoritativeLoading(pipe);
             if (typeof window.renderWatchBoard === 'function') window.renderWatchBoard();
             if (typeof window.__pmInitPipelineResizer === 'function') setTimeout(function(){ window.__pmInitPipelineResizer(); }, 30);
           });
@@ -52649,7 +52676,10 @@ window.addEventListener('DOMContentLoaded', () => {
     var afterTimer = null;
     var lastEnhanceAt = 0;
     window.renderWatchBoard = function () {
-      var ret = orig.apply(this, arguments);
+      if (!document.getElementById('pipelineKanbanBoard') || !document.getElementById('wCnt0')) return;
+      var ret;
+      try { ret = orig.apply(this, arguments); }
+      catch(e) { console.warn('[renderWatchBoard guarded]', e && (e.message || e)); return; }
       if (!isPipelineKanbanVisible()) return ret;
       if (afterTimer) clearTimeout(afterTimer);
       afterTimer = setTimeout(function () {
@@ -54380,7 +54410,7 @@ window.addEventListener('DOMContentLoaded', () => {
 ════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  var BUILD='20260516-workroom-v182-cloud-first-no-cache-mask';
+  var BUILD='20260516-workroom-v184-pl-refresh-dom-guard';
   var DEFAULT_API='https://sangkwon-upload-worker.feye80.workers.dev';
   var DEFAULT_USER='monodot-main';
   var API_KEY='sk_cloud_api_base_v1';
@@ -55277,42 +55307,70 @@ window.addEventListener('DOMContentLoaded', () => {
     }).filter(function(x){ return x && idOf(x); });
   }
 
+  function _skDomReadyForRender(kind){
+    try{
+      if(typeof document==='undefined') return false;
+      if(kind==='pl_list') return !!document.getElementById('pl-tbody');
+      if(kind==='pipeline') return !!(document.getElementById('pipelineKanbanBoard') && document.getElementById('wCnt0'));
+      if(kind==='work') return !!(document.getElementById('wr2List') || document.getElementById('wrDbDetail') || document.getElementById('wrRoomList'));
+      return true;
+    }catch(e){ return false; }
+  }
+  function _skSafeRender(fn, label){
+    try{
+      if(typeof fn==='function') return fn();
+    }catch(e){ warn('render skipped', label || '', e && (e.message||e)); }
+  }
   function refreshTable(table){
     try{
       var rows=activeRows(readCache(table));
+      var onPropertyManager = true;
+      try { onPropertyManager = (typeof currentPage === 'undefined') || currentPage === 4; } catch(e) {}
+      var activeTab = String(window.__pmActiveTab || 'list');
       if(table==='workrooms'){
         if(window.wr2State){
           var prevActive=String(window.wr2State.activeRoomId||'');
           window.wr2State.rooms=rows;
           if(prevActive && !rows.some(function(r){ return idOf(r)===prevActive; })) window.wr2State.activeRoomId='';
         }
-        if(typeof window.__wr2RenderNow==='function') window.__wr2RenderNow();
-        else if(typeof window.wr2Render==='function') window.wr2Render();
-        if(typeof window.mbRoomRefreshSel==='function') window.mbRoomRefreshSel();
+        if(onPropertyManager && activeTab === 'work' && _skDomReadyForRender('work')) {
+          if(typeof window.__wr2RenderNow==='function') _skSafeRender(window.__wr2RenderNow, 'workrooms.__wr2RenderNow');
+          else if(typeof window.wr2Render==='function') _skSafeRender(window.wr2Render, 'workrooms.wr2Render');
+        }
+        if(typeof window.mbRoomRefreshSel==='function') _skSafeRender(window.mbRoomRefreshSel, 'mbRoomRefreshSel');
         return;
       }
       if(table==='sections'){
         if(window.wr2State) window.wr2State.sections=rows.filter(function(s){ return s && s.type!=='free_table'; });
-        if(typeof window.__wr2RenderNow==='function') window.__wr2RenderNow();
-        else if(typeof window.wr2Render==='function') window.wr2Render();
+        if(onPropertyManager && activeTab === 'work' && _skDomReadyForRender('work')) {
+          if(typeof window.__wr2RenderNow==='function') _skSafeRender(window.__wr2RenderNow, 'sections.__wr2RenderNow');
+          else if(typeof window.wr2Render==='function') _skSafeRender(window.wr2Render, 'sections.wr2Render');
+        }
         return;
       }
       if(table==='items'){
         if(window._idbCache) window._idbCache.re_sv=rows;
-        if(typeof window._svBuildIndex==='function') window._svBuildIndex(rows);
-        if(typeof window.renderSaved==='function') window.renderSaved();
-        if(typeof window.mbRenderSaved==='function') window.mbRenderSaved();
-        if(typeof window.updSvCnt==='function') window.updSvCnt();
+        if(typeof window._svBuildIndex==='function') _skSafeRender(function(){ window._svBuildIndex(rows); }, '_svBuildIndex');
+        if(!onPropertyManager && typeof window.renderSaved==='function') _skSafeRender(window.renderSaved, 'renderSaved');
+        if(typeof window.mbRenderSaved==='function') _skSafeRender(window.mbRenderSaved, 'mbRenderSaved');
+        if(typeof window.updSvCnt==='function') _skSafeRender(window.updSvCnt, 'updSvCnt');
         return;
       }
       if(table==='notes'){
         if(typeof window._ntSetNotes==='function') window._ntSetNotes(rows); else window.ntNotes=rows;
-        if(typeof window.ntRender==='function') window.ntRender();
+        if(!onPropertyManager && typeof window.ntRender==='function') _skSafeRender(window.ntRender, 'ntRender');
         return;
       }
       if(table==='pl_items'){
-        if(typeof window.renderPropertyList==='function') window.renderPropertyList();
-        if(typeof window.renderWatchBoard==='function') window.renderWatchBoard();
+        // v184: pl_items pull은 현재 서브탭의 실제 DOM만 갱신한다.
+        // 물건리스트 탭에서 플래너 DOM이 없거나 v182 로딩 마스크가 패널을 비운 상태에서
+        // renderWatchBoard()가 wCnt*.textContent에 접근하면서 무한 경고가 발생했다.
+        if(onPropertyManager && activeTab === 'list' && _skDomReadyForRender('pl_list') && typeof window.renderPropertyList==='function') {
+          _skSafeRender(window.renderPropertyList, 'pl_items.renderPropertyList');
+        }
+        if(onPropertyManager && activeTab === 'pipeline' && _skDomReadyForRender('pipeline') && typeof window.renderWatchBoard==='function') {
+          _skSafeRender(window.renderWatchBoard, 'pl_items.renderWatchBoard');
+        }
       }
     }catch(e){ warn('refresh failed', table, e && (e.message||e)); }
   }
@@ -57311,7 +57369,7 @@ window.addEventListener('DOMContentLoaded', () => {
 */
 (function(){
   'use strict';
-  var BUILD='20260516-workroom-v182-cloud-first-no-cache-mask';
+  var BUILD='20260516-workroom-v184-pl-refresh-dom-guard';
   try{ window.__SK_BUILD=BUILD; console.log('[build] common.js '+BUILD); }catch(e){}
 
   // ─────────────────────────────────────────────────────
@@ -58059,7 +58117,7 @@ window.addEventListener('DOMContentLoaded', () => {
 (function(){
   if(window.__skV166DetailScheduleInstalled) return;
   window.__skV166DetailScheduleInstalled=true;
-  var BUILD='20260516-workroom-v182-cloud-first-no-cache-mask';
+  var BUILD='20260516-workroom-v184-pl-refresh-dom-guard';
   try{ window.__SK_BUILD=BUILD; }catch(e){}
   function clean(v){ return String(v==null?'':v).trim(); }
   function ymd(v){
@@ -58225,7 +58283,7 @@ window.addEventListener('DOMContentLoaded', () => {
 (function(){
   if(window.__skV168ScheduleCanonicalInstalled) return;
   window.__skV168ScheduleCanonicalInstalled=true;
-  var BUILD='20260516-workroom-v182-cloud-first-no-cache-mask';
+  var BUILD='20260516-workroom-v184-pl-refresh-dom-guard';
   try{ window.__SK_BUILD=BUILD; }catch(e){}
 
   function clean(v){ return String(v==null?'':v).trim(); }
@@ -58483,7 +58541,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
 /* === v182: cloud-first authority mode === */
 (function(){
-  try{ window.__SK_BUILD='20260516-workroom-v182-cloud-first-no-cache-mask'; console.log('[build] common.js 20260516-workroom-v182-cloud-first-no-cache-mask'); }catch(e){}
+  try{ window.__SK_BUILD='20260516-workroom-v184-pl-refresh-dom-guard'; console.log('[build] common.js 20260516-workroom-v184-pl-refresh-dom-guard'); }catch(e){}
   window.skDebugAuthorityLoad = function(){
     return {
       build: window.__SK_BUILD,
@@ -58494,6 +58552,24 @@ window.addEventListener('DOMContentLoaded', () => {
       pipeSeq: window.__pmPipeAuthSeq || 0,
       autoCloudPull: window.__plAutoCloudPull,
       plPullInFlight: !!window.__skPlPullInFlight
+    };
+  };
+})();
+
+
+/* v184 debug: pl_items refresh/render guard status */
+(function(){
+  window.skDebugPlRefreshGuard = function(){
+    var activeTab = String(window.__pmActiveTab || '');
+    var page = (typeof currentPage === 'undefined') ? 'undefined' : currentPage;
+    return {
+      build: window.__SK_BUILD,
+      currentPage: page,
+      activeTab: activeTab,
+      hasPlTbody: !!document.getElementById('pl-tbody'),
+      hasPipeline: !!document.getElementById('pipelineKanbanBoard'),
+      hasWCnt0: !!document.getElementById('wCnt0'),
+      hasLoadingMask: !!document.querySelector('[data-pm-auth-loading="1"]')
     };
   };
 })();
